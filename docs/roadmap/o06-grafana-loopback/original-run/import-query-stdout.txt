@@ -1,0 +1,30 @@
+TARGET {"health": "up", "scrapeUrl": "https://host.docker.internal:59691/api/operations/prometheus", "lastError": "", "lastScrape": "2026-09-29T18:48:13.781913003Z"}
+RULES 200 groups 1 rules 10
+DATASOURCE 200 riauth-o06-prom
+IMPORT {"http": 200, "status": "success", "uid": "riauth-alert-metrics", "url": "/d/riauth-alert-metrics/riauth-alert-metrics", "version": 1, "slug": "riauth-alert-metrics", "folderUid": ""}
+FETCH 200 riAuth alert metrics panels 11 exprs 10
+QUERY success vector series 1 rate(riauth_server_errors_total[5m]) / clamp_min(rate(riauth_requests_
+QUERY success vector series 1 histogram_quantile(0.95, rate(riauth_request_duration_seconds_bucket[5
+QUERY success vector series 1 rate(riauth_rate_limited_total[5m])
+QUERY success vector series 1 rate(riauth_worker_rejections_total[5m])
+QUERY success vector series 1 increase(riauth_signing_errors_total[5m])
+QUERY success vector series 1 increase(riauth_cleanup_errors_total[10m])
+QUERY success vector series 1 histogram_quantile(0.95, rate(riauth_storage_write_wait_seconds_bucket
+QUERY success vector series 6 riauth_queue_pending
+QUERY success vector series 6 riauth_queue_failed
+QUERY success vector series 6 riauth_queue_oldest_pending_seconds
+QUERY success vector series 1 riauth_requests_total
+QUERY success vector series 1 up
+GRAFANA_QUERY 200 frames 1 rate(riauth_server_errors_total[5m]) / clamp_min(rate(riauth_requests_
+GRAFANA_QUERY 200 frames 1 histogram_quantile(0.95, rate(riauth_request_duration_seconds_bucket[5
+GRAFANA_QUERY 200 frames 1 rate(riauth_rate_limited_total[5m])
+GRAFANA_QUERY 200 frames 1 rate(riauth_worker_rejections_total[5m])
+GRAFANA_QUERY 200 frames 1 increase(riauth_signing_errors_total[5m])
+GRAFANA_QUERY 200 frames 1 increase(riauth_cleanup_errors_total[10m])
+GRAFANA_QUERY 200 frames 1 histogram_quantile(0.95, rate(riauth_storage_write_wait_seconds_bucket
+GRAFANA_QUERY 200 frames 6 riauth_queue_pending
+GRAFANA_QUERY 200 frames 6 riauth_queue_failed
+GRAFANA_QUERY 200 frames 6 riauth_queue_oldest_pending_seconds
+GRAFANA_QUERY 200 frames 1 riauth_requests_total
+GRAFANA_QUERY 200 frames 1 up
+IMPORT_AND_QUERY_OK

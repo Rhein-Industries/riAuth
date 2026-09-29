@@ -1,0 +1,6 @@
+{
+  "health": "up",
+  "scrapeUrl": "https://host.docker.internal:49875/api/operations/prometheus",
+  "lastError": "",
+  "lastScrape": "2026-09-29T19:08:26.411028085Z"
+}

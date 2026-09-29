@@ -1,0 +1,715 @@
+[
+  {
+    "expr": "rate(riauth_server_errors_total[5m]) / clamp_min(rate(riauth_requests_total[5m]), 0.01)",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "Value",
+            "labels": {
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "histogram_quantile(0.95, rate(riauth_request_duration_seconds_bucket[5m]))",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "Value",
+            "labels": {
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0.00475
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "rate(riauth_rate_limited_total[5m])",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "Value",
+            "labels": {
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "rate(riauth_worker_rejections_total[5m])",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "Value",
+            "labels": {
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "increase(riauth_signing_errors_total[5m])",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "Value",
+            "labels": {
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "increase(riauth_cleanup_errors_total[10m])",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "Value",
+            "labels": {
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "histogram_quantile(0.95, rate(riauth_storage_write_wait_seconds_bucket[5m]))",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "Value",
+            "labels": {
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0.007119999999999995
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "riauth_queue_pending",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 6,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_pending",
+            "labels": {
+              "__name__": "riauth_queue_pending",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "logout_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_pending",
+            "labels": {
+              "__name__": "riauth_queue_pending",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "mail_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_pending",
+            "labels": {
+              "__name__": "riauth_queue_pending",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "offboard_jobs"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_pending",
+            "labels": {
+              "__name__": "riauth_queue_pending",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "provisioning_deactivations"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_pending",
+            "labels": {
+              "__name__": "riauth_queue_pending",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "provisioning_jobs"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_pending",
+            "labels": {
+              "__name__": "riauth_queue_pending",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "ssf_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "riauth_queue_failed",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 6,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_failed",
+            "labels": {
+              "__name__": "riauth_queue_failed",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "logout_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_failed",
+            "labels": {
+              "__name__": "riauth_queue_failed",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "mail_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_failed",
+            "labels": {
+              "__name__": "riauth_queue_failed",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "offboard_jobs"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_failed",
+            "labels": {
+              "__name__": "riauth_queue_failed",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "provisioning_deactivations"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_failed",
+            "labels": {
+              "__name__": "riauth_queue_failed",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "provisioning_jobs"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_failed",
+            "labels": {
+              "__name__": "riauth_queue_failed",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "ssf_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "riauth_queue_oldest_pending_seconds",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 6,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_oldest_pending_seconds",
+            "labels": {
+              "__name__": "riauth_queue_oldest_pending_seconds",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "logout_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_oldest_pending_seconds",
+            "labels": {
+              "__name__": "riauth_queue_oldest_pending_seconds",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "mail_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_oldest_pending_seconds",
+            "labels": {
+              "__name__": "riauth_queue_oldest_pending_seconds",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "offboard_jobs"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_oldest_pending_seconds",
+            "labels": {
+              "__name__": "riauth_queue_oldest_pending_seconds",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "provisioning_deactivations"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_oldest_pending_seconds",
+            "labels": {
+              "__name__": "riauth_queue_oldest_pending_seconds",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "provisioning_jobs"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      },
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_queue_oldest_pending_seconds",
+            "labels": {
+              "__name__": "riauth_queue_oldest_pending_seconds",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth",
+              "queue": "ssf_deliveries"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "riauth_requests_total",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "riauth_requests_total",
+            "labels": {
+              "__name__": "riauth_requests_total",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          9
+        ]
+      }
+    ]
+  },
+  {
+    "expr": "up",
+    "http": 200,
+    "error": null,
+    "status": 200,
+    "frames": 1,
+    "samples": [
+      {
+        "name": null,
+        "refId": "A",
+        "fields": [
+          {
+            "name": "Time",
+            "labels": {}
+          },
+          {
+            "name": "up",
+            "labels": {
+              "__name__": "up",
+              "instance": "host.docker.internal:49875",
+              "job": "riauth"
+            }
+          }
+        ],
+        "last_values": [
+          1790708911448,
+          1
+        ]
+      }
+    ]
+  }
+]

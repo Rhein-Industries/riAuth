@@ -1,0 +1,81 @@
+{
+  "http": 200,
+  "groups": [
+    {
+      "name": "riauth",
+      "file": "/etc/prometheus/riauth-alerts.yml",
+      "rules": [
+        {
+          "name": "RiAuthUnavailable",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthHighErrorRate",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthLatency",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthRateLimits",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthWorkerSaturation",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthSignerFailures",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthMaintenanceFailures",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthStorageContention",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthDeliveryBacklog",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        },
+        {
+          "name": "RiAuthFailedDeliveries",
+          "health": "ok",
+          "type": "alerting",
+          "lastError": null,
+          "state": null
+        }
+      ]
+    }
+  ]
+}

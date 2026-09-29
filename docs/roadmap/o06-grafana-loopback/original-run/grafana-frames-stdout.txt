@@ -1,0 +1,61 @@
+rate(riauth_server_errors_total[5m]) / clamp_min(rate(riauth_requests_ frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0]
+histogram_quantile(0.95, rate(riauth_request_duration_seconds_bucket[5 frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0.00475]
+rate(riauth_rate_limited_total[5m]) frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0]
+rate(riauth_worker_rejections_total[5m]) frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0]
+increase(riauth_signing_errors_total[5m]) frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0]
+increase(riauth_cleanup_errors_total[10m]) frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0]
+histogram_quantile(0.95, rate(riauth_storage_write_wait_seconds_bucket frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0.005319999999999991]
+riauth_queue_pending frames 6 error None http 200 status 200
+  nsamples 6
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0]
+riauth_queue_failed frames 6 error None http 200 status 200
+  nsamples 6
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0]
+riauth_queue_oldest_pending_seconds frames 6 error None http 200 status 200
+  nsamples 6
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 0]
+riauth_requests_total frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 31]
+up frames 1 error None http 200 status 200
+  nsamples 1
+  keys ['name', 'refId', 'fields', 'last_values']
+  name None nfields 2 last [1790707706525, 1]
+--- pq resultType series ---
+rate(riauth_server_errors_total[5m]) / clamp_min(rate(riauth vector series 1 error None errorType None
+histogram_quantile(0.95, rate(riauth_request_duration_second vector series 1 error None errorType None
+rate(riauth_rate_limited_total[5m]) vector series 1 error None errorType None
+rate(riauth_worker_rejections_total[5m]) vector series 1 error None errorType None
+increase(riauth_signing_errors_total[5m]) vector series 1 error None errorType None
+increase(riauth_cleanup_errors_total[10m]) vector series 1 error None errorType None
+histogram_quantile(0.95, rate(riauth_storage_write_wait_seco vector series 1 error None errorType None
+riauth_queue_pending vector series 6 error None errorType None
+riauth_queue_failed vector series 6 error None errorType None
+riauth_queue_oldest_pending_seconds vector series 6 error None errorType None
+riauth_requests_total vector series 1 error None errorType None
+up vector series 1 error None errorType None

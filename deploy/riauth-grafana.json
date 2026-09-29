@@ -1,5 +1,5 @@
 {
-  "description": "Panels for the riAuth series in deploy/riauth-alerts.yml. Request error rate, request latency, rate limits, worker rejections, and the queue gauges are rendered by src/api/observability.rs. Signing errors, cleanup errors, and storage write wait are rendered by src/telemetry.rs. This file has not been imported into Grafana. Each queue gauge is one series per queue label. pending and failed are index aggregates, and a retry can be counted in both. Oldest pending age is the scrape time minus the earliest timestamp in the age index for a pending row. That timestamp is created_at, and logout, mail, provisioning jobs, and SSF use plan.expires_at minus 3600 seconds when created_at is absent. Connector lag, key problems, and readiness are left unplotted.",
+  "description": "Panels for the riAuth series in deploy/riauth-alerts.yml. Request error rate, request latency, rate limits, worker rejections, and the queue gauges are rendered by src/api/observability.rs. Signing errors, cleanup errors, and storage write wait are rendered by src/telemetry.rs. A disposable loopback import of this file is recorded in docs/roadmap/o06-grafana-loopback.md. Each queue gauge is one series per queue label. pending and failed are index aggregates, and a retry can be counted in both. Oldest pending age is the scrape time minus the earliest timestamp in the age index for a pending row. That timestamp is created_at, and logout, mail, provisioning jobs, and SSF use plan.expires_at minus 3600 seconds when created_at is absent. Connector lag, key problems, and readiness are left unplotted.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -11,7 +11,7 @@
       "gridPos": {"h": 6, "w": 24, "x": 0, "y": 0},
       "id": 1,
       "options": {
-        "content": "These panels repeat the PromQL in deploy/riauth-alerts.yml. This file has not been imported into Grafana.\n\nRequest error rate, request latency, rate limits, and worker rejections are unlabeled series rendered by src/api/observability.rs. Signing errors, cleanup errors, and storage write wait are unlabeled series rendered by src/telemetry.rs. Counters and histograms are process-local and reset when the process starts. Each scraped instance is its own series.\n\nQueue gauges are one series per queue label: logout_deliveries, mail_deliveries, provisioning_jobs, ssf_deliveries, offboard_jobs, provisioning_deactivations. The alert rules compare each series on its own. pending and failed are maintained index counters, and a retry can be counted in both. Oldest pending age is the scrape time minus the earliest timestamp in the age index for a pending row. That timestamp is created_at, and logout, mail, provisioning jobs, and SSF use plan.expires_at minus 3600 seconds when created_at is absent. Connector lag, key problems, and readiness are left unplotted.",
+        "content": "These panels repeat the PromQL in deploy/riauth-alerts.yml. A disposable loopback import of this file is recorded in docs/roadmap/o06-grafana-loopback.md.\n\nRequest error rate, request latency, rate limits, and worker rejections are unlabeled series rendered by src/api/observability.rs. Signing errors, cleanup errors, and storage write wait are unlabeled series rendered by src/telemetry.rs. Counters and histograms are process-local and reset when the process starts. Each scraped instance is its own series.\n\nQueue gauges are one series per queue label: logout_deliveries, mail_deliveries, provisioning_jobs, ssf_deliveries, offboard_jobs, provisioning_deactivations. The alert rules compare each series on its own. pending and failed are maintained index counters, and a retry can be counted in both. Oldest pending age is the scrape time minus the earliest timestamp in the age index for a pending row. That timestamp is created_at, and logout, mail, provisioning jobs, and SSF use plan.expires_at minus 3600 seconds when created_at is absent. Connector lag, key problems, and readiness are left unplotted.",
         "mode": "markdown"
       },
       "title": "How to read these panels",
@@ -24,6 +24,8 @@
       "fieldConfig": {
         "defaults": {
           "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never", "spanNulls": false, "stacking": {"mode": "none"}, "thresholdsStyle": {"mode": "line"}},
+          "max": 1,
+          "min": 0,
           "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 0.05}]},
           "unit": "percentunit"
         },

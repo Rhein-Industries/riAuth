@@ -1,0 +1,32 @@
+{
+  "http": 200,
+  "body": {
+    "datasource": {
+      "id": 1,
+      "uid": "riauth-o06-prom",
+      "orgId": 1,
+      "name": "riauth-o06-prometheus",
+      "type": "prometheus",
+      "typeLogoUrl": "public/plugins/prometheus/img/prometheus_logo.svg",
+      "access": "proxy",
+      "url": "http://riauth-o06-prometheus:9090",
+      "user": "",
+      "database": "",
+      "basicAuth": false,
+      "basicAuthUser": "",
+      "withCredentials": false,
+      "isDefault": true,
+      "jsonData": {
+        "httpMethod": "POST",
+        "timeInterval": "15s"
+      },
+      "secureJsonFields": {},
+      "version": 1,
+      "readOnly": false,
+      "apiVersion": ""
+    },
+    "id": 1,
+    "message": "Datasource added",
+    "name": "riauth-o06-prometheus"
+  }
+}

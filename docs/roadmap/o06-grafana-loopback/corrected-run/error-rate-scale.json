@@ -1,0 +1,25 @@
+{
+  "http": 200,
+  "title": "Server error rate",
+  "id": 2,
+  "min": 0,
+  "max": 1,
+  "unit": "percentunit",
+  "thresholds": {
+    "mode": "absolute",
+    "steps": [
+      {
+        "color": "green",
+        "value": null
+      },
+      {
+        "color": "red",
+        "value": 0.05
+      }
+    ]
+  },
+  "version": 1,
+  "panel_count": 11,
+  "schemaVersion": 39,
+  "url": "/d/riauth-alert-metrics/riauth-alert-metrics"
+}

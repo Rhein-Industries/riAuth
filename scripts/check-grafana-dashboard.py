@@ -28,7 +28,7 @@ LOOP = re.compile(
     re.S,
 )
 REQUIRED_PHRASES = (
-    "has not been imported",
+    "docs/roadmap/o06-grafana-loopback.md",
     "src/api/observability.rs",
     "src/telemetry.rs",
     "created_at",
@@ -215,6 +215,30 @@ def panel_expressions(panel):
     return found
 
 
+def error_rate_scale_problems(document):
+    panel = next(
+        (
+            item
+            for item in document.get("panels") or []
+            if isinstance(item, dict) and item.get("title") == "Server error rate"
+        ),
+        None,
+    )
+    if panel is None:
+        return ["server error rate panel is missing"]
+    defaults = (panel.get("fieldConfig") or {}).get("defaults") or {}
+    problems = []
+    if defaults.get("min") != 0 or defaults.get("max") != 1:
+        problems.append("server error rate scale must be min 0 and max 1")
+    if defaults.get("unit") != "percentunit":
+        problems.append("server error rate unit must be percentunit")
+    steps = (defaults.get("thresholds") or {}).get("steps") or []
+    red = [step.get("value") for step in steps if isinstance(step, dict) and step.get("color") == "red"]
+    if red != [0.05]:
+        problems.append("server error rate threshold must stay 0.05")
+    return problems
+
+
 def check_dashboard(document, allowed, emitted, queue_names):
     problems = []
     if document.get("schemaVersion") != 39:
@@ -280,6 +304,9 @@ def check_dashboard(document, allowed, emitted, queue_names):
     for phrase in REQUIRED_PHRASES:
         if phrase.casefold() not in prose:
             problems.append(f"dashboard text is missing {phrase}")
+    if "has not been imported" in prose:
+        problems.append("dashboard text still says it has not been imported")
+    problems.extend(error_rate_scale_problems(document))
     for name in queue_names:
         if name not in prose:
             problems.append(f"dashboard text omits queue {name}")

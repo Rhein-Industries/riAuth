@@ -1,0 +1,16 @@
+{
+  "kind": "session_tool_stdout_transcription",
+  "original_evidence_directory_removed": "/tmp/riauth-o06-grafana-lab",
+  "byte_copy_of_deleted_files": false,
+  "omitted_fields": [
+    "createdBy"
+  ],
+  "notes": [
+    "query-dump-stdout.txt lines that say frames 0 are an earlier Grafana shape probe, not the successful query.",
+    "Successful Grafana frame counts and last values are grafana-frames-stdout.txt.",
+    "Queue field labels are queue-frames-stdout.txt and grafana-queue-frames.json.",
+    "prometheus-queries.json follows the saved evidence schema. The session read of that file was truncated after riauth_queue_pending; the remaining series use the same object shape and the values printed for every series in query-dump-stdout.txt.",
+    "Scalar Grafana field labels were not printed, so grafana-query-summary.json leaves field_labels_printed false.",
+    "job riauth is present on the untruncated Prometheus samples and is repeated on the reconstructed series."
+  ]
+}
