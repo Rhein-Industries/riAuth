@@ -939,7 +939,7 @@ def main() -> None:
                     source_finish_compact,
                 )
                 or not source_finish_compact.endswith("})?")
-                or not re.search(r"\bpub\(crate\)\s+fn\s+complete_source_login\s*\(", path.read_text())
+                or not re.search(r"\bpub\(crate\)\s+fn\s+complete_source_login\s*\(", source_finish_assembly)
                 or not re.search(r"\bmod\s+source_finish\s*;", (SRC / "assembly.rs").read_text())
             ):
                 errors.append("src/source.rs: charged source finish writer belongs in assembly")
@@ -964,6 +964,41 @@ def main() -> None:
                 or not source_finish_browser_compact.endswith("})?")
             ):
                 errors.append("src/source.rs: browser source finish transaction belongs in assembly")
+            source_completion = rust_function_body(source_finish_assembly, "complete_source_login")
+            source_completion_compact = re.sub(r"\s+", "", source_completion or "")
+            clear_return = rust_function_body(source_finish_assembly, "clear_browser_return")
+            if (
+                rust_function_body(source_protocol, "complete_source_login") is not None
+                or rust_function_body(source_protocol, "clear_browser_return") is not None
+                or source_completion is None
+                or not (0 <= source_completion_compact.find("pending.browser_return_confirmed")
+                        < source_completion_compact.find("pending.workflow.is_some()")
+                        < source_completion_compact.find("enabled(tx,&pending.source)")
+                        < source_completion_compact.find("pending.fingerprint!=source.fingerprint()")
+                        < source_completion_compact.find("pending.result.clone()")
+                        < source_completion_compact.find("self.identity_user(tx,target)")
+                        < source_completion_compact.find("if!approve")
+                        < source_completion_compact.find("write_source_memberships")
+                        < source_completion_compact.find("pending.attempts+=1")
+                        < source_completion_compact.find('tx.put("source_logins",state,&pending)')
+                        < source_completion_compact.find("returnOk(Err(Error::unauthorized()))")
+                        < source_completion_compact.find('tx.put("users",&user.id,&user)')
+                        < source_completion_compact.find("write_source_link")
+                        < source_completion_compact.find("pin_retired:false")
+                        < source_completion_compact.find('tx.put("authentication",&digest(challenge),&transaction)')
+                        < source_completion_compact.find('tx.put("saml_source_sessions",&sid,upstream)')
+                        < source_completion_compact.find('tx.put("sessions",&sid,&session)')
+                        < source_completion_compact.find('tx.put("session_tokens",&session.token_hash,&sid)')
+                        < source_completion_compact.find("clear_browser_return(tx,pending)")
+                        < source_completion_compact.find('tx.delete("source_polls",&pending.poll_hash)')
+                        < source_completion_compact.find('tx.delete("source_logins",state)')
+                        < source_completion_compact.rfind("audit("))
+                or clear_return is None
+                or not re.search(r'tx\.delete\s*\(\s*"source_returns"\s*,\s*token\s*\)', clear_return)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_finish::clear_browser_return\s*;", (SRC / "assembly.rs").read_text())
+                or not re.search(r"\bassembly::clear_browser_return\b", path.read_text())
+            ):
+                errors.append("src/source.rs: source completion identity and one-use writes belong in assembly")
             source_callback = rust_function_body(source_protocol, "source_callback")
             source_callback_raw = rust_function_body(path.read_text(), "source_callback")
             callback_assembly = (SRC / "assembly/source_callback.rs").read_text()

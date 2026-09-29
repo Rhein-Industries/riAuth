@@ -10,14 +10,12 @@ pub(crate) mod workflow;
 pub use crate::model::federation::SourceIdentity;
 use crate::{
     agent::Principal,
-    core::{
-        Core, audit, make_user, require_factor_session, validate_display, validate_email,
-        validate_name,
-    },
+    assembly::clear_browser_return,
+    core::{Core, audit, require_factor_session, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     jose::{ClientAuthMethod, PublicJwks},
-    model::{AuthenticationTransaction, Group, Identity, NewUser, Session, User, UserView},
+    model::{AuthenticationTransaction, Group, Identity, Session, User},
     store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -191,13 +189,13 @@ pub(crate) struct WorkflowBinding {
 pub(crate) struct Login {
     pub(crate) source: String,
     pub(crate) fingerprint: String,
-    poll_hash: String,
+    pub(crate) poll_hash: String,
     verifier: String,
     nonce: String,
     started_at: u64,
     pub(crate) expires_at: u64,
     pub(crate) target: Option<Identity>,
-    authentication: Option<String>,
+    pub(crate) authentication: Option<String>,
     pub(crate) claimed: bool,
     pub(crate) result: Option<UpstreamIdentity>,
     pub(crate) failed: bool,
@@ -216,11 +214,11 @@ pub(crate) struct Login {
     /// Digest of the one-time SAML return token. Present only after a browser-started
     /// ACS accepts the assertion, until the same-site return confirms or ends it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    browser_return: Option<String>,
+    pub(crate) browser_return: Option<String>,
     /// False only while a browser-started SAML login is waiting for its return.
     /// Older rows omit it and were not waiting on that return.
     #[serde(default = "legacy_browser_return_confirmed")]
-    browser_return_confirmed: bool,
+    pub(crate) browser_return_confirmed: bool,
 }
 
 fn legacy_browser_return_confirmed() -> bool {
@@ -230,13 +228,13 @@ fn legacy_browser_return_confirmed() -> bool {
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct UpstreamIdentity {
     #[serde(default)]
-    saml_session: Option<saml::UpstreamSession>,
-    subject: String,
-    name: String,
-    email: Option<String>,
-    email_verified: bool,
-    mfa: bool,
-    auth_time: u64,
+    pub(crate) saml_session: Option<saml::UpstreamSession>,
+    pub(crate) subject: String,
+    pub(crate) name: String,
+    pub(crate) email: Option<String>,
+    pub(crate) email_verified: bool,
+    pub(crate) mfa: bool,
+    pub(crate) auth_time: u64,
     /// Original signed assertion expiry, preserved for delayed workflow use.
     #[serde(default)]
     expires_at: Option<u64>,
@@ -764,217 +762,6 @@ impl Core {
         })
         .await
         .map_err(Error::internal)?
-    }
-    pub(crate) fn complete_source_login(
-        &self,
-        tx: &Tx<'_>,
-        state: &str,
-        pending: &mut Login,
-        approve: bool,
-        otp: Option<&str>,
-        expected_user: Option<&str>,
-    ) -> Result<Result<Value>> {
-        // Browser-started SAML is unfinished until the same-site return. OIDC already
-        // checked its cookie, and rows written before the handoff default confirmed.
-        if pending.browser_binding.is_some() && !pending.browser_return_confirmed {
-            return Err(Error::unauthorized());
-        }
-        if pending.workflow.is_some() {
-            return Err(Error::forbidden());
-        }
-        let source = enabled(tx, &pending.source)?;
-        if pending.fingerprint != source.fingerprint()? {
-            return Err(Error::bad("Source configuration changed; restart login"));
-        }
-        let Some(identity) = pending.result.clone() else {
-            return Ok(Ok(json!({"status":"pending"})));
-        };
-        let link_id = link_key(&source.id, &source.issuer, &identity.subject);
-        let link = tx.get::<Link>("source_links", &link_id)?;
-        let mut user = if let Some(target) = &pending.target {
-            if expected_user.is_some() {
-                return Err(Error::forbidden());
-            }
-            let user = self.identity_user(tx, target)?;
-            if tx
-                .get::<Session>("sessions", &target.session_id)?
-                .is_none_or(|s| s.expires_at <= now())
-                || target.auth_time + 900 < now()
-                || link.as_ref().is_some_and(|l| l.user_id != user.id)
-            {
-                return Err(Error::forbidden());
-            }
-            Some(user)
-        } else {
-            link.as_ref()
-                .map(|l| tx.get::<User>("users", &l.user_id))
-                .transpose()?
-                .flatten()
-        };
-        if expected_user.is_some_and(|id| user.as_ref().map(|u| u.id.as_str()) != Some(id)) {
-            // A bound authorization may use only the explicit link. Do not provision or reattach.
-            return Err(Error::forbidden());
-        }
-        if user
-            .as_ref()
-            .is_some_and(|u| !u.enabled || u.admin && !source.allow_admin_login)
-        {
-            return Err(Error::forbidden());
-        }
-        if !approve {
-            return Ok(Ok(
-                json!({"status":"review", "issuer":source.issuer,"subject":identity.subject,"name":identity.name,"email":identity.email,"email_verified":identity.email_verified,"mfa":identity.mfa,"linking":pending.target.is_some(),"local_user":user.as_ref().map(UserView::from),"local_otp_required":user.as_ref().is_some_and(|u| u.totp_secret.is_some()) && !identity.mfa,"auto_provision":source.auto_provision}),
-            ));
-        }
-        if user.is_none() {
-            if !source.auto_provision || link.is_some() {
-                return Err(Error::forbidden());
-            }
-            let mut created = make_user(NewUser {
-                username: format!("oidc-{}", digest(&link_id)),
-                password: crypto::random_token(""),
-                email: identity.email.clone(),
-                display_name: identity.name.clone(),
-                admin: false,
-            })?;
-            // Generated password is discarded: this account authenticates at its source.
-            created.password_hash.clear();
-            created.email_verified = identity.email_verified;
-            if tx.get::<String>("usernames", &created.username)?.is_some() {
-                return Err(Error::conflict(
-                    "Provisioned username already exists; explicit linking is required",
-                ));
-            }
-            crate::management::write_source_memberships(
-                &self.config,
-                tx,
-                &source.groups,
-                &created.id,
-            )?;
-            audit(
-                tx,
-                &format!("source:{}", source.id),
-                "user.provision",
-                &created.username,
-            )?;
-            user = Some(created);
-        }
-        let mut user = user.unwrap();
-        let local_mfa = user.totp_secret.is_some() && !identity.mfa;
-        if local_mfa {
-            let valid = if let Some(code) = otp.filter(|c| c.starts_with("ri_recovery_")) {
-                user.recovery_codes.remove(&digest(code))
-            } else {
-                let step = crypto::totp_step_with(
-                    user.totp_secret.as_deref().unwrap(),
-                    &user.username,
-                    otp.unwrap_or(""),
-                    now(),
-                    user.totp_last_step,
-                    &user.totp_settings,
-                )?;
-                if let Some(step) = step {
-                    user.totp_last_step = Some(step);
-                    true
-                } else {
-                    false
-                }
-            };
-            if !valid {
-                pending.attempts += 1;
-                tx.put("source_logins", state, &pending)?;
-                return Ok(Err(Error::unauthorized()));
-            }
-        }
-        tx.put("users", &user.id, &user)?;
-        tx.put("usernames", &user.username, &user.id)?;
-        let link_id = crate::management::write_source_link(
-            tx,
-            crate::management::SourceLinkAuthority::VerifiedLogin {
-                source_id: &source.id,
-                source_fingerprint: &pending.fingerprint,
-                user_id: &user.id,
-                subject: &identity.subject,
-                approved: approve,
-            },
-        )?
-        .id;
-        let session_token = crypto::random_token("ri_session_");
-        let sid = crypto::id();
-        let mut amr = vec!["federated".into()];
-        if identity.mfa {
-            amr.push("mfa".into());
-        }
-        if local_mfa {
-            amr.push("otp".into());
-        }
-        let session = Session {
-            id: sid.clone(),
-            token_hash: digest(&session_token),
-            identity: Identity {
-                user_id: user.id.clone(),
-                epoch: user.epoch,
-                mfa: identity.mfa || local_mfa,
-                auth_time: identity.auth_time,
-                session_id: sid.clone(),
-                amr,
-                source: Some(SourceIdentity {
-                    id: source.id.clone(),
-                    fingerprint: pending.fingerprint.clone(),
-                    link: link_id,
-                    pin_retired: false,
-                }),
-            },
-            expires_at: (now() + self.config.session_ttl).min(
-                identity
-                    .saml_session
-                    .as_ref()
-                    .and_then(|s| s.expires_at)
-                    .unwrap_or(u64::MAX),
-            ),
-            revoked: false,
-        };
-        if let Some(challenge) = &pending.authentication {
-            let mut transaction = tx
-                .get::<AuthenticationTransaction>("authentication", &digest(challenge))?
-                .filter(|c| {
-                    c.expires_at > now()
-                        && c.authenticated_session.is_none()
-                        && c.user_id.as_ref().is_none_or(|id| id == &user.id)
-                })
-                .ok_or_else(Error::forbidden)?;
-            if transaction.source_stage.as_deref() != pending.stage.as_deref()
-                && transaction.source_stage.is_some()
-            {
-                return Err(Error::forbidden());
-            }
-            transaction.authenticated_session = Some(sid.clone());
-            tx.put("authentication", &digest(challenge), &transaction)?;
-        }
-        if let Some(upstream) = &identity.saml_session {
-            if upstream.expires_at.is_some_and(|at| at <= now()) {
-                return Err(Error::forbidden());
-            }
-            tx.put("saml_source_sessions", &sid, upstream)?;
-        }
-        tx.put("sessions", &sid, &session)?;
-        tx.put("session_tokens", &session.token_hash, &sid)?;
-        clear_browser_return(tx, pending)?;
-        tx.delete("source_polls", &pending.poll_hash)?;
-        tx.delete("source_logins", state)?;
-        audit(
-            tx,
-            &user.id,
-            if pending.target.is_some() {
-                "source.link"
-            } else {
-                "source.login"
-            },
-            &source.id,
-        )?;
-        Ok(Ok(
-            json!({"status":"complete","session_token":session_token,"expires_at":session.expires_at,"user":UserView::from(&user)}),
-        ))
     }
     pub(crate) fn begin_source_stage(
         &self,
@@ -1593,13 +1380,6 @@ fn browser_mismatch() -> Error {
         "source_browser_mismatch",
         "This provider returned to a different browser than the one that started sign-in. Start again in that browser.",
     )
-}
-
-fn clear_browser_return(tx: &Tx<'_>, pending: &Login) -> Result<()> {
-    if let Some(token) = &pending.browser_return {
-        tx.delete("source_returns", token)?;
-    }
-    Ok(())
 }
 
 pub(crate) fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Result<Value> {

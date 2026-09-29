@@ -647,6 +647,23 @@ fn source_finish_charges_bad_factor_and_consumes_credential_once() {
     assert!(!completed.to_string().contains(SECRET));
     let session = completed["session_token"].as_str().unwrap();
     assert_eq!(fixture.core.me(session).unwrap()["user"]["id"], alice_id);
+    let session_id: String = fixture
+        .core
+        .store
+        .get("session_tokens", &digest(session))
+        .unwrap()
+        .unwrap();
+    let issued: Session = fixture
+        .core
+        .store
+        .get("sessions", &session_id)
+        .unwrap()
+        .unwrap();
+    let source_identity = issued.identity.source.unwrap();
+    assert_eq!(source_identity.id, source.id);
+    assert_eq!(source_identity.fingerprint, source.fingerprint().unwrap());
+    assert_eq!(source_identity.link, link_id);
+    assert!(!source_identity.pin_retired);
     assert!(
         fixture
             .core

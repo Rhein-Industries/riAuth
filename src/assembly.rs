@@ -83,6 +83,7 @@ pub use signin::{bearer_backed, bind_proof, discard_staged, proof_valid};
 mod source_callback;
 mod source_catalog;
 mod source_finish;
+pub(crate) use source_finish::clear_browser_return;
 mod source_stage;
 #[cfg(feature = "platform")]
 mod ssf;
