@@ -110,6 +110,25 @@ revision counter. Renaming or otherwise changing an affected member still
 invalidates the stored proposal. Other conditional writes keep the single global
 revision.
 
+The disposable PostgreSQL primary exercises the same HTTP execute contract.
+Four concurrent `POST /api/group-membership-changes/{id}/execute` calls share
+one approved proposal: two with one idempotency key at the live revision, one
+with a second key at that revision, and one with the staged If-Match. Exactly
+one key returns the executed proposal. Its duplicate replays that body. The
+other live key and the stale If-Match return `Configuration revision changed`.
+The apply stores one `group.members.reviewed` audit, one
+`reviewed_memberships.execute` audit, and one receipt. The winning key with
+the original If-Match replays that receipt; the staged If-Match or a different
+digest returns `Idempotency key was used for a different request`. A new key
+at the pre-race revision returns `Configuration revision changed`, and a new
+key at the current revision returns `Reviewed membership already consumed or
+cancelled`. Dropping the connection pool and opening the same database returns
+the same receipt and the same denials. The runner is
+`RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres scripts/test-postgres.sh`.
+It creates the test database on the primary only, with `sslmode=disable` and
+`local_unencrypted`. Standby promotion and `pg_ctl` failover stay in
+`tests/postgres.rs`. Encrypted PostgreSQL is not covered.
+
 The shared management writer refuses unreviewed privileged membership changes
 from API/CLI/browser writes, desired-state plans, inbound SCIM, LDAP/Workspace/Entra
 reconciliation, invitation acceptance and upstream source auto-provisioning.

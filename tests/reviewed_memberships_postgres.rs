@@ -1,9 +1,15 @@
 //! Reviewed group membership against the disposable PostgreSQL primary from
 //! `scripts/test-postgres.sh`. Each test owns a new database. Reopen drops the
-//! pool and opens another against that same database. Standby promotion and
-//! `pg_ctl` failover remain in `tests/postgres.rs`.
+//! pool and opens another against that same database. The HTTP execute race
+//! uses that reopen. Standby promotion, `pg_ctl` failover, and encrypted
+//! PostgreSQL remain outside this file; failover stays in `tests/postgres.rs`.
 #![cfg(feature = "test-support")]
 
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use http_body_util::BodyExt;
 use riauth::{
     config::Config,
     context::{self, RequestContext},
@@ -15,11 +21,13 @@ use riauth::{
     },
     postgres_store::PostgresConfig,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::PathBuf,
+    sync::Arc,
 };
+use tower::ServiceExt;
 
 const PASSWORD: &str = "test-password-for-fixtures-only";
 
@@ -297,6 +305,61 @@ fn execute_audits(h: &Harness, change_id: &str) -> usize {
                 && event["details"]["change_id"] == change_id
         })
         .count()
+}
+
+async fn call(
+    app: &axum::Router,
+    method: &str,
+    path: &str,
+    token: &str,
+    body: Value,
+    revision: Option<u64>,
+    key: Option<&str>,
+) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("host", "localhost:9000")
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json");
+    if let Some(revision) = revision {
+        request = request.header("if-match", format!("\"{revision}\""));
+    }
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    let response = app
+        .clone()
+        .oneshot(request.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+fn reviewed_writes(h: &Harness) -> usize {
+    h.core
+        .audit_events(&h.admin, 1000)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["action"] == "group.members.reviewed")
+        .count()
+}
+
+/// The PostgreSQL client starts a runtime on whatever thread calls it. HTTP
+/// oneshots run in this runtime; direct store reads stay outside it.
+fn drive<T>(future: impl std::future::Future<Output = T>) -> T {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(future)
 }
 
 #[test]
@@ -698,4 +761,227 @@ fn postgres_reviewed_membership_reopen_and_receipt_replay() {
     assert_eq!(err.message, "Configuration revision changed");
     assert_eq!(receipt_count(&h), before_receipts + 1);
     assert_eq!(members_of(&h), [member].into());
+}
+
+#[test]
+#[ignore = "requires the disposable cluster from scripts/test-postgres.sh"]
+fn postgres_reviewed_membership_http_execute_race_replays_after_reopen() {
+    let h = Harness::new();
+    assert_eq!(h.core.store.backend(), "postgresql");
+    let reviewer = administrator(&h, "reviewer");
+    let executor = administrator(&h, "executor");
+    let member_id = user_id(&h, "member");
+    let peer_id = user_id(&h, "peer");
+    h.core.create_group(&h.admin, "privileged").unwrap();
+    let change = approved(&h, &reviewer, &["member", "peer"]);
+    let base = change["proposal"]["base_revision"].as_u64().unwrap();
+    user_id(&h, "unrelated");
+    let live = revision(&h);
+    assert!(live > base);
+    let path = format!("/api/group-membership-changes/{}/execute", id(&change));
+    let body = json!({"digest": change["digest"]});
+    let before_receipts = receipt_count(&h);
+    let app = riauth::api::router(h.core.clone());
+    let barrier = Arc::new(tokio::sync::Barrier::new(4));
+    let race = |key: &'static str, matched: u64| {
+        let app = app.clone();
+        let path = path.clone();
+        let executor = executor.clone();
+        let body = body.clone();
+        let barrier = Arc::clone(&barrier);
+        async move {
+            barrier.wait().await;
+            let (status, body) = call(
+                &app,
+                "POST",
+                &path,
+                &executor,
+                body,
+                Some(matched),
+                Some(key),
+            )
+            .await;
+            (key, status, body)
+        }
+    };
+    let (first, second, other, stale) = drive(async {
+        tokio::join!(
+            race("race-same", live),
+            race("race-same", live),
+            race("race-other", live),
+            race("race-stale", base),
+        )
+    });
+    assert_eq!(stale.0, "race-stale");
+    assert_eq!(stale.1, StatusCode::CONFLICT);
+    assert_eq!(
+        stale.2["error_description"],
+        "Configuration revision changed"
+    );
+    let same = [first, second];
+    let same_ok = same
+        .iter()
+        .filter(|(_, status, _)| *status == StatusCode::OK)
+        .count();
+    let (winning_key, winning_body) = match (same_ok, other.1) {
+        (2, StatusCode::CONFLICT) => {
+            assert_eq!(same[0].2, same[1].2);
+            assert_eq!(
+                other.2["error_description"],
+                "Configuration revision changed"
+            );
+            ("race-same", same[0].2.clone())
+        }
+        (0, StatusCode::OK) => {
+            for (_, status, body) in &same {
+                assert_eq!(*status, StatusCode::CONFLICT);
+                assert_eq!(body["error_description"], "Configuration revision changed");
+            }
+            ("race-other", other.2.clone())
+        }
+        (ok_same, status) => panic!("unexpected execute split: same_ok={ok_same} other={status}"),
+    };
+    eprintln!("postgresql execute winner={winning_key} same_ok={same_ok}");
+    assert_eq!(winning_body["status"], "executed");
+    assert_eq!(winning_body["proposal"]["id"], id(&change));
+    assert_eq!(
+        winning_body["proposal"]["base_revision"].as_u64().unwrap(),
+        base
+    );
+    assert_eq!(members_of(&h), [member_id.clone(), peer_id.clone()].into());
+    assert_eq!(execute_audits(&h, id(&change)), 1);
+    assert_eq!(reviewed_writes(&h), 1);
+    assert_eq!(receipt_count(&h), before_receipts + 1);
+
+    // The stored receipt matches this key, If-Match and body, so it is returned
+    // before the revision guard sees that the apply advanced meta.revision.
+    let (status, replayed) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(live),
+        Some(winning_key),
+    ));
+    assert_eq!(status, StatusCode::OK, "{replayed}");
+    assert_eq!(replayed, winning_body);
+    let (status, mismatch) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(base),
+        Some(winning_key),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        mismatch["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, changed) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        json!({"digest": "different-digest"}),
+        Some(live),
+        Some(winning_key),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        changed["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(live),
+        Some("race-fresh"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(fresh["error_description"], "Configuration revision changed");
+    let current = revision(&h);
+    let (status, consumed) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(current),
+        Some("race-consumed"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        consumed["error_description"],
+        "Reviewed membership already consumed or cancelled"
+    );
+    assert_eq!(execute_audits(&h, id(&change)), 1);
+    assert_eq!(receipt_count(&h), before_receipts + 1);
+    assert_eq!(members_of(&h), [member_id.clone(), peer_id.clone()].into());
+    drop(app);
+
+    let h = h.reopen();
+    assert_eq!(h.core.store.backend(), "postgresql");
+    let app = riauth::api::router(h.core.clone());
+    let (status, replayed) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(live),
+        Some(winning_key),
+    ));
+    assert_eq!(status, StatusCode::OK, "{replayed}");
+    assert_eq!(replayed, winning_body);
+    let (status, mismatch) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(base),
+        Some(winning_key),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        mismatch["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body.clone(),
+        Some(live),
+        Some("race-fresh-reopen"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(fresh["error_description"], "Configuration revision changed");
+    let current = revision(&h);
+    let (status, consumed) = drive(call(
+        &app,
+        "POST",
+        &path,
+        &executor,
+        body,
+        Some(current),
+        Some("race-consumed-reopen"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        consumed["error_description"],
+        "Reviewed membership already consumed or cancelled"
+    );
+    assert_eq!(execute_audits(&h, id(&change)), 1);
+    assert_eq!(reviewed_writes(&h), 1);
+    assert_eq!(receipt_count(&h), before_receipts + 1);
+    assert_eq!(members_of(&h), [member_id, peer_id].into());
+    drop(app);
 }
