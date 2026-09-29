@@ -366,6 +366,9 @@ def main() -> None:
                 errors.append("src/cloud_directory.rs: reviewed-plan read belongs in assembly")
             if rust_function_body(masked_rust_source(path.read_text()), "cloud_directories") is not None:
                 errors.append("src/cloud_directory.rs: scoped catalog read belongs in assembly")
+            cleanup = rust_function_body(masked_rust_source(path.read_text()), "cleanup")
+            if cleanup is None or re.search(r"\bmaintenance_page\s*::\s*<\s*Plan\s*>", cleanup):
+                errors.append("src/cloud_directory.rs: reviewed-plan retention belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))

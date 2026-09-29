@@ -12,6 +12,8 @@ mod cloud_directory_catalog;
 #[cfg(feature = "platform")]
 mod cloud_directory_plan;
 #[cfg(feature = "platform")]
+pub(crate) use cloud_directory_plan::cleanup_plans as cloud_plan_cleanup;
+#[cfg(feature = "platform")]
 mod device_trust;
 mod directory;
 pub use directory::cleanup as directory_cleanup;

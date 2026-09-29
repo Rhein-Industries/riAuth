@@ -2439,11 +2439,7 @@ pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
             tx.delete(CLOUD_APPLY_SNAPSHOTS, &id)?;
         }
     }
-    for (id, plan) in tx.maintenance_page::<Plan>("cloud_directory_plans")? {
-        if plan.expires_at.saturating_add(86_400) < at {
-            tx.delete("cloud_directory_plans", &id)?;
-        }
-    }
+    crate::assembly::cloud_plan_cleanup(tx, at)?;
     crate::assembly::cloud_budget_cleanup(tx, at)?;
     Ok(())
 }
