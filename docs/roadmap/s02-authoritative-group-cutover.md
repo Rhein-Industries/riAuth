@@ -1,7 +1,9 @@
 # S02: authoritative Group cutover proposal
 
-**Status: design for review; no cutover implemented.** The held v9 chunk mirror
-is not a performance or process-memory solution. `groups/<name>` still holds
+**Status: design for review; no cutover implemented.** The v9 chunk mirror in
+the held S02 source branch (`63f0cdc..7c695e0`) is not a performance or
+process-memory solution. It is absent from the accepted integration baseline
+(checked at `9359b80`, index version 8). In both versions, `groups/<name>` holds
 the entire `Group.members` set. The mirror lookup reads and hashes every chunk,
 and redb's authoritative key probe may cache the large source leaf. On the
 same 4 MiB fixture, measured mirror lookup medians were 45–126 ms across the
@@ -71,11 +73,13 @@ it cannot bypass the tree writer and leave a trusted root behind.
    return signatures require an API/transport refactor; they are a release
    gate, not a detail deferred after storage cutover.
 4. **Backup, restore, recovery, rollback.** Classify root/member/overflow rows
-   as canonical retained source; classify v9 chunks and all indexes as derived
-   once legacy migration completes. v3 streaming backup carries each bounded
-   source row. Restore validates a complete versioned source before rebuilding
-   indexes; v1/v2/old v3 archives run the legacy converter under the same
-   offline gate. Never reconstruct source from a restored index or mirror.
+   as canonical retained source and all indexes as derived. If the cutover is
+   built on the held branch, retire its v9 chunks as derived data after legacy
+   migration; the accepted v8 baseline has no such chunks. v3 streaming backup
+   carries each bounded source row. Restore validates a complete versioned
+   source before rebuilding indexes; v1/v2/old v3 archives run the legacy
+   converter under the same offline gate. Never reconstruct source from a
+   restored index or mirror.
    Keep redb and PostgreSQL plain/encrypted semantics identical. Older
    binaries must refuse the newer activation; rollback is restore of the
    pre-cutover backup followed by the normal recovery/credential procedure,
@@ -93,24 +97,37 @@ at 200 KiB it must not materially regress against legacy;
 peak RSS growth from 200 KiB must be bounded by a stated fixed working budget
 (proposed 2 MiB) rather than Group size. No zero-only telemetry assertion is
 evidence. Compare serialized output/ETags, audit, order, DN collisions and
-authorization with v9. Inject missing roots, altered names/leaves/overflow,
-stale indexes, interrupted conversion and restore failures; require fail-closed
-behavior in redb and PostgreSQL, including encrypted stores. Exercise both
-editions and old-backup restore. If these gates cannot be met, retain the old
-source and do not promote the held mirror stack as a bounded solution.
+authorization with accepted v8 behavior and, where relevant, held v9. Inject
+missing roots, altered names/leaves/overflow, stale indexes, interrupted
+conversion and restore failures; require fail-closed behavior in redb and
+PostgreSQL, including encrypted stores. Exercise both editions and old-backup
+restore. If these gates cannot be met, retain the old source and do not promote
+the held mirror stack as a bounded solution.
 
-## Current source seams
+## Source seams by baseline
 
-- [`src/store.rs`](../../src/store.rs): `Tx::put`, `import_record`,
-  `record_change`, `record_key_probe`, and the redb/PostgreSQL raw reads.
-- [`src/store/maintenance.rs`](../../src/store/maintenance.rs): v9 chunk mirror,
-  whole-chunk `bound_group_source_exists`, group indexes and rebuild.
-- [`src/management.rs`](../../src/management.rs): full-Group writer,
+**Accepted integration (`9359b80`, index version 8):**
+
+- [`src/store.rs`](../../src/store.rs) serializes and reads whole authoritative
+  `Group` values in `groups`; `Tx::put`, `import_record` and `record_change`
+  handle full JSON. [`src/store/maintenance.rs`](../../src/store/maintenance.rs)
+  maintains derived Group bindings, source digests and membership indexes, and
+  rebuilds them by reading whole Group rows. It has no v9 chunks or bounded
+  Group source-existence function.
+- [`src/management.rs`](../../src/management.rs) uses full-Group writers,
   reviewed holders, `GroupWrite` and audit calls.
-- [`src/core.rs`](../../src/core.rs) and [`src/scim.rs`](../../src/scim.rs):
-  full Group/list values, member projection and response/ETag construction.
+  [`src/core.rs`](../../src/core.rs) and [`src/scim.rs`](../../src/scim.rs)
+  return full Group/list values and construct member projections/ETags.
 - [`src/operations.rs`](../../src/operations.rs),
   [`src/operations/stream.rs`](../../src/operations/stream.rs),
   [`src/recovery.rs`](../../src/recovery.rs) and
-  [`src/upgrade.rs`](../../src/upgrade.rs): backup, restore classification,
+  [`src/upgrade.rs`](../../src/upgrade.rs) own backup, restore classification,
   index rebuild and version activation.
+
+**Held S02 source branch (`63f0cdc..7c695e0`) only:**
+
+- `src/store/maintenance.rs` adds index version 9, `group_source_headers`,
+  `group_source_chunks` and `bound_group_source_exists`, which hashes all
+  chunks per lookup. `src/store.rs` adds `record_key_probe`; on redb that probe
+  may still cache the whole authoritative legacy value page. None of these
+  held additions is an accepted-baseline prerequisite for this design.
