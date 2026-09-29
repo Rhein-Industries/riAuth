@@ -361,6 +361,13 @@ def main() -> None:
         ):
             errors.append("src/cloud_directory.rs: retry-budget storage belongs in assembly")
         if path == SRC / "cloud_directory.rs":
+            reconcile = rust_function_body(masked_rust_source(path.read_text()), "cloud_reconcile")
+            if (
+                reconcile is None
+                or not re.search(r"\bcloud_reconcile_pending\s*\(", reconcile)
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", reconcile)
+            ):
+                errors.append("src/cloud_directory.rs: pending reconcile-plan read belongs in assembly")
             plan_get = rust_function_body(masked_rust_source(path.read_text()), "cloud_plan_get")
             if plan_get is None or re.search(r"\.\s*store\b|\bTx\b|\btx\b", plan_get):
                 errors.append("src/cloud_directory.rs: reviewed-plan read belongs in assembly")

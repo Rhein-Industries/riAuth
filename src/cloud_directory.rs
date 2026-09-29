@@ -336,9 +336,9 @@ fn validate_entra_endpoint(directory: &EntraDirectory, graph: &Url) -> Result<()
 }
 
 #[derive(Clone)]
-struct Settings {
-    kind: &'static str,
-    id: String,
+pub(crate) struct Settings {
+    pub(crate) kind: &'static str,
+    pub(crate) id: String,
     tenant: String,
     domain: String,
     token_url: String,
@@ -351,7 +351,7 @@ struct Settings {
     groups: BTreeMap<String, String>,
     attributes: Attributes,
     username_prefix: String,
-    fingerprint: String,
+    pub(crate) fingerprint: String,
     identity_fingerprint: String,
     quota: CloudReconciliationQuota,
 }
@@ -1296,7 +1296,7 @@ impl CloudSnapshotDraft {
 /// reviewed plan, so a new plan cannot inherit pages from an older one.
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct CloudApplyDraft {
-    plan_id: String,
+    pub(crate) plan_id: String,
     review: ReviewBinding,
     pub(crate) draft: CloudSnapshotDraft,
 }
@@ -1315,7 +1315,7 @@ impl CloudApplyDraft {
         }
     }
 
-    fn valid(&self, settings: &Settings, plan: &Plan) -> bool {
+    pub(crate) fn valid(&self, settings: &Settings, plan: &Plan) -> bool {
         self.plan_id == plan.id
             && self.review == plan.review
             && self.draft.directory == settings.id
@@ -1924,35 +1924,7 @@ impl Core {
         let mode = self.cloud_mode(provider, id);
         let settings = self.cloud_settings(kind, id)?;
         let key = digest(&settings.resource());
-        let pending = self.store.read(|tx| {
-            let Some(apply) = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, &key)? else {
-                return Ok(None);
-            };
-            let Some(plan) = tx.get::<Plan>("cloud_directory_plans", &apply.plan_id)? else {
-                return Ok(None);
-            };
-            if plan.applied
-                || plan.expires_at <= now()
-                || plan.kind != settings.kind
-                || plan.directory != settings.id
-                || plan.fingerprint != settings.fingerprint
-                || !apply.valid(&settings, &plan)
-                || mode.decide(&plan.removal_impact)
-                    != crate::connector_guard::ReconciliationDecision::Eligible
-            {
-                return Ok(None);
-            }
-            let actor = self.cloud_snapshot_actor(
-                tx,
-                token,
-                &settings,
-                &plan.actor,
-                plan.revision,
-                &plan.review.authority_digest,
-            )?;
-            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
-            Ok(Some(json!(plan)))
-        })?;
+        let pending = self.cloud_reconcile_pending(token, &settings, &key, mode)?;
         let plan = match pending {
             Some(plan) => plan,
             None => self.cloud_plan_internal(token, kind, id, true)?,
@@ -1971,7 +1943,7 @@ impl Core {
         self.cloud_plan_internal(token, kind, id, false)
     }
 
-    fn cloud_snapshot_actor(
+    pub(crate) fn cloud_snapshot_actor(
         &self,
         tx: &Tx<'_>,
         token: &str,

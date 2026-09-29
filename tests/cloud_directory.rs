@@ -2056,6 +2056,58 @@ fn controller_modes_keep_exact_plan_binding_and_removal_review() {
 }
 
 #[test]
+fn controller_resumes_the_same_pending_apply_plan() {
+    let directory = serve(
+        "workspace",
+        (0..6)
+            .map(|index| {
+                person(
+                    &format!("ext-{index}"),
+                    &format!("user{index}@example.test"),
+                    &format!("User {index}"),
+                    true,
+                )
+            })
+            .collect(),
+        SECRET,
+    );
+    *directory.state.mode.lock().unwrap() = Mode::WorkspacePaged;
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
+    fixture
+        .core
+        .config
+        .workspace_reconciliation_modes
+        .insert("corp".into(), ReconciliationMode::Automatic);
+    fixture.core.config.validate().unwrap();
+
+    let plan_id = (0..8)
+        .find_map(|_| {
+            let result = fixture
+                .core
+                .cloud_reconcile(&fixture.admin, "workspace", "corp")
+                .unwrap();
+            assert_eq!(result["decision"], "snapshot_in_progress", "{result}");
+            (result["snapshot"]["operation"] == "apply_validation")
+                .then(|| result["plan"]["id"].as_str().unwrap().to_owned())
+        })
+        .expect("automatic reconciliation should stage an apply crawl");
+    let resumed = fixture
+        .core
+        .cloud_reconcile(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(resumed["plan"]["id"], plan_id);
+    assert!(
+        matches!(
+            resumed["decision"].as_str(),
+            Some("snapshot_in_progress" | "applied")
+        ),
+        "{resumed}"
+    );
+}
+
+#[test]
 fn malformed_success_pages_fail_plan_and_apply_without_deprovisioning() {
     for kind in ["workspace", "entra"] {
         for mode in [

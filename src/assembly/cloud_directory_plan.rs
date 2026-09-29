@@ -1,14 +1,53 @@
 //! Reviewed cloud-directory plan reads over concrete storage.
 
 use crate::{
-    cloud_directory::Plan,
+    cloud_directory::{CLOUD_APPLY_SNAPSHOTS, CloudApplyDraft, Plan, Settings},
+    connector_guard::{ReconciliationDecision, ReconciliationMode, plan_content},
     core::Core,
+    crypto::now,
     error::{Error, Result},
     store::Tx,
 };
 use serde_json::{Value, json};
 
 impl Core {
+    pub(crate) fn cloud_reconcile_pending(
+        &self,
+        token: &str,
+        settings: &Settings,
+        key: &str,
+        mode: ReconciliationMode,
+    ) -> Result<Option<Value>> {
+        self.store.read(|tx| {
+            let Some(apply) = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, key)? else {
+                return Ok(None);
+            };
+            let Some(plan) = tx.get::<Plan>("cloud_directory_plans", &apply.plan_id)? else {
+                return Ok(None);
+            };
+            if plan.applied
+                || plan.expires_at <= now()
+                || plan.kind != settings.kind
+                || plan.directory != settings.id
+                || plan.fingerprint != settings.fingerprint
+                || !apply.valid(settings, &plan)
+                || mode.decide(&plan.removal_impact) != ReconciliationDecision::Eligible
+            {
+                return Ok(None);
+            }
+            let actor = self.cloud_snapshot_actor(
+                tx,
+                token,
+                settings,
+                &plan.actor,
+                plan.revision,
+                &plan.review.authority_digest,
+            )?;
+            plan.review.validate(tx, &actor, &plan_content(&plan)?)?;
+            Ok(Some(json!(plan)))
+        })
+    }
+
     pub(crate) fn cloud_plan_get_authorized(
         &self,
         token: &str,
