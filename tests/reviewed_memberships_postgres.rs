@@ -4,8 +4,9 @@
 //! uses that reopen. One test loads a loopback server certificate and opens
 //! its database with the production TLS client and a keygen database key.
 //! That certificate step restarts the same primary. One group-only
-//! desired-state test and one client display-name test reopen the pool and do
-//! not fence the primary. A later test stops the primary and promotes the
+//! desired-state test, one client display-name test, and one user
+//! display-name test reopen the pool and do not fence the primary. A later
+//! test stops the primary and promotes the
 //! standby. The promotion is a loopback drill, not production HA.
 #![cfg(feature = "test-support")]
 
@@ -2826,6 +2827,233 @@ fn http_execute_once(
         winning_key: key.to_owned(),
         winning_body,
     }
+}
+
+fn postgres_user_record(h: &Harness, username: &str) -> User {
+    let id: String = h.core.store.get("usernames", username).unwrap().unwrap();
+    h.core.store.get("users", &id).unwrap().unwrap()
+}
+
+fn user_manifest(
+    h: &Harness,
+    username: &str,
+    display_name: &str,
+    email: Option<Option<String>>,
+) -> Manifest {
+    let user = postgres_user_record(h, username);
+    let email = email.unwrap_or(user.email.clone());
+    serde_json::from_value(json!({
+        "api_version": "riauth/v1",
+        "users": [{
+            "password_disabled": user.password_hash.is_empty(),
+            "totp_ref": null,
+            "totp_version": null,
+            "id": user.id,
+            "username": user.username,
+            "display_name": display_name,
+            "email": email,
+            "email_verified": user.email_verified,
+            "enabled": user.enabled,
+            "admin": user.admin,
+            "attributes": user.attributes,
+            "subjects": user.subjects,
+            "password_ref": null,
+            "password_hash_ref": null,
+            "password_version": null
+        }]
+    }))
+    .unwrap()
+}
+
+#[test]
+#[ignore = "requires the disposable cluster from scripts/test-postgres.sh"]
+fn postgres_user_display_name_desired_state_dependencies_and_replay() {
+    let h = Harness::new();
+    assert_eq!(h.core.store.backend(), "postgresql");
+    let alice = user_id(&h, "alice");
+    user_id(&h, "stranger");
+    let plan = h
+        .core
+        .plan_state(&h.admin, user_manifest(&h, "alice", "Ada Lovelace", None))
+        .unwrap();
+    assert!(
+        plan.user_dependencies
+            .as_ref()
+            .is_some_and(|digest| !digest.is_empty())
+    );
+    assert!(plan.group_dependencies.is_none());
+    assert!(plan.client_dependencies.is_none());
+    h.core.create_group(&h.admin, "extras").unwrap();
+    assert!(revision(&h) > plan.base_revision);
+    deny(
+        &h,
+        || {
+            context::scope(
+                Some(RequestContext {
+                    idempotency_key: Some("user-stale".into()),
+                    fingerprint: "user-stale".into(),
+                    revision: Some(plan.base_revision),
+                    ..Default::default()
+                }),
+                || h.core.apply_state(&h.admin, apply_to(&plan)),
+            )
+        },
+        409,
+        "Configuration revision changed",
+    );
+    assert_eq!(receipt_count(&h), 0);
+
+    h.core
+        .store
+        .write(|tx| tx.put("directory_users", &alice, &json!({"directory": "local"})))
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state user display-name dependencies changed",
+    );
+    h.core
+        .store
+        .write(|tx| tx.delete("directory_users", &alice))
+        .unwrap();
+
+    let saved = postgres_user_record(&h, "alice");
+    let mut emailed = saved.clone();
+    emailed.email = Some("ada@example.test".into());
+    h.core
+        .store
+        .write(|tx| tx.put("users", &alice, &emailed))
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state user display-name dependencies changed",
+    );
+    let mut hashed = saved.clone();
+    hashed.password_hash = "rotated-password-hash".into();
+    h.core
+        .store
+        .write(|tx| tx.put("users", &alice, &hashed))
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state user display-name dependencies changed",
+    );
+    h.core
+        .store
+        .write(|tx| tx.put("users", &alice, &saved))
+        .unwrap();
+
+    let legacy = h
+        .core
+        .plan_state(
+            &h.admin,
+            user_manifest(
+                &h,
+                "alice",
+                "Test User",
+                Some(Some("other@example.test".into())),
+            ),
+        )
+        .unwrap();
+    assert!(legacy.user_dependencies.is_none());
+    rename_user(&h, "stranger", "Still unrelated");
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&legacy)),
+        409,
+        "Connector plan expired or source configuration or local revision changed; create a new plan",
+    );
+
+    let live = revision(&h);
+    let app = riauth::api::router(h.core.clone());
+    let body = apply_json(&plan, None);
+    let reconciles = audit_count(&h, "user.reconcile");
+    let applies = audit_count(&h, "state.apply");
+    let (status, applied) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("user-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(applied["applied"], true);
+    assert_eq!(applied["revision"].as_u64().unwrap(), live + 1);
+    assert_eq!(
+        postgres_user_record(&h, "alice").display_name,
+        "Ada Lovelace"
+    );
+    assert_eq!(audit_count(&h, "user.reconcile"), reconciles + 1);
+    assert_eq!(audit_count(&h, "state.apply"), applies + 1);
+    assert_eq!(receipt_count(&h), 1);
+    let (status, replayed) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("user-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed, applied);
+    assert_eq!(audit_count(&h, "user.reconcile"), reconciles + 1);
+    assert_eq!(receipt_count(&h), 1);
+    let (status, other_body) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        apply_json(&plan, Some("other")),
+        Some(live),
+        Some("user-once"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        other_body["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh_stale) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("user-fresh"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        fresh_stale["error_description"],
+        "Configuration revision changed"
+    );
+    assert_eq!(receipt_count(&h), 1);
+    drop(app);
+    let display_name = postgres_user_record(&h, "alice").display_name;
+    let h = h.reopen();
+    let app = riauth::api::router(h.core.clone());
+    let (status, opened) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body,
+        Some(live),
+        Some("user-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(opened, applied);
+    assert_eq!(receipt_count(&h), 1);
+    assert_eq!(audit_count(&h, "user.reconcile"), reconciles + 1);
+    assert_eq!(postgres_user_record(&h, "alice").display_name, display_name);
+    drop(app);
 }
 
 /// Runs last. Stopping the primary leaves the shared cluster without its

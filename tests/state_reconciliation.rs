@@ -1320,3 +1320,350 @@ async fn client_name_desired_state_http_replays_the_same_request() {
     assert_eq!(client_record(&f, "portal").name, "Portal");
     drop(app);
 }
+
+fn user_record(f: &Fixture, username: &str) -> User {
+    let id = user_id(f, username);
+    f.core.store.get("users", &id).unwrap().unwrap()
+}
+
+fn named_user(
+    f: &Fixture,
+    username: &str,
+    display_name: &str,
+    email: Option<Option<String>>,
+) -> Manifest {
+    let user = user_record(f, username);
+    let email = email.unwrap_or(user.email.clone());
+    manifest(json!({
+        "api_version": "riauth/v1",
+        "users": [{
+            "password_disabled": user.password_hash.is_empty(),
+            "totp_ref": null,
+            "totp_version": null,
+            "id": user.id,
+            "username": user.username,
+            "display_name": display_name,
+            "email": email,
+            "email_verified": user.email_verified,
+            "enabled": user.enabled,
+            "admin": user.admin,
+            "attributes": user.attributes,
+            "subjects": user.subjects,
+            "password_ref": null,
+            "password_hash_ref": null,
+            "password_version": null
+        }]
+    }))
+}
+
+#[test]
+fn user_display_name_desired_state_keeps_credentials_and_ownership() {
+    let f = Fixture::new();
+    f.user("alice");
+    f.user("stranger");
+    let alice = user_id(&f, "alice");
+    let plan = f
+        .core
+        .plan_state(&f.admin, named_user(&f, "alice", "Ada Lovelace", None))
+        .unwrap();
+    assert!(
+        plan.user_dependencies
+            .as_ref()
+            .is_some_and(|digest| !digest.is_empty())
+    );
+    assert!(plan.group_dependencies.is_none());
+    assert!(plan.client_dependencies.is_none());
+    assert_eq!(plan.removal_impact.disabled_users, 0);
+    assert!(!plan.removal_impact.review_required);
+    rename(&f, "stranger", "Unrelated");
+    assert!(revision(&f) > plan.base_revision);
+    refused(
+        &f,
+        || {
+            context::scope(
+                Some(RequestContext {
+                    idempotency_key: Some("user-stale".into()),
+                    fingerprint: "user-stale".into(),
+                    revision: Some(plan.base_revision),
+                    ..Default::default()
+                }),
+                || f.core.apply_state(&f.admin, request(&plan)),
+            )
+        },
+        "Configuration revision changed",
+    );
+    assert_eq!(receipts(&f), 0);
+
+    f.core
+        .store
+        .write(|tx| tx.put("directory_users", &alice, &json!({"directory": "local"})))
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state user display-name dependencies changed",
+    );
+    f.core
+        .store
+        .write(|tx| tx.delete("directory_users", &alice))
+        .unwrap();
+
+    let saved = user_record(&f, "alice");
+    let mut emailed = saved.clone();
+    emailed.email = Some("ada@example.test".into());
+    f.core
+        .store
+        .write(|tx| tx.put("users", &alice, &emailed))
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state user display-name dependencies changed",
+    );
+    let mut hashed = saved.clone();
+    hashed.password_hash = "rotated-password-hash".into();
+    f.core
+        .store
+        .write(|tx| tx.put("users", &alice, &hashed))
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state user display-name dependencies changed",
+    );
+    restore_user(&f, &alice, &saved);
+
+    let mut mixed = plan.clone();
+    mixed.group_dependencies = Some("extra".into());
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mixed)),
+        "Desired-state dependency scope does not match this manifest",
+    );
+    let mut tampered = plan.clone();
+    tampered.user_dependencies = Some("tampered".into());
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&tampered)),
+        "Plan was modified; create a new plan",
+    );
+    let original: Value = f.core.store.get("plans", &plan.plan_id).unwrap().unwrap();
+    let mut raw = original.clone();
+    raw["plan"]["manifest"]["groups"] = json!([{"name": "readers", "members": []}]);
+    f.core
+        .store
+        .write(|tx| tx.put("plans", &plan.plan_id, &raw))
+        .unwrap();
+    let stored: Value = f.core.store.get("plans", &plan.plan_id).unwrap().unwrap();
+    let mutated: Plan = serde_json::from_value(stored["plan"].clone()).unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mutated)),
+        "Desired-state user display-name dependencies do not match this manifest",
+    );
+    f.core
+        .store
+        .write(|tx| tx.put("plans", &plan.plan_id, &original))
+        .unwrap();
+
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "user-planner".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "user.write".into(),
+                    resource: "user/alice".into(),
+                }],
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let delegated = f
+        .core
+        .plan_state(&agent, named_user(&f, "alice", "Delegated", None))
+        .unwrap();
+    assert!(delegated.user_dependencies.is_some());
+    let record: Agent = f.core.store.get("agents", "user-planner").unwrap().unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut cleared = record.clone();
+            cleared.permissions.clear();
+            tx.put("agents", "user-planner", &cleared)
+        })
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&agent, request(&delegated)),
+        "Connector plan content or authority changed; create and review a new plan",
+    );
+
+    let legacy = f
+        .core
+        .plan_state(
+            &f.admin,
+            named_user(
+                &f,
+                "alice",
+                "Test User",
+                Some(Some("other@example.test".into())),
+            ),
+        )
+        .unwrap();
+    assert!(legacy.user_dependencies.is_none());
+    assert!(legacy.group_dependencies.is_none());
+    assert!(legacy.client_dependencies.is_none());
+    rename(&f, "stranger", "Still unrelated");
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&legacy)),
+        "Connector plan expired or source configuration or local revision changed; create a new plan",
+    );
+
+    let renamed = named_user(&f, "alice", "Shifted", None);
+    let first = f.core.state_reconcile(&f.admin, renamed.clone()).unwrap();
+    assert_eq!(first["decision"], "awaiting_review");
+    assert_eq!(first["reason"], "manual_mode");
+    assert!(first["plan"]["user_dependencies"].as_str().is_some());
+    let base = first["plan"]["base_revision"].as_u64().unwrap();
+    rename(&f, "stranger", "Moved");
+    assert!(revision(&f) > base);
+    let second = f.core.state_reconcile(&f.admin, renamed.clone()).unwrap();
+    assert_eq!(second["plan"]["plan_id"], first["plan"]["plan_id"]);
+    f.core
+        .store
+        .write(|tx| tx.put("directory_users", &alice, &json!({"directory": "shifted"})))
+        .unwrap();
+    let third = f.core.state_reconcile(&f.admin, renamed).unwrap();
+    assert_ne!(third["plan"]["plan_id"], first["plan"]["plan_id"]);
+    assert!(third["plan"]["user_dependencies"].as_str().is_some());
+    f.core
+        .store
+        .write(|tx| tx.delete("directory_users", &alice))
+        .unwrap();
+    assert_eq!(user_record(&f, "alice").display_name, "Test User");
+    let shift_plan: Plan = serde_json::from_value(first["plan"].clone()).unwrap();
+    let reconciles = audits(&f, "user.reconcile");
+    let applied = f.core.apply_state(&f.admin, request(&shift_plan)).unwrap();
+    assert_eq!(applied["applied"], true);
+    assert_eq!(user_record(&f, "alice").display_name, "Shifted");
+    assert_eq!(audits(&f, "user.reconcile"), reconciles + 1);
+    assert_eq!(
+        f.core.apply_state(&f.admin, request(&shift_plan)).unwrap(),
+        applied
+    );
+    assert_eq!(receipts(&f), 0);
+}
+
+#[tokio::test]
+async fn user_display_name_desired_state_http_replays_the_same_request() {
+    let f = Fixture::new();
+    f.user("alice");
+    f.user("stranger");
+    let plan = f
+        .core
+        .plan_state(&f.admin, named_user(&f, "alice", "Ada Lovelace", None))
+        .unwrap();
+    assert!(plan.user_dependencies.is_some());
+    rename(&f, "stranger", "Unrelated");
+    let live = revision(&f);
+    assert!(live > plan.base_revision);
+    let app = riauth::api::router(f.core.clone());
+    let body = apply_json(&plan, None);
+    let (status, stale) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(plan.base_revision),
+        Some("user-stale"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(stale["error_description"], "Configuration revision changed");
+    assert_eq!(receipts(&f), 0);
+
+    let alice = user_id(&f, "alice");
+    let saved = user_record(&f, "alice");
+    let mut emailed = saved.clone();
+    emailed.email = Some("ada@example.test".into());
+    f.core
+        .store
+        .write(|tx| tx.put("users", &alice, &emailed))
+        .unwrap();
+    let (status, denied) = call(&app, &f.admin, body.clone(), Some(live), Some("user-deny")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        denied["error_description"],
+        "Desired-state user display-name dependencies changed"
+    );
+    assert_eq!(receipts(&f), 0);
+    restore_user(&f, &alice, &saved);
+    assert_eq!(revision(&f), live);
+
+    let reconciles = audits(&f, "user.reconcile");
+    let applies = audits(&f, "state.apply");
+    let (status, applied) = call(&app, &f.admin, body.clone(), Some(live), Some("user-once")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(applied["applied"], true);
+    assert_eq!(applied["revision"].as_u64().unwrap(), live + 1);
+    assert_eq!(user_record(&f, "alice").display_name, "Ada Lovelace");
+    assert_eq!(audits(&f, "user.reconcile"), reconciles + 1);
+    assert_eq!(audits(&f, "state.apply"), applies + 1);
+    assert_eq!(receipts(&f), 1);
+    let (status, replayed) =
+        call(&app, &f.admin, body.clone(), Some(live), Some("user-once")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed, applied);
+    assert_eq!(audits(&f, "user.reconcile"), reconciles + 1);
+    assert_eq!(receipts(&f), 1);
+    let (status, other_body) = call(
+        &app,
+        &f.admin,
+        apply_json(&plan, Some("other")),
+        Some(live),
+        Some("user-once"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        other_body["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh_stale) =
+        call(&app, &f.admin, body.clone(), Some(live), Some("user-fresh")).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        fresh_stale["error_description"],
+        "Configuration revision changed"
+    );
+    assert_eq!(receipts(&f), 1);
+    let current = revision(&f);
+    let (status, again) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(current),
+        Some("user-current"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(again, applied);
+    assert_eq!(audits(&f, "user.reconcile"), reconciles + 1);
+    assert_eq!(receipts(&f), 1);
+    drop(app);
+    let f = f.reopen_with(|_| {});
+    let app = riauth::api::router(f.core.clone());
+    let (status, opened) = call(&app, &f.admin, body, Some(live), Some("user-once")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(opened, applied);
+    assert_eq!(receipts(&f), 1);
+    assert_eq!(audits(&f, "user.reconcile"), reconciles + 1);
+    assert_eq!(user_record(&f, "alice").display_name, "Ada Lovelace");
+    drop(app);
+}

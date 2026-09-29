@@ -139,6 +139,11 @@ pub struct Plan {
     /// every other plan, which still compares `base_revision` with `meta.revision`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_dependencies: Option<String>,
+    /// Account record, credentials, passkeys, and directory ownership for one
+    /// existing user's display-name change. Absent on every other plan, which
+    /// still compares `base_revision` with `meta.revision`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_dependencies: Option<String>,
     pub expires_at: u64,
     pub manifest: Manifest,
     pub changes: Vec<Change>,
@@ -1070,31 +1075,151 @@ fn client_name_dependencies(
     )?))
 }
 
+const USER_DISPLAY_DEPENDENCY_VERSION: &str = "riauth/desired-state-user-display-name/v1";
+
+/// One existing user, and no other resource family. Credential rotation and a
+/// target-state fingerprint stay on the global counter.
+fn user_display_shape(manifest: &Manifest) -> bool {
+    manifest.target_state_fingerprint.is_none()
+        && manifest.users.len() == 1
+        && manifest.groups.is_empty()
+        && manifest.clients.is_empty()
+        && manifest.sources.is_empty()
+        && manifest.source_links.is_empty()
+        && manifest.workflows.is_empty()
+        && manifest.users[0].password_ref.is_none()
+        && manifest.users[0].password_hash_ref.is_none()
+        && manifest.users[0].password_version.is_none()
+        && manifest.users[0].totp_ref.is_none()
+        && manifest.users[0].totp_version.is_none()
+}
+
+/// True when the manifest's only user difference is its display name.
+fn user_display_change(tx: &Tx<'_>, spec: &UserSpec) -> Result<bool> {
+    let Some(id) = tx.get::<String>("usernames", &spec.username)? else {
+        return Ok(false);
+    };
+    let Some(live) = tx.get::<User>("users", &id)? else {
+        return Ok(false);
+    };
+    if live.username != spec.username || spec.display_name == live.display_name {
+        return Ok(false);
+    }
+    let mut projected = user_spec(&live);
+    projected.display_name = spec.display_name.clone();
+    Ok(value(&projected)? == value(spec)?)
+}
+
+fn passkey_views(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
+    let mut passkeys = crate::passkey::passkey_list_in(tx, user_id)?;
+    passkeys.sort_by(|left, right| {
+        left["id"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(right["id"].as_str().unwrap_or(""))
+    });
+    Ok(passkeys)
+}
+
+fn user_display_dependency_digest(tx: &Tx<'_>, username: &str) -> Result<String> {
+    let Some(id) = tx.get::<String>("usernames", username)? else {
+        return Err(Error::conflict(
+            "Desired-state user display-name dependencies changed",
+        ));
+    };
+    let Some(user) = tx.get::<User>("users", &id)? else {
+        return Err(Error::conflict(
+            "Desired-state user display-name dependencies changed",
+        ));
+    };
+    if user.id != id || user.username != username {
+        return Err(Error::conflict(
+            "Desired-state user display-name dependencies changed",
+        ));
+    }
+    // Password, authenticator, recovery, and passkey material is hashed here
+    // and is not returned on the plan. Passkey views omit private keys.
+    dependency_digest(
+        USER_DISPLAY_DEPENDENCY_VERSION,
+        &json!({
+            "user": user,
+            "username_id": &id,
+            "password_version": tx.get::<Value>("credential_versions", &format!("user/{username}"))?,
+            "totp_version": tx.get::<Value>("credential_versions", &format!("totp/{username}"))?,
+            "passkeys": passkey_views(tx, &user.id)?,
+            "credential_exposure": crate::delegation::credential_exposure(tx, &user.id)?,
+            "elevation_provenance": tx.get::<Value>(crate::delegation::ELEVATION_PROVENANCE, &user.id)?,
+            "membership_fence": tx.get::<Value>("reviewed_membership_holders", &user.id)?,
+            "directory_binding": tx.get::<Value>("directory_users", &user.id)?,
+            "cloud_binding": tx.get::<Value>("cloud_directory_users", &user.id)?,
+            "grant_generation": tx.get::<u64>("human_grant_generations", &user.id)?.unwrap_or(0),
+        }),
+    )
+}
+
+fn user_display_dependencies(tx: &Tx<'_>, manifest: &Manifest) -> Result<Option<String>> {
+    if !user_display_shape(manifest) || !user_display_change(tx, &manifest.users[0])? {
+        return Ok(None);
+    }
+    Ok(Some(user_display_dependency_digest(
+        tx,
+        &manifest.users[0].username,
+    )?))
+}
+
+enum DependencyScope<'a> {
+    Global,
+    Group(&'a str),
+    Client(&'a str),
+    User(&'a str),
+    Mixed,
+}
+
+fn dependency_scope(plan: &Plan) -> DependencyScope<'_> {
+    match (
+        plan.group_dependencies.as_deref(),
+        plan.client_dependencies.as_deref(),
+        plan.user_dependencies.as_deref(),
+    ) {
+        (None, None, None) => DependencyScope::Global,
+        (Some(value), None, None) => DependencyScope::Group(value),
+        (None, Some(value), None) => DependencyScope::Client(value),
+        (None, None, Some(value)) => DependencyScope::User(value),
+        _ => DependencyScope::Mixed,
+    }
+}
+
 fn plan_revision_current(
     config: &crate::config::Config,
     tx: &Tx<'_>,
     plan: &Plan,
     revision: u64,
 ) -> Result<bool> {
-    if plan.group_dependencies.is_some() && plan.client_dependencies.is_some() {
-        return Ok(false);
-    }
-    if let Some(expected) = &plan.group_dependencies {
-        if !group_only(&plan.manifest) {
-            return Ok(false);
+    match dependency_scope(plan) {
+        DependencyScope::Mixed => Ok(false),
+        DependencyScope::Global => Ok(plan.base_revision == revision),
+        DependencyScope::Group(expected) => {
+            if !group_only(&plan.manifest) {
+                return Ok(false);
+            }
+            Ok(group_dependency_digest(config, tx, &plan.manifest)? == expected)
         }
-        return Ok(group_dependency_digest(config, tx, &plan.manifest)? == *expected);
-    }
-    if let Some(expected) = &plan.client_dependencies {
-        if !client_name_shape(&plan.manifest) {
-            return Ok(false);
+        DependencyScope::Client(expected) => {
+            if !client_name_shape(&plan.manifest) {
+                return Ok(false);
+            }
+            Ok(
+                client_name_dependency_digest(config, tx, &plan.manifest.clients[0].client_id)?
+                    == expected,
+            )
         }
-        return Ok(
-            client_name_dependency_digest(config, tx, &plan.manifest.clients[0].client_id)?
-                == *expected,
-        );
+        DependencyScope::User(expected) => {
+            if !user_display_shape(&plan.manifest) {
+                return Ok(false);
+            }
+            Ok(user_display_dependency_digest(tx, &plan.manifest.users[0].username)? == expected)
+        }
     }
-    Ok(plan.base_revision == revision)
 }
 
 fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
@@ -1246,6 +1371,7 @@ impl Core {
             authority_digest,
             group_dependencies,
             client_dependencies,
+            user_dependencies,
         ) = self.store.preview(|tx| {
             let actor = self.principal(tx, token)?;
             if actor.delegated {
@@ -1264,6 +1390,7 @@ impl Core {
                 None
             };
             let client_dependencies = client_name_dependencies(&self.config, tx, &manifest)?;
+            let user_dependencies = user_display_dependencies(tx, &manifest)?;
             let changes = reconcile(self, tx, &actor, &manifest, &BTreeMap::new(), true)?;
             Ok((
                 actor,
@@ -1273,6 +1400,7 @@ impl Core {
                 authority_digest,
                 group_dependencies,
                 client_dependencies,
+                user_dependencies,
             ))
         })?;
         let mut plan = Plan {
@@ -1283,6 +1411,7 @@ impl Core {
             base_revision: revision,
             group_dependencies,
             client_dependencies,
+            user_dependencies,
             expires_at: now() + 900,
             manifest,
             changes,
@@ -1293,20 +1422,23 @@ impl Core {
         plan.hash = digest(&serde_json::to_string(&plan).map_err(Error::internal)?);
         self.store.write(|tx| {
             let current = self.principal(tx, token)?;
-            let dependencies_current = match (&plan.group_dependencies, &plan.client_dependencies)
-            {
-                (Some(_), Some(_)) => false,
-                (Some(expected), None) => {
-                    group_dependency_digest(&self.config, tx, &plan.manifest)? == *expected
+            let dependencies_current = match dependency_scope(&plan) {
+                DependencyScope::Mixed => false,
+                DependencyScope::Global => true,
+                DependencyScope::Group(expected) => {
+                    group_dependency_digest(&self.config, tx, &plan.manifest)? == expected
                 }
-                (None, Some(expected)) => {
+                DependencyScope::Client(expected) => {
                     client_name_dependency_digest(
                         &self.config,
                         tx,
                         &plan.manifest.clients[0].client_id,
-                    )? == *expected
+                    )? == expected
                 }
-                (None, None) => true,
+                DependencyScope::User(expected) => {
+                    user_display_dependency_digest(tx, &plan.manifest.users[0].username)?
+                        == expected
+                }
             };
             if current.id != actor.id
                 || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
@@ -1359,12 +1491,13 @@ impl Core {
             // idempotency key.
             let group_plan = input.plan.group_dependencies.is_some();
             let client_plan = input.plan.client_dependencies.is_some();
-            if group_plan && client_plan {
+            let user_plan = input.plan.user_dependencies.is_some();
+            if u8::from(group_plan) + u8::from(client_plan) + u8::from(user_plan) > 1 {
                 return Err(Error::conflict(
                     "Desired-state dependency scope does not match this manifest",
                 ));
             }
-            let scoped_plan = group_plan || client_plan;
+            let scoped_plan = group_plan || client_plan || user_plan;
             let receipt_key = if scoped_plan {
                 context.as_ref().and_then(|item| {
                     item.idempotency_key
@@ -1405,6 +1538,11 @@ impl Core {
                     "Desired-state client name dependencies do not match this manifest",
                 ));
             }
+            if user_plan && !user_display_shape(&input.plan.manifest) {
+                return Err(Error::conflict(
+                    "Desired-state user display-name dependencies do not match this manifest",
+                ));
+            }
             if scoped_plan && let Some(expected) = supplied_revision {
                 // If-Match remains the live management revision. The stored
                 // base_revision is not that header.
@@ -1432,6 +1570,17 @@ impl Core {
                 if input.plan.client_dependencies.as_deref() != Some(live.as_str()) {
                     return Err(Error::conflict(
                         "Desired-state client name dependencies changed",
+                    ));
+                }
+            }
+            if user_plan {
+                let live = user_display_dependency_digest(
+                    tx,
+                    &input.plan.manifest.users[0].username,
+                )?;
+                if input.plan.user_dependencies.as_deref() != Some(live.as_str()) {
+                    return Err(Error::conflict(
+                        "Desired-state user display-name dependencies changed",
                     ));
                 }
             }

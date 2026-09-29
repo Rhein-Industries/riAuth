@@ -7,9 +7,10 @@ riauth_pg_target="${RIAUTH_PG_TEST_TARGET:-postgres}"
 # reviewed_memberships_postgres uses this cluster. Its ignored tests include
 # the HTTP execute race, a pool reopen, one production TLS database, one
 # group-only desired-state apply, one client display-name desired-state apply,
-# and one fenced standby promotion after the other tests. The TLS test
-# restarts the primary in place. The desired-state tests do not fence the
-# primary. The promotion test stops that primary and promotes the standby.
+# one user display-name desired-state apply, and one fenced standby promotion
+# after the other tests. The TLS test restarts the primary in place. The
+# desired-state tests do not fence the primary. The promotion test stops that
+# primary and promotes the standby.
 # That promotion is a loopback drill, not production HA.
 case "$riauth_pg_target" in
   postgres|q05_replay_concurrency|reviewed_memberships_postgres|process_role_postgres|node_security_postgres|job_lease_postgres) ;;
