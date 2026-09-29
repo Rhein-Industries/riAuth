@@ -2410,16 +2410,27 @@ async fn oauth_only_stage_does_not_invent_authentication_assurance() {
         .unwrap();
     assert_eq!(session.identity.auth_time, 0);
     assert!(!session.identity.mfa);
-    let record: Value = f
-        .core
-        .store
-        .get(
-            "authentication",
-            &digest(&text(&prepared, "transaction_id")),
-        )
-        .unwrap()
-        .unwrap();
-    assert!(record["authenticated_session"].is_string());
+    // The request-bound proof was consumed when the authorization code was issued.
+    assert!(
+        f.core
+            .store
+            .get::<Value>(
+                "authentication",
+                &digest(&text(&prepared, "transaction_id")),
+            )
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .source_stage_resume(
+                &text(&prepared["source_stage"], "stage_id"),
+                &text(&prepared["source_stage"], "authorization_id"),
+                None,
+            )
+            .is_err()
+    );
+    assert_eq!(codes(&f).len(), 1);
     server.abort();
 }
 
