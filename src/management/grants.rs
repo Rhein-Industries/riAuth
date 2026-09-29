@@ -236,6 +236,85 @@ fn resource_revision(
     }))
 }
 
+/// How an immediate grant replacement is recorded.
+pub(crate) enum ImmediateGrantWrite {
+    /// Direct API: persist and audit `delegation.grants.set` when the set changes.
+    Direct,
+    /// Desired-state preview: the same checks, with no write.
+    Preview,
+    /// Desired-state apply: persist without the direct audit. Plan apply records
+    /// `delegation.reconcile` for the change.
+    Apply,
+}
+
+pub(crate) struct ImmediateGrantWriteResult {
+    pub before: Vec<HumanGrant>,
+    pub after: Vec<HumanGrant>,
+    pub changed: bool,
+    pub direct: Value,
+}
+
+/// Immediate help-desk, application-owner and auditor replacements. High-privilege
+/// changes fail closed for every caller, including desired state.
+pub(crate) fn write_immediate_grants(
+    core: &Core,
+    tx: &Tx<'_>,
+    actor: &Principal,
+    username: &str,
+    grants: Vec<GrantInput>,
+    mode: ImmediateGrantWrite,
+) -> Result<ImmediateGrantWriteResult> {
+    if actor.agent || actor.delegated {
+        return Err(Error::forbidden());
+    }
+    crate::reconciliation::validate_apply_lease(tx, actor)?;
+    authority(tx, &actor.id)?;
+    let (holder, before, after) = prepare(core, tx, actor, username, grants)?;
+    if high_privilege(&before) != high_privilege(&after) {
+        return Err(Error::conflict(
+            "High-privilege grant changes require a reviewed grant change",
+        ));
+    }
+    let changed = before != after;
+    let direct = match mode {
+        ImmediateGrantWrite::Direct => commit_grants(tx, actor, &holder, &before, &after)?,
+        ImmediateGrantWrite::Apply => {
+            persist_grants(tx, &holder, &before, &after)?;
+            json!({"username": holder.username, "grants": &after})
+        }
+        ImmediateGrantWrite::Preview => json!({"username": holder.username, "grants": &after}),
+    };
+    Ok(ImmediateGrantWriteResult {
+        before,
+        after,
+        changed,
+        direct,
+    })
+}
+
+fn persist_grants(
+    tx: &Tx<'_>,
+    holder: &User,
+    before: &[HumanGrant],
+    after: &[HumanGrant],
+) -> Result<bool> {
+    if before == after {
+        return Ok(false);
+    }
+    if after.is_empty() {
+        tx.delete("human_grants", &holder.id)?;
+    } else {
+        tx.put("human_grants", &holder.id, &after)?;
+    }
+    let generation = tx
+        .get::<u64>("human_grant_generations", &holder.id)?
+        .unwrap_or(0)
+        .checked_add(1)
+        .ok_or_else(|| Error::conflict("Human grant generation exhausted"))?;
+    tx.put("human_grant_generations", &holder.id, &generation)?;
+    Ok(true)
+}
+
 // Private to this service: adapters cannot request an unchecked reviewed write.
 fn commit_grants(
     tx: &Tx<'_>,
@@ -244,18 +323,7 @@ fn commit_grants(
     before: &[HumanGrant],
     after: &[HumanGrant],
 ) -> Result<Value> {
-    if before != after {
-        if after.is_empty() {
-            tx.delete("human_grants", &holder.id)?;
-        } else {
-            tx.put("human_grants", &holder.id, &after)?;
-        }
-        let generation = tx
-            .get::<u64>("human_grant_generations", &holder.id)?
-            .unwrap_or(0)
-            .checked_add(1)
-            .ok_or_else(|| Error::conflict("Human grant generation exhausted"))?;
-        tx.put("human_grant_generations", &holder.id, &generation)?;
+    if persist_grants(tx, holder, before, after)? {
         audit_with_details(
             tx,
             &actor.id,
@@ -364,14 +432,16 @@ impl Core {
         grants: Vec<GrantInput>,
     ) -> Result<Value> {
         self.mutation(token, |tx| {
-            let (actor, _) = full_administrator(self, tx, token)?;
-            let (holder, before, after) = prepare(self, tx, &actor, username, grants)?;
-            if high_privilege(&before) != high_privilege(&after) {
-                return Err(Error::conflict(
-                    "High-privilege grant changes require a reviewed grant change",
-                ));
-            }
-            commit_grants(tx, &actor, &holder, &before, &after)
+            let actor = self.principal(tx, token)?;
+            Ok(write_immediate_grants(
+                self,
+                tx,
+                &actor,
+                username,
+                grants,
+                ImmediateGrantWrite::Direct,
+            )?
+            .direct)
         })
     }
 

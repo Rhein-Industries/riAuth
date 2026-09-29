@@ -211,7 +211,9 @@ pub(crate) fn mark_invitation_exposure(
     mark_credential_exposure(config, tx, actor, &unverified)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum HumanRole {
     HelpDesk,
@@ -221,7 +223,9 @@ pub enum HumanRole {
     SecurityAdministrator,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, schemars::JsonSchema,
+)]
 #[serde(deny_unknown_fields)]
 pub struct GrantInput {
     pub role: HumanRole,

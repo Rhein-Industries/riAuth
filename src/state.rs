@@ -31,6 +31,10 @@ pub struct Manifest {
     /// Platform-authored canonical definitions. Omission leaves stored workflows unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub workflows: Vec<crate::workflow::Definition>,
+    /// Immediate delegated role sets. Omission leaves every account's grants unchanged.
+    /// High-privilege changes are refused and stay on the reviewed grant workflow.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delegated_grants: Vec<DelegatedGrantSpec>,
     /// The riAuth issuer this manifest was prepared for. When set, planning and applying fail
     /// unless the instance's issuer is exactly this value; unbound manifests stay portable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -98,6 +102,15 @@ pub struct ClientSpec {
 }
 fn yes() -> bool {
     true
+}
+
+/// One account's complete immediate role set. The server binds each scope to its
+/// current target; callers do not choose `target_id`.
+#[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DelegatedGrantSpec {
+    pub username: String,
+    pub grants: Vec<crate::delegation::GrantInput>,
 }
 
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
@@ -172,6 +185,7 @@ impl Manifest {
             + self.clients.len()
             + self.sources.len()
             + self.workflows.len()
+            + self.delegated_grants.len()
             + self.source_links.len()
             > 1000
         {
@@ -228,6 +242,16 @@ impl Manifest {
         for definition in &self.workflows {
             if !workflow_ids.insert(definition.id.as_str()) {
                 return Err(Error::bad("Duplicate workflow in manifest"));
+            }
+        }
+        let mut grant_subjects = BTreeSet::new();
+        for spec in &self.delegated_grants {
+            validate_name(&spec.username)?;
+            if !grant_subjects.insert(spec.username.as_str()) {
+                return Err(Error::bad("Duplicate delegated grant subject in manifest"));
+            }
+            if spec.grants.len() > 32 {
+                return Err(Error::bad("Delegated grant subject exceeds 32 grants"));
             }
         }
         Ok(())
@@ -717,6 +741,14 @@ fn state_automation_safe(changes: &[Change]) -> bool {
     })
 }
 
+fn require_immediate_grant_actor(actor: &Principal) -> Result<()> {
+    if actor.agent || actor.delegated {
+        Err(Error::forbidden())
+    } else {
+        Ok(())
+    }
+}
+
 fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
     for spec in &plan.manifest.users {
         actor.require("user.write", &format!("user/{}", spec.username))?;
@@ -732,6 +764,9 @@ fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
     }
     for definition in &plan.manifest.workflows {
         actor.require("workflow.write", &format!("workflow/{}", definition.id))?;
+    }
+    if !plan.manifest.delegated_grants.is_empty() {
+        require_immediate_grant_actor(actor)?;
     }
     for spec in &plan.manifest.source_links {
         actor.require("source.write", &format!("source/{}", spec.source))?;
@@ -755,6 +790,7 @@ fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
             }
             "source" => actor.require("source.write", resource)?,
             "workflow" => actor.require("workflow.write", resource)?,
+            "delegation" => require_immediate_grant_actor(actor)?,
             "source_link" => {
                 let source = change.after["source"]
                     .as_str()
@@ -981,7 +1017,31 @@ impl Core {
                 .filter(|(_, d)| actor.allows("workflow.read", &format!("workflow/{}", d.id)))
                 .map(|(_, d)| d)
                 .collect();
-            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, issuer: None, target_state_fingerprint: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
+            let mut delegated_grants = Vec::new();
+            if !actor.agent && !actor.delegated {
+                let mut rows = tx.list::<Vec<crate::delegation::HumanGrant>>("human_grants")?;
+                rows.sort_by(|a, b| a.0.cmp(&b.0));
+                for (user_id, grants) in rows {
+                    if grants.is_empty() {
+                        continue;
+                    }
+                    let Some(user) = tx.get::<User>("users", &user_id)? else {
+                        continue;
+                    };
+                    delegated_grants.push(DelegatedGrantSpec {
+                        username: user.username,
+                        grants: grants
+                            .into_iter()
+                            .map(|grant| crate::delegation::GrantInput {
+                                role: grant.role,
+                                scope: grant.scope,
+                            })
+                            .collect(),
+                    });
+                }
+                delegated_grants.sort_by(|a, b| a.username.cmp(&b.username));
+            }
+            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, delegated_grants, issuer: None, target_state_fingerprint: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
         })
     }
     /// Browser list uses the same scoped authority as manifest export.
@@ -1237,6 +1297,36 @@ fn reconcile(
             } else {
                 BTreeSet::new()
             },
+        });
+    }
+    for spec in &manifest.delegated_grants {
+        let written = crate::management::grants::write_immediate_grants(
+            core,
+            tx,
+            actor,
+            &spec.username,
+            spec.grants.clone(),
+            if preview {
+                crate::management::grants::ImmediateGrantWrite::Preview
+            } else {
+                crate::management::grants::ImmediateGrantWrite::Apply
+            },
+        )?;
+        if !written.changed {
+            continue;
+        }
+        changes.push(Change {
+            resource: format!("delegation/{}", spec.username),
+            action: if written.before.is_empty() {
+                "create"
+            } else {
+                "update"
+            }
+            .into(),
+            before: value(&written.before)?,
+            after: value(&written.after)?,
+            credential_change: false,
+            secret_references: BTreeSet::new(),
         });
     }
     for spec in &manifest.sources {

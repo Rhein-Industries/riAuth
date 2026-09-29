@@ -15,7 +15,11 @@ the integrated `riauth` CLI and guarded browser JSON routes reach it. The privat
 grant writer is callable only after immediate-operation validation or final
 review validation. Replacing `help_desk`, `application_owner` and `auditor` grants
 remains immediate, including changes that retain an identical set of privileged
-grants. Existing account-disable/promotion security cleanup still revokes the
+grants. Desired-state `delegated_grants` calls that same immediate writer.
+One manifest entry replaces one account's immediate roles; omitting the field
+or an account changes nothing. A high-privilege change fails with the same
+conflict and writes nothing. Agents and delegated humans cannot plan or apply
+these entries. Existing account-disable/promotion security cleanup still revokes the
 account's grants immediately.
 
 ## Protocol

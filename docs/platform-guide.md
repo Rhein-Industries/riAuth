@@ -898,7 +898,7 @@ riauth schema manifest
 
 Write `deployment-private/platform-lab/local-password.json`. The `workflows`
 value is the definition itself. It has no `active` field. Omitted users,
-groups, clients, sources, and source links stay as they are. `issuer` binds
+groups, clients, sources, source links, and delegated grants stay as they are. `issuer` binds
 the file to this lab.
 
 ```json
@@ -1021,7 +1021,7 @@ The browser authoring routes, mounted on Platform, are
 `GET /api/admin/workflows`, `POST /api/admin/workflows/plan`, and
 `POST /api/admin/workflows/apply`. The apply route rejects a body unless it
 contains exactly one workflow and empty users, groups, clients, sources,
-source links, and secrets, with `Workflow editor applies one workflow only`.
+source links, delegated grants, and secrets, with `Workflow editor applies one workflow only`.
 The list reads `workflow_definitions`. Saving there still leaves
 `config.workflows` unchanged.
 
