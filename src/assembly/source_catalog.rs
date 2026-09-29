@@ -5,11 +5,43 @@ use crate::{
     core::Core,
     crypto::digest,
     error::{Error, Result},
-    model::User,
+    model::{Group, User},
     source::{Link, LinkSpec, Login, Source, SourceInput, Start},
     store::Tx,
 };
 use serde_json::{Value, json};
+
+pub(crate) struct SourceWritePrior {
+    pub(crate) admin_login_was_allowed: bool,
+    pub(crate) identity_binding_changed: bool,
+}
+
+pub(crate) fn source_write_prior(tx: &Tx<'_>, source: &Source) -> Result<SourceWritePrior> {
+    let old = tx.get::<Source>("sources", &source.id)?;
+    Ok(SourceWritePrior {
+        admin_login_was_allowed: old.as_ref().is_some_and(|stored| stored.allow_admin_login),
+        identity_binding_changed: old.as_ref().is_some_and(|stored| {
+            stored.issuer != source.issuer
+                || stored.client_id != source.client_id
+                || stored.oauth_profile != source.oauth_profile
+                || stored
+                    .saml
+                    .as_ref()
+                    .map(|settings| &settings.name_id_format)
+                    != source
+                        .saml
+                        .as_ref()
+                        .map(|settings| &settings.name_id_format)
+        }),
+    })
+}
+
+pub(crate) fn require_source_group(tx: &Tx<'_>, group: &str) -> Result<()> {
+    if tx.get::<Group>("groups", group)?.is_none() {
+        return Err(Error::bad("Source references an unknown group"));
+    }
+    Ok(())
+}
 
 /// The upstream accounts linked to a user, in storage iteration order.
 pub(crate) fn source_links_of(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {

@@ -17,7 +17,7 @@ use crate::{
     crypto::{self, digest, now},
     error::{Error, Result},
     jose::{ClientAuthMethod, PublicJwks},
-    model::{AuthenticationTransaction, Group, Identity, Session, User},
+    model::{AuthenticationTransaction, Identity, Session, User},
     store::Tx,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -364,10 +364,8 @@ impl Source {
         if let Some(settings) = &self.saml {
             settings.key(tx)?;
         }
-        let old = tx.get::<Source>("sources", &self.id)?;
-        if actor.agent
-            && (self.allow_admin_login || old.as_ref().is_some_and(|s| s.allow_admin_login))
-        {
+        let prior = crate::assembly::source_write_prior(tx, self)?;
+        if actor.agent && (self.allow_admin_login || prior.admin_login_was_allowed) {
             return Err(Error::forbidden());
         }
         if self.auto_provision {
@@ -376,20 +374,13 @@ impl Source {
         for group in &self.groups {
             validate_name(group)?;
             actor.require("group.members", &format!("group/{group}"))?;
-            if tx.get::<Group>("groups", group)?.is_none() {
-                return Err(Error::bad("Source references an unknown group"));
-            }
+            crate::assembly::require_source_group(tx, group)?;
         }
-        if old.as_ref().is_some_and(|s| {
-            s.issuer != self.issuer
-                || s.client_id != self.client_id
-                || s.oauth_profile != self.oauth_profile
-                || s.saml.as_ref().map(|v| &v.name_id_format)
-                    != self.saml.as_ref().map(|v| &v.name_id_format)
-        }) && tx
-            .list::<Link>("source_links")?
-            .iter()
-            .any(|(_, l)| l.source == self.id)
+        if prior.identity_binding_changed
+            && tx
+                .list::<Link>("source_links")?
+                .iter()
+                .any(|(_, l)| l.source == self.id)
         {
             return Err(Error::conflict(
                 "Issuer, upstream client ID and OAuth identity mapping are immutable while accounts are linked",

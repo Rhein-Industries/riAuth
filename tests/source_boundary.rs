@@ -386,6 +386,107 @@ fn source_configuration_keeps_scoped_receipt_revision_and_audit_order() {
 }
 
 #[test]
+fn source_write_prior_and_group_read_keep_permission_and_error_order() {
+    let fixture = Fixture::new();
+    let source = oauth_source();
+    let mut stored = source.clone();
+    stored.allow_admin_login = true;
+    fixture
+        .core
+        .source_put(
+            &fixture.admin,
+            SourceInput {
+                source: stored,
+                client_secret: Some(SECRET.into()),
+            },
+        )
+        .unwrap();
+    let writer = agent(&fixture, "source-only-writer", "source/corp");
+    let mut requested = source.clone();
+    requested.groups.insert("crew".into());
+    let put = |token: &str| {
+        fixture.core.source_put(
+            token,
+            SourceInput {
+                source: requested.clone(),
+                client_secret: None,
+            },
+        )
+    };
+
+    let before = fixture.snapshot().unwrap();
+    assert_eq!(
+        fixture
+            .core
+            .source_put(
+                &writer,
+                SourceInput {
+                    source: source.clone(),
+                    client_secret: None,
+                },
+            )
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    fixture.assert_snapshot(&before);
+
+    fixture
+        .core
+        .source_put(
+            &fixture.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: None,
+            },
+        )
+        .unwrap();
+    let before = fixture.snapshot().unwrap();
+    assert_eq!(put(&writer).unwrap_err().code, "access_denied");
+    fixture.assert_snapshot(&before);
+
+    let scoped = fixture
+        .core
+        .create_agent(
+            &fixture.admin,
+            NewAgent {
+                id: "source-group-writer".into(),
+                permissions: vec![
+                    Permission {
+                        action: "source.write".into(),
+                        resource: "source/corp".into(),
+                    },
+                    Permission {
+                        action: "group.members".into(),
+                        resource: "group/crew".into(),
+                    },
+                ],
+                ttl: 3600,
+                parent: None,
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before = fixture.snapshot().unwrap();
+    let missing = put(&scoped).unwrap_err();
+    assert_eq!(missing.code, "invalid_request");
+    assert_eq!(missing.message, "Source references an unknown group");
+    fixture.assert_snapshot(&before);
+
+    fixture.core.create_group(&fixture.admin, "crew").unwrap();
+    assert_eq!(
+        put(&scoped).unwrap(),
+        serde_json::to_value(&requested).unwrap()
+    );
+    assert_eq!(
+        fixture.core.store.get::<Source>("sources", "corp").unwrap(),
+        Some(requested)
+    );
+}
+
+#[test]
 fn source_enabled_lookup_keeps_missing_disabled_and_request_error_order() {
     let fixture = Fixture::new();
     let request_bound = || Start {

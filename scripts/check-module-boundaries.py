@@ -848,6 +848,42 @@ def main() -> None:
                 errors.append("src/source.rs: source identity trust reads belong in assembly")
             if rust_function_body(source_protocol, "source_list") is not None:
                 errors.append("src/source.rs: authorized source catalog read belongs in assembly")
+            require_source_write = rust_function_body(path.read_text(), "require_write")
+            write_compact = re.sub(r"\s+", "", require_source_write or "")
+            write_prior = rust_function_body(source_catalog, "source_write_prior")
+            prior_compact = re.sub(r"\s+", "", write_prior or "")
+            require_group = rust_function_body(source_catalog, "require_source_group")
+            group_compact = re.sub(r"\s+", "", require_group or "")
+            if (
+                require_source_write is None
+                or not (0 <= write_compact.find("self.validate()?")
+                        < write_compact.find('actor.require("source.write",&format!("source/{}",self.id))?')
+                        < write_compact.find("settings.key(tx)?")
+                        < write_compact.find("crate::assembly::source_write_prior(tx,self)?")
+                        < write_compact.find("self.allow_admin_login||prior.admin_login_was_allowed")
+                        < write_compact.find('actor.require("user.write","*")?')
+                        < write_compact.find("validate_name(group)?")
+                        < write_compact.find('actor.require("group.members",&format!("group/{group}"))?')
+                        < write_compact.find("crate::assembly::require_source_group(tx,group)?")
+                        < write_compact.find("prior.identity_binding_changed")
+                        < write_compact.find('tx.list::<Link>("source_links")?'))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<(?:Source|Group)>\s*\(', require_source_write)
+                or write_prior is None
+                or not (0 <= prior_compact.find('tx.get::<Source>("sources",&source.id)?')
+                        < prior_compact.find("stored.allow_admin_login")
+                        < prior_compact.find("stored.issuer!=source.issuer")
+                        < prior_compact.find("stored.client_id!=source.client_id")
+                        < prior_compact.find("stored.oauth_profile!=source.oauth_profile")
+                        < prior_compact.find("settings.name_id_format"))
+                or require_group is None
+                or not (0 <= group_compact.find('tx.get::<Group>("groups",group)?')
+                        < group_compact.find('Error::bad("Sourcereferencesanunknowngroup")')
+                        < group_compact.rfind("Ok(())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", write_prior + require_group)
+                or "source_write_prior" not in (SRC / "assembly.rs").read_text()
+                or "require_source_group" not in (SRC / "assembly.rs").read_text()
+            ):
+                errors.append("src/source.rs: source write prior and group reads belong in assembly")
             source_put = rust_function_body(
                 masked_rust_source(source_catalog), "source_put"
             )
