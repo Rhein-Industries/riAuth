@@ -2581,12 +2581,14 @@
       ],
       "label": "extend",
       "journey": "partial",
-      "current_state": "One process runs HTTP, the optional LDAP/RADIUS/proxy listeners, and all workers. There are no scoped worker or gateway roles.",
+      "current_state": "Default role integrated still runs product HTTP, optional LDAP/RADIUS/proxy listeners, and background workers in one process. Explicit gateway and worker roles are accepted only with process.accept_partial_duties = true. Gateway serves the product HTTP routes and configured listeners and does not start background loops. Worker starts those loops, serves only /livez, /readyz, and /healthz, and refuses browser UI and protocol listeners. Embedded redb remains one owner.",
       "implementation": [
+        "src/process_role.rs",
+        "src/config.rs",
+        "src/bootstrap.rs",
         "src/api/server.rs",
-        "src/ldap_server.rs",
-        "src/radius.rs",
-        "src/proxy_server.rs"
+        "src/api.rs",
+        "src/api/probes.rs"
       ],
       "tests_existing": [
         {
@@ -2594,16 +2596,44 @@
           "kind": "rust-suite",
           "test_functions": 5,
           "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/process_role.rs",
+          "kind": "rust-suite",
+          "test_functions": 6,
+          "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "src/process_role.rs",
+          "kind": "rust-lib",
+          "test_functions": 2,
+          "ci": "ci-check (non-ignored tests)"
         }
       ],
-      "tests_run_in_this_task": [],
+      "tests_run_in_this_task": [
+        "process_role::tests::omitted_role_is_integrated_and_owns_this_builds_duties",
+        "process_role::tests::partial_roles_fail_closed_without_acknowledgement_or_with_worker_listeners",
+        "api::probes::tests::saturated_application_or_probe_workers_do_not_disable_liveness",
+        "configuration_rejects_unknown_and_unacknowledged_roles",
+        "worker_refuses_a_configured_ldap_listener",
+        "uninitialized_worker_does_not_serve_setup",
+        "integrated_serves_identity_and_keeps_the_embedded_store",
+        "gateway_serves_identity_without_background_loops",
+        "worker_serves_probes_and_background_work_only"
+      ],
       "documentation": [
         "docs/architecture.md",
-        "docs/availability.md"
+        "docs/availability.md",
+        "docs/operations.md",
+        "docs/roadmap/o01-process-roles.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
-        "Split roles"
+        "No peer check that another process covers omitted duties",
+        "No runtime evidence of a gateway and a worker sharing one PostgreSQL database",
+        "Gateway readiness stays successful while background loops are off",
+        "A gateway request can still run a manual connector pass",
+        "Embedded redb stays one owner; this slice adds no multi-node coordination"
       ],
       "unverified": []
     },
@@ -2620,7 +2650,7 @@
       ],
       "label": "preserve",
       "journey": "partial",
-      "current_state": "redb is owned by one process, and its file lock blocks concurrent opens. Listeners are in-process. The remote CLI uses HTTP. Multi-node deployments use PostgreSQL. Local maintenance commands open the store directly and rely on that lock.",
+      "current_state": "redb is owned by one process, and its file lock blocks concurrent opens. Listeners are in-process. The remote CLI uses HTTP. Multi-node deployments use PostgreSQL. Local maintenance commands open the store directly and rely on that lock. tests/process_role.rs observes storage_owned when a second open targets the same redb file while the first process still holds it. The guard is still that file lock.",
       "implementation": [
         "src/store.rs",
         "src/cli.rs"
@@ -2630,9 +2660,16 @@
           "ref": "tests/identity/operations.rs::storage_survives_restart_and_issuer_cannot_be_changed_silently",
           "kind": "rust",
           "ci": "ci-check"
+        },
+        {
+          "ref": "tests/process_role.rs::integrated_serves_identity_and_keeps_the_embedded_store",
+          "kind": "rust",
+          "ci": "ci-check (non-ignored tests)"
         }
       ],
-      "tests_run_in_this_task": [],
+      "tests_run_in_this_task": [
+        "integrated_serves_identity_and_keeps_the_embedded_store"
+      ],
       "documentation": [
         "docs/availability.md"
       ],
@@ -2641,7 +2678,7 @@
         "Guard remains implicit (file lock) once components split"
       ],
       "unverified": [
-        "No test found that asserts a second opener is refused"
+        "Network-filesystem refusal and a second host mounting the same redb volume were not retested. The storage_owned observation is one local second open while the first process still holds the file."
       ]
     },
     {

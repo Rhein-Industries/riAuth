@@ -20,22 +20,26 @@ impl Drop for AbortTasks {
         }
     }
 }
-struct Workers {
-    #[cfg(feature = "platform")]
+#[cfg(feature = "platform")]
+struct Listeners {
     _ldap: crate::ldap_server::Servers,
-    #[cfg(feature = "platform")]
     _radius: crate::radius::Servers,
-    #[cfg(feature = "platform")]
     _proxy: crate::proxy_server::Servers,
+}
+struct RoleRuntime {
+    #[cfg(feature = "platform")]
+    _listeners: Option<Listeners>,
     _tasks: AbortTasks,
 }
-async fn start_workers(core: Core) -> anyhow::Result<Workers> {
-    #[cfg(feature = "platform")]
-    let _ldap_servers = crate::ldap_server::start(core.clone()).await?;
-    #[cfg(feature = "platform")]
-    let _radius_servers = crate::radius::start(core.clone()).await?;
-    #[cfg(feature = "platform")]
-    let _proxy_servers = crate::proxy_server::start(core.clone()).await?;
+#[cfg(feature = "platform")]
+async fn start_listeners(core: Core) -> anyhow::Result<Listeners> {
+    Ok(Listeners {
+        _ldap: crate::ldap_server::start(core.clone()).await?,
+        _radius: crate::radius::start(core.clone()).await?,
+        _proxy: crate::proxy_server::start(core).await?,
+    })
+}
+async fn start_background(core: Core) -> anyhow::Result<AbortTasks> {
     use crate::background::{Background, Job};
     let background = Background::shared(&core.store);
     background.initialize()?;
@@ -80,22 +84,34 @@ async fn start_workers(core: Core) -> anyhow::Result<Workers> {
         let core = core.clone();
         async move { crate::operations::dispatch_alerts(&core).await.map(drop) }
     });
-    Ok(Workers {
+    Ok(AbortTasks(vec![
+        maintenance,
+        alerts,
+        delivery_worker,
+        mail_worker,
+        provisioning_worker,
+        deactivation_worker,
+        reconciliation_worker,
+    ]))
+}
+async fn start_role(core: Core) -> anyhow::Result<RoleRuntime> {
+    let duties = core.config.process.role.duties();
+    #[cfg(feature = "platform")]
+    let listeners = if duties.protocol_listeners {
+        Some(start_listeners(core.clone()).await?)
+    } else {
+        None
+    };
+    let tasks = if duties.background_jobs {
+        start_background(core).await?
+    } else {
+        drop(core);
+        AbortTasks(Vec::new())
+    };
+    Ok(RoleRuntime {
         #[cfg(feature = "platform")]
-        _ldap: _ldap_servers,
-        #[cfg(feature = "platform")]
-        _radius: _radius_servers,
-        #[cfg(feature = "platform")]
-        _proxy: _proxy_servers,
-        _tasks: AbortTasks(vec![
-            maintenance,
-            alerts,
-            delivery_worker,
-            mail_worker,
-            provisioning_worker,
-            deactivation_worker,
-            reconciliation_worker,
-        ]),
+        _listeners: listeners,
+        _tasks: tasks,
     })
 }
 
@@ -120,8 +136,10 @@ async fn serving_preflight(core: &Core) -> anyhow::Result<()> {
 pub async fn serve(core: Core) -> anyhow::Result<()> {
     serving_preflight(&core).await?;
     let config = core.config.clone();
-    let _workers = start_workers(core.clone()).await?;
-    serve_http(config, router(core)).await
+    let authentication = config.process.role.duties().authentication;
+    let _runtime = start_role(core.clone()).await?;
+    let routes = if authentication { router(core) } else { super::worker_router(core) };
+    serve_http(config, routes).await
 }
 
 pub(crate) async fn serve_bootstrap(setup: crate::bootstrap::Bootstrap) -> anyhow::Result<()> {
@@ -135,7 +153,7 @@ pub(crate) async fn serve_bootstrap(setup: crate::bootstrap::Bootstrap) -> anyho
         core = ready => {
             let core = core.map_err(|_| anyhow::anyhow!("Setup runtime closed"))?;
             serving_preflight(&core).await?;
-            let _workers = start_workers(core).await?;
+            let _runtime = start_role(core).await?;
             serving.await
         }
     }
@@ -174,7 +192,12 @@ async fn serve_http(config: crate::config::Config, routes: axum::Router) -> anyh
     let routes = routes.layer(Extension(stopping.clone()));
     let tls = tls_configuration(&config).await?;
     let listener = tokio::net::TcpListener::bind(config.listen).await?;
-    tracing::info!(listen = %listener.local_addr()?, issuer = %config.issuer, "riAuth listening");
+    tracing::info!(
+        listen = %listener.local_addr()?,
+        issuer = %config.issuer,
+        role = config.process.role.as_str(),
+        "riAuth listening"
+    );
     let tls_worker = if let Some(tls) = tls.clone() {
         let config = config.clone();
         Some(tokio::spawn(async move {

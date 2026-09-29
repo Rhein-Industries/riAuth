@@ -64,7 +64,7 @@ Agents use separate scoped credentials through [agent authorization](../src/agen
 
 [The store](../src/store.rs) provides either process-owned redb or [PostgreSQL](../src/postgres_store.rs). Authentication/token operations can prepare expensive work outside a writer, then [revalidate](../src/store/prepared.rs) before commit. Management writes and quota updates still serialize. PAM grant lookup uses a per-user index, and offboarding claims use a due-work index. [Schema version 3](../src/upgrade.rs) and [derived indexes](../src/store/maintenance.rs) support bounded maintenance pages and delivery queues. Derived-index revisions are backfilled atomically on upgrade and restored archives rebuild indexes. User-disable writes centrally revoke owned agents and Windows devices; security transitions enqueue SSF notifications in the same transaction.
 
-The HTTP server starts these workers:
+The default integrated role starts these loops in the same process as HTTP. An explicit `gateway` keeps HTTP and configured protocol listeners and does not start the background loops. An explicit `worker` starts the background loops and serves only probes. Native TLS reload follows the HTTP listener when certificate files are set, on every role that reaches that listener. Selection, the fail-closed rules, and what was not run are in [process roles](roadmap/o01-process-roles.md).
 
 | Worker | Nominal interval | Contract |
 | --- | --- | --- |

@@ -27,6 +27,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Capability matrix](capability-matrix.md) | Compiled Essentials, Platform, and riauthctl inclusion, runtime prerequisites, protocol direction, tested peers, and known limits |
 | [Configuration example](../examples/riauth.toml) | Base configuration; optional feature blocks are in their guides |
 | [Availability](availability.md) | redb, PostgreSQL, shared state and failover boundaries |
+| [Process roles](roadmap/o01-process-roles.md) | Integrated default, explicit gateway and worker duty gates, and the limits of that slice |
 | [Disaster recovery](disaster-recovery.md) | What to keep outside backups, binary choice, restore order, validation and unrecoverable cases for Essentials and Platform |
 | [Operational recovery](operational-recovery.md) | Which recovery procedure to run, with preflight, break-glass, failure stops, and the recorded local-drill boundary |
 | [Connector dependency incidents](connector-incidents.md) | Read, stop, and retry boundary for LDAP, outbound SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks |

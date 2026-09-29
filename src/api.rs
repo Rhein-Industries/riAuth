@@ -206,6 +206,42 @@ pub(crate) async fn credential_floor(started: Instant, failed: bool) {
     }
 }
 
+async fn worker_not_served() -> Response {
+    let mut response = (
+        StatusCode::NOT_FOUND,
+        [(axum::http::header::CONTENT_TYPE, "application/json; charset=utf-8")],
+        r#"{"error":"not_served","error_description":"This process role does not serve authentication or administration routes"}"#,
+    )
+        .into_response();
+    let headers = response.headers_mut();
+    headers.insert(axum::http::header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    response
+}
+
+/// Probe-only HTTP surface for the worker role. Product routes stay unmounted.
+fn worker_router(core: Core) -> Router {
+    let prefix = url::Url::parse(&core.config.issuer)
+        .expect("validated issuer")
+        .path()
+        .trim_end_matches('/')
+        .to_owned();
+    let app = App::new(core);
+    let probes = Router::new()
+        .route("/livez", get(probes::live))
+        .route("/readyz", get(probes::ready))
+        .route("/healthz", get(probes::ready))
+        .fallback(worker_not_served)
+        .layer(middleware::from_fn_with_state(app.clone(), observe))
+        .with_state(app);
+    if prefix.is_empty() {
+        probes
+    } else {
+        Router::new().nest(&prefix, probes).fallback(worker_not_served)
+    }
+}
+
 pub fn router(core: Core) -> Router {
     let prefix = url::Url::parse(&core.config.issuer)
         .expect("validated issuer")

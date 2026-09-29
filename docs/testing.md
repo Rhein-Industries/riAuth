@@ -18,6 +18,16 @@ Before moving an application to riAuth, record its exact issuer and subject cont
 
 Rehearse backup restore in an isolated environment with the real external keys and referenced files. Verify administrator access, JWKS, representative applications, and the rollback path. Record the tested commit or binary hash, configuration, peer versions, results, and measured recovery time and data loss. See [release limitations](limitations.md) for profiles needing particular care.
 
+## Process roles
+
+The role slice runs on the Platform build with:
+
+```sh
+cargo test --locked --lib --test process_role -- process_role:: saturated_application_or_probe_workers_do_not_disable_liveness configuration_rejects_unknown_and_unacknowledged_roles worker_refuses_a_configured_ldap_listener uninitialized_worker_does_not_serve_setup integrated_serves_identity_and_keeps_the_embedded_store gateway_serves_identity_without_background_loops worker_serves_probes_and_background_work_only
+```
+
+It checks fail-closed configuration, integrated discovery plus the redb second-open refusal, a gateway that serves discovery while background finished/active counters stay at 0, and a worker that serves probes and a provisioning pass while discovery, JWKS, and `/api/login` return `not_served`. It does not start two processes against one PostgreSQL database. The duty table and the remaining gaps are in [process roles](roadmap/o01-process-roles.md).
+
 ## Backup memory measurement
 
 `scripts/measure-backup-memory.sh [records ...]` seeds a redb store with 1 KiB audit records at each size (default 10,000, 40,000 and 160,000), then measures peak RSS in separate processes for a paged scan of the same records without a codec, the buffered v2 backup, the streamed v3 backup and v3 restore. redb's read cache grows with the data read, so the scan column helps separate store effects from codec overhead. The comparison is approximate and does not prove a process-memory bound. It uses the debug test profile and `/usr/bin/time`; the numbers are local observations, not limits.

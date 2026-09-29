@@ -15,6 +15,9 @@ pub struct Config {
     /// Serve the embedded browser pages and assets. API and OIDC routes remain available.
     #[serde(default = "default_browser_ui")]
     pub browser_ui: bool,
+    /// Duties for this process. Omitted means the integrated one-process server.
+    #[serde(default, skip_serializing_if = "crate::process_role::ProcessSelection::is_default")]
+    pub process: crate::process_role::ProcessSelection,
     /// Explicit runtime activation overrides for supported optional capabilities.
     #[serde(default, skip_serializing_if = "CapabilityActivation::is_default")]
     pub capabilities: CapabilityActivation,
@@ -377,6 +380,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             browser_ui: default_browser_ui(),
+            process: crate::process_role::ProcessSelection::default(),
             capabilities: CapabilityActivation::default(),
             proxy_listeners: Default::default(),
             radius_listeners: Default::default(),
@@ -446,10 +450,22 @@ pub fn validate_server_url(value: &str) -> Result<Url> {
     Ok(url)
 }
 
+fn listener_ids<T>(map: &BTreeMap<String, T>) -> Vec<&str> {
+    map.keys().map(String::as_str).collect()
+}
+
 impl Config {
     pub fn validate(&self) -> Result<()> {
         crate::edition::validate_config(self)?;
         crate::capability::validate_config(self)?;
+        let ldap = listener_ids(&self.ldap_listeners);
+        let radius = listener_ids(&self.radius_listeners);
+        let proxy = listener_ids(&self.proxy_listeners);
+        crate::process_role::validate(
+            &self.process,
+            self.browser_ui,
+            crate::process_role::ListenerNames { ldap: &ldap, radius: &radius, proxy: &proxy },
+        )?;
         if self.proxy_listeners.len() > 16 {
             bail!("Configure at most 16 proxy listeners");
         }

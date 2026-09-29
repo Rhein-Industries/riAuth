@@ -350,6 +350,7 @@ fn invalid_ceremony() -> Error {
 }
 
 pub async fn serve(config: Config) -> anyhow::Result<()> {
+    config.validate()?;
     // Inspect once and release the backend before opening the selected runtime.
     let selected = config.clone();
     let initialized = tokio::task::spawn_blocking(move || -> Result<bool> {
@@ -361,6 +362,9 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
             .is_some())
     })
     .await??;
+    if !initialized {
+        crate::process_role::reject_uninitialized_worker(config.process.role)?;
+    }
     if initialized {
         let core = tokio::task::spawn_blocking(move || Core::open(config)).await??;
         crate::api::serve(core).await

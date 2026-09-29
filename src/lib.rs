@@ -92,6 +92,7 @@ pub mod passkey;
 pub(crate) mod password;
 pub mod portal;
 pub mod postgres_store;
+pub mod process_role;
 pub mod provider;
 pub mod provisioning;
 mod proxy_listener;
