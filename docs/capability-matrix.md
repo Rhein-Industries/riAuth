@@ -47,7 +47,8 @@ includes `essentials` ([`Cargo.toml`](../Cargo.toml)).
 
 `riauth-maintenance` is the offline binary for `init`, `prepare-setup`,
 `restore`, `recover-admin`, `migrate-postgres`, `keygen`, `import-authentik`,
-and `transition-preflight` / `transition-plan` / `transition-activate`
+`security-agreement-record`, and `transition-preflight` / `transition-plan` /
+`transition-activate`
 ([`src/cli/local.rs`](../src/cli/local.rs)). It uses the same feature set as
 the server build that produced it. `riauthctl` has none of those commands.
 
@@ -140,7 +141,9 @@ On an initialized store, the compiled names that remain enabled are stored
 with the issuer ([`src/node_security.rs`](../src/node_security.rs)). A process
 whose set differs is refused before it binds. The row also stores access,
 refresh, and session lifetimes and `password_history`; a different value is
-refused before bind. `configured` and
+refused before bind. A format 1 row stays unchanged until
+`riauth-maintenance security-agreement-record --confirm-authentication-policy`
+writes one format 2 row. `configured` and
 `runtime_ready` stay local. A back-channel logout claim stores a 60-second
 lease and the worker pins it before the POST. See [node security](roadmap/o03-node-security.md).
 

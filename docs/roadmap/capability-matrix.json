@@ -1329,7 +1329,8 @@
             "Per-node forward_auth rate limit",
             "Cache freshness",
             "Agreement omits trusted proxies, external signer files, and the database encryption key",
-            "Format 1 agreements are refused and not rewritten",
+            "Format 1 stays unchanged until security-agreement-record; serve does not infer the missing lifetimes, and the command cannot see another node's unpublished configuration",
+            "After security-agreement-record commits, the previous release refuses the store; rollback is the pre-command backup",
             "Legacy stores adopt the first successful opener",
             "PostgreSQL runs used loopback HTTP without native TLS and unencrypted loopback PostgreSQL and did not promote the standby",
             "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres or job_lease_postgres"

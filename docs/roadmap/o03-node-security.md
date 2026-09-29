@@ -1,9 +1,10 @@
 # O03 shared security agreement
 
-Status: one stored comparison, one authentication policy, and one logout
-dispatch lease. O03 stays open. This page records the issuer and
-active-capability check, the token-lifetime and password-history agreement,
-the logout lease, and the coordination that was not built.
+Status: one stored comparison, one authentication policy, one explicit
+format 1 record command, and one logout dispatch lease. O03 stays open.
+This page records the issuer and active-capability check, the token-lifetime
+and password-history agreement, the format 1 upgrade, the logout lease, and
+the coordination that was not built.
 
 Active capabilities are the names compiled into the running build and omitted
 from `capabilities.disabled`. `configured`, `runtime_ready`, and `usable`
@@ -36,11 +37,45 @@ format, or an issuer inside the agreement that disagrees with `meta.issuer`
 also refuses the open and leaves the row in place. Format 2 is the row that
 includes `authentication`. A format 1 row, which recorded the issuer and
 active capabilities only, is refused with
-`Stored security agreement does not record token lifetimes and password policy`
-and is not rewritten. A store created before this row existed records the
-agreement from the first process that passes the read-only edition and
-capability gates. Two openers race inside the existing PostgreSQL writer
-lock; the second compares the committed row and does not replace it.
+`Stored security agreement does not record token lifetimes and password policy; stop every riAuth process, back up, and run riauth-maintenance security-agreement-record --confirm-authentication-policy`
+and is left unchanged. `riauth serve` does not invent those integers: format 1
+never stored them, so the first process to open would canonize its own file
+and would move the row to format 2. The previous release accepts only format 1
+and refuses format 2 as a newer agreement, so that write is also the rollback
+fence. A store created before any agreement row existed records format 2 from
+the first process that passes the read-only edition and capability gates. Two
+openers race inside the existing PostgreSQL writer lock; the second compares
+the committed row and does not replace it.
+
+## Format 1 record
+
+`riauth-maintenance security-agreement-record --confirm-authentication-policy`
+is the explicit upgrade ([`src/cli/local.rs`](../../src/cli/local.rs),
+[`record_authentication_policy`](../../src/node_security.rs)). Stop every
+riAuth process and take a backup first. The command loads this process's
+configuration, checks the issuer and the read-only edition and capability
+gates, then in one store write:
+
+- refuses while another PostgreSQL session has `application_name = 'riauth'`
+- refuses a missing row, a malformed row, or a format other than 1 or 2
+- refuses a format 1 row whose issuer or active capabilities differ from this
+  process, without writing
+- puts one complete format 2 object: the stored issuer and active
+  capabilities, plus `access_token_ttl`, `refresh_token_ttl`, `session_ttl`,
+  and `password_history` from this configuration
+- leaves a matching format 2 row byte-for-byte in place
+- refuses a format 2 row with a different policy, without writing
+
+The four integers are the semantic values. The data directory, database key
+file, TLS files, and trusted proxies are not written. The command does not
+bump `meta.revision`, run schema migration, or write an audit row. It does
+not read any other node's `riauth.toml`. Compare those four integers on every
+node before confirming; after one node records them, a peer with different
+integers exits 2 and leaves the row in place. The legacy `riauth` executable
+does not expose this command. After the commit, the previous release refuses
+the store. Restore the pre-command backup to roll back. redb still allows one
+owner; a second process fails on the file lock before this command reads the
+row.
 
 Edition downgrade refusal and per-client capability checks still run. A
 build that those gates reject does not become the stored agreement. The
@@ -56,12 +91,13 @@ cargo test --locked --offline --lib -- node_security:: --test-threads=2
 ```
 
 It used a private Cargo target, incremental compilation off, and two compiler
-jobs. Cargo finished the test profile in 58.54s. The only compiler note was
+jobs. Cargo finished the test profile in 1m 04s. The only compiler note was
 the existing `__eh_frame` linker warning.
 `agreement_tracks_issuer_and_active_capabilities_only`,
-`open_refuses_a_different_active_set_without_rewriting_the_store`, and
-`open_refuses_a_different_authentication_policy_without_rewriting_the_store`
-passed (3 passed, 0 failed, 91 filtered) in 3.53s. The capability test
+`open_refuses_a_different_active_set_without_rewriting_the_store`,
+`open_refuses_a_different_authentication_policy_without_rewriting_the_store`,
+and `record_upgrades_a_format1_agreement_without_a_partial_rewrite` passed
+(4 passed, 0 failed, 91 filtered) in 6.43s. The capability test
 initialized embedded redb, reopened it as a gateway with another listen
 address and `browser_ui` false, then refused `capabilities.disabled =
 ["identity.device_trust"]` with HTTP 400 `invalid_request`. The stored
@@ -71,12 +107,16 @@ agreement back. A format of 99 and an agreement issuer of
 `http://127.0.0.1:8` each refused the open and left the bad row in place.
 The policy test refused access-token lifetime 600, refresh lifetime 3600,
 session lifetime 3600, and `password_history` 0, each without rewriting the
-row. A format 1 row with the authentication object removed was refused and
-left in place. A different data directory, database key path, TLS path, and
-trusted proxy produced the same agreement as the original configuration.
+row. A format 1 row with the authentication object removed was refused by
+open and left in place. The record test then kept that row through an issuer
+mismatch, an extra capability name, and a `data_dir` field, wrote one format
+2 row equal to the original stamp, left that row unchanged on a second record
+and on `password_history` 0, and refused a missing row and format 99 without
+writing. A different data directory, database key path, TLS path, and trusted
+proxy produced the same agreement as the original configuration.
 
 `cargo check --locked --offline --no-default-features --features essentials --lib`
-finished in 10.80s on the same private target. That check did not run the
+finished in 9.87s on the same private target. That check did not run the
 node_security tests. Essentials reported the existing unused-code warnings
 in passkey workflow registration, `Core.runtime`, and session post-logout
 return.
@@ -88,19 +128,21 @@ used for:
 RIAUTH_PG_TEST_TARGET=node_security_postgres ./scripts/test-postgres.sh
 ```
 
-The script adds `--locked --features test-support`. Cargo finished the test
-profile in 1m 03s.
-`authentication_policy_mismatch_binds_nothing_and_preserves_postgres` and
-`capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres` passed
-(2 passed, 0 failed) in 7.40s. The harness enables `test-support` and did
+The script adds `--locked --features test-support`. On the passing run Cargo
+finished the test profile in 3.21s.
+`authentication_policy_mismatch_binds_nothing_and_preserves_postgres`,
+`capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres`, and
+`format1_record_is_one_row_and_a_different_policy_binds_nothing` passed
+(3 passed, 0 failed) in 12.11s. The harness enables `test-support` and did
 not set the test clock. The only compiler note was the same `__eh_frame`
 warning.
 
 The tests printed:
 
 ```text
-gateway_pid=72245 lifetime_pid=72445 history_pid=72460 exit=2 issuer=http://127.0.0.1:9 gateway_listen=http://127.0.0.1:64227 lifetime_listen=http://127.0.0.1:64392 history_listen=http://127.0.0.1:64402 tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true access_token_ttl=600 password_history=0 users=1 database_dropped=riauth_o03_qc5qn0d2jowqe3rnjsjs
-gateway_pid=72525 capability_pid=72547 issuer_pid=72588 exit=2 issuer=http://127.0.0.1:9 other_issuer=http://127.0.0.1:8 gateway_listen=http://127.0.0.1:64422 capability_listen=http://127.0.0.1:64431 issuer_listen=http://127.0.0.1:64440 tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true users=1 database_dropped=riauth_o03_mjg4kzzrk1lbi6pokqma
+gateway_pid=42709 lifetime_pid=43058 history_pid=43063 exit=2 issuer=http://127.0.0.1:9 gateway_listen=http://127.0.0.1:54866 lifetime_listen=http://127.0.0.1:55272 history_listen=http://127.0.0.1:55280 tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true access_token_ttl=600 password_history=0 users=1 database_dropped=riauth_o03_j1crxbwgady1jnkpmfpq
+gateway_pid=43081 capability_pid=43085 issuer_pid=43089 exit=2 issuer=http://127.0.0.1:9 other_issuer=http://127.0.0.1:8 gateway_listen=http://127.0.0.1:55298 capability_listen=http://127.0.0.1:55308 issuer_listen=http://127.0.0.1:55315 tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true users=1 database_dropped=riauth_o03_a30pzxiymlhr4yomfs4b
+record_pid=43144 repeat_pid=43147 peer_pid=43137 peer_exit=5 usage_pid=43130 absent_pid=43126 lifetime_pid=43153 history_pid=43150 gateway_pid=43157 exit=2 recorded=true issuer=http://127.0.0.1:9 gateway_listen=http://127.0.0.1:55358 lifetime_listen=http://127.0.0.1:55351 history_listen=http://127.0.0.1:55348 tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true access_token_ttl=600 password_history=0 users=1 database_dropped=riauth_o03_g0jwa9etgxdtbnemijhg
 ```
 
 Each test started its `riauth serve` processes against its own new database
@@ -125,7 +167,7 @@ no listening line, and no accepted connection. The history process used
 of `riauth_store.records_v1` was identical before the lifetime process, after
 it, after the history process, and after that later `/readyz`. The user row
 count was 1. The test then killed the gateway, observed its port refuse a
-connection, dropped `riauth_o03_qc5qn0d2jowqe3rnjsjs`, and observed that the
+connection, dropped `riauth_o03_j1crxbwgady1jnkpmfpq`, and observed that the
 database was gone.
 
 The capability process used the same issuer, gateway role, and
@@ -140,10 +182,27 @@ with no listening line and no accepted connection. After both exits, gateway
 of `riauth_store.records_v1` was identical before the capability process,
 after it, after the issuer process, and after that later `/readyz`. The user
 row count was 1. The test then killed the gateway, observed its port refuse
-a connection, dropped `riauth_o03_mjg4kzzrk1lbi6pokqma`, and observed that
-the database was gone. Public CI runs `scripts/test-postgres.sh` for the
-default target and `q05_replay_concurrency`. It does not select
-`node_security_postgres`.
+a connection, dropped `riauth_o03_a30pzxiymlhr4yomfs4b`, and observed that
+the database was gone.
+
+The format 1 test started from a new database, replaced the stamped format 2
+row with format 1 by removing `authentication`, and left every other record
+in place. A matching `riauth serve` exited 2 with the format 1 message and
+accepted no connection. `security-agreement-record` without
+`--confirm-authentication-policy` exited 2 and left the row unchanged. With
+the flag, the same command exited 5 while another PostgreSQL session used
+`application_name = 'riauth'`, and the format 1 bytes stayed. After that
+session closed, the command exited 0 with `"recorded": true` and replaced
+only `meta/node_security` with the original format 2 value. A second command
+exited 0 with `"recorded": false` and left every record unchanged. A command
+with `password_history` 0 exited 2 with the policy mismatch and left the row
+unchanged. `riauth serve` with `access_token_ttl` 600 exited 2 the same way,
+with no listening line and no accepted connection. A matching gateway on
+another data directory then became ready with `duties.background_jobs` false,
+and the stored agreement text was still the recorded row. The test killed
+that gateway and dropped `riauth_o03_g0jwa9etgxdtbnemijhg`. Public CI runs
+`scripts/test-postgres.sh` for the default target and
+`q05_replay_concurrency`. It does not select `node_security_postgres`.
 
 ## Logout dispatch lease
 
@@ -266,7 +325,11 @@ one POST. The test then killed both workers and dropped
   are outside `meta.node_security`. Password length, account lockout, and the
   compiled authorization-code and device-code defaults stay in this binary.
   Per-client token lifetimes stay on the shared client row.
-- A format 1 agreement is refused and is not rewritten.
+- A format 1 agreement stays unchanged until
+  `riauth-maintenance security-agreement-record --confirm-authentication-policy`.
+  Serve does not infer the missing lifetimes. The command cannot see another
+  node's unpublished configuration. After it commits, the previous release
+  refuses the store; rollback is the pre-command backup.
 - File-based policy and trust settings remain local. Operators still
   coordinate `riauth.toml` for those values.
 - A store that predates the agreement takes the first successful opener's

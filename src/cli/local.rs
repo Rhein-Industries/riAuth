@@ -131,6 +131,13 @@ pub enum LocalCommand {
     RecoverAdmin(RecoverAdminArgs),
     /// Copy an offline redb instance into an empty PostgreSQL database and write its new configuration
     MigratePostgres(MigratePostgresArgs),
+    /// Record token lifetimes and password history on a format 1 agreement.
+    /// Stop every riAuth process and back up first. The previous release refuses the store after commit.
+    SecurityAgreementRecord {
+        /// Confirm this process's configured lifetimes and password_history are the shared policy
+        #[arg(long, required = true)]
+        confirm_authentication_policy: bool,
+    },
     /// Generate a private encryption key file
     Keygen(KeygenArgs),
     /// Convert complete Authentik API exports into a reviewed manifest and classified preflight report
@@ -342,6 +349,22 @@ pub(crate) async fn dispatch(options: LocalOptions<'_>, command: LocalCommand) -
             let target = crate::postgres_store::PostgresConfig::load(&postgres_config)?;
             let result = tokio::task::spawn_blocking(move || {
                 crate::operations::migrate_postgres(config, target, &out)
+            })
+            .await??;
+            emit_local(&options, &result)?;
+        }
+        LocalCommand::SecurityAgreementRecord {
+            confirm_authentication_policy,
+        } => {
+            if !confirm_authentication_policy {
+                return Err(crate::error::Error::bad(
+                    "Pass --confirm-authentication-policy to record this process's token lifetimes and password history",
+                )
+                .into());
+            }
+            let config = Config::load(options.config)?;
+            let result = tokio::task::spawn_blocking(move || {
+                crate::node_security::record_authentication_policy(&config)
             })
             .await??;
             emit_local(&options, &result)?;

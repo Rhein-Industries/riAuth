@@ -1,6 +1,8 @@
-//! A second `riauth serve` process whose issuer or active capabilities differ
-//! from the initialized PostgreSQL store must exit before it binds, and must
-//! leave the committed records unchanged.
+//! A second `riauth serve` process whose issuer, active capabilities, or
+//! authentication policy differ from the initialized PostgreSQL store must
+//! exit before it binds, and must leave the committed records unchanged.
+//! A format 1 row stays unchanged until `riauth-maintenance
+//! security-agreement-record` writes one format 2 row.
 //!
 //! The allowed process is a gateway on another loopback listen address with
 //! `browser_ui` false. Its `/readyz` success is storage readiness for that
@@ -15,6 +17,7 @@ use riauth::{
     model::NewUser,
     postgres_store::PostgresConfig,
     process_role::{ProcessRole, ProcessSelection},
+    store::Store,
 };
 use serde_json::Value;
 use std::{
@@ -35,6 +38,8 @@ const CAPABILITY_MISMATCH: &str =
 const ISSUER_MISMATCH: &str = "Configured issuer does not match the initialized instance";
 const POLICY_MISMATCH: &str =
     "Configured token lifetimes or password policy do not match the initialized instance";
+const POLICY_ABSENT: &str = "Stored security agreement does not record token lifetimes and password policy; stop every riAuth process, back up, and run riauth-maintenance security-agreement-record --confirm-authentication-policy";
+const PEERS_CONNECTED: &str = "Stop every riAuth process connected to this database before recording the authentication policy";
 
 struct Disposable {
     control: postgres::Client,
@@ -731,4 +736,257 @@ fn authentication_policy_mismatch_binds_nothing_and_preserves_postgres() {
         "gateway_pid={gateway_pid} lifetime_pid={lifetime_pid} history_pid={history_pid} exit=2 issuer={ISSUER} gateway_listen=http://{gateway_listen} lifetime_listen=http://{lifetime_listen} history_listen=http://{history_listen} tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true access_token_ttl=600 password_history=0 users={users} database_dropped={}",
         database.name
     );
+}
+
+#[test]
+#[ignore = "upgrades one format 1 agreement on disposable PostgreSQL and refuses a different policy; use scripts/test-postgres.sh"]
+fn format1_record_is_one_row_and_a_different_policy_binds_nothing() {
+    let (dir, postgres, mut database) = Disposable::create();
+    let init = Config {
+        data_dir: dir.path().join("data"),
+        postgres: Some(postgres.clone()),
+        issuer: ISSUER.into(),
+        browser_ui: true,
+        ..Config::default()
+    };
+    init.validate().unwrap();
+    let core = Core::initialize(
+        init.clone(),
+        NewUser {
+            username: "admin".into(),
+            password: PASSWORD.into(),
+            email: None,
+            display_name: "Admin".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(core.store.backend(), "postgresql");
+    let stamped = core
+        .store
+        .get::<Value>("meta", "node_security")
+        .unwrap()
+        .unwrap();
+    drop(core);
+
+    let mut legacy = stamped.clone();
+    legacy["format"] = serde_json::json!(1);
+    legacy.as_object_mut().unwrap().remove("authentication");
+    let store = Store::from_config(&init).unwrap();
+    store
+        .write(|tx| tx.put("meta", "node_security", &legacy))
+        .unwrap();
+    drop(store);
+
+    let before = database.records();
+    let planted = text_of(&before, "meta/node_security");
+    let planted_value: Value = serde_json::from_str(&planted).unwrap();
+    assert_eq!(planted_value, legacy);
+    assert!(planted_value.get("authentication").is_none());
+    assert!(!planted.contains("data_dir"));
+    assert!(!planted.contains(&dir.path().display().to_string()));
+    let users = before
+        .keys()
+        .filter(|key| key.starts_with("users/"))
+        .count();
+    assert_eq!(users, 1);
+
+    let absent_listen = reserve();
+    let record_file = write_policy_config(
+        dir.path(),
+        "record",
+        &postgres,
+        absent_listen,
+        &dir.path().join("record-data"),
+        300,
+        5,
+    );
+    let absent_pid = Refusal::spawn(&record_file, &dir.path().join("absent.log"))
+        .wait_without_listener(absent_listen, &dir.path().join("absent.log"), POLICY_ABSENT);
+    assert_eq!(database.records(), before);
+
+    let (usage_pid, usage) = maintenance(&record_file, &["security-agreement-record"]);
+    assert_eq!(usage.status.code(), Some(2), "{}", stderr(&usage));
+    assert!(
+        stderr(&usage).contains("confirm-authentication-policy"),
+        "{}",
+        stderr(&usage)
+    );
+    assert_eq!(database.records(), before);
+
+    let mut peer = postgres::Config::new()
+        .host("127.0.0.1")
+        .port(database.port)
+        .user("riauth_test")
+        .dbname(&database.name)
+        .application_name("riauth")
+        .connect(postgres::NoTls)
+        .unwrap();
+    let one: i32 = peer.query_one("SELECT 1", &[]).unwrap().get(0);
+    assert_eq!(one, 1);
+    let (peer_pid, blocked) = maintenance(
+        &record_file,
+        &[
+            "security-agreement-record",
+            "--confirm-authentication-policy",
+        ],
+    );
+    assert_failure(&blocked, 5, PEERS_CONNECTED);
+    drop(peer);
+    assert_eq!(database.records(), before);
+
+    let (record_pid, recorded) = maintenance(
+        &record_file,
+        &[
+            "security-agreement-record",
+            "--confirm-authentication-policy",
+        ],
+    );
+    assert!(recorded.status.success(), "{}", stderr(&recorded));
+    let envelope: Value = serde_json::from_slice(&recorded.stdout).unwrap();
+    assert_eq!(envelope["ok"], true);
+    assert_eq!(envelope["data"]["recorded"], true);
+    assert_eq!(envelope["data"]["format"], 2);
+    assert_eq!(envelope["data"]["issuer"], ISSUER);
+    assert_eq!(envelope["data"]["authentication"]["access_token_ttl"], 300);
+    assert_eq!(
+        envelope["data"]["authentication"]["refresh_token_ttl"],
+        2_592_000
+    );
+    assert_eq!(envelope["data"]["authentication"]["session_ttl"], 28_800);
+    assert_eq!(envelope["data"]["authentication"]["password_history"], 5);
+    let report = envelope["data"].to_string();
+    assert!(!report.contains("record-data"));
+    assert!(!report.contains("data_dir"));
+    assert!(!report.contains(&dir.path().display().to_string()));
+
+    let upgraded = database.records();
+    assert_eq!(
+        upgraded.keys().collect::<Vec<_>>(),
+        before.keys().collect::<Vec<_>>()
+    );
+    for (key, value) in &before {
+        if key == "meta/node_security" {
+            assert_ne!(value, upgraded.get(key).unwrap());
+        } else {
+            assert_eq!(value, upgraded.get(key).unwrap(), "{key}");
+        }
+    }
+    let agreement = text_of(&upgraded, "meta/node_security");
+    let agreement_value: Value = serde_json::from_str(&agreement).unwrap();
+    assert_eq!(agreement_value, stamped);
+    assert!(!agreement.contains("record-data"));
+    assert!(!agreement.contains(&dir.path().display().to_string()));
+
+    let (repeat_pid, repeat) = maintenance(
+        &record_file,
+        &[
+            "security-agreement-record",
+            "--confirm-authentication-policy",
+        ],
+    );
+    assert!(repeat.status.success(), "{}", stderr(&repeat));
+    let repeat_envelope: Value = serde_json::from_slice(&repeat.stdout).unwrap();
+    assert_eq!(repeat_envelope["data"]["recorded"], false);
+    assert_eq!(database.records(), upgraded);
+
+    let history_listen = reserve();
+    let history_file = write_policy_config(
+        dir.path(),
+        "record-history",
+        &postgres,
+        history_listen,
+        &dir.path().join("record-history-data"),
+        300,
+        0,
+    );
+    let (history_pid, history) = maintenance(
+        &history_file,
+        &[
+            "security-agreement-record",
+            "--confirm-authentication-policy",
+        ],
+    );
+    assert_failure(&history, 2, POLICY_MISMATCH);
+    assert_eq!(database.records(), upgraded);
+
+    let lifetime_listen = reserve();
+    let lifetime_file = write_policy_config(
+        dir.path(),
+        "record-lifetime",
+        &postgres,
+        lifetime_listen,
+        &dir.path().join("record-lifetime-data"),
+        600,
+        5,
+    );
+    let lifetime_pid = Refusal::spawn(&lifetime_file, &dir.path().join("record-lifetime.log"))
+        .wait_without_listener(
+            lifetime_listen,
+            &dir.path().join("record-lifetime.log"),
+            POLICY_MISMATCH,
+        );
+    assert_eq!(database.records(), upgraded);
+
+    let gateway_listen = reserve();
+    let gateway_file = write_policy_config(
+        dir.path(),
+        "record-gateway",
+        &postgres,
+        gateway_listen,
+        &dir.path().join("record-gateway-data"),
+        300,
+        5,
+    );
+    let gateway = Gateway::spawn(
+        &Config::load(&gateway_file).unwrap(),
+        &gateway_file,
+        dir.path().join("record-gateway.log"),
+    );
+    let http = client();
+    let ready = json_ok(http.get(format!("{}/readyz", gateway.url)).send().unwrap());
+    assert_eq!(ready["status"], "ok");
+    assert_eq!(ready["role"], "gateway");
+    assert_eq!(ready["duties"]["background_jobs"], false);
+    assert_eq!(ready["issuer"], ISSUER);
+    assert_eq!(
+        text_of(&database.records(), "meta/node_security"),
+        agreement
+    );
+
+    let gateway_pid = gateway.pid;
+    drop(gateway);
+    assert!(TcpStream::connect_timeout(&gateway_listen, Duration::from_millis(200)).is_err());
+    database.remove();
+    println!(
+        "record_pid={record_pid} repeat_pid={repeat_pid} peer_pid={peer_pid} peer_exit=5 usage_pid={usage_pid} absent_pid={absent_pid} lifetime_pid={lifetime_pid} history_pid={history_pid} gateway_pid={gateway_pid} exit=2 recorded=true issuer={ISSUER} gateway_listen=http://{gateway_listen} lifetime_listen=http://{lifetime_listen} history_listen=http://{history_listen} tls=absent postgres=local_unencrypted host=127.0.0.1 sslmode=disable browser_ui=false background_jobs=false listening=absent records_unchanged=true access_token_ttl=600 password_history=0 users={users} database_dropped={}",
+        database.name
+    );
+}
+
+fn maintenance(file: &Path, args: &[&str]) -> (u32, std::process::Output) {
+    let child = Command::new(env!("CARGO_BIN_EXE_riauth-maintenance"))
+        .arg("--config")
+        .arg(file)
+        .arg("--non-interactive")
+        .arg("--json")
+        .args(args)
+        .env_remove("RIAUTH_CONFIG")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+    let output = child.wait_with_output().unwrap();
+    (pid, output)
+}
+
+fn stderr(output: &std::process::Output) -> String {
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+fn assert_failure(output: &std::process::Output, exit: i32, message: &str) {
+    let text = stderr(output);
+    assert_eq!(output.status.code(), Some(exit), "{text}");
+    assert!(text.contains(&format!("error: {message}")), "{text}");
 }

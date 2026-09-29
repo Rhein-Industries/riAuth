@@ -59,6 +59,7 @@ fn help_exposes_only_offline_commands_and_remote_input_has_no_effect() {
         "migrate-postgres",
         "keygen",
         "import-authentik",
+        "security-agreement-record",
     ] {
         assert!(
             help.contains(&format!("  {command}")),
