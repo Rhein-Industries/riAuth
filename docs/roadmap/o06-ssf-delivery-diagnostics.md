@@ -33,7 +33,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 ## What remains open
 
 - A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
-- Connector lag. Schedules and reconciliation jobs store no completion timestamp or remote high-water mark, and `next_run` moves when a job is enqueued. The measurement gap is recorded in [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Reconciliation controller failures stay on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
+- Connector lag. A schedule can store `last_completed_at`, the local unix time when its then-current `last_job` was stored completed. That time can remain after `last_job` changes. It is not a remote high-water mark and not downstream delivery completion. `next_run` still moves when a job is enqueued. The field is on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.

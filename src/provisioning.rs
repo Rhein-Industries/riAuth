@@ -1316,9 +1316,9 @@ impl Core {
     /// attention rows. Rows are read one storage page at a time. Attention is
     /// a failed job, an ambiguous job, or a pending job that already has
     /// `error`. Error text, the plan, and the lease stay on the job read.
-    /// This read does not claim, dispatch, or change readiness. It is not a
-    /// connector-lag measurement: schedules and reconciliation jobs store no
-    /// completion timestamp or remote high-water mark.
+    /// This read does not claim, dispatch, or change readiness. It is not
+    /// connector lag: `last_completed_at` is local controller time, not a
+    /// remote high-water mark or downstream delivery completion.
     pub fn provisioning_job_diagnostics(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.management(

@@ -3306,6 +3306,7 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
                     last_job: Some("job-1".into()),
                     last_error: Some(SECRET.into()),
                     last_outcome: Some(json!({"secret": SECRET})),
+                    last_completed_at: None,
                 },
             )?;
             tx.put(

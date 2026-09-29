@@ -136,6 +136,7 @@ fn schedule(scope: &str, agent_id: &str, enabled: bool, last_error: Option<&str>
         last_outcome: last_error
             .filter(|error| !error.is_empty())
             .map(|_| json!({"note": "https://secret.example/outcome?access_token=SECRET-OUTCOME"})),
+        last_completed_at: None,
     }
 }
 
@@ -286,6 +287,7 @@ async fn reconciliation_diagnostics_reports_controller_failures_without_secrets(
     assert_eq!(payroll["last_job"], "job-failed");
     assert_eq!(payroll["agent_id"], "payroll_controller");
     assert_eq!(payroll["next_action"], "inspect_controller");
+    assert!(payroll["last_completed_at"].is_null());
     assert!(!report.to_string().contains("ldap/people"));
 
     let jobs = fixture.core.reconciliation_jobs(&fixture.admin).unwrap();

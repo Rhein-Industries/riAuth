@@ -68,6 +68,7 @@ fn schedule(scope: &str) -> Schedule {
         last_job: None,
         last_error: None,
         last_outcome: None,
+        last_completed_at: None,
     }
 }
 

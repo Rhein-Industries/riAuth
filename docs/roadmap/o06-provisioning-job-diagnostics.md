@@ -6,13 +6,13 @@ This page records two findings. Stored connector state cannot support a truthful
 
 ## Why connector lag is not reported
 
-A reconciliation `Schedule` stores `scope`, `config_fingerprint`, `agent_id`, `interval_seconds`, `enabled`, `next_run`, `last_job`, `last_error`, and `last_outcome`. A reconciliation `Job` stores `created_at`, `status`, `next_attempt`, `outcome`, and `last_error`. Neither record stores a completion timestamp or a remote high-water mark. No USN, delta link, or sync token is compared with a local applied generation.
+A reconciliation `Schedule` stores `scope`, `config_fingerprint`, `agent_id`, `interval_seconds`, `enabled`, `next_run`, `last_job`, `last_error`, `last_outcome`, and optional `last_completed_at`. `last_completed_at` is local unix seconds written when that schedule's then-current `last_job` is stored `completed`. It remains when a later job replaces `last_job`, so it is not the status of the current job. A reconciliation `Job` stores `created_at`, `status`, `next_attempt`, `outcome`, and `last_error`. The job has no completion timestamp. No USN, delta link, or sync token is compared with a local applied generation. `last_completed_at` is not that comparison, and a completed controller outcome can still say `delivery` is `none`, `downstream_queued`, or `pending_prior_delivery`. The field is described in [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
 
 `sync_reconciliation_schedules` advances `next_run` when a schedule is due, before the connector finishes. If a queued or running job for that fingerprint already exists, `next_run` still becomes the current time plus `interval_seconds`. A capacity conflict sets `next_run` 30 seconds ahead and stores `last_error` instead of enqueueing. `now` minus `next_run` is not time since a successful sync, and it is often negative while work is outstanding. `GET /api/operations/reconciliation` already returns `next_run` as the next enqueue time.
 
 An LDAP snapshot draft stores a paged-results `cookie`, a `phase` (the user search, then each configured group filter), and `sequence`. `sequence` is the number of pages already pulled in that draft. A cloud snapshot stores `cursor`, `phase`, and `pages` so the crawl can resume. A provisioning job `cursor` and `total` are progress through one reviewed plan's resource list. Queue oldest-pending age is the scrape time minus the earliest timestamp in that queue's pending age index. That index lists pending rows. It is not a due time and not connector lag.
 
-`sync_reconciliation_schedules` already lists every reconciliation job while it decides whether one is active. Copying that list into a diagnostic would not create a completion time that the records do not store. This slice does not add that scan, does not change schedule or job writes, and does not publish a `riauth_connector_lag` series. Label cardinality is unchanged: no per-target, per-user, or per-URL Prometheus label was added. Connector lag, key problems, and readiness stay off [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json).
+`sync_reconciliation_schedules` already lists every reconciliation job while it decides whether one is active. That list is not a remote high-water mark. This provisioning read does not publish a `riauth_connector_lag` series. Label cardinality is unchanged: no per-target, per-user, or per-URL Prometheus label was added. Connector lag, key problems, and readiness stay off [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json).
 
 ## What an operator can read
 
@@ -39,7 +39,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 ## What remains open
 
 - A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
-- Connector lag, for the reason in the section above. This read does not add a completion timestamp or a remote watermark.
+- Connector lag, for the reason in the section above. `last_completed_at` is local controller completion time on the reconciliation schedule. This provisioning read does not report it, and no remote watermark is stored.
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - An Essentials redacted deactivation aggregate. The Platform read stays on [deactivation diagnostics](o06-deactivation-diagnostics.md). The account check for that aggregate is `user.offboard`, which Essentials does not make available, and the missing-account administrator path would publish the stored target name.

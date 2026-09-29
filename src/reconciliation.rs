@@ -2,6 +2,8 @@
 //! A controller credential is read afresh for every run. It is never stored in a job.
 //! `Core::reconciliation_diagnostics` reports stored controller failures with a
 //! fixed action and leaves the stored error text on the schedule and job reads.
+//! `Schedule::last_completed_at` is local controller completion time. It is not
+//! remote connector lag or downstream delivery completion.
 use crate::{
     agent::{Agent, Principal},
     background::{Background, Job as BackgroundJob, TargetPermit},
@@ -211,6 +213,10 @@ pub struct Schedule {
     pub last_job: Option<String>,
     pub last_error: Option<String>,
     pub last_outcome: Option<Value>,
+    /// Local unix seconds when the then-current `last_job` was stored
+    /// completed. Later jobs do not clear it. Not remote lag or delivery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_completed_at: Option<u64>,
 }
 
 fn schedule_enabled() -> bool {
@@ -442,6 +448,7 @@ fn schedule_for(scope: &str, config: &ControllerConfig, fingerprint: &str, at: u
         last_job: None,
         last_error: None,
         last_outcome: None,
+        last_completed_at: None,
     }
 }
 
@@ -571,6 +578,7 @@ fn schedule_item(schedule: &Schedule) -> Listed {
             "agent_id": schedule.agent_id,
             "has_error": schedule.last_error.is_some(),
             "next_action": "inspect_controller",
+            "last_completed_at": schedule.last_completed_at,
         }),
     }
 }
@@ -837,8 +845,9 @@ impl Core {
     /// Counts for every stored reconciliation schedule and retained job, plus
     /// at most 50 redacted attention rows. `has_error` is presence of a stored
     /// `last_error`; the text stays on the schedule and job reads. `next_run`
-    /// is the next enqueue time. This read does not change readiness, doctor,
-    /// or probes.
+    /// is the next enqueue time. A schedule row's `last_completed_at` is the
+    /// local time a then-current `last_job` was stored completed; it can name
+    /// an earlier job. This read does not change readiness, doctor, or probes.
     pub fn reconciliation_diagnostics(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let _actor =
@@ -1258,6 +1267,9 @@ impl Core {
             {
                 schedule.last_outcome = job.outcome.clone();
                 schedule.last_error = job.last_error.clone();
+                if job.status == Status::Completed {
+                    schedule.last_completed_at = Some(now());
+                }
                 tx.put(SCHEDULES, &schedule.scope, &schedule)?;
             }
             if matches!(
