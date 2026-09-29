@@ -1034,7 +1034,7 @@ fn extension_currency(core: &Core, run: &RuntimeRun) -> ExtensionCurrency {
     let Some(document) = core.config.workflow_extensions.get(stage.as_str()) else {
         return ExtensionCurrency::Stale;
     };
-    let Ok(guest) = extension_gate::check(document.as_bytes()) else {
+    let Ok(guest) = extension_gate::bind(document.as_bytes()) else {
         return ExtensionCurrency::Stale;
     };
     if guest.module_sha256_hex() == stored.unwrap()
@@ -1072,7 +1072,7 @@ fn extension_guest(core: &Core, checked: &Validated) -> Result<Option<extension_
     let Some(document) = core.config.workflow_extensions.get(stage.as_str()) else {
         return Err(Error::conflict("Configured workflow is unavailable"));
     };
-    let guest = extension_gate::check(document.as_bytes())
+    let guest = extension_gate::bind(document.as_bytes())
         .map_err(|_| Error::conflict("Configured workflow is unavailable"))?;
     if !extension_gate::covers(&guest, checked.definition()) {
         return Err(Error::conflict("Configured workflow is unavailable"));
@@ -1130,8 +1130,10 @@ fn run_extension_guest(
         ));
     }
     run.executions += 1;
-    // Wasmi 0.40 has no interrupt, so the manifest timeout is an instruction budget.
-    let signal = match extension_gate::execute(
+    // Fuel exhaustion stays `fuel` or `timeout` inside the helper. The helper
+    // is killed and reaped when the step's wall-clock timeout elapses, and
+    // that denial is `elapsed`. Every denial becomes `failed` with no evidence.
+    let signal = guest_signal(extension_gate::execute(
         guest,
         &facts,
         &requested,
@@ -1139,11 +1141,12 @@ fn run_extension_guest(
             timeout_seconds: step.timeout_seconds,
             max_output_bytes: *max_output_bytes,
         },
-    ) {
-        Ok(label) => label,
-        Err(_) => Label::fixed("failed"),
-    };
+    ));
     finish_step(core, tx, checked, run, signal, None, at)
+}
+
+fn guest_signal(result: std::result::Result<Label, extension_gate::Denial>) -> Label {
+    result.unwrap_or_else(|_| Label::fixed("failed"))
 }
 
 impl Core {
@@ -1157,7 +1160,7 @@ impl Core {
             .get(workflow)
             .filter(|entry| entry.active)
             .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
-        let registered = extension_gate::stage_registration(&self.config.workflow_extensions)
+        let registered = extension_gate::stage_binding(&self.config.workflow_extensions)
             .map_err(|_| Error::conflict("Configured workflow is unavailable"))?;
         let mut environment = configured_environment(&configured.definition);
         for (stage, guest) in &registered {
@@ -1807,6 +1810,28 @@ mod tests {
 
     fn load(core: &Core, id: &str) -> RuntimeRun {
         core.store.write(|tx| load_runtime(tx, id)).unwrap()
+    }
+
+    #[test]
+    fn an_elapsed_guest_becomes_failed_and_is_not_fuel() {
+        assert_eq!(extension_gate::Denial::Elapsed.as_str(), "elapsed");
+        assert_ne!(
+            extension_gate::Denial::Elapsed.as_str(),
+            extension_gate::Denial::Fuel.as_str()
+        );
+        assert_ne!(
+            extension_gate::Denial::Elapsed.as_str(),
+            extension_gate::Denial::Timeout.as_str()
+        );
+        assert_eq!(
+            guest_signal(Err(extension_gate::Denial::Elapsed)).as_str(),
+            "failed"
+        );
+        assert_ne!(
+            guest_signal(Err(extension_gate::Denial::Elapsed)).as_str(),
+            "allow"
+        );
+        assert_eq!(guest_signal(Ok(Label::fixed("allow"))).as_str(), "allow");
     }
 
     #[test]

@@ -706,29 +706,37 @@ only. One configured graph runs: a custom `extension` step, then local
 password. The guest has no imports, one 64 KiB page, no network and no
 filesystem. Fuel is 1–10,000. Wasmi 0.40.0 has no epoch or interrupt API.
 `Store::call_hook` and `call_resumable` pause only around host functions, and
-this guest links none, so `route` runs on the caller until it returns or spends
-its fuel. The 1–30 second field is that many thousands of fuel units. Admission
+this guest links none, so the engine cannot preempt `route`. The server
+re-executes its own binary and the child parses, translates, instantiates, and
+runs `route` inside the step timeout. The 1–30 second field is that many
+thousands of fuel units and the wall-clock kill deadline. If the child is still
+running, the parent kills it, waits until it is reaped, and reports `elapsed`.
+The child is not detached. Fuel exhaustion stays `fuel`, or `timeout` when the
+timeout fuel budget is strictly smaller than the manifest fuel. Admission
 refuses a function body whose 7-fuel-per-byte translation charge exceeds
-`min(manifest fuel, timeout_seconds × 1,000)` before `Module::new`, as
-`timeout` when that timeout budget is strictly smaller and as `fuel`
-otherwise. At the 10,000 fuel cap the body can be at most 1,428 bytes.
-`check` validates a fitting body once, and the first `execute` reuses that
-module. A later `execute` parses the bytes again, so each call pays the
-translation charge. A tighter step budget can still skip translation on the
-first call. A charge that fits still translates on the caller, without a
-wall-clock interrupt, and then `route` does too until it returns or spends
-the fuel that remains. Validation of a fitting body is not fuel-metered.
-`route.call` holds `&mut Store` until it returns, so another thread cannot
-drain that store's fuel. A detached guest thread would still be running after
-the caller continued, and stopping it requires `unsafe`, which this crate
-forbids. Before
+`min(manifest fuel, timeout_seconds × 1,000)` before `Module::new` and before
+a process starts. At the 10,000 fuel cap the body can be at most 1,428 bytes.
+`check` validates a fitting body once at configuration and drops the compiled
+module. Each `execute` is a new process, so each call pays the translation
+charge again inside the deadline. A tighter step budget can still skip
+translation. A charge that fits is translated in the child. Validation of a
+fitting body is not fuel-metered. `route.call` holds `&mut Store` until it
+returns, so another thread inside the child cannot drain that store's fuel.
+Stopping a thread would require `unsafe`, which this crate forbids. The helper
+is `current_exe` with only the internal argv token. The child environment is
+cleared, its working directory is private and removed after reap, and the
+request has no bearer token, password, configuration path, or database URL.
+File descriptors already open in the server can still be inherited. A missing
+helper or a spawn failure is `failed` and grants nothing. Stdout is capped;
+bytes past that cap are `output` and are not a label. Before
 compilation the gate allows one `() -> i32` function, two exports, and at most
 32 i32 locals, and it rejects a data segment. At the call, Wasmi reserves a
 value stack of 64 `UntypedVal` slots (8 bytes each, at least 512 bytes) and
 refuses a frame that would make the live length reach 64, before `Vec::reserve`.
 That trap is `limit`. `ResourceLimiter` does not cover this stack; it allows
 the one 65,536-byte linear memory and reports a further page as `failed`. A
-frame that fits still runs until it returns or spends its fuel. Output is one declared
+frame that fits runs in the child until it returns, spends its fuel, or the
+parent kills the process. Output is one declared
 label or the built-in `failed` signal, and it is not a proof. The host reads at most
 32 bytes of that label, and only when the returned length equals a declared label.
 A longer return is `output` and is not read, including when the manifest output cap

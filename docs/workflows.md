@@ -1138,7 +1138,7 @@ stores a password receipt.
 | `memory_bytes` | Exactly 65,536, one WebAssembly page |
 | `max_input_bytes` | 1–4,096 projected identifier bytes |
 | `max_output_bytes` | 1–4,096. The host copies at most 32 bytes, the maximum label length |
-| `timeout_seconds` | 1–30, as an instruction budget, not a wall-clock preemption |
+| `timeout_seconds` | 1–30. The same number is thousands of fuel units and the child-process kill deadline in seconds |
 | `module_base64` | Standard base64, 1 byte through 65,536 |
 | `module_sha256` | 64 lowercase hex characters of the decoded module |
 
@@ -1152,10 +1152,12 @@ execution uses the hashed image, and its `Debug` output does not print them.
 The guest exports `memory` and `route () -> i32` and has no imports. There is
 no WASI, filesystem, socket, clock, randomness, or host callback. The engine
 disables floats, multi-memory, bulk memory, reference types, tail calls, and
-saturating float-to-int, and ignores custom sections. Translation is lazy:
-`Module::new` validates a body that fits the translation budget, and the first
-call builds Wasmi IR. The first `execute` reuses the module from `check`. A
-later `execute` parses the bytes again. The structural check rejects a
+saturating float-to-int, and ignores custom sections. Translation is lazy.
+Configuration `check` calls `Module::new` for a body that fits the translation
+budget, then drops that image. A request binds the same bytes without compiling
+them. Each `execute` re-executes the server binary, and that child calls
+`Module::new` and builds Wasmi IR inside the wall-clock deadline, so every call
+pays the translation charge. The structural check rejects a
 non-empty import section, a start section, any
 table, global, or element, and any memory other than one page with minimum and
 maximum both 1. It also rejects more than one function, any type other than
@@ -1182,36 +1184,53 @@ trap as `limit`. On an empty stack a compiled frame of 64 registers is refused
 and a frame of 63 is accepted. In this pinned Wasmi 0.40.0, 32 i32 locals and
 a constant result need 34 slots, so that module still runs. Sixty-three live
 `i32.load` results need 65 slots and are refused before the buffer grows. A
-frame that fits still runs on the caller until it returns or spends its fuel.
-The same `StackLimits` value keeps the call depth at 16 frames.
+frame that fits runs in the child until it returns, spends its fuel, or the
+parent kills the process. The same `StackLimits` value keeps the call depth at
+16 frames.
 
-Wasmi 0.40.0 cannot preempt that one function. Its `Config` has no epoch or
-interrupt setting. `Store::call_hook` runs only when the host calls Wasm or
-Wasm calls a host function. `call_resumable` pauses only when a host function
-returns an error. This guest has no imports, so a loop in `route` does not
-return to the host until the call traps or finishes. Fuel's base cost is 1.
-Before the instance starts, the host installs
+Wasmi 0.40.0 cannot preempt that one function from inside the engine. Its
+`Config` has no epoch or interrupt setting. `Store::call_hook` runs only when
+the host calls Wasm or Wasm calls a host function. `call_resumable` pauses only
+when a host function returns an error. This guest has no imports, so a loop in
+`route` does not return to the host until the call traps or finishes. Fuel's
+base cost is 1. Before the instance starts, the child installs
 `min(manifest fuel, timeout_seconds × 1,000)`. Wasmi 0.40.0 charges 7 fuel
 for each byte of the function body and subtracts that charge before it builds
 IR. Admission applies that charge to
 `min(manifest fuel, manifest timeout × 1,000)` and refuses a larger body
-before `Module::new`. At the 10,000 fuel cap that limit is 1,428 body bytes.
-The refusal is `timeout` when the timeout budget is strictly smaller than the
-manifest fuel, and `fuel` otherwise. `check` validates a body that fits, once.
-The first `execute` reuses that module. A later `execute` parses the bytes
-again, so each call pays the translation charge. A tighter step timeout can
-still exhaust on the first call and skips translation when the charge exceeds
-the fuel in the store. A charge that fits is translated entirely on the
-caller, then `route` runs until it returns or spends the fuel that remains.
-Validation of a body that fits is not fuel-metered. None of these steps
-preempts the caller at a wall-clock deadline. `route.call` holds `&mut Store`
-until it returns, so another thread cannot drain that store's fuel. Validation
-and translation run on the same caller. A detached guest thread would still be
-running after the caller continued, and stopping it requires `unsafe`, which
-this crate forbids. When the two budgets are equal,
-or fuel is smaller,
-execution exhaustion is `fuel`. A timeout of 10 seconds or more cannot be
-tighter than the 10,000 fuel cap, so that execution exhaustion is `fuel`.
+before `Module::new` and before a process starts. At the 10,000 fuel cap that
+limit is 1,428 body bytes. The refusal is `timeout` when the timeout budget is
+strictly smaller than the manifest fuel, and `fuel` otherwise. A tighter step
+timeout can still exhaust on the first call and skips translation when the
+charge exceeds the fuel in the store. A charge that fits is translated in the
+child, then `route` runs until it returns, spends the fuel that remains, or
+the parent kills the process. Validation of a body that fits is not
+fuel-metered. `route.call` holds `&mut Store` until it returns, so another
+thread inside the child cannot drain that store's fuel. The parent does not
+detach the child. When the deadline is reached it kills the process and waits
+until it is reaped, then reports `elapsed`. Stopping a thread would require
+`unsafe`, which this crate forbids. Fuel exhaustion is not `elapsed`. When the
+two budgets are equal, or fuel is smaller, execution exhaustion is `fuel`. A
+timeout of 10 seconds or more cannot be tighter than the 10,000 fuel cap, so
+that execution exhaustion is `fuel`.
+
+The helper is the platform `riauth` binary. `execute` resolves `current_exe`
+and passes only the internal argv token `riauth.extension-guest/v1`. The server
+recognizes that token before clap and does not list it in `--help`. An
+installed image at `/usr/local/bin/riauth`, or a renamed copy of that binary,
+re-executes its own path. The lookup does not read an environment override and
+does not assume a Cargo target directory. The child environment is cleared, its
+working directory is a private empty directory removed after reap, and stderr
+is discarded. The request is the module, the projected identifier frame, the
+declared labels, and the caps. It does not include a bearer token, password,
+configuration path, or database URL. File descriptors already open in the
+server can still be inherited, because closing them would require `unsafe`.
+There is no seccomp or network namespace. A missing executable or a spawn
+failure is `failed`. The executor stores every guest denial as the `failed`
+signal with no evidence and no proof. Stdout is read into a 64-byte buffer by
+one joined thread. A larger write is `output` and is not accepted as a label.
+The maintenance binary and `riauthctl` do not host this entry. The Essentials
+server binary does not compile it, and Essentials `execute` does not spawn.
 
 `route` writes its label at offset 0 and returns the length. A workflow label
 is at most 32 bytes. The host reads guest memory only when that length equals
@@ -1236,8 +1255,8 @@ must fit `max_input_bytes` and the window. A missing required fact is
 `input_limit`, and the guest does not run. A withheld permission is absent, not
 an empty placeholder.
 
-A gate denial becomes the built-in `failed` signal and routes to `denied`. It
-does not become an attacker-chosen label. The run binding stores
+A gate denial, including `elapsed`, becomes the built-in `failed` signal and
+routes to `denied`. It does not become an attacker-chosen label. The run binding stores
 `extension_sha256`, the lowercase hex of the module that started the run, with
 the definition id, revision, and fingerprint. Resume, cancel, and password
 verification compare the live manifest with that hash. A different module seals

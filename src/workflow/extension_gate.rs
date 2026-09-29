@@ -1,48 +1,60 @@
 //! Isolated guest for one configured custom stage.
 //!
-//! Platform links Wasmi 0.40 and runs a module only after [`check`] has hashed
-//! it and rejected host imports. The guest exports `memory` and `route`, sees
-//! one fixed 64 KiB page, and returns one declared label. Essentials does not
-//! link Wasmi; [`execute`] there still returns `external_runtime_required`.
-//! The in-process host in [`super::extension`] stays unwired.
+//! Platform links Wasmi 0.40. Configuration [`check`] hashes the module and
+//! rejects a shape this guest cannot run, then drops the compiled image.
+//! A request binds that manifest without compiling it. [`execute`] re-executes
+//! this server binary. The child parses, translates, instantiates, and calls
+//! `route` inside the step's wall-clock deadline. If that child is still
+//! running, the parent kills it, waits until it is reaped, and reports
+//! `elapsed`. Fuel exhaustion stays `fuel` or `timeout`. Essentials does not
+//! link Wasmi; [`execute`] there returns `external_runtime_required` and does
+//! not spawn. The in-process host in [`super::extension`] stays unwired.
 //!
-//! Wasmi 0.40.0 cannot stop a running guest at a wall-clock deadline. Its
-//! `Config` has no epoch or interrupt control. `Store::call_hook` runs only
-//! when the host calls Wasm or Wasm calls a host function, and `call_resumable`
+//! Wasmi 0.40.0 has no epoch or interrupt. `Store::call_hook` runs only when
+//! the host calls Wasm or Wasm calls a host function, and `call_resumable`
 //! pauses only when a host function returns an error. This guest has no
-//! imports, so validation, translation, and `route` run on the caller until
-//! they return or the call spends its fuel. `route.call` holds `&mut Store`
-//! for that whole call, so another thread cannot drain its fuel. A detached
-//! guest thread would still be running after the caller continued, and
-//! stopping it requires `unsafe`, which this crate forbids. Fuel is the
-//! instruction budget
-//! `timeout_seconds * FUEL_PER_SECOND`. The engine installs
-//! `min(manifest fuel, that budget)` before the instance starts. When those
-//! two budgets are equal, fuel exhaustion is reported as `fuel`.
+//! imports, so the engine cannot preempt `route`. `route.call` holds
+//! `&mut Store` for that call. The parent does not detach the child or an IO
+//! thread. Stopping a thread would require `unsafe`, which this crate forbids.
+//! The fuel budget is `min(manifest fuel, timeout_seconds * FUEL_PER_SECOND)`.
+//! The same `timeout_seconds` is the kill deadline. Equal fuel budgets report
+//! `fuel`. A strictly smaller timeout budget reports `timeout`.
 //!
 //! Admission applies a separate resource cap before `Module::new`: one
 //! `() -> i32` function, two exports, at most [`MAX_GUEST_LOCALS`] i32 locals,
-//! and no data segment. A function body whose translation charge exceeds
-//! `min(manifest fuel, timeout_seconds * FUEL_PER_SECOND)` is refused before
-//! `Module::new`. Wasmi 0.40.0 charges [`GUEST_TRANSLATION_FUEL_PER_BYTE`]
-//! fuel per body byte on the first call. The refusal uses the same rule as
-//! execution: `timeout` when the timeout budget is strictly smaller than the
-//! manifest fuel, and `fuel` otherwise. `check` validates a body that fits
-//! once. The first `execute` reuses that module. A later `execute` parses the
-//! bytes again, so every call pays the translation charge. Validation of a
-//! fitting body is not fuel-metered, and it is not a wall-clock interrupt.
+//! and no data segment. A function body whose translation charge exceeds the
+//! fuel budget is refused before a process starts. Wasmi 0.40.0 charges
+//! [`GUEST_TRANSLATION_FUEL_PER_BYTE`] fuel per body byte on the child's first
+//! call. The refusal is `timeout` when the timeout budget is strictly smaller
+//! than the manifest fuel, and `fuel` otherwise. `check` validates a fitting
+//! body once at configuration. Each [`execute`] is a new process, so each call
+//! pays the translation charge again inside the deadline. Validation of a
+//! fitting body is not fuel-metered. The measured deadline is the child
+//! process, not an engine epoch.
 //!
-//! The interpreter value stack is allocated when `route` is called.
-//! `ResourceLimiter` does not account for it. This guest sets the Wasmi
+//! The helper is this process's own executable, from `current_exe`, with only
+//! [`GUEST_ARGV`]. An installed or renamed server re-executes that path. The
+//! child environment is cleared, its working directory is a private empty
+//! directory removed after reap, and stderr is discarded. The request carries
+//! the module, the projected identifier frame, the declared labels, and the
+//! caps. It does not carry a bearer token, password, configuration path, or
+//! database URL. File descriptors already open in the server can still be
+//! inherited, because closing them would require `unsafe`. There is no seccomp
+//! sandbox. A missing executable or a spawn failure is `failed`. Stdout is a
+//! fixed buffer; a larger write is `output` and is not a label.
+//!
+//! The interpreter value stack is allocated when the child calls `route`.
+//! `ResourceLimiter` does not account for it. The child sets the Wasmi
 //! `StackLimits` initial and maximum height to [`GUEST_VALUE_STACK_SLOTS`]
 //! `UntypedVal` slots (8 bytes each). `ValueStack::new` reserves that buffer,
 //! and `extend_by` returns `StackOverflow` before `Vec::reserve` when a frame
-//! would make the live length reach the height. The host reports that trap as
-//! `limit`. A frame that fits still runs on the caller until it returns or
-//! spends its fuel. The call depth stays [`GUEST_CALL_DEPTH`] frames.
+//! would make the live length reach the height. The child reports that trap as
+//! `limit`. A frame that fits runs in the child until it returns, spends its
+//! fuel, or the parent kills the process. The call depth stays
+//! [`GUEST_CALL_DEPTH`] frames.
 //!
 //! `route` returns a label length. [`super::Label`] is at most
-//! [`MAX_ROUTE_LABEL_BYTES`] bytes, so the host reads at most that many bytes
+//! [`MAX_ROUTE_LABEL_BYTES`] bytes, so the child reads at most that many bytes
 //! from guest memory even when the manifest output cap is 4,096. It reads only
 //! a length that equals a declared label. A longer return is `output` and is
 //! not read. A shorter length that equals no declared label is
@@ -59,6 +71,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 pub const FORMAT: &str = "riauth.workflow-extension/v1";
+/// Internal argv token for the platform server's guest re-exec.
+///
+/// This is not a clap command. The server recognizes it before argument
+/// parsing and does not list it in `--help`.
+pub const GUEST_ARGV: &str = "riauth.extension-guest/v1";
 /// True only on the Platform build, which links Wasmi. Essentials keeps this
 /// false and refuses execution.
 pub const RUNTIME_LINKED: bool = cfg!(feature = "platform");
@@ -90,8 +107,10 @@ pub const MAX_OUTPUT_BYTES: u32 = MAX_CUSTOM_OUTPUT_BYTES;
 /// The host copies at most this many bytes from guest memory. A higher
 /// manifest `max_output_bytes` stays valid and does not enlarge the copy.
 pub const MAX_ROUTE_LABEL_BYTES: u32 = 32;
-/// Instruction budget charged for one manifest second. This is Wasmi fuel,
-/// not a wall-clock second.
+/// Instruction budget charged for one manifest second.
+///
+/// That same second is the child-process kill deadline. Fuel exhaustion is
+/// not reported as elapsed time.
 pub const FUEL_PER_SECOND: u64 = 1_000;
 /// Fuel Wasmi 0.40.0 charges per function-body byte before lazy translation.
 ///
@@ -128,6 +147,10 @@ pub enum Denial {
     UndeclaredOutput,
     InputLimit,
     Failed,
+    /// The child was still running when the wall-clock deadline elapsed.
+    ///
+    /// The parent has killed and reaped it. This is not fuel exhaustion.
+    Elapsed,
 }
 
 impl Denial {
@@ -144,8 +167,46 @@ impl Denial {
             Self::UndeclaredOutput => "undeclared_output",
             Self::InputLimit => "input_limit",
             Self::Failed => "failed",
+            Self::Elapsed => "elapsed",
         }
     }
+
+    #[cfg(feature = "platform")]
+    const fn code(self) -> u8 {
+        match self {
+            Self::Malformed => 1,
+            Self::Limit => 2,
+            Self::Permission => 3,
+            Self::Integrity => 4,
+            Self::ExternalRuntimeRequired => 5,
+            Self::Fuel => 6,
+            Self::Timeout => 7,
+            Self::Output => 8,
+            Self::UndeclaredOutput => 9,
+            Self::InputLimit => 10,
+            Self::Failed => 11,
+            Self::Elapsed => 12,
+        }
+    }
+}
+
+#[cfg(feature = "platform")]
+fn denial_from_code(code: u8) -> Option<Denial> {
+    Some(match code {
+        1 => Denial::Malformed,
+        2 => Denial::Limit,
+        3 => Denial::Permission,
+        4 => Denial::Integrity,
+        5 => Denial::ExternalRuntimeRequired,
+        6 => Denial::Fuel,
+        7 => Denial::Timeout,
+        8 => Denial::Output,
+        9 => Denial::UndeclaredOutput,
+        10 => Denial::InputLimit,
+        11 => Denial::Failed,
+        12 => Denial::Elapsed,
+        _ => return None,
+    })
 }
 
 /// Manifest that passed the bounds. Module bytes stay here so execution uses
@@ -163,10 +224,6 @@ pub struct Checked {
     module_len: u32,
     module_sha256: [u8; 32],
     module: Vec<u8>,
-    /// Wasmi image of `module`. The first execution reuses it. A later
-    /// execution parses `module` again so translation fuel is charged again.
-    #[cfg(feature = "platform")]
-    prepared: PreparedGuest,
 }
 
 impl fmt::Debug for Checked {
@@ -282,16 +339,34 @@ pub fn runtime_linked() -> bool {
     RUNTIME_LINKED
 }
 
-/// Check every configured manifest. The map key is the stage id.
+/// Check every configured manifest, including Wasmi validation on Platform.
+/// The map key is the stage id. Configuration and capability use this path.
 pub(crate) fn stage_registration(
     documents: &BTreeMap<String, String>,
+) -> Result<BTreeMap<Id, Checked>, Denial> {
+    register_stages(documents, check)
+}
+
+/// Bind manifests for a request without compiling them.
+///
+/// The child validates the bytes again inside the wall-clock deadline.
+#[cfg(feature = "platform")]
+pub(crate) fn stage_binding(
+    documents: &BTreeMap<String, String>,
+) -> Result<BTreeMap<Id, Checked>, Denial> {
+    register_stages(documents, bind)
+}
+
+fn register_stages(
+    documents: &BTreeMap<String, String>,
+    admit_one: fn(&[u8]) -> Result<Checked, Denial>,
 ) -> Result<BTreeMap<Id, Checked>, Denial> {
     if documents.len() > 16 {
         return Err(Denial::Limit);
     }
     let mut registered = BTreeMap::new();
     for (key, document) in documents {
-        let checked = check(document.as_bytes())?;
+        let checked = admit_one(document.as_bytes())?;
         if checked.stage().as_str() != key {
             return Err(Denial::Malformed);
         }
@@ -329,8 +404,28 @@ pub(crate) fn covers(checked: &Checked, definition: &Definition) -> bool {
 
 /// Validate bounds, pin the module hash, and on Platform reject a module that
 /// is not the fixed guest shape. A body that fits the translation budget is
-/// validated once. The bytes and that prepared module are retained for [`execute`].
+/// validated once with Wasmi and the compiled image is dropped. [`execute`]
+/// compiles again inside the child process.
 pub fn check(document: &[u8]) -> Result<Checked, Denial> {
+    let checked = decode_manifest(document)?;
+    #[cfg(feature = "platform")]
+    admit_compiled(&checked.module, checked.fuel, checked.timeout_seconds)?;
+    Ok(checked)
+}
+
+/// Hash, bounds, and structural admission for a request.
+///
+/// This does not call `Module::new`. The child does that inside the wall-clock
+/// deadline. An over-budget body is still `fuel` or `timeout`.
+#[cfg(feature = "platform")]
+pub(crate) fn bind(document: &[u8]) -> Result<Checked, Denial> {
+    let checked = decode_manifest(document)?;
+    let body_len = admit_sections(&checked.module)?;
+    admit_translation_budget(checked.fuel, checked.timeout_seconds, body_len)?;
+    Ok(checked)
+}
+
+fn decode_manifest(document: &[u8]) -> Result<Checked, Denial> {
     if document.is_empty() {
         return Err(Denial::Malformed);
     }
@@ -383,8 +478,6 @@ pub fn check(document: &[u8]) -> Result<Checked, Denial> {
     if digest != module_sha256 {
         return Err(Denial::Integrity);
     }
-    #[cfg(feature = "platform")]
-    let prepared = admit(&module, manifest.fuel, manifest.timeout_seconds)?;
     Ok(Checked {
         stage,
         outputs,
@@ -397,15 +490,15 @@ pub fn check(document: &[u8]) -> Result<Checked, Denial> {
         module_len,
         module_sha256,
         module,
-        #[cfg(feature = "platform")]
-        prepared,
     })
 }
 
 /// Run `route` under the fuel, memory, timeout, and output caps.
 ///
-/// The guest has no host imports. On Essentials this returns
-/// [`Denial::ExternalRuntimeRequired`] and does not interpret the bytes.
+/// On Platform this spawns the server binary and waits until the child exits
+/// or the step timeout kills it. On Essentials this returns
+/// [`Denial::ExternalRuntimeRequired`] and does not interpret the bytes or
+/// spawn a process.
 pub fn execute(
     checked: &Checked,
     facts: &GuestFacts,
@@ -415,7 +508,7 @@ pub fn execute(
     #[cfg(not(feature = "platform"))]
     {
         let _ = (checked, facts, requested, bounds);
-        return Err(Denial::ExternalRuntimeRequired);
+        Err(Denial::ExternalRuntimeRequired)
     }
     #[cfg(feature = "platform")]
     {
@@ -534,7 +627,7 @@ fn execute_guest(
     {
         return Err(Denial::Limit);
     }
-    let frame = project(
+    let mut frame = project(
         facts,
         requested,
         checked.permissions(),
@@ -544,68 +637,27 @@ fn execute_guest(
     let manifest_fuel = u64::from(checked.fuel);
     let timeout_tighter = timeout_fuel < manifest_fuel;
     let fuel = timeout_fuel.min(manifest_fuel);
-    let module = checkout_module(checked)?;
-    let engine = module.engine().clone();
-    let mut store = wasmi::Store::new(
-        &engine,
-        wasmi::StoreLimitsBuilder::new()
-            .memory_size(usize::try_from(checked.memory_bytes).map_err(|_| Denial::Limit)?)
-            .table_elements(0)
-            .instances(1)
-            .tables(0)
-            .memories(1)
-            .trap_on_grow_failure(true)
-            .build(),
-    );
-    store.limiter(|limits| limits);
-    store.set_fuel(fuel).map_err(|_| Denial::Failed)?;
-    let linker = wasmi::Linker::<wasmi::StoreLimits>::new(&engine);
-    let instance = linker
-        .instantiate(&mut store, &module)
-        .and_then(|ready| ready.start(&mut store))
-        .map_err(|error| classify(&error, timeout_tighter))?;
-    let memory = instance.get_memory(&store, "memory").ok_or(Denial::Limit)?;
-    let mut window = vec![0u8; INPUT_WINDOW];
-    window[..frame.len()].copy_from_slice(&frame);
-    memory
-        .write(&mut store, INPUT_OFFSET, &window)
-        .map_err(|_| Denial::Limit)?;
-    zeroize::Zeroize::zeroize(window.as_mut_slice());
-    let route = instance
-        .get_typed_func::<(), i32>(&store, "route")
-        .map_err(|_| Denial::Limit)?;
-    let length = match route.call(&mut store, ()) {
-        Ok(length) => length,
-        Err(error) => return Err(classify(&error, timeout_tighter)),
-    };
-    // Manifest caps reach 4,096 bytes. A label is at most 32, so the copy stays there.
-    let Ok(reported) = u32::try_from(length) else {
-        return Err(Denial::Output);
-    };
+    // Structural charge only. Wasmi `Module::new` runs in the child.
+    let body_len = admit_sections(&checked.module)?;
+    admit_translation_budget(checked.fuel, bounds.timeout_seconds, body_len)?;
     let output_cap = bounds.max_output_bytes.min(MAX_ROUTE_LABEL_BYTES);
-    if reported > output_cap {
+    let request = encode_request(MODE_RUN, timeout_tighter, fuel, checked, output_cap, &frame)?;
+    zeroize::Zeroize::zeroize(frame.as_mut_slice());
+    let program = resolve_guest_program()?;
+    let supervised = supervise(
+        &program,
+        request,
+        std::time::Duration::from_secs(u64::from(bounds.timeout_seconds)),
+    )?;
+    let label = supervised.outcome?;
+    if u32::try_from(label.as_str().len()).unwrap_or(u32::MAX) > output_cap {
         return Err(Denial::Output);
     }
-    let reported = usize::try_from(reported).map_err(|_| Denial::Output)?;
-    if !checked
-        .outputs
-        .iter()
-        .any(|label| label.as_str().len() == reported)
-    {
-        return Err(Denial::UndeclaredOutput);
+    if checked.outputs.iter().any(|candidate| candidate == &label) {
+        Ok(label)
+    } else {
+        Err(Denial::UndeclaredOutput)
     }
-    let mut output = vec![0u8; reported];
-    if memory.read(&store, 0, &mut output).is_err() {
-        zeroize::Zeroize::zeroize(output.as_mut_slice());
-        return Err(Denial::Output);
-    }
-    let matched = checked
-        .outputs
-        .iter()
-        .find(|label| label.as_str().as_bytes() == output.as_slice())
-        .cloned();
-    zeroize::Zeroize::zeroize(output.as_mut_slice());
-    matched.ok_or(Denial::UndeclaredOutput)
 }
 
 #[cfg(feature = "platform")]
@@ -623,40 +675,6 @@ fn classify(error: &wasmi::Error, timeout_tighter: bool) -> Denial {
         ) => Denial::Limit,
         Some(wasmi::core::TrapCode::StackOverflow) => Denial::Limit,
         _ => Denial::Failed,
-    }
-}
-
-#[cfg(feature = "platform")]
-struct PreparedGuest {
-    inner: std::sync::Arc<PreparedGuestInner>,
-}
-
-#[cfg(feature = "platform")]
-struct PreparedGuestInner {
-    module: wasmi::Module,
-    /// Wasmi caches a successful translation and permanently fails a translation
-    /// that ran out of fuel. Either result would change the next call's budget.
-    spent: std::sync::atomic::AtomicBool,
-}
-
-#[cfg(feature = "platform")]
-impl Clone for PreparedGuest {
-    fn clone(&self) -> Self {
-        Self {
-            inner: std::sync::Arc::clone(&self.inner),
-        }
-    }
-}
-
-#[cfg(feature = "platform")]
-impl PreparedGuest {
-    fn new(module: wasmi::Module) -> Self {
-        Self {
-            inner: std::sync::Arc::new(PreparedGuestInner {
-                module,
-                spent: std::sync::atomic::AtomicBool::new(false),
-            }),
-        }
     }
 }
 
@@ -687,10 +705,10 @@ fn guest_config() -> wasmi::Config {
 }
 
 #[cfg(feature = "platform")]
-fn admit(wasm: &[u8], fuel: u32, timeout_seconds: u32) -> Result<PreparedGuest, Denial> {
+fn admit_compiled(wasm: &[u8], fuel: u32, timeout_seconds: u32) -> Result<(), Denial> {
     let body_len = admit_sections(wasm)?;
     admit_translation_budget(fuel, timeout_seconds, body_len)?;
-    Ok(PreparedGuest::new(fresh_module(wasm)?))
+    fresh_module(wasm).map(|_| ())
 }
 
 #[cfg(feature = "platform")]
@@ -707,21 +725,6 @@ fn admit_translation_budget(fuel: u32, timeout_seconds: u32, body_len: u32) -> R
         }
     } else {
         Ok(())
-    }
-}
-
-#[cfg(feature = "platform")]
-fn checkout_module(checked: &Checked) -> Result<wasmi::Module, Denial> {
-    let first = checked.prepared.inner.spent.compare_exchange(
-        false,
-        true,
-        std::sync::atomic::Ordering::AcqRel,
-        std::sync::atomic::Ordering::Acquire,
-    );
-    if first.is_ok() {
-        Ok(checked.prepared.inner.module.clone())
-    } else {
-        fresh_module(&checked.module)
     }
 }
 
@@ -962,6 +965,658 @@ fn read_leb(bytes: &[u8]) -> Result<(u32, usize), Denial> {
         shift += 7;
     }
     Err(Denial::Malformed)
+}
+
+#[cfg(feature = "platform")]
+const REQUEST_MAGIC: &[u8; 8] = b"RIAUTHXG";
+#[cfg(feature = "platform")]
+const REQUEST_VERSION: u8 = 1;
+#[cfg(feature = "platform")]
+const MODE_RUN: u8 = 0;
+#[cfg(feature = "platform")]
+const MODE_HOLD: u8 = 1;
+#[cfg(feature = "platform")]
+const MODE_FLOOD: u8 = 2;
+#[cfg(feature = "platform")]
+const STATUS_LABEL: u8 = 0;
+#[cfg(feature = "platform")]
+const STATUS_DENIAL: u8 = 1;
+#[cfg(feature = "platform")]
+const REQUEST_HEADER_LEN: usize = 36;
+#[cfg(feature = "platform")]
+const MAX_GUEST_REQUEST_BYTES: usize = REQUEST_HEADER_LEN
+    + MAX_CUSTOM_OUTPUTS * (1 + MAX_ROUTE_LABEL_BYTES as usize)
+    + MAX_MODULE_BYTES as usize
+    + INPUT_WINDOW;
+#[cfg(feature = "platform")]
+const MAX_RESPONSE_BYTES: usize = 64;
+
+#[cfg(feature = "platform")]
+fn guest_program(current: &std::path::Path) -> &std::path::Path {
+    current
+}
+
+#[cfg(feature = "platform")]
+fn resolve_guest_program() -> Result<std::path::PathBuf, Denial> {
+    let current = std::env::current_exe().map_err(|_| Denial::Failed)?;
+    #[cfg(test)]
+    if let Some(server) = harness_server(&current) {
+        if server.is_file() {
+            return Ok(server);
+        }
+        return Err(Denial::Failed);
+    }
+    Ok(guest_program(&current).to_path_buf())
+}
+
+#[cfg(all(feature = "platform", test))]
+fn harness_server(current: &std::path::Path) -> Option<std::path::PathBuf> {
+    let name = current.file_name()?.to_str()?;
+    let parent = current.parent()?;
+    if parent.file_name()?.to_str()? != "deps" || !name.starts_with("riauth-") {
+        return None;
+    }
+    Some(parent.parent()?.join("riauth"))
+}
+
+#[cfg(feature = "platform")]
+struct Supervised {
+    outcome: Result<Label, Denial>,
+    #[cfg(test)]
+    pid: u32,
+}
+
+#[cfg(feature = "platform")]
+fn encode_request(
+    mode: u8,
+    timeout_tighter: bool,
+    fuel: u64,
+    checked: &Checked,
+    output_cap: u32,
+    frame: &[u8],
+) -> Result<Vec<u8>, Denial> {
+    if checked.outputs.is_empty()
+        || checked.outputs.len() > MAX_CUSTOM_OUTPUTS
+        || frame.len() > INPUT_WINDOW
+        || checked.module.is_empty()
+        || checked.module.len() > usize::try_from(MAX_MODULE_BYTES).unwrap_or(usize::MAX)
+        || output_cap == 0
+        || output_cap > MAX_ROUTE_LABEL_BYTES
+        || fuel == 0
+        || fuel > u64::from(MAX_FUEL)
+    {
+        return Err(Denial::Limit);
+    }
+    let mut request = Vec::new();
+    request.extend_from_slice(REQUEST_MAGIC);
+    request.push(REQUEST_VERSION);
+    request.push(mode);
+    request.push(u8::from(timeout_tighter));
+    request.extend_from_slice(&fuel.to_le_bytes());
+    request.extend_from_slice(&checked.memory_bytes.to_le_bytes());
+    request.extend_from_slice(&output_cap.to_le_bytes());
+    let count = u8::try_from(checked.outputs.len()).map_err(|_| Denial::Limit)?;
+    request.push(count);
+    let module_len = u32::try_from(checked.module.len()).map_err(|_| Denial::Limit)?;
+    let frame_len = u32::try_from(frame.len()).map_err(|_| Denial::Limit)?;
+    request.extend_from_slice(&module_len.to_le_bytes());
+    request.extend_from_slice(&frame_len.to_le_bytes());
+    for label in &checked.outputs {
+        let bytes = label.as_str().as_bytes();
+        let len = u8::try_from(bytes.len()).map_err(|_| Denial::Limit)?;
+        if len == 0 {
+            return Err(Denial::Limit);
+        }
+        request.push(len);
+        request.extend_from_slice(bytes);
+    }
+    request.extend_from_slice(&checked.module);
+    request.extend_from_slice(frame);
+    if request.len() > MAX_GUEST_REQUEST_BYTES {
+        return Err(Denial::Limit);
+    }
+    Ok(request)
+}
+
+#[cfg(feature = "platform")]
+struct DecodedRequest {
+    mode: u8,
+    timeout_tighter: bool,
+    fuel: u64,
+    memory_bytes: u32,
+    output_cap: u32,
+    labels: Vec<Vec<u8>>,
+    module: Vec<u8>,
+    frame: Vec<u8>,
+}
+
+#[cfg(feature = "platform")]
+fn read_array<const N: usize>(bytes: &[u8], at: usize) -> Result<[u8; N], Denial> {
+    let end = at.checked_add(N).ok_or(Denial::Failed)?;
+    bytes
+        .get(at..end)
+        .ok_or(Denial::Failed)?
+        .try_into()
+        .map_err(|_| Denial::Failed)
+}
+
+#[cfg(feature = "platform")]
+fn decode_request(bytes: &[u8]) -> Result<DecodedRequest, Denial> {
+    if bytes.len() < REQUEST_HEADER_LEN || bytes.len() > MAX_GUEST_REQUEST_BYTES {
+        return Err(Denial::Failed);
+    }
+    if bytes.get(..8) != Some(REQUEST_MAGIC.as_slice()) || bytes[8] != REQUEST_VERSION {
+        return Err(Denial::Failed);
+    }
+    let mode = bytes[9];
+    if mode > MODE_FLOOD {
+        return Err(Denial::Failed);
+    }
+    let timeout_tighter = match bytes[10] {
+        0 => false,
+        1 => true,
+        _ => return Err(Denial::Failed),
+    };
+    let fuel = u64::from_le_bytes(read_array(bytes, 11)?);
+    let memory_bytes = u32::from_le_bytes(read_array(bytes, 19)?);
+    let output_cap = u32::from_le_bytes(read_array(bytes, 23)?);
+    let label_count = usize::from(bytes[27]);
+    let module_len =
+        usize::try_from(u32::from_le_bytes(read_array(bytes, 28)?)).unwrap_or(usize::MAX);
+    let frame_len =
+        usize::try_from(u32::from_le_bytes(read_array(bytes, 32)?)).unwrap_or(usize::MAX);
+    if label_count == 0
+        || label_count > MAX_CUSTOM_OUTPUTS
+        || module_len == 0
+        || module_len > usize::try_from(MAX_MODULE_BYTES).unwrap_or(usize::MAX)
+        || frame_len > INPUT_WINDOW
+        || output_cap == 0
+        || output_cap > MAX_ROUTE_LABEL_BYTES
+        || memory_bytes != MAX_MEMORY_BYTES
+        || fuel == 0
+        || fuel > u64::from(MAX_FUEL)
+    {
+        return Err(Denial::Failed);
+    }
+    let mut cursor = REQUEST_HEADER_LEN;
+    let mut labels = Vec::with_capacity(label_count);
+    for _ in 0..label_count {
+        let len = usize::from(*bytes.get(cursor).ok_or(Denial::Failed)?);
+        cursor += 1;
+        if len == 0 || len > usize::try_from(MAX_ROUTE_LABEL_BYTES).unwrap_or(usize::MAX) {
+            return Err(Denial::Failed);
+        }
+        let end = cursor.checked_add(len).ok_or(Denial::Failed)?;
+        labels.push(bytes.get(cursor..end).ok_or(Denial::Failed)?.to_vec());
+        cursor = end;
+    }
+    let module_end = cursor.checked_add(module_len).ok_or(Denial::Failed)?;
+    let frame_end = module_end.checked_add(frame_len).ok_or(Denial::Failed)?;
+    if frame_end != bytes.len() {
+        return Err(Denial::Failed);
+    }
+    Ok(DecodedRequest {
+        mode,
+        timeout_tighter,
+        fuel,
+        memory_bytes,
+        output_cap,
+        labels,
+        module: bytes[cursor..module_end].to_vec(),
+        frame: bytes[module_end..frame_end].to_vec(),
+    })
+}
+
+#[cfg(feature = "platform")]
+fn decode_response(bytes: &[u8]) -> Result<Label, Denial> {
+    match bytes {
+        [STATUS_LABEL, len, rest @ ..] => {
+            let len = usize::from(*len);
+            if len == 0
+                || len > usize::try_from(MAX_ROUTE_LABEL_BYTES).unwrap_or(32)
+                || rest.len() != len
+            {
+                return Err(Denial::Failed);
+            }
+            let text = std::str::from_utf8(rest).map_err(|_| Denial::Failed)?;
+            Label::new(text).map_err(|_| Denial::Failed)
+        }
+        [STATUS_DENIAL, code] => Err(denial_from_code(*code).unwrap_or(Denial::Failed)),
+        _ => Err(Denial::Failed),
+    }
+}
+
+#[cfg(feature = "platform")]
+struct Captured {
+    bytes: [u8; MAX_RESPONSE_BYTES + 1],
+    len: usize,
+    overflow: bool,
+    io_error: bool,
+}
+
+#[cfg(feature = "platform")]
+fn read_capped(
+    mut stdout: std::process::ChildStdout,
+    overflowed: &std::sync::atomic::AtomicBool,
+) -> Captured {
+    use std::io::Read;
+    use std::sync::atomic::Ordering;
+    let mut bytes = [0u8; MAX_RESPONSE_BYTES + 1];
+    let mut len = 0usize;
+    loop {
+        if len >= bytes.len() {
+            overflowed.store(true, Ordering::Release);
+            return Captured {
+                bytes,
+                len: MAX_RESPONSE_BYTES,
+                overflow: true,
+                io_error: false,
+            };
+        }
+        match stdout.read(&mut bytes[len..]) {
+            Ok(0) => break,
+            Ok(count) => len += count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => {
+                return Captured {
+                    bytes,
+                    len,
+                    overflow: false,
+                    io_error: true,
+                };
+            }
+        }
+    }
+    let overflow = len > MAX_RESPONSE_BYTES;
+    if overflow {
+        overflowed.store(true, Ordering::Release);
+    }
+    Captured {
+        bytes,
+        len: len.min(MAX_RESPONSE_BYTES),
+        overflow,
+        io_error: false,
+    }
+}
+
+#[cfg(feature = "platform")]
+fn write_request(mut stdin: std::process::ChildStdin, mut request: Vec<u8>) {
+    let _ = std::io::Write::write_all(&mut stdin, &request);
+    let _ = std::io::Write::flush(&mut stdin);
+    zeroize::Zeroize::zeroize(request.as_mut_slice());
+    drop(stdin);
+}
+
+#[cfg(feature = "platform")]
+struct GuestProcess {
+    child: std::process::Child,
+    reader: Option<std::thread::JoinHandle<Captured>>,
+    writer: Option<std::thread::JoinHandle<()>>,
+    workdir: std::path::PathBuf,
+    finished: bool,
+}
+
+#[cfg(feature = "platform")]
+impl GuestProcess {
+    fn kill_wait(&mut self) {
+        if self.finished {
+            return;
+        }
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        self.finished = true;
+    }
+
+    fn join_io(&mut self) -> Captured {
+        if let Some(writer) = self.writer.take() {
+            let _ = writer.join();
+        }
+        if let Some(reader) = self.reader.take() {
+            return reader.join().unwrap_or(Captured {
+                bytes: [0; MAX_RESPONSE_BYTES + 1],
+                len: 0,
+                overflow: false,
+                io_error: true,
+            });
+        }
+        Captured {
+            bytes: [0; MAX_RESPONSE_BYTES + 1],
+            len: 0,
+            overflow: false,
+            io_error: true,
+        }
+    }
+}
+
+#[cfg(feature = "platform")]
+impl Drop for GuestProcess {
+    fn drop(&mut self) {
+        self.kill_wait();
+        let _ = self.join_io();
+        let _ = std::fs::remove_dir_all(&self.workdir);
+    }
+}
+
+#[cfg(feature = "platform")]
+fn guest_workdir() -> Result<std::path::PathBuf, Denial> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("riauth-guest-{}-{n}", std::process::id()));
+    let mut builder = std::fs::DirBuilder::new();
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(&path).map_err(|_| Denial::Failed)?;
+    Ok(path)
+}
+
+#[cfg(feature = "platform")]
+fn failed_child(mut child: std::process::Child, workdir: &std::path::Path) {
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_dir_all(workdir);
+}
+
+#[cfg(feature = "platform")]
+fn supervise(
+    program: &std::path::Path,
+    request: Vec<u8>,
+    timeout: std::time::Duration,
+) -> Result<Supervised, Denial> {
+    if request.is_empty() || request.len() > MAX_GUEST_REQUEST_BYTES || timeout.is_zero() {
+        return Err(Denial::Failed);
+    }
+    let workdir = guest_workdir()?;
+    let mut command = std::process::Command::new(program);
+    command
+        .arg(GUEST_ARGV)
+        .env_clear()
+        .current_dir(&workdir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    let started = std::time::Instant::now();
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(_) => {
+            let _ = std::fs::remove_dir_all(&workdir);
+            return Err(Denial::Failed);
+        }
+    };
+    #[cfg(test)]
+    let pid = child.id();
+    let stdin = match child.stdin.take() {
+        Some(stdin) => stdin,
+        None => {
+            failed_child(child, &workdir);
+            return Err(Denial::Failed);
+        }
+    };
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            drop(stdin);
+            failed_child(child, &workdir);
+            return Err(Denial::Failed);
+        }
+    };
+    let overflowed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let writer = std::thread::spawn(move || write_request(stdin, request));
+    let reader_flag = std::sync::Arc::clone(&overflowed);
+    let reader = std::thread::spawn(move || read_capped(stdout, &reader_flag));
+    let mut guest = GuestProcess {
+        child,
+        reader: Some(reader),
+        writer: Some(writer),
+        workdir,
+        finished: false,
+    };
+    let outcome = wait_for_guest(&mut guest, started + timeout, &overflowed);
+    Ok(Supervised {
+        outcome,
+        #[cfg(test)]
+        pid,
+    })
+}
+
+#[cfg(feature = "platform")]
+fn wait_for_guest(
+    guest: &mut GuestProcess,
+    deadline: std::time::Instant,
+    overflowed: &std::sync::atomic::AtomicBool,
+) -> Result<Label, Denial> {
+    loop {
+        if overflowed.load(std::sync::atomic::Ordering::Acquire) {
+            guest.kill_wait();
+            let _discarded = guest.join_io();
+            return Err(Denial::Output);
+        }
+        match guest.child.try_wait() {
+            Ok(Some(status)) => {
+                guest.finished = true;
+                let captured = guest.join_io();
+                return interpret(status, captured);
+            }
+            Ok(None) if std::time::Instant::now() >= deadline => {
+                guest.kill_wait();
+                let _discarded = guest.join_io();
+                return Err(Denial::Elapsed);
+            }
+            Ok(None) => {}
+            Err(_) => {
+                guest.kill_wait();
+                let _discarded = guest.join_io();
+                return Err(Denial::Failed);
+            }
+        }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            continue;
+        }
+        std::thread::sleep(remaining.min(std::time::Duration::from_millis(10)));
+    }
+}
+
+#[cfg(feature = "platform")]
+fn interpret(status: std::process::ExitStatus, captured: Captured) -> Result<Label, Denial> {
+    if captured.overflow {
+        return Err(Denial::Output);
+    }
+    if captured.io_error || !status.success() {
+        return Err(Denial::Failed);
+    }
+    decode_response(&captured.bytes[..captured.len])
+}
+
+#[cfg(feature = "platform")]
+fn invoke_guest(request: &mut DecodedRequest) -> Result<Label, Denial> {
+    let outcome = invoke_guest_inner(request);
+    zeroize::Zeroize::zeroize(request.frame.as_mut_slice());
+    outcome
+}
+
+#[cfg(feature = "platform")]
+fn invoke_guest_inner(request: &DecodedRequest) -> Result<Label, Denial> {
+    let body_len = admit_sections(&request.module)?;
+    let charge = u64::from(body_len).saturating_mul(GUEST_TRANSLATION_FUEL_PER_BYTE);
+    if charge > request.fuel {
+        return Err(if request.timeout_tighter {
+            Denial::Timeout
+        } else {
+            Denial::Fuel
+        });
+    }
+    let module = fresh_module(&request.module)?;
+    let mut labels = Vec::with_capacity(request.labels.len());
+    for bytes in &request.labels {
+        let text = std::str::from_utf8(bytes).map_err(|_| Denial::Failed)?;
+        labels.push(Label::new(text).map_err(|_| Denial::Failed)?);
+    }
+    let engine = module.engine().clone();
+    let mut store = wasmi::Store::new(
+        &engine,
+        wasmi::StoreLimitsBuilder::new()
+            .memory_size(usize::try_from(request.memory_bytes).map_err(|_| Denial::Limit)?)
+            .table_elements(0)
+            .instances(1)
+            .tables(0)
+            .memories(1)
+            .trap_on_grow_failure(true)
+            .build(),
+    );
+    store.limiter(|limits| limits);
+    store.set_fuel(request.fuel).map_err(|_| Denial::Failed)?;
+    let linker = wasmi::Linker::<wasmi::StoreLimits>::new(&engine);
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .and_then(|ready| ready.start(&mut store))
+        .map_err(|error| classify(&error, request.timeout_tighter))?;
+    let memory = instance.get_memory(&store, "memory").ok_or(Denial::Limit)?;
+    let mut window = vec![0u8; INPUT_WINDOW];
+    window[..request.frame.len()].copy_from_slice(&request.frame);
+    memory
+        .write(&mut store, INPUT_OFFSET, &window)
+        .map_err(|_| Denial::Limit)?;
+    zeroize::Zeroize::zeroize(window.as_mut_slice());
+    let route = instance
+        .get_typed_func::<(), i32>(&store, "route")
+        .map_err(|_| Denial::Limit)?;
+    let length = match route.call(&mut store, ()) {
+        Ok(length) => length,
+        Err(error) => return Err(classify(&error, request.timeout_tighter)),
+    };
+    // Manifest caps reach 4,096 bytes. A label is at most 32, so the copy stays there.
+    let Ok(reported) = u32::try_from(length) else {
+        return Err(Denial::Output);
+    };
+    if reported > request.output_cap {
+        return Err(Denial::Output);
+    }
+    let reported = usize::try_from(reported).map_err(|_| Denial::Output)?;
+    if !labels.iter().any(|label| label.as_str().len() == reported) {
+        return Err(Denial::UndeclaredOutput);
+    }
+    let mut output = vec![0u8; reported];
+    if memory.read(&store, 0, &mut output).is_err() {
+        zeroize::Zeroize::zeroize(output.as_mut_slice());
+        return Err(Denial::Output);
+    }
+    let matched = labels
+        .into_iter()
+        .find(|label| label.as_str().as_bytes() == output.as_slice());
+    zeroize::Zeroize::zeroize(output.as_mut_slice());
+    matched.ok_or(Denial::UndeclaredOutput)
+}
+
+/// Platform server entry. Reads one bounded request and writes one status.
+///
+/// The maintenance binary does not call this, and clap does not advertise it.
+#[cfg(feature = "platform")]
+pub fn run_isolated_guest() -> i32 {
+    if isolated_guest_entry().is_ok() { 0 } else { 1 }
+}
+
+#[cfg(feature = "platform")]
+fn isolated_guest_entry() -> Result<(), ()> {
+    use std::io::Read;
+    let mut input = Vec::new();
+    let limit = u64::try_from(MAX_GUEST_REQUEST_BYTES)
+        .map_err(|_| ())?
+        .saturating_add(1);
+    let mut stdin = std::io::stdin().take(limit);
+    stdin.read_to_end(&mut input).map_err(|_| ())?;
+    if input.len() > MAX_GUEST_REQUEST_BYTES {
+        return write_status(Err(Denial::Failed)).map_err(|_| ());
+    }
+    let mut request = match decode_request(&input) {
+        Ok(request) => request,
+        Err(denial) => return write_status(Err(denial)).map_err(|_| ()),
+    };
+    zeroize::Zeroize::zeroize(input.as_mut_slice());
+    match request.mode {
+        MODE_HOLD => hold_or_refuse(),
+        MODE_FLOOD => flood_or_refuse(),
+        MODE_RUN => {
+            let outcome = invoke_guest(&mut request);
+            write_status(outcome).map_err(|_| ())
+        }
+        _ => write_status(Err(Denial::Failed)).map_err(|_| ()),
+    }
+}
+
+#[cfg(feature = "platform")]
+fn hold_or_refuse() -> Result<(), ()> {
+    #[cfg(debug_assertions)]
+    {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        write_status(Err(Denial::Failed)).map_err(|_| ())
+    }
+}
+
+#[cfg(feature = "platform")]
+fn flood_or_refuse() -> Result<(), ()> {
+    #[cfg(debug_assertions)]
+    {
+        let mut out = std::io::stdout().lock();
+        let junk = [b'A'; 200];
+        std::io::Write::write_all(&mut out, &junk).map_err(|_| ())?;
+        std::io::Write::flush(&mut out).map_err(|_| ())?;
+        Ok(())
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        write_status(Err(Denial::Failed)).map_err(|_| ())
+    }
+}
+
+#[cfg(feature = "platform")]
+fn write_status(outcome: Result<Label, Denial>) -> std::io::Result<()> {
+    let mut buf = [0u8; 2 + 32];
+    let written = match &outcome {
+        Ok(label) => {
+            let bytes = label.as_str().as_bytes();
+            if bytes.is_empty()
+                || bytes.len() > usize::try_from(MAX_ROUTE_LABEL_BYTES).unwrap_or(32)
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "label",
+                ));
+            }
+            buf[0] = STATUS_LABEL;
+            buf[1] = u8::try_from(bytes.len())
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "label"))?;
+            buf[2..2 + bytes.len()].copy_from_slice(bytes);
+            2 + bytes.len()
+        }
+        Err(denial) => {
+            buf[0] = STATUS_DENIAL;
+            buf[1] = denial.code();
+            2
+        }
+    };
+    let mut out = std::io::stdout().lock();
+    std::io::Write::write_all(&mut out, &buf[..written])?;
+    std::io::Write::flush(&mut out)
+}
+
+#[cfg(all(feature = "platform", test))]
+fn process_alive(pid: u32) -> bool {
+    std::process::Command::new("/bin/kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 #[cfg(test)]
@@ -1830,8 +2485,8 @@ mod tests {
             execute(&exact, &GuestFacts::default(), &BTreeSet::new(), bounds()).unwrap_err(),
             Denial::Fuel
         );
-        // The prepared module has already translated or failed. A second call
-        // parses again and still cannot pay both translation and `route`.
+        // Each execution is a new process. A second call parses again and still
+        // cannot pay both translation and `route`.
         assert_eq!(
             execute(&exact, &GuestFacts::default(), &BTreeSet::new(), bounds()).unwrap_err(),
             Denial::Fuel
@@ -2040,6 +2695,93 @@ mod tests {
             bounds(),
         )
         .unwrap_or_else(|error| panic!("guest failed: {}", error.as_str()))
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn a_nonreturning_helper_is_killed_reaped_and_is_not_fuel() {
+        let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
+        let request = encode_request(MODE_HOLD, false, 10_000, &checked, 32, &[]).unwrap();
+        let program = resolve_guest_program().unwrap();
+        let started = std::time::Instant::now();
+        let supervised = supervise(&program, request, std::time::Duration::from_secs(1)).unwrap();
+        let elapsed = started.elapsed();
+        assert_eq!(supervised.outcome, Err(Denial::Elapsed));
+        assert!(
+            elapsed >= std::time::Duration::from_millis(900),
+            "{elapsed:?}"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(8), "{elapsed:?}");
+        assert!(
+            !process_alive(supervised.pid),
+            "guest pid {} is still alive",
+            supervised.pid
+        );
+        assert_eq!(Denial::Elapsed.as_str(), "elapsed");
+        assert_ne!(Denial::Fuel.as_str(), "elapsed");
+        assert_ne!(Denial::Timeout.as_str(), "elapsed");
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn a_flooding_helper_is_capped_and_reaped_without_a_label() {
+        let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
+        let request = encode_request(MODE_FLOOD, false, 10_000, &checked, 32, &[]).unwrap();
+        let program = resolve_guest_program().unwrap();
+        let supervised = supervise(&program, request, std::time::Duration::from_secs(30)).unwrap();
+        assert_eq!(supervised.outcome, Err(Denial::Output));
+        assert!(
+            !process_alive(supervised.pid),
+            "guest pid {} is still alive",
+            supervised.pid
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn a_missing_helper_denies_without_a_label() {
+        let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
+        let request = encode_request(MODE_RUN, false, 10_000, &checked, 32, &[]).unwrap();
+        let error = supervise(
+            std::path::Path::new("/nonexistent/riauth-extension-guest"),
+            request,
+            std::time::Duration::from_secs(1),
+        );
+        assert_eq!(error.err(), Some(Denial::Failed));
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn an_installed_or_renamed_server_reexecs_that_exact_path() {
+        let installed = std::path::Path::new("/usr/local/bin/riauth");
+        assert_eq!(guest_program(installed), installed);
+        let renamed = std::path::Path::new("/opt/riauth/images/identity");
+        assert_eq!(guest_program(renamed), renamed);
+        let program = resolve_guest_program().unwrap();
+        assert_eq!(
+            program.file_name().and_then(|name| name.to_str()),
+            Some("riauth")
+        );
+        assert!(program.is_file(), "{program:?}");
+        let cli = include_str!("../../src/cli.rs");
+        assert!(!cli.contains("extension-guest"));
+        let maintenance = include_str!("../../src/bin/riauth-maintenance.rs");
+        assert!(!maintenance.contains("extension_gate"));
+        assert!(MAX_GUEST_REQUEST_BYTES <= 80 * 1024);
+        assert!(MAX_RESPONSE_BYTES <= 64);
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn request_binding_leaves_wasm_validation_to_the_child() {
+        let invalid = fixture::allow_with_invalid_tail(1);
+        let document = fixture::document(&invalid, |_| {});
+        assert_eq!(check(&document).unwrap_err(), Denial::Malformed);
+        let bound = bind(&document).unwrap();
+        assert_eq!(
+            execute(&bound, &GuestFacts::default(), &BTreeSet::new(), bounds()).unwrap_err(),
+            Denial::Malformed
+        );
     }
 
     #[cfg(not(feature = "platform"))]
