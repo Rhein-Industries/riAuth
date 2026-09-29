@@ -324,7 +324,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | POST | `/api/state/apply` | Exact plan, resolved `secrets` map and optional `run_id` |
 | GET | `/api/state/export` | Visible manifest, revision, no credential material |
 | GET | `/api/state/revision` | Revision for conditional mutations |
-| GET | `/api/operations/doctor` | Storage/key/admin diagnostics |
+| GET | `/api/operations/doctor` | Storage/key/admin diagnostics; `operations.read` on `operations/health`; `users`, `clients`, and pending logout deliveries are counted one page of 128 at a time |
 | GET | `/api/operations/offboarding` | Platform scheduled-offboarding counts and at most 50 redacted attention items; `operations.read` on `operations/offboarding`; a username also needs `user.offboard` on that stored user; `has_error` records a stored error and the text stays on the job read |
 | GET | `/api/operations/offboarding/deactivations` | Platform deactivation-delivery counts and at most 50 redacted attention rows, read one storage page at a time, with no job-linkage field; same `operations.read` resource; an item also needs `user.offboard` on the account's current username; `has_error` records a stored error and the text stays on the deactivation read |
 | GET | `/api/operations/reconciliation` | Reconciliation-controller counts and at most 50 redacted attention rows; `operations.read` on `operations/reconciliation`; `has_error` records a stored error and the text stays on the schedule and job reads; `next_run` is the next enqueue time |

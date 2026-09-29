@@ -44,7 +44,9 @@ A connector failure leaves both probes on their existing answers.
 `riauth doctor` is `GET /api/operations/doctor`. The body fields are
 `healthy`, `schema_version`, `revision`, `issuer`, `storage`,
 `encrypted_at_rest`, `active_signing_key`, `users`, `enabled_administrators`,
-`clients`, `pending_logout_deliveries`, `tls`, and `checked_at`. There is no
+`clients`, `pending_logout_deliveries`, `tls`, and `checked_at`. `users`,
+`clients`, and `logout_deliveries` are counted one storage page of 128 at a
+time. The field list above is the whole body. There is no
 connector, mail, Vault, webhook, or offboarding field. `riauth deliveries` is
 the logout outbox, not mail and not SCIM. Incomplete scheduled offboarding is
 `riauth offboard diagnostics` (`GET /api/operations/offboarding`), which is

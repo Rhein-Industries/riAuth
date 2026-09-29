@@ -7,7 +7,7 @@ use crate::{
     store::Store,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -82,14 +82,35 @@ impl Core {
     pub fn doctor(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             self.management(tx, token, "operations.read", "operations/health")?;
-            let keys = keys(tx)?; keys.active.jwk()?;
-            let users = tx.list::<User>("users")?;
-            let clients = tx.list::<Client>("clients")?;
-            let administrators = users.iter().filter(|(_, u)| u.admin && u.enabled).count();
-            let pending = tx.list::<crate::logout::Delivery>("logout_deliveries")?.into_iter().filter(|(_, d)| d.delivered_at.is_none()).count();
-            Ok(json!({"healthy": administrators > 0, "schema_version": tx.get::<u32>("meta", "schema")?, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0),
-                "issuer": self.config.issuer, "storage": self.store.backend(), "encrypted_at_rest": self.config.database_key_file.is_some(), "active_signing_key": keys.active.kid,
-                "users": users.len(), "enabled_administrators": administrators, "clients": clients.len(), "pending_logout_deliveries": pending, "tls": if self.config.tls_cert_file.is_some(){"native_rustls"}else{"reverse_proxy"}, "checked_at": now()}))
+            let keys = keys(tx)?;
+            keys.active.jwk()?;
+            let (users, administrators) =
+                count_bucket::<User>(tx, "users", |user| user.admin && user.enabled)?;
+            let (clients, _) = count_bucket::<Client>(tx, "clients", |_| false)?;
+            let (_, pending) =
+                count_bucket::<crate::logout::Delivery>(tx, "logout_deliveries", |delivery| {
+                    delivery.delivered_at.is_none()
+                })?;
+            let tls = if self.config.tls_cert_file.is_some() {
+                "native_rustls"
+            } else {
+                "reverse_proxy"
+            };
+            Ok(json!({
+                "healthy": administrators > 0,
+                "schema_version": tx.get::<u32>("meta", "schema")?,
+                "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+                "issuer": self.config.issuer,
+                "storage": self.store.backend(),
+                "encrypted_at_rest": self.config.database_key_file.is_some(),
+                "active_signing_key": keys.active.kid,
+                "users": users,
+                "enabled_administrators": administrators,
+                "clients": clients,
+                "pending_logout_deliveries": pending,
+                "tls": tls,
+                "checked_at": now()
+            }))
         })
     }
     pub fn backup(&self, token: &str, encryption_key: &str) -> Result<Value> {
@@ -233,6 +254,49 @@ impl Core {
             Ok(json!({"items": items, "next_cursor": cursor, "limit": limit, "revision": revision}))
         })
     }
+}
+
+/// Count one bucket inside the caller's snapshot. Each page is released
+/// before the next read. A stored value is still decoded in full; this path
+/// does not size-cap it. An exact multiple of the page size reads one extra
+/// empty page. A cursor that does not advance is an internal error.
+fn count_bucket<T: DeserializeOwned>(
+    tx: &crate::store::Tx<'_>,
+    bucket: &str,
+    mut matches: impl FnMut(&T) -> bool,
+) -> Result<(u64, u64)> {
+    let mut after: Option<String> = None;
+    let mut total = 0u64;
+    let mut matched = 0u64;
+    loop {
+        let page = tx.scan::<T>(bucket, after.as_deref(), crate::store::maintenance::PAGE)?;
+        let Some((last_key, _)) = page.last() else {
+            break;
+        };
+        let last_key = last_key.clone();
+        if after
+            .as_ref()
+            .is_some_and(|previous| last_key.as_str() <= previous.as_str())
+        {
+            return Err(Error::internal("Doctor page did not advance"));
+        }
+        let full = page.len() == crate::store::maintenance::PAGE;
+        after = Some(last_key);
+        for (_, row) in &page {
+            if matches(row) {
+                matched = matched
+                    .checked_add(1)
+                    .ok_or_else(|| Error::internal("Doctor count overflowed"))?;
+            }
+        }
+        total = total
+            .checked_add(u64::try_from(page.len()).map_err(Error::internal)?)
+            .ok_or_else(|| Error::internal("Doctor count overflowed"))?;
+        if !full {
+            break;
+        }
+    }
+    Ok((total, matched))
 }
 
 fn bounded_backup_json(
