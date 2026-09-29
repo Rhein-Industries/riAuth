@@ -188,4 +188,4 @@ No customer nginx package, no Traefik version other than the CI pin, no TLS vhos
 
 ## Other D03 recipes
 
-Still without a recipe page: a named OIDC relying party, upstream OIDC, SAML IdP, SAML source, LDAP import, LDAP provider, inbound SCIM, outbound SCIM, RADIUS, Workspace, Entra, Shared Signals, device trust, HTTPS client certificates, Vault Transit, Windows device login, the embedded reverse proxy, and shared-domain SSO. D04 emergency runbooks and D05 acceptance are separate work. The [capability matrix](../capability-matrix.md) records the protocol limits those recipes still have to cite.
+Still without a recipe page: a named OIDC relying party, upstream OIDC, SAML IdP, SAML source, LDAP import, inbound SCIM, outbound SCIM, RADIUS, Workspace, Entra, Shared Signals, device trust, HTTPS client certificates, Vault Transit, Windows device login, the embedded reverse proxy, and shared-domain SSO. The [LDAP provider](platform-ldap-provider.md) has its own recipe. D04 emergency runbooks and D05 acceptance are separate work. The [capability matrix](../capability-matrix.md) records the protocol limits those recipes still have to cite.

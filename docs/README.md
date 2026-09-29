@@ -52,6 +52,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [SCIM](scim.md) | Inbound directory API and outbound reconciliation |
 | [LDAP synchronization](ldap.md) | Upstream directory plans and password authentication |
 | [LDAP provider](ldap-provider.md) | Read-only LDAP listener and search behavior |
+| [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md) | Fixture LDAPS and STARTTLS listener, ldap3 search and denial results, and the peer gaps that fixture leaves |
 | [RADIUS](radius.md) | PAP, RadSec, EAP-TLS, certificate lifecycle and policy |
 | [Proxy SSO](proxy.md) | nginx and Traefik forward auth, shared cookies and the embedded reverse proxy |
 | [Platform forward-auth recipe](recipes/platform-forward-auth.md) | nginx and Traefik fixture configuration, asserted redirect and revocation results, and the peer gaps those fixtures leave |
