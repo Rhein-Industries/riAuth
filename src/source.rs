@@ -175,7 +175,7 @@ pub(crate) struct Login {
     pub(crate) fingerprint: String,
     pub(crate) poll_hash: String,
     verifier: String,
-    nonce: String,
+    pub(crate) nonce: String,
     started_at: u64,
     pub(crate) expires_at: u64,
     pub(crate) target: Option<Identity>,
@@ -443,9 +443,9 @@ pub(crate) struct SourceStage {
     request_hash: String,
     pub(crate) suspension_hash: String,
     pub(crate) request: crate::oidc::Authorization,
-    source_id: String,
+    pub(crate) source_id: String,
     user_id: Option<String>,
-    nonce: String,
+    pub(crate) nonce: String,
     pub(crate) expires_at: u64,
     pub(crate) used: bool,
     pub(crate) cancelled: bool,
@@ -813,16 +813,7 @@ impl Core {
             transaction: transaction.clone(),
             browser_id: start.browser_id,
         };
-        let login = tx
-            .get::<Login>("source_logins", &stage.login_key)?
-            .ok_or_else(|| Error::internal("source login missing"))?;
-        if login.nonce != stage.nonce
-            || login.stage.as_deref() != Some(stage.id.as_str())
-            || login.source != stage.source_id
-            || login.expires_at > now() + 600
-        {
-            return Err(Error::internal("source stage binding failed"));
-        }
+        crate::assembly::verify_stage_start_login(tx, &stage)?;
         self.persist_source_stage_binding(tx, &stage, &suspension)?;
         audit(
             tx,
@@ -861,16 +852,7 @@ impl Core {
                 "Source stage is not bound to its authorization request",
             ));
         }
-        let mut pending = tx
-            .get::<Login>("source_logins", &stage.login_key)?
-            .filter(|login| {
-                login.stage.as_deref() == Some(stage.id.as_str())
-                    && login.nonce == stage.nonce
-                    && login.source == stage.source_id
-                    && login.expires_at > now()
-                    && !login.failed
-            })
-            .ok_or_else(|| Error::bad("Source stage login expired or is not bound"))?;
+        let mut pending = crate::assembly::stage_resume_login(tx, &stage)?;
         let Some(identity) = pending.result.clone() else {
             return Ok(Ok(json!({
                 "status": "pending",

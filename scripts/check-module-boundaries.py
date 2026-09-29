@@ -1080,25 +1080,36 @@ def main() -> None:
             )
             stage_auth_compact = re.sub(r"\s+", "", stage_auth_write or "")
             stage_binding_compact = re.sub(r"\s+", "", stage_binding_write or "")
+            stage_start_login = rust_function_body(source_stage_assembly, "verify_stage_start_login")
+            stage_start_login_compact = re.sub(r"\s+", "", stage_start_login or "")
             if (
                 stage_creation is None
                 or stage_creation_raw is None
                 or not (0 <= stage_creation_compact.find("self.source_start_in(")
                         < stage_creation_compact.find("self.persist_source_stage_authentication(")
-                        < stage_creation_compact.find("tx.get::<Login>(")
-                        < stage_creation_compact.find("login.nonce!=stage.nonce")
+                        < stage_creation_compact.find("crate::assembly::verify_stage_start_login(tx,&stage)?")
                         < stage_creation_compact.find("self.persist_source_stage_binding(")
                         < stage_creation_compact.find("audit("))
                 or "Some(&stage_id)" not in stage_creation
                 or "source_stage:Some(stage_id.clone())" not in stage_creation_compact
-                or "login.stage.as_deref()!=Some(stage.id.as_str())" not in stage_creation_compact
-                or "login.source!=stage.source_id" not in stage_creation_compact
                 or "self.persist_source_stage_authentication(tx,&transaction,&AuthenticationTransaction{" not in stage_creation_compact
                 or "self.persist_source_stage_binding(tx,&stage,&suspension)?" not in stage_creation_compact
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<Login>\s*\(\s*"source_logins"', stage_creation_raw)
                 or re.search(
                     r'\btx\s*\.\s*(?:put|delete)\s*\(\s*"(?:authentication|source_stages|source_stage_requests)"',
                     stage_creation_raw,
                 )
+                or stage_start_login is None
+                or not (0 <= stage_start_login_compact.find('tx.get::<Login>("source_logins",&stage.login_key)?')
+                        < stage_start_login_compact.find('Error::internal("sourceloginmissing")')
+                        < stage_start_login_compact.find("login.nonce!=stage.nonce")
+                        < stage_start_login_compact.find("login.stage.as_deref()!=Some(stage.id.as_str())")
+                        < stage_start_login_compact.find("login.source!=stage.source_id")
+                        < stage_start_login_compact.find("login.expires_at>now()+600")
+                        < stage_start_login_compact.find('Error::internal("sourcestagebindingfailed")')
+                        < stage_start_login_compact.rfind("Ok(())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_start_login)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::verify_stage_start_login\s*;", (SRC / "assembly.rs").read_text())
                 or stage_auth_write is None
                 or not re.search(r"\bpub\(crate\)\s+fn\s+persist_source_stage_authentication\s*\(", source_stage_assembly)
                 or 'tx.put("authentication",&digest(transaction),pending)' not in stage_auth_compact
@@ -1169,6 +1180,8 @@ def main() -> None:
             stage_resume = rust_function_body(source_protocol, "resume_stage")
             stage_resume_compact = re.sub(r"\s+", "", stage_resume or "")
             stage_resume_raw = rust_function_body(path.read_text(), "resume_stage")
+            stage_login_read = rust_function_body(source_stage_assembly, "stage_resume_login")
+            stage_login_compact = re.sub(r"\s+", "", stage_login_read or "")
             session_read = rust_function_body(source_stage_assembly, "stage_resume_session")
             session_read_compact = re.sub(r"\s+", "", session_read or "")
             discard_bearer = rust_function_body(source_stage_assembly, "discard_stage_resume_bearer")
@@ -1176,6 +1189,20 @@ def main() -> None:
             if (
                 stage_resume is None
                 or stage_resume_raw is None
+                or not (0 <= stage_resume_compact.find("stage.browser_id!=stage.request.request_binding")
+                        < stage_resume_compact.find("crate::assembly::stage_resume_login(tx,&stage)?")
+                        < stage_resume_compact.find("letSome(identity)=pending.result.clone()"))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<Login>\s*\(\s*"source_logins"', stage_resume_raw)
+                or stage_login_read is None
+                or not (0 <= stage_login_compact.find('tx.get::<Login>("source_logins",&stage.login_key)?')
+                        < stage_login_compact.find("login.stage.as_deref()==Some(stage.id.as_str())")
+                        < stage_login_compact.find("login.nonce==stage.nonce")
+                        < stage_login_compact.find("login.source==stage.source_id")
+                        < stage_login_compact.find("login.expires_at>now()")
+                        < stage_login_compact.find("!login.failed")
+                        < stage_login_compact.find('Error::bad("Sourcestageloginexpiredorisnotbound")'))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_login_read)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::stage_resume_login\s*;", (SRC / "assembly.rs").read_text())
                 or not (0 <= stage_resume_compact.find("self.complete_source_login(")
                         < stage_resume_compact.find("crate::assembly::stage_resume_session(tx,token)?")
                         < stage_resume_compact.find("self.discard_stage_resume_bearer(tx,token)?")

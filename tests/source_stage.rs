@@ -1808,6 +1808,77 @@ fn source_stage_setting_stays_disabled_in_essentials() {
     f.assert_snapshot(&before);
 }
 
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn stage_login_binding_rejects_missing_and_mismatched_login_without_consuming() {
+    let f = Fixture::new();
+    let _upstream = Upstream::new(&f, true).await;
+    stage_client(&f, false);
+    let (request, _) = authorization(&f, None, None);
+    let prepared = f.core.authorization_prepare(None, request).unwrap();
+    let stage_id = text(&prepared["source_stage"], "stage_id");
+    let authorization_id = text(&prepared["source_stage"], "authorization_id");
+    let stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    let login_key = text(&stage, "login_key");
+    let login: Value = f
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(login["stage"], stage_id);
+    assert_eq!(login["nonce"], stage["nonce"]);
+
+    let mut mismatched = login.clone();
+    mismatched["nonce"] = json!("wrong-nonce");
+    f.core
+        .store
+        .write(|tx| tx.put("source_logins", &login_key, &mismatched))
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .source_stage_resume(&stage_id, &authorization_id, None)
+            .unwrap_err()
+            .message,
+        "Source stage login expired or is not bound"
+    );
+    f.assert_snapshot(&before);
+
+    f.core
+        .store
+        .write(|tx| tx.delete("source_logins", &login_key))
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .source_stage_resume(&stage_id, &authorization_id, None)
+            .unwrap_err()
+            .message,
+        "Source stage login expired or is not bound"
+    );
+    f.assert_snapshot(&before);
+
+    f.core
+        .store
+        .write(|tx| tx.put("source_logins", &login_key, &login))
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    let pending = f
+        .core
+        .source_stage_resume(&stage_id, &authorization_id, None)
+        .unwrap();
+    assert_eq!(pending["status"], "pending");
+    assert_eq!(pending["code_issued"], false);
+    f.assert_snapshot(&before);
+    assert!(codes(&f).is_empty());
+}
+
 #[tokio::test]
 async fn stage_resume_consumes_retried_request_after_cancel() {
     let f = Fixture::new();

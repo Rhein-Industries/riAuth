@@ -85,6 +85,32 @@ pub(crate) fn stage_resume_session(tx: &Tx<'_>, token: &str) -> Result<Session> 
         .ok_or_else(|| Error::internal("missing session"))
 }
 
+pub(crate) fn verify_stage_start_login(tx: &Tx<'_>, stage: &SourceStage) -> Result<()> {
+    let login = tx
+        .get::<Login>("source_logins", &stage.login_key)?
+        .ok_or_else(|| Error::internal("source login missing"))?;
+    if login.nonce != stage.nonce
+        || login.stage.as_deref() != Some(stage.id.as_str())
+        || login.source != stage.source_id
+        || login.expires_at > now() + 600
+    {
+        return Err(Error::internal("source stage binding failed"));
+    }
+    Ok(())
+}
+
+pub(crate) fn stage_resume_login(tx: &Tx<'_>, stage: &SourceStage) -> Result<Login> {
+    tx.get::<Login>("source_logins", &stage.login_key)?
+        .filter(|login| {
+            login.stage.as_deref() == Some(stage.id.as_str())
+                && login.nonce == stage.nonce
+                && login.source == stage.source_id
+                && login.expires_at > now()
+                && !login.failed
+        })
+        .ok_or_else(|| Error::bad("Source stage login expired or is not bound"))
+}
+
 impl Core {
     /// This write precedes the login-to-stage binding check in the caller. A failed
     /// check rolls it back together with the already reserved source login.
