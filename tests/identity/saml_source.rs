@@ -1437,6 +1437,139 @@ fn saml_source_callback_record_commits_replay_failure_and_browser_success() {
     );
 }
 
+#[test]
+fn saml_source_signing_domain_reads_keep_metadata_start_and_callback_binding() {
+    let f = Fixture::new();
+    let (mut source, upstream) = install_saml(&f);
+    let keys: crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    f.core
+        .store
+        .write(|tx| tx.put("key_domains", "saml-source-test", &keys))
+        .unwrap();
+    source.saml.as_mut().unwrap().signing_key = "saml-source-test".into();
+    put_saml(&f, &source);
+    let acs = f.core.saml_source_callback_url(&source.id);
+    assert!(
+        f.core
+            .saml_source_metadata(&source.id)
+            .unwrap()
+            .contains(&acs)
+    );
+    let (relay, request, credential) = begin(&f, &source, None);
+    let response = upstream.response(&source, &acs, &request, None, false);
+    let logins_before = f.core.store.list::<Value>("source_logins").unwrap().len();
+    let failed_before = failed_audits(&f);
+
+    f.core
+        .store
+        .write(|tx| tx.delete("key_domains", "saml-source-test"))
+        .unwrap();
+    assert_eq!(
+        f.core.saml_source_metadata(&source.id).unwrap_err().message,
+        "SAML source signing domain is missing"
+    );
+    assert_eq!(
+        f.core
+            .source_start(
+                &source.id,
+                Start {
+                    link: false,
+                    authentication_transaction: None,
+                },
+                None,
+            )
+            .unwrap_err()
+            .message,
+        "SAML source signing domain is missing"
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("source_logins").unwrap().len(),
+        logins_before
+    );
+
+    // The claim was valid, but the later key read failed. The final write must
+    // commit the failed login and audit instead of leaving the claim redeemable.
+    let rejected = post(&f, &source, &relay, &response).unwrap();
+    assert_eq!(rejected["completed"], false);
+    let row = login_row(&f, &relay);
+    assert_eq!(row["claimed"], true);
+    assert_eq!(row["failed"], true);
+    assert!(row["result"].is_null());
+    assert_eq!(failed_audits(&f), failed_before + 1);
+    assert!(finish(&f, &credential, true).is_err());
+
+    f.core
+        .store
+        .write(|tx| tx.put("key_domains", "saml-source-test", &keys))
+        .unwrap();
+    assert!(post(&f, &source, &relay, &response).is_err());
+    assert_eq!(failed_audits(&f), failed_before + 1);
+    let (fresh, request, _) = begin(&f, &source, None);
+    let response = upstream.response(&source, &acs, &request, None, false);
+    assert_eq!(
+        post(&f, &source, &fresh, &response).unwrap()["completed"],
+        true
+    );
+}
+
+#[test]
+fn saml_source_cleanup_retains_live_replay_and_bound_session() {
+    let f = Fixture::new();
+    let at = now();
+    let live = f
+        .core
+        .store
+        .list::<Session>("sessions")
+        .unwrap()
+        .into_iter()
+        .find(|(_, session)| session.expires_at > at)
+        .unwrap()
+        .0;
+    let upstream = json!({"subject":"opaque-subject","index":"upstream-session","expires_at":null});
+    f.core
+        .store
+        .write(|tx| {
+            tx.put("saml_source_replays", "expired", &at)?;
+            tx.put("saml_source_replays", "live", &(at + 1))?;
+            tx.put("saml_source_sessions", "missing-session", &upstream)?;
+            tx.put("saml_source_sessions", &live, &upstream)
+        })
+        .unwrap();
+
+    f.core
+        .store
+        .write(|tx| riauth::source::cleanup(tx, at))
+        .unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<u64>("saml_source_replays", "expired")
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<u64>("saml_source_replays", "live")
+            .unwrap(),
+        Some(at + 1)
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("saml_source_sessions", "missing-session")
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("saml_source_sessions", &live)
+            .unwrap()
+            .is_some()
+    );
+}
+
 /// Old and new pinned IdP certificates both verify. A removed certificate cannot
 /// authenticate, and restoring it does not finish a login presented while that
 /// certificate was absent. An unpresented login can still complete after the

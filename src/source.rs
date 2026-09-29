@@ -539,6 +539,15 @@ impl Core {
             expires_at: pending.expires_at,
         };
         if let Some(settings) = &source.saml {
+            #[cfg(feature = "platform")]
+            let authorization = settings.authorization(
+                &crate::assembly::SamlSigningKeyRead::new(tx),
+                self,
+                &source,
+                &pending,
+                &state,
+            )?;
+            #[cfg(not(feature = "platform"))]
             let authorization = settings.authorization(tx, self, &source, &pending, &state)?;
             self.persist_source_start(tx, &state, &pending)?;
             let mut started = started(authorization, &pending);
@@ -1211,6 +1220,9 @@ pub(crate) fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Re
     Ok(body)
 }
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
+    #[cfg(feature = "platform")]
+    crate::assembly::cleanup_source_saml(tx, at)?;
+    #[cfg(not(feature = "platform"))]
     saml::cleanup(tx, at)?;
     crate::assembly::cleanup_expired_source_state(tx, at)
 }

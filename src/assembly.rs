@@ -96,11 +96,19 @@ mod source_saml_claim;
 #[cfg(feature = "platform")]
 pub(crate) use source_saml_claim::SamlSourceClaim;
 #[cfg(feature = "platform")]
+mod source_saml_cleanup;
+#[cfg(feature = "platform")]
+pub(crate) use source_saml_cleanup::cleanup as cleanup_source_saml;
+#[cfg(feature = "platform")]
+mod source_saml_keys;
+#[cfg(feature = "platform")]
+pub(crate) use source_saml_keys::SamlSigningKeyRead;
+#[cfg(feature = "platform")]
 mod source_saml_record;
 #[cfg(feature = "platform")]
 mod source_saml_return;
 #[cfg(feature = "platform")]
-pub(crate) use source_saml_return::{BrowserReturn, take_browser_return};
+pub(crate) use source_saml_return::BrowserReturn;
 mod source_stage;
 pub(crate) use source_stage::callback_source_stage;
 pub(crate) use source_stage::cleanup_expired_source_state;

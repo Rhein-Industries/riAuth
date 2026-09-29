@@ -804,6 +804,19 @@ def main() -> None:
                 errors.append("src/cloud_operations.rs: credential verification write belongs in assembly")
         if path == SRC / "source/saml.rs":
             saml_source = path.read_text()
+            source_root = (SRC / "source.rs").read_text()
+            assembly_source_keys = (SRC / "assembly/source_saml_keys.rs").read_text()
+            assembly_source_cleanup = (SRC / "assembly/source_saml_cleanup.rs").read_text()
+            metadata_adapter = rust_function_body(saml_source, "saml_source_metadata")
+            metadata_compact = re.sub(r"\s+", "", metadata_adapter or "")
+            metadata_read = rust_function_body(assembly_source_keys, "with_saml_source_metadata")
+            metadata_read_compact = re.sub(r"\s+", "", metadata_read or "")
+            key_read = rust_function_body(assembly_source_keys, "key")
+            key_compact = re.sub(r"\s+", "", key_read or "")
+            callback_key = rust_function_body(assembly_source_keys, "saml_source_callback_key")
+            callback_key_compact = re.sub(r"\s+", "", callback_key or "")
+            cleanup_read = rust_function_body(assembly_source_cleanup, "cleanup")
+            cleanup_compact = re.sub(r"\s+", "", cleanup_read or "")
             assembly_source_claim = (SRC / "assembly/source_saml_claim.rs").read_text()
             callback_adapter = rust_function_body(saml_source, "saml_source_callback")
             callback_compact = re.sub(r"\s+", "", callback_adapter or "")
@@ -817,7 +830,44 @@ def main() -> None:
             adapter_compact = re.sub(r"\s+", "", return_adapter or "")
             return_claim = rust_function_body(assembly_source_return, "take_browser_return")
             claim_compact = re.sub(r"\s+", "", return_claim or "")
+            return_write = rust_function_body(assembly_source_return, "saml_source_browser_return_claim")
+            return_write_compact = re.sub(r"\s+", "", return_write or "")
             assembly_root = (SRC / "assembly.rs").read_text()
+            if (
+                re.search(r"\bTx\b|\btx\s*\.|\.store\b", masked_rust_source(saml_source))
+                or rust_function_body(saml_source, "cleanup") is not None
+                or rust_function_body(saml_source, "key") is not None
+                or metadata_adapter is None
+                or not (0 <= metadata_compact.find("self.with_saml_source_metadata(id,|source,keys|")
+                        < metadata_compact.find("settings.validate(source)?")
+                        < metadata_compact.find("STANDARD.encode(wire::certificate(")
+                        < metadata_compact.find("letxml=format!(")
+                        < metadata_compact.find("crate::saml::sign(&xml,&keys.key(settings)?"))
+                or metadata_read is None
+                or not (0 <= metadata_read_compact.find("self.store.read(|tx|")
+                        < metadata_read_compact.find("super::source_enabled(tx,id)?")
+                        < metadata_read_compact.find("render(&source,&SamlSigningKeyRead::new(tx))"))
+                or key_read is None
+                or not (0 <= key_compact.find('core::keys(self.tx)?')
+                        < key_compact.find('self.tx.get::<Keys>("key_domains",&settings.signing_key)?')
+                        < key_compact.find('key.remote.is_some()||key.algorithm!="RS256"')
+                        < key_compact.find("private.to_spki_der()!=public.to_spki_der()"))
+                or callback_key is None
+                or "self.store.read(|tx|settings.key(tx))" not in callback_key_compact
+                or "self.saml_source_callback_key(settings)?" not in callback_compact
+                or cleanup_read is None
+                or not (0 <= cleanup_compact.find('tx.maintenance_page::<u64>("saml_source_replays")?')
+                        < cleanup_compact.find("ifexpiry<=at")
+                        < cleanup_compact.find('tx.delete("saml_source_replays",&id)?')
+                        < cleanup_compact.find('tx.maintenance_page::<UpstreamSession>("saml_source_sessions")?')
+                        < cleanup_compact.find('tx.get::<Session>("sessions",&id)?')
+                        < cleanup_compact.find("s.expires_at<=at")
+                        < cleanup_compact.find('tx.delete("saml_source_sessions",&id)?'))
+                or not re.search(r"cleanup_source_saml\s*\(\s*tx\s*,\s*at\s*\)\s*\?\s*;\s*#\[cfg\(not\(feature\s*=\s*\"platform\"\)\)\]\s*saml::cleanup\s*\(\s*tx\s*,\s*at\s*\)\s*\?\s*;\s*crate::assembly::cleanup_expired_source_state", source_root)
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_keys\s*;", assembly_root)
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_cleanup\s*;", assembly_root)
+            ):
+                errors.append("src/source/saml.rs: SAML key, metadata and cleanup storage belong in assembly")
             if (
                 rust_function_body(saml_source, "saml_source_callback_claim") is not None
                 or re.search(r"\benum\s+Claim\b", saml_source)
@@ -881,7 +931,7 @@ def main() -> None:
                 or not (0 <= adapter_compact.find("returned.filter(|value|value.len()<=256)")
                         < adapter_compact.find("started.filter(|value|value.len()<=256)")
                         < adapter_compact.find("letreturned_digest=digest(returned)")
-                        < adapter_compact.find("self.store.write(|tx|take_browser_return(tx,id,started.as_deref(),&returned_digest))?")
+                        < adapter_compact.find("self.saml_source_browser_return_claim(id,started.as_deref(),&returned_digest)?")
                         < adapter_compact.find("BrowserReturn::Confirmed=>Ok(())")
                         < adapter_compact.find("BrowserReturn::Burned=>Err(super::browser_mismatch())")
                         < adapter_compact.find("BrowserReturn::Retired=>Err(Error::bad("))
@@ -899,8 +949,10 @@ def main() -> None:
                 or claim_compact.count('tx.delete("source_returns",returned_digest)?') != 3
                 or claim_compact.count('super::clear_browser_return(tx,&pending)?') != 3
                 or claim_compact.count('audit(tx,"upstream","source.login_failed",id)?') != 2
+                or return_write is None
+                or "self.store.write(|tx|take_browser_return(tx,id,started,returned_digest))" not in return_write_compact
                 or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_return\s*;", assembly_root)
-                or not re.search(r"\bpub\(crate\)\s+use\s+source_saml_return::\{BrowserReturn,\s*take_browser_return\}\s*;", assembly_root)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_saml_return::BrowserReturn\s*;", assembly_root)
             ):
                 errors.append("src/source/saml.rs: one-use browser return claim belongs in assembly")
         if path == SRC / "source.rs":
@@ -1495,7 +1547,7 @@ def main() -> None:
             expiry_cleanup = rust_function_body(source_stage_assembly, "cleanup_expired_source_state")
             expiry_cleanup_compact = re.sub(r"\s+", "", expiry_cleanup or "")
             if (
-                source_cleanup_compact != "saml::cleanup(tx,at)?;crate::assembly::cleanup_expired_source_state(tx,at)"
+                source_cleanup_compact != "#[cfg(feature=\"platform\")]crate::assembly::cleanup_source_saml(tx,at)?;#[cfg(not(feature=\"platform\"))]saml::cleanup(tx,at)?;crate::assembly::cleanup_expired_source_state(tx,at)"
                 or not re.search(r"\bpub\s+fn\s+cleanup\s*\(\s*tx\s*:\s*&Tx", path.read_text())
                 or expiry_cleanup is None
                 or not re.search(r"\bpub\(crate\)\s+fn\s+cleanup_expired_source_state\s*\(", source_stage_assembly)

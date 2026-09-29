@@ -1,7 +1,7 @@
 //! One-use SAML source browser return claim in the caller's write transaction.
 
 use crate::{
-    core::audit,
+    core::{Core, audit},
     crypto::{self, now},
     error::Result,
     source::{Login, Source, browser_binding_matches, presented_source_retired},
@@ -13,6 +13,18 @@ pub(crate) enum BrowserReturn {
     Burned,
     Retired,
     Unknown,
+}
+
+impl Core {
+    pub(crate) fn saml_source_browser_return_claim(
+        &self,
+        id: &str,
+        started: Option<&str>,
+        returned_digest: &str,
+    ) -> Result<BrowserReturn> {
+        self.store
+            .write(|tx| take_browser_return(tx, id, started, returned_digest))
+    }
 }
 
 pub(crate) fn take_browser_return(

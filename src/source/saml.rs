@@ -2,10 +2,10 @@
 pub use super::saml_types::Settings;
 pub(crate) use super::saml_types::UpstreamSession;
 use super::{Login, Source, UpstreamIdentity};
-use crate::assembly::{BrowserReturn, SamlSourceClaim, take_browser_return};
+use crate::assembly::{BrowserReturn, SamlSigningKeyRead, SamlSourceClaim};
 use crate::{
     core::{Core, validate_display, validate_email, validate_name},
-    crypto::{self, Keys, SigningKey, digest, now},
+    crypto::{self, SigningKey, digest, now},
     error::{Error, Result},
     jose::ClientAuthMethod,
     response::escape,
@@ -13,7 +13,6 @@ use crate::{
         NameIdFormat,
         wire::{self, ASSERTION, DSIG, METADATA, POST, PROTOCOL},
     },
-    store::Tx,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use roxmltree::{Document, Node};
@@ -72,33 +71,9 @@ impl Settings {
         }
         Ok(())
     }
-    pub(crate) fn key(&self, tx: &Tx<'_>) -> Result<SigningKey> {
-        let keys = if self.signing_key == "signing" {
-            crate::core::keys(tx)?
-        } else {
-            tx.get::<Keys>("key_domains", &self.signing_key)?
-                .ok_or_else(|| Error::bad("SAML source signing domain is missing"))?
-        };
-        let key = keys.active;
-        if key.remote.is_some() || key.algorithm != "RS256" {
-            return Err(Error::bad(
-                "SAML source requires a local RS256 signing/decryption key",
-            ));
-        }
-        let private =
-            risaml::crypto::keys::load_private_key(&key.pem, None).map_err(Error::internal)?;
-        let public = risaml::crypto::keys::load_certificate(&self.sp_certificate_pem)
-            .map_err(Error::internal)?;
-        if private.to_spki_der().is_none() || private.to_spki_der() != public.to_spki_der() {
-            return Err(Error::bad(
-                "SAML source SP certificate does not match its signing domain",
-            ));
-        }
-        Ok(key)
-    }
     pub(super) fn authorization(
         &self,
-        tx: &Tx<'_>,
+        keys: &SamlSigningKeyRead<'_, '_>,
         core: &Core,
         source: &Source,
         pending: &Login,
@@ -117,7 +92,7 @@ impl Settings {
             &source.authorization_endpoint,
             &xml,
             Some(state),
-            &self.key(tx)?.pem,
+            &keys.key(self)?.pem,
             "SAMLRequest",
         )
     }
@@ -130,12 +105,12 @@ impl Core {
         )
     }
     pub fn saml_source_metadata(&self, id: &str) -> Result<String> {
-        self.store.read(|tx|{
-        let source=super::enabled(tx,id)?;let settings=source.saml.as_ref().ok_or_else(||Error::missing("SAML source not found"))?;settings.validate(&source)?;
+        self.with_saml_source_metadata(id, |source, keys| {
+        let settings=source.saml.as_ref().ok_or_else(||Error::missing("SAML source not found"))?;settings.validate(source)?;
         let cert=STANDARD.encode(wire::certificate(&settings.sp_certificate_pem)?);
         let slo=if settings.slo_redirect_url.is_some()||settings.slo_post_url.is_some() {format!(r#"<md:SingleLogoutService Binding="{}" Location="{}"/><md:SingleLogoutService Binding="{POST}" Location="{}"/>"#,wire::REDIRECT,escape(&format!("{}/saml/sources/{id}/slo",crate::saml::endpoint_base(&self.config.issuer))),escape(&format!("{}/saml/sources/{id}/slo",crate::saml::endpoint_base(&self.config.issuer))))}else{String::new()};
         let xml=format!(r#"<md:EntityDescriptor xmlns:md="{METADATA}" xmlns:ds="{DSIG}" ID="_{}" entityID="{}"><md:SPSSODescriptor protocolSupportEnumeration="{PROTOCOL}" AuthnRequestsSigned="true" WantAssertionsSigned="true"><md:KeyDescriptor use="signing"><ds:KeyInfo><ds:X509Data><ds:X509Certificate>{cert}</ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor><md:KeyDescriptor use="encryption"><ds:KeyInfo><ds:X509Data><ds:X509Certificate>{cert}</ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor>{slo}<md:NameIDFormat>{}</md:NameIDFormat><md:AssertionConsumerService Binding="{POST}" Location="{}" index="0" isDefault="true"/></md:SPSSODescriptor></md:EntityDescriptor>"#,crypto::id(),escape(&source.client_id),settings.name_id_format.uri(),escape(&self.saml_source_callback_url(id)));
-        crate::saml::sign(&xml,&settings.key(tx)?,&settings.sp_certificate_pem,true)
+        crate::saml::sign(&xml,&keys.key(settings)?,&settings.sp_certificate_pem,true)
     })
     }
     pub fn saml_source_callback(&self, id: &str, pairs: Vec<(String, String)>) -> Result<Value> {
@@ -169,7 +144,7 @@ impl Core {
             )
             .map_err(|_| Error::bad("SAML response must be UTF-8"))?;
             let settings = source.saml.as_ref().unwrap();
-            let key = self.store.read(|tx| settings.key(tx))?;
+            let key = self.saml_source_callback_key(settings)?;
             verified_identity(
                 &xml,
                 settings,
@@ -202,9 +177,8 @@ impl Core {
             .filter(|value| value.len() <= 256)
             .map(str::to_owned);
         let returned_digest = digest(returned);
-        let outcome = self
-            .store
-            .write(|tx| take_browser_return(tx, id, started.as_deref(), &returned_digest))?;
+        let outcome =
+            self.saml_source_browser_return_claim(id, started.as_deref(), &returned_digest)?;
         match outcome {
             BrowserReturn::Confirmed => Ok(()),
             BrowserReturn::Burned => Err(super::browser_mismatch()),
@@ -754,20 +728,4 @@ fn expiry(node: Node<'_, '_>) -> Result<u64> {
         return Err(Error::forbidden());
     }
     Ok(at)
-}
-pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (id, expiry) in tx.maintenance_page::<u64>("saml_source_replays")? {
-        if expiry <= at {
-            tx.delete("saml_source_replays", &id)?;
-        }
-    }
-    for (id, _) in tx.maintenance_page::<UpstreamSession>("saml_source_sessions")? {
-        if tx
-            .get::<crate::model::Session>("sessions", &id)?
-            .is_none_or(|s| s.expires_at <= at)
-        {
-            tx.delete("saml_source_sessions", &id)?;
-        }
-    }
-    Ok(())
 }
