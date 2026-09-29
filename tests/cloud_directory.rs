@@ -3462,6 +3462,54 @@ fn cloud_operations_connection_check_read_is_scoped_and_pure() {
     fixture.assert_snapshot(&before);
 }
 
+#[test]
+fn cloud_operations_authorizes_before_missing_configuration() {
+    let fixture = Fixture::new();
+    let reader = agent_token(
+        &fixture,
+        "unconfigured-cloud-reader",
+        vec![permission("directory.read", "workspace/corp")],
+    );
+    let outside = agent_token(
+        &fixture,
+        "outside-cloud-reader",
+        vec![permission("directory.read", "workspace/other")],
+    );
+    let before = fixture.snapshot().unwrap();
+
+    assert_eq!(
+        fixture
+            .core
+            .cloud_operations(&outside, "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    let missing = fixture
+        .core
+        .cloud_operations(&reader, "workspace", "corp")
+        .unwrap_err();
+    assert_eq!(missing.code, "not_found");
+    assert_eq!(missing.message, "Workspace directory not configured");
+    assert_eq!(
+        fixture
+            .core
+            .cloud_operations("invalid", "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "invalid_token"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .cloud_operations("invalid", "unknown", "corp")
+            .unwrap_err()
+            .code,
+        "invalid_request"
+    );
+    fixture.assert_snapshot(&before);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() {
     use axum::{

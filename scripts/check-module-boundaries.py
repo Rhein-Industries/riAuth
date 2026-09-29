@@ -533,6 +533,29 @@ def main() -> None:
         if path == SRC / "cloud_operations.rs":
             operations = rust_function_body(masked_rust_source(path.read_text()), "cloud_operations")
             catalog_source = (SRC / "assembly/cloud_directory_catalog.rs").read_text()
+            initial_auth = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_authorize_read"
+            )
+            initial_auth_raw = rust_function_body(catalog_source, "cloud_operation_authorize_read")
+            initial_call = (
+                re.search(r"\bself\.cloud_operation_authorize_read\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;", operations)
+                if operations is not None
+                else None
+            )
+            if (
+                operations is None
+                or initial_call is None
+                or not (0 <= operations.find("resource(kind, id)") < initial_call.start() < operations.find("match kind"))
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", operations[:operations.find("match kind")])
+                or initial_auth is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", initial_auth)
+                or initial_auth_raw is None
+                or not re.search(
+                    r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.read"\s*,\s*scope\s*\)\s*\?[\s\S]*Ok\s*\(\s*\(\s*\)\s*\)',
+                    initial_auth_raw,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: initial read authorization belongs in assembly")
             missing_groups = rust_function_body(
                 masked_rust_source(catalog_source),
                 "cloud_operation_missing_groups",

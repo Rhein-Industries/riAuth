@@ -77,10 +77,7 @@ impl Core {
     /// token endpoints, tokens, or raw scheduler authority and outcome records.
     pub fn cloud_operations(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         let scope = resource(kind, id)?;
-        self.store.read(|tx| {
-            self.management(tx, token, "directory.read", &scope)?;
-            Ok(())
-        })?;
+        self.cloud_operation_authorize_read(token, &scope)?;
         let (configuration, valid, credential) = match kind {
             "workspace" => {
                 let directory = self

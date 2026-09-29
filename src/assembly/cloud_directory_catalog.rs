@@ -4,6 +4,13 @@ use crate::{cloud_directory::Provider, core::Core, error::Result, model::Group};
 use serde_json::{Value, json};
 
 impl Core {
+    pub(crate) fn cloud_operation_authorize_read(&self, token: &str, scope: &str) -> Result<()> {
+        self.store.read(|tx| {
+            self.management(tx, token, "directory.read", scope)?;
+            Ok(())
+        })
+    }
+
     pub(crate) fn cloud_operation_missing_groups(
         &self,
         token: &str,
