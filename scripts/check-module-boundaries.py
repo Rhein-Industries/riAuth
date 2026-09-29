@@ -721,6 +721,29 @@ def main() -> None:
                 )
             ):
                 errors.append("src/cloud_operations.rs: pre-probe sync authorization belongs in assembly")
+            probe_auth_calls = (
+                list(re.finditer(
+                    r"\bself\.cloud_operation_authorize_probe\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    probe,
+                ))
+                if probe is not None
+                else []
+            )
+            probe_result = (
+                re.search(r"\blet\s+result\s*=\s*self\.cloud_connection_probe\s*\(\s*kind\s*,\s*id\s*\)\s*;", probe)
+                if probe is not None
+                else None
+            )
+            if (
+                probe is None
+                or len(probe_auth_calls) != 2
+                or probe_result is None
+                or not (probe_result.end() <= probe_auth_calls[1].start() < probe.find("Ok(match result"))
+                or probe[probe_result.end():probe_auth_calls[1].start()].strip()
+                or probe[probe_auth_calls[1].end():probe.find("Ok(match result")].strip()
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", probe)
+            ):
+                errors.append("src/cloud_operations.rs: post-probe sync recheck belongs in assembly")
         if path == SRC / "source.rs" and rust_function_body(
             masked_rust_source(path.read_text()), "source_list"
         ) is not None:

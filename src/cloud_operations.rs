@@ -232,10 +232,7 @@ impl Core {
         self.cloud_operation_authorize_probe(token, &scope)?;
         let checked_at = now();
         let result = self.cloud_connection_probe(kind, id);
-        self.store.read(|tx| {
-            self.management(tx, token, "directory.sync", &scope)?;
-            Ok(())
-        })?;
+        self.cloud_operation_authorize_probe(token, &scope)?;
         Ok(match result {
             Ok(()) => json!({"kind": kind, "id": id, "checked_at": checked_at, "connected": true}),
             Err(error) => json!({

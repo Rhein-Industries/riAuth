@@ -7,7 +7,7 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, mpsc,
         atomic::{AtomicBool, AtomicU16, AtomicUsize, Ordering},
     },
     thread::{self, JoinHandle},
@@ -81,6 +81,7 @@ struct State {
     secret: Mutex<String>,
     certificate: Mutex<Option<Vec<u8>>>,
     token_status: AtomicU16,
+    token_pause: Mutex<Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>>,
     people: Mutex<Vec<Person>>,
     mode: Mutex<Mode>,
     token_hits: AtomicUsize,
@@ -168,6 +169,7 @@ fn serve(kind: &'static str, people: Vec<Person>, secret: &str) -> Directory {
         secret: Mutex::new(secret.into()),
         certificate: Mutex::new(None),
         token_status: AtomicU16::new(200),
+        token_pause: Mutex::new(None),
         people: Mutex::new(people),
         mode: Mutex::new(Mode::Split),
         token_hits: AtomicUsize::new(0),
@@ -375,6 +377,11 @@ fn token(state: &State, request: &Incoming) -> (u16, String) {
         return (405, "{}".into());
     }
     state.token_hits.fetch_add(1, Ordering::Relaxed);
+    let pause = state.token_pause.lock().unwrap().take();
+    if let Some((entered, release)) = pause {
+        entered.send(()).unwrap();
+        release.recv_timeout(Duration::from_secs(10)).unwrap();
+    }
     let fields = form(&request.body);
     if fields.get("grant_type").map(String::as_str)
         == Some("urn:ietf:params:oauth:grant-type:jwt-bearer")
@@ -3663,6 +3670,40 @@ fn cloud_connection_probe_authorizes_scope_before_upstream() {
     assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
     assert_redacted(&result);
     fixture.assert_snapshot(&before);
+}
+
+#[test]
+fn cloud_connection_probe_rechecks_revocation_after_upstream() {
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let token = agent_token(
+        &fixture,
+        "cloud-probe-midflight",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    *directory.state.token_pause.lock().unwrap() = Some((entered_tx, release_rx));
+
+    let core = fixture.core.clone();
+    let probe = thread::spawn(move || core.cloud_test_connection(&token, "workspace", "corp"));
+    entered_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    fixture
+        .core
+        .revoke_agent(&fixture.admin, "cloud-probe-midflight")
+        .unwrap();
+    let revoked = fixture.snapshot().unwrap();
+    release_tx.send(()).unwrap();
+
+    assert_eq!(probe.join().unwrap().unwrap_err().code, "invalid_token");
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    assert_eq!(directory.state.directory_hits.load(Ordering::Relaxed), 1);
+    fixture.assert_snapshot(&revoked);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
