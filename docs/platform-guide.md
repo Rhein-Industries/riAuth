@@ -14,7 +14,7 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records six loopback observations. The first
+build. The walkthrough records seven loopback observations. The first
 reported the Essentials catalog. The second was a copied Platform debug
 server whose artifact catalog had `edition` `platform` and `build_features`
 `["essentials", "platform"]`. The third used that same server snapshot with
@@ -25,7 +25,9 @@ only that server snapshot, opened an isolated browser at `/apps`, and stopped
 the section 4 passkey ceremony before a credential was stored. The sixth used
 only that server snapshot, captured one invitation on a loopback SMTP sink,
 accepted the password in an isolated browser, and signed in only after that
-acceptance. The commands
+acceptance. The seventh used only that server snapshot and ran the section 11
+schema, validate, plan, apply, runtime `[workflows.local-password]` restart,
+configured start, and export. It did not submit the password step. The commands
 in sections 1 through 13 are the ones implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
@@ -33,7 +35,7 @@ in sections 1 through 13 are the ones implemented in this tree: `[features]` in
 
 The three slices were checked by reading the source and the current docs,
 then by `python3 scripts/check-docs.py`. Section 14's password acceptance
-was run once on loopback. Six disposable loopback runs are recorded in
+was run once on loopback. Seven disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
 build was run for any of them. The first stopped after one `local-demo`
 client create on the Essentials catalog. The second repeated setup on the
@@ -51,8 +53,11 @@ profile, a USB security key, or Touch ID. The sixth appended a loopback
 `[mail]` table, issued one invitation with `--idempotency-key` and
 `--if-revision`, opened the captured link, accepted a password, left `/apps`
 signed out, refused a replay of that link, and then signed in as the invited
-person. Rename, remove, passkey sign-in, passkey invitation acceptance,
-hardware, peers, and Essentials-guide execution remain unrun. The
+person. The seventh ran section 11 `schema`, `validate`, `plan`, and `apply`,
+restarted serve with `[workflows.local-password]`, started that configured
+workflow, and ran `export`. The password step was not submitted. Rename,
+remove, passkey sign-in, passkey invitation acceptance, hardware, peers, and
+Essentials-guide execution remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
@@ -60,8 +65,9 @@ left as historical planning evidence.
 The install below leaves PostgreSQL, Workspace, Entra, RADIUS, proxy, and
 the other Platform protocols unset. Sections 9 and 10 add the shared LDAP
 import and outbound SCIM steps on this Platform server. Sections 11 through
-13 add the configured-workflow, SAML, and LDAP provider procedures. Those
-procedures were read from this tree and were not executed. Assembly and
+13 add the configured-workflow, SAML, and LDAP provider procedures. Section
+11 was executed once on loopback. Sections 9, 10, 12, and 13 were read from
+this tree and were not executed. Assembly and
 downgrade rules stay in [server editions](editions.md).
 
 ## Shared semantics
@@ -1297,15 +1303,49 @@ shape. An inactive or missing entry returns `Configured workflow is unavailable`
 A present entry whose id or shape matches no executable adapter returns
 that same message as a conflict.
 
-### Unrun and peer evidence
+### Loopback observation
 
-This task did not write the JSON file, did not edit `riauth.toml`, did not
-stop or restart `serve`, did not run `validate`, `plan`, `apply`, or
-`export`, and did not send the start request. The browser editor was not
-opened. No run id, view, or audit row was recorded. TOTP, recovery-code,
-and passkey configured shapes are described in
+The [walkthrough](roadmap/d01-platform-cli-walkthrough.md) records one
+`local-password` run on a copy of the Platform server snapshot supplied for
+`58357fd`. No Cargo build was run. The copy's `riauth capabilities` catalog
+had `edition` `platform` and `build_features` `essentials` and `platform`.
+`riauth --version` printed `riauth 0.1.1`. `capabilities` is a local catalog
+read. The printed commands in this section do not include it.
+
+`schema workflow` and `schema manifest` exited 0. The schema titles were
+`Definition` and `Manifest`. `validate` printed `valid` true, `validation`
+`local_schema`, `resources` 0, and `secret_values_read` false. `plan` exited
+0 with one create for `workflow/local-password`, `base_revision` 0,
+`reconciliation_mode` `manual-review`, and `removal_impact.review_required`
+false. Disabled users, missing users, and removed memberships were 0.
+`credential_change` was false and the change had no secret references.
+`apply` did not pass `--confirm-removals`. It printed `applied` true,
+`changed` true, revision 0, and no `run_id`. The plan id was
+`2cc4d8e3-5758-4094-ade0-8aaaf4c29447`. The plan `hash` failed a
+64-lowercase-hexadecimal check, so it is not copied. Snapshot-equal
+`crypto::digest` encodes SHA-256 as URL-safe unpadded base64.
+
+Serve was stopped, the printed `[workflows.local-password]` block was
+appended with `active = true`, and the same serve command was started again.
+`POST /api/workflows/configured/local-password` used the administrator bearer
+and an empty body. The response was HTTP 200, set no cookie, and returned a
+view whose `binding.workflow` was `local-password`, `binding.revision` was
+1, and `state` was active on step `password` at attempt 1. `attempts_used`
+was 0 and `executions` was 0. The run id was
+`00453fc4-2cb5-4db2-b2b9-010368c95596`. The binding fingerprint was
+`0fbbab5fadf1019195b415112725a6fb62f794c0e2c41e8ea7a2fc22a8865f61`.
+No source registration and no extension hash were present. `export` printed
+`secrets_included` false and revision 0. The exported manifest had one
+`local-password` workflow at revision 1, and its `issuer` was null.
+
+The password continuation, the run lookup, and cancel were not called. No
+audit command was run, so no audit row was recorded. The browser editor was
+not opened. TOTP, recovery-code, and passkey configured shapes are described
+in
 [Local password reauthentication](workflows.md#local-password-reauthentication)
-and were not added here.
+and were not added here. The names that fail adapter validation were not
+used. The commands came from the immutable snapshot. The walkthrough limits
+the source comparison to the files it names.
 
 ## 12. Prepare one SAML service provider and one SAML source
 
@@ -2048,13 +2088,15 @@ existed. Rename, remove, and passkey sign-in stayed unrun. A sixth run
 issued one invitation through loopback SMTP, accepted the password in an
 isolated browser, confirmed `/apps` stayed on the sign-in panel, refused a
 replay, and then signed in as the invited person. Passkey acceptance,
-sign-out, and the headless invitation journeys stayed unrun. Sections 9
-through 13 remain source-reviewed procedures. The generated `init` file still has no directory,
+sign-out, and the headless invitation journeys stayed unrun. A seventh run
+executed section 11: `schema`, `validate`, `plan`, `apply`, a runtime
+`[workflows.local-password]` restart, one configured start, and `export`.
+The password step was not submitted. Sections 9, 10, 12, and 13 remain
+source-reviewed procedures. The generated `init` file still has no directory,
 no SCIM target, no workflow, no SAML client, and no LDAP listener until the
-operator adds them. Those later commands were not executed here. Sections 11
-through 13 name the configured workflow, the SAML identity-provider and
-source commands, and the LDAP provider listener. No workflow run, service
-provider, upstream identity provider, or LDAP client was contacted.
+operator adds them. Directory, SCIM, SAML, and LDAP provider commands were
+not executed here. No service provider, upstream identity provider, or LDAP
+client was contacted.
 
 Still outside this slice, as later tasks:
 
@@ -2122,10 +2164,11 @@ Still outside this slice, as later tasks:
 - Any claim that a person completed `cargo install`, the OIDC redirect,
   passkey enrollment, passkey rename or removal, passkey sign-in,
   `recovery complete`, `recover-admin`, an LDAP directory plan or
-  apply, a SCIM plan or apply, a workflow plan or a configured-workflow run,
-  a SAML metadata exchange with a peer, an LDAP provider bind, or an
-  invitation passkey acceptance. The
-  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has six runs.
+  apply, a SCIM plan or apply, a SAML metadata exchange with a peer, an LDAP
+  provider bind, or an invitation passkey acceptance. One section 11 workflow
+  plan, apply, and configured start was run, and its password step was not
+  submitted. The
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has seven runs.
   The first supplies `riauth capabilities`, local `init`, `serve`, `/readyz`,
   CLI `login`, `doctor`, and one `local-demo` client create on a binary whose
   catalog edition was `essentials`. The second supplies the same setup on a
@@ -2139,4 +2182,6 @@ Still outside this slice, as later tasks:
   cancelled **Add a passkey** on that same server snapshot. The server then
   listed no passkeys. The sixth supplies one loopback invitation, password
   acceptance, a signed-out applications page, replay refusal, and a later
-  password sign-in. D01 remains incomplete.
+  password sign-in. The seventh supplies section 11 schema, validate, plan,
+  apply, the runtime password workflow, one configured start, and export on
+  that same server snapshot. D01 remains incomplete.

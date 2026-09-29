@@ -3,7 +3,7 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records six disposable loopback runs of the
+This page records seven disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
 a Platform-catalog server snapshot and continued through the server CLI group,
@@ -14,11 +14,13 @@ server snapshot and ran the section 5 backup, restore, and recovery-status
 entry points. The fifth copied only that server snapshot and opened section 4
 in an isolated browser. The sixth copied only that server snapshot, captured
 one invitation on loopback SMTP, and accepted the password in an isolated
-browser. No run used an external peer or `cargo install`.
+browser. The seventh copied only that server snapshot and ran the section 11
+configured password workflow through export. No run used an external peer or
+`cargo install`.
 The first two runs did not launch `riauthctl` or `riauth-maintenance`. The
-fourth, fifth, and sixth runs did not launch them either. The fifth and sixth
-runs opened a browser. The fifth stored no passkey. The sixth did not start
-a passkey ceremony.
+fourth, fifth, sixth, and seventh runs did not launch them either. The fifth
+and sixth runs opened a browser. The fifth stored no passkey. The sixth did
+not start a passkey ceremony. The seventh did not open a browser.
 
 ## Essentials catalog run
 
@@ -2003,5 +2005,279 @@ Still unrun on this run:
 - sections 9 through 13
 - a physical key, a synced passkey, a phone, a spoken screen reader, an
   external peer, and the Essentials guide
+
+D01 remains incomplete.
+
+## Section 11 configured password workflow
+
+The docs worktree for this record is
+`0add90f9febc5b00bbc37aed7099023ac1743737`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. The authorized binary was the Platform server
+snapshot
+`/tmp/riauth-platform-58357fd-immutable/riauth`, the same file the catalog
+run, the remote-administration run, the section 5 run, the section 4 run,
+and the section 14 run copied. Its mode stayed `-r-x------`, its size stayed
+289661864 bytes, its mtime stayed `2026-09-29 17:00:59 +0200`, and its
+SHA-256 stayed
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. The
+snapshot path was not executed. A copy lived in a new `mktemp` directory
+under `/tmp`, mode `700`. The copy was an APFS clone, then chmod `700`. Its
+SHA-256 matched the snapshot before any command, and its inode differed.
+This page calls that directory `$LAB`. The copy's real path is not recorded.
+`riauthctl` and `riauth-maintenance` were not launched.
+`deployment-private/` was not written. This run did not open a browser.
+
+The printed guide lines use
+`deployment-private/platform-lab/`. This run passed the same flags with
+`$LAB` paths. Remote commands also passed `--config $LAB/riauth.toml` and
+`--session-file $LAB/admin.session`. The default config path is `riauth.toml`
+in the current directory, and the default server-CLI session is the home
+session file. Neither home session file was written. No command passed
+`--json`, `--idempotency-key`, `--if-revision`, or `--confirm-removals`.
+
+### Setup
+
+Free space on the data volume was 16633252 KiB before the copy and stayed
+above 7 GiB. Port 9000 was free before serve. Both default home session
+files were absent. The administrator password was 24 alphanumeric bytes in a
+mode `600` file. The password is not recorded.
+
+```sh
+riauth --config $LAB/riauth.toml --non-interactive init \
+  --issuer http://localhost:9000 \
+  --listen 127.0.0.1:9000 \
+  --data-dir $LAB/data \
+  --admin admin \
+  --password-stdin
+```
+
+Exit 0. Standard error was `Creating instance and signing key…`, 37 bytes,
+including the newline. The configuration file was mode `600`. Standard
+output said `initialized` true and issuer `http://localhost:9000`. That
+object is not copied because it names the config path. The file contained
+no administrator password and no `[mail]` table.
+
+```sh
+riauth --config $LAB/riauth.toml serve
+```
+
+`/readyz` on `127.0.0.1:9000` returned status `ok`, role `integrated`, and
+version `0.1.1`. This readiness request is not one of the printed section 11
+commands. `$LAB/data` held one redb file. After the later restart and
+export it was 110592 bytes.
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session login admin --password-stdin
+```
+
+Exit 0. The session file was mode `600`. Standard output named user `admin`
+and did not contain a session token. Standard error was empty. The login
+object is not copied because it names the session path.
+
+```sh
+riauth --config $LAB/riauth.toml capabilities
+riauth --version
+```
+
+`capabilities` exited 0. It is local, and the printed section 11 commands do
+not include it. The catalog `schema_version` was `riauth.capabilities/v2`,
+`edition` was `platform`, `interface` was `server`, `version` was `0.1.1`,
+and `build_features` were `essentials` and `platform`. The target was
+`macos` / `aarch64`. The schema list had 29 names, including `workflow` and
+`manifest`. The catalog object was 20679 bytes and is not copied.
+`riauth --version` printed `riauth 0.1.1`. Its standard error was empty.
+
+### Schema, validate, plan, and apply
+
+The authoring file was the printed `local-password` manifest, mode `600`,
+with issuer `http://localhost:9000`. It had no `active` field.
+
+```sh
+riauth --config $LAB/riauth.toml schema workflow
+riauth --config $LAB/riauth.toml schema manifest
+riauth --config $LAB/riauth.toml validate --file $LAB/local-password.json
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session plan \
+  --file $LAB/local-password.json \
+  --out $LAB/local-password-plan.json
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session apply \
+  --plan $LAB/local-password-plan.json
+```
+
+`schema workflow` exited 0. Standard error was empty. The document was
+15785 bytes and its title was `Definition`. `schema manifest` exited 0.
+Standard error was empty. The document was 59679 bytes and its title was
+`Manifest`. Neither schema is copied here.
+
+`validate` exited 0. Standard error was empty. It printed `valid` true,
+`validation` `local_schema`, `resources` 0, and `secret_values_read` false.
+
+`plan` exited 0. Standard error was empty. The plan file was mode `600`.
+Standard output named the plan file, so that object is not copied. The
+retained fields were:
+
+| Field | Observed value |
+| --- | --- |
+| `plan_id` | `2cc4d8e3-5758-4094-ade0-8aaaf4c29447` |
+| `base_revision` | 0 |
+| `changes` | one `create` for `workflow/local-password` |
+| `credential_change` | false |
+| secret references | none |
+| `removal_impact.review_required` | false |
+| `disabled_users` | 0 |
+| `missing_users` | 0 |
+| `removed_memberships` | 0 |
+| `reconciliation_mode` | `manual-review` |
+| `expires_at` | `1790701860` |
+
+`review_required` was false, so `--confirm-removals` was not added. The
+extractor kept `hash` only when it was 64 lowercase hexadecimal characters.
+The observed value failed that check, so this record does not contain it.
+Snapshot-equal `src/cli.rs` includes `hash` in the plan stdout object, and
+snapshot-equal `src/state.rs` assigns it with `digest`. Snapshot-equal
+`src/crypto.rs` defines `digest` as URL-safe unpadded base64 of SHA-256.
+That encoding is separate from the binding fingerprint below.
+
+`apply` exited 0. Standard error was empty. It printed `applied` true,
+`changed` true, `revision` 0, and the same plan id. `run_id` was absent.
+The one change was again `create` for `workflow/local-password`.
+
+### Runtime restart and configured start
+
+SIGTERM stopped the first `serve`. SIGKILL was not required. The printed
+`[workflows.local-password]` table was then appended, including
+`active = true` and definition id `local-password`. The configuration stayed
+mode `600` and still had no `[mail]` table.
+
+```sh
+riauth --config $LAB/riauth.toml serve
+```
+
+The second `/readyz` returned status `ok`. The body was 187 bytes.
+
+The start route has no CLI wrapper. The request was
+`POST http://localhost:9000/api/workflows/configured/local-password` with an
+empty body and one `Authorization` header. The scheme was bearer. The token
+was read from `$LAB/admin.session` and is not recorded.
+
+HTTP status was 200. The response set no `Set-Cookie` header. The body did
+not contain the session token. The public view fields were:
+
+| Field | Observed value |
+| --- | --- |
+| `id` | `00453fc4-2cb5-4db2-b2b9-010368c95596` |
+| `binding.workflow` | `local-password` |
+| `binding.revision` | 1 |
+| `binding.fingerprint` | `0fbbab5fadf1019195b415112725a6fb62f794c0e2c41e8ea7a2fc22a8865f61` |
+| `binding.source_registration` | absent |
+| `binding.extension_sha256` | absent |
+| `state` | active, step `password`, attempt 1 |
+| `started_at` | `1790700961` |
+| `expires_at` | `1790701561` |
+| `attempts_used` | 0 |
+| `max_attempts` | 3 |
+| `executions` | 0 |
+| `reviewed_revision` | 1 |
+
+`expires_at` is 600 seconds after `started_at`, which is the definition's
+`max_duration_seconds`. The object also included `reviewed_policy` and
+`step_started_at`. Those values are not copied. `authorization_response`,
+`credential_epoch`, and `reviewed_failure` were absent. No evidence
+reference was present.
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session export \
+  --out $LAB/state-export.json
+```
+
+Exit 0. Standard error was empty. The export file was mode `600`. Standard
+output said `secrets_included` false and `revision` 0, and it named the
+manifest file, so that object is not copied. The manifest `api_version` was
+`riauth/v1`. Its `issuer` was null. It contained one workflow,
+`local-password` at revision 1, and one user record. The user record is not
+copied. The workflow definition persisted; `meta.revision` stayed 0, the
+same value `plan` printed as `base_revision`.
+
+The serve log was 0 bytes. A scan of the configuration, the serve log, both
+readiness bodies, the schema output, validate, plan, apply, export, the
+start body, the capabilities output, login and init output, the export
+file, the authoring file, and the plan file found no password, no session
+token, and no PEM header. The session file and the password
+file were outside that scan.
+
+### Source comparison
+
+The comparison is `git diff 58357fd 0add90f`, limited to the files named
+here. These files had no difference:
+
+- `src/workflow.rs`
+- `src/workflow/validate.rs`
+- `src/schema.rs`
+- `src/api/workflow.rs`
+- `src/crypto.rs`
+- `src/core.rs`
+
+`src/api.rs` adds `GET /api/operations/provisioning/deactivations`. This run
+did not call it. `src/cli.rs` differs in the agent create, rotate, and
+revoke idempotency checks. Schema, validate, plan, apply, export, and login
+are outside that diff. `src/config.rs` differs in the browser-consent
+adapter check, which also accepts a password-plus-TOTP consent workflow.
+The password-only `local-password` block is outside that diff.
+`src/state.rs` differs in client-description desired-state dependency scope.
+The workflow reconcile that writes `workflow_definitions` is outside that
+diff, and this manifest did not change a client description.
+`src/workflow/executor.rs` differs in TOTP browser-consent imports.
+`workflow_configured_start` is outside that diff. This comparison does not
+cover the rest of the tree. The commands above were served by the immutable
+snapshot. `platform-invitation-password-enrollment` was not configured.
+
+In that same snapshot-equal `src/core.rs`, a revision bump follows audit
+actions whose names start with a fixed set of prefixes. `workflow.` is not
+one of those prefixes. The observed apply revision and export revision were
+both 0 after the workflow create.
+
+### Cleanup
+
+The evidence script exited after the plan-hash shape check failed closed.
+The product commands above had already exited 0. The script's cleanup then
+stopped `serve` with SIGTERM. SIGKILL was not required. It re-hashed the
+snapshot, found port 9000 free, found both default home session files
+absent, and removed the lab directory. The remover's own exit code was 0.
+A following check found the directory gone, the snapshot hash and mode
+unchanged, port 9000 free, and both home session files absent. Free space
+on the data volume stayed above 7 GiB. After cleanup, available space was
+16601424 KiB.
+
+### Unrun on this configured-workflow run
+
+The executed chain is `riauth init`, `serve`, `/readyz`, server CLI login,
+local `capabilities` and `--version`, `schema workflow`, `schema manifest`,
+`validate`, `plan`, `apply`, a SIGTERM restart after appending
+`[workflows.local-password]`, a second `/readyz`,
+`POST /api/workflows/configured/local-password`, and `export`.
+
+Still unrun on this run:
+
+- `POST /api/workflows/{id}/password`, `GET /api/workflows/{id}`, and
+  `POST /api/workflows/{id}/cancel`
+- submitting the password for step `password`
+- the browser authoring routes under `/api/admin/workflows`
+- `--confirm-removals`
+- an audit read of the apply or the workflow start
+- TOTP, recovery-code, passkey, consent, and enrollment workflow shapes
+- `platform-password-totp-reauthentication`,
+  `platform-invitation-password-enrollment`,
+  `platform-source-reauthentication`, and
+  `platform-source-totp-reauthentication`
+- sections 9, 10, 12, and 13
+- `cargo install`
+- `riauthctl` and `riauth-maintenance`
+- `riauth doctor`
+- `recovery complete`, `recover-admin`, and a second server
+- a browser, a physical key, a synced passkey, a phone, a spoken screen
+  reader, an external peer, and the Essentials guide
 
 D01 remains incomplete.
