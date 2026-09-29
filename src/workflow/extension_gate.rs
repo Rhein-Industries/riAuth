@@ -20,6 +20,15 @@
 //! `() -> i32` function, two exports, at most [`MAX_GUEST_LOCALS`] i32 locals,
 //! and no data segment. That bounds compiler work. It does not preempt the one
 //! accepted body.
+//!
+//! The interpreter value stack is allocated when `route` is called.
+//! `ResourceLimiter` does not account for it. This guest sets the Wasmi
+//! `StackLimits` initial and maximum height to [`GUEST_VALUE_STACK_SLOTS`]
+//! `UntypedVal` slots (8 bytes each). `ValueStack::new` reserves that buffer,
+//! and `extend_by` returns `StackOverflow` before `Vec::reserve` when a frame
+//! would make the live length reach the height. The host reports that trap as
+//! `limit`. A frame that fits still runs on the caller until it returns or
+//! spends its fuel. The call depth stays [`GUEST_CALL_DEPTH`] frames.
 
 use super::{
     Action, Definition, Id, Label, MAX_CUSTOM_OUTPUT_BYTES, MAX_CUSTOM_OUTPUTS,
@@ -44,6 +53,17 @@ pub const MAX_MODULE_BYTES: u32 = MAX_MEMORY_BYTES;
 pub const MAX_GUEST_FUNCTIONS: u32 = 1;
 /// `route` may declare this many i32 locals. The count is rejected before Wasmi compiles.
 pub const MAX_GUEST_LOCALS: u32 = 32;
+/// Wasmi value-stack height in `UntypedVal` slots.
+///
+/// The initial height equals the maximum, so `ValueStack::new` reserves this
+/// many slots and an accepted frame does not ask the `Vec` to grow.
+/// `extend_by` rejects a frame when `additional >= height - len`, before
+/// `Vec::reserve`. `UntypedVal` is 8 bytes, so the reserved buffer is at
+/// least 512 bytes and is separate from the 64 KiB linear memory.
+pub const GUEST_VALUE_STACK_SLOTS: usize = 64;
+/// Wasmi `maximum_recursion_depth`. Another frame is refused when this many
+/// frames are already on the call stack. That trap is also `limit`.
+pub const GUEST_CALL_DEPTH: usize = 16;
 pub const MAX_INPUT_BYTES: u32 = 4_096;
 pub const MAX_TIMEOUT_SECONDS: u32 = MAX_CUSTOM_TIMEOUT_SECONDS;
 pub const MAX_OUTPUT_BYTES: u32 = MAX_CUSTOM_OUTPUT_BYTES;
@@ -481,8 +501,14 @@ fn execute_guest(
     config.wasm_tail_call(false);
     config.wasm_saturating_float_to_int(false);
     config.enforced_limits(wasmi::EnforcedLimits::strict());
-    config
-        .set_stack_limits(wasmi::StackLimits::new(64, 1_024, 16).expect("guest stack limits fit"));
+    config.set_stack_limits(
+        wasmi::StackLimits::new(
+            GUEST_VALUE_STACK_SLOTS,
+            GUEST_VALUE_STACK_SLOTS,
+            GUEST_CALL_DEPTH,
+        )
+        .expect("guest value stack fits"),
+    );
     let engine = wasmi::Engine::new(&config);
     let module = wasmi::Module::new(&engine, &checked.module).map_err(|_| Denial::Malformed)?;
     let mut store = wasmi::Store::new(
@@ -547,6 +573,7 @@ fn classify(error: &wasmi::Error, timeout_tighter: bool) -> Denial {
         Some(
             wasmi::core::TrapCode::MemoryOutOfBounds | wasmi::core::TrapCode::TableOutOfBounds,
         ) => Denial::Limit,
+        Some(wasmi::core::TrapCode::StackOverflow) => Denial::Limit,
         _ => Denial::Failed,
     }
 }
@@ -945,6 +972,22 @@ pub(crate) mod fixture {
         module_with_locals(&locals, &i32_const(0))
     }
 
+    /// `count` live `i32.load` results, then drops, then `i32.const 0`.
+    ///
+    /// Wasmi 0.40 keeps each live load in its own register. `N` loads need a
+    /// value-stack height of `N + 2` before `route` can be entered.
+    pub fn live_loads(count: u32) -> Vec<u8> {
+        let mut body = Vec::new();
+        for _ in 0..count {
+            body.extend(i32_const(0));
+            body.extend([0x28, 0x02, 0x00]);
+        }
+        for _ in 0..count {
+            body.push(0x1a);
+        }
+        module(&body, &i32_const(0), &[])
+    }
+
     pub fn two_functions() -> Vec<u8> {
         let mut wasm = header();
         wasm.extend(section(1, &[0x01, 0x60, 0x00, 0x01, 0x7f]));
@@ -1168,6 +1211,8 @@ mod tests {
         assert_eq!(FUEL_PER_SECOND, 1_000);
         assert_eq!(MAX_GUEST_FUNCTIONS, 1);
         assert_eq!(MAX_GUEST_LOCALS, 32);
+        assert_eq!(GUEST_VALUE_STACK_SLOTS, 64);
+        assert_eq!(GUEST_CALL_DEPTH, 16);
         let cargo = include_str!("../../Cargo.toml");
         assert!(cargo.contains("unsafe_code = \"forbid\""));
         assert!(cargo.contains("dep:wasmi"));
@@ -1466,6 +1511,48 @@ mod tests {
         assert_eq!(
             execute(&checked, &GuestFacts::default(), &BTreeSet::new(), loose).unwrap_err(),
             Denial::Limit
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn value_stack_refuses_a_frame_that_would_reach_the_slot_cap() {
+        // Pinned Wasmi 0.40.0: N live loads need height N + 2. Height 64 runs
+        // 62 loads and refuses 63 before `Vec::reserve`.
+        let over = fixture::live_loads(63);
+        assert!(check(&fixture::document(&over, |_| {})).is_ok());
+        assert_eq!(
+            run(
+                &over,
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::Limit
+        );
+        assert_eq!(
+            run(
+                &fixture::live_loads(62),
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::UndeclaredOutput
+        );
+        assert_eq!(
+            run(
+                &fixture::with_locals(MAX_GUEST_LOCALS),
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::UndeclaredOutput
         );
     }
 

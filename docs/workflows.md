@@ -1073,8 +1073,27 @@ maximum both 1. It also rejects more than one function, any type other than
 or a data segment. Those caps are decided before `Module::new`, so a 64 KiB
 module cannot ask Wasmi to compile thousands of functions or a million locals.
 The store allows one instance and one memory, no tables, caps that memory at
-65,536 bytes, and traps if it grows. `memory.grow` therefore ends the step as
-`failed` instead of returning a label.
+65,536 bytes, and traps if it grows. At instantiation Wasmi calls
+`ResourceLimiter::memory_growing` with current 0, desired 65,536 and maximum
+65,536. `StoreLimits` allows that initial size because the desired size is not
+greater than `memory_size`, and its `ByteBuffer` then builds a `Vec<u8>` of
+length 65,536. A further page makes `memory_growing` return an error.
+`trap_on_grow_failure` turns that error into `GrowthOperationLimited`, which
+this gate reports as `failed`. `memory.grow` therefore ends the step as
+`failed` instead of returning a label. `ResourceLimiter` does not account for
+the interpreter value stack.
+
+That stack is reserved when `route` is called. The guest sets Wasmi
+`StackLimits` so the initial height and the maximum height are both 64
+`UntypedVal` slots. `UntypedVal` is 8 bytes, so `ValueStack::new` reserves at
+least 512 bytes. `extend_by` checks the live length before `Vec::reserve` and
+returns `StackOverflow` when `additional >= 64 - len`. The host reports that
+trap as `limit`. On an empty stack a compiled frame of 64 registers is refused
+and a frame of 63 is accepted. In this pinned Wasmi 0.40.0, 32 i32 locals and
+a constant result need 34 slots, so that module still runs. Sixty-three live
+`i32.load` results need 65 slots and are refused before the buffer grows. A
+frame that fits still runs on the caller until it returns or spends its fuel.
+The same `StackLimits` value keeps the call depth at 16 frames.
 
 Wasmi 0.40.0 cannot preempt that one function. Its `Config` has no epoch or
 interrupt setting. `Store::call_hook` runs only when the host calls Wasm or

@@ -685,7 +685,12 @@ filesystem. Fuel is 1–10,000. Wasmi 0.40.0 has no epoch or interrupt API.
 this guest links none, so `route` runs on the caller until it returns or spends
 its fuel. The 1–30 second field is that many thousands of fuel units. Before
 compilation the gate allows one `() -> i32` function, two exports, and at most
-32 i32 locals, and it rejects a data segment. Output is one declared
+32 i32 locals, and it rejects a data segment. At the call, Wasmi reserves a
+value stack of 64 `UntypedVal` slots (8 bytes each, at least 512 bytes) and
+refuses a frame that would make the live length reach 64, before `Vec::reserve`.
+That trap is `limit`. `ResourceLimiter` does not cover this stack; it allows
+the one 65,536-byte linear memory and reports a further page as `failed`. A
+frame that fits still runs until it returns or spends its fuel. Output is one declared
 label or the built-in `failed` signal, and it is not a proof. The run binding
 stores the module hash beside the source-registration pin used by
 source-verifier runs. A changed manifest seals the open run before the new
