@@ -1241,14 +1241,14 @@ impl CloudSnapshot {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct CloudSnapshotDraft {
-    id: String,
+    pub(crate) id: String,
     directory: String,
     actor: String,
     revision: u64,
     fingerprint: String,
     authority_digest: String,
     pub(crate) expires_at: u64,
-    sequence: u64,
+    pub(crate) sequence: u64,
     snapshot: CloudSnapshot,
 }
 
@@ -1302,7 +1302,7 @@ pub(crate) struct CloudApplyDraft {
 }
 
 impl CloudApplyDraft {
-    fn new(settings: &Settings, actor: &Principal, plan: &Plan) -> Self {
+    pub(crate) fn new(settings: &Settings, actor: &Principal, plan: &Plan) -> Self {
         Self {
             plan_id: plan.id.clone(),
             review: plan.review.clone(),
@@ -1328,7 +1328,7 @@ impl CloudApplyDraft {
             && self.draft.snapshot.phase <= settings.groups.len() + 2
     }
 
-    fn bounded(&self, settings: &Settings) -> Result<()> {
+    pub(crate) fn bounded(&self, settings: &Settings) -> Result<()> {
         self.draft.bounded(settings)?;
         if serde_json::to_vec(self).map_err(Error::internal)?.len() > settings.quota.max_snapshot_bytes {
             return Err(unavailable(
@@ -1526,7 +1526,7 @@ fn membership(
 
 // Check the resources that reconciliation can touch before reporting plan or
 // snapshot conflicts. Reconcile repeats these checks at each write boundary.
-fn authorize_reconcile(
+pub(crate) fn authorize_reconcile(
     tx: &Tx<'_>,
     actor: &Principal,
     settings: &Settings,
@@ -1943,47 +1943,6 @@ impl Core {
         self.cloud_plan_internal(token, kind, id, false)
     }
 
-    fn cloud_apply_actor(
-        &self,
-        tx: &Tx<'_>,
-        token: &str,
-        settings: &Settings,
-        expected: &Plan,
-        reviewed_plan: Option<&str>,
-    ) -> Result<Principal> {
-        let actor = self.cloud_snapshot_actor(
-            tx,
-            token,
-            settings,
-            &expected.actor,
-            expected.revision,
-            &expected.review.authority_digest,
-        )?;
-        let stored = tx
-            .get::<Plan>("cloud_directory_plans", &expected.id)?
-            .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
-        if expected.fingerprint != settings.fingerprint
-            || stored.applied
-            || stored.kind != settings.kind
-            || stored.directory != settings.id
-            || stored.review != expected.review
-            || plan_content(&stored)? != plan_content(expected)?
-            || stored.expires_at <= now()
-        {
-            return Err(Error::conflict(
-                "Cloud directory plan changed during snapshot validation; create a new plan",
-            ));
-        }
-        expected
-            .review
-            .validate(tx, &actor, &plan_content(expected)?)?;
-        expected
-            .review
-            .confirm(&expected.id, &expected.removal_impact, reviewed_plan)?;
-        authorize_reconcile(tx, &actor, settings, &expected.entries)?;
-        Ok(actor)
-    }
-
     fn cloud_plan_internal(
         &self,
         token: &str,
@@ -2225,22 +2184,13 @@ impl Core {
             self.cloud_applied_plan_sync_authorized(token, &settings.resource(), &plan.actor)?;
             None
         } else {
-            let (prior, mut apply, restarted) = self.store.read(|tx| {
-                let actor = self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;
-                let previous = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, &key)?;
-                let prior = previous
-                    .as_ref()
-                    .map(|apply| (apply.draft.id.clone(), apply.draft.sequence));
-                let valid = previous
-                    .as_ref()
-                    .is_some_and(|apply| apply.valid(&settings, &plan));
-                let restarted = previous.is_some() && !valid;
-                let apply = previous
-                    .filter(|_| valid)
-                    .unwrap_or_else(|| CloudApplyDraft::new(&settings, &actor, &plan));
-                apply.bounded(&settings)?;
-                Ok((prior, apply, restarted))
-            })?;
+            let (prior, mut apply, restarted) = self.cloud_apply_snapshot_prepare(
+                token,
+                &settings,
+                &plan,
+                reviewed_plan,
+                &key,
+            )?;
             self.cloud_budget_ensure(&settings.run_key())?;
             if let Err(error) = apply
                 .draft

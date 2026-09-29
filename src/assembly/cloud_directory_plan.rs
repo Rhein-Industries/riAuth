@@ -1,7 +1,10 @@
 //! Reviewed cloud-directory plan reads over concrete storage.
 
 use crate::{
-    cloud_directory::{CLOUD_APPLY_SNAPSHOTS, CloudApplyDraft, Plan, Settings},
+    agent::Principal,
+    cloud_directory::{
+        CLOUD_APPLY_SNAPSHOTS, CloudApplyDraft, Plan, Settings, authorize_reconcile,
+    },
     connector_guard::{ReconciliationDecision, ReconciliationMode, plan_content},
     core::Core,
     crypto::now,
@@ -11,6 +14,73 @@ use crate::{
 use serde_json::{Value, json};
 
 impl Core {
+    pub(crate) fn cloud_apply_actor(
+        &self,
+        tx: &Tx<'_>,
+        token: &str,
+        settings: &Settings,
+        expected: &Plan,
+        reviewed_plan: Option<&str>,
+    ) -> Result<Principal> {
+        let actor = self.cloud_snapshot_actor(
+            tx,
+            token,
+            settings,
+            &expected.actor,
+            expected.revision,
+            &expected.review.authority_digest,
+        )?;
+        let stored = tx
+            .get::<Plan>("cloud_directory_plans", &expected.id)?
+            .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
+        if expected.fingerprint != settings.fingerprint
+            || stored.applied
+            || stored.kind != settings.kind
+            || stored.directory != settings.id
+            || stored.review != expected.review
+            || plan_content(&stored)? != plan_content(expected)?
+            || stored.expires_at <= now()
+        {
+            return Err(Error::conflict(
+                "Cloud directory plan changed during snapshot validation; create a new plan",
+            ));
+        }
+        expected
+            .review
+            .validate(tx, &actor, &plan_content(expected)?)?;
+        expected
+            .review
+            .confirm(&expected.id, &expected.removal_impact, reviewed_plan)?;
+        authorize_reconcile(tx, &actor, settings, &expected.entries)?;
+        Ok(actor)
+    }
+
+    pub(crate) fn cloud_apply_snapshot_prepare(
+        &self,
+        token: &str,
+        settings: &Settings,
+        plan: &Plan,
+        reviewed_plan: Option<&str>,
+        key: &str,
+    ) -> Result<(Option<(String, u64)>, CloudApplyDraft, bool)> {
+        self.store.read(|tx| {
+            let actor = self.cloud_apply_actor(tx, token, settings, plan, reviewed_plan)?;
+            let previous = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, key)?;
+            let prior = previous
+                .as_ref()
+                .map(|apply| (apply.draft.id.clone(), apply.draft.sequence));
+            let valid = previous
+                .as_ref()
+                .is_some_and(|apply| apply.valid(settings, plan));
+            let restarted = previous.is_some() && !valid;
+            let apply = previous
+                .filter(|_| valid)
+                .unwrap_or_else(|| CloudApplyDraft::new(settings, &actor, plan));
+            apply.bounded(settings)?;
+            Ok((prior, apply, restarted))
+        })
+    }
+
     pub(crate) fn cloud_reconcile_pending(
         &self,
         token: &str,
