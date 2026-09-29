@@ -7,7 +7,7 @@ use crate::{
         WORKSPACE_SNAPSHOTS,
     },
     core::Core,
-    error::Result,
+    error::{Error, Result},
     store::Tx,
 };
 
@@ -20,6 +20,21 @@ impl Core {
         self.store.read(|tx| {
             let actor = self.management(tx, token, "directory.sync", resource)?;
             Ok((actor, tx.get::<u64>("meta", "revision")?.unwrap_or(0)))
+        })
+    }
+
+    pub(crate) fn cloud_applied_plan_sync_authorized(
+        &self,
+        token: &str,
+        resource: &str,
+        plan_actor: &str,
+    ) -> Result<()> {
+        self.store.read(|tx| {
+            let actor = self.management(tx, token, "directory.sync", resource)?;
+            if actor.id != plan_actor {
+                return Err(Error::forbidden());
+            }
+            Ok(())
         })
     }
 }

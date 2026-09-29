@@ -2281,13 +2281,7 @@ impl Core {
         let key = digest(&settings.resource());
         let initially_applied = plan.applied;
         let snapshot_prior = if initially_applied {
-            self.store.read(|tx| {
-                let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
-                if actor.id != plan.actor {
-                    return Err(Error::forbidden());
-                }
-                Ok(())
-            })?;
+            self.cloud_applied_plan_sync_authorized(token, &settings.resource(), &plan.actor)?;
             None
         } else {
             let (prior, mut apply, restarted) = self.store.read(|tx| {
