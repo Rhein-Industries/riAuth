@@ -1,34 +1,56 @@
-//! Fail-closed admission for an extension module.
+//! Isolated guest for one configured custom stage.
 //!
-//! This crate forbids unsafe code and links no Wasm or scripting engine, so it
-//! cannot give a native registrant a separate address space, a fuel meter, or a
-//! syscall boundary. [`check`] accepts only a manifest inside the limits below.
-//! It hashes the module and drops the bytes. [`execute`] then refuses. The
-//! executor does not call either function. See `docs/workflows.md`.
+//! Platform links Wasmi 0.40 and runs a module only after [`check`] has hashed
+//! it and rejected host imports. The guest exports `memory` and `route`, sees
+//! one fixed 64 KiB page, and returns one declared label. Essentials does not
+//! link Wasmi; [`execute`] there still returns `external_runtime_required`.
+//! The in-process host in [`super::extension`] stays unwired.
+//!
+//! Wasmi 0.40 has no epoch interruption, so a timeout is not a wall-clock
+//! preemption. It is the instruction budget `timeout_seconds * FUEL_PER_SECOND`,
+//! and the engine installs `min(manifest fuel, that budget)` before the
+//! instance starts. When those two budgets are equal, fuel exhaustion is
+//! reported as `fuel`.
 
 use super::{
-    Id, Label, MAX_CUSTOM_OUTPUT_BYTES, MAX_CUSTOM_OUTPUTS, MAX_CUSTOM_TIMEOUT_SECONDS,
-    StagePermission,
+    Action, Definition, Id, Label, MAX_CUSTOM_OUTPUT_BYTES, MAX_CUSTOM_OUTPUTS,
+    MAX_CUSTOM_TIMEOUT_SECONDS, StagePermission,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 pub const FORMAT: &str = "riauth.workflow-extension/v1";
-/// No engine is compiled into this crate. Keep this false until a runtime that
-/// enforces the limits below is linked, and do not treat a true value as
-/// permission to call [`execute`] successfully: this function still refuses.
-pub const RUNTIME_LINKED: bool = false;
+/// True only on the Platform build, which links Wasmi. Essentials keeps this
+/// false and refuses execution.
+pub const RUNTIME_LINKED: bool = cfg!(feature = "platform");
 pub const MAX_MANIFEST_BYTES: usize = 128 * 1024;
 pub const MAX_FUEL: u32 = 10_000;
+/// One WebAssembly page. A guest memory cannot be smaller and must not grow.
 pub const MAX_MEMORY_BYTES: u32 = 65_536;
 pub const MAX_MODULE_BYTES: u32 = MAX_MEMORY_BYTES;
 pub const MAX_INPUT_BYTES: u32 = 4_096;
 pub const MAX_TIMEOUT_SECONDS: u32 = MAX_CUSTOM_TIMEOUT_SECONDS;
 pub const MAX_OUTPUT_BYTES: u32 = MAX_CUSTOM_OUTPUT_BYTES;
+/// Instruction budget charged for one manifest second. This is Wasmi fuel,
+/// not a wall-clock second.
+pub const FUEL_PER_SECOND: u64 = 1_000;
+/// Guest output occupies memory at offset 0. The host writes the input frame
+/// at this offset and nowhere else.
+pub const INPUT_OFFSET: usize = 4_096;
+pub const INPUT_WINDOW: usize = 4_096;
 
 const RESERVED_SIGNALS: [&str; 5] = ["verified", "failed", "completed", "granted", "denied"];
+#[cfg(feature = "platform")]
+const KIND_ACCOUNT: u8 = 1;
+#[cfg(feature = "platform")]
+const KIND_REQUEST: u8 = 2;
+#[cfg(feature = "platform")]
+const KIND_CLIENT: u8 = 3;
+#[cfg(feature = "platform")]
+const KIND_GROUP: u8 = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Denial {
@@ -37,6 +59,12 @@ pub enum Denial {
     Permission,
     Integrity,
     ExternalRuntimeRequired,
+    Fuel,
+    Timeout,
+    Output,
+    UndeclaredOutput,
+    InputLimit,
+    Failed,
 }
 
 impl Denial {
@@ -47,12 +75,19 @@ impl Denial {
             Self::Permission => "permission",
             Self::Integrity => "integrity",
             Self::ExternalRuntimeRequired => "external_runtime_required",
+            Self::Fuel => "fuel",
+            Self::Timeout => "timeout",
+            Self::Output => "output",
+            Self::UndeclaredOutput => "undeclared_output",
+            Self::InputLimit => "input_limit",
+            Self::Failed => "failed",
         }
     }
 }
 
-/// Manifest that passed the bounds. The module bytes are not retained.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Manifest that passed the bounds. Module bytes stay here so execution uses
+/// the same image that was hashed; [`Debug`] does not print them.
+#[derive(Clone, PartialEq, Eq)]
 pub struct Checked {
     stage: Id,
     outputs: Vec<Label>,
@@ -64,6 +99,25 @@ pub struct Checked {
     timeout_seconds: u32,
     module_len: u32,
     module_sha256: [u8; 32],
+    module: Vec<u8>,
+}
+
+impl fmt::Debug for Checked {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Checked")
+            .field("stage", &self.stage)
+            .field("outputs", &self.outputs)
+            .field("permissions", &self.permissions)
+            .field("fuel", &self.fuel)
+            .field("memory_bytes", &self.memory_bytes)
+            .field("max_input_bytes", &self.max_input_bytes)
+            .field("max_output_bytes", &self.max_output_bytes)
+            .field("timeout_seconds", &self.timeout_seconds)
+            .field("module_len", &self.module_len)
+            .field("module_sha256", &self.module_sha256)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Checked {
@@ -97,6 +151,29 @@ impl Checked {
     pub fn module_sha256(&self) -> &[u8; 32] {
         &self.module_sha256
     }
+    pub fn module_sha256_hex(&self) -> String {
+        self.module_sha256
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
+    }
+}
+
+/// Identifiers the executor already holds. [`execute`] copies a field only when
+/// the step requested that permission and the manifest granted it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GuestFacts {
+    pub account: Option<String>,
+    pub request: Option<String>,
+    pub client: Option<String>,
+    pub groups: Vec<String>,
+}
+
+/// Step caps. Both must be within the manifest or execution is refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StepBounds {
+    pub timeout_seconds: u32,
+    pub max_output_bytes: u32,
 }
 
 #[derive(Deserialize)]
@@ -120,8 +197,53 @@ pub fn runtime_linked() -> bool {
     RUNTIME_LINKED
 }
 
-/// Validate bounds and pin the module hash. The decoded module is dropped
-/// before this returns.
+/// Check every configured manifest. The map key is the stage id.
+pub(crate) fn stage_registration(
+    documents: &BTreeMap<String, String>,
+) -> Result<BTreeMap<Id, Checked>, Denial> {
+    if documents.len() > 16 {
+        return Err(Denial::Limit);
+    }
+    let mut registered = BTreeMap::new();
+    for (key, document) in documents {
+        let checked = check(document.as_bytes())?;
+        if checked.stage().as_str() != key {
+            return Err(Denial::Malformed);
+        }
+        registered.insert(checked.stage().clone(), checked);
+    }
+    Ok(registered)
+}
+
+/// The manifest's outputs, permissions, and caps cover this definition's
+/// custom entry. The graph shape is checked separately.
+pub(crate) fn covers(checked: &Checked, definition: &Definition) -> bool {
+    let Some(step) = definition.steps.first() else {
+        return false;
+    };
+    let Action::Custom {
+        stage,
+        outputs,
+        permissions,
+        max_output_bytes,
+    } = &step.action
+    else {
+        return false;
+    };
+    stage == checked.stage()
+        && outputs.len() == checked.outputs().len()
+        && outputs
+            .iter()
+            .all(|label| checked.outputs().contains(label))
+        && permissions
+            .iter()
+            .all(|permission| checked.permissions().contains(permission))
+        && *max_output_bytes <= checked.max_output_bytes()
+        && step.timeout_seconds <= checked.timeout_seconds()
+}
+
+/// Validate bounds, pin the module hash, and on Platform reject a module that
+/// is not the fixed guest shape. The bytes are retained for [`execute`].
 pub fn check(document: &[u8]) -> Result<Checked, Denial> {
     if document.is_empty() {
         return Err(Denial::Malformed);
@@ -156,7 +278,7 @@ pub fn check(document: &[u8]) -> Result<Checked, Denial> {
     }
     let permissions: BTreeSet<_> = manifest.permissions.into_iter().collect();
     if !(1..=MAX_FUEL).contains(&manifest.fuel)
-        || !(1..=MAX_MEMORY_BYTES).contains(&manifest.memory_bytes)
+        || manifest.memory_bytes != MAX_MEMORY_BYTES
         || !(1..=MAX_INPUT_BYTES).contains(&manifest.max_input_bytes)
         || !(1..=MAX_OUTPUT_BYTES).contains(&manifest.max_output_bytes)
         || !(1..=MAX_TIMEOUT_SECONDS).contains(&manifest.timeout_seconds)
@@ -175,7 +297,8 @@ pub fn check(document: &[u8]) -> Result<Checked, Denial> {
     if digest != module_sha256 {
         return Err(Denial::Integrity);
     }
-    drop(module);
+    #[cfg(feature = "platform")]
+    admit(&module)?;
     Ok(Checked {
         stage,
         outputs,
@@ -187,13 +310,29 @@ pub fn check(document: &[u8]) -> Result<Checked, Denial> {
         timeout_seconds: manifest.timeout_seconds,
         module_len,
         module_sha256,
+        module,
     })
 }
 
-/// Refuse to run a checked module. There is no success value in this build.
-pub fn execute(checked: &Checked) -> Result<Label, Denial> {
-    let _ = (checked, RUNTIME_LINKED);
-    Err(Denial::ExternalRuntimeRequired)
+/// Run `route` under the fuel, memory, timeout, and output caps.
+///
+/// The guest has no host imports. On Essentials this returns
+/// [`Denial::ExternalRuntimeRequired`] and does not interpret the bytes.
+pub fn execute(
+    checked: &Checked,
+    facts: &GuestFacts,
+    requested: &BTreeSet<StagePermission>,
+    bounds: StepBounds,
+) -> Result<Label, Denial> {
+    #[cfg(not(feature = "platform"))]
+    {
+        let _ = (checked, facts, requested, bounds);
+        return Err(Denial::ExternalRuntimeRequired);
+    }
+    #[cfg(feature = "platform")]
+    {
+        execute_guest(checked, facts, requested, bounds)
+    }
 }
 
 fn parse_sha256(value: &str) -> Result<[u8; 32], Denial> {
@@ -218,26 +357,481 @@ fn nibble(byte: u8) -> Result<u8, Denial> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD;
-    use sha2::{Digest, Sha256};
+#[cfg(feature = "platform")]
+fn valid_fact(value: &str) -> bool {
+    (1..=64).contains(&value.len())
+        && !value.starts_with('.')
+        && !value.ends_with('.')
+        && !value.contains("..")
+        && value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
+        })
+}
 
-    fn document(module: &[u8], mutate: impl FnOnce(&mut serde_json::Value)) -> Vec<u8> {
-        let digest: [u8; 32] = Sha256::digest(module).into();
-        let mut hex = String::with_capacity(64);
-        for byte in digest {
-            hex.push_str(&format!("{byte:02x}"));
+#[cfg(feature = "platform")]
+fn project(
+    facts: &GuestFacts,
+    requested: &BTreeSet<StagePermission>,
+    granted: &BTreeSet<StagePermission>,
+    max_input_bytes: u32,
+) -> Result<Vec<u8>, Denial> {
+    if requested.contains(&StagePermission::Network) || !requested.is_subset(granted) {
+        return Err(Denial::Permission);
+    }
+    let mut used = 0u32;
+    let mut records = Vec::new();
+    let mut take = |kind: u8, value: &str| -> Result<(), Denial> {
+        if !valid_fact(value) {
+            return Err(Denial::InputLimit);
         }
+        let len = u32::try_from(value.len()).map_err(|_| Denial::InputLimit)?;
+        used = used.checked_add(len).ok_or(Denial::InputLimit)?;
+        if used > max_input_bytes {
+            return Err(Denial::InputLimit);
+        }
+        records.push((kind, value.as_bytes().to_vec()));
+        Ok(())
+    };
+    if requested.contains(&StagePermission::ReadProfile) {
+        take(
+            KIND_ACCOUNT,
+            facts.account.as_deref().ok_or(Denial::InputLimit)?,
+        )?;
+    }
+    if requested.contains(&StagePermission::ReadRequest) {
+        take(
+            KIND_REQUEST,
+            facts.request.as_deref().ok_or(Denial::InputLimit)?,
+        )?;
+        take(
+            KIND_CLIENT,
+            facts.client.as_deref().ok_or(Denial::InputLimit)?,
+        )?;
+    }
+    if requested.contains(&StagePermission::ReadGroups) {
+        if facts.groups.len() > super::extension::MAX_GROUPS {
+            return Err(Denial::InputLimit);
+        }
+        let mut groups = facts.groups.clone();
+        groups.sort();
+        for group in &groups {
+            take(KIND_GROUP, group)?;
+        }
+    }
+    let count = u32::try_from(records.len()).map_err(|_| Denial::InputLimit)?;
+    let mut frame = count.to_le_bytes().to_vec();
+    for (kind, bytes) in records {
+        let len = u8::try_from(bytes.len()).map_err(|_| Denial::InputLimit)?;
+        frame.push(kind);
+        frame.push(len);
+        frame.extend(bytes);
+    }
+    if frame.len() > INPUT_WINDOW {
+        return Err(Denial::InputLimit);
+    }
+    Ok(frame)
+}
+
+#[cfg(feature = "platform")]
+fn execute_guest(
+    checked: &Checked,
+    facts: &GuestFacts,
+    requested: &BTreeSet<StagePermission>,
+    bounds: StepBounds,
+) -> Result<Label, Denial> {
+    if bounds.timeout_seconds == 0
+        || bounds.timeout_seconds > checked.timeout_seconds
+        || bounds.max_output_bytes == 0
+        || bounds.max_output_bytes > checked.max_output_bytes
+    {
+        return Err(Denial::Limit);
+    }
+    let frame = project(
+        facts,
+        requested,
+        checked.permissions(),
+        checked.max_input_bytes,
+    )?;
+    admit(&checked.module)?;
+    let timeout_fuel = u64::from(bounds.timeout_seconds).saturating_mul(FUEL_PER_SECOND);
+    let manifest_fuel = u64::from(checked.fuel);
+    let timeout_tighter = timeout_fuel < manifest_fuel;
+    let fuel = timeout_fuel.min(manifest_fuel);
+    let mut config = wasmi::Config::default();
+    config.consume_fuel(true);
+    config.ignore_custom_sections(true);
+    config.compilation_mode(wasmi::CompilationMode::Eager);
+    config.floats(false);
+    config.wasm_multi_memory(false);
+    config.wasm_bulk_memory(false);
+    config.wasm_reference_types(false);
+    config.wasm_tail_call(false);
+    config.wasm_saturating_float_to_int(false);
+    config.enforced_limits(wasmi::EnforcedLimits::strict());
+    config
+        .set_stack_limits(wasmi::StackLimits::new(64, 1_024, 16).expect("guest stack limits fit"));
+    let engine = wasmi::Engine::new(&config);
+    let module = wasmi::Module::new(&engine, &checked.module).map_err(|_| Denial::Malformed)?;
+    let mut store = wasmi::Store::new(
+        &engine,
+        wasmi::StoreLimitsBuilder::new()
+            .memory_size(usize::try_from(checked.memory_bytes).map_err(|_| Denial::Limit)?)
+            .table_elements(0)
+            .instances(1)
+            .tables(0)
+            .memories(1)
+            .trap_on_grow_failure(true)
+            .build(),
+    );
+    store.limiter(|limits| limits);
+    store.set_fuel(fuel).map_err(|_| Denial::Failed)?;
+    let linker = wasmi::Linker::<wasmi::StoreLimits>::new(&engine);
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .and_then(|ready| ready.start(&mut store))
+        .map_err(|error| classify(&error, timeout_tighter))?;
+    let memory = instance.get_memory(&store, "memory").ok_or(Denial::Limit)?;
+    let mut window = vec![0u8; INPUT_WINDOW];
+    window[..frame.len()].copy_from_slice(&frame);
+    memory
+        .write(&mut store, INPUT_OFFSET, &window)
+        .map_err(|_| Denial::Limit)?;
+    zeroize::Zeroize::zeroize(window.as_mut_slice());
+    let route = instance
+        .get_typed_func::<(), i32>(&store, "route")
+        .map_err(|_| Denial::Limit)?;
+    let length = match route.call(&mut store, ()) {
+        Ok(length) => length,
+        Err(error) => return Err(classify(&error, timeout_tighter)),
+    };
+    if length < 0 || u32::try_from(length).ok() > Some(bounds.max_output_bytes) {
+        return Err(Denial::Output);
+    }
+    let mut output = vec![0u8; length as usize];
+    if memory.read(&store, 0, &mut output).is_err() {
+        zeroize::Zeroize::zeroize(output.as_mut_slice());
+        return Err(Denial::Output);
+    }
+    let matched = checked
+        .outputs
+        .iter()
+        .find(|label| label.as_str().as_bytes() == output.as_slice())
+        .cloned();
+    zeroize::Zeroize::zeroize(output.as_mut_slice());
+    matched.ok_or(Denial::UndeclaredOutput)
+}
+
+#[cfg(feature = "platform")]
+fn classify(error: &wasmi::Error, timeout_tighter: bool) -> Denial {
+    match error.as_trap_code() {
+        Some(wasmi::core::TrapCode::OutOfFuel) => {
+            if timeout_tighter {
+                Denial::Timeout
+            } else {
+                Denial::Fuel
+            }
+        }
+        Some(
+            wasmi::core::TrapCode::MemoryOutOfBounds | wasmi::core::TrapCode::TableOutOfBounds,
+        ) => Denial::Limit,
+        _ => Denial::Failed,
+    }
+}
+
+#[cfg(feature = "platform")]
+fn admit(wasm: &[u8]) -> Result<(), Denial> {
+    admit_sections(wasm)?;
+    let mut config = wasmi::Config::default();
+    config.consume_fuel(true);
+    config.ignore_custom_sections(true);
+    config.compilation_mode(wasmi::CompilationMode::Eager);
+    config.floats(false);
+    config.wasm_multi_memory(false);
+    config.wasm_bulk_memory(false);
+    config.wasm_reference_types(false);
+    config.wasm_tail_call(false);
+    config.wasm_saturating_float_to_int(false);
+    config.enforced_limits(wasmi::EnforcedLimits::strict());
+    let engine = wasmi::Engine::new(&config);
+    let module = wasmi::Module::new(&engine, wasm).map_err(|_| Denial::Malformed)?;
+    if module.imports().next().is_some() {
+        return Err(Denial::Permission);
+    }
+    let mut names = module
+        .exports()
+        .map(|export| export.name().to_owned())
+        .collect::<Vec<_>>();
+    names.sort();
+    if names != ["memory", "route"] {
+        return Err(Denial::Limit);
+    }
+    match module.get_export("route") {
+        Some(wasmi::ExternType::Func(ty))
+            if ty.params().is_empty() && ty.results() == [wasmi::core::ValType::I32] => {}
+        _ => return Err(Denial::Limit),
+    }
+    match module.get_export("memory") {
+        Some(wasmi::ExternType::Memory(ty))
+            if u32::from(ty.initial_pages()) == 1
+                && ty
+                    .maximum_pages()
+                    .is_some_and(|pages| u32::from(pages) == 1) => {}
+        _ => return Err(Denial::Limit),
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn admit_sections(wasm: &[u8]) -> Result<(), Denial> {
+    if wasm.len() < 8 || wasm[0..4] != [0x00, b'a', b's', b'm'] || wasm[4..8] != [1, 0, 0, 0] {
+        return Err(Denial::Malformed);
+    }
+    let mut cursor = 8usize;
+    let mut last = 0u8;
+    let mut saw_memory = false;
+    while cursor < wasm.len() {
+        let id = wasm[cursor];
+        cursor += 1;
+        let (size, read) = read_leb(&wasm[cursor..])?;
+        cursor += read;
+        let size = usize::try_from(size).map_err(|_| Denial::Malformed)?;
+        let end = cursor.checked_add(size).ok_or(Denial::Malformed)?;
+        if end > wasm.len() {
+            return Err(Denial::Malformed);
+        }
+        let payload = &wasm[cursor..end];
+        cursor = end;
+        if id == 0 {
+            continue;
+        }
+        if id <= last || id > 12 {
+            return Err(Denial::Malformed);
+        }
+        last = id;
+        match id {
+            2 => {
+                let (count, _) = read_leb(payload)?;
+                if count != 0 {
+                    return Err(Denial::Permission);
+                }
+            }
+            4 | 6 | 9 => {
+                let (count, _) = read_leb(payload)?;
+                if count != 0 {
+                    return Err(Denial::Limit);
+                }
+            }
+            5 => {
+                saw_memory = true;
+                admit_memory(payload)?;
+            }
+            8 => return Err(Denial::Limit),
+            _ => {}
+        }
+    }
+    if !saw_memory {
+        return Err(Denial::Limit);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn admit_memory(payload: &[u8]) -> Result<(), Denial> {
+    let (count, mut cursor) = read_leb(payload)?;
+    if count != 1 || cursor >= payload.len() {
+        return Err(Denial::Limit);
+    }
+    let flags = payload[cursor];
+    cursor += 1;
+    if flags != 0x01 {
+        return Err(Denial::Limit);
+    }
+    let (min, read) = read_leb(&payload[cursor..])?;
+    cursor += read;
+    let (max, read) = read_leb(&payload[cursor..])?;
+    cursor += read;
+    if cursor != payload.len() || min != 1 || max != 1 {
+        return Err(Denial::Limit);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn read_leb(bytes: &[u8]) -> Result<(u32, usize), Denial> {
+    let mut result = 0u32;
+    let mut shift = 0;
+    for (index, byte) in bytes.iter().enumerate().take(5) {
+        let value = u32::from(byte & 0x7f);
+        if shift == 28 && value > 0x0f {
+            return Err(Denial::Malformed);
+        }
+        result |= value << shift;
+        if byte & 0x80 == 0 {
+            return Ok((result, index + 1));
+        }
+        shift += 7;
+    }
+    Err(Denial::Malformed)
+}
+
+#[cfg(test)]
+#[cfg_attr(not(feature = "platform"), allow(dead_code))]
+pub(crate) mod fixture {
+    pub fn allow() -> Vec<u8> {
+        module(&store_label(*b"allo", Some(b'w')), &i32_const(5), &[])
+    }
+
+    pub fn block() -> Vec<u8> {
+        module(&store_label(*b"bloc", Some(b'k')), &i32_const(5), &[])
+    }
+
+    pub fn allow_with_trailer() -> Vec<u8> {
+        let mut body = store_label(*b"allo", Some(b'w'));
+        body.extend(store8(5, b'S'));
+        body.extend(store8(6, b'E'));
+        body.extend(store8(7, b'C'));
+        body.extend(store8(8, b'R'));
+        body.extend(store8(9, b'E'));
+        body.extend(store8(10, b'T'));
+        module(&body, &i32_const(5), &[])
+    }
+
+    pub fn spin() -> Vec<u8> {
+        module(&[0x03, 0x40, 0x0c, 0x00, 0x0b], &i32_const(0), &[])
+    }
+
+    pub fn oversized() -> Vec<u8> {
+        module(&[], &i32_const(5_000), &[])
+    }
+
+    pub fn undeclared() -> Vec<u8> {
+        module(&store_label(*b"nope", None), &i32_const(4), &[])
+    }
+
+    pub fn memory_grow() -> Vec<u8> {
+        let mut body = i32_const(1);
+        body.extend([0x40, 0x00, 0x1a]);
+        module(&body, &i32_const(5), &[])
+    }
+
+    /// `allow` only when the input frame is exactly one account record.
+    pub fn account_kind() -> Vec<u8> {
+        let mut body = i32_const(4_096);
+        body.extend([0x28, 0x02, 0x00]);
+        body.extend(i32_const(1));
+        body.push(0x46);
+        body.extend(i32_const(4_100));
+        body.extend([0x2d, 0x00, 0x00]);
+        body.extend(i32_const(1));
+        body.push(0x46);
+        body.push(0x71);
+        body.extend([0x04, 0x7f]);
+        body.extend(store_label(*b"allo", Some(b'w')));
+        body.extend(i32_const(5));
+        body.push(0x05);
+        body.extend(store_label(*b"bloc", Some(b'k')));
+        body.extend(i32_const(5));
+        body.push(0x0b);
+        module(&body, &[], &[])
+    }
+
+    /// `block` when `marker` occurs in the first 96 input bytes, otherwise `allow`.
+    pub fn hides_byte(marker: u8) -> Vec<u8> {
+        let mut body = Vec::new();
+        body.extend(i32_const(0));
+        body.extend([0x21, 0x00]);
+        body.extend(i32_const(0));
+        body.extend([0x21, 0x01]);
+        body.extend([0x02, 0x40, 0x03, 0x40]);
+        body.extend([0x20, 0x00]);
+        body.extend(i32_const(96));
+        body.push(0x4f);
+        body.extend([0x0d, 0x01]);
+        body.extend([0x20, 0x00]);
+        body.extend(i32_const(4_096));
+        body.push(0x6a);
+        body.extend([0x2d, 0x00, 0x00]);
+        body.extend(i32_const(i32::from(marker)));
+        body.push(0x46);
+        body.extend([0x04, 0x40]);
+        body.extend(i32_const(1));
+        body.extend([0x21, 0x01, 0x0c, 0x02, 0x0b]);
+        body.extend([0x20, 0x00]);
+        body.extend(i32_const(1));
+        body.push(0x6a);
+        body.extend([0x21, 0x00, 0x0c, 0x00, 0x0b, 0x0b]);
+        body.extend([0x20, 0x01, 0x45, 0x04, 0x7f]);
+        body.extend(store_label(*b"allo", Some(b'w')));
+        body.extend(i32_const(5));
+        body.push(0x05);
+        body.extend(store_label(*b"bloc", Some(b'k')));
+        body.extend(i32_const(5));
+        body.push(0x0b);
+        let locals = [0x01, 0x02, 0x7f];
+        module_with_locals(&locals, &body)
+    }
+
+    pub fn with_import() -> Vec<u8> {
+        let mut wasm = header();
+        wasm.extend(section(1, &[0x01, 0x60, 0x00, 0x01, 0x7f]));
+        let mut import = vec![0x01, 0x03];
+        import.extend(b"env");
+        import.push(0x04);
+        import.extend(b"evil");
+        import.extend([0x00, 0x00]);
+        wasm.extend(section(2, &import));
+        wasm.extend(section(3, &[0x01, 0x00]));
+        wasm.extend(memory_limits(1, Some(1)));
+        let mut exports = vec![0x02, 6];
+        exports.extend(b"memory");
+        exports.extend([0x02, 0x00, 5]);
+        exports.extend(b"route");
+        exports.extend([0x00, 0x01]);
+        wasm.extend(section(7, &exports));
+        wasm.extend(code_section(&function_body(&[0x00], &i32_const(0))));
+        wasm
+    }
+
+    pub fn two_pages() -> Vec<u8> {
+        module_memory(2, Some(2), &i32_const(0))
+    }
+
+    pub fn unbounded_memory() -> Vec<u8> {
+        module_memory(1, None, &i32_const(0))
+    }
+
+    pub fn with_start() -> Vec<u8> {
+        let mut wasm = header();
+        wasm.extend(section(1, &[0x01, 0x60, 0x00, 0x01, 0x7f]));
+        wasm.extend(section(3, &[0x01, 0x00]));
+        wasm.extend(memory_limits(1, Some(1)));
+        wasm.extend(exports_route_memory());
+        wasm.extend(section(8, &[0x00]));
+        wasm.extend(code_section(&function_body(&[0x00], &i32_const(0))));
+        wasm
+    }
+
+    pub fn with_sentinel(mut module: Vec<u8>) -> Vec<u8> {
+        let mut payload = vec![0x08];
+        payload.extend(b"sentinel");
+        payload.extend(b"MODULE-BYTES-SENTINEL");
+        module.extend(section(0, &payload));
+        module
+    }
+
+    pub fn document(module: &[u8], mutate: impl FnOnce(&mut serde_json::Value)) -> Vec<u8> {
+        use base64::Engine;
+        use base64::engine::general_purpose::STANDARD;
+        use sha2::{Digest, Sha256};
+        let digest: [u8; 32] = Sha256::digest(module).into();
+        let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
         let mut value = serde_json::json!({
-            "format": FORMAT,
+            "format": super::FORMAT,
             "stage": "risk-check",
             "outputs": ["allow", "block"],
-            "permissions": ["read_request"],
-            "fuel": 1_000,
-            "memory_bytes": 4_096,
+            "permissions": ["read_profile"],
+            "fuel": 10_000,
+            "memory_bytes": super::MAX_MEMORY_BYTES,
             "max_input_bytes": 256,
             "max_output_bytes": 128,
             "timeout_seconds": 30,
@@ -249,50 +843,183 @@ mod tests {
         serde_json::to_vec(&value).unwrap()
     }
 
+    fn module(prepare: &[u8], result: &[u8], extra: &[u8]) -> Vec<u8> {
+        let mut body = prepare.to_vec();
+        body.extend(result);
+        module_with_locals(&[0x00], &body)
+            .into_iter()
+            .chain(extra.iter().copied())
+            .collect()
+    }
+
+    fn module_with_locals(locals: &[u8], instructions: &[u8]) -> Vec<u8> {
+        module_memory(1, Some(1), &function_body(locals, instructions))
+    }
+
+    fn module_memory(min: u32, max: Option<u32>, body: &[u8]) -> Vec<u8> {
+        let mut wasm = header();
+        wasm.extend(section(1, &[0x01, 0x60, 0x00, 0x01, 0x7f]));
+        wasm.extend(section(3, &[0x01, 0x00]));
+        wasm.extend(memory_limits(min, max));
+        wasm.extend(exports_route_memory());
+        wasm.extend(code_section(body));
+        wasm
+    }
+
+    fn header() -> Vec<u8> {
+        vec![0x00, b'a', b's', b'm', 0x01, 0x00, 0x00, 0x00]
+    }
+
+    fn exports_route_memory() -> Vec<u8> {
+        let mut payload = vec![0x02, 6];
+        payload.extend(b"memory");
+        payload.extend([0x02, 0x00, 5]);
+        payload.extend(b"route");
+        payload.extend([0x00, 0x00]);
+        section(7, &payload)
+    }
+
+    fn memory_limits(min: u32, max: Option<u32>) -> Vec<u8> {
+        let mut payload = vec![0x01];
+        match max {
+            Some(max) => {
+                payload.push(0x01);
+                payload.extend(leb(min));
+                payload.extend(leb(max));
+            }
+            None => {
+                payload.push(0x00);
+                payload.extend(leb(min));
+            }
+        }
+        section(5, &payload)
+    }
+
+    fn code_section(body: &[u8]) -> Vec<u8> {
+        let mut payload = vec![0x01];
+        payload.extend(leb(body.len() as u32));
+        payload.extend(body);
+        section(10, &payload)
+    }
+
+    fn function_body(locals: &[u8], instructions: &[u8]) -> Vec<u8> {
+        let mut body = locals.to_vec();
+        body.extend(instructions);
+        body.push(0x0b);
+        body
+    }
+
+    fn section(id: u8, payload: &[u8]) -> Vec<u8> {
+        let mut out = vec![id];
+        out.extend(leb(payload.len() as u32));
+        out.extend(payload);
+        out
+    }
+
+    fn leb(mut value: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        loop {
+            let mut byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value != 0 {
+                byte |= 0x80;
+            }
+            out.push(byte);
+            if value == 0 {
+                break;
+            }
+        }
+        out
+    }
+
+    fn sleb(mut value: i32) -> Vec<u8> {
+        let mut out = Vec::new();
+        loop {
+            let mut byte = (value as u8) & 0x7f;
+            value >>= 7;
+            let done = (value == 0 && byte & 0x40 == 0) || (value == -1 && byte & 0x40 != 0);
+            if !done {
+                byte |= 0x80;
+            }
+            out.push(byte);
+            if done {
+                break;
+            }
+        }
+        out
+    }
+
+    fn i32_const(value: i32) -> Vec<u8> {
+        let mut out = vec![0x41];
+        out.extend(sleb(value));
+        out
+    }
+
+    fn store_label(word: [u8; 4], fifth: Option<u8>) -> Vec<u8> {
+        let mut out = i32_const(0);
+        out.extend(i32_const(i32::from_le_bytes(word)));
+        out.extend([0x36, 0x02, 0x00]);
+        if let Some(byte) = fifth {
+            out.extend(store8(4, byte));
+        }
+        out
+    }
+
+    fn store8(offset: i32, byte: u8) -> Vec<u8> {
+        let mut out = i32_const(offset);
+        out.extend(i32_const(i32::from(byte)));
+        out.extend([0x3a, 0x00, 0x00]);
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    fn bounds() -> StepBounds {
+        StepBounds {
+            timeout_seconds: 30,
+            max_output_bytes: 128,
+        }
+    }
+
+    fn profile() -> BTreeSet<StagePermission> {
+        BTreeSet::from([StagePermission::ReadProfile])
+    }
+
+    #[cfg(feature = "platform")]
+    fn run(
+        module: &[u8],
+        mutate: impl FnOnce(&mut serde_json::Value),
+        facts: GuestFacts,
+        requested: &BTreeSet<StagePermission>,
+        step: StepBounds,
+    ) -> Result<Label, Denial> {
+        let checked = check(&fixture::document(module, mutate)).unwrap();
+        execute(&checked, &facts, requested, step)
+    }
+
     #[test]
-    fn limits_match_the_held_contract_and_no_runtime_is_linked() {
-        assert!(!runtime_linked());
+    fn limits_match_the_held_contract() {
+        assert_eq!(RUNTIME_LINKED, cfg!(feature = "platform"));
         assert_eq!(MAX_INPUT_BYTES, crate::workflow::extension::MAX_INPUT_BYTES);
         assert_eq!(MAX_TIMEOUT_SECONDS, 30);
         assert_eq!(MAX_OUTPUT_BYTES, 4_096);
         assert_eq!(MAX_FUEL, 10_000);
         assert_eq!(MAX_MEMORY_BYTES, 65_536);
+        assert_eq!(FUEL_PER_SECOND, 1_000);
         let cargo = include_str!("../../Cargo.toml");
         assert!(cargo.contains("unsafe_code = \"forbid\""));
+        assert!(cargo.contains("dep:wasmi"));
+        assert!(cargo.contains("essentials = []"));
         for name in ["wasmtime", "wasmer", "wasm3", "rhai", "mlua", "deno_core"] {
             assert!(!cargo.contains(name), "{name}");
         }
         let executor = include_str!("executor.rs");
-        assert!(!executor.contains("extension_gate"));
+        assert!(executor.contains("extension_gate"));
         assert!(!executor.contains("Host::invoke"));
-    }
-
-    #[test]
-    fn a_bounded_manifest_is_hashed_and_then_refused() {
-        let module = b"route-v1";
-        let checked = check(&document(module, |_| {})).unwrap();
-        assert_eq!(checked.stage().as_str(), "risk-check");
-        assert_eq!(checked.outputs().len(), 2);
-        assert!(
-            checked
-                .permissions()
-                .contains(&StagePermission::ReadRequest)
-        );
-        assert!(!checked.permissions().contains(&StagePermission::Network));
-        assert_eq!(checked.fuel(), 1_000);
-        assert_eq!(checked.memory_bytes(), 4_096);
-        assert_eq!(checked.module_len(), module.len() as u32);
-        assert!(!format!("{checked:?}").contains("route-v1"));
-        assert_eq!(
-            execute(&checked).unwrap_err(),
-            Denial::ExternalRuntimeRequired
-        );
-        let other = check(&document(b"other-module", |_| {})).unwrap();
-        assert_ne!(checked.module_sha256(), other.module_sha256());
-        assert_eq!(
-            execute(&other).unwrap_err().as_str(),
-            "external_runtime_required"
-        );
     }
 
     #[test]
@@ -304,105 +1031,112 @@ mod tests {
         );
         assert_eq!(check(b"{}").unwrap_err(), Denial::Malformed);
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["format"] = serde_json::json!("other");
             }))
             .unwrap_err(),
             Denial::Malformed
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["fuel"] = serde_json::json!(0);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["fuel"] = serde_json::json!(MAX_FUEL + 1);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["memory_bytes"] = serde_json::json!(0);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
+                value["memory_bytes"] = serde_json::json!(4_096);
+            }))
+            .unwrap_err(),
+            Denial::Limit
+        );
+        assert_eq!(
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["memory_bytes"] = serde_json::json!(MAX_MEMORY_BYTES + 1);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["timeout_seconds"] = serde_json::json!(31);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["max_output_bytes"] = serde_json::json!(0);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["max_input_bytes"] = serde_json::json!(MAX_INPUT_BYTES + 1);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["outputs"] = serde_json::json!(["verified"]);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["outputs"] = serde_json::json!(["allow", "allow"]);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["permissions"] = serde_json::json!(["network"]);
             }))
             .unwrap_err(),
             Denial::Permission
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
-                value["permissions"] = serde_json::json!(["read_request", "read_request"]);
+            check(&fixture::document(&fixture::allow(), |value| {
+                value["permissions"] = serde_json::json!(["read_profile", "read_profile"]);
             }))
             .unwrap_err(),
             Denial::Permission
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["network"] = serde_json::json!("allow");
             }))
             .unwrap_err(),
             Denial::Permission
         );
         assert_eq!(
-            check(&document(&vec![0u8; 64], |value| {
+            check(&fixture::document(&vec![0u8; 64], |value| {
                 value["memory_bytes"] = serde_json::json!(32);
             }))
             .unwrap_err(),
             Denial::Limit
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 let hash = value["module_sha256"]
                     .as_str()
                     .unwrap()
@@ -413,7 +1147,7 @@ mod tests {
             Denial::Malformed
         );
         assert_eq!(
-            check(&document(b"route-v1", |value| {
+            check(&fixture::document(&fixture::allow(), |value| {
                 value["module_sha256"] = serde_json::json!("ab".repeat(32));
             }))
             .unwrap_err(),
@@ -423,7 +1157,245 @@ mod tests {
 
     #[cfg(feature = "platform")]
     #[test]
-    fn configured_custom_stage_stays_rejected() {
+    fn a_bounded_guest_returns_one_declared_label_and_hides_module_bytes() {
+        let module = fixture::with_sentinel(fixture::allow_with_trailer());
+        let checked = check(&fixture::document(&module, |_| {})).unwrap();
+        assert_eq!(checked.stage().as_str(), "risk-check");
+        assert!(!checked.permissions().contains(&StagePermission::Network));
+        assert!(!format!("{checked:?}").contains("MODULE-BYTES-SENTINEL"));
+        assert!(!format!("{checked:?}").contains("allow_with"));
+        let label = execute(&checked, &GuestFacts::default(), &BTreeSet::new(), bounds()).unwrap();
+        assert_eq!(label.as_str(), "allow");
+        assert!(!format!("{label:?}").contains("SECRET"));
+        let other = check(&fixture::document(&fixture::block(), |_| {})).unwrap();
+        assert_ne!(checked.module_sha256(), other.module_sha256());
+        assert_eq!(
+            execute(&other, &GuestFacts::default(), &BTreeSet::new(), bounds())
+                .unwrap()
+                .as_str(),
+            "block"
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn attacks_and_budgets_deny_without_a_label() {
+        assert_eq!(
+            check(&fixture::document(&fixture::with_import(), |_| {})).unwrap_err(),
+            Denial::Permission
+        );
+        assert_eq!(
+            check(&fixture::document(&fixture::two_pages(), |_| {})).unwrap_err(),
+            Denial::Limit
+        );
+        assert_eq!(
+            check(&fixture::document(&fixture::unbounded_memory(), |_| {})).unwrap_err(),
+            Denial::Limit
+        );
+        assert_eq!(
+            check(&fixture::document(&fixture::with_start(), |_| {})).unwrap_err(),
+            Denial::Limit
+        );
+        assert_eq!(
+            run(
+                &fixture::memory_grow(),
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::Failed
+        );
+        assert_eq!(
+            run(
+                &fixture::spin(),
+                |value| value["fuel"] = serde_json::json!(1_000),
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::Fuel
+        );
+        assert_eq!(
+            run(
+                &fixture::spin(),
+                |value| value["fuel"] = serde_json::json!(5_000),
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                StepBounds {
+                    timeout_seconds: 1,
+                    max_output_bytes: 128,
+                }
+            )
+            .unwrap_err(),
+            Denial::Timeout
+        );
+        assert_eq!(
+            run(
+                &fixture::spin(),
+                |value| value["fuel"] = serde_json::json!(1_000),
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                StepBounds {
+                    timeout_seconds: 1,
+                    max_output_bytes: 128,
+                }
+            )
+            .unwrap_err(),
+            Denial::Fuel
+        );
+        assert_eq!(
+            run(
+                &fixture::oversized(),
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::Output
+        );
+        assert_eq!(
+            run(
+                &fixture::allow(),
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                StepBounds {
+                    timeout_seconds: 30,
+                    max_output_bytes: 4,
+                }
+            )
+            .unwrap_err(),
+            Denial::Output
+        );
+        assert_eq!(
+            run(
+                &fixture::undeclared(),
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::UndeclaredOutput
+        );
+        let loose = StepBounds {
+            timeout_seconds: 31,
+            max_output_bytes: 128,
+        };
+        let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
+        assert_eq!(
+            execute(&checked, &GuestFacts::default(), &BTreeSet::new(), loose).unwrap_err(),
+            Denial::Limit
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn the_guest_sees_only_the_granted_identifiers() {
+        let facts = GuestFacts {
+            account: Some("zzz".into()),
+            request: Some("request-1".into()),
+            client: Some("session-1".into()),
+            groups: vec!["staff".into()],
+        };
+        let hidden = hides(&fixture::hides_byte(b'z'), &facts, &profile());
+        assert_eq!(hidden.as_str(), "block");
+        let request_only = BTreeSet::from([StagePermission::ReadRequest]);
+        let visible = hides(&fixture::hides_byte(b'z'), &facts, &request_only);
+        assert_eq!(
+            visible.as_str(),
+            "allow",
+            "withheld account reached the guest"
+        );
+        let kind = run(
+            &fixture::account_kind(),
+            |_| {},
+            GuestFacts {
+                account: Some("user-1".into()),
+                ..GuestFacts::default()
+            },
+            &profile(),
+            bounds(),
+        )
+        .unwrap();
+        assert_eq!(kind.as_str(), "allow");
+        let withheld = run(
+            &fixture::account_kind(),
+            |_| {},
+            GuestFacts {
+                account: Some("user-1".into()),
+                ..GuestFacts::default()
+            },
+            &BTreeSet::new(),
+            bounds(),
+        )
+        .unwrap();
+        assert_eq!(withheld.as_str(), "block");
+        assert_eq!(
+            run(
+                &fixture::account_kind(),
+                |_| {},
+                GuestFacts::default(),
+                &profile(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::InputLimit
+        );
+        assert_eq!(
+            run(
+                &fixture::allow(),
+                |_| {},
+                GuestFacts {
+                    account: Some("PasswordValue".into()),
+                    ..GuestFacts::default()
+                },
+                &profile(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::InputLimit
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    fn hides(module: &[u8], facts: &GuestFacts, requested: &BTreeSet<StagePermission>) -> Label {
+        run(
+            module,
+            |value| {
+                value["permissions"] =
+                    serde_json::json!(["read_profile", "read_request", "read_groups"]);
+                value["max_input_bytes"] = serde_json::json!(512);
+            },
+            facts.clone(),
+            requested,
+            bounds(),
+        )
+        .unwrap_or_else(|error| panic!("guest failed: {}", error.as_str()))
+    }
+
+    #[cfg(not(feature = "platform"))]
+    #[test]
+    fn essentials_checks_the_manifest_and_does_not_execute() {
+        assert!(!runtime_linked());
+        let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
+        assert_eq!(checked.module_len(), fixture::allow().len() as u32);
+        assert_eq!(
+            execute(&checked, &GuestFacts::default(), &profile(), bounds()).unwrap_err(),
+            Denial::ExternalRuntimeRequired
+        );
+        let cargo = include_str!("../../Cargo.toml");
+        assert!(cargo.contains("essentials = []"));
+        assert!(!cargo.contains("wasmtime"));
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn configured_custom_stage_without_a_manifest_stays_rejected() {
         let definition = crate::workflow::parse(
             br#"{
             "format": "riauth.workflow/v1",
@@ -468,10 +1440,5 @@ mod tests {
         );
         let error = configured.validate().unwrap_err().to_string();
         assert!(error.contains("Unknown stage"), "{error}");
-        let checked = check(&document(b"route-v1", |_| {})).unwrap();
-        assert_eq!(
-            execute(&checked).unwrap_err(),
-            Denial::ExternalRuntimeRequired
-        );
     }
 }

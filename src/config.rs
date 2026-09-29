@@ -57,6 +57,9 @@ pub struct Config {
     /// Platform workflow definitions; only active entries may start new runs.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub workflows: BTreeMap<String, crate::workflow::ConfiguredWorkflow>,
+    /// Checked extension manifests, keyed by stage id. Platform only.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub workflow_extensions: BTreeMap<String, String>,
     /// Instance-wide, downward-only bounds for directory planning and apply crawls.
     #[serde(default, skip_serializing_if = "ReconciliationQuotas::is_default")]
     pub reconciliation_quotas: ReconciliationQuotas,
@@ -389,6 +392,7 @@ impl Default for Config {
             state_reconciliation_mode: Default::default(),
             reconciliation_controllers: BTreeMap::new(),
             workflows: BTreeMap::new(),
+            workflow_extensions: BTreeMap::new(),
             reconciliation_quotas: ReconciliationQuotas::default(),
             signers: Default::default(),
             postgres: None,
@@ -524,6 +528,13 @@ impl Config {
         if self.workflows.len() > 32 {
             bail!("Configure at most 32 workflows");
         }
+        if self.workflow_extensions.len() > 16 {
+            bail!("Configure at most 16 workflow extensions");
+        }
+        let extensions = crate::workflow::extension_gate::stage_registration(&self.workflow_extensions)
+            .map_err(|denial| {
+                anyhow::anyhow!("Workflow extension was rejected ({})", denial.as_str())
+            })?;
         for (name, configured) in &self.workflows {
             let id = crate::workflow::Id::new(name.clone())
                 .map_err(|_| anyhow::anyhow!("Invalid workflow configuration key"))?;
@@ -533,11 +544,20 @@ impl Config {
             if configured.definition.canonical_json().len() > crate::workflow::MAX_DOCUMENT_BYTES {
                 bail!("Workflow definition exceeds 64 KiB");
             }
-            let checked = crate::workflow::validate(
-                configured.definition.clone(),
-                &crate::workflow::configured_environment(&configured.definition),
-            )
-            .map_err(|error| anyhow::anyhow!("Invalid configured workflow {name}: {error}"))?;
+            let mut environment =
+                crate::workflow::configured_environment(&configured.definition);
+            for (stage, guest) in &extensions {
+                environment
+                    .stages
+                    .insert(stage.clone(), guest.permissions().clone());
+            }
+            let checked = crate::workflow::validate(configured.definition.clone(), &environment)
+                .map_err(|error| anyhow::anyhow!("Invalid configured workflow {name}: {error}"))?;
+            let extension_ok = crate::workflow::supported_configured_extension_password(
+                checked.definition(),
+            ) && extensions
+                .values()
+                .any(|guest| crate::workflow::extension_gate::covers(guest, checked.definition()));
             if (crate::workflow::configured_password_path(checked.definition()).is_none()
                 && !crate::workflow::supported_configured_passkey(checked.definition())
                 && !crate::workflow::supported_configured_passkey_enrollment(checked.definition())
@@ -561,7 +581,8 @@ impl Config {
                 )
                 && !crate::workflow::supported_configured_passkey_removal(checked.definition())
                 && !crate::workflow::supported_configured_password_reset(checked.definition())
-                && !crate::workflow::supported_configured_consent(checked.definition()))
+                && !crate::workflow::supported_configured_consent(checked.definition())
+                && !extension_ok)
                 || matches!(
                     name.as_str(),
                     "platform-password-totp-reauthentication"
@@ -1038,5 +1059,41 @@ mod tests {
         );
         let error = configured.validate().unwrap_err().to_string();
         assert!(error.contains("Unknown stage"), "{error}");
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn extension_manifest_rejects_imports_extra_memory_and_a_bad_hash() {
+        use crate::workflow::extension_gate::fixture;
+        let reject = |module: Vec<u8>, mutate: fn(&mut serde_json::Value), needle: &str| {
+            let mut configured = Config::default();
+            configured.workflow_extensions.insert(
+                "risk-check".into(),
+                String::from_utf8(fixture::document(&module, mutate)).unwrap(),
+            );
+            let error = configured.validate().unwrap_err().to_string();
+            assert!(error.contains(needle), "{error}");
+        };
+        reject(fixture::with_import(), |_| {}, "permission");
+        reject(fixture::two_pages(), |_| {}, "limit");
+        reject(fixture::unbounded_memory(), |_| {}, "limit");
+        reject(fixture::with_start(), |_| {}, "limit");
+        reject(
+            fixture::allow(),
+            |value| value["module_sha256"] = serde_json::json!("ab".repeat(32)),
+            "integrity",
+        );
+    }
+
+    #[cfg(not(feature = "platform"))]
+    #[test]
+    fn workflow_extensions_require_the_platform_build() {
+        let mut configured = Config::default();
+        configured
+            .workflow_extensions
+            .insert("risk-check".into(), "{}".into());
+        let error = configured.validate().unwrap_err().to_string();
+        assert!(error.contains("Platform"), "{error}");
+        assert!(!crate::workflow::extension_gate::runtime_linked());
     }
 }

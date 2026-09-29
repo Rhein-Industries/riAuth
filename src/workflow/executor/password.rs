@@ -97,12 +97,14 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     let first_totp = supported_configured_password_totp_enrollment(checked.definition());
     let first_passkey = supported_configured_password_passkey_enrollment(checked.definition());
     let replace_totp = supported_configured_password_totp_replacement(checked.definition());
+    let extension = supported_configured_extension_password(checked.definition());
     let mfa = match checked.definition().id.as_str() {
         PASSWORD_WORKFLOW => false,
         TOTP_WORKFLOW => true,
         _ if first_totp => false,
         _ if first_passkey => false,
         _ if replace_totp => true,
+        _ if extension => false,
         _ => configured_password_path(checked.definition())
             .ok_or_else(Error::forbidden)?
             .requires_mfa(),
@@ -138,6 +140,10 @@ impl Core {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
             owned(self, tx, token, &run.record)?;
+            if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
+                seal_stale_extension(self, tx, &checked, &mut run, now())?;
+                return Ok(Err(Error::conflict("Workflow extension changed")));
+            }
             settle_time(self, tx, &checked, &mut run, now())?;
             let RunState::Active { step, attempt } = &run.record.state else {
                 return Ok(Err(Error::conflict("Workflow run is already final")));
@@ -191,6 +197,10 @@ impl Core {
             let checked = run.validated()?;
             owned(self, tx, token, &run.record)?;
             let at = now();
+            if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
+                seal_stale_extension(self, tx, &checked, &mut run, at)?;
+                return Ok(Err(Error::conflict("Workflow extension changed")));
+            }
             settle_time(self, tx, &checked, &mut run, at)?;
             if run.record != reserved.run
                 || run.in_flight.as_ref() != Some(&reserved.attempt)

@@ -953,12 +953,9 @@ not require a revision increase.
 
 Platform compiles the capability `workflow.controlled_extensions`. The running
 instance reports it as not configured and not usable. This build rejects an
-attempt to disable that name, because server startup does not call an extension
-runtime. Essentials does not compile the capability. A definition that names a
-custom stage still fails configuration: the authoring environment has no stage
-registry, and a custom stage is not an executable adapter.
-[`extension_gate::execute`](../src/workflow/extension_gate.rs) refuses every
-checked module with `external_runtime_required`.
+attempt to disable that name. Essentials does not compile the capability.
+A custom stage with no checked manifest still fails configuration as an unknown
+stage. The one executable shape is the Wasmi guest documented below.
 
 [`workflow::extension::Host`](../src/workflow/extension.rs) is a held in-process
 contract for a native registrant. It is not an isolation boundary and it is not
@@ -993,53 +990,111 @@ This host does not load scripts, WebAssembly, or dynamic libraries. A native
 registrant shares the server process: it can call any API it can name, open a
 socket, and keep running after the host's deadline discards the label. Safe
 Rust in this crate cannot preempt that thread or interpose on its syscalls.
-`unsafe_code = forbid`, and `Cargo.toml` does not link a Wasm or scripting
-engine.
+`unsafe_code = forbid`. Platform links Wasmi for the gate below, not for this
+host.
 
-## Isolated runtime required
+## Isolated guest
 
-A configured custom stage stays rejected until an engine outside this crate can
-instantiate the module under the gate's limits. The integration point is
-[`workflow::extension_gate`](../src/workflow/extension_gate.rs). Do not point
-the executor at [`Host::invoke`](../src/workflow/extension.rs).
+Platform links Wasmi 0.40 through `dep:wasmi` on the `platform` feature.
+Essentials does not link it. [`extension_gate::execute`](../src/workflow/extension_gate.rs)
+returns `external_runtime_required` on Essentials, and `RUNTIME_LINKED` is true
+only on Platform. The executor calls this gate for one configured shape. It
+does not call [`Host::invoke`](../src/workflow/extension.rs).
+
+`config.toml` may contain `workflow_extensions`, at most 16 JSON manifests
+keyed by stage id. A non-empty map on Essentials is rejected because it
+requires the Platform build. On Platform, `check` must succeed and the map key
+must equal the manifest's stage. The only graph that then runs is custom, then
+local password:
+
+* origin `configured`, category `authentication`, entry `extension`
+* the custom step id is `extension`, outputs are exactly `allow` and `block`,
+  and it does not request `network`
+* `allow` goes to `password`, and both `block` and `failed` go to `denied`
+* the password step id is `password`; `verified` goes to `success` and
+  `failed` goes to `denied`
+* `success` requires exactly `[["password"]]`; `denied` requires nothing
+* the custom step allows one attempt; the password step allows 1–3
+* run duration is 1–600 seconds and `max_executions` is 1–8, at least the
+  worst path
+
+Any other custom graph still has no executable adapter. A custom `allow` that
+goes straight to success remains an implicit success and is rejected. The guest
+label is not a proof. `Action::proof` stays empty for it, and success still
+stores a password receipt.
 
 `check` accepts one JSON manifest, `riauth.workflow-extension/v1`, of at most
 128 KiB, with no unknown fields:
 
 | Field | Bound |
 | --- | --- |
-| `stage` | Workflow id grammar |
+| `stage` | Workflow id grammar, equal to the configuration key |
 | `outputs` | 1–8 distinct labels, excluding `verified`, `failed`, `completed`, `granted`, `denied` |
 | `permissions` | Distinct `read_profile`, `read_groups`, `read_request`. `network` is rejected |
 | `network` | The string `deny` |
-| `fuel` | 1–10,000 instructions, counted by the engine |
-| `memory_bytes` | 1–65,536, fixed linear memory, no growth |
+| `fuel` | 1–10,000 Wasmi fuel units |
+| `memory_bytes` | Exactly 65,536, one WebAssembly page |
 | `max_input_bytes` | 1–4,096 projected identifier bytes |
-| `max_output_bytes` | 1–4,096, measured and then dropped |
-| `timeout_seconds` | 1–30, enforced by the engine's clock |
-| `module_base64` | Standard base64, 1 byte through `memory_bytes`, and at most 65,536 |
+| `max_output_bytes` | 1–4,096 |
+| `timeout_seconds` | 1–30, as an instruction budget, not a wall-clock preemption |
+| `module_base64` | Standard base64, 1 byte through 65,536 |
 | `module_sha256` | 64 lowercase hex characters of the decoded module |
 
-`check` hashes the decoded bytes, compares them to `module_sha256`, and drops
-the bytes. `Checked` keeps the length and the hash. `execute` returns
-`external_runtime_required` and has no success value while `RUNTIME_LINKED` is
-false. A future engine has to be linked before that constant can change, and
-`execute` must still fail closed until that engine is the function body.
+The hash is compared before the module is admitted. A mismatch is `integrity`.
+Uppercase hex is `malformed`. Platform then parses the bytes with Wasmi and
+rejects any other shape. Essentials stops after the hash and the numeric
+bounds, so it does not parse the module. `Checked` keeps the admitted bytes so
+execution uses the hashed image, and its `Debug` output does not print them.
+`execute` admits that image again before it runs.
 
-The engine's instance has no host imports: no WASI, filesystem, socket, clock,
-or randomness. Fuel exhaustion, a trap, a timeout, or an oversized output is a
-denial, not a label. The only result that may be returned to the workflow is
-one declared output label. `Action::proof` stays empty for it. The input is the
-same projected identifier view the held host already defines, and only for
-permissions the step requested and the manifest granted.
+The guest exports `memory` and `route () -> i32` and has no imports. There is
+no WASI, filesystem, socket, clock, randomness, or host callback. The engine
+disables floats, multi-memory, bulk memory, reference types, tail calls, and
+saturating float-to-int, ignores custom sections, and compiles eagerly. The
+structural check rejects a non-empty import section, a start section, any
+table, global, or element, and any memory other than one page with minimum and
+maximum both 1. The store allows one instance and one memory, no tables, caps
+that memory at 65,536 bytes, and traps if it grows. `memory.grow` therefore
+ends the step as `failed` instead of returning a label.
 
-When that engine exists, configuration may accept a custom stage only after
-`check` succeeds, the stage id matches, the step's permissions are a subset,
-and the step's output and timeout caps are within the manifest. The executor
-then calls the engine for that step alone. It still rechecks account, session,
-request, and receipt authority around the run. The manifest hash has to be
-covered by run binding before a changed module can ride an old run. This build
-does none of those steps.
+Wasmi 0.40 has no epoch interrupt, so the timeout is not wall-clock preemption.
+Fuel's base cost is 1. Before the instance starts, the host installs
+`min(manifest fuel, timeout_seconds × 1,000)`. When the timeout budget is
+strictly smaller, exhaustion is `timeout`. When the two budgets are equal, or
+fuel is smaller, exhaustion is `fuel`.
+
+`route` writes its label at offset 0 and returns the length. A negative length,
+or a length above the tighter of the step and manifest output caps, is
+`output`. Any other byte string, including a prefix of a declared label, is
+`undeclared_output`. The host zeroizes its copy. Bytes after the returned
+length are not read.
+
+The host writes input only at offset 4,096, inside a 4,096-byte window: a
+little-endian record count, then `kind`, `length`, and bytes. Kinds are account
+(1), request (2), client (3), and group (4). The executor copies a field only
+when the step requested that permission and the manifest granted it.
+`read_profile` is the account id. `read_groups` is at most 32 group names.
+`read_request` is the workflow request id, and the live session id in the
+client slot, because this start is a bearer session and has no OAuth client.
+The token, password, email, display name, and password hash are not copied.
+Each identifier is 1–64 characters of lowercase letters, digits, `.`, `_`, and
+`-`, with no empty, leading, trailing, or repeated dots. The projected bytes
+must fit `max_input_bytes` and the window. A missing required fact is
+`input_limit`, and the guest does not run. A withheld permission is absent, not
+an empty placeholder.
+
+A gate denial becomes the built-in `failed` signal and routes to `denied`. It
+does not become an attacker-chosen label. The run binding stores
+`extension_sha256`, the lowercase hex of the module that started the run, with
+the definition id, revision, and fingerprint. Resume, cancel, and password
+verification compare the live manifest with that hash. A different module seals
+the open run with `failed` and no evidence, under the stored hash, and does not
+execute the new bytes for the old run. The next start uses the new module.
+Rewriting both a stored definition and its fingerprint remains the existing
+store trust model; this hash stops a configuration-side module swap.
+
+Other custom graphs, other verifiers, and the Q02 engine adapter are still out
+of scope. The capability stays not configured and not usable.
 
 ## Left to later work
 
@@ -1067,15 +1122,16 @@ These are not implemented or established by this slice:
   and the other built-in verifiers. The configured local verifier paths store
   attempt timing, enforce retry and run bounds, cancellation and expiry, and
   recheck account, session, request and receipt authority in the final
-  transaction. The password paths reject upstream-only accounts. Custom-stage
-  execution stays closed: the held host is unwired, and the manifest gate
-  refuses to run a module until an isolated engine is linked.
+  transaction. The password paths reject upstream-only accounts. One configured
+  custom stage can run, and only as the Wasmi guest above: `extension` then
+  local password, with the guest label choosing `password` or `denied`. The
+  held native host stays unwired. Other custom graphs stay closed.
 * Binding the remaining security dependencies. `RunBinding` covers the
-  definition's ID, revision and fingerprint, and new source-verifier runs also
-  pin the live source registration. It does not cover custom-stage registrations
-  and permissions or any approval record that RI-WF-002 requires. The source
-  receipt separately pins its explicit account link; broader
-  dependency/approval binding remains.
+  definition's ID, revision and fingerprint. New source-verifier runs also pin
+  the live source registration, and a guest run pins `extension_sha256` of the
+  module that started it. It does not cover the rest of the `Environment` or
+  any approval record that RI-WF-002 requires. The source receipt separately
+  pins its explicit account link; broader dependency/approval binding remains.
 * End-to-end invariant and race tests for the remaining verifier integrations
   across both durable backends. The shared
   [`invitation_passkey_bound_competing_completion` contract](../tests/contracts/shared.rs)

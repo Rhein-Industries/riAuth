@@ -5,8 +5,8 @@
 //! consumes only [`Validated`] definitions and exposes password, passkey and upstream source
 //! reauthentication for live bearer sessions, plus configured local verifier and
 //! request-bound consent paths. The held W07 host in [`extension`] is an
-//! in-process contract, and [`extension_gate`] refuses module execution until an
-//! isolated runtime exists outside this crate. See `docs/workflows.md`.
+//! in-process contract and is not called. [`extension_gate`] runs one configured
+//! custom stage in Wasmi on Platform. See `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
@@ -170,6 +170,99 @@ pub(crate) fn configured_password_path(definition: &Definition) -> Option<Config
         }
         _ => None,
     }
+}
+
+/// One custom stage, then the local password verifier. The guest label only
+/// chooses `password` or `denied`. Success still requires a password proof.
+pub(crate) fn supported_configured_extension_password(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::Authentication
+        || definition.steps.len() != 2
+        || definition.terminals.len() != 2
+        || definition.entry.as_str() != "extension"
+        || definition
+            .steps
+            .first()
+            .is_none_or(|step| step.id != definition.entry)
+    {
+        return false;
+    }
+    let Some(success) = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Authenticated)
+    else {
+        return false;
+    };
+    let Some(denied) = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied)
+    else {
+        return false;
+    };
+    if success.id.as_str() != "success"
+        || denied.id.as_str() != "denied"
+        || success.max_proof_age_seconds.is_some()
+        || denied.max_proof_age_seconds.is_some()
+        || !denied.requires.is_empty()
+        || success.requires != vec![vec![Proof::Password]]
+    {
+        return false;
+    }
+    let [extension, password] = definition.steps.as_slice() else {
+        return false;
+    };
+    let Action::Custom {
+        outputs,
+        permissions,
+        ..
+    } = &extension.action
+    else {
+        return false;
+    };
+    let mut labels: Vec<_> = outputs.iter().map(Label::as_str).collect();
+    labels.sort_unstable();
+    let extension_routes = |on: &str, to: &Id| {
+        extension.transitions.iter().any(|transition| {
+            transition.when.is_none() && transition.on.as_str() == on && &transition.to == to
+        })
+    };
+    let password_routes = |on: &str, to: &Id| {
+        password.transitions.iter().any(|transition| {
+            transition.when.is_none() && transition.on.as_str() == on && &transition.to == to
+        })
+    };
+    let worst = u16::from(extension.max_attempts) + u16::from(password.max_attempts);
+    extension.id.as_str() == "extension"
+        && extension.max_attempts == 1
+        && (1..=MAX_CUSTOM_TIMEOUT_SECONDS).contains(&extension.timeout_seconds)
+        && !extension.cancellable
+        && extension.transitions.len() == 3
+        && extension
+            .transitions
+            .iter()
+            .all(|transition| transition.when.is_none())
+        && labels == ["allow", "block"]
+        && !permissions.contains(&StagePermission::Network)
+        && extension_routes("allow", &password.id)
+        && extension_routes("block", &denied.id)
+        && extension_routes("failed", &denied.id)
+        && password.id.as_str() == "password"
+        && matches!(password.action, Action::VerifyPassword {})
+        && (1..=3).contains(&password.max_attempts)
+        && (1..=300).contains(&password.timeout_seconds)
+        && password.cancellable
+        && password.transitions.len() == 2
+        && password
+            .transitions
+            .iter()
+            .all(|transition| transition.when.is_none())
+        && password_routes("verified", &success.id)
+        && password_routes("failed", &denied.id)
+        && (1..=600).contains(&definition.limits.max_duration_seconds)
+        && (1..=8).contains(&definition.limits.max_executions)
+        && definition.limits.max_executions >= worst
 }
 
 /// A configured passkey run uses the existing user-verified WebAuthn adapter.
@@ -1011,6 +1104,9 @@ pub struct RunBinding {
     /// New source runs pin the live registration. Omitted by pre-upgrade runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_registration: Option<SourceRegistrationBinding>,
+    /// SHA-256 of the module that started a controlled-extension run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension_sha256: Option<String>,
 }
 
 macro_rules! name_type {

@@ -11,8 +11,8 @@
 //! A call that misses the deadline is discarded. The worker is not preempted;
 //! it keeps one in-flight slot until it returns. Configuration and the
 //! executor do not call this host. Native registrants share the server process.
-//! [`super::extension_gate`] drops a reviewed module after hashing it and
-//! refuses to execute it.
+//! The configured path uses [`super::extension_gate`] and does not call
+//! [`Host::invoke`].
 
 use super::*;
 use std::fmt;

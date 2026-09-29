@@ -671,13 +671,19 @@ arbitrary workflow safety. No baseline regression establishes this whole contrac
 **Controlled-extension slice.** [The host](../../src/workflow/extension.rs)
 is a held in-process contract. A native registrant shares the server address
 space, and this crate cannot preempt it or interpose on its syscalls. The
-[runtime gate](../../src/workflow/extension_gate.rs) accepts a manifest only
-inside fixed fuel, memory, input, output, timeout, and module-size limits,
-requires `network` to be `deny`, hashes the module, drops the bytes, and
-returns `external_runtime_required`. Essentials does not compile
-`workflow.controlled_extensions`, and the instance report leaves it not
-configured. Configuration still rejects a custom stage. The executor calls
-neither the host nor the gate. This is not the Q02 engine adapter.
+executor does not call it. The
+[guest gate](../../src/workflow/extension_gate.rs) links Wasmi 0.40 on Platform
+only. One configured graph runs: a custom `extension` step, then local
+password. The guest has no imports, one 64 KiB page, no network and no
+filesystem. Fuel is 1–10,000, and the 1–30 second timeout is that many
+thousands of fuel units, not wall-clock preemption. Output is one declared
+label or the built-in `failed` signal, and it is not a proof. The run binding
+stores the module hash beside the source-registration pin used by
+source-verifier runs. A changed manifest seals the open run before the new
+bytes can run. Essentials does not link Wasmi, rejects `workflow_extensions`,
+and `execute` returns `external_runtime_required`. The capability
+`workflow.controlled_extensions` stays not configured. This is not the Q02
+engine adapter.
 
 **Missing coverage / later contract.** Q02-C07 needs the future engine adapter:
 missing/disabled stage, changed definition/dependency, forged next-stage state,

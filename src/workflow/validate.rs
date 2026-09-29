@@ -150,6 +150,7 @@ pub struct Validated {
     definition: Definition,
     fingerprint: String,
     source_registration: Option<SourceRegistrationBinding>,
+    extension_sha256: Option<String>,
 }
 
 pub enum Target<'a> {
@@ -183,6 +184,7 @@ impl Validated {
             revision: self.definition.revision,
             fingerprint: self.fingerprint.clone(),
             source_registration: self.source_registration.clone(),
+            extension_sha256: self.extension_sha256.clone(),
         }
     }
     /// Bind the one source action to the live registration selected by the
@@ -216,6 +218,12 @@ impl Validated {
         }
         self.source_registration = Some(registration);
         Ok(self)
+    }
+    /// Pin the module hash that started this run. [`binding`] then covers it.
+    #[cfg(feature = "platform")]
+    pub(crate) fn pin_extension(mut self, hash: String) -> Self {
+        self.extension_sha256 = Some(hash);
+        self
     }
     pub fn step(&self, id: &Id) -> Option<&Step> {
         self.definition.steps.iter().find(|s| &s.id == id)
@@ -533,6 +541,7 @@ pub fn validate(definition: Definition, environment: &Environment) -> Result<Val
         definition,
         fingerprint,
         source_registration: None,
+        extension_sha256: None,
     })
 }
 

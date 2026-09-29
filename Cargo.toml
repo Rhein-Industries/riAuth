@@ -15,7 +15,7 @@ keywords = ["identity", "oidc", "saml", "sso"]
 # Preserve the existing source-build behavior. Release artifacts select an edition explicitly.
 default = ["platform"]
 essentials = []
-platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util", "dep:risaml", "dep:roxmltree", "dep:flate2", "dep:psl", "dep:sha1", "dep:md-5", "dep:x509-parser", "dep:tokio-util", "dep:tokio-rustls", "dep:hmac", "dep:time", "futures-util/sink"]
+platform = ["essentials", "dep:ldap3_proto", "dep:hyper", "dep:hyper-util", "dep:risaml", "dep:roxmltree", "dep:flate2", "dep:psl", "dep:sha1", "dep:md-5", "dep:x509-parser", "dep:tokio-util", "dep:tokio-rustls", "dep:hmac", "dep:time", "dep:wasmi", "futures-util/sink"]
 test-support = []
 fuzzing = []
 
@@ -73,6 +73,7 @@ hyper = { version = "1", features = ["http1", "server"], optional = true }
 hyper-util = { version = "0.1", features = ["tokio"], optional = true }
 sha1 = { version = "0.11", optional = true }
 tower = { version = "0.5", features = ["util"] }
+wasmi = { version = "0.40.0", optional = true, default-features = false, features = ["std", "extra-checks", "prefer-btree-collections"] }
 
 [dev-dependencies]
 openssl = "0.10"

@@ -20,13 +20,13 @@ pub use totp::TotpChallenge as RecoveryChallenge;
 
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
-    RunBinding, RunState, SourceRegistrationBinding, Target, Validated, builtin,
-    configured_environment, configured_password_path, configured_source_first_passkey_enrollment,
+    RunBinding, RunState, StagePermission, Target, Validated, builtin, configured_environment,
+    configured_password_path, configured_source_first_passkey_enrollment,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
-    supported_configured_consent, supported_configured_passkey,
-    supported_configured_passkey_enrollment, supported_configured_passkey_removal,
-    supported_configured_password_passkey_enrollment, supported_configured_password_reset,
-    supported_configured_password_totp_enrollment,
+    extension_gate, supported_configured_consent, supported_configured_extension_password,
+    supported_configured_passkey, supported_configured_passkey_enrollment,
+    supported_configured_passkey_removal, supported_configured_password_passkey_enrollment,
+    supported_configured_password_reset, supported_configured_password_totp_enrollment,
     supported_configured_password_totp_replacement, supported_configured_totp_enrollment,
     supported_configured_totp_first_passkey_enrollment, supported_configured_totp_replacement,
     validate,
@@ -159,7 +159,21 @@ impl RuntimeRun {
         // Revalidate the pinned snapshot on every resume so a changed or
         // corrupt row cannot alter routing. Configured runs retain the exact
         // definition active when they started.
-        let mut checked = if matches!(
+        let extension = supported_configured_extension_password(&self.definition);
+        let mut checked = if extension {
+            let mut environment = Environment::platform();
+            if let Some(Action::Custom {
+                stage,
+                permissions,
+                ..
+            }) = self.definition.steps.first().map(|step| &step.action)
+            {
+                environment
+                    .stages
+                    .insert(stage.clone(), permissions.iter().copied().collect());
+            }
+            validate(self.definition.clone(), &environment).map_err(invalid_error)?
+        } else if matches!(
             self.definition.id.as_str(),
             PASSWORD_WORKFLOW | PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT | PASSWORD_RESET
         ) {
@@ -211,6 +225,14 @@ impl RuntimeRun {
             }
             checked
         };
+        if extension {
+            let Some(hash) = self.record.binding.extension_sha256.clone() else {
+                return Err(Error::conflict("Workflow definition changed"));
+            };
+            checked = checked.pin_extension(hash);
+        } else if self.record.binding.extension_sha256.is_some() {
+            return Err(Error::conflict("Workflow definition changed"));
+        }
         if let Some(registration) = self.record.binding.source_registration.clone() {
             checked = checked
                 .with_source_registration(registration)
@@ -934,6 +956,135 @@ impl CompletionStore for TxCompletion<'_, '_> {
     }
 }
 
+enum ExtensionCurrency {
+    Unrelated,
+    Current,
+    Stale,
+}
+
+fn extension_currency(core: &Core, run: &RuntimeRun) -> ExtensionCurrency {
+    let shape = supported_configured_extension_password(&run.definition);
+    let stored = run.record.binding.extension_sha256.as_deref();
+    if !shape && stored.is_none() {
+        return ExtensionCurrency::Unrelated;
+    }
+    if !shape || stored.is_none() {
+        return ExtensionCurrency::Stale;
+    }
+    let Some(Action::Custom { stage, .. }) = run.definition.steps.first().map(|step| &step.action)
+    else {
+        return ExtensionCurrency::Stale;
+    };
+    let Some(document) = core.config.workflow_extensions.get(stage.as_str()) else {
+        return ExtensionCurrency::Stale;
+    };
+    let Ok(guest) = extension_gate::check(document.as_bytes()) else {
+        return ExtensionCurrency::Stale;
+    };
+    if guest.module_sha256_hex() == stored.unwrap()
+        && extension_gate::covers(&guest, &run.definition)
+    {
+        ExtensionCurrency::Current
+    } else {
+        ExtensionCurrency::Stale
+    }
+}
+
+fn seal_stale_extension(
+    core: &Core,
+    tx: &Tx<'_>,
+    checked: &Validated,
+    run: &mut RuntimeRun,
+    at: u64,
+) -> Result<()> {
+    if run.record.state.is_final() {
+        return Ok(());
+    }
+    run.in_flight = None;
+    finish_step(core, tx, checked, run, Label::fixed("failed"), None, at)
+}
+
+fn extension_guest(core: &Core, checked: &Validated) -> Result<Option<extension_gate::Checked>> {
+    if !supported_configured_extension_password(checked.definition()) {
+        return Ok(None);
+    }
+    let Some(Action::Custom { stage, .. }) = checked.definition().steps.first().map(|step| &step.action)
+    else {
+        return Err(Error::conflict("Configured workflow is unavailable"));
+    };
+    let Some(document) = core.config.workflow_extensions.get(stage.as_str()) else {
+        return Err(Error::conflict("Configured workflow is unavailable"));
+    };
+    let guest = extension_gate::check(document.as_bytes())
+        .map_err(|_| Error::conflict("Configured workflow is unavailable"))?;
+    if !extension_gate::covers(&guest, checked.definition()) {
+        return Err(Error::conflict("Configured workflow is unavailable"));
+    }
+    Ok(Some(guest))
+}
+
+fn run_extension_guest(
+    core: &Core,
+    tx: &Tx<'_>,
+    checked: &Validated,
+    guest: &extension_gate::Checked,
+    run: &mut RuntimeRun,
+    user: &crate::model::User,
+    session_id: &str,
+    request_id: &str,
+    at: u64,
+) -> Result<()> {
+    let step = checked
+        .entry()
+        .ok_or_else(|| Error::internal("Missing workflow entry"))?;
+    let Action::Custom {
+        permissions,
+        max_output_bytes,
+        ..
+    } = &step.action
+    else {
+        return Err(Error::internal("Extension entry is not a custom stage"));
+    };
+    let requested: BTreeSet<StagePermission> = permissions.iter().copied().collect();
+    let groups = if requested.contains(&StagePermission::ReadGroups) {
+        crate::core::groups_for(tx, &user.id)?.into_iter().collect()
+    } else {
+        Vec::new()
+    };
+    let facts = extension_gate::GuestFacts {
+        account: requested
+            .contains(&StagePermission::ReadProfile)
+            .then(|| user.id.clone()),
+        request: requested
+            .contains(&StagePermission::ReadRequest)
+            .then(|| request_id.to_owned()),
+        client: requested
+            .contains(&StagePermission::ReadRequest)
+            .then(|| session_id.to_owned()),
+        groups,
+    };
+    if run.executions >= checked.definition().limits.max_executions {
+        return Err(Error::conflict(
+            "Workflow step cannot accept this extension",
+        ));
+    }
+    run.executions += 1;
+    // Wasmi 0.40 has no interrupt, so the manifest timeout is an instruction budget.
+    let signal = match extension_gate::execute(
+        guest,
+        &facts,
+        &requested,
+        extension_gate::StepBounds {
+            timeout_seconds: step.timeout_seconds,
+            max_output_bytes: *max_output_bytes,
+        },
+    ) {
+        Ok(label) => label,
+        Err(_) => Label::fixed("failed"),
+    };
+    finish_step(core, tx, checked, run, signal, None, at)
+}
+
 impl Core {
     /// Start one active, operator-configured local verifier or factor change.
     /// The definition is loaded from validated server configuration;
@@ -945,11 +1096,19 @@ impl Core {
             .get(workflow)
             .filter(|entry| entry.active)
             .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
-        let checked = validate(
-            configured.definition.clone(),
-            &configured_environment(&configured.definition),
-        )
-        .map_err(invalid_error)?;
+        let registered = extension_gate::stage_registration(&self.config.workflow_extensions)
+            .map_err(|_| Error::conflict("Configured workflow is unavailable"))?;
+        let mut environment = configured_environment(&configured.definition);
+        for (stage, guest) in &registered {
+            environment
+                .stages
+                .insert(stage.clone(), guest.permissions().clone());
+        }
+        let checked = validate(configured.definition.clone(), &environment).map_err(invalid_error)?;
+        let extension_ok = supported_configured_extension_password(checked.definition())
+            && registered
+                .values()
+                .any(|guest| extension_gate::covers(guest, checked.definition()));
         if (configured_password_path(checked.definition()).is_none()
             && !supported_configured_passkey(checked.definition())
             && !supported_configured_passkey_enrollment(checked.definition())
@@ -958,7 +1117,8 @@ impl Core {
             && !supported_configured_totp_enrollment(checked.definition())
             && !supported_configured_password_totp_enrollment(checked.definition())
             && !supported_configured_totp_replacement(checked.definition())
-            && !supported_configured_password_totp_replacement(checked.definition()))
+            && !supported_configured_password_totp_replacement(checked.definition())
+            && !extension_ok)
             || checked.definition().id.as_str() != workflow
         {
             return Err(Error::conflict("Configured workflow is unavailable"));
@@ -1066,6 +1226,8 @@ impl Core {
                 supported_configured_totp_replacement(checked.definition());
             let configured_password_totp_replacement =
                 supported_configured_password_totp_replacement(checked.definition());
+            let extension_password =
+                supported_configured_extension_password(checked.definition());
             if matches!(
                 checked.definition().id.as_str(),
                 PASSWORD_WORKFLOW | password::TOTP_WORKFLOW
@@ -1074,11 +1236,13 @@ impl Core {
                 || configured_password_totp_replacement
                 || configured_first_passkey
                 || configured_totp_first_passkey
+                || extension_password
             {
                 crate::password::require_local(tx, &user)?;
             }
             if configured_password
                 .is_some_and(|path| user.totp_secret.is_some() != path.requires_mfa())
+                || (extension_password && user.totp_secret.is_some())
             {
                 return Err(Error::conflict(
                     "This account needs a different verifier path",
@@ -1144,35 +1308,53 @@ impl Core {
                     "Password and TOTP replacement is unavailable for this account",
                 ));
             }
+            let guest = extension_guest(self, checked)?;
+            let checked_owned = match &guest {
+                Some(module) => checked.clone().pin_extension(module.module_sha256_hex()),
+                None => checked.clone(),
+            };
+            let checked = &checked_owned;
             let at = now();
             if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
                 if let Some(mut active) = tx.get::<RuntimeRun>(RUNS, &active_id)? {
                     let pinned = active.validated()?;
+                    let same_definition = pinned.binding().workflow == checked.binding().workflow
+                        && pinned.binding().revision == checked.binding().revision
+                        && pinned.binding().fingerprint == checked.binding().fingerprint;
                     if active.record.id != active_id
                         || active.record.session.as_deref() != Some(session.id.as_str())
                         || active.record.account != user.id
                         || active.record.account_epoch != user.epoch
-                        || pinned.binding() != checked.binding()
+                        || !same_definition
                     {
                         return Err(Error::conflict("Active workflow binding changed"));
                     }
                     owned(self, tx, token, &active.record)?;
-                    settle_time(self, tx, &pinned, &mut active, at)?;
-                    if !active.record.state.is_final() {
-                        let request: RequestAuthority = tx
-                            .get(REQUESTS, &active.record.request)?
-                            .ok_or_else(Error::forbidden)?;
-                        if authorization.is_some()
-                            || removal_target.is_some()
-                            || request.authorization.is_some()
-                            || request.consent.is_some()
-                            || request.removal.is_some()
-                        {
-                            return Err(Error::conflict(
-                                "An authorization workflow is already active",
-                            ));
+                    let stale = pinned.binding() != checked.binding()
+                        || matches!(
+                            extension_currency(self, &active),
+                            ExtensionCurrency::Stale
+                        );
+                    if stale {
+                        seal_stale_extension(self, tx, &pinned, &mut active, at)?;
+                    } else {
+                        settle_time(self, tx, &pinned, &mut active, at)?;
+                        if !active.record.state.is_final() {
+                            let request: RequestAuthority = tx
+                                .get(REQUESTS, &active.record.request)?
+                                .ok_or_else(Error::forbidden)?;
+                            if authorization.is_some()
+                                || removal_target.is_some()
+                                || request.authorization.is_some()
+                                || request.consent.is_some()
+                                || request.removal.is_some()
+                            {
+                                return Err(Error::conflict(
+                                    "An authorization workflow is already active",
+                                ));
+                            }
+                            return active.view(&pinned);
                         }
-                        return active.view(&pinned);
                     }
                 }
                 tx.delete(ACTIVE_SESSIONS, &session.id)?;
@@ -1241,7 +1423,19 @@ impl Core {
             tx.put(REQUESTS, &request_id, &request)?;
             tx.put(RUNS, &run_id, &run)?;
             tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
-            if checked.definition().id.as_str() == PASSKEY_ENROLLMENT
+            if let Some(module) = guest.as_ref() {
+                run_extension_guest(
+                    self,
+                    tx,
+                    checked,
+                    module,
+                    &mut run,
+                    &user,
+                    &session.id,
+                    &request_id,
+                    at,
+                )?;
+            } else if checked.definition().id.as_str() == PASSKEY_ENROLLMENT
                 || configured_enrollment
                 || configured_first_passkey
                 || configured_totp_first_passkey
@@ -1264,6 +1458,10 @@ impl Core {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
             owned(self, tx, token, &run.record)?;
+            if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
+                seal_stale_extension(self, tx, &checked, &mut run, now())?;
+                return run.view(&checked);
+            }
             settle_time(self, tx, &checked, &mut run, now())?;
             run.view(&checked)
         })
@@ -1274,6 +1472,10 @@ impl Core {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
             owned(self, tx, token, &run.record)?;
+            if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
+                seal_stale_extension(self, tx, &checked, &mut run, now())?;
+                return run.view(&checked);
+            }
             settle_time(self, tx, &checked, &mut run, now())?;
             if let RunState::Active { step, .. } = &run.record.state {
                 if !checked.step(step).is_some_and(|value| value.cancellable) {
@@ -1371,5 +1573,240 @@ mod tests {
             core.workflow_resume(&token, &id).unwrap().state,
             RunState::Expired {}
         ));
+    }
+
+    fn extension_definition() -> crate::workflow::Definition {
+        crate::workflow::parse(
+            serde_json::json!({
+                "format": "riauth.workflow/v1",
+                "id": "risk-route",
+                "revision": 1,
+                "category": "authentication",
+                "origin": "configured",
+                "entry": "extension",
+                "limits": {"max_duration_seconds": 600, "max_executions": 4},
+                "steps": [
+                    {
+                        "id": "extension",
+                        "action": {
+                            "type": "custom",
+                            "stage": "risk-check",
+                            "outputs": ["allow", "block"],
+                            "permissions": ["read_profile"],
+                            "max_output_bytes": 128
+                        },
+                        "max_attempts": 1,
+                        "timeout_seconds": 30,
+                        "cancellable": false,
+                        "transitions": [
+                            {"on": "allow", "to": "password"},
+                            {"on": "block", "to": "denied"},
+                            {"on": "failed", "to": "denied"}
+                        ]
+                    },
+                    {
+                        "id": "password",
+                        "action": {"type": "verify_password"},
+                        "max_attempts": 3,
+                        "timeout_seconds": 60,
+                        "cancellable": true,
+                        "transitions": [
+                            {"on": "verified", "to": "success"},
+                            {"on": "failed", "to": "denied"}
+                        ]
+                    }
+                ],
+                "terminals": [
+                    {"id": "success", "outcome": "authenticated", "requires": [["password"]]},
+                    {"id": "denied", "outcome": "denied", "requires": []}
+                ]
+            })
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap()
+    }
+
+    fn manifest(module: &[u8]) -> String {
+        String::from_utf8(extension_gate::fixture::document(module, |_| {})).unwrap()
+    }
+
+    fn extension_core(module: &[u8]) -> (tempfile::TempDir, Core, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = Config {
+            data_dir: dir.path().to_owned(),
+            ..Default::default()
+        };
+        let definition = extension_definition();
+        config.workflows.insert(
+            definition.id.as_str().to_owned(),
+            crate::workflow::ConfiguredWorkflow {
+                active: true,
+                definition,
+            },
+        );
+        config
+            .workflow_extensions
+            .insert("risk-check".into(), manifest(module));
+        config.validate().unwrap();
+        let core = Core::initialize(
+            config,
+            NewUser {
+                username: "admin".into(),
+                password: "fixture-password".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let token = core
+            .login("admin".into(), "fixture-password".into(), None)
+            .unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        (dir, core, token)
+    }
+
+    fn denied(state: &RunState) -> bool {
+        matches!(
+            state,
+            RunState::Finished {
+                outcome: crate::workflow::Outcome::Denied,
+                ..
+            }
+        )
+    }
+
+    fn load(core: &Core, id: &str) -> RuntimeRun {
+        core.store.write(|tx| load_runtime(tx, id)).unwrap()
+    }
+
+    #[test]
+    fn configured_extension_routes_to_password_and_cannot_prove_itself() {
+        let (_dir, core, token) =
+            extension_core(&extension_gate::fixture::account_kind());
+        let blocked = extension_core(&extension_gate::fixture::block());
+        let denied_view = blocked.1.workflow_configured_start(&blocked.2, "risk-route").unwrap();
+        assert!(denied( &denied_view.state), "{denied_view:?}");
+        let denied_run = load(&blocked.1, &denied_view.id);
+        assert_eq!(denied_run.record.steps[0].signal.as_str(), "block");
+        assert!(denied_run.record.steps[0].evidence.is_none());
+        assert!(
+            blocked
+                .1
+                .workflow_password(&blocked.2, &denied_view.id, "fixture-password".into())
+                .is_err()
+        );
+
+        let started = core.workflow_configured_start(&token, "risk-route").unwrap();
+        match &started.state {
+            RunState::Active { step, .. } => assert_eq!(step.as_str(), "password"),
+            other => panic!("guest allow did not reach password: {other:?}"),
+        }
+        assert!(started.binding.extension_sha256.is_some());
+        let wrong = core
+            .workflow_password(&token, &started.id, "wrong-password".into())
+            .unwrap();
+        assert!(
+            matches!(wrong.state, RunState::Active { .. }),
+            "wrong password finished the run: {wrong:?}"
+        );
+        let authenticated = core
+            .workflow_password(&token, &started.id, "fixture-password".into())
+            .unwrap();
+        assert!(matches!(
+            authenticated.state,
+            RunState::Finished {
+                outcome: crate::workflow::Outcome::Authenticated,
+                ..
+            }
+        ));
+        let run = load(&core, &started.id);
+        assert_eq!(run.record.steps[0].signal.as_str(), "allow");
+        assert!(run.record.steps[0].evidence.is_none());
+        assert_eq!(run.record.steps[1].signal.as_str(), "verified");
+        let evidence_id = run.record.steps[1].evidence.clone().unwrap();
+        let receipt = core
+            .store
+            .write(|tx| tx.get::<StoredEvidence>(EVIDENCE, &evidence_id))
+            .unwrap()
+            .unwrap();
+        assert_eq!(receipt.proof, Proof::Password);
+    }
+
+    #[test]
+    fn extension_attacks_finish_denied_and_a_changed_module_seals_the_run() {
+        let (_dir, mut core, token) = extension_core(&extension_gate::fixture::account_kind());
+        for module in [
+            extension_gate::fixture::spin(),
+            extension_gate::fixture::oversized(),
+            extension_gate::fixture::undeclared(),
+            extension_gate::fixture::memory_grow(),
+        ] {
+            core.config
+                .workflow_extensions
+                .insert("risk-check".into(), manifest(&module));
+            let view = core
+                .workflow_configured_start(&token, "risk-route")
+                .unwrap();
+            assert!(denied(&view.state), "{view:?}");
+            let run = load(&core, &view.id);
+            assert!(
+                run.record.steps.iter().all(|step| step.signal.as_str() == "failed"),
+                "{:?}",
+                run.record.steps
+            );
+            assert!(run.record.steps.iter().all(|step| step.evidence.is_none()));
+        }
+
+        core.config.workflow_extensions.insert(
+            "risk-check".into(),
+            manifest(&extension_gate::fixture::with_import()),
+        );
+        assert!(core.workflow_configured_start(&token, "risk-route").is_err());
+
+        core.config.workflow_extensions.insert(
+            "risk-check".into(),
+            manifest(&extension_gate::fixture::account_kind()),
+        );
+        let open = core.workflow_configured_start(&token, "risk-route").unwrap();
+        assert!(matches!(open.state, RunState::Active { .. }));
+        let pinned = open.binding.extension_sha256.clone();
+        core.config
+            .workflow_extensions
+            .insert("risk-check".into(), manifest(&extension_gate::fixture::block()));
+        let sealed = core.workflow_resume(&token, &open.id).unwrap();
+        assert!(denied(&sealed.state), "{sealed:?}");
+        let sealed_run = load(&core, &open.id);
+        assert_eq!(sealed_run.record.binding.extension_sha256, pinned);
+        assert_eq!(sealed_run.record.steps[0].signal.as_str(), "allow");
+        assert_eq!(sealed_run.record.steps[1].signal.as_str(), "failed");
+        assert!(sealed_run.record.steps.iter().all(|step| step.evidence.is_none()));
+
+        let replacement = core.workflow_configured_start(&token, "risk-route").unwrap();
+        assert!(denied(&replacement.state), "{replacement:?}");
+        let replacement_run = load(&core, &replacement.id);
+        assert_eq!(replacement_run.record.steps[0].signal.as_str(), "block");
+        assert_ne!(replacement.binding.extension_sha256, pinned);
+
+        core.config.workflow_extensions.insert(
+            "risk-check".into(),
+            manifest(&extension_gate::fixture::account_kind()),
+        );
+        let password_step = core.workflow_configured_start(&token, "risk-route").unwrap();
+        assert!(matches!(password_step.state, RunState::Active { .. }));
+        core.config
+            .workflow_extensions
+            .insert("risk-check".into(), manifest(&extension_gate::fixture::block()));
+        let error = core
+            .workflow_password(&token, &password_step.id, "fixture-password".into())
+            .unwrap_err();
+        assert!(error.to_string().contains("extension"), "{error}");
+        let closed = load(&core, &password_step.id);
+        assert!(denied(&closed.record.state));
+        assert_eq!(closed.record.steps[0].signal.as_str(), "allow");
+        assert_eq!(closed.record.steps[1].signal.as_str(), "failed");
     }
 }
