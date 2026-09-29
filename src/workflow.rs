@@ -835,6 +835,7 @@ pub(crate) fn supported_configured_password_reset(definition: &Definition) -> bo
 pub(crate) fn supported_configured_consent(definition: &Definition) -> bool {
     supported_configured_session_consent(definition)
         || supported_configured_passkey_consent(definition)
+        || supported_configured_password_totp_consent(definition)
 }
 
 fn supported_configured_session_consent(definition: &Definition) -> bool {
@@ -889,7 +890,7 @@ fn supported_configured_session_consent(definition: &Definition) -> bool {
         && routes(consent, "granted", &success.id, "denied", &denied.id)
 }
 
-/// The one supported consent reauthentication graph proves the same session
+/// This passkey consent graph proves the same session
 /// with a fresh UV passkey before the explicit user decision.
 pub(crate) fn supported_configured_passkey_consent(definition: &Definition) -> bool {
     if definition.origin != Origin::Configured
@@ -955,6 +956,75 @@ pub(crate) fn supported_configured_passkey_consent(definition: &Definition) -> b
         && denied.requires.is_empty()
         && routes(session, "verified", &passkey.id, "failed")
         && routes(passkey, "verified", &consent.id, "failed")
+        && routes(consent, "granted", &success.id, "denied")
+}
+
+/// Consent reauthentication with fresh local primary and current TOTP proofs.
+/// A TOTP code alone cannot refresh the OIDC grant's authentication time.
+pub(crate) fn supported_configured_password_totp_consent(definition: &Definition) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::Consent
+        || definition.steps.len() != 4
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+        || definition.limits.max_duration_seconds > 120
+        || definition.limits.max_executions > 8
+    {
+        return false;
+    }
+    let [session, password, totp, consent] = definition.steps.as_slice() else {
+        return false;
+    };
+    let success = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::ConsentGranted);
+    let denied = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied);
+    let (Some(success), Some(denied)) = (success, denied) else {
+        return false;
+    };
+    let routes = |step: &Step, granted: &'static str, target: &Id, refused: &'static str| {
+        step.transitions.len() == 2
+            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed(granted) && &transition.to == target
+            })
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed(refused) && transition.to == denied.id
+            })
+    };
+    session.id.as_str() == "session"
+        && password.id.as_str() == "password"
+        && totp.id.as_str() == "totp"
+        && consent.id.as_str() == "consent"
+        && success.id.as_str() == "success"
+        && denied.id.as_str() == "denied"
+        && matches!(session.action, Action::ResumeSession {})
+        && matches!(password.action, Action::VerifyPassword {})
+        && matches!(totp.action, Action::VerifyTotp {})
+        && matches!(consent.action, Action::RequestConsent {})
+        && session.max_attempts == 1
+        && password.max_attempts <= 3
+        && totp.max_attempts <= 3
+        && consent.max_attempts == 1
+        && session.timeout_seconds <= 60
+        && password.timeout_seconds <= 120
+        && totp.timeout_seconds <= 120
+        && consent.timeout_seconds <= 120
+        && definition.steps.iter().all(|step| step.cancellable)
+        && success.max_proof_age_seconds.is_some_and(|age| age <= 120)
+        && success.requires.len() == 1
+        && success.requires[0].len() == 4
+        && [Proof::Session, Proof::Password, Proof::Totp, Proof::Consent]
+            .into_iter()
+            .all(|proof| success.requires[0].contains(&proof))
+        && denied.requires.is_empty()
+        && routes(session, "verified", &password.id, "failed")
+        && routes(password, "verified", &totp.id, "failed")
+        && routes(totp, "verified", &consent.id, "failed")
         && routes(consent, "granted", &success.id, "denied")
 }
 

@@ -99,6 +99,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     let replace_totp = supported_configured_password_totp_replacement(checked.definition());
     let remove_with_totp =
         supported_configured_password_totp_passkey_removal(checked.definition());
+    let consent_totp = supported_configured_password_totp_consent(checked.definition());
     let extension = supported_configured_extension_password(checked.definition());
     let mfa = match checked.definition().id.as_str() {
         PASSWORD_WORKFLOW => false,
@@ -107,6 +108,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
         _ if first_passkey => false,
         _ if replace_totp => true,
         _ if remove_with_totp => true,
+        _ if consent_totp => true,
         _ if extension => false,
         _ => configured_password_path(checked.definition())
             .ok_or_else(Error::forbidden)?
@@ -116,6 +118,13 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     if request.source.is_some()
         || request.requires_mfa != mfa
         || user.totp_secret.is_some() != mfa
+        || request.consent.is_some() != consent_totp
+        || (consent_totp
+            && (request.authorization.is_some()
+                || request.recovery.is_some()
+                || request.invitation.is_some()
+                || request.removal.is_some()
+                || user.totp_pending.is_some()))
         || ((first_totp || first_passkey || replace_totp)
             && (user.has_passkeys
                 || user.totp_pending.is_some()

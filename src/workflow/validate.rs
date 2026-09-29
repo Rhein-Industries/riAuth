@@ -406,7 +406,11 @@ impl Category {
                 )
                 | (
                     Consent,
-                    ResumeSession {} | VerifyPasskey {} | RequestConsent {}
+                    ResumeSession {}
+                        | VerifyPassword {}
+                        | VerifyPasskey {}
+                        | VerifyTotp {}
+                        | RequestConsent {}
                 )
                 | (
                     SensitiveAction,

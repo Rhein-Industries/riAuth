@@ -30,7 +30,7 @@ Platform now starts four active configured authentication shapes: local password
 alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
 for an account with an enrolled passkey.
-Platform also supports the exact configured consent shape described below.
+Platform also supports the three exact configured consent shapes described below.
 It supports eight configured enrollment shapes: a live session and fresh verified
 existing passkey followed by passkey registration, a new TOTP secret or TOTP
 replacement; or a password-only account's live session and fresh local-password
@@ -327,7 +327,7 @@ neither a new session nor a downstream OIDC code.
 
 ## Configured OIDC consent
 
-Platform accepts two exact active configured `consent` graphs. The existing
+Platform accepts three exact active configured `consent` graphs. The existing
 `session` (`resume_session`) → `consent` (`request_consent`) graph requires
 `[["session", "consent"]]`, allows one attempt per step and lasts at most 120
 seconds. It handles requests that need no reauthentication. The new
@@ -337,11 +337,19 @@ handles requests that need reauthentication, such as `prompt=login` or
 `max_age=0`, for accounts with an enrolled passkey. Its run lasts at most 120
 seconds with at most five executions; the passkey step allows up to three
 attempts and 120 seconds, and consent allows one attempt and 120 seconds.
-All routes are unconditional, and neither graph can reach approval from a
-static transition. The live session, prepared transaction or request reference
-can expire sooner. The generic `POST /api/workflows/configured/{workflow}` does
+The local TOTP graph is `session` → `password` (`verify_password`) → `totp`
+(`verify_totp`) → `consent`. It requires
+`[["session", "password", "totp", "consent"]]` with proof age at most 120
+seconds. It needs an enrolled TOTP factor and fresh local password proof before
+the current TOTP code; TOTP alone cannot refresh the OIDC authentication time.
+The run lasts at most 120 seconds with at most eight executions, up to three
+password and three TOTP attempts, and one consent attempt. Recovery codes are
+not an alternative in this graph. All routes are unconditional, and no graph
+can reach approval from a static transition. The live session, prepared
+transaction or request reference can expire sooner. The generic
+`POST /api/workflows/configured/{workflow}` does
 not start consent. The built-in example above has different limits and is not
-either configured path.
+any configured path.
 
 Prepare an OIDC `Authorization` for the same live bearer session, review its
 client and scopes, then send the complete JSON with `transaction_id` and no
@@ -350,11 +358,16 @@ the wrong reauthentication graph, silent or account-selection prompts, browser
 bindings and embedded source stages. For the passkey graph, call
 `POST /api/workflows/{id}/passkey/start` and then
 `POST /api/workflows/{id}/passkey` with the signed WebAuthn assertion before
-approving. With the same bearer, send
+approving. For the TOTP graph, call `POST /api/workflows/{id}/password`, then
+`POST /api/workflows/{id}/totp/start` and
+`POST /api/workflows/{id}/totp` with its returned one-attempt challenge and a
+current code. The account's spent TOTP step is updated when verification
+succeeds, even if the user later denies consent. With the same bearer, send
 `{"approve":true}` or `{"approve":false}` to
 `POST /api/workflows/{id}/consent`. Explicit denial is also accepted while the
-passkey step is active and discards any pending challenge. Failed assertions
-consume bounded passkey attempts; they never create a consent proof.
+passkey, password or TOTP step is active and invalidates any pending handle.
+Failed verifications consume bounded attempts; they never create a consent
+proof.
 `GET /api/workflows/{id}` resumes the run;
 `POST /api/workflows/{id}/cancel` cancels only an active, cancellable step. The
 final view's
@@ -364,10 +377,13 @@ approval or denial callback without a code.
 The executor pins the account and epoch, live session, OIDC request hash and
 client, prepared transaction, workflow request, run and definition. It emits
 session proof from the live session; only a verified WebAuthn assertion emits
-passkey proof, and only explicit approval emits consent proof. In the passkey
-graph, the fresh assurance applies only to the resulting OIDC grant, never to
-the stored bearer session. Final approval marks the exact prepared transaction
-reauthenticated and consumes it and the bound receipts in the same write as
+passkey proof, only verified local password and current TOTP code emit their
+respective proofs, and only explicit approval emits consent proof. Fresh
+assurance applies only to the resulting OIDC grant, never to the stored bearer
+session. The TOTP grant uses the fresh password proof's authentication time and
+the existing password plus OTP assurance. Final approval marks the exact
+prepared transaction reauthenticated and consumes it and the bound receipts
+in the same write as
 the existing issuer's code response. Denial spends that transaction and returns
 the normal denial callback without a code. Ordinary authorization cannot use
 that reserved transaction. An ordinary decision with its transaction ID spends
@@ -380,9 +396,9 @@ conflicts, while another account can still decide it. A later admitted
 preparation remains usable. Expiry and cancellation discard only the pending
 transaction; completed and closed runs retain replay protection for that
 transaction. No new session or remembered consent grant is created. Other
-configured consent graphs, including password or TOTP reauthentication, are
-unsupported. Browser-initiated and remembered-consent adapters are not
-connected.
+configured consent graphs, including TOTP-only and recovery-code consent
+reauthentication, are unsupported. Browser-initiated and remembered-consent
+adapters are not connected.
 
 Standard terminal OIDC preparations, outside embedded source stages, admit at
 most 64 live indexed attempts per request hash. At capacity, a new preparation

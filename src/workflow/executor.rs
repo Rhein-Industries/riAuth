@@ -29,6 +29,7 @@ use super::{
     supported_configured_passkey, supported_configured_passkey_consent,
     supported_configured_passkey_enrollment,
     supported_configured_passkey_removal, supported_configured_password_passkey_enrollment,
+    supported_configured_password_totp_consent,
     supported_configured_password_reset, supported_configured_password_totp_enrollment,
     supported_configured_password_totp_passkey_removal,
     supported_configured_password_totp_replacement, supported_configured_totp_enrollment,
@@ -1243,6 +1244,8 @@ impl Core {
             let configured_passkey = supported_configured_passkey(checked.definition());
             let configured_passkey_consent =
                 supported_configured_passkey_consent(checked.definition());
+            let configured_totp_consent =
+                supported_configured_password_totp_consent(checked.definition());
             let configured_enrollment =
                 supported_configured_passkey_enrollment(checked.definition());
             let configured_first_passkey =
@@ -1267,6 +1270,7 @@ impl Core {
             ) || configured_password.is_some()
                 || configured_password_totp_enrollment
                 || configured_password_totp_replacement
+                || configured_totp_consent
                 || configured_removal_totp
                 || configured_first_passkey
                 || configured_totp_first_passkey
@@ -1280,6 +1284,13 @@ impl Core {
             {
                 return Err(Error::conflict(
                     "This account needs a different verifier path",
+                ));
+            }
+            if configured_totp_consent
+                && (user.totp_secret.is_none() || user.totp_pending.is_some())
+            {
+                return Err(Error::conflict(
+                    "TOTP consent is unavailable for this account",
                 ));
             }
             if (matches!(
@@ -1448,6 +1459,7 @@ impl Core {
                 expires_at,
                 requires_mfa: checked.definition().id.as_str() == password::TOTP_WORKFLOW
                     || configured_password.is_some_and(ConfiguredPasswordPath::requires_mfa)
+                    || configured_totp_consent
                     || configured_password_totp_replacement
                     || configured_removal_totp
                     || configured_totp_first_passkey,
@@ -1466,7 +1478,7 @@ impl Core {
                         &mut request,
                         &session,
                         authorization,
-                        configured_passkey_consent,
+                        configured_passkey_consent || configured_totp_consent,
                         at,
                     )?;
                 } else {

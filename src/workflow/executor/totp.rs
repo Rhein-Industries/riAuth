@@ -101,9 +101,9 @@ fn recovery_fallback_allowed(checked: &Validated) -> bool {
         || configured_password_path(definition) == Some(ConfiguredPasswordPath::TotpOrRecovery)
 }
 
-/// These mutations need both fresh password and current TOTP proofs. Recovery
-/// codes cannot replace the current factor or authorize passkey removal.
-fn password_totp_primary(
+/// These exact session paths need fresh password and current TOTP proofs.
+/// Recovery codes cannot substitute for the current factor here.
+fn session_password_primary(
     core: &Core,
     tx: &Tx<'_>,
     checked: &Validated,
@@ -113,15 +113,16 @@ fn password_totp_primary(
     at: u64,
 ) -> Result<StoredEvidence> {
     let removal = supported_configured_password_totp_passkey_removal(checked.definition());
-    if !(supported_configured_password_totp_replacement(checked.definition()) || removal)
+    let consent = supported_configured_password_totp_consent(checked.definition());
+    if !(supported_configured_password_totp_replacement(checked.definition()) || removal || consent)
         || !request.requires_mfa
         || request.source.is_some()
         || request.authorization.is_some()
-        || request.consent.is_some()
+        || request.consent.is_some() != consent
         || request.recovery.is_some()
         || request.invitation.is_some()
         || request.removal.is_some() != removal
-        || user.has_passkeys != removal
+        || (!consent && user.has_passkeys != removal)
         || user.totp_secret.is_none()
         || user.totp_pending.is_some()
         || at < run.step_started_at
@@ -255,8 +256,9 @@ fn primary(
     }
     if supported_configured_password_totp_replacement(checked.definition())
         || supported_configured_password_totp_passkey_removal(checked.definition())
+        || supported_configured_password_totp_consent(checked.definition())
     {
-        return password_totp_primary(core, tx, checked, run, user, request, at);
+        return session_password_primary(core, tx, checked, run, user, request, at);
     }
     let proof = match (checked.definition().id.as_str(), request.source.is_some()) {
         (source::TOTP_WORKFLOW, true) => Proof::Source,

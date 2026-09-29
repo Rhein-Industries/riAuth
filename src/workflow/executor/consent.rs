@@ -242,9 +242,15 @@ pub(super) fn complete(
     }
     let (_, authority) = super::authority(core, tx, run, at)?;
     let approved = outcome == super::super::Outcome::ConsentGranted;
-    let reauthentication = super::super::supported_configured_passkey_consent(checked.definition());
-    let expected = if reauthentication {
+    let passkey_reauthentication =
+        super::super::supported_configured_passkey_consent(checked.definition());
+    let totp_reauthentication =
+        super::super::supported_configured_password_totp_consent(checked.definition());
+    let reauthentication = passkey_reauthentication || totp_reauthentication;
+    let expected = if passkey_reauthentication {
         &[Proof::Session, Proof::Passkey, Proof::Consent][..]
+    } else if totp_reauthentication {
+        &[Proof::Session, Proof::Password, Proof::Totp, Proof::Consent][..]
     } else {
         &[Proof::Session, Proof::Consent][..]
     };
@@ -266,7 +272,7 @@ pub(super) fn complete(
     let mut session: Session = tx
         .get("sessions", &bound.session)?
         .ok_or_else(Error::forbidden)?;
-    if approved && reauthentication {
+    if approved && passkey_reauthentication {
         let proof = &evidence[1];
         if proof.step.as_str() != "passkey"
             || !matches!(proof.action, Action::VerifyPasskey {})
@@ -282,6 +288,29 @@ pub(super) fn complete(
         session.identity.mfa = true;
         session.identity.amr = vec!["webauthn".into(), "mfa".into()];
         session.identity.source = None;
+    } else if approved && totp_reauthentication {
+        let password = &evidence[1];
+        let totp = &evidence[2];
+        if password.step.as_str() != "password"
+            || !matches!(password.action, Action::VerifyPassword {})
+            || totp.step.as_str() != "totp"
+            || !matches!(totp.action, Action::VerifyTotp {})
+            || password.verified_at < run.started_at
+            || password.verified_at > totp.verified_at
+            || totp.verified_at > at
+            || password.expires_at <= at
+            || totp.expires_at <= at
+        {
+            return Err(Error::forbidden());
+        }
+        // Match the existing password+TOTP grant assurance. The fresh primary
+        // proof sets auth_time; neither factor upgrades the stored session.
+        session.identity.auth_time = password.verified_at;
+        session.identity.mfa = true;
+        session.identity.amr = vec!["pwd".into(), "otp".into()];
+        session.identity.source = None;
+    }
+    if approved && reauthentication {
         let mut prepared: AuthenticationTransaction = tx
             .get("authentication", &bound.pin.authentication)?
             .ok_or_else(Error::forbidden)?;
@@ -355,12 +384,18 @@ impl Core {
             let RunState::Active { step, attempt } = &run.record.state else {
                 unreachable!()
             };
+            let current = checked.step(step).map(|s| &s.action);
             let early_denial = !approve
-                && super::super::supported_configured_passkey_consent(checked.definition())
-                && checked.step(step).map(|s| &s.action) == Some(&Action::VerifyPasskey {});
+                && ((super::super::supported_configured_passkey_consent(checked.definition())
+                    && current == Some(&Action::VerifyPasskey {}))
+                    || (super::super::supported_configured_password_totp_consent(
+                        checked.definition(),
+                    ) && matches!(
+                        current,
+                        Some(Action::VerifyPassword {} | Action::VerifyTotp {})
+                    )));
             if !supported_configured_consent(checked.definition())
-                || (!early_denial
-                    && checked.step(step).map(|s| &s.action) != Some(&Action::RequestConsent {}))
+                || (!early_denial && current != Some(&Action::RequestConsent {}))
                 || (!early_denial && run.in_flight.is_some())
                 || (run.executions >= checked.definition().limits.max_executions
                     && (!early_denial || run.in_flight.is_none()))
@@ -377,8 +412,8 @@ impl Core {
             let had_reservation = run.in_flight.is_some();
             if early_denial {
                 // An explicit refusal may close the request before the user
-                // completes WebAuthn. Discard its reserved challenge in the
-                // same write so a late assertion cannot revive the run.
+                // completes WebAuthn or local verification. Invalidate its
+                // reserved handle so a late submission cannot revive the run.
                 passkey::discard(tx, &run)?;
                 run.in_flight = None;
             }
