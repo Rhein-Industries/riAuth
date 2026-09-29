@@ -2683,6 +2683,11 @@ async fn run_client(remote: &Remote, command: ClientCommand) -> Result<Value> {
         ),
         ClientCommand::RotateSecret { client_id } => {
             remote.secret_destination()?;
+            if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                bail!(
+                    "Client secret rotation requires --idempotency-key and --if-revision (from `riauth revision`)"
+                );
+            }
             return remote
                 .call(
                     Method::POST,

@@ -603,7 +603,7 @@
             title: `Rotate the secret for ${client.name}?`, ok: "Rotate secret", danger: true,
             text: "The current secret stops working now and existing grants are revoked. Update the application with the new secret straight away.",
             run: async (_, key) => {
-              const result = await api("POST", `admin/clients/${seg(client.client_id)}/rotate-secret`, undefined, { key });
+              const result = await api("POST", `admin/clients/${seg(client.client_id)}/rotate-secret`, undefined, { revision: data.revision, key });
               showSecret(client.client_id, result.client_secret);
               refresh();
             },

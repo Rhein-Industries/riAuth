@@ -258,7 +258,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | PUT, DELETE | `/api/groups/{name}/members/{username}` | Add/remove group member |
 | GET, POST | `/api/clients` | Visible clients / register application |
 | PATCH | `/api/clients/{id}` | Client configuration, including `settings`; client ID and type are immutable |
-| POST | `/api/clients/{id}/rotate-secret` | Return new secret and revoke existing client grants |
+| POST | `/api/clients/{id}/rotate-secret` | Return new secret and revoke existing client grants; requires `Idempotency-Key` and `If-Match: "<revision>"` |
 | GET | `/api/resources/{kind}/{name}` | Exact user/client/group lookup |
 | GET | `/api/inventory/{kind}` | Users/groups/clients/sources/audit; `after`, `limit`, optional `filter` (exact run id for audit, name substring otherwise) |
 | GET | `/api/audit?limit=100` | Recent audit; maximum 1,000 events |

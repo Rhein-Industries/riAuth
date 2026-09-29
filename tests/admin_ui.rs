@@ -937,11 +937,19 @@ async fn application_presentation_keeps_the_other_settings() {
     rest.as_object_mut().unwrap().remove("app");
     assert_eq!(rest, before["settings"]);
     // Rotation returns the new secret once, through the same authorization.
+    let revision = fixture
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap_or(0);
     let rotate = Call {
         method: "POST",
         cookie: Some(&admin),
         portal: true,
         origin: Some(&origin),
+        revision: Some(revision),
+        key: Some("application-presentation-rotation"),
         ..Default::default()
     };
     let (status, _, body) = send(&app, "/api/admin/clients/code/rotate-secret", rotate).await;
@@ -952,6 +960,141 @@ async fn application_presentation_keeps_the_other_settings() {
             .unwrap()
             .starts_with("ri_client_")
     );
+}
+
+#[tokio::test]
+async fn client_secret_rotation_requires_retry_binding_across_browser_and_bearer() {
+    let fixture = Fixture::new();
+    let original = fixture.client("rotation", true).unwrap();
+    let outsider = fixture.user("outsider");
+    let cookie = sso_cookie(&fixture.core, &fixture.admin);
+    let origin = origin(&fixture.core);
+    let app = riauth::api::router(fixture.core.clone());
+    let revision = || {
+        fixture
+            .core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let audit_count = || {
+        fixture
+            .core
+            .audit_events(&fixture.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| {
+                event["action"] == "client.secret.rotate" && event["target"] == "rotation"
+            })
+            .count()
+    };
+    let browser = |key: Option<&'static str>, version| Call {
+        method: "POST",
+        cookie: Some(&cookie),
+        portal: true,
+        origin: Some(&origin),
+        key,
+        revision: version,
+        ..Default::default()
+    };
+    let bearer = |key: Option<&'static str>, version| Call {
+        method: "POST",
+        bearer: Some(&fixture.admin),
+        key,
+        revision: version,
+        ..Default::default()
+    };
+    let browser_path = "/api/admin/clients/rotation/rotate-secret";
+    let bearer_path = "/api/clients/rotation/rotate-secret";
+    let (status, _, script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        script
+            .as_str()
+            .unwrap()
+            .contains("rotate-secret`, undefined, { revision: data.revision, key }")
+    );
+    let at = revision();
+    let before = fixture.snapshot().unwrap();
+    for (key, version) in [(None, None), (Some("key-only"), None), (None, Some(at))] {
+        assert_eq!(
+            send(&app, browser_path, browser(key, version)).await.0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+        assert_eq!(
+            send(&app, bearer_path, bearer(key, version)).await.0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    assert_eq!(
+        send(
+            &app,
+            bearer_path,
+            Call {
+                method: "POST",
+                bearer: Some(&outsider),
+                key: Some("unauthorized-rotation"),
+                revision: Some(at),
+                ..Default::default()
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    fixture.assert_http_mutation_snapshot(&before);
+    assert_eq!(audit_count(), 0);
+
+    let first = send(
+        &app,
+        browser_path,
+        browser(Some("browser-rotation"), Some(at)),
+    )
+    .await;
+    assert_eq!(first.0, StatusCode::OK);
+    assert!(first.2["client_secret"].as_str().unwrap() != original);
+    let committed = fixture.snapshot().unwrap();
+    let replay = send(
+        &app,
+        browser_path,
+        browser(Some("browser-rotation"), Some(at)),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert!(replay.2 == first.2, "Exact browser retry changed the response");
+    fixture.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count(), 1);
+    assert_eq!(revision(), at + 1);
+
+    assert_eq!(
+        send(&app, bearer_path, bearer(Some("stale-rotation"), Some(at)))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    fixture.assert_http_mutation_snapshot(&committed);
+    let current = revision();
+    let second = send(
+        &app,
+        bearer_path,
+        bearer(Some("bearer-rotation"), Some(current)),
+    )
+    .await;
+    assert_eq!(second.0, StatusCode::OK);
+    assert!(second.2["client_secret"] != first.2["client_secret"]);
+    let replay = send(
+        &app,
+        bearer_path,
+        bearer(Some("bearer-rotation"), Some(current)),
+    )
+    .await;
+    assert_eq!(replay.0, StatusCode::OK);
+    assert!(replay.2 == second.2, "Exact bearer retry changed the response");
+    assert_eq!(audit_count(), 2);
+    assert_eq!(revision(), current + 1);
 }
 
 #[tokio::test]

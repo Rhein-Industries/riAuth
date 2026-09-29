@@ -48,7 +48,8 @@ riauthctl --server https://id.example.com client update dashboard --enabled fals
 riauthctl --server https://id.example.com client disable dashboard
 riauthctl --server https://id.example.com client list --filter dash --limit 100
 riauthctl --server https://id.example.com client create worker --service --secret-file worker-credential.json
-riauthctl --server https://id.example.com client rotate-secret worker --secret-file worker-new-credential.json
+riauthctl --server https://id.example.com revision
+riauthctl --server https://id.example.com --if-revision REVISION --idempotency-key ROTATION_ID client rotate-secret worker --secret-file worker-new-credential.json
 riauthctl --server https://id.example.com session revoke SESSION_ID
 ```
 

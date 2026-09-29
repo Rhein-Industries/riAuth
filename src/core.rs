@@ -659,6 +659,15 @@ impl Core {
         })
     }
     pub fn rotate_client_secret(&self, token: &str, cid: &str) -> Result<Value> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Client secret rotation requires Idempotency-Key and If-Match",
+            ));
+        }
         self.mutation(token, |tx| {
             let actor = self.management(tx, token, "client.rotate", &format!("client/{cid}"))?;
             let existing = tx
