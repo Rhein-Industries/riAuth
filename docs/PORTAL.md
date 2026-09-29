@@ -227,6 +227,23 @@ credential signs in again. The shim is not a physical security key, a synced
 passkey, a phone, or a mobile operating system, and the viewport is CSS only.
 Hardware authenticators, real mobile devices, and email recovery remain open,
 and this Playwright project is not a CI job.
+`tools/browser/password-reset-replay.spec.js` is a separate headless journey on
+the same 390×844 CSS viewport. The fixture opts in to a local loopback SMTP
+capture and one password account whose email is verified. From the keyboard, an
+empty username moves focus to the error and does not request a link. An unknown
+username and an unverified fixture account get the same Check your email screen,
+and the capture has no reset message for them. The verified account gets that
+same screen. The journey reads the one captured message from the fixture sink,
+opens its browser link, and sees the note that a reset keeps passkeys and an
+authenticator app. Mismatched passwords and the current password leave the link
+unused. A new password completes the reset, ends the account's other browser
+session while that browser keeps its cookie, and rejects the old password.
+Submitting the same link again reports that it was already used, and the new
+password still signs in. This account has no passkey or authenticator app
+enrolled, so that kept-factor sentence is the page copy. The capture is the
+fixture's loopback SMTP listener, not an external mailbox. Hardware
+authenticators, real mobile devices, and external email remain open, and this
+Playwright project is not a CI job.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 

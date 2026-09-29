@@ -6,13 +6,24 @@
 //! `RIAUTH_FIXTURE_RP_ORIGIN` (`http://localhost:PORT`), `http://localhost:9999` by default.
 //! The first stdout line is the JSON the Playwright suites read (see
 //! `tools/browser/fixture.js`).
+//!
+//! `RIAUTH_FIXTURE_MAIL_CAPTURE=1` binds a loopback SMTP sink, enables email
+//! recovery for that process, verifies the `recovery` user, and appends each
+//! captured message as one JSON line. Other suites leave the variable unset, so
+//! mail stays off. The sink is not an external mailbox and it is not a product API.
 use riauth::{config::Config, core::Core, crypto, model::*, portal::Settings};
 use serde_json::{Map, Value, json};
 use std::{
     future::IntoFuture,
+    io::Write,
     net::{Ipv4Addr, SocketAddr},
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
-use tokio::net::TcpListener;
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::TcpListener,
+};
 
 const ADMIN_PASSWORD: &str = "cross-browser-fixture-password";
 
@@ -83,6 +94,127 @@ struct Client<'a> {
     settings: ProviderSettings,
 }
 
+struct MailCapture {
+    config: riauth::lifecycle::MailConfig,
+    path: PathBuf,
+}
+
+/// Opt-in loopback sink. This example serves HTTP itself and does not start the
+/// server's background workers, so the caller also polls `lifecycle::deliver`.
+async fn prepare_mail_capture(dir: &Path) -> anyhow::Result<Option<MailCapture>> {
+    if std::env::var("RIAUTH_FIXTURE_MAIL_CAPTURE").as_deref() != Ok("1") {
+        return Ok(None);
+    }
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+    let port = listener.local_addr()?.port();
+    let path = dir.join("mail-capture.jsonl");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    let capture = Arc::new(Mutex::new(file));
+    tokio::spawn(async move { accept_captured_mail(listener, capture).await });
+    Ok(Some(MailCapture {
+        path,
+        config: riauth::lifecycle::MailConfig {
+            host: Ipv4Addr::LOCALHOST.to_string(),
+            port,
+            from: "Identity <identity@example.test>".into(),
+            security: riauth::lifecycle::MailSecurity::Loopback,
+            username: None,
+            password_file: None,
+        },
+    }))
+}
+
+async fn accept_captured_mail(listener: TcpListener, capture: Arc<Mutex<std::fs::File>>) {
+    loop {
+        let Ok((stream, _)) = listener.accept().await else {
+            break;
+        };
+        let capture = Arc::clone(&capture);
+        tokio::spawn(async move {
+            let messages = read_smtp_data(stream).await;
+            if messages.is_empty() {
+                return;
+            }
+            let Ok(mut file) = capture.lock() else {
+                eprintln!("fixture mail capture lock poisoned");
+                return;
+            };
+            for body in messages {
+                let Ok(line) = serde_json::to_string(&json!({ "body": body })) else {
+                    continue;
+                };
+                let _ = writeln!(file, "{line}");
+            }
+            let _ = file.flush();
+        });
+    }
+}
+
+async fn read_smtp_data(stream: tokio::net::TcpStream) -> Vec<String> {
+    let (read, mut write) = stream.into_split();
+    let mut read = BufReader::new(read);
+    let mut messages = Vec::new();
+    if write.write_all(b"220 localhost ESMTP\r\n").await.is_err() {
+        return messages;
+    }
+    let mut data = false;
+    let mut message = String::new();
+    loop {
+        let mut line = String::new();
+        if read.read_line(&mut line).await.unwrap_or(0) == 0 {
+            break;
+        }
+        if data {
+            if line == ".\r\n" {
+                if write.write_all(b"250 accepted\r\n").await.is_err() {
+                    break;
+                }
+                messages.push(std::mem::take(&mut message));
+                data = false;
+                continue;
+            }
+            let clean = line.strip_prefix('.').unwrap_or(&line);
+            if message.len() + clean.len() > 65_536 {
+                break;
+            }
+            message.push_str(clean);
+            continue;
+        }
+        let response: &[u8] = if line.starts_with("EHLO ") {
+            b"250-localhost\r\n250 8BITMIME\r\n"
+        } else if line.starts_with("DATA") {
+            data = true;
+            message.clear();
+            b"354 send data\r\n"
+        } else if line.starts_with("QUIT") {
+            let _ = write.write_all(b"221 bye\r\n").await;
+            break;
+        } else {
+            b"250 ok\r\n"
+        };
+        if write.write_all(response).await.is_err() {
+            break;
+        }
+    }
+    messages
+}
+
+/// The product mail worker waits five seconds. This process calls the same
+/// deliver function about once a second so a browser journey can observe it.
+fn pump_mail(core: Core) {
+    tokio::spawn(async move {
+        loop {
+            if let Err(error) = riauth::lifecycle::deliver(core.clone()).await {
+                eprintln!("fixture mail delivery: {error}");
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    });
+}
+
 fn client(core: &Core, admin: &str, redirect_uri: &str, c: Client<'_>) -> anyhow::Result<()> {
     core.create_client(
         admin,
@@ -126,6 +258,10 @@ async fn main() -> anyhow::Result<()> {
         ("general", 6000),
     ] {
         config.rate_limits.insert(category.into(), limit);
+    }
+    let mail_capture = prepare_mail_capture(dir.path()).await?;
+    if let Some(capture) = &mail_capture {
+        config.mail = Some(capture.config.clone());
     }
     let mut core = Core::initialize(
         config,
@@ -204,21 +340,42 @@ async fn main() -> anyhow::Result<()> {
         }
         users.insert(key.into(), account);
     }
+    if mail_capture.is_some() {
+        let account = user(&core, &token, "recovery", "Rae Recovery")?;
+        let verified = core.update_user(
+            &token,
+            "recovery",
+            UserPatch {
+                email_verified: Some(true),
+                ..UserPatch::default()
+            },
+        )?;
+        anyhow::ensure!(
+            verified["email_verified"] == Value::Bool(true),
+            "recovery email was not verified"
+        );
+        users.insert("recovery".into(), account);
+    }
+    let mail_capture_path = mail_capture.map(|capture| {
+        pump_mail(core.clone());
+        capture.path.to_string_lossy().into_owned()
+    });
     // Review-specific suites opt in after ordinary fixture clients are populated.
     core.config.reviewed_client_creation =
         std::env::var("RIAUTH_FIXTURE_REVIEWED_CLIENT_CREATION").as_deref() == Ok("1");
-    println!(
-        "{}",
-        json!({
-            "issuer": issuer,
-            "token": token,
-            "admin": {"username": "admin", "password": ADMIN_PASSWORD},
-            "users": users,
-            "clients": {"launcher": "fixture", "consent": "rp", "implicit": "implicit", "mfa": "mfa-rp"},
-            "redirect_uri": redirect_uri,
-            "post_logout_redirect_uri": post_logout_redirect_uri,
-        })
-    );
+    let mut started = json!({
+        "issuer": issuer,
+        "token": token,
+        "admin": {"username": "admin", "password": ADMIN_PASSWORD},
+        "users": users,
+        "clients": {"launcher": "fixture", "consent": "rp", "implicit": "implicit", "mfa": "mfa-rp"},
+        "redirect_uri": redirect_uri,
+        "post_logout_redirect_uri": post_logout_redirect_uri,
+    });
+    if let Some(path) = mail_capture_path {
+        started["mail_capture"] = Value::String(path);
+    }
+    println!("{started}");
     let router = riauth::api::router(core);
     let (stop, stopped) = tokio::sync::watch::channel(());
     let servers = listeners
