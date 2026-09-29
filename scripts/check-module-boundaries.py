@@ -809,6 +809,9 @@ def main() -> None:
             callback_compact = re.sub(r"\s+", "", callback_adapter or "")
             callback_claim = rust_function_body(assembly_source_claim, "saml_source_callback_claim")
             callback_claim_compact = re.sub(r"\s+", "", callback_claim or "")
+            assembly_source_record = (SRC / "assembly/source_saml_record.rs").read_text()
+            callback_record = rust_function_body(assembly_source_record, "saml_source_callback_record")
+            callback_record_compact = re.sub(r"\s+", "", callback_record or "")
             assembly_source_return = (SRC / "assembly/source_saml_return.rs").read_text()
             return_adapter = rust_function_body(saml_source, "saml_source_browser_return")
             adapter_compact = re.sub(r"\s+", "", return_adapter or "")
@@ -827,8 +830,8 @@ def main() -> None:
                         < callback_compact.find("SamlSourceClaim::Ready(source,pending)=>")
                         < callback_compact.find("STANDARD.decode(encoded)")
                         < callback_compact.find("verified_identity(")
-                        < callback_compact.find("self.store.write(|tx|"))
-                or callback_compact.count("self.store.write(|tx|") != 1
+                        < callback_compact.find("self.saml_source_callback_record(id,state,&source,&pending,result)"))
+                or "self.store.write(|tx|" in callback_compact
                 or callback_claim is None
                 or not (0 <= callback_claim_compact.find("self.store.write(|tx|")
                         < callback_claim_compact.find('tx.get::<Source>("sources",id)?')
@@ -847,6 +850,30 @@ def main() -> None:
                 or not re.search(r"\bpub\(crate\)\s+use\s+source_saml_claim::SamlSourceClaim\s*;", assembly_root)
             ):
                 errors.append("src/source/saml.rs: initial SAML callback claim belongs in assembly")
+            if (
+                rust_function_body(saml_source, "saml_source_callback_record") is not None
+                or callback_record is None
+                or not (0 <= callback_record_compact.find("self.store.write(|tx|")
+                        < callback_record_compact.find('tx.get::<Source>("sources",id)?')
+                        < callback_record_compact.find('tx.get::<Login>("source_logins",&digest(state))?')
+                        < callback_record_compact.find("p.claimed&&p.expires_at>now()&&p.result.is_none()&&!p.failed")
+                        < callback_record_compact.find("result.and_then(|(identity,assertion,expiry)|")
+                        < callback_record_compact.find("current_source.fingerprint()?!=pending.fingerprint")
+                        < callback_record_compact.find('tx.get::<u64>("saml_source_replays",&key)?')
+                        < callback_record_compact.find('tx.put("saml_source_replays",&key,&expiry.saturating_add(30))?')
+                        < callback_record_compact.find("matchresult{")
+                        < callback_record_compact.find('tx.put("source_returns",&token_digest,&digest(state))?')
+                        < callback_record_compact.find('tx.put("source_logins",&digest(state),&current)?')
+                        < callback_record_compact.find("audit(")
+                        < callback_record_compact.find("callback_body(tx,&current,&digest(state))?")
+                        < callback_record_compact.find('body["browser_return"]=json!(token)')
+                        < callback_record_compact.rfind("Ok(body)"))
+                or callback_record_compact.count('tx.put("saml_source_replays",&key,&expiry.saturating_add(30))?') != 1
+                or callback_record_compact.count('tx.put("source_returns",&token_digest,&digest(state))?') != 1
+                or callback_record_compact.count('tx.put("source_logins",&digest(state),&current)?') != 1
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_record\s*;", assembly_root)
+            ):
+                errors.append("src/source/saml.rs: final SAML callback record belongs in assembly")
             if (
                 rust_function_body(saml_source, "take_browser_return") is not None
                 or re.search(r"\benum\s+BrowserReturn\b", saml_source)

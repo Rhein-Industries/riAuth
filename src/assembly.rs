@@ -96,6 +96,8 @@ mod source_saml_claim;
 #[cfg(feature = "platform")]
 pub(crate) use source_saml_claim::SamlSourceClaim;
 #[cfg(feature = "platform")]
+mod source_saml_record;
+#[cfg(feature = "platform")]
 mod source_saml_return;
 #[cfg(feature = "platform")]
 pub(crate) use source_saml_return::{BrowserReturn, take_browser_return};

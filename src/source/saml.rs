@@ -4,7 +4,7 @@ pub(crate) use super::saml_types::UpstreamSession;
 use super::{Login, Source, UpstreamIdentity};
 use crate::assembly::{BrowserReturn, SamlSourceClaim, take_browser_return};
 use crate::{
-    core::{Core, audit, validate_display, validate_email, validate_name},
+    core::{Core, validate_display, validate_email, validate_name},
     crypto::{self, Keys, SigningKey, digest, now},
     error::{Error, Result},
     jose::ClientAuthMethod,
@@ -17,7 +17,7 @@ use crate::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use roxmltree::{Document, Node};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 impl Settings {
     pub fn validate(&self, source: &Source) -> Result<()> {
@@ -179,63 +179,7 @@ impl Core {
                 &key,
             )
         })();
-        self.store.write(|tx| {
-            let current_source = tx.get::<Source>("sources", id)?;
-            let mut current = tx
-                .get::<Login>("source_logins", &digest(state))?
-                .filter(|p| p.claimed && p.expires_at > now() && p.result.is_none() && !p.failed)
-                .ok_or_else(|| Error::bad("SAML source request expired"))?;
-            let result = result.and_then(|(identity, assertion, expiry)| {
-                let Some(current_source) = current_source.as_ref() else {
-                    return Err(Error::forbidden());
-                };
-                if current_source.fingerprint()? != pending.fingerprint {
-                    return Err(Error::forbidden());
-                }
-                let key = digest(&format!("{}\0{assertion}", source.issuer));
-                if tx
-                    .get::<u64>("saml_source_replays", &key)?
-                    .is_some_and(|at| at > now())
-                {
-                    return Err(Error::forbidden());
-                }
-                tx.put("saml_source_replays", &key, &expiry.saturating_add(30))?;
-                Ok(identity)
-            });
-            let mut return_token = None;
-            match result {
-                Ok(identity) => {
-                    current.result = Some(identity);
-                    // The POST itself cannot see the Lax start cookie. Hold finish
-                    // until a same-site return presents that cookie and this token.
-                    if current.browser_binding.is_some() {
-                        let token = crypto::random_token("");
-                        let token_digest = digest(&token);
-                        current.browser_return = Some(token_digest.clone());
-                        current.browser_return_confirmed = false;
-                        tx.put("source_returns", &token_digest, &digest(state))?;
-                        return_token = Some(token);
-                    }
-                }
-                Err(_) => current.failed = true,
-            };
-            tx.put("source_logins", &digest(state), &current)?;
-            audit(
-                tx,
-                "upstream",
-                if current.failed {
-                    "source.login_failed"
-                } else {
-                    "source.authenticated"
-                },
-                id,
-            )?;
-            let mut body = super::callback_body(tx, &current, &digest(state))?;
-            if let Some(token) = return_token {
-                body["browser_return"] = json!(token);
-            }
-            Ok(body)
-        })
+        self.saml_source_callback_record(id, state, &source, &pending, result)
     }
 
     /// Confirms a browser-started SAML login. `returned` is the one-time token from the

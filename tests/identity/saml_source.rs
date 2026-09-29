@@ -680,18 +680,22 @@ fn accounts(f: &Fixture) -> (usize, usize, usize) {
     )
 }
 
-fn failed_audits(f: &Fixture) -> usize {
+fn source_audits(f: &Fixture, action: &str) -> usize {
     f.core
         .store
         .list::<Value>("audit")
         .unwrap()
         .iter()
         .filter(|(_, event)| {
-            event["action"] == "source.login_failed"
+            event["action"] == action
                 && event["actor"] == "upstream"
                 && event["target"] == "enterprise"
         })
         .count()
+}
+
+fn failed_audits(f: &Fixture) -> usize {
+    source_audits(f, "source.login_failed")
 }
 
 fn hides(error: &riauth::error::Error, secrets: &[&str]) {
@@ -1314,6 +1318,123 @@ fn saml_source_callback_claim_keeps_field_order_retirement_and_one_use() {
     );
     assert_eq!(login_row(&f, &expired)["claimed"], false);
     assert_eq!(failed_audits(&f), audits + 1);
+}
+
+#[test]
+fn saml_source_callback_record_commits_replay_failure_and_browser_success() {
+    let f = Fixture::new();
+    let (source, upstream) = install_saml(&f);
+    let acs = f.core.saml_source_callback_url(&source.id);
+    let blocked = browser_begin(&f, &source);
+    let blocked_xml = upstream.response(&source, &acs, &blocked.request, None, false);
+    let blocked_doc = roxmltree::Document::parse(&blocked_xml).unwrap();
+    let blocked_assertion = blocked_doc
+        .descendants()
+        .find(|node| node.has_tag_name((A, "Assertion")))
+        .unwrap()
+        .attribute("ID")
+        .unwrap();
+    let blocked_key = digest(&format!("{}\0{blocked_assertion}", source.issuer));
+    let retained = now() + 300;
+    f.core
+        .store
+        .write(|tx| tx.put("saml_source_replays", &blocked_key, &retained))
+        .unwrap();
+    let failed_before = failed_audits(&f);
+    let authenticated_before = source_audits(&f, "source.authenticated");
+
+    // A verified assertion whose replay key is live still commits failure and
+    // one audit, without issuing a browser return token or replacing the key.
+    let rejected = post(&f, &source, &blocked.relay, &blocked_xml).unwrap();
+    assert_eq!(rejected["completed"], false);
+    assert!(rejected.get("browser_return").is_none());
+    let row = login_row(&f, &blocked.relay);
+    assert_eq!(row["claimed"], true);
+    assert_eq!(row["failed"], true);
+    assert!(row["result"].is_null());
+    assert!(row["browser_return"].is_null());
+    assert_eq!(failed_audits(&f), failed_before + 1);
+    assert_eq!(
+        source_audits(&f, "source.authenticated"),
+        authenticated_before
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<u64>("saml_source_replays", &blocked_key)
+            .unwrap(),
+        Some(retained)
+    );
+    assert!(
+        f.core
+            .store
+            .list::<String>("source_returns")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(finish(&f, &blocked.credential, true).is_err());
+    assert!(post(&f, &source, &blocked.relay, &blocked_xml).is_err());
+    assert_eq!(failed_audits(&f), failed_before + 1);
+
+    let allowed = browser_begin(&f, &source);
+    let allowed_xml = upstream.response(&source, &acs, &allowed.request, None, false);
+    let allowed_doc = roxmltree::Document::parse(&allowed_xml).unwrap();
+    let assertion = allowed_doc
+        .descendants()
+        .find(|node| node.has_tag_name((A, "Assertion")))
+        .unwrap();
+    let allowed_key = digest(&format!(
+        "{}\0{}",
+        source.issuer,
+        assertion.attribute("ID").unwrap()
+    ));
+    let expiry = ["Conditions", "SubjectConfirmationData"]
+        .into_iter()
+        .map(|tag| {
+            let value = allowed_doc
+                .descendants()
+                .find(|node| node.has_tag_name((A, tag)))
+                .and_then(|node| node.attribute("NotOnOrAfter"))
+                .unwrap();
+            time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+                .unwrap()
+                .unix_timestamp() as u64
+        })
+        .min()
+        .unwrap();
+    let accepted = post(&f, &source, &allowed.relay, &allowed_xml).unwrap();
+    assert_eq!(accepted["completed"], true);
+    let token = text(&accepted, "browser_return");
+    let row = login_row(&f, &allowed.relay);
+    assert_eq!(row["claimed"], true);
+    assert_eq!(row["failed"], false);
+    assert_eq!(row["result"]["subject"], "opaque-subject");
+    assert_eq!(row["browser_return"], digest(&token));
+    assert_eq!(row["browser_return_confirmed"], false);
+    assert_eq!(
+        f.core
+            .store
+            .get::<u64>("saml_source_replays", &allowed_key)
+            .unwrap(),
+        Some(expiry + 30)
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_returns", &digest(&token))
+            .unwrap(),
+        Some(digest(&allowed.relay))
+    );
+    assert_eq!(failed_audits(&f), failed_before + 1);
+    assert_eq!(
+        source_audits(&f, "source.authenticated"),
+        authenticated_before + 1
+    );
+    assert!(post(&f, &source, &allowed.relay, &allowed_xml).is_err());
+    assert_eq!(
+        source_audits(&f, "source.authenticated"),
+        authenticated_before + 1
+    );
 }
 
 /// Old and new pinned IdP certificates both verify. A removed certificate cannot
