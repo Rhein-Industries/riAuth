@@ -59,6 +59,8 @@ The listener limits packet size, connection count, concurrent authentication, pe
 
 The network regression test uses an independent OpenSSL packet authenticator and TLS client against actual UDP/RadSec listeners. It covers MFA, duplicate/replay handling, missing/bad authenticators, group revocation, VLAN/vendor encoding and certificate pinning. Actual switch/AP/VPN interoperability remains a deployment check.
 
+`scripts/test-radius.sh` runs an operator-supplied FreeRADIUS `radclient` against a loopback PAP listener on `127.0.0.1` with an ephemeral port. The recorded local run used `radclient version 3.2.10, built on Sep 29 2026 at 07:49:30`. A correct password produces Access-Accept and radclient exits 0. A wrong password produces Access-Reject and radclient exits 1. Sending the same datagram again returns the cached Access-Accept and does not record another `radius.accept`. The script does not start a system RADIUS service.
+
 Protocol references: [RADIUS](https://www.rfc-editor.org/rfc/rfc2865.html), [Message-Authenticator](https://www.rfc-editor.org/rfc/rfc3579.html), [tunnel attributes](https://www.rfc-editor.org/rfc/rfc2868.html), [RadSec](https://www.rfc-editor.org/rfc/rfc6614.html), [Authentik RADIUS](https://docs.goauthentik.io/add-secure-apps/providers/radius/).
 
 
