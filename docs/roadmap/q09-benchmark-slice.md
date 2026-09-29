@@ -84,7 +84,11 @@ python3 scripts/q09_benchmark_slice.py \
 ```
 
 Add `--directory-users N --directory-groups G` for a verified larger directory.
-The default remains one administrator and no memberships.
+The default remains one administrator and no memberships. The report names that
+directory `q09-Nu-Gg`, so eight users and eight groups are `q09-8u-8g`.
+`--build-profile`, `--build-toolchain`, and `--build-features` are recorded as
+supplied. The script still hashes the measured file and does not infer the
+compiler from it.
 
 Repeat with `--features platform` and, separately, `--backend postgresql` when
 `initdb`, `pg_ctl`, and `createdb` are installed. Keep the JSON from each run.

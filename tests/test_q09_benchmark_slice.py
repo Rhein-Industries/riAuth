@@ -57,6 +57,15 @@ class Percentiles(unittest.TestCase):
             ["admin", "q09-user-0001", "q09-user-0002"],
         )
         self.assertEqual(plan["writes"], 10)
+        self.assertEqual(benchmark.dataset_name(plan), "q09-2u-2g")
+        self.assertEqual(benchmark.dataset_name(benchmark.directory_plan(8, 8)), "q09-8u-8g")
+        self.assertEqual(benchmark.dataset_name(benchmark.directory_plan(0, 0)), "fresh-init")
+        self.assertEqual(
+            benchmark.build_note("debug", "1.98.1", "essentials"),
+            {"profile": "debug", "toolchain": "1.98.1", "features": "essentials"},
+        )
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.build_note("debug profile", "1.98.1", "essentials")
 
     def test_redaction_and_completion_codes(self):
         clean = {"passes": {"quiet": {"errors": 0, "error_statuses": {}},
@@ -131,6 +140,8 @@ class FixtureRun(unittest.TestCase):
         self.assertEqual(report["settings"]["database_encryption"], False)
         self.assertEqual(report["settings"]["tls"], False)
         self.assertEqual(report["dataset"]["kind"], "fresh-init")
+        self.assertEqual(report["dataset"]["name"], "fresh-init")
+        self.assertEqual(report["build"]["profile"], "unrecorded")
         self.assertEqual(report["dataset"]["extra_users"], 0)
         self.assertEqual(report["dataset"]["session_read_groups"], [])
         self.assertEqual(report["settings"]["directory_users"], 0)
@@ -164,6 +175,8 @@ class FixtureRun(unittest.TestCase):
         self.assertNotIn("password", encoded)
         data = report["dataset"]
         self.assertEqual(data["kind"], "session-read-directory")
+        self.assertEqual(data["name"], "q09-2u-2g")
+        self.assertEqual(report["build"]["profile"], "unrecorded")
         self.assertTrue(data["verified"])
         self.assertTrue(data["within_one_index_page"])
         self.assertEqual(data["extra_users"], 2)

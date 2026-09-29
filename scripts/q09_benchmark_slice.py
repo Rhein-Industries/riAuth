@@ -71,7 +71,7 @@ LIMITATIONS = (
     "Interference creates empty groups and does not change the administrator memberships recorded for the session read.",
     "Server background counters come from /api/operations/metrics. The closing metrics read is inside the delta.",
     "The default general rate limit is 600 requests per minute. Estimated general requests must stay at or below 500.",
-    "The serve process profile, compiler, and Linux package identity are unrecorded unless the binary hash is compared outside this script.",
+    "Build profile, toolchain, and feature set are recorded only from the operator flags. The script does not recover them from the binary. The artifact sha256 is of the measured file.",
     "This report is an observation of the recorded run. It assigns no load, recovery, or capacity target.",
 )
 
@@ -168,6 +168,29 @@ def directory_plan(users, groups):
         "memberships": memberships,
         "writes": users + groups + len(memberships),
     }
+
+
+def dataset_name(plan):
+    if plan["writes"] == 0:
+        return "fresh-init"
+    return f"q09-{plan['extra_users']}u-{len(plan['groups'])}g"
+
+
+def build_note(profile="unrecorded", toolchain="unrecorded", features="unrecorded"):
+    """Operator-supplied build identity. This does not inspect the binary."""
+    note = {}
+    for key, value in (("profile", profile), ("toolchain", toolchain), ("features", features)):
+        if value is None:
+            value = "unrecorded"
+        if (
+            not isinstance(value, str)
+            or not value
+            or len(value) > 64
+            or any(character.isspace() or not character.isprintable() for character in value)
+        ):
+            raise SliceError(f"build {key} must be one short token")
+        note[key] = value
+    return note
 
 
 def request_budget(iterations, warmup, interference_cap, directory_users=0, directory_groups=0):
@@ -804,6 +827,7 @@ def bound_write(base, token, method, path, body, revision, hidden):
 
 def dataset_shell(plan, verification):
     return {
+        "name": dataset_name(plan),
         "kind": "fresh-init" if plan["writes"] == 0 else "session-read-directory",
         "bootstrap_administrator": "admin",
         "extra_users": plan["extra_users"],
@@ -926,6 +950,7 @@ def latency_delta(interference, quiet):
 def run_slice(
     binary, backend, iterations, warmup, interference_cap,
     fixture=False, directory_users=0, directory_groups=0,
+    build_profile="unrecorded", build_toolchain="unrecorded", build_features="unrecorded",
 ):
     if backend not in ("redb", "postgresql"):
         raise SliceError("backend must be redb or postgresql")
@@ -933,6 +958,7 @@ def run_slice(
         iterations, warmup, interference_cap, directory_users, directory_groups,
     )
     plan = directory_plan(directory_users, directory_groups)
+    build = build_note(build_profile, build_toolchain, build_features)
     binary = absolute_binary(binary)
     hidden = []
     source = source_identity()
@@ -1043,6 +1069,7 @@ def run_slice(
                 "sha256": digest(SCRIPT),
             },
             "source": source,
+            "build": build,
             "artifact": artifact,
             "capabilities": {
                 "schema_version": capabilities.get("schema_version"),
@@ -1348,16 +1375,29 @@ def main(argv=None):
     parser.add_argument("--interference-cap", type=int, default=30)
     parser.add_argument("--directory-users", type=int, default=0)
     parser.add_argument("--directory-groups", type=int, default=0)
+    parser.add_argument("--build-profile", default="unrecorded")
+    parser.add_argument("--build-toolchain", default="unrecorded")
+    parser.add_argument("--build-features", default="unrecorded")
     parser.add_argument("--out")
     args = parser.parse_args(argv)
     if args.self_check:
-        if args.binary or args.out or args.backend != "redb" or args.directory_users or args.directory_groups:
-            raise SliceError("--self-check takes no binary, backend, directory size, or output file")
+        if (
+            args.binary or args.out or args.backend != "redb"
+            or args.directory_users or args.directory_groups
+            or args.build_profile != "unrecorded" or args.build_toolchain != "unrecorded"
+            or args.build_features != "unrecorded"
+        ):
+            raise SliceError("--self-check takes no binary, backend, directory size, build note, or output file")
         report = run_slice(sys.executable, "redb", 12, 1, 4, fixture=True)
         code = completion_code(report)
         if code != 0 or report["product_run"] or not report["interference"]["overlap"]:
             raise SliceError(f"self-check failed with completion code {code}")
-        if report["dataset"]["kind"] != "fresh-init" or report["dataset"]["extra_users"] != 0:
+        if (
+            report["dataset"]["kind"] != "fresh-init"
+            or report["dataset"]["name"] != "fresh-init"
+            or report["dataset"]["extra_users"] != 0
+            or report["build"] != {"profile": "unrecorded", "toolchain": "unrecorded", "features": "unrecorded"}
+        ):
             raise SliceError("self-check baseline dataset was not a fresh init")
         directory = run_slice(
             sys.executable, "redb", 4, 0, 1, fixture=True, directory_users=2, directory_groups=2,
@@ -1370,6 +1410,7 @@ def main(argv=None):
             or directory["product_run"]
             or not directory["interference"]["overlap"]
             or observed["kind"] != "session-read-directory"
+            or observed["name"] != "q09-2u-2g"
             or not observed["verified"]
             or observed["extra_users"] != 2
             or observed["session_read_groups"] != ["q09-dir-0001", "q09-dir-0002"]
@@ -1389,6 +1430,8 @@ def main(argv=None):
     report = run_slice(
         args.binary, args.backend, args.iterations, args.warmup, args.interference_cap,
         directory_users=args.directory_users, directory_groups=args.directory_groups,
+        build_profile=args.build_profile, build_toolchain=args.build_toolchain,
+        build_features=args.build_features,
     )
     code = completion_code(report)
     encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
@@ -1400,6 +1443,7 @@ def main(argv=None):
     print(
         f"q09 benchmark slice completion={code} product_run={str(report['product_run']).lower()} "
         f"backend={report['settings']['backend']} edition={report['runtime']['edition']} "
+        f"dataset={report['dataset']['name']} "
         f"directory_users={report['dataset']['extra_users']} "
         f"directory_groups={len(report['dataset']['groups'])} "
         f"verified={str(report['dataset']['verified']).lower()}",
