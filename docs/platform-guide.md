@@ -14,7 +14,7 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records nine loopback observations. The first
+build. The walkthrough records ten loopback observations. The first
 reported the Essentials catalog. The second was a copied Platform debug
 server whose artifact catalog had `edition` `platform` and `build_features`
 `["essentials", "platform"]`. The third used that same server snapshot with
@@ -32,7 +32,11 @@ used only that server snapshot and ran section 9 `directory list`,
 `directory plan`, and `directory apply` against one disposable loopback
 OpenLDAP listener. The ninth used only that server snapshot and ran section
 10 `provision targets`, `provision plan`, `provision apply`, and `provision
-jobs` against one disposable loopback SCIM fixture. The commands in sections
+jobs` against one disposable loopback SCIM fixture. The tenth used
+only that server snapshot and ran section 13 `schema provider`,
+`client create`, and `agent create`, restarted `serve` with
+`[ldap_listeners.legacy]`, and searched that LDAPS listener with Homebrew
+OpenLDAP `ldapsearch`. The commands in sections
 1 through 13 are the ones
 implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
@@ -41,7 +45,7 @@ implemented in this tree: `[features]` in
 
 The three slices were checked by reading the source and the current docs,
 then by `python3 scripts/check-docs.py`. Section 14's password acceptance
-was run once on loopback. Nine disposable loopback runs are recorded in
+was run once on loopback. Ten disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
 build was run for any of them. The first stopped after one `local-demo`
 client create on the Essentials catalog. The second repeated setup on the
@@ -67,7 +71,11 @@ eighth created the local group `staff`, appended `[directories.staff]` with
 `directory apply` against a disposable loopback OpenLDAP listener. The
 ninth created local user `quinn`, added `admin` and `quinn` to `staff`, and
 ran `provision targets`, `provision plan`, `provision apply`, and `provision
-jobs` against a disposable loopback SCIM fixture. Rename,
+jobs` against a disposable loopback SCIM fixture. The tenth created
+local group `staff`, added `admin`, created enabled non-administrator
+`outsider` outside `staff`, created public client `legacy-directory` and
+agent `ldap-directory`, restarted `serve` with one LDAPS listener, and
+searched that listener with Homebrew OpenLDAP `ldapsearch`. Rename,
 remove, passkey sign-in, passkey invitation acceptance, hardware, peers, and
 Essentials-guide execution remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
@@ -80,8 +88,9 @@ import and outbound SCIM steps on this Platform server. Sections 11 through
 13 add the configured-workflow, SAML, and LDAP provider procedures. Section
 11 was executed once on loopback. Section 9 was executed once on loopback
 against a disposable OpenLDAP listener. Section 10 was executed once on
-loopback against a disposable SCIM fixture. Sections 12 and 13 were read
-from this tree and were not executed. Assembly and
+loopback against a disposable SCIM fixture. Section 13 was executed
+once on loopback against a private CA and one LDAPS listener. Section 12
+was read from this tree and was not executed. Assembly and
 downgrade rules stay in [server editions](editions.md).
 
 ## Shared semantics
@@ -1780,18 +1789,23 @@ agent commands. The server CLI session from section 2 exists. Pass
 `--server http://localhost:9000`.
 
 `search_groups` and `allowed_groups` name `staff`. Section 6 is the
-procedure that creates `staff` and adds `admin`. That procedure was not
-executed in this task. Until the group exists, `ldap_profile` fails with
-`LDAP search group does not exist`. A search then reports inappropriate
-matching with an empty message. A bind reports invalid credentials. Until
-`admin` is a member, a user bind for `admin` is refused by the client group
-policy and the LDAP bind result is also invalid credentials.
+procedure that creates `staff` and adds `admin`. One loopback run of this
+section created `staff` and added `admin` before `client create`. Until the
+group exists, `ldap_profile` fails with `LDAP search group does not exist`.
+A search then reports inappropriate matching with an empty message. A bind
+reports invalid credentials. Until `admin` is a member, a user bind for
+`admin` is refused by the client group policy and the LDAP bind result is
+also invalid credentials. That same run created enabled non-administrator
+`outsider` and did not add `outsider` to `staff`.
 
 The listener needs a certificate file and a key file. Place them next to
 the configuration as `ldap-fullchain.pem` and `secrets/ldap-key.pem`, or
 change the two paths. Relative paths are resolved from the configuration
-file's directory when the file is loaded. This task did not create a
-certificate.
+file's directory when the file is loaded. One loopback run created a
+one-day private CA and a leaf whose subject alternative names were
+`DNS:localhost` and `IP Address:127.0.0.1`. The chain file was the leaf
+followed by that CA. The private key stayed in the lab and is not recorded
+here.
 
 Stop `serve` before editing `riauth.toml`, then start the same serve
 command. A second opener of the redb store fails with `storage_owned`.
@@ -1939,8 +1953,10 @@ reports invalid credentials. A search reports insufficient access rights.
 A service bind is `cn=riauth-agent,dc=lab,dc=test`. The password is the
 agent token. A user bind is `uid=<username>,ou=users,dc=lab,dc=test` with
 that account's password. Group entries use `cn=<group>,ou=groups,<base>`.
-The attribute and paging limits are on the LDAP provider page. This task
-opened no LDAP connection.
+The attribute and paging limits are on the LDAP provider page. One loopback
+run opened LDAPS with Homebrew OpenLDAP `ldapsearch`. The walkthrough
+records that client. `ldap3` and `scripts/test-ldap-provider.sh` were not
+run.
 
 ### Expected observation
 
@@ -1959,16 +1975,88 @@ search group that is not a stored group fails inside the server with
 matching, still with an empty message, and a bind reports invalid
 credentials.
 
+### Loopback observation
+
+One run used a copy of the Platform server snapshot supplied for `58357fd`.
+No Cargo build was run. `riauth --version` printed `riauth 0.1.1`.
+`riauth capabilities` reported edition `platform`, interface `server`,
+version `0.1.1`, `schema_version` `riauth.capabilities/v2`, 29 schemas, and
+`build_features` `essentials` and `platform`. `riauth schema provider`
+exited 0, and its text named `base_dn` and `search_groups`. The retained
+catalog parse did not read `schemas` as a list of names.
+
+`init` wrote empty `[proxy_listeners]`, `[radius_listeners]`,
+`[ldap_listeners]`, `[directories]`, `[workspace_directories]`,
+`[entra_directories]`, `[scim_targets]`, and `[signers]` tables. Before the
+listener, runtime `directory.ldap_provider` on `GET /api/capabilities` was
+`configured` false, `runtime_ready` false, `usable` false, reason
+`not_configured`.
+
+The run created `staff`, added `admin`, and created enabled
+non-administrator `outsider`. `outsider` was not a member of `staff`.
+`user list` showed `admin` (`admin` true, `password_available` true,
+`email` null, `email_verified` false) and `outsider` (`enabled` true,
+`admin` false, `password_available` true, email `outsider@example.test`,
+`email_verified` false). `group list` showed `staff` with one member,
+`admin`.
+
+`client create` used the printed settings, scopes, and group, the key
+`legacy-directory-create`, and the revision read immediately before it.
+The client id was `legacy-directory`. `client_secret` was null.
+`confidential` was false, `service` was false, `require_mfa` was false,
+`allowed_groups` was `staff`, `base_dn` was `dc=lab,dc=test`, and
+`search_groups` was `staff`. `agent create` used the key
+`ldap-directory-agent-create` and the revision after the client write. The
+agent id was `ldap-directory`, enabled, with `ldap.search` on
+`client/legacy-directory`. Standard output did not contain the token. The
+credential file was mode `0600` and was removed with the lab. This run did
+not read the database, so it does not say whether the snapshot's generic
+mutation receipt also stored that token.
+
+Revision was 0 before `group create`, 1 after it, 2 after `admin` was
+added, 3 after `outsider` was created, 4 after `client create`, and 5 after
+`agent create`.
+
+Serve was stopped, the printed `[ldap_listeners.legacy]` block was appended
+with `ldaps` true and listen `127.0.0.1:1636`, and serve was started again.
+`local_unencrypted` stayed absent. The configuration contained no secret
+and no private key. `/readyz` stayed status `ok`, role `integrated`,
+version `0.1.1`. After the restart, runtime `directory.ldap_provider` was
+`configured` true, `runtime_ready` true, `usable` true, and reason null.
+
+OpenSSL 3.6.4 verified the leaf against the private CA. `s_client` reported
+protocol `TLSv1.3`, ciphersuite `TLS_AES_256_GCM_SHA384`, and
+`Verification: OK`. The leaf text showed `CA:FALSE`, key usage Digital
+Signature and Key Encipherment, extended key usage TLS Web Server
+Authentication, and subject alternative names `DNS:localhost` and
+`IP Address:127.0.0.1`.
+
+Homebrew OpenLDAP `ldapsearch` 2.7.1 used `LDAPTLS_REQCERT=hard` and that
+CA. The service bind searched `(objectClass=inetOrgPerson)` and returned
+one entry, `uid=admin`, with `memberOf`
+`cn=staff,ou=groups,dc=lab,dc=test`. It did not return `outsider`. The
+service group search for `(objectClass=groupOfNames)` returned `cn=staff`
+with member `uid=admin,ou=users,dc=lab,dc=test`. The `admin` password bind
+returned only `uid=admin`. A wrong password for `admin`, and the real
+password for `outsider`, each exited 49 with
+`ldap_bind: Invalid credentials (49)` and no entries. A service search that
+trusted an unrelated one-day CA exited 1 before a bind, with
+`certificate verify failed (self-signed certificate in certificate chain)`.
+
+The peer was this loopback LDAPS listener. It was not Active Directory, not
+a customer directory, and not a production TLS trust store. Section 9's
+directory import stays a separate procedure. The walkthrough already records
+that import. This run did not repeat it.
+
 ### Unrun and peer evidence
 
-This task did not write the settings file, did not run the `revision` or
-`client create` printed in this section, did not create the agent, did not
-add the listener, did not restart `serve`, and did not open an LDAP
-connection. No `ldap3` client and no third-party directory client was run.
-The automated network fixtures
-described on the LDAP provider page are tests in this repository. They are
-not a result from this lab. Section 9's directory import remains a separate,
-also unrun, procedure.
+`ldap3` was not run. `scripts/test-ldap-provider.sh` and
+`scripts/test-ldap.sh` were not run. Apple `ldapsearch` was not used. No
+STARTTLS listener was added. No customer directory and no Active Directory
+peer was contacted. The automated network fixtures described on the LDAP
+provider page are tests in this repository. They are not a result from this
+lab. Section 12 remains unrun. The snapshot comparison and cleanup are in
+the walkthrough.
 
 ## 14. Accept an invitation in the browser
 
@@ -2134,7 +2222,7 @@ Platform install above does not configure the extra surfaces they draw.
 
 | Artifact | What it is | What this slice can say |
 | --- | --- | --- |
-| [Architecture system map](architecture.md) | A combined diagram of browsers, the CLI, nginx and Traefik, HTTP, LDAP and RADIUS listeners, redb or PostgreSQL, and external peers. | It is a map of the codebase's surfaces. Sections 9 and 10 document a directory client and an outbound SCIM target. Section 13 documents one LDAP provider listener. Those commands were not run, and the listener was not started. RADIUS and proxy listeners stay unset. The diagram was not run against this install. |
+| [Architecture system map](architecture.md) | A combined diagram of browsers, the CLI, nginx and Traefik, HTTP, LDAP and RADIUS listeners, redb or PostgreSQL, and external peers. | It is a map of the codebase's surfaces. Section 9 ran a directory client against a disposable OpenLDAP listener. Section 10 ran an outbound SCIM target against a disposable fixture. Section 13 started one LDAPS listener on `127.0.0.1:1636` and searched it with Homebrew OpenLDAP `ldapsearch`. RADIUS and proxy listeners stay unset. The diagram was not run against this install. |
 | [Q08 exact edition matrix](roadmap/q08-exact-edition-bundles.md) | A local build observation at source revision `4ca7558`, including native binary hashes and a note that Linux release files were absent. | It is not an observation of this worktree's revision. This task did not rebuild the matrix. |
 | Release archives named by [deployment examples](deployment-examples.md) and [release notes](release-notes.md) | Linux native archives, maintenance archives, `riauthctl` archives, container archives, `SHA256SUMS`, and `build-provenance` files. | They were not downloaded, loaded, or started here. `deploy/compose-small.yml` and `deploy/compose-distributed.yml` remain documented image layouts for a later deployment. |
 | `riauth capabilities` | Artifact catalog for the binary on `PATH`. | The first loopback record's `edition` was `essentials`, with `usable` null on every entry. The Platform-catalog record's `edition` was `platform`, `build_features` was `["essentials", "platform"]`, and `usable` was null on every entry. A configured instance's runtime report is a different document. Compiled Platform features are not configured features. |
@@ -2200,13 +2288,22 @@ OpenLDAP listener with `transport` `starttls`.
 `payroll`. Local group `staff` contained `admin` and `quinn`. The plan and
 the fixture received only `quinn`, and the job reached `delivery_state`
 `succeeded`. `removal_impact.review_required` was false, so that apply also
-omitted `--confirm-removals`. Sections 12 and 13 remain source-reviewed
-procedures. The generated `init` file contains empty `[directories]`,
+omitted `--confirm-removals`. A tenth run executed section 13 on that
+same server snapshot: `schema provider`, `client create` for public client
+`legacy-directory`, `agent create` for `ldap-directory`, a restart with
+`[ldap_listeners.legacy]` on `127.0.0.1:1636` and `ldaps` true, and Homebrew
+OpenLDAP `ldapsearch` with `LDAPTLS_REQCERT=hard`. The service search
+returned `admin` and group `staff`. The `admin` password bind returned only
+that account. A wrong password and enabled non-member `outsider` each
+exited 49. An unrelated CA was rejected before the bind. Section 12 remains
+a source-reviewed procedure. The generated `init` file contains empty `[directories]`,
 `[workspace_directories]`, `[entra_directories]`, `[scim_targets]`,
 `[ldap_listeners]`, `[proxy_listeners]`, `[radius_listeners]`, and
 `[signers]` tables, and no directory id until the operator appends one. It
-has no workflow table and no SAML client. Inbound SCIM, SAML, and LDAP
-provider commands were not executed here. No named service provider, SaaS
+has no workflow table and no SAML client. Inbound SCIM and SAML commands
+were not executed here. The section 13 listener was one loopback LDAPS peer
+with a private CA. It was not Active Directory, not a customer directory,
+and not a production TLS deployment. No named service provider, SaaS
 directory, or upstream identity provider was contacted. The section 9
 directory was the disposable loopback `slapd`, not a customer directory.
 The section 10 peer was a disposable loopback SCIM fixture, not a customer
@@ -2261,7 +2358,9 @@ Still outside this slice, as later tasks:
   than a named application. The SAML IdP recipe follows the xmlsec1 fixture.
   A named service provider remains an open peer. SAML source remains a
   separate profile. The LDAP provider recipe is separate from LDAP import.
-  Other D03 recipes and acceptance against category targets (D05) remain
+  The section 13 loopback run did not execute `scripts/test-ldap-provider.sh`.
+  Its peer was a private-CA LDAPS listener on loopback, not a customer
+  directory. Other D03 recipes and acceptance against category targets (D05) remain
   open. The [acceptance evidence matrix](roadmap/d05-acceptance-evidence.md)
   classifies the evidence that exists and leaves every category unpassed.
   The first D04 decision page is
@@ -2278,13 +2377,17 @@ Still outside this slice, as later tasks:
 - Any claim that a person completed `cargo install`, the OIDC redirect,
   passkey enrollment, passkey rename or removal, passkey sign-in,
   `recovery complete`, `recover-admin`, a SAML metadata exchange with a peer,
-  an LDAP provider bind, or an invitation passkey acceptance. One section 9
+  or an invitation passkey acceptance. One section 9
   LDAP plan and apply was run against a disposable loopback OpenLDAP
   listener. One section 10 SCIM plan and apply was run against a disposable
   loopback fixture, and its job reached `delivery_state` `succeeded`. One
   section 11 workflow plan, apply, and configured start was run, and its
-  password step was not submitted. The
-  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has nine runs.
+  password step was not submitted. One section 13 service bind, user bind,
+  wrong-password rejection, and non-member rejection were run against a
+  disposable loopback LDAPS listener. Homebrew OpenLDAP `ldapsearch`
+  verified that leaf. The listener was not Active Directory and was not a
+  production TLS deployment. The
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has ten runs.
   The first supplies `riauth capabilities`, local `init`, `serve`, `/readyz`,
   CLI `login`, `doctor`, and one `local-demo` client create on a binary whose
   catalog edition was `essentials`. The second supplies the same setup on a
@@ -2307,4 +2410,7 @@ Still outside this slice, as later tasks:
   10 `provision targets`, `provision plan`, `provision apply`, and `provision
   jobs` for target `payroll` on that same server snapshot, against one
   disposable loopback SCIM fixture. The exported account was `quinn` in group
-  `staff`. D01 remains incomplete.
+  `staff`. The tenth supplies section 13 `schema provider`, `client create`,
+  `agent create`, the LDAPS listener on `127.0.0.1:1636`, and Homebrew
+  OpenLDAP `ldapsearch` on that same server snapshot. The service search
+  returned `admin` and group `staff`. D01 remains incomplete.

@@ -3,7 +3,7 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records nine disposable loopback runs of the
+This page records ten disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
 a Platform-catalog server snapshot and continued through the server CLI group,
@@ -20,12 +20,15 @@ server snapshot and ran section 9 `directory list`, `directory plan`, and
 `directory apply` against one disposable loopback OpenLDAP listener. The
 ninth copied only that server snapshot and ran section 10 `provision targets`,
 `provision plan`, `provision apply`, and `provision jobs` against one
-disposable loopback SCIM fixture. No run used an external peer or
+disposable loopback SCIM fixture. The tenth copied only that server
+snapshot and ran section 13 `schema provider`, `client create`, and
+`agent create`, restarted `serve` with one LDAPS listener, and searched it
+with Homebrew OpenLDAP `ldapsearch`. No run used an external peer or
 `cargo install`. The first two runs did not launch `riauthctl` or
-`riauth-maintenance`. The fourth, fifth, sixth, seventh, eighth, and ninth
-runs did not launch them either. The fifth and sixth runs opened a browser.
-The fifth stored no passkey. The sixth did not start a passkey ceremony.
-The seventh, eighth, and ninth did not open a browser.
+`riauth-maintenance`. The fourth, fifth, sixth, seventh, eighth, ninth, and
+tenth runs did not launch them either. The fifth and sixth runs opened a
+browser. The fifth stored no passkey. The sixth did not start a passkey
+ceremony. The seventh, eighth, ninth, and tenth did not open a browser.
 
 ## Essentials catalog run
 
@@ -2768,5 +2771,295 @@ Still unrun on this run:
 - `recovery complete`, `recover-admin`, and a second server
 - a browser, a named SaaS directory, a conformance suite, and the Essentials
   guide
+
+D01 remains incomplete.
+
+## Section 13 LDAP provider
+
+The docs worktree for this record is
+`1377732a9be531729789852cd6efca3d50bf4256`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. The authorized binary was the Platform server
+snapshot
+`/tmp/riauth-platform-58357fd-immutable/riauth`, the same file the earlier
+server-snapshot runs copied. Its SHA-256 is
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`, mode
+`500`, 289661864 bytes. The run copied it with `cp -c`, then `chmod 700`
+on the copy only. The copy's hash matched and its inode differed. The
+immutable file was not executed. Free space on the data volume was 67617560
+KiB before the copy and 67617476 KiB after it. Both stayed above 8 GiB.
+
+`riauth --version` printed `riauth 0.1.1`. `capabilities` reported edition
+`platform`, interface `server`, version `0.1.1`, `schema_version`
+`riauth.capabilities/v2`, 29 schemas, `build_features` `essentials` and
+`platform`, and target `aarch64` `macos`. The catalog document was 20679
+bytes. `schema provider` is a local command. It exited 0, wrote 28537
+bytes, and named `base_dn` and `search_groups`. The retained catalog parse
+did not read `schemas` as a list of names.
+
+`init` exited 0. Its stderr was 37 bytes, the line
+`Creating instance and signing key…` plus a newline. The new file's table
+headers were `[proxy_listeners]`, `[radius_listeners]`, `[ldap_listeners]`,
+`[directories]`,
+`[workspace_directories]`, `[entra_directories]`, `[scim_targets]`, and
+`[signers]`. `[ldap_listeners.legacy]` was absent. `/readyz` returned
+status `ok`, role `integrated`, version `0.1.1`, 187 bytes, both before
+the listener was added and after the restart. The server listened on
+`127.0.0.1:9000`. The LDAP listener used `127.0.0.1:1636`. The session file
+was a lab file. Neither default home session file was written.
+
+Before the listener, `GET /api/capabilities` reported
+`directory.ldap_provider` with `configured` false, `runtime_ready` false,
+`usable` false, and reason `not_configured`. That runtime document is not
+the `riauth capabilities` catalog.
+
+Local setup, with `--config`, `--server http://localhost:9000`,
+`--session-file`, `--non-interactive`, `--idempotency-key`, and
+`--if-revision` read from `revision` before each write:
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --non-interactive \
+  --idempotency-key section13-staff --if-revision 0 \
+  group create staff
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --non-interactive \
+  --idempotency-key section13-admin-member --if-revision 1 \
+  group add-member staff admin
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --non-interactive \
+  --idempotency-key section13-outsider --if-revision 2 \
+  user create outsider --email outsider@example.test \
+  --name "Outside Example" --password-stdin
+```
+
+Revision moved 0, 1, 2, 3 across those three writes. `user list` showed
+`admin` (`admin` true, `password_available` true, `email` null,
+`email_verified` false) and `outsider` (`enabled` true, `admin` false,
+`password_available` true, email `outsider@example.test`,
+`email_verified` false, `mfa_enabled` false). `group list` showed `staff`
+with one member, `admin`. `outsider` was not a member. User ids are not
+copied here. Passwords stayed in mode `600` files and are not copied here.
+
+`riauth schema provider` ran with `--config` only. The settings file was
+the printed `ProviderSettings` object, mode `600`: `base_dn`
+`dc=lab,dc=test` and `search_groups` `["staff"]`.
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --non-interactive \
+  --idempotency-key legacy-directory-create --if-revision 3 \
+  client create legacy-directory \
+  --name "Legacy application directory" \
+  --scope openid,profile,email,groups \
+  --group staff \
+  --settings-file $LAB/ldap-settings.json
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/admin.session --non-interactive \
+  --idempotency-key ldap-directory-agent-create --if-revision 4 \
+  agent create ldap-directory \
+  --permission ldap.search=client/legacy-directory \
+  --out $LAB/ldap-agent.json
+```
+
+`--service` and `--require-mfa` were omitted. `client create` exited 0.
+`client_secret` was null. The client was enabled, `confidential` false,
+`service` false, and `require_mfa` false. Scopes were `openid`, `profile`,
+`email`, and `groups`. `allowed_groups` was `staff`. Settings were the
+printed base and `search_groups`. Revision was 3 before the client write
+and 4 after it. `agent create` exited 0. The agent id was `ldap-directory`,
+enabled, with permission `ldap.search` on `client/legacy-directory`.
+Standard output did not contain `ri_agent_` and did not contain a token
+field. The credential file was mode `600`. Revision was 4 before the agent
+write and 5 after it. The token was read from that file into another mode
+`600` file for `ldapsearch -y`. Neither file is recorded here.
+
+The certificate was a one-day private CA, subject `CN=localhost`,
+`CA:TRUE`, and a leaf, RSA 2048, `CA:FALSE`, key usage Digital Signature
+and Key Encipherment, extended key usage TLS Web Server Authentication,
+subject alternative names `DNS:localhost` and `IP Address:127.0.0.1`.
+`ldap-fullchain.pem` was the leaf followed by the CA. The key path was
+`secrets/ldap-key.pem`. OpenSSL was 3.6.4, dated 25 Aug 2026.
+`openssl verify` exited 0. `s_client` to `127.0.0.1:1636`, with
+`-servername localhost`, `-verify_return_error`, and the private CA, exited
+0 and reported:
+
+| Field | Observed value |
+| --- | --- |
+| Protocol version | `TLSv1.3` |
+| Ciphersuite | `TLS_AES_256_GCM_SHA384` |
+| Verification | `OK` |
+
+Serve was stopped with SIGTERM. The printed listener was appended.
+`local_unencrypted` stayed absent. The configuration contained no secret
+and no private key. Serve was started again and accepted `127.0.0.1:1636`.
+
+```toml
+[ldap_listeners.legacy]
+listen = "127.0.0.1:1636"
+client_id = "legacy-directory"
+allowed_peers = ["127.0.0.1"]
+ldaps = true
+tls_cert_file = "ldap-fullchain.pem"
+tls_key_file = "secrets/ldap-key.pem"
+```
+
+After that restart, `GET /api/capabilities` reported
+`directory.ldap_provider` with `configured` true, `runtime_ready` true,
+`usable` true, and reason null.
+
+The LDAP client was `/opt/homebrew/opt/openldap/bin/ldapsearch`. Its banner
+was `ldapsearch` 2.7.1, built Sep 8 2026 21:55:18, OpenLDAP library 20701.
+`LDAPTLS_REQCERT` was `hard`. `LDAPTLS_CACERT` and `LDAPCONF` named the
+private CA. Apple `ldapsearch` was not used. The password and token files
+passed to `-y` had no trailing newline. Those values are not recorded.
+
+```sh
+ldapsearch -x -H ldaps://127.0.0.1:1636 \
+  -D 'cn=riauth-agent,dc=lab,dc=test' -y $LAB/agent.token \
+  -b 'dc=lab,dc=test' -s sub -l 8 -o nettimeout=8 -o ldif_wrap=no \
+  '(objectClass=inetOrgPerson)' uid cn sn displayName mail memberOf entryUUID
+ldapsearch -x -H ldaps://127.0.0.1:1636 \
+  -D 'cn=riauth-agent,dc=lab,dc=test' -y $LAB/agent.token \
+  -b 'dc=lab,dc=test' -s sub -l 8 -o nettimeout=8 -o ldif_wrap=no \
+  '(objectClass=groupOfNames)' cn member
+ldapsearch -x -H ldaps://127.0.0.1:1636 \
+  -D 'uid=admin,ou=users,dc=lab,dc=test' -y $LAB/admin.pass \
+  -b 'dc=lab,dc=test' -s sub -l 8 -o nettimeout=8 -o ldif_wrap=no \
+  '(objectClass=inetOrgPerson)' uid cn memberOf
+ldapsearch -x -H ldaps://127.0.0.1:1636 \
+  -D 'uid=admin,ou=users,dc=lab,dc=test' -y $LAB/wrong.pass \
+  -b 'dc=lab,dc=test' -s sub -l 8 -o nettimeout=8 -o ldif_wrap=no \
+  '(objectClass=inetOrgPerson)' uid
+ldapsearch -x -H ldaps://127.0.0.1:1636 \
+  -D 'uid=outsider,ou=users,dc=lab,dc=test' -y $LAB/outsider.pass \
+  -b 'dc=lab,dc=test' -s sub -l 8 -o nettimeout=8 -o ldif_wrap=no \
+  '(objectClass=inetOrgPerson)' uid
+```
+
+The service user search exited 0. Result was `0 Success` and `numEntries`
+was 1. The only entry was `uid=admin,ou=users,dc=lab,dc=test`. `cn`, `sn`,
+and `displayName` were `admin`. `mail` was empty. `memberOf` was
+`cn=staff,ou=groups,dc=lab,dc=test`. `entryUUID` was present and is not
+copied. `outsider` was absent.
+
+The service group search exited 0. Result was `0 Success` and `numEntries`
+was 1. The entry was `cn=staff,ou=groups,dc=lab,dc=test`. Its member was
+`uid=admin,ou=users,dc=lab,dc=test`.
+
+The `admin` password bind exited 0. Result was `0 Success` and `numEntries`
+was 1. The returned attributes were `uid` `admin`, `cn` `admin`, and the
+same `memberOf` value. The filter requested those three attributes.
+
+A wrong password for `uid=admin` exited 49. Standard error was
+`ldap_bind: Invalid credentials (49)`. Standard output was empty. The real
+password for `uid=outsider,ou=users,dc=lab,dc=test` also exited 49 with
+that same diagnostic and no entries. `outsider` was enabled and was not in
+`staff`.
+
+An unrelated one-day CA, subject `CN=unrelated-fixture-ca`, was supplied as
+`LDAPTLS_CACERT`. That probe used a password file that was not the agent
+token:
+
+```sh
+LDAPTLS_CACERT=$LAB/unrelated-ca.pem LDAPCONF=$LAB/unrelated.ldaprc \
+  ldapsearch -x -H ldaps://127.0.0.1:1636 \
+  -D 'cn=riauth-agent,dc=lab,dc=test' -y $LAB/wrong.pass \
+  -b 'dc=lab,dc=test' -s base -l 8 -o nettimeout=8 -o ldif_wrap=no \
+  '(objectClass=*)' namingContexts
+```
+
+It exited 1 before a bind. Standard error was:
+
+```text
+Could not connect to URI=ldaps://127.0.0.1:1636/??base: Connect error (-11)
+additional info: error:0A000086:SSL routines::certificate verify failed (self-signed certificate in certificate chain)
+```
+
+The second line in the client output was indented. The peer is this
+loopback LDAPS listener with a private CA. It is not Active Directory, not
+a customer directory, and not a production TLS deployment. No STARTTLS
+listener was added.
+
+### Source comparison
+
+The comparison is `git diff 58357fd 1377732`, limited to the files named
+here. These files had no difference:
+
+- `src/ldap_server.rs`
+- `src/ldap_listener.rs`
+- `src/assembly/ldap_server.rs`
+- `src/assembly/ldap_port.rs`
+- `src/schema.rs`
+- `src/model.rs`
+- `src/model/client_settings.rs`
+- `src/cli/transport.rs`
+- `src/core.rs`
+
+`src/schema.rs` includes `provider` in `NAMES`. The capabilities output was
+not re-parsed as that string list. `src/cli.rs` changes agent create,
+rotate, and revoke so each requires
+`--idempotency-key` and `--if-revision`. The source string wraps
+`riauth revision` in backticks. The snapshot binary does not contain that
+local bail. This run passed both flags. `client create`, `group create`,
+`group add-member`, `user create`, `revision`, `schema provider`, and
+`login` are outside that diff. `src/cli/transport.rs` already sends
+`Idempotency-Key` and `If-Match` when the flags are present.
+
+`src/agent.rs` and `src/management.rs` move agent creation and rotation off
+`Core::mutation`. The accepted writer stores a receipt with `agent_id` and
+`credential_issued` true, and it does not persist the plaintext token. A
+retry returns `credential_already_issued`. The snapshot binary still uses
+`Core::mutation` for `create_agent`, so a generic receipt can hold the
+plaintext credential inside the disposable database. This run did not read
+that database. The credential file was removed with the lab. Accepted
+revocation returns precondition required when an HTTP context lacks the key
+or the revision. This run did not revoke the agent.
+
+`src/api.rs` adds `GET /api/operations/provisioning/deactivations`. This run
+did not call it. `src/config.rs` also accepts
+`supported_configured_password_totp_consent`. That consent change is not
+part of this LDAP run. This is not a whole-tree comparison. The observed
+listener, bind, and search behavior is the snapshot binary.
+
+### Cleanup
+
+The evidence script exited 0. Its cleanup stopped `serve` with SIGTERM.
+SIGKILL was not required. It re-hashed the snapshot, found port 9000 free,
+found port 1636 free, found both default home session files absent, and
+removed the lab directory. The cleanup proof records `script_exit` 0,
+`evidence_rc` 0, `lab_removed` true, snapshot hash match, and mode `500`.
+Free space after cleanup was 67202164 KiB, still above 8 GiB. The redacted
+evidence file, the command-status file, and the cleanup proof were written
+outside the lab before the lab directory was removed.
+
+### Unrun on this LDAP provider run
+
+The executed chain is `riauth init`, `serve`, `/readyz`, the runtime
+capabilities read, local `--version` and `capabilities`, server CLI login,
+`revision`, `group create staff`, `group add-member staff admin`,
+`user create outsider`, `user list`, `group list`, `schema provider`,
+`client create legacy-directory`, `agent create ldap-directory`, a SIGTERM
+restart after appending `[ldap_listeners.legacy]`, a second `/readyz`, a
+second runtime capabilities read, OpenSSL verify and `s_client`, and
+Homebrew `ldapsearch` for the service user search, the service group
+search, the `admin` password bind, the wrong-password bind, the `outsider`
+bind, and the unrelated-CA probe.
+
+Still unrun on this run:
+
+- `ldap3`
+- `scripts/test-ldap-provider.sh` and `scripts/test-ldap.sh`
+- Apple `ldapsearch`
+- a STARTTLS listener and `local_unencrypted`
+- Active Directory, a customer directory, and a production TLS trust store
+- section 12
+- `directory workspace` and `directory entra`
+- inbound `riauth scim`
+- agent rotate and agent revoke
+- `cargo install`
+- `riauthctl` and `riauth-maintenance`
+- `riauth doctor`
+- `recovery complete`, `recover-admin`, and a second server
+- a browser and the Essentials guide
 
 D01 remains incomplete.
