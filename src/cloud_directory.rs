@@ -6,8 +6,7 @@
 use crate::{
     agent::Principal,
     connector_guard::{
-        ApplyGate, Pagination, ReconciliationMode, ReviewBinding, plan_content, reconcile_plan,
-        require_backup_safe_record,
+        ApplyGate, Pagination, ReconciliationMode, ReviewBinding, reconcile_plan,
     },
     config::CloudReconciliationQuota,
     core::{Core, validate_display, validate_email, validate_name},
@@ -2030,116 +2029,19 @@ impl Core {
             &snapshot_prior.2,
             &entries,
         )?;
-        self.store.write(|tx| {
-            let current_actor = self.cloud_snapshot_actor(
-                tx,
-                token,
-                &settings,
-                &actor.id,
-                revision,
-                &snapshot_prior.2,
-            )?;
-            if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
-                return Err(Error::conflict(
-                    "Local configuration changed during cloud directory search",
-                ));
-            }
-            let current = tx.get::<CloudSnapshotDraft>(bucket, &snapshot_prior.0)?;
-            if current.as_ref().map(|draft| (&draft.id, draft.sequence))
-                != snapshot_prior
-                    .1
-                    .as_ref()
-                    .map(|(id, sequence)| (id, *sequence))
-            {
-                return Err(Error::conflict(
-                    "Cloud snapshot advanced concurrently; resume the latest cursor",
-                ));
-            }
-            let plans = tx.list::<Plan>("cloud_directory_plans")?;
-            if supersede {
-                if let Some((_, existing)) = plans.iter().find(|(_, existing)| {
-                    existing.actor == actor.id
-                        && existing.kind == settings.kind
-                        && existing.directory == id
-                        && !existing.applied
-                        && existing.expires_at > now()
-                        && existing.revision == revision
-                        && existing.fingerprint == settings.fingerprint
-                        && existing.entries == entries
-                        && existing.changes == changes
-                        && existing.removal_impact == impact
-                        && plan_content(existing)
-                            .and_then(|content| {
-                                existing.review.validate(tx, &current_actor, &content)
-                            })
-                            .is_ok()
-                }) {
-                    if snapshot_prior.1.is_some() {
-                        tx.delete(bucket, &snapshot_prior.0)?;
-                    }
-                    return Ok(json!(existing));
-                }
-            }
-            if plans
-                .iter()
-                .filter(|(_, plan)| {
-                    plan.actor == actor.id
-                        && plan.expires_at > now()
-                        && !plan.applied
-                        && !(supersede && plan.kind == settings.kind && plan.directory == id)
-                })
-                .count()
-                >= 16
-            {
-                return Err(Error::conflict(
-                    "At most 16 unexpired cloud directory plans per actor",
-                ));
-            }
-            let mut plan = Plan {
-                id: crypto::id(),
-                kind: settings.kind.into(),
-                directory: settings.id.clone(),
-                actor: actor.id.clone(),
-                revision,
-                expires_at: now() + 300,
-                fingerprint: settings.fingerprint.clone(),
-                entries,
-                changes,
-                removal_impact: impact,
-                review: ReviewBinding::default(),
-                applied: false,
-            };
-            plan.review = ReviewBinding::new(tx, &actor, &plan_content(&plan)?)?;
-            plan.review
-                .validate(tx, &current_actor, &plan_content(&plan)?)?;
-            require_backup_safe_record(
-                &plan,
-                "Cloud directory plan exceeds the backup-safe record limit",
-            )?;
-            if supersede {
-                for (old_id, old) in plans {
-                    if old.actor == actor.id
-                        && old.kind == settings.kind
-                        && old.directory == id
-                        && !old.applied
-                    {
-                        tx.delete("cloud_directory_plans", &old_id)?;
-                    }
-                }
-            }
-            tx.put("cloud_directory_plans", &plan.id, &plan)?;
-            if snapshot_prior.1.is_some() {
-                tx.delete(bucket, &snapshot_prior.0)?;
-            }
-            crate::delegation::audit_scoped(
-                tx,
-                &actor,
-                "cloud_directory.plan",
-                &settings.resource(),
-                &settings.resource(),
-            )?;
-            Ok(json!(plan))
-        })
+        self.cloud_plan_commit(
+            token,
+            &settings,
+            bucket,
+            &actor,
+            revision,
+            snapshot_prior,
+            entries,
+            changes,
+            impact,
+            supersede,
+            id,
+        )
     }
     pub fn cloud_apply(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         self.cloud_apply_confirmed(token, kind, id, None)

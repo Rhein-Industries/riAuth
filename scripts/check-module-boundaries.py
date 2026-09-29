@@ -430,6 +430,30 @@ def main() -> None:
                 or not re.search(r"\bcloud_snapshot_actor\s*\([\s\S]*\bremoval_impact\s*\([\s\S]*\breconcile\s*\(", plan_preview)
             ):
                 errors.append("src/cloud_directory.rs: reviewed-plan preview belongs in assembly")
+            plan_commit = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_plan_commit",
+            )
+            if (
+                plan_internal is None
+                or not re.search(
+                    r"\bcloud_budget_reset\s*\([\s\S]*\bcloud_plan_preview\s*\([\s\S]*\bcloud_plan_commit\s*\(",
+                    plan_internal,
+                )
+                or re.search(r"\.\s*store\s*\.\s*write\s*\(", plan_internal)
+                or plan_commit is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", plan_commit)
+                or not re.search(r"\.count\s*\(\s*\)\s*>=\s*16", plan_commit)
+                or not re.search(
+                    r"\bcloud_snapshot_actor\s*\([\s\S]*\btx\.get::<u64>\s*\([\s\S]*"
+                    r"\btx\.get::<CloudSnapshotDraft>\s*\([\s\S]*\btx\.list::<Plan>\s*\([\s\S]*"
+                    r"\bReviewBinding::new\s*\([\s\S]*\.\s*validate\s*\([\s\S]*"
+                    r"\brequire_backup_safe_record\s*\([\s\S]*\btx\.put\s*\([\s\S]*"
+                    r"\btx\.delete\s*\([\s\S]*\baudit_scoped\s*\(",
+                    plan_commit,
+                )
+            ):
+                errors.append("src/cloud_directory.rs: final reviewed-plan write belongs in assembly")
             apply_confirmed = rust_function_body(masked_rust_source(path.read_text()), "cloud_apply_confirmed")
             if (
                 apply_confirmed is None
