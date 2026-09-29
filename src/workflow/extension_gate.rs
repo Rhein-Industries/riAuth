@@ -6,11 +6,20 @@
 //! link Wasmi; [`execute`] there still returns `external_runtime_required`.
 //! The in-process host in [`super::extension`] stays unwired.
 //!
-//! Wasmi 0.40 has no epoch interruption, so a timeout is not a wall-clock
-//! preemption. It is the instruction budget `timeout_seconds * FUEL_PER_SECOND`,
-//! and the engine installs `min(manifest fuel, that budget)` before the
-//! instance starts. When those two budgets are equal, fuel exhaustion is
-//! reported as `fuel`.
+//! Wasmi 0.40.0 cannot stop a running guest at a wall-clock deadline. Its
+//! `Config` has no epoch or interrupt control. `Store::call_hook` runs only
+//! when the host calls Wasm or Wasm calls a host function, and `call_resumable`
+//! pauses only when a host function returns an error. This guest has no
+//! imports, so `route` runs on the caller until it returns or spends its fuel.
+//! Fuel is the instruction budget `timeout_seconds * FUEL_PER_SECOND`. The
+//! engine installs `min(manifest fuel, that budget)` before the instance
+//! starts. When those two budgets are equal, fuel exhaustion is reported as
+//! `fuel`.
+//!
+//! Admission applies a separate resource cap before `Module::new`: one
+//! `() -> i32` function, two exports, at most [`MAX_GUEST_LOCALS`] i32 locals,
+//! and no data segment. That bounds compiler work. It does not preempt the one
+//! accepted body.
 
 use super::{
     Action, Definition, Id, Label, MAX_CUSTOM_OUTPUT_BYTES, MAX_CUSTOM_OUTPUTS,
@@ -31,6 +40,10 @@ pub const MAX_FUEL: u32 = 10_000;
 /// One WebAssembly page. A guest memory cannot be smaller and must not grow.
 pub const MAX_MEMORY_BYTES: u32 = 65_536;
 pub const MAX_MODULE_BYTES: u32 = MAX_MEMORY_BYTES;
+/// Compiler work is limited to the one exported `route` function.
+pub const MAX_GUEST_FUNCTIONS: u32 = 1;
+/// `route` may declare this many i32 locals. The count is rejected before Wasmi compiles.
+pub const MAX_GUEST_LOCALS: u32 = 32;
 pub const MAX_INPUT_BYTES: u32 = 4_096;
 pub const MAX_TIMEOUT_SECONDS: u32 = MAX_CUSTOM_TIMEOUT_SECONDS;
 pub const MAX_OUTPUT_BYTES: u32 = MAX_CUSTOM_OUTPUT_BYTES;
@@ -588,7 +601,10 @@ fn admit_sections(wasm: &[u8]) -> Result<(), Denial> {
     }
     let mut cursor = 8usize;
     let mut last = 0u8;
+    let mut saw_type = false;
+    let mut saw_function = false;
     let mut saw_memory = false;
+    let mut saw_code = false;
     while cursor < wasm.len() {
         let id = wasm[cursor];
         cursor += 1;
@@ -609,11 +625,19 @@ fn admit_sections(wasm: &[u8]) -> Result<(), Denial> {
         }
         last = id;
         match id {
+            1 => {
+                saw_type = true;
+                admit_type(payload)?;
+            }
             2 => {
                 let (count, _) = read_leb(payload)?;
                 if count != 0 {
                     return Err(Denial::Permission);
                 }
+            }
+            3 => {
+                saw_function = true;
+                admit_functions(payload)?;
             }
             4 | 6 | 9 => {
                 let (count, _) = read_leb(payload)?;
@@ -625,14 +649,117 @@ fn admit_sections(wasm: &[u8]) -> Result<(), Denial> {
                 saw_memory = true;
                 admit_memory(payload)?;
             }
+            7 => admit_exports(payload)?,
             8 => return Err(Denial::Limit),
+            10 => {
+                saw_code = true;
+                admit_code(payload)?;
+            }
+            11 => admit_data(payload)?,
             _ => {}
         }
     }
-    if !saw_memory {
+    if !saw_type || !saw_function || !saw_memory || !saw_code {
         return Err(Denial::Limit);
     }
     Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn admit_type(payload: &[u8]) -> Result<(), Denial> {
+    let (count, mut cursor) = take_leb(payload, 0)?;
+    if count != 1 {
+        return Err(Denial::Limit);
+    }
+    if payload.get(cursor) != Some(&0x60) {
+        return Err(Denial::Malformed);
+    }
+    cursor += 1;
+    let (params, cursor) = take_leb(payload, cursor)?;
+    if params != 0 {
+        return Err(Denial::Limit);
+    }
+    let (results, cursor) = take_leb(payload, cursor)?;
+    if results != 1 || payload.get(cursor) != Some(&0x7f) || cursor + 1 != payload.len() {
+        return Err(Denial::Limit);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn admit_functions(payload: &[u8]) -> Result<(), Denial> {
+    let (count, cursor) = take_leb(payload, 0)?;
+    if count != MAX_GUEST_FUNCTIONS {
+        return Err(Denial::Limit);
+    }
+    let (index, cursor) = take_leb(payload, cursor)?;
+    if index != 0 {
+        return Err(Denial::Limit);
+    }
+    if cursor != payload.len() {
+        return Err(Denial::Malformed);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn admit_exports(payload: &[u8]) -> Result<(), Denial> {
+    let (count, _) = take_leb(payload, 0)?;
+    if count != 2 {
+        return Err(Denial::Limit);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn admit_code(payload: &[u8]) -> Result<(), Denial> {
+    let (count, cursor) = take_leb(payload, 0)?;
+    if count != MAX_GUEST_FUNCTIONS {
+        return Err(Denial::Limit);
+    }
+    let (size, cursor) = take_leb(payload, cursor)?;
+    let size = usize::try_from(size).map_err(|_| Denial::Malformed)?;
+    let end = cursor.checked_add(size).ok_or(Denial::Malformed)?;
+    if end != payload.len() {
+        return Err(Denial::Malformed);
+    }
+    let body = &payload[cursor..end];
+    let (groups, mut local_cursor) = take_leb(body, 0)?;
+    if groups > MAX_GUEST_LOCALS {
+        return Err(Denial::Limit);
+    }
+    let mut locals = 0u32;
+    for _ in 0..groups {
+        let (count, next) = take_leb(body, local_cursor)?;
+        let type_at = next;
+        if type_at >= body.len() {
+            return Err(Denial::Malformed);
+        }
+        if body[type_at] != 0x7f {
+            return Err(Denial::Limit);
+        }
+        local_cursor = type_at + 1;
+        locals = locals.checked_add(count).ok_or(Denial::Limit)?;
+        if locals > MAX_GUEST_LOCALS {
+            return Err(Denial::Limit);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn admit_data(payload: &[u8]) -> Result<(), Denial> {
+    let (count, cursor) = take_leb(payload, 0)?;
+    if count != 0 || cursor != payload.len() {
+        return Err(Denial::Limit);
+    }
+    Ok(())
+}
+
+#[cfg(feature = "platform")]
+fn take_leb(bytes: &[u8], cursor: usize) -> Result<(u32, usize), Denial> {
+    let (value, read) = read_leb(bytes.get(cursor..).ok_or(Denial::Malformed)?)?;
+    Ok((value, cursor + read))
 }
 
 #[cfg(feature = "platform")]
@@ -808,6 +935,35 @@ pub(crate) mod fixture {
         wasm.extend(exports_route_memory());
         wasm.extend(section(8, &[0x00]));
         wasm.extend(code_section(&function_body(&[0x00], &i32_const(0))));
+        wasm
+    }
+
+    pub fn with_locals(count: u32) -> Vec<u8> {
+        let mut locals = vec![0x01];
+        locals.extend(leb(count));
+        locals.push(0x7f);
+        module_with_locals(&locals, &i32_const(0))
+    }
+
+    pub fn two_functions() -> Vec<u8> {
+        let mut wasm = header();
+        wasm.extend(section(1, &[0x01, 0x60, 0x00, 0x01, 0x7f]));
+        wasm.extend(section(3, &[0x02, 0x00, 0x00]));
+        wasm.extend(memory_limits(1, Some(1)));
+        wasm.extend(exports_route_memory());
+        let body = function_body(&[0x00], &i32_const(0));
+        let mut payload = vec![0x02];
+        payload.extend(leb(u32::try_from(body.len()).unwrap()));
+        payload.extend(&body);
+        payload.extend(leb(u32::try_from(body.len()).unwrap()));
+        payload.extend(&body);
+        wasm.extend(section(10, &payload));
+        wasm
+    }
+
+    pub fn with_data_segment() -> Vec<u8> {
+        let mut wasm = allow();
+        wasm.extend(section(11, &[0x01]));
         wasm
     }
 
@@ -1010,6 +1166,8 @@ mod tests {
         assert_eq!(MAX_FUEL, 10_000);
         assert_eq!(MAX_MEMORY_BYTES, 65_536);
         assert_eq!(FUEL_PER_SECOND, 1_000);
+        assert_eq!(MAX_GUEST_FUNCTIONS, 1);
+        assert_eq!(MAX_GUEST_LOCALS, 32);
         let cargo = include_str!("../../Cargo.toml");
         assert!(cargo.contains("unsafe_code = \"forbid\""));
         assert!(cargo.contains("dep:wasmi"));
@@ -1194,6 +1352,24 @@ mod tests {
         );
         assert_eq!(
             check(&fixture::document(&fixture::with_start(), |_| {})).unwrap_err(),
+            Denial::Limit
+        );
+        assert_eq!(
+            check(&fixture::document(&fixture::two_functions(), |_| {})).unwrap_err(),
+            Denial::Limit
+        );
+        assert_eq!(
+            check(&fixture::document(&fixture::with_locals(1_000_000), |_| {})).unwrap_err(),
+            Denial::Limit
+        );
+        assert_eq!(
+            check(&fixture::document(&fixture::with_locals(MAX_GUEST_LOCALS + 1), |_| {}))
+                .unwrap_err(),
+            Denial::Limit
+        );
+        assert!(check(&fixture::document(&fixture::with_locals(MAX_GUEST_LOCALS), |_| {})).is_ok());
+        assert_eq!(
+            check(&fixture::document(&fixture::with_data_segment(), |_| {})).unwrap_err(),
             Denial::Limit
         );
         assert_eq!(

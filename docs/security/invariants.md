@@ -680,8 +680,12 @@ executor does not call it. The
 [guest gate](../../src/workflow/extension_gate.rs) links Wasmi 0.40 on Platform
 only. One configured graph runs: a custom `extension` step, then local
 password. The guest has no imports, one 64 KiB page, no network and no
-filesystem. Fuel is 1–10,000, and the 1–30 second timeout is that many
-thousands of fuel units, not wall-clock preemption. Output is one declared
+filesystem. Fuel is 1–10,000. Wasmi 0.40.0 has no epoch or interrupt API.
+`Store::call_hook` and `call_resumable` pause only around host functions, and
+this guest links none, so `route` runs on the caller until it returns or spends
+its fuel. The 1–30 second field is that many thousands of fuel units. Before
+compilation the gate allows one `() -> i32` function, two exports, and at most
+32 i32 locals, and it rejects a data segment. Output is one declared
 label or the built-in `failed` signal, and it is not a proof. The run binding
 stores the module hash beside the source-registration pin used by
 source-verifier runs. A changed manifest seals the open run before the new

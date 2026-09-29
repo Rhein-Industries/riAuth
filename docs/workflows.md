@@ -1068,15 +1068,25 @@ disables floats, multi-memory, bulk memory, reference types, tail calls, and
 saturating float-to-int, ignores custom sections, and compiles eagerly. The
 structural check rejects a non-empty import section, a start section, any
 table, global, or element, and any memory other than one page with minimum and
-maximum both 1. The store allows one instance and one memory, no tables, caps
-that memory at 65,536 bytes, and traps if it grows. `memory.grow` therefore
-ends the step as `failed` instead of returning a label.
+maximum both 1. It also rejects more than one function, any type other than
+`() -> i32`, more than two exports, more than 32 i32 locals, a non-i32 local,
+or a data segment. Those caps are decided before `Module::new`, so a 64 KiB
+module cannot ask Wasmi to compile thousands of functions or a million locals.
+The store allows one instance and one memory, no tables, caps that memory at
+65,536 bytes, and traps if it grows. `memory.grow` therefore ends the step as
+`failed` instead of returning a label.
 
-Wasmi 0.40 has no epoch interrupt, so the timeout is not wall-clock preemption.
-Fuel's base cost is 1. Before the instance starts, the host installs
+Wasmi 0.40.0 cannot preempt that one function. Its `Config` has no epoch or
+interrupt setting. `Store::call_hook` runs only when the host calls Wasm or
+Wasm calls a host function. `call_resumable` pauses only when a host function
+returns an error. This guest has no imports, so a loop in `route` does not
+return to the host until the call traps or finishes. Fuel's base cost is 1.
+Before the instance starts, the host installs
 `min(manifest fuel, timeout_seconds × 1,000)`. When the timeout budget is
 strictly smaller, exhaustion is `timeout`. When the two budgets are equal, or
-fuel is smaller, exhaustion is `fuel`.
+fuel is smaller, exhaustion is `fuel`. The call occupies the caller for that
+whole instruction budget. A timeout of 10 seconds or more cannot be tighter
+than the 10,000 fuel cap, so that exhaustion is `fuel`.
 
 `route` writes its label at offset 0 and returns the length. A negative length,
 or a length above the tighter of the step and manifest output caps, is
