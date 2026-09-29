@@ -38,6 +38,13 @@ impl Core {
         })
     }
 
+    pub fn source_links(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let (user, _) = self.session(tx, token)?;
+            Ok(json!(crate::source::links_of(tx, &user.id)?))
+        })
+    }
+
     pub fn source_list(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;

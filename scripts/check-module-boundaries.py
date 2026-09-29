@@ -862,6 +862,23 @@ def main() -> None:
                 )
             ):
                 errors.append("src/source.rs: session-bound source unlink writer belongs in assembly")
+            source_links = rust_function_body(
+                masked_rust_source(source_catalog), "source_links"
+            )
+            source_links_raw = rust_function_body(source_catalog, "source_links")
+            if (
+                rust_function_body(source_protocol, "source_links") is not None
+                or re.search(r"\bself\s*\.\s*store\s*\.\s*read\s*\(", source_protocol)
+                or source_links is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", source_links)
+                or not (0 <= source_links.find("self.session")
+                        < source_links.find("source::links_of"))
+                or source_links_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_links\s*\(", source_catalog)
+                or not re.search(r"self\.session\s*\(\s*tx\s*,\s*token\s*\)\s*\?", source_links_raw)
+                or not re.search(r"source::links_of\s*\(\s*tx\s*,\s*&user\.id\s*\)\s*\?", source_links_raw)
+            ):
+                errors.append("src/source.rs: session-scoped source link read belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))

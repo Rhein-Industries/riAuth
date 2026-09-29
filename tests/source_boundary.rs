@@ -431,3 +431,84 @@ fn source_unlink_keeps_session_receipt_and_revocation_atomic() {
     );
     fixture.assert_snapshot(&before_other_session);
 }
+
+#[test]
+fn source_links_keeps_session_scope_and_public_projection() {
+    let fixture = Fixture::new();
+    let source = oauth_source();
+    let issuer = source.issuer.clone();
+    fixture
+        .core
+        .source_put(
+            &fixture.admin,
+            SourceInput {
+                source,
+                client_secret: Some(SECRET.into()),
+            },
+        )
+        .unwrap();
+    let alice = fixture.user("alice");
+    let bob = fixture.user("bob");
+    let writer = agent(&fixture, "catalog-writer", "source/corp");
+    let alice_id = fixture.core.me(&alice).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let bob_id = fixture.core.me(&bob).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "source_links",
+                "alice-link",
+                &json!({"source":"corp", "issuer":issuer, "subject":"alice-upstream", "user_id":alice_id}),
+            )?;
+            tx.put(
+                "source_links",
+                "bob-link",
+                &json!({"source":"corp", "issuer":issuer, "subject":"bob-upstream", "user_id":bob_id}),
+            )
+        })
+        .unwrap();
+    let before = fixture.snapshot().unwrap();
+
+    assert_eq!(
+        fixture.core.source_links("invalid").unwrap_err().code,
+        "invalid_token"
+    );
+    assert_eq!(
+        fixture.core.source_links(&writer).unwrap_err().code,
+        "invalid_token"
+    );
+    assert_eq!(
+        fixture.core.source_links(&fixture.admin).unwrap(),
+        json!([])
+    );
+    let alice_links = fixture.core.source_links(&alice).unwrap();
+    assert_eq!(
+        alice_links,
+        json!([{"id":"alice-link", "source":"corp", "issuer":issuer, "subject":"alice-upstream"}])
+    );
+    assert!(!alice_links.to_string().contains(SECRET));
+    assert_eq!(
+        fixture.core.source_links(&bob).unwrap(),
+        json!([{"id":"bob-link", "source":"corp", "issuer":issuer, "subject":"bob-upstream"}])
+    );
+    fixture.assert_snapshot(&before);
+
+    fixture.core.logout(&alice).unwrap();
+    let after_logout = fixture.snapshot().unwrap();
+    assert_eq!(
+        fixture.core.source_links(&alice).unwrap_err().code,
+        "invalid_token"
+    );
+    assert_eq!(
+        fixture.core.source_links(&bob).unwrap(),
+        json!([{"id":"bob-link", "source":"corp", "issuer":issuer, "subject":"bob-upstream"}])
+    );
+    fixture.assert_snapshot(&after_logout);
+}

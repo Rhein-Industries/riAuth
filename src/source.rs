@@ -1457,12 +1457,6 @@ impl Core {
         }
         Ok(location)
     }
-    pub fn source_links(&self, token: &str) -> Result<Value> {
-        self.store.read(|tx| {
-            let (user, _) = self.session(tx, token)?;
-            Ok(json!(links_of(tx, &user.id)?))
-        })
-    }
 }
 
 /// The upstream accounts linked to a user.
