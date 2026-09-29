@@ -102,6 +102,10 @@ pub struct LinkSpec {
     pub source: String,
     pub username: String,
     pub subject: String,
+    /// Issuer stored on the link. Omitted on older manifests and on a fresh conversion;
+    /// exports copy it. When set, it must equal the source's current issuer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
 }
 pub(crate) fn reconcile_link(
     tx: &Tx<'_>,
@@ -112,6 +116,22 @@ pub(crate) fn reconcile_link(
         tx,
         crate::management::SourceLinkAuthority::Plan { actor, spec },
     )?;
+    if let Some(previous_issuer) = written.previous_issuer {
+        let before = LinkSpec {
+            source: spec.source.clone(),
+            username: spec.username.clone(),
+            subject: spec.subject.clone(),
+            issuer: Some(previous_issuer),
+        };
+        return Ok(Some(crate::state::Change {
+            resource: format!("source_link/{}", written.id),
+            action: "update".into(),
+            before: json!(before),
+            after: json!(spec),
+            credential_change: true,
+            secret_references: BTreeSet::new(),
+        }));
+    }
     if !written.created {
         return Ok(None);
     }
@@ -134,6 +154,7 @@ pub(crate) fn export_all_links(tx: &Tx<'_>) -> Result<Vec<LinkSpec>> {
             source: link.source,
             subject: link.subject,
             username: user.username,
+            issuer: Some(link.issuer),
         });
     }
     Ok(output)

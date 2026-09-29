@@ -294,6 +294,14 @@
   and conversion.
   Authentik's temporary accounts are no longer converted, and inactive accounts
   without a password are kept disabled instead of blocking.
+- Planning and applying a manifest bound to a target export now keep the proven
+  issuer and subject pair: an existing explicit subject, the client issuer and
+  pairwise sector that publish it, a source issuer, and the issuer stored on a
+  source link. The same check rejects an ambiguous export (two owners for one
+  account, subject or link, or a subject whose client is missing) and a stale
+  source-link issuer, instead of matching one candidate. A failed apply rolls
+  those bindings back with the rest of the manifest. Issuer and application
+  continuity against a real Authentik export is still unrehearsed.
 - Converted manifests now record the bundle's `issuer`. Planning and applying
   fail unless the instance's issuer is exactly that canonical URL, trailing
   slash included, so a manifest prepared for one instance cannot silently

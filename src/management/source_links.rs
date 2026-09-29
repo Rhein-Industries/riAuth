@@ -30,6 +30,7 @@ pub(crate) enum SourceLinkAuthority<'a> {
 pub(crate) struct SourceLinkWrite {
     pub(crate) id: String,
     pub(crate) created: bool,
+    pub(crate) previous_issuer: Option<String>,
 }
 
 /// Re-read the live source and account in the caller's transaction. No link
@@ -80,6 +81,16 @@ pub(crate) fn write_source_link(
     if subject.is_empty() || subject.len() > 255 || subject.chars().any(char::is_control) {
         return Err(Error::bad("Invalid source subject"));
     }
+    if let SourceLinkAuthority::Plan { spec, .. } = &authority
+        && spec
+            .issuer
+            .as_ref()
+            .is_some_and(|issuer| issuer != &source.issuer)
+    {
+        return Err(Error::conflict(
+            "Target source link issuer is stale; export the target and convert again",
+        ));
+    }
     let id = link_key(&source.id, &source.issuer, subject);
     let existing = tx.get::<Link>("source_links", &id)?;
     if let Some(link) = &existing {
@@ -91,7 +102,32 @@ pub(crate) fn write_source_link(
             });
         }
         if !login {
-            return Ok(SourceLinkWrite { id, created: false });
+            if let SourceLinkAuthority::Plan { spec, .. } = &authority
+                && spec.issuer.is_some()
+                && link.issuer != source.issuer
+            {
+                let previous_issuer = link.issuer.clone();
+                tx.put(
+                    "source_links",
+                    &id,
+                    &Link {
+                        source: source.id,
+                        issuer: source.issuer,
+                        subject: subject.into(),
+                        user_id: user.id,
+                    },
+                )?;
+                return Ok(SourceLinkWrite {
+                    id,
+                    created: false,
+                    previous_issuer: Some(previous_issuer),
+                });
+            }
+            return Ok(SourceLinkWrite {
+                id,
+                created: false,
+                previous_issuer: None,
+            });
         }
     }
     // A verified login keeps the previous upsert behavior. Plan apply treats
@@ -109,5 +145,6 @@ pub(crate) fn write_source_link(
     Ok(SourceLinkWrite {
         id,
         created: existing.is_none(),
+        previous_issuer: None,
     })
 }

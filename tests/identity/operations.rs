@@ -2897,21 +2897,48 @@ fn authentik_scope_mapping_exactness_rejects_escaped_keys_extra_groups_and_absen
         let id = format!("unmatched-scopes/scope/{scope}");
         assert_eq!(findings(&report, PropertyMapping, &id), [(Manual, false)]);
     }
-    let profile_expansion = report["items"].as_array().unwrap().iter().find(|item| {
-        item["kind"] == "property_mapping" && item["id"] == "unmatched-scopes/scope/profile"
-    }).unwrap();
-    assert!(profile_expansion["reason"].as_str().unwrap().contains(
-        "name, preferred_username and groups"
-    ));
-    assert!(report["blockers"].as_array().unwrap().iter().any(|blocker| {
-        blocker == "escaped-sub: property mapping m-escaped-sub may change subjects"
-    }));
-    assert!(report["blockers"].as_array().unwrap().iter().any(|blocker| {
-        blocker == "parenthesized-sub: property mapping m-parenthesized-sub may change subjects"
-    }));
-    assert!(report["blockers"].as_array().unwrap().iter().any(|blocker| {
-        blocker == "grouped: property mapping m-grouped-sub may change subjects"
-    }));
+    let profile_expansion = report["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| {
+            item["kind"] == "property_mapping" && item["id"] == "unmatched-scopes/scope/profile"
+        })
+        .unwrap();
+    assert!(
+        profile_expansion["reason"]
+            .as_str()
+            .unwrap()
+            .contains("name, preferred_username and groups")
+    );
+    assert!(
+        report["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|blocker| {
+                blocker == "escaped-sub: property mapping m-escaped-sub may change subjects"
+            })
+    );
+    assert!(
+        report["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|blocker| {
+                blocker
+                    == "parenthesized-sub: property mapping m-parenthesized-sub may change subjects"
+            })
+    );
+    assert!(
+        report["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|blocker| {
+                blocker == "grouped: property mapping m-grouped-sub may change subjects"
+            })
+    );
 }
 
 #[test]
@@ -3242,6 +3269,667 @@ fn authentik_plan_rejects_target_identity_claimed_after_export() {
             .unwrap()
             .contains("records a different Authentik account")
     }));
+}
+
+#[test]
+fn authentik_reimport_preserves_proven_issuer_subject_bindings() {
+    let f = Fixture::new();
+    let issuer = f.core.config.issuer.clone();
+    let blocks = |report: &serde_json::Value, blocker: &str| {
+        report["blockers"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(blocker))
+    };
+    let probe = |state: serde_json::Value| {
+        riauth::migration::convert(
+            serde_json::from_value(json!({
+                "api_version": "riauth.authentik-import/v1",
+                "issuer": issuer,
+                "target_state": state,
+                "users": [{"pk":100,"uid":"uid-100","uuid":"uuid-100","username":"erin",
+                    "name":"Erin","groups":[],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
+                "groups": [], "providers": [], "applications": [], "policy_bindings": [],
+                "sources": [],
+                "passwords": {"erin": {"reference":"env:ERIN","version":"v1"}},
+                "clients": {}
+            }))
+            .unwrap(),
+        )
+        .unwrap()
+    };
+    let user = |pk: u64, username: &str| {
+        json!({"pk":pk,"uid":format!("uid-{pk}"),"uuid":format!("uuid-{pk}"),"username":username,
+            "name":username,"email":format!("{username}@example.test"),"groups":[],
+            "attributes":{},"type":"internal","is_active":true,"roles":[]})
+    };
+    let bundle = |state: Option<&serde_json::Value>| {
+        let mut input = json!({
+            "api_version": "riauth.authentik-import/v1",
+            "issuer": issuer,
+            "users": [user(42, "alice"), user(43, "bob")],
+            "groups": [],
+            "providers": [{
+                "pk": 1, "name": "wiki", "client_id": "wiki", "client_type": "public",
+                "grant_types": ["authorization_code"],
+                "redirect_uris": [{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],
+                "property_mappings": [], "sub_mode": "hashed_user_id", "issuer_mode": "per_provider",
+                "include_claims_in_id_token": true
+            }],
+            "applications": [{"pk":"app-wiki","slug":"wiki","provider":1,"name":"wiki"}],
+            "policy_bindings": [],
+            "sources": [{
+                "pk": "oauth-uuid",
+                "meta_model_name": "authentik_sources_oauth.oauthsource",
+                "user_matching_mode": "identifier"
+            }],
+            "source_resolutions": {
+                "oauth-uuid": {
+                    "source": {
+                        "id": "corp", "name": "Corp", "issuer": "https://idp.example.test",
+                        "authorization_endpoint": "https://idp.example.test/authorize",
+                        "token_endpoint": "https://idp.example.test/token",
+                        "client_id": "riauth", "token_endpoint_auth_method": "client_secret_post",
+                        "scopes": ["read:user"],
+                        "oauth_profile": {
+                            "userinfo_endpoint": "https://idp.example.test/me",
+                            "subject_pointer": "/id"
+                        }
+                    },
+                    "secret_ref": "env:SOURCE",
+                    "secret_version": "v1"
+                }
+            },
+            "user_source_connections": [{"pk":1,"user":42,"source":"oauth-uuid","identifier":"sub-1"}],
+            "source_links": [{"source":"corp","username":"alice","subject":"sub-1"}],
+            "passwords": {
+                "alice": {"reference":"env:ALICE","version":"v1"},
+                "bob": {"reference":"env:BOB","version":"v1"}
+            },
+            "clients": {
+                "wiki": {
+                    "issuer": format!("{issuer}/application/o/wiki/"),
+                    "scopes": ["openid", "profile"],
+                    "settings": {"pairwise_sector": "partners.example.test"},
+                    "translated_mapping_ids": [],
+                    "translated_binding_ids": [],
+                    "authentication_flow_reviewed": true,
+                    "require_mfa": false
+                }
+            }
+        });
+        if let Some(state) = state {
+            input["target_state"] = state.clone();
+        }
+        input
+    };
+    let convert = |input: serde_json::Value| {
+        riauth::migration::convert(serde_json::from_value(input).unwrap()).unwrap()
+    };
+    let secrets = [
+        ("env:ALICE".into(), PASSWORD.into()),
+        ("env:BOB".into(), PASSWORD.into()),
+        ("env:SOURCE".into(), "source-client-secret".into()),
+    ];
+    let apply = |manifest: riauth::state::Manifest| {
+        let plan = f.core.plan_state(&f.admin, manifest).unwrap();
+        f.core
+            .apply_state(
+                &f.admin,
+                riauth::state::ApplyRequest {
+                    plan,
+                    secrets: secrets.clone().into(),
+                    run_id: None,
+                },
+            )
+            .unwrap();
+    };
+    let binding = || {
+        let manifest = f.core.export_state(&f.admin).unwrap()["manifest"].clone();
+        json!({
+            "users": manifest["users"].as_array().unwrap().iter().map(|user| json!({
+                "id": user["id"],
+                "username": user["username"],
+                "display_name": user["display_name"],
+                "subjects": user["subjects"],
+            })).collect::<Vec<_>>(),
+            "clients": manifest["clients"].as_array().unwrap().iter().map(|client| json!({
+                "client_id": client["client_id"],
+                "issuer": client["settings"]["issuer"],
+                "pairwise_sector": client["settings"]["pairwise_sector"],
+            })).collect::<Vec<_>>(),
+            "sources": manifest["sources"].as_array().unwrap().iter().map(|source| json!({
+                "id": source["source"]["id"],
+                "issuer": source["source"]["issuer"],
+            })).collect::<Vec<_>>(),
+            "links": manifest["source_links"].as_array().unwrap().iter().map(|link| json!({
+                "source": link["source"],
+                "username": link["username"],
+                "subject": link["subject"],
+                "issuer": link["issuer"],
+            })).collect::<Vec<_>>(),
+        })
+    };
+
+    let first = convert(bundle(None));
+    assert_eq!(first["ready_for_plan"], true, "{}", first["blockers"]);
+    assert!(first["manifest"]["source_links"][0].get("issuer").is_none());
+    apply(serde_json::from_value(first["manifest"].clone()).unwrap());
+    f.client("local", false);
+    let mut with_subject: riauth::state::Manifest =
+        serde_json::from_value(f.core.export_state(&f.admin).unwrap()["manifest"].clone()).unwrap();
+    {
+        let alice = with_subject
+            .users
+            .iter_mut()
+            .find(|user| user.username == "alice")
+            .unwrap();
+        alice.subjects.insert("local".into(), "kept-local".into());
+        let alice = alice.clone();
+        apply(riauth::state::Manifest {
+            api_version: "riauth/v1".into(),
+            users: vec![alice],
+            ..Default::default()
+        });
+    }
+    let state = f.core.export_state(&f.admin).unwrap()["manifest"].clone();
+    assert_eq!(
+        state["source_links"][0]["issuer"],
+        json!("https://idp.example.test")
+    );
+    let state_manifest: riauth::state::Manifest = serde_json::from_value(state.clone()).unwrap();
+    let local_client = state_manifest
+        .clients
+        .iter()
+        .find(|client| client.client_id == "local")
+        .unwrap()
+        .clone();
+    let corp = state_manifest
+        .sources
+        .iter()
+        .find(|source| source.source.id == "corp")
+        .unwrap()
+        .clone();
+
+    let report = convert(bundle(Some(&state)));
+    assert_eq!(report["ready_for_plan"], true, "{}", report["blockers"]);
+    assert!(report["manifest"]["target_state_fingerprint"].is_string());
+    assert_eq!(
+        report["manifest"]["source_links"][0]["issuer"],
+        json!("https://idp.example.test")
+    );
+    let alice_draft = report["manifest"]["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["username"] == "alice")
+        .unwrap();
+    assert_eq!(
+        alice_draft["subjects"],
+        json!({"local":"kept-local","wiki":"uid-42"})
+    );
+    let manifest: riauth::state::Manifest =
+        serde_json::from_value(report["manifest"].clone()).unwrap();
+    assert_eq!(manifest.users[0].username, "alice");
+    assert_eq!(manifest.users[1].username, "bob");
+    apply(manifest.clone());
+    let kept = binding();
+    let alice = kept["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user["username"] == "alice")
+        .unwrap();
+    assert_eq!(alice["display_name"], "alice");
+    assert_eq!(
+        alice["subjects"],
+        json!({"local":"kept-local","wiki":"uid-42"})
+    );
+    let wiki = kept["clients"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|client| client["client_id"] == "wiki")
+        .unwrap();
+    assert_eq!(
+        wiki["issuer"],
+        json!(format!("{issuer}/application/o/wiki/"))
+    );
+    assert_eq!(wiki["pairwise_sector"], "partners.example.test");
+    assert_eq!(kept["sources"][0]["issuer"], "https://idp.example.test");
+    assert_eq!(kept["links"][0]["issuer"], "https://idp.example.test");
+
+    let mut moved_issuer = bundle(Some(&state));
+    moved_issuer["clients"]["wiki"]["issuer"] =
+        json!("https://apps.example.test/application/o/wiki/");
+    let rejected = convert(moved_issuer);
+    assert!(blocks(
+        &rejected,
+        "wiki: proven subject or issuer binding would change"
+    ));
+    assert!(rejected["manifest"].is_null());
+    let mut moved_sector = bundle(Some(&state));
+    moved_sector["clients"]["wiki"]["settings"]["pairwise_sector"] = json!("other.example.test");
+    let rejected = convert(moved_sector);
+    assert!(blocks(
+        &rejected,
+        "wiki: proven subject or issuer binding would change"
+    ));
+    let mut moved_source = bundle(Some(&state));
+    moved_source["source_resolutions"]["oauth-uuid"]["source"]["issuer"] =
+        json!("https://idp-new.example.test");
+    let rejected = convert(moved_source);
+    assert!(blocks(
+        &rejected,
+        "corp: proven subject or issuer binding would change"
+    ));
+    assert_eq!(binding(), kept);
+
+    let ambiguous = |state: serde_json::Value, blocker: &str| {
+        let report = probe(state);
+        assert_eq!(report["ready_for_plan"], false, "{blocker}");
+        assert!(blocks(&report, blocker), "{report}");
+        assert!(report["manifest"].is_null());
+        assert!(report["draft"]["target_state_fingerprint"].is_null());
+    };
+    ambiguous(
+        json!({
+            "api_version": "riauth/v1",
+            "users": [{
+                "id": "kept", "username": "erin", "display_name": "Erin",
+                "subjects": {"missing": "sub"}
+            }]
+        }),
+        "target_state: ambiguous identity binding",
+    );
+    let collided = probe(json!({
+        "api_version": "riauth/v1",
+        "users": [{
+            "id": "kept", "username": "erin", "display_name": "Erin",
+            "subjects": {"missing": "sub"}
+        }]
+    }));
+    assert!(!blocks(
+        &collided,
+        "erin: username already belongs to another riAuth account"
+    ));
+    ambiguous(
+        json!({
+            "api_version": "riauth/v1",
+            "users": [
+                {"id":"authentik-42","username":"alice","display_name":"Alice"},
+                {"id":"authentik-42","username":"other","display_name":"Other"}
+            ]
+        }),
+        "target_state: ambiguous identity binding",
+    );
+    ambiguous(
+        json!({
+            "api_version": "riauth/v1",
+            "clients": [
+                {"client_id":"wiki","name":"wiki","scopes":["openid"]},
+                {"client_id":"mail","name":"mail","scopes":["openid"]}
+            ],
+            "users": [
+                {"id":"a","username":"ada","display_name":"Ada","subjects":{"wiki":"same"}},
+                {"id":"b","username":"bea","display_name":"Bea","subjects":{"wiki":"same"}}
+            ]
+        }),
+        "target_state: ambiguous identity binding",
+    );
+    ambiguous(
+        json!({
+            "api_version": "riauth/v1",
+            "users": [
+                {"username":"ghost","display_name":"Ghost","subjects":{"wiki":"x"}}
+            ],
+            "clients": [{"client_id":"wiki","name":"wiki","scopes":["openid"]}]
+        }),
+        "target_state: ambiguous identity binding",
+    );
+    ambiguous(
+        json!({
+            "api_version": "riauth/v1",
+            "source_links": [
+                {"source":"corp","username":"ada","subject":"sub","issuer":"https://a.example.test"},
+                {"source":"corp","username":"bea","subject":"sub","issuer":"https://b.example.test"}
+            ]
+        }),
+        "target_state: ambiguous identity binding",
+    );
+    let stale = probe(json!({
+        "api_version": "riauth/v1",
+        "sources": [{
+            "source": {
+                "id": "corp", "name": "Corp", "issuer": "https://idp.example.test",
+                "authorization_endpoint": "https://idp.example.test/authorize",
+                "token_endpoint": "https://idp.example.test/token",
+                "client_id": "riauth", "token_endpoint_auth_method": "client_secret_post",
+                "scopes": ["openid"]
+            },
+            "secret_ref": null,
+            "secret_version": null
+        }],
+        "source_links": [{
+            "source": "corp", "username": "ada", "subject": "sub",
+            "issuer": "https://old.example.test"
+        }]
+    }));
+    assert!(blocks(&stale, "target_state: stale identity binding"));
+    assert!(!blocks(&stale, "target_state: ambiguous identity binding"));
+    let ada = json!({
+        "api_version": "riauth/v1",
+        "users": [{
+            "id": "ada", "username": "ada", "display_name": "Ada",
+            "attributes": {"riauth.migration.authentik": {"pk":"7","uuid":"u"}}
+        }],
+        "source_links": [{"source":"corp","username":"ada","subject":"sub"}]
+    });
+    let mut swapped = ada.clone();
+    swapped["users"][0]["attributes"]["riauth.migration.authentik"] = json!({"uuid":"u","pk":"7"});
+    let mut duplicated = ada.clone();
+    duplicated["source_links"] = json!([
+        {"source":"corp","username":"ada","subject":"sub"},
+        {"source":"corp","username":"ada","subject":"sub"}
+    ]);
+    let mut ghost = ada.clone();
+    ghost["users"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"username":"ghost","display_name":"Ghost"}));
+    let mut renamed = ada.clone();
+    renamed["users"][0]["display_name"] = json!("Ada Renamed");
+    let fingerprint =
+        |state: serde_json::Value| probe(state)["manifest"]["target_state_fingerprint"].clone();
+    let stable = fingerprint(ada.clone());
+    assert!(stable.is_string());
+    assert_eq!(fingerprint(swapped), stable);
+    assert_eq!(fingerprint(duplicated), stable);
+    assert_eq!(fingerprint(renamed), stable);
+    assert_ne!(fingerprint(ghost), stable);
+    let shared = probe(json!({
+        "api_version": "riauth/v1",
+        "clients": [
+            {"client_id":"wiki","name":"wiki","scopes":["openid"]},
+            {"client_id":"mail","name":"mail","scopes":["openid"]}
+        ],
+        "users": [
+            {"id":"a","username":"ada","display_name":"Ada","subjects":{"wiki":"same"}},
+            {"id":"b","username":"bea","display_name":"Bea","subjects":{"mail":"same"}}
+        ]
+    }));
+    assert_eq!(shared["ready_for_plan"], true, "{}", shared["blockers"]);
+    assert_eq!(binding(), kept);
+
+    let reject = |manifest: riauth::state::Manifest, needle: &str| {
+        let error = f.core.plan_state(&f.admin, manifest).err().unwrap();
+        assert_eq!(error.status.as_u16(), 409, "{}", error.message);
+        assert!(error.message.contains(needle), "{}", error.message);
+    };
+    let mut changed = manifest.clone();
+    changed
+        .users
+        .iter_mut()
+        .find(|user| user.username == "alice")
+        .unwrap()
+        .subjects
+        .insert("wiki".into(), "uid-changed".into());
+    reject(
+        changed,
+        "Manifest would change a proven subject or issuer binding",
+    );
+    let mut changed = manifest.clone();
+    changed
+        .clients
+        .iter_mut()
+        .find(|client| client.client_id == "wiki")
+        .unwrap()
+        .settings
+        .issuer = Some("https://apps.example.test/application/o/wiki/".into());
+    reject(
+        changed,
+        "Manifest would change a proven subject or issuer binding",
+    );
+    let mut changed = manifest.clone();
+    changed
+        .clients
+        .iter_mut()
+        .find(|client| client.client_id == "wiki")
+        .unwrap()
+        .settings
+        .pairwise_sector = Some("other.example.test".into());
+    reject(
+        changed,
+        "Manifest would change a proven subject or issuer binding",
+    );
+    let mut changed = manifest.clone();
+    changed.sources[0].source.issuer = "https://idp-new.example.test".into();
+    reject(
+        changed,
+        "Manifest would change a proven subject or issuer binding",
+    );
+    let mut changed = manifest.clone();
+    changed.source_links[0].issuer = Some("https://idp-new.example.test".into());
+    reject(
+        changed,
+        "Target source link issuer is stale; export the target and convert again",
+    );
+    let mut changed = manifest.clone();
+    changed.source_links[0].username = "bob".into();
+    reject(
+        changed,
+        "Manifest would change a proven subject or issuer binding",
+    );
+    let mut cosmetic = manifest.clone();
+    let mut local = local_client.clone();
+    local.settings.issuer = Some(issuer.clone());
+    cosmetic.clients.push(local);
+    f.core.plan_state(&f.admin, cosmetic).unwrap();
+    let mut partial = manifest.clone();
+    partial.users.retain(|user| user.username == "alice");
+    partial.users[0].display_name = "Alice Partial".into();
+    partial.groups.clear();
+    partial.clients.clear();
+    partial.sources.clear();
+    partial.source_links.clear();
+    let planned = f.core.plan_state(&f.admin, partial).unwrap();
+    assert!(
+        planned
+            .changes
+            .iter()
+            .all(|change| change.resource == "user/alice")
+    );
+    assert_eq!(binding(), kept);
+
+    let mut rollback = manifest.clone();
+    rollback.users[0].display_name = "Alice Renamed".into();
+    rollback.users[1].password_ref = None;
+    rollback.users[1].password_hash_ref = Some("env:BAD".into());
+    rollback.users[1].password_version = Some("v2".into());
+    let rollback_plan = f.core.plan_state(&f.admin, rollback).unwrap();
+    let mut rollback_secrets: std::collections::BTreeMap<_, _> = secrets.clone().into();
+    rollback_secrets.insert("env:BAD".into(), "not-a-hash".into());
+    let error = f
+        .core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan: rollback_plan,
+                secrets: rollback_secrets,
+                run_id: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status.as_u16(), 400, "{}", error.message);
+    assert!(
+        error.message.contains("Unsupported password hash"),
+        "{}",
+        error.message
+    );
+    assert_eq!(binding(), kept);
+
+    let held = f.core.plan_state(&f.admin, manifest).unwrap();
+    let mut wiki_only = state_manifest
+        .clients
+        .into_iter()
+        .find(|client| client.client_id == "wiki")
+        .unwrap();
+    wiki_only.settings.issuer = Some(format!("{issuer}/application/o/moved/"));
+    apply(riauth::state::Manifest {
+        api_version: "riauth/v1".into(),
+        clients: vec![wiki_only],
+        ..Default::default()
+    });
+    let error = f
+        .core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan: held.clone(),
+                secrets: secrets.clone().into(),
+                run_id: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status.as_u16(), 409, "{}", error.message);
+    assert!(
+        error
+            .message
+            .contains("Target identity state changed since export"),
+        "{}",
+        error.message
+    );
+    let shifted = binding();
+    let wiki = shifted["clients"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|client| client["client_id"] == "wiki")
+        .unwrap();
+    assert_eq!(
+        wiki["issuer"],
+        json!(format!("{issuer}/application/o/moved/"))
+    );
+    assert_eq!(
+        shifted["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|user| user["username"] == "alice")
+            .unwrap()["subjects"],
+        json!({"local":"kept-local","wiki":"uid-42"})
+    );
+    assert_eq!(shifted["links"][0]["issuer"], "https://idp.example.test");
+
+    let mut source_only = corp;
+    source_only.source.issuer = "https://idp-new.example.test".into();
+    let error = f
+        .core
+        .plan_state(
+            &f.admin,
+            riauth::state::Manifest {
+                api_version: "riauth/v1".into(),
+                sources: vec![source_only],
+                ..Default::default()
+            },
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error.status.as_u16(), 409, "{}", error.message);
+    assert!(
+        error
+            .message
+            .contains("immutable while accounts are linked"),
+        "{}",
+        error.message
+    );
+    let pinned = binding();
+    assert_eq!(pinned["sources"][0]["issuer"], "https://idp.example.test");
+    assert_eq!(pinned["links"][0]["issuer"], "https://idp.example.test");
+
+    f.core
+        .store
+        .write(|tx| {
+            let (key, mut link) = tx
+                .list::<serde_json::Value>("source_links")?
+                .into_iter()
+                .find(|(_, link)| link["source"] == "corp" && link["subject"] == "sub-1")
+                .ok_or_else(|| riauth::error::Error::internal("missing source link"))?;
+            link["issuer"] = json!("https://old.example.test");
+            tx.put("source_links", &key, &link)
+        })
+        .unwrap();
+    let error = f
+        .core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan: held.clone(),
+                secrets: secrets.clone().into(),
+                run_id: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status.as_u16(), 409, "{}", error.message);
+    assert!(
+        error.message.contains("Target identity state is stale"),
+        "{}",
+        error.message
+    );
+    let diverged = binding();
+    assert_eq!(diverged["sources"][0]["issuer"], "https://idp.example.test");
+    assert_eq!(diverged["links"][0]["issuer"], "https://old.example.test");
+    assert_eq!(
+        diverged["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|user| user["username"] == "alice")
+            .unwrap()["subjects"],
+        json!({"local":"kept-local","wiki":"uid-42"})
+    );
+
+    apply(riauth::state::Manifest {
+        api_version: "riauth/v1".into(),
+        source_links: vec![riauth::source::LinkSpec {
+            source: "corp".into(),
+            username: "alice".into(),
+            subject: "sub-1".into(),
+            issuer: Some("https://idp.example.test".into()),
+        }],
+        ..Default::default()
+    });
+    let repaired = binding();
+    assert_eq!(repaired["sources"][0]["issuer"], "https://idp.example.test");
+    assert_eq!(repaired["links"][0]["issuer"], "https://idp.example.test");
+    assert_eq!(
+        repaired["users"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|user| user["username"] == "alice")
+            .unwrap()["subjects"],
+        json!({"local":"kept-local","wiki":"uid-42"})
+    );
+    let error = f
+        .core
+        .apply_state(
+            &f.admin,
+            riauth::state::ApplyRequest {
+                plan: held,
+                secrets: secrets.into(),
+                run_id: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status.as_u16(), 409, "{}", error.message);
+    assert!(
+        error
+            .message
+            .contains("Target identity state changed since export"),
+        "{}",
+        error.message
+    );
 }
 
 #[test]

@@ -36,7 +36,8 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub issuer: Option<String>,
     /// Identity dependencies observed in the target export used by an offline migration.
-    /// Planning and applying reject a target whose identities changed after conversion.
+    /// Planning and applying reject a target whose proven issuer and subject bindings changed,
+    /// and a manifest that would change those bindings. Ambiguous or stale exports do not hash.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_state_fingerprint: Option<String>,
 }
@@ -241,16 +242,21 @@ impl Manifest {
             _ => Ok(()),
         }
     }
-    fn require_target_state(&self, tx: &Tx<'_>) -> Result<()> {
-        if let Some(expected) = &self.target_state_fingerprint {
-            let current = live_target_identity_fingerprint(tx)?;
-            if !crypto::constant_eq(expected, &current) {
-                return Err(Error::conflict(
-                    "Target identity state changed since export; export the target and convert again",
-                ));
-            }
+    /// When a fingerprint is present, the live identity must still hash to it and the manifest
+    /// must not change a proven binding. Ambiguous or stale live state fails closed, including a
+    /// source link whose stored issuer differs from its source.
+    fn require_target_state(&self, tx: &Tx<'_>, instance_issuer: &str) -> Result<()> {
+        let Some(expected) = &self.target_state_fingerprint else {
+            return Ok(());
+        };
+        let identity = live_target_identity(tx)?;
+        let current = fingerprint_identity(&identity)?;
+        if !crypto::constant_eq(expected, &current) {
+            return Err(Error::conflict(
+                "Target identity state changed since export; export the target and convert again",
+            ));
         }
-        Ok(())
+        preserve_proven_bindings(self, &identity, instance_issuer)
     }
     pub fn secret_references(&self) -> BTreeSet<&str> {
         self.users
@@ -263,59 +269,238 @@ impl Manifest {
     }
 }
 
-/// Keep only the exported facts used to prove account, subject and source-link continuity.
-/// Sorting removes export-order differences; the version separates this binding from other hashes.
-pub(crate) fn target_identity_fingerprint(state: &Manifest) -> Result<String> {
-    let mut users = state
+/// Why a target export cannot prove one owner for each issuer and subject.
+pub(crate) enum TargetIdentityFault {
+    /// Two owners, or a subject whose client is missing, so the issuer cannot be proved.
+    Ambiguous,
+    /// A source link records an issuer other than its source's issuer.
+    Stale,
+}
+
+#[derive(Clone)]
+pub(crate) struct TargetUser {
+    pub id: Option<String>,
+    pub username: String,
+    /// Canonical JSON of `riauth.migration.authentik`, when the account records one.
+    pub authentik: Option<Value>,
+    pub subjects: BTreeMap<String, String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct TargetClient {
+    pub issuer: Option<String>,
+    pub pairwise_sector: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct TargetLink {
+    pub issuer: Option<String>,
+    pub username: String,
+}
+
+/// One reading of an export. Duplicate keys are rejected instead of keeping the last row.
+pub(crate) struct TargetIdentity {
+    pub users: Vec<TargetUser>,
+    pub users_by_id: BTreeMap<String, TargetUser>,
+    pub users_by_username: BTreeMap<String, String>,
+    pub clients: BTreeMap<String, TargetClient>,
+    pub sources: BTreeMap<String, String>,
+    /// `(source, subject)` → the link's stored issuer and owning username.
+    pub links: BTreeMap<(String, String), TargetLink>,
+    /// `(client, subject)` → the owning user id. The same subject may be used by another client.
+    pub subjects: BTreeMap<(String, String), String>,
+}
+
+fn target_identity_fault(fault: TargetIdentityFault) -> Error {
+    Error::conflict(match fault {
+        TargetIdentityFault::Ambiguous => "Target identity state is ambiguous",
+        TargetIdentityFault::Stale => "Target identity state is stale",
+    })
+}
+
+fn canonical_value(value: &Value) -> Value {
+    match value {
+        Value::Array(items) => Value::Array(items.iter().map(canonical_value).collect()),
+        Value::Object(map) => {
+            let mut keys = map.keys().cloned().collect::<Vec<_>>();
+            keys.sort();
+            let mut sorted = serde_json::Map::new();
+            for key in keys {
+                sorted.insert(key.clone(), canonical_value(&map[&key]));
+            }
+            Value::Object(sorted)
+        }
+        other => other.clone(),
+    }
+}
+
+pub(crate) fn target_identity(
+    state: &Manifest,
+) -> std::result::Result<TargetIdentity, TargetIdentityFault> {
+    let mut clients = BTreeMap::new();
+    for client in &state.clients {
+        if clients
+            .insert(
+                client.client_id.clone(),
+                TargetClient {
+                    issuer: client.settings.issuer.clone(),
+                    pairwise_sector: client.settings.pairwise_sector.clone(),
+                },
+            )
+            .is_some()
+        {
+            return Err(TargetIdentityFault::Ambiguous);
+        }
+    }
+    let mut sources = BTreeMap::new();
+    for source in &state.sources {
+        if sources
+            .insert(source.source.id.clone(), source.source.issuer.clone())
+            .is_some()
+        {
+            return Err(TargetIdentityFault::Ambiguous);
+        }
+    }
+    let mut users = Vec::new();
+    let mut users_by_id = BTreeMap::new();
+    let mut users_by_username = BTreeMap::new();
+    let mut seen_names = BTreeSet::new();
+    let mut subjects = BTreeMap::new();
+    for user in &state.users {
+        if !seen_names.insert(user.username.clone()) {
+            return Err(TargetIdentityFault::Ambiguous);
+        }
+        if user.id.is_none() && !user.subjects.is_empty() {
+            return Err(TargetIdentityFault::Ambiguous);
+        }
+        if let Some(id) = &user.id {
+            if users_by_id.contains_key(id) {
+                return Err(TargetIdentityFault::Ambiguous);
+            }
+            for (cid, subject) in &user.subjects {
+                if !clients.contains_key(cid)
+                    || subjects
+                        .insert((cid.clone(), subject.clone()), id.clone())
+                        .is_some()
+                {
+                    return Err(TargetIdentityFault::Ambiguous);
+                }
+            }
+        }
+        let record = TargetUser {
+            id: user.id.clone(),
+            username: user.username.clone(),
+            authentik: user
+                .attributes
+                .get("riauth.migration.authentik")
+                .map(canonical_value),
+            subjects: user.subjects.clone(),
+        };
+        if let Some(id) = &record.id {
+            users_by_username.insert(record.username.clone(), id.clone());
+            users_by_id.insert(id.clone(), record.clone());
+        }
+        users.push(record);
+    }
+    users.sort_by(|left, right| {
+        left.id
+            .cmp(&right.id)
+            .then(left.username.cmp(&right.username))
+    });
+    let mut links: BTreeMap<(String, String), TargetLink> = BTreeMap::new();
+    for link in &state.source_links {
+        let key = (link.source.clone(), link.subject.clone());
+        let record = TargetLink {
+            issuer: link.issuer.clone(),
+            username: link.username.clone(),
+        };
+        match links.get(&key) {
+            Some(existing)
+                if existing.username != record.username || existing.issuer != record.issuer =>
+            {
+                return Err(TargetIdentityFault::Ambiguous);
+            }
+            Some(_) => {}
+            None => {
+                links.insert(key, record);
+            }
+        }
+    }
+    for ((source_id, _), link) in &links {
+        if let Some(link_issuer) = &link.issuer
+            && let Some(source_issuer) = sources.get(source_id)
+            && link_issuer != source_issuer
+        {
+            return Err(TargetIdentityFault::Stale);
+        }
+    }
+    Ok(TargetIdentity {
+        users,
+        users_by_id,
+        users_by_username,
+        clients,
+        sources,
+        links,
+        subjects,
+    })
+}
+
+/// Hash the proven binding. Object key order in the Authentik attribute does not change it.
+/// `v1` hashes are not recognized, so an older fingerprint fails closed as a changed target.
+pub(crate) fn fingerprint_identity(identity: &TargetIdentity) -> Result<String> {
+    let users = identity
         .users
         .iter()
         .map(|user| {
-            (
+            let authentik = user
+                .authentik
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()
+                .map_err(Error::internal)?;
+            Ok((
                 user.id.as_deref(),
                 user.username.as_str(),
-                user.attributes.get("riauth.migration.authentik"),
+                authentik,
                 &user.subjects,
-            )
+            ))
         })
-        .collect::<Vec<_>>();
-    users.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
-    let mut clients = state
+        .collect::<Result<Vec<_>>>()?;
+    let clients = identity
         .clients
         .iter()
-        .map(|client| {
+        .map(|(id, client)| {
             (
-                client.client_id.as_str(),
-                client.settings.issuer.as_deref(),
-                client.settings.pairwise_sector.as_deref(),
+                id.as_str(),
+                client.issuer.as_deref(),
+                client.pairwise_sector.as_deref(),
             )
         })
         .collect::<Vec<_>>();
-    clients.sort();
-    let mut sources = state
+    let sources = identity
         .sources
         .iter()
-        .map(|source| (source.source.id.as_str(), source.source.issuer.as_str()))
+        .map(|(id, issuer)| (id.as_str(), issuer.as_str()))
         .collect::<Vec<_>>();
-    sources.sort();
-    let mut links = state
-        .source_links
+    let links = identity
+        .links
         .iter()
-        .map(|link| {
+        .map(|((source, subject), link)| {
             (
-                link.source.as_str(),
-                link.subject.as_str(),
+                source.as_str(),
+                link.issuer.as_deref(),
+                subject.as_str(),
                 link.username.as_str(),
             )
         })
         .collect::<Vec<_>>();
-    links.sort();
     Ok(digest(
-        &serde_json::to_string(&("riauth.target-identity/v1", users, clients, sources, links))
+        &serde_json::to_string(&("riauth.target-identity/v2", users, clients, sources, links))
             .map_err(Error::internal)?,
     ))
 }
 
-fn live_target_identity_fingerprint(tx: &Tx<'_>) -> Result<String> {
+fn live_target_identity(tx: &Tx<'_>) -> Result<TargetIdentity> {
     let state = Manifest {
         users: tx
             .list::<User>("users")?
@@ -339,7 +524,103 @@ fn live_target_identity_fingerprint(tx: &Tx<'_>) -> Result<String> {
         source_links: crate::source::export_all_links(tx)?,
         ..Default::default()
     };
-    target_identity_fingerprint(&state)
+    target_identity(&state).map_err(target_identity_fault)
+}
+
+/// Refuse a fingerprinted manifest that would change a proven (issuer, subject) binding.
+/// Resources the manifest omits stay as they are. A configured issuer equal to the instance
+/// issuer publishes the same issuer as an omitted one.
+fn preserve_proven_bindings(
+    manifest: &Manifest,
+    identity: &TargetIdentity,
+    instance_issuer: &str,
+) -> Result<()> {
+    let proven = || Error::conflict("Manifest would change a proven subject or issuer binding");
+    let stale = || {
+        Error::conflict("Target source link issuer is stale; export the target and convert again")
+    };
+    for spec in &manifest.users {
+        let live = if let Some(id) = &spec.id {
+            identity.users_by_id.get(id)
+        } else {
+            identity
+                .users_by_username
+                .get(&spec.username)
+                .and_then(|id| identity.users_by_id.get(id))
+        };
+        if let Some(live) = live {
+            for (cid, previous) in &live.subjects {
+                if spec.subjects.get(cid) != Some(previous) {
+                    return Err(proven());
+                }
+            }
+        }
+        let bound = spec
+            .id
+            .as_deref()
+            .or_else(|| live.and_then(|user| user.id.as_deref()));
+        for (cid, subject) in &spec.subjects {
+            if let Some(holder) = identity.subjects.get(&(cid.clone(), subject.clone()))
+                && Some(holder.as_str()) != bound
+            {
+                return Err(proven());
+            }
+        }
+    }
+    for spec in &manifest.clients {
+        let Some(live) = identity.clients.get(&spec.client_id) else {
+            continue;
+        };
+        let published = spec.settings.issuer.as_deref().unwrap_or(instance_issuer);
+        let current = live.issuer.as_deref().unwrap_or(instance_issuer);
+        if published != current || spec.settings.pairwise_sector != live.pairwise_sector {
+            return Err(proven());
+        }
+    }
+    for spec in &manifest.sources {
+        if identity
+            .sources
+            .get(&spec.source.id)
+            .is_some_and(|issuer| issuer != &spec.source.issuer)
+        {
+            return Err(proven());
+        }
+    }
+    for spec in &manifest.source_links {
+        let key = (spec.source.clone(), spec.subject.clone());
+        if let Some(live) = identity.links.get(&key) {
+            if live.username != spec.username {
+                return Err(proven());
+            }
+            if spec.issuer.is_some() && spec.issuer != live.issuer {
+                return Err(stale());
+            }
+        }
+        if let Some(spec_issuer) = &spec.issuer {
+            let source_issuer = identity
+                .sources
+                .get(&spec.source)
+                .map(String::as_str)
+                .or_else(|| {
+                    manifest
+                        .sources
+                        .iter()
+                        .find(|source| source.source.id == spec.source)
+                        .map(|source| source.source.issuer.as_str())
+                });
+            if source_issuer != Some(spec_issuer.as_str()) {
+                return Err(stale());
+            }
+            if identity
+                .links
+                .get(&key)
+                .is_some_and(|live| live.issuer.as_ref() != Some(spec_issuer))
+            {
+                return Err(stale());
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Desired-state manifests name only the resources they manage. Omission is
@@ -565,7 +846,7 @@ impl Core {
             let actor = self.principal(tx, token)?;
             if actor.delegated { return Err(Error::forbidden()); }
             manifest.require_issuer(&self.config.issuer)?;
-            manifest.require_target_state(tx)?;
+            manifest.require_target_state(tx, &self.config.issuer)?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             let impact = state_removal_impact(tx, &manifest)?;
             let authority_digest = ReviewBinding::new(tx, &actor, &())?.authority_digest;
@@ -596,7 +877,8 @@ impl Core {
                     "Instance or plan authority changed during planning; plan again",
                 ));
             }
-            plan.manifest.require_target_state(tx)?;
+            plan.manifest
+                .require_target_state(tx, &self.config.issuer)?;
             plan.review = ReviewBinding::new(tx, &current, &plan_content(&plan)?)?;
             tx.put(
                 "plans",
@@ -639,7 +921,8 @@ impl Core {
                 validate_state_review(tx, &actor, &stored)?;
                 return Ok(result.clone());
             }
-            input.plan.manifest.require_target_state(tx)?;
+            input.plan.manifest
+                .require_target_state(tx, &self.config.issuer)?;
             let impact = state_removal_impact(tx, &input.plan.manifest)?;
             ApplyGate {
                 id: &input.plan.plan_id,

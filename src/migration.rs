@@ -32,7 +32,7 @@ pub struct Import {
     pub excluded_groups: BTreeSet<String>,
     /// The target instance's current state: the `manifest` of an administrator's `riauth export`.
     /// With it, accounts an earlier import created are matched by their recorded Authentik UUID,
-    /// and no username, subject or source link is moved to another account.
+    /// and no username, subject, issuer or source link is moved to another account.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_state: Option<Manifest>,
     /// Complete export of `/api/v3/policies/expression/`. Application bindings to an expression
@@ -886,9 +886,7 @@ fn subject_safe_dictionary(expression: &str) -> bool {
             }
             Some(b) if b.is_ascii_alphabetic() || *b == b'_' => {
                 let start = at;
-                while at < bytes.len()
-                    && (bytes[at].is_ascii_alphanumeric() || bytes[at] == b'_')
-                {
+                while at < bytes.len() && (bytes[at].is_ascii_alphanumeric() || bytes[at] == b'_') {
                     at += 1;
                 }
                 if &bytes[start..at] == b"return" {
@@ -1965,6 +1963,42 @@ fn classify_issuer(
     }
 }
 
+/// Index `target_state` once. An ambiguous or stale export blocks and is not used for matching,
+/// so a last-wins reading cannot adopt an account, subject or source link.
+fn proven_target(
+    p: &mut Preflight,
+    state: Option<&Manifest>,
+) -> Option<crate::state::TargetIdentity> {
+    let Some(state) = state else {
+        return None;
+    };
+    match crate::state::target_identity(state) {
+        Ok(identity) => Some(identity),
+        Err(crate::state::TargetIdentityFault::Ambiguous) => {
+            p.add(
+                ItemKind::Manifest,
+                "target_state",
+                Classification::Unsupported,
+                "The target export names more than one owner for an account, subject or source link, or a subject whose client is missing, so no binding can be matched",
+                "Export the target again as an administrator and remove the duplicate or repair the subject before converting",
+            )
+            .block("target_state: ambiguous identity binding");
+            None
+        }
+        Err(crate::state::TargetIdentityFault::Stale) => {
+            p.add(
+                ItemKind::Manifest,
+                "target_state",
+                Classification::Unsupported,
+                "A source link in the target export records an issuer that differs from its source, so the binding is no longer the one upstream providers hold",
+                "Repair the link with a desired-state manifest that has no target fingerprint and sets the link issuer to its source's issuer, then export the target and convert again",
+            )
+            .block("target_state: stale identity binding");
+            None
+        }
+    }
+}
+
 pub fn convert(input: Import) -> Result<Value> {
     if input.api_version != AUTHENTIK_FORMAT {
         return Err(Error::bad("Unsupported Authentik import format"));
@@ -1980,13 +2014,12 @@ pub fn convert(input: Import) -> Result<Value> {
     let mut manifest = Manifest {
         api_version: "riauth/v1".into(),
         issuer: Some(input.issuer.clone()),
-        target_state_fingerprint: input
-            .target_state
-            .as_ref()
-            .map(crate::state::target_identity_fingerprint)
-            .transpose()?,
         ..Default::default()
     };
+    let target_identity = proven_target(&mut p, input.target_state.as_ref());
+    if let Some(identity) = &target_identity {
+        manifest.target_state_fingerprint = Some(crate::state::fingerprint_identity(identity)?);
+    }
     p.add(ItemKind::Issuer, "*", Classification::Manual,
         format!("The instance's issuer is not available offline, so the manifest is bound to the target issuer {}: planning and applying fail unless the instance's issuer is exactly this value, including any trailing slash", input.issuer),
         "Plan only on the riAuth instance initialized with exactly this issuer");
@@ -2032,6 +2065,27 @@ pub fn convert(input: Import) -> Result<Value> {
                     continue;
                 }
                 spec.source.validate()?;
+                if let Some(identity) = &target_identity
+                    && identity
+                        .sources
+                        .get(&spec.source.id)
+                        .is_some_and(|proven| proven != &spec.source.issuer)
+                {
+                    p.add(
+                        ItemKind::Source,
+                        &spec.source.id,
+                        Classification::Unsupported,
+                        format!(
+                            "The reviewed source issuer would change the upstream issuer already recorded for {}",
+                            spec.source.id
+                        ),
+                        "Keep the issuer the target source already uses, or plan an explicit account migration",
+                    )
+                    .block(format!(
+                        "{}: proven subject or issuer binding would change",
+                        spec.source.id
+                    ));
+                }
                 manifest.sources.push(spec.clone());
                 applied.insert(id.clone(), spec);
                 let matching = source["user_matching_mode"]
@@ -2187,7 +2241,11 @@ pub fn convert(input: Import) -> Result<Value> {
         .map(|id| Ok((id.as_str(), group_ancestors(&parents, id)?)))
         .collect::<Result<BTreeMap<_, _>>>()?;
     let mut accounts = accounts(&mut p, users)?;
-    if let Some(state) = &input.target_state {
+    if let Some(state) = input
+        .target_state
+        .as_ref()
+        .filter(|_| target_identity.is_some())
+    {
         continuity(&mut p, &mut accounts, state);
     }
     let mut expressions = BTreeMap::new();
@@ -2779,6 +2837,24 @@ pub fn convert(input: Import) -> Result<Value> {
             continue;
         }
         client_issuers.push((cid.clone(), resolution.issuer.clone()));
+        if let Some(identity) = &target_identity
+            && let Some(existing) = identity.clients.get(&cid)
+        {
+            let published = settings.issuer.as_deref().unwrap_or(input.issuer.as_str());
+            let proven = existing.issuer.as_deref().unwrap_or(input.issuer.as_str());
+            if published != proven || settings.pairwise_sector != existing.pairwise_sector {
+                p.add(
+                    ItemKind::Issuer,
+                    &cid,
+                    Classification::Unsupported,
+                    format!("The reviewed issuer or pairwise sector would change the binding relying parties already hold for client {cid}"),
+                    "Keep the issuer and pairwise sector the target already publishes, or plan an explicit relying-party account migration",
+                )
+                .block(format!(
+                    "{cid}: proven subject or issuer binding would change"
+                ));
+            }
+        }
         manifest.clients.push(ClientSpec {
             client_id: cid,
             name: client.name,
@@ -2897,52 +2973,51 @@ pub fn convert(input: Import) -> Result<Value> {
         &applied,
         &exported_sources,
     )?;
-    // Links name accounts by their riAuth username, and an upstream identity the target already
-    // links to one account never moves to another.
-    let linked = input
-        .target_state
-        .iter()
-        .flat_map(|state| &state.source_links)
-        .map(|l| ((l.source.as_str(), l.subject.as_str()), l.username.as_str()))
-        .collect::<BTreeMap<_, _>>();
+    // Links name accounts by their riAuth username. An upstream identity the proven target
+    // already links never moves, and a carried link keeps the issuer recorded on that link.
     links.retain_mut(|link| {
         let exported = std::mem::take(&mut link.username);
         link.username = accounts[&exported].name.clone();
-        let Some(owner) = linked
-            .get(&(link.source.as_str(), link.subject.as_str()))
-            .filter(|owner| **owner != link.username)
+        let Some(identity) = &target_identity else {
+            return true;
+        };
+        let Some(proven) = identity
+            .links
+            .get(&(link.source.clone(), link.subject.clone()))
         else {
             return true;
         };
-        p.add(ItemKind::SourceLink, format!("{exported}/{}", link.source), Classification::Unsupported,
-            format!("The upstream identity is already linked to riAuth account {owner}; riAuth never moves a source link to another account"),
-            "Resolve which account owns this upstream identity in Authentik before the final export")
-            .block(format!("{exported}/{}: source link belongs to another riAuth account", link.source));
-        false
+        if proven.username != link.username {
+            p.add(ItemKind::SourceLink, format!("{exported}/{}", link.source), Classification::Unsupported,
+                format!("The upstream identity is already linked to riAuth account {}; riAuth never moves a source link to another account", proven.username),
+                "Resolve which account owns this upstream identity in Authentik before the final export")
+                .block(format!("{exported}/{}: source link belongs to another riAuth account", link.source));
+            return false;
+        }
+        if let Some(issuer) = &proven.issuer {
+            let reviewed = applied
+                .values()
+                .find(|spec| spec.source.id == link.source)
+                .map(|spec| spec.source.issuer.as_str());
+            if reviewed != Some(issuer.as_str()) {
+                p.add(
+                    ItemKind::SourceLink,
+                    format!("{exported}/{}", link.source),
+                    Classification::Unsupported,
+                    format!("The reviewed source issuer differs from the issuer already recorded for this link ({issuer})"),
+                    "Keep the issuer the target source already uses, or plan an explicit account migration",
+                )
+                .block(format!(
+                    "{}: proven subject or issuer binding would change",
+                    link.source
+                ));
+                return false;
+            }
+            link.issuer = Some(issuer.clone());
+        }
+        true
     });
     manifest.source_links = links;
-    // Subjects the target already issued, and to which account.
-    let state = input.target_state.as_ref();
-    let issued = state
-        .iter()
-        .flat_map(|state| &state.users)
-        .flat_map(|u| {
-            let id = u.id.as_deref().unwrap_or("");
-            u.subjects
-                .iter()
-                .map(move |(cid, subject)| ((cid.as_str(), subject.as_str()), id))
-        })
-        .collect::<BTreeMap<_, _>>();
-    let stored = state
-        .iter()
-        .flat_map(|state| &state.users)
-        .filter_map(|u| u.id.as_deref().map(|id| (id, u)))
-        .collect::<BTreeMap<_, _>>();
-    let target_clients = state
-        .iter()
-        .flat_map(|state| &state.clients)
-        .map(|c| c.client_id.as_str())
-        .collect::<BTreeSet<_>>();
     for (entries, kind, name) in [
         (&input.passwords, ItemKind::Password, "passwords"),
         (&input.totp, ItemKind::Totp, "totp"),
@@ -3080,33 +3155,35 @@ pub fn convert(input: Import) -> Result<Value> {
                 subjects.insert(cid.clone(), subject);
             }
         }
-        // A subject the target already issued stays with its account: this account keeps its
-        // own, even for clients this export no longer converts, and never takes another's.
-        if let Some(existing) = stored.get(id.as_str()) {
-            for (cid, previous) in &existing.subjects {
-                match subjects.get(cid).cloned() {
-                    Some(converted) if &converted != previous => {
-                        p.add(ItemKind::Subject, format!("{username}/{cid}"), Classification::Unsupported,
-                            format!("The subject would change from {previous} to {converted} on riAuth account {id}; riAuth never moves an account to another subject"),
-                            "Keep the subject's source value in Authentik, or plan an explicit relying-party account migration")
-                            .block(format!("{username}/{cid}: subject of an existing riAuth account would change"));
+        // A subject the proven target already issued stays with its account: this account keeps
+        // its own, even for clients this export no longer converts, and never takes another's.
+        // A subject whose client is missing makes the target ambiguous, so it is not dropped here.
+        if let Some(identity) = &target_identity {
+            if let Some(existing) = identity.users_by_id.get(id.as_str()) {
+                for (cid, previous) in &existing.subjects {
+                    match subjects.get(cid).cloned() {
+                        Some(converted) if &converted != previous => {
+                            p.add(ItemKind::Subject, format!("{username}/{cid}"), Classification::Unsupported,
+                                format!("The subject would change from {previous} to {converted} on riAuth account {id}; riAuth never moves an account to another subject"),
+                                "Keep the subject's source value in Authentik, or plan an explicit relying-party account migration")
+                                .block(format!("{username}/{cid}: subject of an existing riAuth account would change"));
+                        }
+                        None if identity.clients.contains_key(cid) => {
+                            subjects.insert(cid.clone(), previous.clone());
+                        }
+                        _ => {}
                     }
-                    None if target_clients.contains(cid.as_str()) => {
-                        subjects.insert(cid.clone(), previous.clone());
-                    }
-                    _ => {}
                 }
             }
-        }
-        for (cid, subject) in &subjects {
-            if let Some(owner) = issued
-                .get(&(cid.as_str(), subject.as_str()))
-                .filter(|owner| **owner != id)
-            {
-                p.add(ItemKind::Subject, format!("{username}/{cid}"), Classification::Unsupported,
-                    format!("Subject {subject} for client {cid} belongs to riAuth account {owner}; riAuth never gives a subject to another account"),
-                    "Resolve which account owns this subject in Authentik before the final export")
-                    .block(format!("{username}/{cid}: subject belongs to another riAuth account"));
+            for (cid, subject) in &subjects {
+                if let Some(owner) = identity.subjects.get(&(cid.clone(), subject.clone()))
+                    && owner != &id
+                {
+                    p.add(ItemKind::Subject, format!("{username}/{cid}"), Classification::Unsupported,
+                        format!("Subject {subject} for client {cid} belongs to riAuth account {owner}; riAuth never gives a subject to another account"),
+                        "Resolve which account owns this subject in Authentik before the final export")
+                        .block(format!("{username}/{cid}: subject belongs to another riAuth account"));
+                }
             }
         }
         let mut attributes: BTreeMap<String, Value> =
