@@ -2274,6 +2274,137 @@ pub(crate) fn effective_confidential(
         || settings.token_endpoint_auth_method == Some(ClientAuthMethod::PrivateKeyJwt)
 }
 
+/// Direct private-key JWT clients receive no shared secret, even though their
+/// immutable client type is confidential.
+pub(crate) fn issues_direct_client_secret(input: &crate::model::NewClient) -> bool {
+    effective_confidential(input.confidential, input.service, &input.settings)
+        && input.settings.token_endpoint_auth_method != Some(ClientAuthMethod::PrivateKeyJwt)
+}
+
+/// A direct client secret is disclosed only by the first successful response.
+/// The receipt uses the generic management actor/key/scope namespace but stores
+/// only a marker. A legacy generic receipt is recognized and denied on retry.
+struct ClientIssuanceReceipt {
+    key: String,
+    fingerprint: String,
+    permissions: Value,
+    revision: u64,
+}
+
+impl ClientIssuanceReceipt {
+    fn current(tx: &Tx<'_>, actor: &Principal, operation: &str) -> Result<Option<Self>> {
+        let Some(context) = crate::context::current() else {
+            return Ok(None);
+        };
+        let (Some(idempotency_key), Some(revision)) = (context.idempotency_key, context.revision)
+        else {
+            return Err(Error::new(
+                axum::http::StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                format!("Client {operation} requires Idempotency-Key and If-Match"),
+            ));
+        };
+        Ok(Some(Self {
+            key: digest(&format!("{}\0{idempotency_key}", actor.id)),
+            fingerprint: context.fingerprint,
+            permissions: crate::context::management_permissions(tx, actor)?,
+            revision,
+        }))
+    }
+
+    fn check(&self, tx: &Tx<'_>) -> Result<()> {
+        if crate::context::replay_receipt(tx, &self.key, &self.fingerprint, &self.permissions)?
+            .is_some()
+        {
+            return Err(Error::new(
+                axum::http::StatusCode::CONFLICT,
+                "credential_already_issued",
+                "Client credential was already issued; inspect the client and rotate if delivery failed",
+            ));
+        }
+        if self.revision != tx.get::<u64>("meta", "revision")?.unwrap_or(0) {
+            return Err(Error::conflict("Configuration revision changed"));
+        }
+        Ok(())
+    }
+
+    fn save(self, tx: &Tx<'_>, client_id: &str) -> Result<()> {
+        crate::context::save_receipt(
+            tx,
+            &self.key,
+            self.fingerprint,
+            self.permissions,
+            &json!({"client_id": client_id, "credential_issued": true}),
+        )
+    }
+}
+
+pub(crate) fn create_client_issuing(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    input: crate::model::NewClient,
+) -> Result<Value> {
+    let principal = core.principal(tx, token)?;
+    let receipt = ClientIssuanceReceipt::current(tx, &principal, "creation")?;
+    if let Some(receipt) = &receipt {
+        receipt.check(tx)?;
+    }
+    let actor = core.management(
+        tx,
+        token,
+        "client.write",
+        &format!("client/{}", input.client_id),
+    )?;
+    let (client, secret) = new_client(input);
+    let written = write_client(
+        tx,
+        &core.config,
+        &actor,
+        None,
+        client,
+        secret,
+        Record::Direct("client.create"),
+    )?;
+    if let Some(receipt) = receipt {
+        receipt.save(tx, &written.client.id)?;
+    }
+    Ok(json!({"client": written.client.view(), "client_secret": written.secret}))
+}
+
+pub(crate) fn rotate_client_secret_issuing(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    cid: &str,
+) -> Result<Value> {
+    let principal = core.principal(tx, token)?;
+    let receipt = ClientIssuanceReceipt::current(tx, &principal, "secret rotation")?;
+    if let Some(receipt) = &receipt {
+        receipt.check(tx)?;
+    }
+    let actor = core.management(tx, token, "client.rotate", &format!("client/{cid}"))?;
+    let existing = tx
+        .get::<Client>("clients", cid)?
+        .ok_or_else(|| Error::missing("Client not found"))?;
+    if existing.secret_hash.is_none() {
+        return Err(Error::bad("Public clients do not have a secret"));
+    }
+    let written = write_client(
+        tx,
+        &core.config,
+        &actor,
+        Some(&existing),
+        existing.clone(),
+        Secret::Issue,
+        Record::Direct("client.secret.rotate"),
+    )?;
+    if let Some(receipt) = receipt {
+        receipt.save(tx, cid)?;
+    }
+    Ok(json!({"client_id": cid, "client_secret": written.secret}))
+}
+
 /// The record and secret request a direct create (`NewClient`) asks for.
 pub(crate) fn new_client(input: crate::model::NewClient) -> (Client, Secret<'static>) {
     let secret = if effective_confidential(input.confidential, input.service, &input.settings) {

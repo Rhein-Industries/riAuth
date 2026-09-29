@@ -408,8 +408,11 @@ copies under the existing private-storage and retention policy.
 `--show-secrets`. Use `--output-file`. The file receives the JSON once,
 including `client_secret`. `write_private` refuses an existing path, and
 that write happens after the server has accepted the call. Use a new path.
-Keep the same idempotency key and revision if that write fails: the receipt
-returns the secret already issued. `Core::rotate_client_secret` requires `client.rotate` on
+Keep the same idempotency key and revision if delivery is uncertain: an exact
+retry returns `409 credential_already_issued` if the first rotation committed,
+without returning the secret. Inspect the client and rotate again with a new
+key and current revision if the response or private file was lost. The old
+secret is invalid after the first committed rotation. `Core::rotate_client_secret` requires `client.rotate` on
 `client/<id>`. A stored `secret_hash` of none returns 400
 `Public clients do not have a secret`. A `private_key_jwt` client stores
 no secret hash, so this command leaves that client's assertion key as it

@@ -2206,10 +2206,13 @@ async fn client_secret_rotation_requires_retry_binding_across_browser_and_bearer
         browser(Some("browser-rotation"), Some(at)),
     )
     .await;
-    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.0, StatusCode::CONFLICT);
+    assert_eq!(replay.2["error"], "credential_already_issued");
     assert!(
-        replay.2 == first.2,
-        "Exact browser retry changed the response"
+        !replay
+            .2
+            .to_string()
+            .contains(first.2["client_secret"].as_str().unwrap())
     );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count(), 1);
@@ -2237,10 +2240,13 @@ async fn client_secret_rotation_requires_retry_binding_across_browser_and_bearer
         bearer(Some("bearer-rotation"), Some(current)),
     )
     .await;
-    assert_eq!(replay.0, StatusCode::OK);
+    assert_eq!(replay.0, StatusCode::CONFLICT);
+    assert_eq!(replay.2["error"], "credential_already_issued");
     assert!(
-        replay.2 == second.2,
-        "Exact bearer retry changed the response"
+        !replay
+            .2
+            .to_string()
+            .contains(second.2["client_secret"].as_str().unwrap())
     );
     assert_eq!(audit_count(), 2);
     assert_eq!(revision(), current + 1);

@@ -45,6 +45,8 @@ backend_contract!(prepared_authority_revalidation);
 backend_contract!(prepared_deadline_revalidation);
 backend_contract!(last_admin_failure_is_atomic);
 backend_contract!(http_mutation_receipts_and_audit);
+backend_contract!(client_secret_issuance_adapter_parity);
+backend_contract!(legacy_client_receipts_scrub_on_open);
 backend_contract!(agent_create_issues_credential_once);
 backend_contract!(agent_rotation_issues_credential_once);
 backend_contract!(legacy_agent_receipts_scrub_on_open);
