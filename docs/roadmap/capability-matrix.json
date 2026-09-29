@@ -1301,10 +1301,12 @@
           "journey": "partial",
           "gaps": [
             "No peer check that another process covers omitted duties",
-            "No runtime evidence of a gateway and a worker sharing one PostgreSQL database",
             "Gateway readiness stays successful while background loops are off",
             "A gateway request can still run a manual connector pass",
-            "Embedded redb stays one owner; this slice adds no multi-node coordination"
+            "Embedded redb stays one owner; this slice adds no multi-node coordination",
+            "Split-role PostgreSQL exercise used loopback HTTP without native TLS and unencrypted loopback PostgreSQL; it did not promote the standby",
+            "That exercise observed one failed logout delivery; other background loops were not asserted",
+            "Public CI does not select RIAUTH_PG_TEST_TARGET=process_role_postgres"
           ]
         },
         "O02": {

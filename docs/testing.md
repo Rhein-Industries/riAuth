@@ -26,7 +26,15 @@ The role slice runs on the Platform build with:
 cargo test --locked --lib --test process_role -- process_role:: saturated_application_or_probe_workers_do_not_disable_liveness configuration_rejects_unknown_and_unacknowledged_roles worker_refuses_a_configured_ldap_listener uninitialized_worker_does_not_serve_setup integrated_serves_identity_and_keeps_the_embedded_store gateway_serves_identity_without_background_loops worker_serves_probes_and_background_work_only
 ```
 
-It checks fail-closed configuration, integrated discovery plus the redb second-open refusal, a gateway that serves discovery while background finished/active counters stay at 0, and a worker that serves probes and a provisioning pass while discovery, JWKS, and `/api/login` return `not_served`. It does not start two processes against one PostgreSQL database. The duty table and the remaining gaps are in [process roles](roadmap/o01-process-roles.md).
+It checks fail-closed configuration, integrated discovery plus the redb second-open refusal, a gateway that serves discovery while background finished/active counters stay at 0, and a worker that serves probes and a provisioning pass while discovery, JWKS, and `/api/login` return `not_served`. Those tests run inside one process on embedded redb.
+
+Two `riauth serve` processes on one disposable PostgreSQL database are selected separately:
+
+```sh
+RIAUTH_PG_TEST_TARGET=process_role_postgres ./scripts/test-postgres.sh
+```
+
+The script passes `--locked --features test-support` and `--ignored`. The test checks loopback HTTP with no native TLS files, unencrypted loopback PostgreSQL (`sslmode=disable`), the same issuer on both processes, gateway discovery and JWKS, the worker's probe-only `not_served` surface, one failed back-channel logout delivery written while the worker is up, and gateway `/readyz` remaining successful with `duties.background_jobs` false while the worker is absent. The default `scripts/test-postgres.sh` target does not run it. The recorded command and the gaps it left open are in [process roles](roadmap/o01-process-roles.md).
 
 ## Backup memory measurement
 

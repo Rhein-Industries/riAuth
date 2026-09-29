@@ -9,7 +9,7 @@ riauth_pg_target="${RIAUTH_PG_TEST_TARGET:-postgres}"
 # database with a keygen record key. That test restarts the primary to load
 # its server certificate. Standby promotion and pg_ctl failover stay outside it.
 case "$riauth_pg_target" in
-  postgres|q05_replay_concurrency|reviewed_memberships_postgres) ;;
+  postgres|q05_replay_concurrency|reviewed_memberships_postgres|process_role_postgres) ;;
   *) printf 'Unsupported PostgreSQL test target: %s\n' "$riauth_pg_target" >&2; exit 2 ;;
 esac
 riauth_pg_test="$(mktemp -d "${TMPDIR:-/tmp}/riauth-pg-test.XXXXXXXX")"
@@ -48,7 +48,7 @@ chmod 600 "$riauth_pg_test/connection"
 printf 'riauth disposable integration cluster\n' >"$riauth_pg_test/marker"
 riauth_features=()
 case "$riauth_pg_target" in
-  q05_replay_concurrency|reviewed_memberships_postgres)
+  q05_replay_concurrency|reviewed_memberships_postgres|process_role_postgres)
     riauth_features=(--features test-support)
     ;;
 esac

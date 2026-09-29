@@ -2581,7 +2581,7 @@
       ],
       "label": "extend",
       "journey": "partial",
-      "current_state": "Default role integrated still runs product HTTP, optional LDAP/RADIUS/proxy listeners, and background workers in one process. Explicit gateway and worker roles are accepted only with process.accept_partial_duties = true. Gateway serves the product HTTP routes and configured listeners and does not start background loops. Worker starts those loops, serves only /livez, /readyz, and /healthz, and refuses browser UI and protocol listeners. Embedded redb remains one owner.",
+      "current_state": "Default role integrated still runs product HTTP, optional LDAP/RADIUS/proxy listeners, and background workers in one process. Explicit gateway and worker roles are accepted only with process.accept_partial_duties = true. Gateway serves the product HTTP routes and configured listeners and does not start background loops. Worker starts those loops, serves only /livez, /readyz, and /healthz, and refuses browser UI and protocol listeners. tests/process_role_postgres.rs starts one gateway process and one worker process on one disposable PostgreSQL database with loopback HTTP, no native TLS, and unencrypted loopback PostgreSQL, and observes one failed logout delivery. Embedded redb remains one owner.",
       "implementation": [
         "src/process_role.rs",
         "src/config.rs",
@@ -2608,6 +2608,12 @@
           "kind": "rust-lib",
           "test_functions": 2,
           "ci": "ci-check (non-ignored tests)"
+        },
+        {
+          "ref": "tests/process_role_postgres.rs",
+          "kind": "rust-suite",
+          "test_functions": 1,
+          "ci": "not-in-ci"
         }
       ],
       "tests_run_in_this_task": [
@@ -2619,7 +2625,8 @@
         "uninitialized_worker_does_not_serve_setup",
         "integrated_serves_identity_and_keeps_the_embedded_store",
         "gateway_serves_identity_without_background_loops",
-        "worker_serves_probes_and_background_work_only"
+        "worker_serves_probes_and_background_work_only",
+        "gateway_and_worker_share_one_postgres_database"
       ],
       "documentation": [
         "docs/architecture.md",
@@ -2630,10 +2637,12 @@
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
         "No peer check that another process covers omitted duties",
-        "No runtime evidence of a gateway and a worker sharing one PostgreSQL database",
         "Gateway readiness stays successful while background loops are off",
         "A gateway request can still run a manual connector pass",
-        "Embedded redb stays one owner; this slice adds no multi-node coordination"
+        "Embedded redb stays one owner; this slice adds no multi-node coordination",
+        "Split-role PostgreSQL exercise used loopback HTTP without native TLS and unencrypted loopback PostgreSQL; it did not promote the standby",
+        "That exercise observed one failed logout delivery; other background loops were not asserted",
+        "Public CI does not select RIAUTH_PG_TEST_TARGET=process_role_postgres"
       ],
       "unverified": []
     },
