@@ -2,6 +2,8 @@
 
 This guide starts one riAuth instance on your computer, signs in as its first administrator, and registers an OpenID Connect (OIDC) web application. The default HTTP listener is bound to loopback for local evaluation.
 
+The install command below uses the Cargo default feature set, `platform` ([Cargo.toml](../Cargo.toml)). A new Essentials operator follows the [Essentials guide](essentials-guide.md), which selects `--features essentials` and keeps the small install on loopback redb. A new Platform operator follows the [Platform guide](platform-guide.md) for the same tasks with the Platform binaries named explicitly. Both guides separate `riauthctl` from server maintenance and from optional terminal USB.
+
 ## Prerequisites
 
 Install the pinned Rust **1.98.1** toolchain, a C/C++ compiler, and CMake. Linux builds also need `pkg-config` and OpenSSL development headers. The optional legacy terminal USB feature additionally needs udev development headers. See the [project README](../README.md) for the release scope and [operations](operations.md) for deployment options.

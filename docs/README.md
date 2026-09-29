@@ -2,7 +2,9 @@
 
 Choose a path for v0.1.1:
 
-- **New to riAuth?** [Get started locally](getting-started.md), then read the [project README](../README.md) and [release notes](release-notes.md).
+- **New Essentials operator or user?** Follow the [Essentials guide](essentials-guide.md). Its small install uses the Essentials binaries and loopback redb.
+- **New Platform operator or user?** Follow the [Platform guide](platform-guide.md). The first slice is the same five tasks on the Platform binaries.
+- **Undifferentiated local walkthrough?** [Get started locally](getting-started.md) uses the Cargo default feature set, `platform`. Then read the [project README](../README.md) and [release notes](release-notes.md).
 - **Signing in or managing your account?** Use [My applications](PORTAL.md), [passkeys](passkeys.md), and [account lifecycle](lifecycle.md).
 - **Operating or migrating an instance?** Start with [operations](operations.md), [availability](availability.md), and [migration](migration.md).
 - **Connecting an application?** Follow [OIDC profiles](oidc-profiles.md), [SAML](saml.md), or [proxy SSO](proxy.md), with the [API reference](api.md) when needed.
@@ -14,7 +16,9 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 
 | Guide | Purpose |
 | --- | --- |
-| [Getting started](getting-started.md) | Install, start a local instance, sign in, and register an OIDC web application |
+| [Essentials guide](essentials-guide.md) | First tasks for a new Essentials operator and user: small install, first administrator, one OIDC app, passkey self-service, backup and recovery entry points |
+| [Platform guide](platform-guide.md) | The same first tasks on the Platform binaries, with shared semantics and the remote-client split |
+| [Getting started](getting-started.md) | Undifferentiated local walkthrough; `cargo install --locked --path .` selects the default `platform` feature |
 | [Project README](../README.md) | Install, initialize and try browser and terminal sign-in |
 | [Architecture](architecture.md) | Components, request paths, state and worker boundaries |
 | [Operations](operations.md) | TLS, probes, metrics, backups, restore, maintenance and releases |

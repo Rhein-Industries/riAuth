@@ -1,5 +1,7 @@
 # Server editions in the A05 preview
 
+Task-based first steps for a new operator and user are in the [Essentials guide](essentials-guide.md) and the [Platform guide](platform-guide.md). This page remains the assembly and downgrade reference.
+
 Both server artifacts are built from the same source revision and use the same
 identity model, authorization, revocation, credential handling, database format,
 and browser sign-in implementation. The `platform` Cargo feature includes
