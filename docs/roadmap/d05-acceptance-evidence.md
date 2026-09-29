@@ -1,76 +1,264 @@
 # D05 acceptance evidence matrix
 
-Status: **not passed.** Read on 2026-09-29. This page classifies evidence for
-the ten D05 category targets. Every category stays **not passed**. D05 stays
-**not passed**. The workstream gate — a new user and a new operator can
-independently complete the documented workflows — has no recorded completion.
+Status: **not passed.** Snapshot date 2026-09-29. Accepted integration base
+for this branch is `cf827a9ee103672b329907a433fb96ac868fe178`. Every category
+stays **not passed**. D05 stays **not passed**. The workstream gate — a new
+user and a new operator can independently complete the documented workflows —
+has no recorded completion.
 
-The machine-readable twin is
-[d05-acceptance-evidence.json](d05-acceptance-evidence.json). A status other
-than `not_passed` is outside this slice.
+The previous snapshot is `09e68460d7836be8227568fbc84d8516d2d23e84`, the
+accepted form of `054ab05`. It described head `52df9a3`. This page keeps those
+records and adds the slices accepted after them. A status other than
+`not_passed` is outside this slice. The machine-readable twin is
+[d05-acceptance-evidence.json](d05-acceptance-evidence.json).
 
 ## What was read
 
 | Source | Identity |
 | --- | --- |
-| This worktree | `/Users/dominik/orca/projects/riAuth-public-preview-roadmap-d05-acceptance-evidence-wave24`, branch `roadmap/d05-acceptance-evidence-wave24`, commit `6d9b72bc30523d4310c28ac9348ab7fcd7a6ad46` |
-| Accepted integration checkout | `/Users/dominik/orca/projects/riAuth-public-preview-roadmap-integration-accepted`, branch `roadmap/integration-accepted`, commit `52df9a3781bf34c7628a3021c114bf001f27a7fe` (`Exercise reviewed membership on encrypted PostgreSQL`) |
-| Orchestration ledger | `/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/accepted-commits.json` |
+| This worktree | `/Users/dominik/orca/projects/riAuth-public-preview-roadmap-d05-acceptance-evidence-wave24`, branch `roadmap/d05-acceptance-evidence-wave24`, reset onto `cf827a9ee103672b329907a433fb96ac868fe178` |
+| Ledger head | `/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/accepted-commits.json`, `integration_head` `cf827a9ee103672b329907a433fb96ac868fe178` |
+| Accepted checkout | `/Users/dominik/orca/projects/riAuth-public-preview-roadmap-integration-accepted` was not edited, merged, or pushed. After the ledger read it was at `e926d75`, which is not this branch base |
 
-`6d9b72b` is the parent of accepted integration HEAD. This documentation
-commit is added on the D05 branch and does not contain `52df9a3`. The accepted
-checkout was read and was not edited, merged, or pushed. The ledger
-`integration_head` is `52df9a3781bf34c7628a3021c114bf001f27a7fe`, matching that
-checkout. `integration_status` is `local_commits_only_no_merge_to_main`. The
-ledger has 378 `integration_validation.checks` entries. One check has
-`run_head` `52df9a3`. D05 does not appear in `accepted` or `reviewed_slices`.
+The ledger `integration_status` is `local_commits_only_no_merge_to_main`.
+It has 415 `reviewed_slices`, 390 `integration_validation.checks`, and 16
+`open_checks`. D05 is one reviewed slice, integration commit `09e6846`,
+status `task_in_progress`. The task that started this refresh named
+`7e07e748a80b9cb39ffed3da8ce90690d72ab18c` and 413 slices. That commit is
+an ancestor. Before this snapshot was committed, the ledger head moved to
+`cf827a9`, adding the A03 source-configuration check at `1535cdc` and the
+G05 reference rehearsal. This branch base follows that ledger head.
 
-The accepted HEAD delta against `6d9b72b` is four files:
-`tests/reviewed_memberships_postgres.rs`, `scripts/test-postgres.sh`,
-`docs/testing.md`, and `docs/reviewed-group-memberships.md`.
+After that ledger read, the accepted checkout advanced to
+`e926d75fd0e58ab743c98a5e3d5dc0cc09378c78` (`Route PAM retention cleanup
+through management writer`). That commit is not in the ledger validation
+checks and is not in this branch. It adds
+`pam_cleanup_preserves_api_replay_and_only_prunes_retained_history` in
+`tests/pam_management.rs`. This snapshot does not treat that test as run.
+It does not pass administration or security.
 
-This slice did not run Cargo, a browser, a database, or a peer. Disk space on
-the data volume was about 16 GiB free when the read started. Commands below
-are citations of existing docs and of the ledger. They were not re-executed
+This slice did not run Cargo, a browser, a database, or a peer. Commands
+below are citations of docs and of the ledger. They were not re-executed
 here.
 
-The [A01 coverage inventory](coverage-inventory.md) still says, at base
-`96e23e2`, that there is no acceptance program against category targets. That
-row is historical planning evidence and is left unchanged, as later Q and D
-pages leave their inventory rows unchanged. The category targets cited below
-are the frozen checks in [product contracts](product-contracts.md), including
-G01–G12 and evidence gates EG01–EG04. Criteria in that contract are not
-observed results.
+The [A01 coverage inventory](coverage-inventory.md) at base `96e23e2` is
+historical planning evidence and is left unchanged. Category targets are
+the frozen checks in [product contracts](product-contracts.md), including
+G01–G12 and EG01–EG04. Criteria in that contract are not observed results.
 
-## Evidence classes
+## Evidence kinds
 
-| Class | Meaning in this matrix |
+This snapshot uses three kinds. None of them passes a category by itself.
+
+| Kind | Meaning |
 | --- | --- |
-| `source-only` | A file, test, or document is present in the named commit. Presence is not an execution. |
-| `accepted-head local` | A ledger `integration_validation` check whose `run_head` is the current accepted integration HEAD, `52df9a3`. The run used local or disposable processes. |
-| `ancestor-local` | A ledger check, in-repo report, or orchestration report whose `run_head` or `source.commit` is an ancestor of `52df9a3`, or a local report whose source commit is not recorded. It was not repeated at `52df9a3` in this ledger. Older result text that says "accepted-head" names the head at that check, which is the `run_head`, not today's `52df9a3`. |
-| `actual peer/tenant` | A named external product, directory, IdP, proxy, NAS, or cloud tenant outside this repository's fixtures and loopback programs. |
-| `release artifacts` | Files produced by the release workflow for a tag, or an installed copy of those files. A local Cargo debug or dev-profile binary is a different artifact. |
-| `missing measurements` | The category target asks for a recorded number, peer version, or independent completion, and this read did not find that record for `52df9a3`. |
+| `source-only` | A file in the tree, or a recorded run of riAuth against itself or a disposable redb/PostgreSQL cluster the test created. The command may have passed. `run_head` is kept so an older pass is not described as a new one. |
+| `local peer` | A third-party program on this host, loopback only. OpenLDAP `ldapsearch` and FreeRADIUS `radclient` are this kind. A named tenant, production directory, hardware NAS, or relying party is a different claim and is still absent. |
+| `release/deployment` | A release-workflow artifact, an installed copy of one, or a rehearsal outside disposable fixtures. |
 
-A row may carry more than one class. None of these classes, alone or
-together, passes a category. `ancestor-local` is listed so a historical pass
-is not relabeled `accepted-head local`.
+Rows in the category sections that still say `ancestor-local` or
+`accepted-head local` are the `09e6846` wording. Read a riAuth or disposable
+database run as `source-only`. Read the FreeRADIUS `radclient` run as
+`local peer`. Read `release artifacts` as `release/deployment`. A
+`missing measurements` row is a gap, not a fourth kind of passing evidence.
 
 ## Verdicts
 
-| Category | Status | Strongest record found | Blocker that keeps it open |
+| Category | Status | Strongest record at this snapshot | Gate that remains |
 | --- | --- | --- | --- |
-| Usability | not passed | Ancestor-local headless Playwright at `d039306` | No independent new-user completion, no assistive-technology result, no physical authenticator |
-| Workflows | not passed | Ancestor-local configured consent suite, 8/8, at `6d9b72b` | Ledger open checks: unfinished configured shapes, consent, and custom stages |
-| Administration | not passed | Accepted-head local reviewed-membership PostgreSQL suite, 5/5, at `52df9a3` | One resource family on a disposable primary. Standby promotion and a human operator journey are absent |
-| Interoperability | not passed | Ancestor-local loopback FreeRADIUS 3.2.10 PAP at `38f82fe` | No named external peer or tenant. Q03 independent plan was not run. Q04 has no ledger slice |
-| Footprint | not passed | Ancestor-local macOS edition matrix at `4ca7558` | No byte size, RSS bound, or Linux release-artifact size at `52df9a3` |
-| Performance | not passed | Ancestor-local `q09-8u-8g` reports at `7aea083` with `performance_claim: false` | No named operator workload, RPO, or RTO. The published numeric table is commit `47aa248`, which is not an ancestor of `52df9a3` |
-| Availability | not passed | Ancestor-local fenced primary/standby script at `f8c3602` | [Availability](../availability.md) records no deployment RTO or RPO. The `52df9a3` suite does not promote its standby |
-| Recovery | not passed | In-repo disposable drills, 16/16, with binary hashes and no source commit | External gates in those JSON files are still open. Q10 has no installed release assets for this head |
-| Migration | not passed | Source preflight and Authentik classification docs | No real Authentik export or application cutover. No cutover duration |
-| Security | not passed | Ancestor-local shared contracts at `7edfc42` (54 redb, 54 PostgreSQL) | Q01 catalog was read, not run, for its own evidence labels. No installed-artifact EG03 run, no certification, no release signature |
+| Usability | not passed | source-only headless Playwright at `d039306` | Independent new-user completion, assistive technology, physical authenticator |
+| Workflows | not passed | source-only configured consent at `a3ccbf1`: prior suite 8/8 and TOTP consent 1/1 | Browser and remembered consent, TOTP-only and recovery-code reauthentication, custom stages |
+| Administration | not passed | source-only reviewed-membership PostgreSQL 6/6 at `e3c26eb`, including fenced standby promotion | Human operator journey and the resources still outside exact multi-party approval |
+| Interoperability | not passed | local peer OpenLDAP `ldapsearch` 2.7.1 LDAPS and STARTTLS at `fcba8a5` | Active Directory, a named directory application, a SAML service provider, a hardware NAS, and a cloud tenant |
+| Footprint | not passed | source-only macOS edition matrix at `4ca7558` | Linux release-artifact size and a measurement at `cf827a9` |
+| Performance | not passed | source-only `q09-8u-8g` reports at `7aea083` with `performance_claim: false` | Named operator workload, RPO, and RTO |
+| Availability | not passed | source-only shared-store refusal at `7e07e748`, separate processes, disposable PostgreSQL | Shared-job leases, peer health, native TLS, and a deployment RTO or RPO |
+| Recovery | not passed | source-only disposable drills, 16/16, no source commit in the JSON | Release/deployment restore, key escrow, and a measured recovery time |
+| Migration | not passed | source-only synthetic reference relying party at `cf827a9`, focused 1/1 | A real Authentik export, a named relying party, and a production route rollback |
+| Security | not passed | source-only shared contracts at `7edfc42` and A03 assembly checks through `1535cdc` | Installed-artifact EG03, certification, and a release signature |
+
+## Slices accepted after `09e6846`
+
+W02, A03, Q04, O03, S04, and G05 each have a reviewed slice on this base.
+G05's slice is a disposable in-process rehearsal. None of these slices
+meets its category target.
+
+### W02 — source-only
+
+Ledger integration commit `a3ccbf1dd47a8e25f35ad8d5d505768f32c1b942`.
+[Workflows](../workflows.md) now describes three configured consent graphs:
+session then consent; session, passkey, then consent; and session, local
+password, current TOTP, then consent. Recovery codes are not an alternative
+in the TOTP graph.
+
+Ledger `run_head` `a3ccbf1`:
+
+```text
+CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test workflow_configured_totp_consent --test workflow_configured_consent -- --quiet; python3 scripts/check-docs.py; python3 scripts/check-module-boundaries.py; git show --format= --check HEAD; git status --short
+```
+
+Result text: pass; existing consent 8/8, new TOTP consent 1/1. The W02
+ledger note says browser-initiated and remembered-consent adapters,
+TOTP-only reauthentication, and recovery-code reauthentication remain
+unsupported. The ledger `open_checks` entry for unfinished configured
+shapes is still present. Workflows stay not passed.
+
+### A03 — source-only
+
+Four ledger checks are on this history:
+
+| `run_head` | Command | Result text |
+| --- | --- | --- |
+| `97511e4` | `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo test --locked --test cloud_directory cloud_connection_probe_rechecks_revocation_after_upstream -- --exact --quiet; python3 scripts/check-module-boundaries.py; git diff 52df9a3..HEAD --check` | pass; exact midflight revocation regression 1/1 |
+| `3aa997b` | `CARGO_BUILD_JOBS=2 cargo test --locked --test cloud_directory cloud_credential_preflight_replays_before_revision_and_provider_access -- --exact --quiet; python3 scripts/check-module-boundaries.py; git diff --check; git status --short` | pass; focused 1/1, zero forbidden refs |
+| `8704bb8` | `CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test cloud_directory cloud_credential_write_rechecks -- --quiet; python3 scripts/check-module-boundaries.py; git show --format= --check HEAD; git status --short` | pass; midflight revocation/revision 2/2 |
+
+The `8704bb8` note says `cloud_operations.rs` has no direct store or
+mutation call and that the broader protocol transaction inventory remains.
+The open check still says seven protocol files refer to Core and seven
+refer to storage.
+
+`1535cdcfce622f9422f59572d7f6e9b31c597e56` is the later A03 integration
+commit on this base. Ledger `run_head` `1535cdc`:
+
+```text
+CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test source_boundary -- --quiet; python3 scripts/check-module-boundaries.py; git show --format= --check HEAD; git status --short
+```
+
+Result text: pass; source configuration security boundary 1/1, zero
+forbidden refs, clean accepted tree. The test is
+`source_configuration_keeps_scoped_receipt_revision_and_audit_order`.
+The note says the source-configuration mutation moved from the protocol
+facade into assembly and that other source protocol transaction sites
+remain. These checks do not pass security or administration.
+
+### Q04 — local peer
+
+Ledger integration commit `fcba8a5e81037edb365c02c291b512576817e920`.
+The Q04 note says OpenLDAP `ldapsearch` 2.7.1 exercised separate riAuth
+LDAPS and STARTTLS loopback listeners: CA-verified paged service bind,
+disabled-user omission, wrong and revoked token rejection, wrong-CA
+rejection, and crossed-scheme transport failure. It supports I04. It
+claims no Active Directory directory, named production directory
+application, SAML service provider, hardware NAS, or supplicant.
+
+Ledger `run_head` `1caa093`:
+
+```text
+LDAPSEARCH=/opt/homebrew/opt/openldap/bin/ldapsearch CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-ldap-provider.sh; bash -n scripts/test-ldap-provider.sh; python3 scripts/check-docs.py; python3 -m json.tool docs/roadmap/coverage-inventory.json; git diff e3c26eb..HEAD --check
+```
+
+Result text: pass; OpenLDAP ldapsearch 2.7.1 STARTTLS bind/paging/disable/revoke 1/1.
+
+Ledger `run_head` `fcba8a5`:
+
+```text
+LDAPSEARCH=/opt/homebrew/opt/openldap/bin/ldapsearch CARGO_BUILD_JOBS=2 bash scripts/test-ldap-provider.sh; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; bash -n scripts/test-ldap-provider.sh; python3 -m json.tool docs/roadmap/coverage-inventory.json; git show --format= --check HEAD; git status --short
+```
+
+Result text: pass; OpenLDAP 2.7.1 LDAPS+STARTTLS ignored peer test 1/1.
+
+The ignored test is
+`ldapsearch_starttls_bind_scoped_paging_disable_and_revoke` in
+`tests/ldap_provider_peer.rs`. [Platform LDAP provider](../recipes/platform-ldap-provider.md)
+records `ldapsearch -VV` as OpenLDAP 2.7.1 (Sep 8 2026 21:55:18), OpenSSL
+3.6.4, loopback ports `127.0.0.1:60248` (LDAPS) and `127.0.0.1:60249`
+(STARTTLS), paged `uid: ldap-alice` and `uid: ldap-bob`, invalid-credentials
+exit 49, certificate-verify failure, disabled-user omission, and revoke.
+The check job and the integration job do not call
+`scripts/test-ldap-provider.sh`. Interoperability stays not passed.
+
+The FreeRADIUS `radclient` 3.2.10 loopback PAP result at `38f82fe` is the
+same kind: local peer, not a hardware NAS.
+
+### O03 — source-only
+
+Ledger integration commit `7e07e748a80b9cb39ffed3da8ce90690d72ab18c`.
+[Node security](o03-node-security.md) says O03 stays open. Opening compares
+issuer and active capability names, refuses a mismatch before migration or
+listen, and leaves listen address, `browser_ui`, and `[process]` local.
+
+Ledger `run_head` `7e07e748`:
+
+```text
+CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=2 cargo test --locked --offline --lib node_security:: -- --quiet; RIAUTH_PG_TEST_TARGET=node_security_postgres CARGO_BUILD_JOBS=2 bash scripts/test-postgres.sh; CARGO_BUILD_JOBS=2 cargo check --locked --offline --no-default-features --features essentials --lib; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; bash -n scripts/test-postgres.sh; python3 -m json.tool docs/roadmap/coverage-inventory.json; python3 -m json.tool docs/roadmap/capability-matrix.json; git show --format= --check HEAD; git status --short
+```
+
+Result text: pass; redb 2/2, disposable PostgreSQL separate-process 1/1.
+The page names `agreement_tracks_issuer_and_active_capabilities_only`,
+`open_refuses_a_different_active_set_without_rewriting_the_store`, and
+`capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres`.
+The PostgreSQL run used loopback HTTP without native TLS and
+`local_unencrypted` PostgreSQL. It did not promote the standby. The note
+says shared-job leases, distributed rate limit, peer health, policy and
+trust and key agreement, and native TLS or HA proof are still absent.
+Availability stays not passed.
+
+`36ad584` is the earlier process-role commit on this history. Its ledger
+result is process-role 6/6 and two-process disposable PostgreSQL 1/1.
+That is source-only as well. Public CI, as the node-security page states,
+does not select `node_security_postgres`.
+
+### S04 — source-only
+
+Ledger integration commit `e3c26eb2879729ce7971852d62ffdfb0e5083803`.
+Ledger `run_head` `e3c26eb`:
+
+```text
+RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh; bash -n scripts/test-postgres.sh; python3 scripts/check-docs.py; git diff 09e6846..HEAD --check
+```
+
+Result text: pass; disposable PostgreSQL reviewed-membership suite 6/6,
+including fenced standby promotion and receipt/audit replay. The sixth
+function is `postgres_z_fenced_standby_promotion_replays_reviewed_membership`.
+[Reviewed group memberships](../reviewed-group-memberships.md) says the
+test stops the primary with `pg_ctl -m immediate`, promotes the standby
+with `pg_ctl promote`, and reads the same membership, audits, and receipt
+on the promoted port. It is a loopback drill with trust authentication.
+It does not elect a leader, measure a recovery objective, or cover
+failback, partitions, or PITR. The encrypted TLS test from `52df9a3`
+remains a separate function. Administration and availability stay not
+passed: this is one resource family on a disposable cluster, not a human
+administration journey and not a deployment outage measurement.
+
+The ledger `open_checks` text that still says S04 standby promotion and
+encrypted PostgreSQL remain open was not updated after `52df9a3` and
+`e3c26eb`. Those two drills are recorded. The category targets are not
+met by correcting that stale sentence.
+
+### G05 — source-only
+
+Ledger integration commit `cf827a9ee103672b329907a433fb96ac868fe178`,
+status `task_in_progress`. [G05 local reference OIDC](g05-local-reference-oidc.md)
+calls the slice a bounded local source rehearsal. The requested real
+target application has not been supplied. No production Authentik export,
+relying party, routing change, or rollback was used.
+
+The test is `local_reference_rp_cutover_rehearsal` in
+`tests/g05_reference_oidc.rs`. Its source SHA-256 is
+`64e43530f6c6e69c2fe4f7f9d45fabb2cfb5b1843a6b022eec2a418008602ba6`, the
+hash the page records. The page's own observation command used a private
+Cargo target from base `a3ccbf1` plus that test source. The accepted
+ledger command, `run_head` `cf827a9`, is:
+
+```text
+CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test g05_reference_oidc -- --nocapture; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; git show --format= --check HEAD; git status --short
+```
+
+Result text: pass; synthetic reference OIDC rehearsal 1/1 with eight
+asserted case IDs. The page names those IDs G05-01 through G05-08:
+import and preflight, denied access, successful access and claims,
+refresh rotation and replay, MFA, a new riAuth recovery code, logout,
+and a local route-file rollback boundary. The test uses a disposable
+redb fixture and an in-process reference relying party. It starts no
+browser, network listener, or external Authentik service. The route-file
+check restores a disposable JSON file and does not prove that Authentik
+credentials still work.
+
+That run is source-only. It is not a local peer, and it is not a
+release/deployment rehearsal. [Migration](../migration.md) says these
+in-process results do not close the real application cutover or rollback
+gate. Migration stays not passed.
 
 ## Usability
 
@@ -100,7 +288,7 @@ G05–G06.
 | Class | Record |
 | --- | --- |
 | source-only | [Workflow model](../workflows.md) at `6d9b72b` describes W01, bounded W02 verifier paths, W03 proof provenance, a fail-closed reviewed pin, W06 authoring, and a held W07 extension contract. Configured consent and eight enrollment shapes are described there. Description is not a run at `52df9a3`. |
-| ancestor-local | Ledger `run_head` `6d9b72b`: `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo test --locked --test workflow_configured_consent -- --quiet; python3 scripts/check-docs.py; python3 scripts/check-module-boundaries.py; git diff bc3c324..HEAD --check`. Result text: pass; configured consent suite 8/8. `52df9a3` does not change workflow tests. The suite was not repeated at `52df9a3` in the ledger. |
+| ancestor-local | Ledger `run_head` `6d9b72b`: `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo test --locked --test workflow_configured_consent -- --quiet; python3 scripts/check-docs.py; python3 scripts/check-module-boundaries.py; git diff bc3c324..HEAD --check`. Result text: pass; configured consent suite 8/8. `52df9a3` does not change workflow tests. The suite is repeated at `a3ccbf1`, together with the TOTP consent test, in the snapshot section above. |
 | missing measurements | No end-to-end concurrency count on both storage backends for a reviewed pin, and no operator completion of a configured workflow on accepted HEAD. |
 
 Blockers, from ledger `open_checks`: W02 still has unfinished configured
@@ -108,8 +296,9 @@ shapes, including invitation and other sensitive actions, browser and
 remembered consent, and custom stages. W05's configured-run pin lacks a
 multi-party approval record, safe resume of changed content, broad
 environment binding, and end-to-end concurrency coverage on both storage
-backends. The same ledger's W02 note says the accepted consent suite is the
-exact session-passkey-consent graph only.
+backends. The later W02 note at `a3ccbf1` adds the password-and-TOTP
+consent graph and leaves browser, remembered-consent, TOTP-only, and
+recovery-code adapters unsupported. Workflows stay not passed.
 
 ## Administration
 
@@ -119,26 +308,26 @@ administration, and exact-content review. A02 E12–E14, P14–P16, and G07.
 | Class | Record |
 | --- | --- |
 | accepted-head local | Ledger `run_head` `52df9a3`: `RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh; bash -n scripts/test-postgres.sh; python3 scripts/check-docs.py; git diff 6d9b72b..HEAD --check`. Result text: pass; disposable PostgreSQL suite 5/5, TLSv1.3 plus aes256gcm-v1 sealed record and encrypted race/reopen. On that commit the functions are `postgres_unrelated_revision_still_applies_reviewed_membership`, `postgres_affected_membership_user_and_policy_deny_stale_apply`, `postgres_reviewed_membership_reopen_and_receipt_replay`, `postgres_reviewed_membership_http_execute_race_replays_after_reopen`, and `postgres_encrypted_reviewed_membership_replays_across_reopen`. |
-| source-only | At `6d9b72b`, [testing.md](../testing.md) says this PostgreSQL target does not open an encrypted connection. At `52df9a3`, `docs/testing.md` and `docs/reviewed-group-memberships.md` say one test restarts the disposable primary, verifies a loopback CA, and opens `aes256gcm-v1` records. Those two sentences live on accepted HEAD, not in the `6d9b72b` tree this branch starts from. |
+| source-only | At `6d9b72b`, [testing.md](../testing.md) says this PostgreSQL target does not open an encrypted connection. At `52df9a3`, `docs/testing.md` and `docs/reviewed-group-memberships.md` say one test restarts the disposable primary, verifies a loopback CA, and opens `aes256gcm-v1` records. The `52df9a3` wording is the wording on this base. It is not the `6d9b72b` wording. |
 | ancestor-local | Ledger `run_head` `4357f6b` records `cargo check; cargo test --test admin_ui` with result text `pass; six admin UI cases`. Later ancestor-local `admin_ui` checks include `91f66d6`, `74ee172`, `567ea3e`, `dbcdce2`, `d790f69`, and `5e47d00`. None of those `run_head` values is `52df9a3`. |
 | missing measurements | No count of a person completing Applications, People, Groups, or Security administration on accepted HEAD. |
 
-Blockers: the accepted-head suite is reviewed group membership on a disposable
-primary. Accepted `docs/testing.md` at `52df9a3` says the script still starts
-a standby and does not promote it or perform `pg_ctl` failover. Ledger
-`open_checks` says post-logout and front/back-channel endpoints gained
-coverage in later M05 notes, while advanced client credential and registration
-changes and other user, group, agent, federation, key, session, device, and
-recovery resources remain outside exact multi-party approval. The M05 ledger
-note's latest text is about logout endpoint review, not a full admin journey.
+Blockers: `e3c26eb` promotes a disposable standby for one reviewed
+membership and replays its receipt. That drill is source-only. It is not
+a human administration journey. Ledger `open_checks` still says advanced
+client credential and registration changes and other user, group, agent,
+federation, key, session, device, and recovery resources remain outside
+exact multi-party approval. The M05 ledger note is about logout endpoint
+review. Administration stays not passed.
 
 ## Interoperability
 
 Target: EG01. Name the application, directory, IdP, proxy, network, or cloud
 tenant and its version, then exercise setup, lifecycle, negative inputs, and
 failure handling. Mocks and in-process fixtures do not certify a family.
-Q04 is "Test real peers" in the coverage inventory. The ledger has no
-`reviewed_slices` entry whose code is Q04.
+Q04 is "Test real peers" in the coverage inventory. The ledger now has a
+Q04 slice at `fcba8a5`. That slice is local peer evidence, recorded in
+the snapshot section above. It does not pass this category.
 
 | Class | Record |
 | --- | --- |
@@ -146,13 +335,14 @@ Q04 is "Test real peers" in the coverage inventory. The ledger has no
 | ancestor-local | Ledger `run_head` `38f82fe`: `RADCLIENT=/private/tmp/riauth-fr-prefix/bin/radclient CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-radius.sh; bash -n scripts/test-radius.sh; python3 scripts/check-docs.py; git diff d039306..HEAD --check`. Result text: pass; FreeRADIUS radclient 3.2.10 real loopback PAP accept/reject/replay 1/1. |
 | source-only | [Q03 pilot preflight](q03-conformance-pilot.md) says that on 2026-09-29, at commit `19a69c66b473480c8b570498231fad4d4edb7a31`, the pinned suite checkout, private configuration, `CONFORMANCE_SERVER`, and `CONFORMANCE_TOKEN` were absent. No independent OIDF plan was run. That named commit is not an ancestor of `52df9a3`. The Q03 ledger note says the same inputs are still required. |
 | actual peer/tenant | No record in the docs read here, and no ledger check at `52df9a3`, names a completed Okta, Entra, Google, Active Directory, Workspace tenant, Vault, named relying party, named service provider, or named SCIM client run. |
-| missing measurements | No peer version, no conformance result, and no failure-handling log for a named tenant at accepted HEAD. |
+| local peer | OpenLDAP `ldapsearch` 2.7.1 at `fcba8a5` and `1caa093`, and FreeRADIUS `radclient` 3.2.10 at `38f82fe`. Both are loopback. Details and commands are in the snapshot section. |
+| release/deployment | No named tenant, production directory, hardware NAS, or relying-party deployment is recorded at `cf827a9`. |
 
-Blockers: loopback FreeRADIUS is a local program result at `38f82fe`, which
-is an ancestor, and it is not a deployed NAS or a tenant. D03's ledger note
-says an OpenLDAP 2.7.1 local import sequence was reviewed and that named
-deployment peers remain open. I10's open check still asks for a real
-Workspace or Entra tenant lifecycle.
+Blockers: the local peer runs do not name Active Directory, a production
+directory application, a SAML service provider, or a hardware NAS. D03's
+ledger note says named deployment peers remain open. I10's open check
+still asks for a real Workspace or Entra tenant lifecycle. Q03 still has
+no independent plan. Interoperability stays not passed.
 
 ## Footprint
 
@@ -201,13 +391,13 @@ as database high availability by itself.
 | --- | --- |
 | source-only | [Availability](../availability.md) says `/readyz` returns 503 while storage is unavailable and `/livez` stays independent of storage. It says the local harness enables synchronous replication and checks primary crash, fencing, standby promotion, reconnection, and surviving session and refresh tokens. The same page says the fixture does not set an RTO or RPO for a deployment. |
 | ancestor-local | Ledger `run_head` `f8c3602`: `CARGO_BUILD_JOBS=2 bash scripts/test-postgres.sh`. Result text: pass; fenced primary/standby failover. |
-| accepted-head local | The `52df9a3` reviewed-membership command starts that PostgreSQL script for one target. Accepted `docs/testing.md` says this target does not promote the standby. |
-| missing measurements | No outage duration, no failed-request count, and no RTO or RPO at `52df9a3`. |
+| source-only | `e3c26eb` promotes a disposable standby for reviewed membership. `7e07e748` refuses an issuer or active-capability mismatch from separate processes on disposable PostgreSQL. Neither run records an outage duration or an RTO. |
+| release/deployment | No deployment RTO, RPO, or failed-request count is recorded at `cf827a9`. |
 
-Blockers: the failover pass is an ancestor-local disposable cluster. The only
-accepted-head database run does not promote its standby. Enterprise features
-still need their own multi-node acceptance; the availability page says a
-single-process regression does not establish that.
+Blockers: the promotion and the node-security refusal are disposable
+source-only runs. [Node security](o03-node-security.md) leaves shared-job
+leases, peer health, and native TLS open. Enterprise features still need
+their own multi-node acceptance. Availability stays not passed.
 
 ## Recovery
 
@@ -237,11 +427,13 @@ G01–G03. A route in an inventory is remediation, not conversion.
 | source-only | [Migration](../migration.md) documents Authentik bundle conversion and `riauth migration-preflight --file <input>`. For any system other than the Authentik bundle, `ready_for_plan` stays false and no manifest is produced. Classifications are not evidence that an application or factor works after cutover. |
 | source-only | The G01 ledger row lists source commits `6dccbdf` and `97f27ec`. Neither is an ancestor of `52df9a3`. Its integration commits `c12bffe` and `248207d` are ancestors. The row's remaining text says real source-export peer migration and identity continuity are separate G02/G03. This slice did not re-run a migration at those integration commits. |
 | source-only | The G02 ledger note says reimport tests passed and that a real Authentik export and application cutover remain open. The G04 note says re-enrollment copy was reviewed and that no real Authentik export was run. Those notes are ledger text. This slice did not re-run them at `52df9a3`. |
-| missing measurements | No cutover duration, no export byte count, and no relying-party subject check against a live application at `52df9a3`. |
+| source-only | G05 integration commit `cf827a9` runs `local_reference_rp_cutover_rehearsal` against a disposable redb fixture and an in-process reference relying party. The ledger result is focused 1/1 with eight asserted case IDs. The page keeps G05 in progress. |
+| release/deployment | No cutover duration, export byte count, live relying-party subject, production route change, or Authentik rollback sign-in is recorded at `cf827a9`. |
 
-Blockers: source preflight and ancestor-local unit results do not move a
-directory. The product contract's Essentials-to-Platform transition still
-needs the exact artifacts named under footprint and recovery.
+Blockers: source preflight does not move a directory. The G05 run does not
+supply the exact target: a real application's successful and denied access,
+claims, MFA, refresh, logout, recovery, and rollback. Migration stays not
+passed.
 
 ## Security
 
@@ -255,14 +447,14 @@ review record. A contract paragraph is not a passing test.
 | ancestor-local | Ledger `run_head` `7edfc42`: `cargo test --locked --features test-support,fuzzing --test contracts --test identity_boundary --test bootstrap --test q05_replay_concurrency --test scim_oauth --test removal_safeguards --test workflow_model -- --quiet` (result text: pass; 54 redb shared contracts) and `CARGO_BUILD_JOBS=2 bash scripts/test-contracts-postgres.sh` (result text: pass; 54 PostgreSQL shared contracts). |
 | ancestor-local | Ledger `run_head` `f8c3602`: `RIAUTH_PG_TEST_TARGET=q05_replay_concurrency CARGO_BUILD_JOBS=2 bash scripts/test-postgres.sh`. Result text: pass; Q05 PostgreSQL replay binding. |
 | source-only | [Q11 release evidence](q11-release-evidence.md) says the release workflow, packager, and bundle checker do not sign artifacts. The Q11 ledger note records 26/26 producer tests, 13/13 release-evidence tests, and a 355-package source SPDX document at integration commit `281493d`. That note calls the document a source document. The Q11 page says a source SPDX file is not a release SBOM. This slice did not open the orchestration SPDX file and did not treat it as release evidence. |
-| release artifacts | No signature, published GitHub release, or installed-release gate success is recorded for `52df9a3`. Ledger `open_checks` says Q11 still requires signing, an SBOM, an independent release review, publication, a checked asset set, and Linux ARM64 execution. |
-| missing measurements | No certification result. The Q03 section above records the missing pilot inputs. No EG03 run of the installed `52df9a3` artifacts. |
+| source-only | A03 checks at `97511e4`, `3aa997b`, `8704bb8`, and `1535cdc` move cloud reads, the credential write, and the source-configuration mutation into assembly. The protocol-boundary open check remains. |
+| release/deployment | No signature, published GitHub release, or installed-release gate success is recorded for `cf827a9`. Ledger `open_checks` says Q11 still requires signing, an SBOM, an independent release review, publication, a checked asset set, and Linux ARM64 execution. |
 
-Blockers: ancestor-local contract tests and a source SPDX file leave the
-security category open. The product contract says missing tests do not
-deliver the defaults. Ledger `independent_review` contains many source-review
-notes that use the word pass. Those notes are review comments on slices.
-They are not a D05 category result, and this page does not promote them.
+Blockers: source-only contract tests, A03 assembly checks, and a source
+SPDX file leave the security category open. The product contract says
+missing tests do not deliver the defaults. There is no certification
+result and no EG03 run of installed artifacts at this head. Ledger
+`independent_review` notes are slice comments, not a D05 category result.
 
 ## Ledger open checks that still block D05
 
@@ -282,20 +474,22 @@ not waived by this matrix:
 - S02 ordinary LDAP search no longer loads full Group values; Group writes
   and offline index rebuild still do, and whole-operation memory bounds
   remain open.
-- S04 reviewed-membership redb and PostgreSQL cases passed at the time of
-  that open-check text; the text still names standby promotion. The later
-  `52df9a3` check covers encrypted PostgreSQL for reviewed membership and
-  does not promote the standby. S04 is not closed by this page.
+- The S04 open-check sentence still says standby promotion and encrypted
+  PostgreSQL remain open. `52df9a3` records the encrypted replay and
+  `e3c26eb` records fenced promotion. Both are source-only disposable
+  drills. S04 and the administration and availability categories stay
+  not passed.
 
 ## What would be required before a category could pass
 
 This slice does not perform these steps. They are the blockers, written as
 the missing evidence:
 
-1. Repeat the category's command at the commit being accepted, and record
-   that commit as `run_head`. An ancestor pass stays `ancestor-local`.
+1. Record the category's exact target at the commit being accepted.
+   A source-only or local-peer pass stays in that kind until the target
+   itself is the thing that was run.
 2. For interoperability, name the external product and version and keep the
-   log. A loopback fixture stays local.
+   log. A loopback OpenLDAP or FreeRADIUS run stays local peer.
 3. For footprint, performance, availability, and recovery, attach the
    release-artifact hashes when the claim is about a release, and record
    RSS, latency, error counts, outage time, and data loss on that artifact.

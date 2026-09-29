@@ -2,6 +2,8 @@
   "schema": "riauth.acceptance-evidence/v1",
   "d05_status": "not_passed",
   "d05_passed": false,
+  "snapshot_date": "2026-09-29",
+  "prior_snapshot": "09e68460d7836be8227568fbc84d8516d2d23e84",
   "acceptance_rule": "A status other than not_passed is outside this slice. This file does not authorize a pass.",
   "read_on": "2026-09-29",
   "assignment": {
@@ -12,42 +14,116 @@
   "source": {
     "worktree": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-d05-acceptance-evidence-wave24",
     "branch": "roadmap/d05-acceptance-evidence-wave24",
-    "commit": "6d9b72bc30523d4310c28ac9348ab7fcd7a6ad46",
-    "note": "Parent of accepted integration HEAD. This documentation commit is added on the D05 branch and does not contain 52df9a3."
+    "commit": "cf827a9ee103672b329907a433fb96ac868fe178",
+    "named_task_head": "7e07e748a80b9cb39ffed3da8ce90690d72ab18c",
+    "note": "Branch base follows the ledger head. The task named 7e07e748, which remains an ancestor. The documentation snapshot is added on the D05 branch."
   },
   "accepted_integration": {
     "worktree": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-integration-accepted",
     "branch": "roadmap/integration-accepted",
-    "commit": "52df9a3781bf34c7628a3021c114bf001f27a7fe",
-    "parent": "6d9b72bc30523d4310c28ac9348ab7fcd7a6ad46",
-    "subject": "Exercise reviewed membership on encrypted PostgreSQL",
-    "changed_files": [
-      "docs/reviewed-group-memberships.md",
-      "docs/testing.md",
-      "scripts/test-postgres.sh",
-      "tests/reviewed_memberships_postgres.rs"
-    ],
+    "ledger_head": "cf827a9ee103672b329907a433fb96ac868fe178",
+    "checkout_read": "e926d75fd0e58ab743c98a5e3d5dc0cc09378c78",
+    "checkout_note": "After the ledger read, the checkout advanced to e926d75, Route PAM retention cleanup through management writer. That commit is not in the validation checks and is not this branch base. The added test pam_cleanup_preserves_api_replay_and_only_prunes_retained_history is not treated as run. This slice did not edit, merge, or push that checkout.",
     "edited_by_this_slice": false
   },
   "ledger": {
     "path": "/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/accepted-commits.json",
-    "integration_head": "52df9a3781bf34c7628a3021c114bf001f27a7fe",
-    "head_matches_checkout": true,
+    "integration_head": "cf827a9ee103672b329907a433fb96ac868fe178",
+    "head_matches_this_branch_base": true,
     "integration_status": "local_commits_only_no_merge_to_main",
-    "validation_checks": 378,
-    "checks_with_run_head_52df9a3": 1,
-    "d05_present": false,
+    "reviewed_slices": 415,
+    "validation_checks": 390,
+    "d05_integration_commit": "09e68460d7836be8227568fbc84d8516d2d23e84",
+    "d05_status": "task_in_progress",
     "open_checks": 16
   },
   "cargo_run_by_this_slice": false,
   "classes": {
-    "source-only": "File, test, or document present. Presence is not an execution.",
-    "accepted-head local": "Ledger integration_validation check whose run_head is 52df9a3.",
-    "ancestor-local": "Recorded run or report at an ancestor of 52df9a3, or a local report with no source commit. Not repeated at 52df9a3. Historical result text that says accepted-head names that check's run_head.",
-    "actual peer/tenant": "Named external product or tenant outside in-repo fixtures and loopback programs.",
-    "release artifacts": "Release-workflow outputs for a tag, or an installed copy of those files.",
-    "missing measurements": "A number, peer version, or independent completion the category target asks for, absent for 52df9a3."
+    "source-only": "File in the tree, or a recorded run of riAuth against itself or a disposable redb or PostgreSQL cluster. A passing command stays source-only.",
+    "local peer": "Third-party program on this host, loopback only. OpenLDAP ldapsearch and FreeRADIUS radclient. Not a named tenant or deployment.",
+    "release/deployment": "Release-workflow artifact, an installed copy, or a rehearsal outside disposable fixtures."
   },
+  "class_map_from_09e6846": {
+    "source-only": "source-only",
+    "accepted-head local": "source-only",
+    "ancestor-local": "source-only, except the FreeRADIUS radclient run which is local peer",
+    "actual peer/tenant": "no completed named tenant was recorded",
+    "release artifacts": "release/deployment",
+    "missing measurements": "gap, not a passing evidence kind"
+  },
+  "newer_slices": [
+    {
+      "code": "W02",
+      "evidence": "source-only",
+      "integration_commit": "a3ccbf1dd47a8e25f35ad8d5d505768f32c1b942",
+      "run_head": "a3ccbf1",
+      "result": "pass; existing consent 8/8, new TOTP consent 1/1",
+      "category_effect": "workflows stays not_passed",
+      "remaining": "Browser-initiated and remembered-consent adapters, TOTP-only and recovery-code reauthentication remain unsupported."
+    },
+    {
+      "code": "A03",
+      "evidence": "source-only",
+      "integration_commits": [
+        "97511e4099d0824c0ad069a89168210036821a42",
+        "3aa997b4db68f6f2a4f3ceca4ba0074e58bb1da2",
+        "8704bb88dbc650cc45e675fc589196efabf2827c",
+        "1535cdcfce622f9422f59572d7f6e9b31c597e56"
+      ],
+      "run_heads": ["97511e4", "3aa997b", "8704bb8", "1535cdc"],
+      "result": "probe recheck 1/1, preflight 1/1, credential write recheck 2/2, source configuration boundary 1/1",
+      "source_configuration_command": "CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test source_boundary -- --quiet; python3 scripts/check-module-boundaries.py; git show --format= --check HEAD; git status --short",
+      "source_configuration_test": "source_configuration_keeps_scoped_receipt_revision_and_audit_order",
+      "category_effect": "security and administration stay not_passed",
+      "remaining": "Broader protocol transaction inventory remains. Seven protocol files still refer to Core and seven to storage. Other source protocol transaction sites remain."
+    },
+    {
+      "code": "Q04",
+      "evidence": "local peer",
+      "integration_commit": "fcba8a5e81037edb365c02c291b512576817e920",
+      "run_heads": ["1caa093", "fcba8a5"],
+      "command": "LDAPSEARCH=/opt/homebrew/opt/openldap/bin/ldapsearch scripts/test-ldap-provider.sh",
+      "result": "OpenLDAP ldapsearch 2.7.1 STARTTLS 1/1, then LDAPS+STARTTLS ignored peer test 1/1",
+      "test": "ldapsearch_starttls_bind_scoped_paging_disable_and_revoke",
+      "category_effect": "interoperability stays not_passed",
+      "remaining": "No Active Directory, named production directory application, SAML service provider, hardware NAS, or supplicant."
+    },
+    {
+      "code": "O03",
+      "evidence": "source-only",
+      "integration_commit": "7e07e748a80b9cb39ffed3da8ce90690d72ab18c",
+      "run_head": "7e07e748",
+      "command": "cargo test --locked --offline --lib node_security:: ; RIAUTH_PG_TEST_TARGET=node_security_postgres bash scripts/test-postgres.sh",
+      "result": "pass; redb 2/2, disposable PostgreSQL separate-process 1/1",
+      "category_effect": "availability stays not_passed",
+      "remaining": "No shared job leases, distributed rate limit, peer health, policy/trust/key agreement, or native TLS/HA proof."
+    },
+    {
+      "code": "S04",
+      "evidence": "source-only",
+      "integration_commit": "e3c26eb2879729ce7971852d62ffdfb0e5083803",
+      "run_head": "e3c26eb",
+      "command": "RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh",
+      "result": "pass; disposable PostgreSQL reviewed-membership suite 6/6 including fenced standby promotion",
+      "test": "postgres_z_fenced_standby_promotion_replays_reviewed_membership",
+      "category_effect": "administration and availability stay not_passed",
+      "remaining": "Loopback trust drill. No automatic election, partition, failback, PITR, or recovery objective."
+    },
+    {
+      "code": "G05",
+      "evidence": "source-only",
+      "integration_commit": "cf827a9ee103672b329907a433fb96ac868fe178",
+      "run_head": "cf827a9",
+      "status": "task_in_progress",
+      "command": "CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test g05_reference_oidc -- --nocapture; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; git show --format= --check HEAD; git status --short",
+      "result": "pass; synthetic reference OIDC rehearsal 1/1 with eight asserted case IDs",
+      "test": "local_reference_rp_cutover_rehearsal",
+      "test_source_sha256": "64e43530f6c6e69c2fe4f7f9d45fabb2cfb5b1843a6b022eec2a418008602ba6",
+      "cases": ["G05-01", "G05-02", "G05-03", "G05-04", "G05-05", "G05-06", "G05-07", "G05-08"],
+      "category_effect": "migration stays not_passed",
+      "remaining": "No real Authentik export, named relying party, browser or network callback, production route, or rollback sign-in. The page says this local case does not mark G05 complete."
+    }
+  ],
   "categories": [
     {
       "id": "usability",
@@ -108,7 +184,7 @@
           "run_head": "6d9b72b",
           "command": "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo test --locked --test workflow_configured_consent -- --quiet; python3 scripts/check-docs.py; python3 scripts/check-module-boundaries.py; git diff bc3c324..HEAD --check",
           "result": "pass; configured consent suite 8/8",
-          "shows": "52df9a3 does not change workflow tests. The suite was not repeated at 52df9a3."
+          "shows": "52df9a3 does not change workflow tests. The suite is repeated at a3ccbf1, together with the TOTP consent test."
         },
         {
           "class": "missing measurements",
@@ -158,7 +234,7 @@
       ],
       "blockers": [
         "Accepted-head suite is reviewed group membership on a disposable primary.",
-        "Accepted docs/testing.md says the script starts a standby and does not promote it or perform pg_ctl failover.",
+        "e3c26eb records fenced standby promotion for one reviewed membership. That drill does not complete a human administration journey.",
         "Ledger open check: advanced client, user, group, agent, federation, key, session, device, and recovery resources remain outside exact multi-party approval."
       ]
     },
@@ -192,7 +268,7 @@
         },
         {
           "class": "missing measurements",
-          "shows": "No peer version, conformance result, or named-tenant failure log at accepted HEAD. Ledger has no reviewed slice whose code is Q04."
+          "shows": "Q04 is a reviewed slice at fcba8a5. It is local peer OpenLDAP ldapsearch 2.7.1, not a named tenant. No conformance result for a named tenant at cf827a9."
         }
       ],
       "blockers": [
@@ -284,7 +360,7 @@
           "class": "accepted-head local",
           "run_head": "52df9a3",
           "command": "RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 scripts/test-postgres.sh",
-          "shows": "Same script, one target. Accepted docs/testing.md says this target does not promote the standby."
+          "shows": "52df9a3 did not promote the standby. e3c26eb later does, as a loopback trust drill, and records no RTO."
         },
         {
           "class": "missing measurements",
@@ -293,7 +369,7 @@
       ],
       "blockers": [
         "Failover pass is an ancestor-local disposable cluster.",
-        "The accepted-head database run does not promote its standby."
+        "e3c26eb promotes a disposable standby and records no deployment RTO or RPO."
       ]
     },
     {
@@ -357,12 +433,21 @@
           "shows": "G02 ledger note: a real Authentik export and application cutover remain open. G04 ledger note: no real Authentik export was run. This slice did not re-run those checks at 52df9a3."
         },
         {
-          "class": "missing measurements",
-          "shows": "No cutover duration, export byte count, or live relying-party subject check at 52df9a3."
+          "class": "source-only",
+          "artifact": "docs/roadmap/g05-local-reference-oidc.md",
+          "run_head": "cf827a9",
+          "command": "CARGO_BUILD_JOBS=2 RUST_TEST_THREADS=4 cargo test --locked --test g05_reference_oidc -- --nocapture; python3 scripts/check-docs.py; python3 scripts/check-repo-hygiene.py; git show --format= --check HEAD; git status --short",
+          "result": "pass; synthetic reference OIDC rehearsal 1/1 with eight asserted case IDs",
+          "shows": "In-process reference relying party on disposable redb. Not a named relying party, production route, or Authentik rollback sign-in. G05 ledger status stays task_in_progress."
+        },
+        {
+          "class": "release/deployment",
+          "shows": "No cutover duration, export byte count, live relying-party subject, production route change, or Authentik rollback sign-in at cf827a9."
         }
       ],
       "blockers": [
-        "Source preflight and ancestor-local tests do not move a directory.",
+        "Source preflight and the synthetic reference relying party do not move a directory.",
+        "G05 stays task_in_progress until a named application supplies export, browser callback, route change, and rollback sign-in.",
         "Edition transition still needs the exact artifacts named under footprint and recovery."
       ]
     },
@@ -401,8 +486,13 @@
           "shows": "Release workflow, packager, and bundle checker do not sign artifacts. Q11 ledger note records a 355-package source SPDX document at integration commit 281493d. A source SPDX file is not a release SBOM. This slice did not open that file."
         },
         {
-          "class": "release artifacts",
-          "shows": "No signature, published GitHub release, or installed-release gate success for 52df9a3."
+          "class": "source-only",
+          "run_heads": ["97511e4", "3aa997b", "8704bb8", "1535cdc"],
+          "shows": "A03 assembly moves for cloud probe, credential preflight, credential write, and source configuration. Protocol-boundary open check remains."
+        },
+        {
+          "class": "release/deployment",
+          "shows": "No signature, published GitHub release, or installed-release gate success for cf827a9. The same gap was already recorded for 52df9a3."
         },
         {
           "class": "missing measurements",
