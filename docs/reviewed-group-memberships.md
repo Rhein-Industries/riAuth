@@ -125,9 +125,15 @@ key at the current revision returns `Reviewed membership already consumed or
 cancelled`. Dropping the connection pool and opening the same database returns
 the same receipt and the same denials. The runner is
 `RIAUTH_PG_TEST_TARGET=reviewed_memberships_postgres scripts/test-postgres.sh`.
-It creates the test database on the primary only, with `sslmode=disable` and
-`local_unencrypted`. Standby promotion and `pg_ctl` failover stay in
-`tests/postgres.rs`. Encrypted PostgreSQL is not covered.
+It creates each test database on the primary only. The plaintext tests use
+`sslmode=disable` and `local_unencrypted`. One test restarts that primary so
+PostgreSQL presents a loopback certificate, then opens the database with the
+production client: TLS is required, the private CA is verified, and records
+use a keygen database key (`aes256gcm-v1`). The same execute, replay, stale
+If-Match, consumed proposal, and dependency-denial results are required. A
+missing key is refused as a format mismatch, and a different key cannot open
+the sealed records. Standby promotion and `pg_ctl` failover stay in
+`tests/postgres.rs`.
 
 The shared management writer refuses unreviewed privileged membership changes
 from API/CLI/browser writes, desired-state plans, inbound SCIM, LDAP/Workspace/Entra
