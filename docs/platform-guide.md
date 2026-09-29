@@ -14,20 +14,21 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records three loopback observations. The first
+build. The walkthrough records four loopback observations. The first
 reported the Essentials catalog. The second was a copied Platform debug
 server whose artifact catalog had `edition` `platform` and `build_features`
 `["essentials", "platform"]`. The third used that same server snapshot with
 separate `riauthctl` and `riauth-maintenance` snapshots supplied for a later
-source revision. The commands in sections 1 through 13 are the
-ones implemented in this tree: `[features]` in
+source revision. The fourth used only that server snapshot and ran the
+section 5 backup, restore, and recovery-status entry points. The commands
+in sections 1 through 13 are the ones implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
 [standalone client](../crates/riauthctl/src/main.rs).
 
 The three slices were checked by reading the source and the current docs,
 then by `python3 scripts/check-docs.py`. Section 14 was source-reviewed and
-remains unrun. Three disposable loopback runs are recorded in
+remains unrun. Four disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
 build was run for any of them. The first stopped after one `local-demo`
 client create on the Essentials catalog. The second repeated setup on the
@@ -36,8 +37,10 @@ commands that `riauth` implements. It skipped the printed `riauthctl` lines,
 sections 4 and 5, and `group get` / `group has-member`. The third ran
 `riauth-maintenance init` and the printed `riauthctl` client, group, and
 claim commands, then the server CLI `explain` and audit commands. `riauthctl`
-has no `doctor` subcommand. Browser, hardware, peer, backup, passkey,
-invitation, and Essentials-guide execution remain unrun. The
+has no `doctor` subcommand. The fourth ran section 5 `keygen`, `backup`,
+`restore`, and `recovery status` on the server snapshot. It left `recovery
+complete`, `recover-admin`, and a second server unrun. Browser, hardware,
+peer, passkey, invitation, and Essentials-guide execution remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
@@ -562,6 +565,39 @@ is `admin.recover.factors_reset`. The Platform build also clears an HTTPS
 client-certificate binding for that user in the same recovery
 ([assembly/mtls.rs](../src/assembly/mtls.rs)). This slice has no
 client-certificate binding to clear.
+
+### Loopback observation
+
+The [walkthrough](roadmap/d01-platform-cli-walkthrough.md) records one kept
+run of these entry points on a copy of the Platform server snapshot supplied
+for `58357fd`. `riauth-maintenance` was not in that run. The copy's help
+lists `keygen --out`, `backup --key-file` and `--out`, and `restore
+--backup`, `--key-file`, and `--out`. `recovery status` is read-only.
+`restore` help also lists `--postgres-config` and `--database-key-file`.
+The run omitted both.
+
+`riauth keygen` wrote a new private backup key. `riauth backup` ran while
+`riauth serve` was up, on the server CLI session from this lab. The result
+was `api_version` `riauth.backup/v3`, `encrypted` true, and `verified` true.
+The archive was mode `600` and its size matched the reported byte count,
+12489. The transcript and stream id are omitted here. `verified` is the
+archive check in [stream.rs](../src/operations/stream.rs): frames, the
+trailer transcript of the bytes before the trailer, and the schema and
+issuer checks. It does not mean a person signed in.
+
+Serve was stopped before restore. `riauth restore` wrote a new directory and
+returned `verified` true, `storage` `redb`, `encrypted_at_rest` false, and
+`serving_allowed` false. `riauth recovery status` on that restored
+configuration left service closed. The pending cause was `backup_restore`,
+the policy was `riauth.recovery/v1`, `schema` was 3, history was empty, and
+recorded and observed lineage were null. Reconcile listed `passwords`,
+`enabled_accounts`, and `signing_keys` as counts. Those counts are the
+restored credentials the policy names. They are not a rotation, and they are
+not the `--persistent-credentials-reconciled` attestation.
+
+`recovery complete`, `recovery invalidate`, `recover-admin`, a second
+server, and PostgreSQL stayed unrun. The restored issuer was not started.
+This run does not call the result a recovery drill.
 
 ## 6. Create a group and add the administrator
 
@@ -1890,7 +1926,10 @@ run used the server CLI and skipped the printed `riauthctl` commands,
 printed group commands including `group get` and `group has-member`, the
 printed client update, and the server CLI `explain` and audit commands.
 `riauthctl doctor` exited 2 locally. Both of those chains skipped sections
-4 and 5. Sections 9 through 13 remain
+4 and 5. A later run executed the section 5 entry points on the server
+snapshot: `keygen`, `backup`, `restore` into a new directory, and `recovery
+status`. That run left section 4, `recovery complete`, `recover-admin`, and
+a second server unrun. Sections 9 through 13 remain
 source-reviewed procedures. The generated `init` file still has no directory,
 no SCIM target, no workflow, no SAML client, and no LDAP listener until the
 operator adds them. Those later commands were not executed here. Sections 11
@@ -1961,15 +2000,19 @@ Still outside this slice, as later tasks:
   cancelled outbound Shared Signals deliveries. The backup commands here are
   entry points.
 - Any claim that a person completed `cargo install`, the browser sign-in at
-  `/apps`, the OIDC redirect, passkey enrollment, backup, restore, the printed
-  `riauthctl` group or client commands, an LDAP directory plan or
+  `/apps`, the OIDC redirect, passkey enrollment, `recovery complete`,
+  `recover-admin`, an LDAP directory plan or
   apply, a SCIM plan or apply, a workflow plan or a configured-workflow run,
   a SAML metadata exchange with a peer, an LDAP provider bind, or an
   invitation acceptance. The
-  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has two runs.
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has four runs.
   The first supplies `riauth capabilities`, local `init`, `serve`, `/readyz`,
   CLI `login`, `doctor`, and one `local-demo` client create on a binary whose
   catalog edition was `essentials`. The second supplies the same setup on a
   binary whose catalog edition was `platform`, then server-CLI `local-demo`
   create, `staff` create, `group add-member`, the claim update, `explain`,
-  and the three audit commands. D01 remains incomplete.
+  and the three audit commands. The third supplies the printed remote
+  `riauthctl` client, group, and claim commands, then server CLI `explain`
+  and audit. The fourth supplies section 5 `keygen`, `backup`, `restore`,
+  and `recovery status` on the Platform server snapshot, with the restored
+  service left closed. D01 remains incomplete.

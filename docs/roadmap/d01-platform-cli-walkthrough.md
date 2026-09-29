@@ -3,15 +3,17 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records three disposable loopback runs of the
+This page records four disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
 a Platform-catalog server snapshot and continued through the server CLI group,
 claim, and audit commands. The third copied that same server snapshot plus
 separate `riauthctl` and `riauth-maintenance` snapshots and ran the printed
-maintenance init and remote client commands. No run used a browser, an
-external peer, or `cargo install`. The first two runs did not launch
-`riauthctl` or `riauth-maintenance`.
+maintenance init and remote client commands. The fourth copied only that
+server snapshot and ran the section 5 backup, restore, and recovery-status
+entry points. No run used a browser, an external peer, or `cargo install`.
+The first two runs did not launch `riauthctl` or `riauth-maintenance`. The
+fourth run did not launch them either.
 
 ## Essentials catalog run
 
@@ -1286,3 +1288,201 @@ Still unrun:
   Entra, and an external mailbox
 
 The Essentials guide was not executed. D01 remains incomplete.
+
+## Backup and restore entry points
+
+The docs worktree for this record is
+`f0d714c96652dcb2c6a9898b2e0c32cfea729b73`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. The authorized binary was the Platform server
+snapshot
+`/tmp/riauth-platform-58357fd-immutable/riauth`, the same file the catalog
+run and the remote-administration run copied. Its mode stayed `-r-x------`,
+its size stayed 289661864 bytes, its mtime stayed
+`2026-09-29 17:00:59 +0200`, and its SHA-256 stayed
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. The
+snapshot path was not executed. A copy lived in a new `mktemp` directory
+under `/tmp`, mode `700`. The copy was chmod `700`, and its SHA-256 matched
+the snapshot before any command. This page calls that directory `$LAB`. The
+copy's real path is not recorded. `riauthctl` and `riauth-maintenance` were
+not launched. `deployment-private/` was not written.
+
+`riauth --version` printed `riauth 0.1.1`. This run did not print
+`riauth capabilities` or `riauth doctor`. The earlier runs of this snapshot recorded
+catalog `edition` `platform`. `/readyz` reported `protocol_listeners` true.
+That duty does not identify a maintenance binary, and this run did not
+launch one.
+
+Help was read on the copy before any write:
+
+| Command | Usage line |
+| --- | --- |
+| `keygen` | `Usage: riauth keygen [OPTIONS] --out <OUT>` |
+| `backup` | `Usage: riauth backup [OPTIONS] --key-file <KEY_FILE> --out <OUT>` |
+| `restore` | `Usage: riauth restore [OPTIONS] --backup <BACKUP> --key-file <KEY_FILE> --out <OUT>` |
+| `recovery` | `Usage: riauth recovery [OPTIONS] <COMMAND>` |
+| `recovery status` | `Usage: riauth recovery status [OPTIONS]` |
+| `recovery invalidate` | `Usage: riauth recovery invalidate [OPTIONS] --database-restored` |
+| `recovery complete` | `Usage: riauth recovery complete [OPTIONS] --recovery-id <RECOVERY_ID>` |
+| `recover-admin` | `Usage: riauth recover-admin [OPTIONS] <USERNAME>` |
+
+`complete` help also offers `--persistent-credentials-reconciled`.
+`recover-admin` help also offers `--password-stdin` and `--reset-mfa`.
+`restore` help also offers `--postgres-config` and `--database-key-file`.
+The printed section 5 names `riauth-maintenance keygen` and
+`riauth-maintenance restore`. This binary's help exposes those operations
+on `riauth`. The run followed that help and omitted `--postgres-config` and
+`--database-key-file`.
+
+### Setup
+
+The kept run started at `2026-09-29T15:50:16Z`. The prerequisite was a
+section 2 loopback on this copy:
+
+```sh
+riauth --config $LAB/riauth.toml --non-interactive init \
+  --issuer http://localhost:9000 \
+  --listen 127.0.0.1:9000 \
+  --data-dir data \
+  --admin admin \
+  --password-stdin
+```
+
+Exit 0. Standard error: `Creating instance and signing key…`. Standard
+output had `initialized` true and issuer `http://localhost:9000`. The
+configuration file was mode `600`. It had no `database_key_file` and no
+PostgreSQL block. `reviewed_client_creation` was false, `browser_ui` was
+true, `state_reconciliation_mode` was `manual-review`, `data_dir` was
+`data`, the token lifetimes were 300, 2592000, and 28800, `password_history`
+was 5, and `trusted_proxies` was empty. The listener tables, directory
+tables, `scim_targets`, and `signers` were empty. `$LAB/data/riauth.redb`
+existed, mode `600`, 114688 bytes.
+
+`riauth --config $LAB/riauth.toml serve` stayed up through backup. SIGTERM
+stopped it, and SIGKILL was not required. `/readyz` returned HTTP 200:
+
+```json
+{"duties":{"authentication":true,"background_jobs":true,"protocol_listeners":true},"issuer":"http://localhost:9000","role":"integrated","service":"riAuth","status":"ok","version":"0.1.1"}
+```
+
+The serve log was 986 bytes. A scan for the administrator password, the
+backup key, and the session token found no hits. The log contained the
+`background_overloaded` marker. The log text is not copied.
+
+Login used the private session file:
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/session.json --non-interactive \
+  login admin --password-stdin
+```
+
+Exit 0. Standard error was empty. The session file was mode `600`. The
+token is not copied. The user id was `de1ad3a3-4339-4622-ba1d-282da2989a12`,
+username `admin`, display name `admin`, email null, enabled true, admin
+true, `mfa_enabled` false, `password_available` true, `email_verified`
+false, `created_at` 1790697020, and `expires_at` 1790725821. Attributes and
+subjects were empty.
+
+The password file was mode `600` and held 32 alphanumeric characters plus a
+newline. `riauth --non-interactive keygen --out $LAB/backup.key` exited 0
+with `created` true. The key file was mode `600` and 43 bytes. It is a
+separate file from the absent database key. Neither secret is copied.
+
+### Backup
+
+Backup ran while serve was still listening:
+
+```sh
+riauth --config $LAB/riauth.toml --server http://localhost:9000 \
+  --session-file $LAB/session.json --non-interactive \
+  backup --key-file $LAB/backup.key --out $LAB/backup.riauth
+```
+
+Exit 0. Standard error was empty. The result was `api_version`
+`riauth.backup/v3`, `encrypted` true, `verified` true, issuer
+`http://localhost:9000`, `created_at` 1790697022, `frames` 3, `records` 20,
+and `bytes` 12489. The published file was mode `600` and 12489 bytes. No
+partial file remained. The stream id was non-empty and 22 characters. The
+transcript was non-empty and 43 characters. Those two values are omitted.
+
+`verified` is the backup command's archive check in
+[stream.rs](../../src/operations/stream.rs): frame authentication, the
+trailer transcript over the bytes before the trailer, end of file after the
+trailer, and the schema and issuer checks. A hash of the whole file,
+including the trailer, is a different input. This run did not reimplement
+that split. It kept the command result, and restore later returned
+`verified` true as well. Neither flag means a person signed in again or
+that an application completed login.
+
+### Restore and status
+
+Serve was stopped first. Port 9000 was free, and no lab `riauth` process
+remained.
+
+```sh
+riauth --non-interactive restore \
+  --backup $LAB/backup.riauth \
+  --key-file $LAB/backup.key \
+  --out $LAB/restored
+```
+
+Exit 0. Standard error was empty. The result was `restored` true,
+`verified` true, `encrypted_at_rest` false, `storage` `redb`,
+`serving_allowed` false, and issuer `http://localhost:9000`. The published
+configuration basename was `riauth.toml`, mode `600`, with the same public
+scalars as the original file. `$LAB/restored/data/riauth.redb` was mode
+`600` and 61440 bytes. The original redb file was still present. The `next`
+field was the template that names `riauth recovery complete` and
+`--persistent-credentials-reconciled`. That command was not run.
+
+The recovery id was `e83d782d-3e10-43a9-bd0a-ec1e238137e5`. The policy was
+`riauth.recovery/v1`. The cause was `backup_restore`. `invalidated_at` and
+`snapshot_created_at` were 1790697022. `completed_at` was null.
+`epoch_advanced_users` was 1. Invalidated counts were `sessions` 1 and
+`session_tokens` 1. Reconcile counts were `enabled_accounts` 1, `passwords`
+1, and `signing_keys` 1. `unclassified` was empty. The restore record had
+no lineage object. The reconcile counts are the restored credentials the
+policy lists. They are not a statement that those credentials were rotated.
+
+```sh
+riauth --config $LAB/restored/riauth.toml --non-interactive recovery status
+```
+
+Exit 0. Standard error was empty. Status is read-only
+([recovery.rs](../../src/recovery.rs)). The result was policy
+`riauth.recovery/v1`, backend `redb`, `initialized` true, `schema` 3,
+`serving_allowed` false, and an empty history. Pending was the same recovery
+id, cause, and counts, with `completed_at` null. Recorded lineage was null
+and observed lineage was null. No system identifier was present.
+
+`recovery complete`, `--persistent-credentials-reconciled`, `recovery
+invalidate --database-restored`, and `recover-admin` were not run. A second
+server was not started, and the restored store stayed closed. Free space on
+the data volume stayed above 7 GiB. The lab, including the copy, the key,
+the session, and the archive, was removed. After cleanup the snapshot hash
+and mode were unchanged, port 9000 was free, and both default home session
+files were absent.
+
+### Unrun on this entry-point run
+
+The executed chain is `riauth init`, serve, `/readyz`, server CLI login,
+`keygen`, `backup`, stopping serve, `restore`, and `recovery status`.
+
+Still unrun on this run:
+
+- `cargo install`
+- `riauth-maintenance` and `riauthctl`, including the printed maintenance
+  names for init, keygen, restore, and recover-admin
+- `riauth doctor`
+- `recovery complete` and `--persistent-credentials-reconciled`
+- `recovery invalidate`
+- `recover-admin`
+- a second `riauth serve`, including one on the restored configuration
+- `--postgres-config` and any PostgreSQL target
+- Section 4 and sections 6 through 14
+- Signing-key operator steps, a browser, hardware, an external peer, and
+  the Essentials guide
+
+An earlier lab in the same hour completed this same command sequence. Its
+evidence file was discarded before it was kept, and that directory was
+removed. The numbers above are from the kept run. D01 remains incomplete.
