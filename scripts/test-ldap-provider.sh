@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Loopback STARTTLS against riAuth's LDAP provider using an operator-supplied OpenLDAP ldapsearch.
+# Loopback LDAPS and STARTTLS against riAuth's LDAP provider using an operator-supplied OpenLDAP ldapsearch.
 # Does not start slapd, a system directory, or download OpenLDAP.
 set -euo pipefail
 riauth_cargo="${CARGO:-cargo}"

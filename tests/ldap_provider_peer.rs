@@ -119,34 +119,68 @@ fn mint_certificate(dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
     (dir.join("ca.crt"), dir.join("tls.crt"), key)
 }
 
-fn search_args(uri: &str, secret: &Path) -> Vec<String> {
-    [
-        "-x",
-        "-ZZ",
-        "-H",
-        uri,
-        "-D",
-        BIND_DN,
-        "-y",
-        secret.to_str().expect("token path"),
-        "-b",
-        BASE,
-        "-s",
-        "sub",
-        "-E",
-        "!pr=1/noprompt",
-        "-l",
-        "8",
-        "-o",
-        "nettimeout=8",
-        "-o",
-        "ldif_wrap=no",
-        "(objectClass=inetOrgPerson)",
-        "uid",
-    ]
-    .into_iter()
-    .map(str::to_owned)
-    .collect()
+fn search_args(uri: &str, secret: &Path, starttls: bool) -> Vec<String> {
+    let mut args = Vec::with_capacity(22);
+    args.push("-x".to_owned());
+    if starttls {
+        args.push("-ZZ".to_owned());
+    }
+    args.extend(
+        [
+            "-H",
+            uri,
+            "-D",
+            BIND_DN,
+            "-y",
+            secret.to_str().expect("token path"),
+            "-b",
+            BASE,
+            "-s",
+            "sub",
+            "-E",
+            "!pr=1/noprompt",
+            "-l",
+            "8",
+            "-o",
+            "nettimeout=8",
+            "-o",
+            "ldif_wrap=no",
+            "(objectClass=inetOrgPerson)",
+            "uid",
+        ]
+        .into_iter()
+        .map(str::to_owned),
+    );
+    args
+}
+
+fn mint_unrelated_ca(dir: &Path) -> PathBuf {
+    openssl(
+        dir,
+        &[
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-subj",
+            "/CN=unrelated-fixture-ca",
+            "-keyout",
+            "unrelated.key",
+            "-out",
+            "unrelated.crt",
+        ],
+    );
+    dir.join("unrelated.crt")
+}
+
+fn displayed_command(bin: &str, uri: &str, starttls: bool) -> String {
+    let upgrade = if starttls { "-ZZ " } else { "" };
+    format!(
+        "{bin} -x {upgrade}-H {uri} -D {BIND_DN} -y <token-file> -b {BASE} -s sub -E '!pr=1/noprompt' -l 8 -o nettimeout=8 -o ldif_wrap=no '(objectClass=inetOrgPerson)' uid"
+    )
 }
 
 async fn ldapsearch(bin: &str, args: &[String], dir: &Path, conf: &Path, ca: &Path) -> Output {
@@ -187,6 +221,20 @@ fn assert_invalid(output: &Output) {
     assert!(!text.contains("uid:"), "{text}");
     assert!(!text.contains("ldap-alice"), "{text}");
     assert!(!text.contains("ldap-bob"), "{text}");
+}
+
+fn assert_transport_closed(output: &Output, markers: &[&str]) {
+    let text = show(output);
+    assert_eq!(output.status.code(), Some(1), "{text}");
+    assert!(!text.contains("result: 0 Success"), "{text}");
+    assert!(!text.contains("# numEntries:"), "{text}");
+    assert!(!text.contains("ldap_bind:"), "{text}");
+    assert!(!text.contains("uid:"), "{text}");
+    assert!(!text.contains("ldap-alice"), "{text}");
+    assert!(!text.contains("ldap-bob"), "{text}");
+    for marker in markers {
+        assert!(text.contains(marker), "{text}");
+    }
 }
 
 fn page_uids(output: &Output) -> Vec<String> {
@@ -294,46 +342,161 @@ async fn ldapsearch_starttls_bind_scoped_paging_disable_and_revoke() {
         format!("TLS_CACERT {}\nTLS_REQCERT hard\n", ca.display()),
     )
     .unwrap();
-    fixture.core.config.ldap_listeners.insert(
-        "starttls".into(),
-        riauth::ldap_server::Listener {
-            listen: "127.0.0.1:0".parse().unwrap(),
-            client_id: "ldap".into(),
-            allowed_peers: ["127.0.0.1".parse().unwrap()].into(),
-            tls_cert_file: Some(cert),
-            tls_key_file: Some(key),
-            ldaps: false,
-            local_unencrypted: false,
-        },
-    );
+    let listener = |ldaps: bool| riauth::ldap_server::Listener {
+        listen: "127.0.0.1:0".parse().unwrap(),
+        client_id: "ldap".into(),
+        allowed_peers: ["127.0.0.1".parse().unwrap()].into(),
+        tls_cert_file: Some(cert.clone()),
+        tls_key_file: Some(key.clone()),
+        ldaps,
+        local_unencrypted: false,
+    };
+    // Key order binds "ldaps" before "starttls".
+    fixture
+        .core
+        .config
+        .ldap_listeners
+        .insert("ldaps".into(), listener(true));
+    fixture
+        .core
+        .config
+        .ldap_listeners
+        .insert("starttls".into(), listener(false));
     let servers = riauth::ldap_server::start(fixture.core.clone())
         .await
         .unwrap();
-    let listener = servers.addresses[0];
-    assert_eq!(listener.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
-    assert_eq!(servers.addresses.len(), 1);
-    let uri = format!("ldap://{listener}");
-    println!(
-        "command: {bin} -x -ZZ -H {uri} -D {BIND_DN} -y <token-file> -b {BASE} -s sub -E '!pr=1/noprompt' -l 8 -o nettimeout=8 -o ldif_wrap=no '(objectClass=inetOrgPerson)' uid"
-    );
+    assert_eq!(servers.addresses.len(), 2);
+    let ldaps_addr = servers.addresses[0];
+    let starttls_addr = servers.addresses[1];
+    assert_eq!(ldaps_addr.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
+    assert_eq!(starttls_addr.ip(), IpAddr::V4(Ipv4Addr::LOCALHOST));
+    assert_ne!(ldaps_addr.port(), starttls_addr.port());
+    let ldaps_uri = format!("ldaps://{ldaps_addr}");
+    let starttls_uri = format!("ldap://{starttls_addr}");
+    let profiles = [
+        ("starttls", starttls_uri.as_str(), true),
+        ("ldaps", ldaps_uri.as_str(), false),
+    ];
+    for (label, uri, starttls) in profiles {
+        let args = search_args(uri, &token_file, starttls);
+        assert_eq!(args[0], "-x");
+        assert_eq!(args.contains(&"-ZZ".to_owned()), starttls);
+        assert_eq!(uri.starts_with("ldaps://"), !starttls);
+        if starttls {
+            assert!(uri.starts_with("ldap://"), "{uri}");
+        }
+        println!(
+            "command {label}: {}",
+            displayed_command(&bin, uri, starttls)
+        );
+    }
 
-    let wrong = ldapsearch(&bin, &search_args(&uri, &wrong_file), &dir, &conf, &ca).await;
-    println!(
-        "wrong-token: {}",
-        redact(&combined(&wrong)).replace('\n', " | ")
-    );
-    assert_invalid(&wrong);
+    let crossed = [
+        (
+            "ldaps-on-starttls",
+            format!("ldaps://{starttls_addr}"),
+            false,
+        ),
+        ("starttls-on-ldaps", format!("ldap://{ldaps_addr}"), true),
+    ];
+    for (label, uri, starttls) in &crossed {
+        let output = ldapsearch(
+            &bin,
+            &search_args(uri, &token_file, *starttls),
+            &dir,
+            &conf,
+            &ca,
+        )
+        .await;
+        println!(
+            "cross {label}: exit {:?} {}",
+            output.status.code(),
+            redact(&combined(&output)).replace('\n', " | ")
+        );
+        let text = show(&output);
+        assert!(!text.contains("certificate verify failed"), "{text}");
+        assert_transport_closed(
+            &output,
+            match *label {
+                "ldaps-on-starttls" => {
+                    &["Could not connect to URI=ldaps://", "Connect error (-11)"]
+                }
+                _ => &["ldap_start_tls: Can't contact LDAP server (-1)"],
+            },
+        );
+    }
 
-    let paged = ldapsearch(&bin, &search_args(&uri, &token_file), &dir, &conf, &ca).await;
-    let uids = page_uids(&paged);
-    let paged_text = show(&paged);
-    assert_eq!(uids.len(), 2, "{paged_text}");
-    assert!(uids.contains(&"uid: ldap-alice".to_owned()), "{paged_text}");
-    assert!(uids.contains(&"uid: ldap-bob".to_owned()), "{paged_text}");
-    assert!(paged_text.contains("# numEntries: 2"), "{paged_text}");
-    assert!(!paged_text.contains("ldap-outsider"), "{paged_text}");
-    assert!(!paged_text.contains("uid: admin"), "{paged_text}");
-    println!("paged: exit 0 pages 2 uids {}", uids.join(", "));
+    for (label, uri, starttls) in profiles {
+        let wrong = ldapsearch(
+            &bin,
+            &search_args(uri, &wrong_file, starttls),
+            &dir,
+            &conf,
+            &ca,
+        )
+        .await;
+        println!(
+            "wrong-token {label}: {}",
+            redact(&combined(&wrong)).replace('\n', " | ")
+        );
+        assert_invalid(&wrong);
+    }
+
+    for (label, uri, starttls) in profiles {
+        let paged = ldapsearch(
+            &bin,
+            &search_args(uri, &token_file, starttls),
+            &dir,
+            &conf,
+            &ca,
+        )
+        .await;
+        let uids = page_uids(&paged);
+        let paged_text = show(&paged);
+        assert_eq!(uids.len(), 2, "{paged_text}");
+        assert!(uids.contains(&"uid: ldap-alice".to_owned()), "{paged_text}");
+        assert!(uids.contains(&"uid: ldap-bob".to_owned()), "{paged_text}");
+        assert!(paged_text.contains("# numEntries: 2"), "{paged_text}");
+        assert!(!paged_text.contains("ldap-outsider"), "{paged_text}");
+        assert!(!paged_text.contains("uid: admin"), "{paged_text}");
+        println!("{label} paged: exit 0 pages 2 uids {}", uids.join(", "));
+    }
+
+    let unrelated = mint_unrelated_ca(&dir);
+    let unrelated_conf = dir.join("unrelated.conf");
+    fs::write(
+        &unrelated_conf,
+        format!("TLS_CACERT {}\nTLS_REQCERT hard\n", unrelated.display()),
+    )
+    .unwrap();
+    for (label, uri, starttls) in profiles {
+        let rejected = ldapsearch(
+            &bin,
+            &search_args(uri, &token_file, starttls),
+            &dir,
+            &unrelated_conf,
+            &unrelated,
+        )
+        .await;
+        println!(
+            "wrong-ca {label}: exit {:?} {}",
+            rejected.status.code(),
+            redact(&combined(&rejected)).replace('\n', " | ")
+        );
+        let markers: &[&str] = if starttls {
+            &[
+                "ldap_start_tls: Connect error (-11)",
+                "certificate verify failed (unable to get local issuer certificate)",
+            ]
+        } else {
+            &[
+                "Could not connect to URI=ldaps://",
+                "Connect error (-11)",
+                "certificate verify failed (unable to get local issuer certificate)",
+            ]
+        };
+        assert_transport_closed(&rejected, markers);
+    }
 
     fixture
         .core
@@ -346,27 +509,45 @@ async fn ldapsearch_starttls_bind_scoped_paging_disable_and_revoke() {
             },
         )
         .unwrap();
-    let disabled = ldapsearch(&bin, &search_args(&uri, &token_file), &dir, &conf, &ca).await;
-    let remaining = page_uids(&disabled);
-    let disabled_text = show(&disabled);
-    assert_eq!(
-        remaining,
-        vec!["uid: ldap-alice".to_owned()],
-        "{disabled_text}"
-    );
-    assert!(disabled_text.contains("# numEntries: 1"), "{disabled_text}");
-    assert!(!disabled_text.contains("ldap-bob"), "{disabled_text}");
-    println!("disabled: exit 0 pages 1 uid ldap-alice");
+    for (label, uri, starttls) in profiles {
+        let disabled = ldapsearch(
+            &bin,
+            &search_args(uri, &token_file, starttls),
+            &dir,
+            &conf,
+            &ca,
+        )
+        .await;
+        let remaining = page_uids(&disabled);
+        let disabled_text = show(&disabled);
+        assert_eq!(
+            remaining,
+            vec!["uid: ldap-alice".to_owned()],
+            "{disabled_text}"
+        );
+        assert!(disabled_text.contains("# numEntries: 1"), "{disabled_text}");
+        assert!(!disabled_text.contains("ldap-bob"), "{disabled_text}");
+        println!("{label} disabled: exit 0 pages 1 uid ldap-alice");
+    }
 
     fixture
         .core
         .revoke_agent(&fixture.admin, "ldap-reader")
         .unwrap();
-    let revoked = ldapsearch(&bin, &search_args(&uri, &token_file), &dir, &conf, &ca).await;
-    println!(
-        "revoked: {}",
-        redact(&combined(&revoked)).replace('\n', " | ")
-    );
-    assert_invalid(&revoked);
+    for (label, uri, starttls) in profiles {
+        let revoked = ldapsearch(
+            &bin,
+            &search_args(uri, &token_file, starttls),
+            &dir,
+            &conf,
+            &ca,
+        )
+        .await;
+        println!(
+            "revoked {label}: {}",
+            redact(&combined(&revoked)).replace('\n', " | ")
+        );
+        assert_invalid(&revoked);
+    }
     drop(servers);
 }

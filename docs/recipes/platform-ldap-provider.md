@@ -12,7 +12,7 @@ Behavior and the operator example live in [ldap-provider.md](../ldap-provider.md
 | --- | --- |
 | Check-job script | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs `cargo test --all-targets --features test-support,fuzzing`. This test is not `#[ignore]`, so that command includes it. The workflow text is not a result for this revision. |
 | This revision | `ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation` was not executed while this page was written. No Cargo command was run. |
-| Deployment peer | The ldap3 test dials loopback with a certificate it just generated. It does not speak to Active Directory. A separate ignored run, [scripts/test-ldap-provider.sh](../../scripts/test-ldap-provider.sh), points local OpenLDAP `ldapsearch` 2.7.1 at one STARTTLS listener. That run is recorded below. |
+| Deployment peer | The ldap3 test dials loopback with a certificate it just generated. It does not speak to Active Directory. A separate ignored run, [scripts/test-ldap-provider.sh](../../scripts/test-ldap-provider.sh), points local OpenLDAP `ldapsearch` 2.7.1 at loopback LDAPS and STARTTLS listeners on separate ports. That run is recorded below. |
 
 ## Records the fixture creates
 
@@ -155,15 +155,30 @@ ldapsearch: @(#) $OpenLDAP: ldapsearch 2.7.1 (Sep  8 2026 21:55:18) $
 	(LDAP library: OpenLDAP 20701)
 ```
 
-`openssl version` was `OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)`. The test minted a one-day RSA 2048 CA, `CN=localhost`, `CA:TRUE`, SAN `DNS:localhost` and `IP:127.0.0.1`, and a leaf with `CA:FALSE`, the same SAN, key usage `digitalSignature,keyEncipherment`, and extended key usage `serverAuth`. `ldapsearch` trusted that CA with `LDAPTLS_CACERT` and `LDAPTLS_REQCERT=hard`. The listener was one STARTTLS socket, `listen` `127.0.0.1:0`. That run bound `127.0.0.1:62030`. The agent token was a mode `600` file with no trailing newline, passed with `-y`. The token was not on the command line.
+`openssl version` was `OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)`. The test minted a one-day RSA 2048 CA, `CN=localhost`, `CA:TRUE`, SAN `DNS:localhost` and `IP:127.0.0.1`, and a leaf with `CA:FALSE`, the same SAN, key usage `digitalSignature,keyEncipherment`, and extended key usage `serverAuth`. Both listeners presented that leaf. `ldapsearch` trusted that CA with `LDAPTLS_CACERT` and `LDAPTLS_REQCERT=hard`, and `LDAPCONF` repeated those two settings. A second one-day RSA 2048 CA, `CN=unrelated-fixture-ca`, did not sign the leaf. The agent token was a mode `600` file with no trailing newline, passed with `-y`. The token was not on the command line.
 
-Users `ldap-alice` and `ldap-bob` were durable members of `directory`. `ldap-outsider` was not. The client, base DN, and `ldap.search` permission match the ldap3 fixture above. Alice's TOTP enrollment is not part of this run. The command was:
+Users `ldap-alice` and `ldap-bob` were durable members of `directory`. `ldap-outsider` was not. The client, base DN, and `ldap.search` permission match the ldap3 fixture above. Alice's TOTP enrollment is not part of this run.
+
+An earlier STARTTLS run bound `127.0.0.1:62030` and used:
 
 ```
 ldapsearch -x -ZZ -H ldap://127.0.0.1:62030 -D cn=riauth-agent,dc=riauth,dc=test -y <token-file> -b dc=riauth,dc=test -s sub -E '!pr=1/noprompt' -l 8 -o nettimeout=8 -o ldif_wrap=no '(objectClass=inetOrgPerson)' uid
 ```
 
-A file containing `wrong-service-token` made `ldapsearch` exit 49 and print `ldap_bind: Invalid credentials (49)`. No `uid` line was returned. The agent token then exited 0. The output contained two `# with pagedResults critical control: size=1` comments, one `uid` on each page, `uid: ldap-alice` and `uid: ldap-bob`, `# numEntries: 2`, and `result: 0 Success`. `ldap-outsider` was absent. After `update_user` set `ldap-bob` `enabled` to false, the same command exited 0 with one page, `uid: ldap-alice`, and `# numEntries: 1`. After `revoke_agent` for `ldap-reader`, the same token file made a new `ldapsearch` exit 49 and print `ldap_bind: Invalid credentials (49)`.
+The confirming run opened two listeners, both `listen` `127.0.0.1:0`. LDAPS bound `127.0.0.1:60248`. STARTTLS bound `127.0.0.1:60249`. The commands were:
+
+```
+ldapsearch -x -H ldaps://127.0.0.1:60248 -D cn=riauth-agent,dc=riauth,dc=test -y <token-file> -b dc=riauth,dc=test -s sub -E '!pr=1/noprompt' -l 8 -o nettimeout=8 -o ldif_wrap=no '(objectClass=inetOrgPerson)' uid
+ldapsearch -x -ZZ -H ldap://127.0.0.1:60249 -D cn=riauth-agent,dc=riauth,dc=test -y <token-file> -b dc=riauth,dc=test -s sub -E '!pr=1/noprompt' -l 8 -o nettimeout=8 -o ldif_wrap=no '(objectClass=inetOrgPerson)' uid
+```
+
+`ldaps://127.0.0.1:60249` exited 1 and printed `Could not connect to URI=ldaps://127.0.0.1:60249/??base: Connect error (-11)`. `ldap://127.0.0.1:60248` with `-ZZ` exited 1 and printed `ldap_start_tls: Can't contact LDAP server (-1)`.
+
+A file containing `wrong-service-token` made `ldapsearch` exit 49 and print `ldap_bind: Invalid credentials (49)` on both listeners. The output had no `uid` line. The agent token then exited 0 on both listeners. Each output contained two `# with pagedResults critical control: size=1` comments, one `uid` on each page, `uid: ldap-alice` and `uid: ldap-bob`, `# numEntries: 2`, and `result: 0 Success`. `ldap-outsider` was absent.
+
+With the unrelated CA and `LDAPTLS_REQCERT=hard`, STARTTLS exited 1 and printed `ldap_start_tls: Connect error (-11)` and `additional info: error:0A000086:SSL routines::certificate verify failed (unable to get local issuer certificate)`. LDAPS exited 1 and printed `Could not connect to URI=ldaps://127.0.0.1:60248/??base: Connect error (-11)` and the same `additional info` line. The output had no `uid` line.
+
+After `update_user` set `ldap-bob` `enabled` to false, both commands exited 0 with one page, `uid: ldap-alice`, and `# numEntries: 1`. After `revoke_agent` for `ldap-reader`, the same token file made a new `ldapsearch` exit 49 on both listeners and print `ldap_bind: Invalid credentials (49)`.
 
 ## Other D03 recipes
 
