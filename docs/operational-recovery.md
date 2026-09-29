@@ -86,22 +86,61 @@ passes from the working directory can still fail on reopen.
 
 ## Safe preflight
 
-Run this set before `restore`, `recover-admin`, `recovery invalidate`, or
-`recovery complete`. It does not take a backup, write a recovery record, or
-start a listener. Each block below assigns its paths and passes every
-expansion in double quotes. Replace the `deployment-private/...` values with
-the paths for this recovery. For a plaintext restore, omit `database_key` and
-its `key_mode` line.
+Each procedure has its own preflight. Run that block, then the command block
+for the same procedure. Every block starts with `set -eu`, assigns the paths
+named below, and passes every expansion in double quotes. Replace each
+`deployment-private/...` value with the path for this recovery.
+
+| Procedure | Paths that block assigns |
+| --- | --- |
+| Archive restore into a new directory | `archive`, `backup_key`, `new_output` |
+| Archive restore into an empty PostgreSQL database | `archive`, `backup_key`, `new_output`, `postgres_config` |
+| Encrypted output of an archive restore | `database_key`, and only when that file is on hand |
+| Break-glass administrator | `live_config`, `username` |
+| Database-native recovery | `live_config` of the copy that opens |
+| Serving gate after archive restore | `restored_config` under the new output; `recovery_id` on the complete block |
+| Serving gate after database-native recovery | `live_config` of that copy; `recovery_id` on the complete block |
+
+File, key, `capabilities`, and `recovery status` blocks do not take a backup,
+write a recovery record, or start a listener. `restore`, `recover-admin`,
+`recovery invalidate`, and `recovery complete` stay in their own blocks.
+When the live store still opens, an administrator can still sign in, and the
+backup key is gone, keep serving and take a new archive with a new backup
+key. That command stays in
+[encrypted backup and restore](operations.md#encrypted-backup-and-restore).
+
+`riauth --json capabilities` needs no store and no key. It prints `edition`,
+`build_features`, and `version` with `usable` null.
+
+Where a block runs `recovery status`, that command is read-only for store
+records: it does not create a store, migrate, stamp lineage, or apply a
+lineage recovery. Beside an existing redb file it creates and removes a
+scratch database named `.riauth-lock-probe-…` in the store's directory to
+test file locks, then opens the store read-only. A store another process
+already owns fails with `storage_owned` (exit 5). On PostgreSQL the same
+status command can succeed while other riAuth clients are still connected;
+the mutating commands below perform the client count.
+
+The archive key check prints a status word and does not print or decode the
+key. Restore still rejects a file that is not base64url for 32 bytes.
+
+## Archive restore
+
+Use an archive you already have. `riauth backup` needs a running server and
+an authenticated CLI session. The redb drill recorded a sessionless backup
+as `operation_failed` (exit 1) with no output file.
+
+Directory restore checks the archive, the backup key, and the new output
+path. The live store can be absent.
 
 ```sh
 set -eu
-live_config="deployment-private/live/riauth.toml"
-new_output="deployment-private/restore-out"
+archive="deployment-private/backup.riauth"
 backup_key="deployment-private/keys/backup.key"
-database_key="deployment-private/keys/database.key"
+new_output="deployment-private/restore-out"
 
 riauth --json capabilities
-riauth --config "$live_config" recovery status
+test -f "$archive"
 test -d "$(dirname "$new_output")"
 test ! -e "$new_output"
 key_mode() {
@@ -116,31 +155,66 @@ print("owner-only key file")
 ' "$1"
 }
 key_mode "$backup_key"
-key_mode "$database_key"
 ```
-
-The key check prints a status word and does not print or decode the key.
-Restore still rejects a file that is not base64url for 32 bytes.
-
-`capabilities` prints `edition`, `build_features`, and `version` with
-`usable` null. `recovery status` is read-only for store records: it does not
-create a store, migrate, stamp lineage, or apply a lineage recovery. Beside
-an existing redb file it creates and removes a scratch database named
-`.riauth-lock-probe-…` in the store's directory to test file locks, then
-opens the store read-only. A store another process already owns fails with
-`storage_owned` (exit 5). On PostgreSQL the same status command can succeed
-while other riAuth clients are still connected; the mutating commands below
-perform the client count.
 
 Confirm `$new_output` is a new path. Restore never replaces an existing
 directory or a database that already holds records, and it does not switch
 DNS or the load balancer.
 
-## Archive restore
+Empty PostgreSQL checks those same paths plus the connection file. Without
+`--postgres-config`, restore writes redb even when the archive came from
+PostgreSQL.
 
-Use an archive you already have. `riauth backup` needs a running server and
-an authenticated CLI session. The redb drill recorded a sessionless backup
-as `operation_failed` (exit 1) with no output file.
+```sh
+set -eu
+archive="deployment-private/backup.riauth"
+backup_key="deployment-private/keys/backup.key"
+new_output="deployment-private/restore-out"
+postgres_config="deployment-private/postgres.json"
+
+riauth --json capabilities
+test -f "$archive"
+test -f "$postgres_config"
+test -d "$(dirname "$new_output")"
+test ! -e "$new_output"
+key_mode() {
+  python3 -c '
+import os, stat, sys
+path = sys.argv[1]
+info = os.stat(path)
+mode = stat.S_IMODE(info.st_mode)
+if not stat.S_ISREG(info.st_mode) or info.st_size > 128 or mode & 0o077:
+    raise SystemExit("reject")
+print("owner-only key file")
+' "$1"
+}
+key_mode "$backup_key"
+```
+
+When the database key file is on hand and the new store should be encrypted,
+run this check before the encrypted restore block.
+
+```sh
+set -eu
+database_key="deployment-private/keys/database.key"
+
+key_mode() {
+  python3 -c '
+import os, stat, sys
+path = sys.argv[1]
+info = os.stat(path)
+mode = stat.S_IMODE(info.st_mode)
+if not stat.S_ISREG(info.st_mode) or info.st_size > 128 or mode & 0o077:
+    raise SystemExit("reject")
+print("owner-only key file")
+' "$1"
+}
+key_mode "$database_key"
+```
+
+Encrypted directory restore. The plaintext block below omits
+`--database-key-file`, which leaves the restored store plaintext, as the
+prerequisites table describes.
 
 ```sh
 set -eu
@@ -156,10 +230,21 @@ riauth-maintenance restore \
   --out "$new_output"
 ```
 
-For an empty PostgreSQL database, use this block instead. Without
-`--postgres-config`, restore writes redb even when the archive came from
-PostgreSQL. Omit `--database-key-file` and `database_key` when the new store
-should be plaintext.
+Plaintext directory restore:
+
+```sh
+set -eu
+archive="deployment-private/backup.riauth"
+backup_key="deployment-private/keys/backup.key"
+new_output="deployment-private/restore-out"
+
+riauth-maintenance restore \
+  --backup "$archive" \
+  --key-file "$backup_key" \
+  --out "$new_output"
+```
+
+Encrypted restore into an empty PostgreSQL database:
 
 ```sh
 set -eu
@@ -177,6 +262,22 @@ riauth-maintenance restore \
   --postgres-config "$postgres_config"
 ```
 
+Plaintext restore into an empty PostgreSQL database:
+
+```sh
+set -eu
+archive="deployment-private/backup.riauth"
+backup_key="deployment-private/keys/backup.key"
+new_output="deployment-private/restore-out"
+postgres_config="deployment-private/postgres.json"
+
+riauth-maintenance restore \
+  --backup "$archive" \
+  --key-file "$backup_key" \
+  --out "$new_output" \
+  --postgres-config "$postgres_config"
+```
+
 A v3 archive is authenticated entirely before `--out` exists. On success the
 data object contains `"verified": true`, `"storage"` of `redb` or
 `postgresql`, `"encrypted_at_rest": true` when a database key was supplied,
@@ -185,12 +286,23 @@ classes in [Serving gate](recovery.md#serving-gate) against your audit export
 or incident record. The attestation flag is your statement. riAuth does not
 check it.
 
+Read the pending gate from the restored config:
+
+```sh
+set -eu
+restored_config="deployment-private/restore-out/riauth.toml"
+
+test -f "$restored_config"
+riauth --config "$restored_config" recovery status
+```
+
+After that credential review, complete the gate:
+
 ```sh
 set -eu
 restored_config="deployment-private/restore-out/riauth.toml"
 recovery_id="replace-with-pending-id"
 
-riauth --config "$restored_config" recovery status
 riauth --config "$restored_config" recovery complete \
   --recovery-id "$recovery_id" \
   --persistent-credentials-reconciled
@@ -223,6 +335,22 @@ audit `admin.recover`. Existing sessions then fail the epoch check in
 `identity::validate_user`. Access tokens that a resource server accepts from
 the JWKS without asking riAuth remain valid until they expire; see
 [What this does not establish](recovery.md#what-this-does-not-establish).
+
+Preflight uses the live config and the username, including when the backup
+key is lost. The database key is the file that config already names.
+
+```sh
+set -eu
+live_config="deployment-private/live/riauth.toml"
+username="admin"
+
+riauth --json capabilities
+test -f "$live_config"
+test -n "$username"
+riauth --config "$live_config" recovery status
+```
+
+Recover the named account:
 
 ```sh
 set -eu
@@ -269,6 +397,19 @@ that may have lost commits. The R05 drills did not run it. Their PostgreSQL
 run imported a v3 archive into an empty database on one temporary loopback
 cluster.
 
+Preflight uses the copied store's config.
+
+```sh
+set -eu
+live_config="deployment-private/live/riauth.toml"
+
+riauth --json capabilities
+test -f "$live_config"
+riauth --config "$live_config" recovery status
+```
+
+Invalidate the copied store:
+
 ```sh
 set -eu
 live_config="deployment-private/live/riauth.toml"
@@ -282,11 +423,37 @@ connected, then applies the restored-state policy with cause
 `"serving_allowed": false`. The new recovery id is `invalidated.id`, and
 `invalidated.cause` is `database_restore`. The nested `invalidated.invalidated`
 object is the per-collection removal count. `recovery status` repeats the id
-in `pending.id`. Continue with the status and complete commands in
-[Archive restore](#archive-restore). A logical
-restore into another cluster, database, or table can also apply the policy
-on open. A physical restore of the same cluster keeps the lineage ids, so
-riAuth does not detect it. Run the invalidate command in that case too.
+in `pending.id`. A logical restore into another cluster, database, or table
+can also apply the policy on open. A physical restore of the same cluster
+keeps the lineage ids, so riAuth does not detect it. Run the invalidate
+command in that case too.
+
+Read that pending id from the same config:
+
+```sh
+set -eu
+live_config="deployment-private/live/riauth.toml"
+
+test -f "$live_config"
+riauth --config "$live_config" recovery status
+```
+
+After that credential review, complete the gate:
+
+```sh
+set -eu
+live_config="deployment-private/live/riauth.toml"
+recovery_id="replace-with-pending-id"
+
+riauth --config "$live_config" recovery complete \
+  --recovery-id "$recovery_id" \
+  --persistent-credentials-reconciled
+```
+
+Complete the gate within seven days so queued back-channel logouts are still
+delivered. Start one process only after the checks in
+[Validation checks](disaster-recovery.md#validation-checks). Keep the issuer
+stable.
 
 Synchronous multi-node promotion and fencing are deployment duties in
 [availability](availability.md). They are outside the recorded drills.
