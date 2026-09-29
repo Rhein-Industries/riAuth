@@ -246,6 +246,151 @@ The build log is
 `/Users/dominik/.grok/long-running-background-tasks/q09-8x8-build-47aa248.log`.
 No edition or backend was skipped, and none of the four runs failed.
 
+### Paced `q09-2u-2g` Platform redb on macOS, dev profile
+
+This observation is one Platform redb product run on 2026-09-29. The worktree
+HEAD was `a4b7a7947b452731a33cd77196c5594d5fce1b3a`, parent
+`c7a61c63dc124ddd2af6d91379381d6b9c928af4`. The report has `source.commit`
+equal to that HEAD, `source.dirty_paths` empty, `product_run: true`,
+`observations_only: true`, and `performance_claim: false`. The measured script
+is `scripts/q09_benchmark_slice.py`, SHA-256
+`ecd4ce799087ed095c6604a92a18c2af4f02af33adfa7ac36907184bf4d5c510`.
+`source.binary_compiler` is `unrecorded`. `source.checkout_rust_toolchain` is
+`1.98.1`.
+
+This session did not run Cargo and did not use the accepted `target/`
+directory as `CARGO_TARGET_DIR`. The measured file is a private copy of
+`target/debug/riauth` from the integration-accepted worktree while that
+worktree's HEAD was `c7a61c6`. A later read-only `cmp` found the copy and that
+file identical: 290204712 bytes, mtime 2026-09-29T19:11:26+0200, SHA-256
+`517093cbca1fdf56cfa093f43b79cd5d30405aa5bc10b68759ca4cbf63d92e6b`. The copy
+mode is `-r-xr-xr-x`. The accepted commit time is 2026-09-29T19:10:42+0200.
+A byte search of the measured file found rustc
+`48a229ceaefd4985c50990b14116b6d856af0985` and the path
+`src/assembly/source_saml_return.rs`. The same search found no `c7a61c6` and
+no full commit hash. `nm` lists
+`__RNvNtNtCs6D1EO0VxpAw_6riauth8assembly18source_saml_return19take_browser_return`.
+In the accepted worktree, `src/assembly/source_saml_return.rs` has mtime
+2026-09-29T19:10:42+0200. Fingerprint
+`target/debug/.fingerprint/riauth-6b3a95903ee814bf/bin-riauth.json` records
+features `default`, `essentials`, `platform`, and `test-support`, with empty
+rustflags. `invoked.timestamp` there is 2026-09-29T19:11:24+0200.
+`target/debug/deps/riauth-a0245249f5a6dba2.d` is 2026-09-29T19:11:08+0200 and
+names `source_saml_return.rs`. Capabilities and runtime `build_features` are
+`essentials` and `platform`. `Cargo.toml` declares `test-support = []`. The
+report build fields are the supplied tokens `debug`, `1.98.1`, and
+`default,essentials,platform,test-support`. The package version is `0.1.1`,
+capabilities schema `riauth.capabilities/v2`, target `macos` / `aarch64`, and
+runtime scope `instance` with storage backend `redb`.
+
+The command, from this worktree, was:
+
+```sh
+python3 scripts/q09_benchmark_slice.py \
+  --binary /Users/dominik/.cache/riauth-cargo/q09-maint-c7a61c6/riauth \
+  --backend redb \
+  --iterations 12 \
+  --warmup 1 \
+  --interference-cap 4 \
+  --directory-users 2 \
+  --directory-groups 2 \
+  --pace-ms 6500 \
+  --build-profile debug \
+  --build-toolchain 1.98.1 \
+  --build-features default,essentials,platform,test-support \
+  --out /Users/dominik/.cache/riauth-cargo/q09-maint-c7a61c6/reports/platform-redb-maintenance.json
+```
+
+It started at 2026-09-29T17:23:57Z and exited 0 at 2026-09-29T17:26:25Z.
+Standard error recorded
+`completion=0 product_run=true backend=redb edition=platform dataset=q09-2u-2g directory_users=2 directory_groups=2 verified=true pace_ms=6500 quiet_maintenance_overlap=true interference_maintenance_overlap=true`.
+
+`q09-2u-2g` verified true: the administrator plus `q09-user-0001` and
+`q09-user-0002` (three accounts), groups `q09-dir-0001` and `q09-dir-0002`,
+six memberships, and three members in each group. The administrator
+session-read groups were those two names. The directory is inside one 128-row
+index page. The estimated general-request budget is 65 (directory writes 10,
+directory revision reads 11, directory verification 4, measured reads 24,
+warmup reads 2, metrics 4, revision reads 5, group creates 4, runtime
+capabilities 1). Login is the separate login category. TLS was off, database
+encryption was off, and the listener was loopback HTTP. `--pace-ms 6500`
+sleeps between the twelve measured reads, eleven times, 71.5 seconds, outside
+each latency sample and inside the pass wall clock. The throughput figures
+include that sleep.
+
+The host was an Apple M4 Max with 16 logical CPUs, 68719476736 bytes of
+memory, macOS 26.2, Darwin 25.2.0 arm64 (`dgsPro`), and Python 3.14.6. The
+report hardware load average equals the quiet pass start: 7.095703125,
+8.64208984375, 11.14697265625. For 12 attempts, nearest-rank p99 is the
+slowest attempt, so p99 and max are the same value in both passes. The `ps`
+interval is 50 ms. Both passes had 12 attempts, 12 successes, 0 session-read
+errors, and no HTTP 429. Maintenance `finished` increased by 1 and
+`maintenance_cadence_overlap` is true on both passes. Maintenance `failed`
+stayed 0.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 3350 | 5399 | 5399 | 522 | 71.584353 | 0.167634 | 71856 | 74064 | 0.54 | 1105 |
+| Interference | 3419 | 6795 | 6795 | 1435 | 71.587186 | 0.167628 | 74016 | 74320 | 0.53 | 1066 |
+
+Quiet RSS started at 71856 KiB and ended at 73984 KiB. Interference RSS
+started at 74016 KiB and ended at 74288 KiB. Sampler read errors were 0.
+Quiet host load went from 7.095703125, 8.64208984375, 11.14697265625 to
+6.84033203125, 8.14453125, 10.73974609375. Interference host load went from
+6.84033203125, 8.14453125, 10.73974609375 to 7.99267578125, 8.20361328125,
+10.5546875.
+
+The empty-group writer recorded 4 posts, 2 successes, 2 HTTP 409 conflicts,
+0 other errors, and 2 revision refreshes. Writer overlap is true. The
+interference-minus-quiet latency summary, in microseconds, is min 913, p50
+69, p95 1396, p99 1396, and max 1396.
+
+Server counter deltas during the passes:
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 0 | 1 |
+| logout_ssf finished | 36 | 35 |
+| mail finished | 14 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 286 | 287 |
+| deactivation finished | 286 | 287 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 340 | 345 |
+| write_wait_count | 340 | 345 |
+
+Every background `failed` delta in that window is 0. The interference
+`responses_error_total` of 2 equals the writer 409 count. The quiet
+`requests_total` of 13 is the 12 measured reads plus the closing metrics
+read. The interference `requests_total` of 20 adds the writer's opening
+revision read, 4 posts, and 2 revision refreshes.
+
+The JSON file is outside this repository:
+
+`/Users/dominik/.cache/riauth-cargo/q09-maint-c7a61c6/reports/platform-redb-maintenance.json`
+
+SHA-256 `5dee2c961051225758e6b77d24ee74b14eff94f9913d6cd1b580b7c367391a85`.
+The sibling `.stdout.json` is byte-identical. The completion line is in
+`/Users/dominik/.grok/long-running-background-tasks/q09-maint-run.log`.
+A text search of the JSON found no password and no session token.
+
+Available space on `/System/Volumes/Data` was 10143980 KiB when the command
+started and 10079144 KiB after it exited. Both readings are above 7340032 KiB.
+No `riauth-q09-` temporary directory remained. The JSON and the binary copy
+were kept. The accepted worktree and main were not edited.
+
+The limits of this observation are the single Platform redb loopback shape,
+the macOS dev-profile binary, the Cargo fingerprint's `test-support` feature,
+the host load above, and the pace inside the throughput. It assigns no load,
+recovery, or capacity target.
+
 ## Relationship to the earlier harnesses
 
 [S01 contention characterization](../../scripts/characterize-contention.sh)
@@ -272,13 +417,15 @@ Core.
 ## Remaining Q09 gate
 
 The `q09-8u-8g` macOS dev-profile runs above keep four reports and tie each
-binary hash to the build command, the dev profile, and rustc 1.98.1. Full
-publication still requires:
+binary hash to the build command, the dev profile, and rustc 1.98.1. The
+paced Platform redb `q09-2u-2g` run records one maintenance-overlap
+observation and the hash of the copied binary. Full publication still
+requires:
 
 - Linux x86-64 and Linux ARM64 packaged artifacts when a release build is the claimed artifact
 - TLS, database encryption, and external signing included when the claimed deployment uses them
-- a run long enough to overlap the 60-second maintenance cadence when the claim is about that background job; these measured passes lasted 0.017 to 0.114 seconds and recorded a maintenance `finished` delta of 0
-- a repeat of this dataset on a host whose load is the condition being studied, or on a quiet host when that is the condition; these runs recorded a one-minute load average from 10.4560546875 to 11.3759765625 on 16 cores
+- the same maintenance-overlap measurement on Essentials and on PostgreSQL; the recorded overlap is the one Platform redb `q09-2u-2g` run above, and the `q09-8u-8g` passes recorded a maintenance `finished` delta of 0
+- a repeat on a host whose load is the condition being studied, or on a quiet host when that is the condition; the paced Platform redb passes recorded a one-minute load average from 6.84033203125 to 7.99267578125, and the `q09-8u-8g` runs recorded 10.4560546875 to 11.3759765625, on 16 cores
 - no numeric load, RPO, or RTO target until a named operator workload exists
 
 The coverage inventory row for Q09 still says the benchmark gap is open. This
