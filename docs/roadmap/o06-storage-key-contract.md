@@ -58,7 +58,7 @@ Until one of those exists, this repository does not emit a storage-occupancy ser
 
 ## What remains open
 
-- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key health, and readiness unplotted.
+- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL. A disposable loopback import is recorded in [o06-grafana-loopback.md](o06-grafana-loopback.md). Connector lag, key health, and readiness stay unplotted.
 - Connector lag. A schedule can store `last_completed_at`, the local unix time when its then-current `last_job` was stored completed. That time can remain after `last_job` changes. It is not a remote high-water mark and not downstream delivery completion. `next_run` still moves when a job is enqueued. The field is on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - The occupancy and key-health contract in the sections above.

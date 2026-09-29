@@ -38,7 +38,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 
 ## What remains open
 
-- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
+- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL. A disposable loopback import is recorded in [o06-grafana-loopback.md](o06-grafana-loopback.md). Connector lag, key problems, and readiness stay unplotted.
 - Connector lag, for the reason in the section above. `last_completed_at` is local controller completion time on the reconciliation schedule. This provisioning read does not report it, and no remote watermark is stored.
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).

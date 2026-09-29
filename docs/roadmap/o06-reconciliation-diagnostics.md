@@ -37,7 +37,7 @@ The value can therefore be the completion time of an earlier `last_job`. It does
 
 ## What remains open
 
-- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL, has not been imported into Grafana, and leaves connector lag, key problems, and readiness unplotted.
+- A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL. A disposable loopback import is recorded in [o06-grafana-loopback.md](o06-grafana-loopback.md). Connector lag, key problems, and readiness stay unplotted.
 - Connector lag. `last_completed_at` is local controller completion time and can refer to an earlier `last_job`. No remote high-water mark is stored, and the field is not downstream delivery completion. `next_run` still advances when a job is enqueued. The provisioning read does not report this field; see [provisioning job diagnostics](o06-provisioning-job-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
