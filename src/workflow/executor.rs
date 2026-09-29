@@ -25,7 +25,8 @@ pub use source::SourceStart;
 pub use totp::TotpChallenge;
 pub use totp::TotpChallenge as RecoveryChallenge;
 pub(crate) use version::{
-    seal_disabled_account, seal_lost_browser_selection, seal_reviewed_run, seal_session_run,
+    seal_approved_runs, seal_disabled_account, seal_lost_browser_selection, seal_reviewed_run,
+    seal_session_run, workflow_revision_fence,
 };
 
 use super::{
@@ -176,7 +177,8 @@ struct RuntimeRun {
     authorization_response: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     credential_mutation: Option<mutation::Completed>,
-    /// Set only when the run's definition was loaded from `config.workflows`.
+    /// Set when the run's definition was loaded from an active configured entry
+    /// or from the current exact-content approval.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reviewed: Option<version::ReviewedPin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1154,22 +1156,16 @@ impl Core {
     /// The definition is loaded from validated server configuration;
     /// the caller supplies only its identifier, never actions or transitions.
     pub fn workflow_configured_start(&self, token: &str, workflow: &str) -> Result<View> {
-        let configured = self
-            .config
-            .workflows
-            .get(workflow)
-            .filter(|entry| entry.active)
-            .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
+        let definition = self.configured_definition(workflow)?;
         let registered = extension_gate::stage_binding(&self.config.workflow_extensions)
             .map_err(|_| Error::conflict("Configured workflow is unavailable"))?;
-        let mut environment = configured_environment(&configured.definition);
+        let mut environment = configured_environment(&definition);
         for (stage, guest) in &registered {
             environment
                 .stages
                 .insert(stage.clone(), guest.permissions().clone());
         }
-        let checked =
-            validate(configured.definition.clone(), &environment).map_err(invalid_error)?;
+        let checked = validate(definition, &environment).map_err(invalid_error)?;
         let extension_ok = supported_configured_extension_password(checked.definition())
             && registered
                 .values()
@@ -1200,14 +1196,8 @@ impl Core {
         workflow: &str,
         credential_id: &str,
     ) -> Result<View> {
-        let configured = self
-            .config
-            .workflows
-            .get(workflow)
-            .filter(|entry| entry.active)
-            .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
-        let checked = validate(configured.definition.clone(), &Environment::platform())
-            .map_err(invalid_error)?;
+        let definition = self.configured_definition(workflow)?;
+        let checked = validate(definition, &Environment::platform()).map_err(invalid_error)?;
         if checked.definition().id.as_str() != workflow
             || !supported_configured_passkey_removal(checked.definition())
         {
@@ -1224,14 +1214,8 @@ impl Core {
         workflow: &str,
         authorization: crate::oidc::Authorization,
     ) -> Result<View> {
-        let configured = self
-            .config
-            .workflows
-            .get(workflow)
-            .filter(|entry| entry.active)
-            .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
-        let checked = validate(configured.definition.clone(), &Environment::platform())
-            .map_err(invalid_error)?;
+        let definition = self.configured_definition(workflow)?;
+        let checked = validate(definition, &Environment::platform()).map_err(invalid_error)?;
         if !supported_configured_consent(checked.definition())
             || checked.definition().id.as_str() != workflow
         {

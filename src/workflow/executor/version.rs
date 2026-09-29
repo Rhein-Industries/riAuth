@@ -1,4 +1,4 @@
-//! Reviewed pin for runs loaded from `config.workflows`.
+//! Reviewed pin for runs loaded from `config.workflows` or an exact-content approval.
 //!
 //! The pin sits beside [`super::RuntimeRun`], not inside `RunBinding`. A seal
 //! commits only when the writer returns `Ok`: `Store::write` drops the
@@ -17,6 +17,13 @@ pub(super) struct ReviewedPin {
     pub(super) revision: u32,
     pub(super) fingerprint: String,
     pub(super) policy: String,
+    /// Approval id. Absent on an unapproved configuration pin so older rows
+    /// still compare equal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) approval: Option<String>,
+    /// Dependency digest bound into an approval. Absent on an unapproved pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) dependencies: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -56,8 +63,17 @@ fn policy_digest(active: bool, id: &str, revision: u32, fingerprint: &str) -> St
     ))
 }
 
+fn approved_policy_digest(live: &crate::workflow::approval::LiveApproval) -> String {
+    digest(&format!(
+        "{POLICY_PREFIX}\ntrue\n{}\n{}\n{}\n{}\n{}",
+        live.workflow_id, live.revision, live.fingerprint, live.id, live.dependencies
+    ))
+}
+
 /// Record the high-water when this start's definition is the active configured
-/// entry. A same-revision policy edit is not adopted. A lower revision is rejected.
+/// entry or the current approval. A same-revision policy edit is not adopted.
+/// A lower revision is rejected. An approval of the same bytes may replace the
+/// approval id on the high-water.
 pub(super) fn review_pin(
     core: &Core,
     tx: &Tx<'_>,
@@ -68,6 +84,9 @@ pub(super) fn review_pin(
         return Ok(None);
     }
     let id = checked.definition().id.as_str();
+    if crate::workflow::approval::approval_selected(tx, id)? {
+        return pin_approved(core, tx, checked);
+    }
     let Some(entry) = core.config.workflows.get(id) else {
         return Err(Error::conflict("Workflow policy changed"));
     };
@@ -86,7 +105,33 @@ pub(super) fn review_pin(
             checked.definition().revision,
             checked.fingerprint(),
         ),
+        approval: None,
+        dependencies: None,
     };
+    adopt_unapproved(tx, id, pin)
+}
+
+fn pin_approved(core: &Core, tx: &Tx<'_>, checked: &Validated) -> Result<Option<ReviewedPin>> {
+    let id = checked.definition().id.as_str();
+    let live = crate::workflow::approval::live(tx, id)?
+        .ok_or_else(|| Error::conflict("Workflow policy changed"))?;
+    if !crate::workflow::approval::selection_holds(core, tx, &live)?
+        || live.definition != *checked.definition()
+        || live.fingerprint != checked.fingerprint()
+    {
+        return Err(Error::conflict("Workflow policy changed"));
+    }
+    let pin = ReviewedPin {
+        revision: live.revision,
+        fingerprint: live.fingerprint.clone(),
+        policy: approved_policy_digest(&live),
+        approval: Some(live.id.clone()),
+        dependencies: Some(live.dependencies.clone()),
+    };
+    adopt_approved(tx, id, pin)
+}
+
+fn adopt_unapproved(tx: &Tx<'_>, id: &str, pin: ReviewedPin) -> Result<Option<ReviewedPin>> {
     match tx.get::<ReviewedPin>(REVIEWED, id)? {
         None => tx.put(REVIEWED, id, &pin)?,
         Some(stored) if stored.revision < pin.revision => tx.put(REVIEWED, id, &pin)?,
@@ -97,6 +142,45 @@ pub(super) fn review_pin(
         Some(_) => return Err(Error::conflict("Workflow version was rolled back")),
     }
     Ok(Some(pin))
+}
+
+fn adopt_approved(tx: &Tx<'_>, id: &str, pin: ReviewedPin) -> Result<Option<ReviewedPin>> {
+    match tx.get::<ReviewedPin>(REVIEWED, id)? {
+        None => tx.put(REVIEWED, id, &pin)?,
+        Some(stored) if stored.revision < pin.revision => tx.put(REVIEWED, id, &pin)?,
+        Some(stored)
+            if stored.revision == pin.revision && stored.fingerprint == pin.fingerprint =>
+        {
+            if stored != pin {
+                tx.put(REVIEWED, id, &pin)?;
+            }
+        }
+        Some(stored) if stored.revision == pin.revision => {
+            return Err(Error::conflict("Workflow policy changed"));
+        }
+        Some(_) => return Err(Error::conflict("Workflow version was rolled back")),
+    }
+    Ok(Some(pin))
+}
+
+/// Refuse an activation below the retained pin, or a same-revision fingerprint
+/// change. The same bytes may be approved again.
+pub(crate) fn workflow_revision_fence(
+    tx: &Tx<'_>,
+    id: &str,
+    revision: u32,
+    fingerprint: &str,
+) -> Result<()> {
+    let Some(stored) = tx.get::<ReviewedPin>(REVIEWED, id)? else {
+        return Ok(());
+    };
+    if revision < stored.revision {
+        return Err(Error::conflict("Workflow version was rolled back"));
+    }
+    if revision == stored.revision && stored.fingerprint != fingerprint {
+        return Err(Error::conflict("Workflow policy changed"));
+    }
+    Ok(())
 }
 
 pub(super) fn reviewed_failure(
@@ -117,6 +201,9 @@ pub(super) fn reviewed_failure(
     let user = tx.get::<User>("users", &run.record.account)?;
     if user.as_ref().is_none_or(|user| !user.enabled) {
         return Ok(Some(ReviewedFailure::UserDisabled));
+    }
+    if pin.approval.is_some() || crate::workflow::approval::approval_selected(tx, id)? {
+        return approved_pin_failure(core, tx, run, pin);
     }
     let Some(entry) = core.config.workflows.get(id) else {
         return Ok(Some(ReviewedFailure::PolicyChanged));
@@ -144,6 +231,40 @@ pub(super) fn reviewed_failure(
     {
         return Ok(Some(ReviewedFailure::PolicyChanged));
     }
+    request_failure(tx, run)
+}
+
+fn approved_pin_failure(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &RuntimeRun,
+    pin: &ReviewedPin,
+) -> Result<Option<ReviewedFailure>> {
+    let id = run.definition.id.as_str();
+    let Some(stored) = tx.get::<ReviewedPin>(REVIEWED, id)? else {
+        return Ok(Some(ReviewedFailure::PolicyChanged));
+    };
+    let Some(live) = crate::workflow::approval::live(tx, id)? else {
+        return Ok(Some(ReviewedFailure::PolicyChanged));
+    };
+    if live.revision < pin.revision || live.revision < stored.revision {
+        return Ok(Some(ReviewedFailure::RolledBack));
+    }
+    let holds = crate::workflow::approval::selection_holds(core, tx, &live)?;
+    let same = holds
+        && live.revision == pin.revision
+        && live.fingerprint == pin.fingerprint
+        && live.dependencies == pin.dependencies.as_deref().unwrap_or("")
+        && live.id == pin.approval.as_deref().unwrap_or("")
+        && &stored == pin
+        && live.definition == run.definition;
+    if !same {
+        return Ok(Some(ReviewedFailure::PolicyChanged));
+    }
+    request_failure(tx, run)
+}
+
+fn request_failure(tx: &Tx<'_>, run: &RuntimeRun) -> Result<Option<ReviewedFailure>> {
     let Some(request) = tx.get::<RequestAuthority>(REQUESTS, &run.record.request)? else {
         return Ok(Some(ReviewedFailure::PolicyChanged));
     };
@@ -334,6 +455,32 @@ pub(crate) fn seal_disabled_account(tx: &Tx<'_>, user_id: &str) -> Result<()> {
     }
     if tx.get::<AccountRuns>(ACCOUNT_RUNS, user_id)?.is_some() {
         tx.delete(ACCOUNT_RUNS, user_id)?;
+    }
+    Ok(())
+}
+
+/// Seal open pinned runs of this workflow whose pin no longer matches.
+/// Final and cancelled runs stay as they are. The account index is copied
+/// before any seal removes an id.
+pub(crate) fn seal_approved_runs(core: &Core, tx: &Tx<'_>, workflow_id: &str) -> Result<()> {
+    let ids = tx
+        .list::<AccountRuns>(ACCOUNT_RUNS)?
+        .into_iter()
+        .flat_map(|(_, index)| index.runs.into_iter())
+        .collect::<Vec<_>>();
+    for id in ids {
+        let Some(mut run) = tx.get::<RuntimeRun>(RUNS, &id)? else {
+            continue;
+        };
+        if run.record.state.is_final()
+            || run.reviewed.is_none()
+            || run.definition.id.as_str() != workflow_id
+        {
+            continue;
+        }
+        if let Some(failure) = reviewed_failure(core, tx, &run)? {
+            seal_reviewed(tx, &mut run, failure)?;
+        }
     }
     Ok(())
 }

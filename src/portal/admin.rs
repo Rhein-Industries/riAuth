@@ -204,6 +204,9 @@ fn workflow_routes() -> Router<App> {
         .route("/api/admin/workflows", get(workflows))
         .route("/api/admin/workflows/plan", post(workflow_plan))
         .route("/api/admin/workflows/apply", post(workflow_apply))
+        .route("/api/admin/workflows/review", post(workflow_review))
+        .route("/api/admin/workflows/activate", post(workflow_activate))
+        .route("/api/admin/workflows/revoke", post(workflow_revoke))
 }
 
 #[cfg(feature = "platform")]
@@ -255,6 +258,67 @@ async fn workflow_apply(
     }
     app.run(move |core| core.apply_state(&token, input).map(Json))
         .await
+}
+
+#[cfg(feature = "platform")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkflowReviewBody {
+    plan_id: String,
+    decision: String,
+}
+
+#[cfg(feature = "platform")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkflowPlanBody {
+    plan_id: String,
+}
+
+#[cfg(feature = "platform")]
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkflowRevokeBody {
+    workflow_id: String,
+}
+
+#[cfg(feature = "platform")]
+async fn workflow_review(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<WorkflowReviewBody>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| {
+        core.review_workflow(&token, &input.plan_id, &input.decision)
+            .map(Json)
+    })
+    .await
+}
+
+#[cfg(feature = "platform")]
+async fn workflow_activate(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<WorkflowPlanBody>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.activate_workflow(&token, &input.plan_id).map(Json))
+        .await
+}
+
+#[cfg(feature = "platform")]
+async fn workflow_revoke(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<WorkflowRevokeBody>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| {
+        core.revoke_workflow_approval(&token, &input.workflow_id)
+            .map(Json)
+    })
+    .await
 }
 
 pub fn browser_routes() -> Router<App> {

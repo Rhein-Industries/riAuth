@@ -50,7 +50,7 @@ Backlog items: **4 preserve · 48 extend · 37 build · 5 verify** (94). Product
 | D — Documentation and product acceptance | 5 | · | 3 | 2 | · |
 | X — Demand-driven extensions | 4 | · | · | 4 | · |
 
-Journey levels: `complete-local` 7, `module` 38, `none` 25, `partial` 23, `process` 1.
+Journey levels: `complete-local` 7, `module` 39, `none` 24, `partial` 23, `process` 1.
 
 ## Biggest verified gaps
 
@@ -242,7 +242,7 @@ Implementation and doc paths are relative to `src/` and `docs/` unless shown oth
 | W02 | Build the server-side workflow executor | P2 | **build** | `none` | No executor. Source-stage suspend/resume/expiry/cancel is the nearest precedent. | `source.rs`, `browser.rs` | `tests/source_stage.rs` | `enterprise/ENT-11.md` | Executor with retries, resumable state, explicit transitions |
 | W03 | Preserve authentication invariants | P0 | **preserve** | `complete-local` | The invariants already hold and are regression-tested: proofs are single-use and bound to request and session, cannot move between identical requests, and stages cannot invent assurance. The upstream account must match the bound link. Any workflow engine must keep these. | `signin.rs`, `browser.rs`, `session_protocol.rs`, `source.rs` | `tests/signin_core.rs`<br>`tests/browser_signin.rs`<br>`tests/source_stage.rs`<br>`tests/identity/oidc.rs` | `architecture.md`, `enterprise/ENT-11.md` | Turn into a reusable contract suite (Q02) before any workflow work |
 | W04 | Add conditional policies and claim mappings | P2 | **extend** | `module` | Per-client claim mappings, scope policies, group policy, default ACR/MFA, and required device trust exist and are rechecked at refresh, userinfo, and proxy. There is no conditional policy language (by source, freshness, or device signal combinations). | `claims.rs`, `assurance.rs`, `provider.rs`, `authorization.rs` | `tests/identity/operations.rs`<br>`tests/identity/policy.rs` | `oidc-profiles.md` | Conditional policies |
-| W05 | Version workflows safely | P2 | **build** | `none` | No workflow versioning. | — | — | — | All |
+| W05 | Version workflows safely | P2 | **build** | `module` | Configured runs pin revision, fingerprint, and policy. An exact-content approval can select one workflow-only desired-state definition through a distinct author, reviewer, and executor, with live authority, in one store write that commits the catalog row and an immutable approval. `config.toml` stays unchanged. Open runs seal on stale, revoked, or refused content, and the next run is new. This does not establish RI-WF-002. | `workflow/approval.rs`<br>`workflow/executor/version.rs`<br>`portal/admin.rs` | `tests/workflow_approval.rs` | `workflows.md`<br>`security/invariants.md` | Unapproved `config.workflows` still starts; no file rewrite or other-client disconnect; code-owned workflows stay unpinned; browser selector reads `config.workflows`; dependency digest omits the rest of the environment; sealed runs are not continued; no generic reviewer roles |
 | W06 | Add templates and a visual editor | P2 | **build** | `none` | No templates or visual editor. | — | — | — | All |
 | W07 | Define controlled extensions | P2 | **build** | `none` | No extension mechanism. `unsafe_code = forbid`; no scripting runtime. | `Cargo.toml` | — | — | All |
 

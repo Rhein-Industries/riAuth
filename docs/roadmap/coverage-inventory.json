@@ -35,8 +35,8 @@
     },
     "items_by_journey": {
       "complete-local": 7,
-      "module": 38,
-      "none": 25,
+      "module": 39,
+      "none": 24,
       "partial": 23,
       "process": 1
     },
@@ -1390,15 +1390,163 @@
         "W04"
       ],
       "label": "build",
-      "journey": "none",
-      "current_state": "No workflow versioning.",
-      "implementation": [],
-      "tests_existing": [],
-      "tests_run_in_this_task": [],
-      "documentation": [],
+      "journey": "module",
+      "current_state": "Configured runs pin revision, fingerprint, and policy. An exact-content approval can select one workflow-only desired-state definition through a distinct author, reviewer, and executor, with live authority, in one store write that commits the catalog row and an immutable approval. config.toml stays unchanged. Open runs seal on stale, revoked, or refused content, and the next run is new. This does not establish RI-WF-002.",
+      "implementation": [
+        "src/workflow/approval.rs",
+        "src/workflow/executor/version.rs",
+        "src/portal/admin.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::redb",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::redb",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::redb",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        }
+      ],
+      "tests_run_in_this_task": [
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::redb",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::redb",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::redb",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        }
+      ],
+      "documentation": [
+        "docs/workflows.md",
+        "docs/security/invariants.md"
+      ],
       "released_artifact_evidence": "No released artifact applies.",
       "gaps": [
-        "All"
+        "Unapproved config.workflows still starts",
+        "No file rewrite or other-client disconnect",
+        "Code-owned workflows stay unpinned",
+        "Browser selector reads config.workflows",
+        "Dependency digest omits the rest of the environment",
+        "Sealed runs are not continued",
+        "No generic reviewer roles",
+        "RI-WF-002 remains open"
       ],
       "unverified": []
     },

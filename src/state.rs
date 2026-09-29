@@ -183,10 +183,10 @@ pub struct Plan {
     pub review: ReviewBinding,
 }
 #[derive(schemars::JsonSchema, Serialize, Deserialize)]
-struct StoredPlan {
-    plan: Plan,
-    actor: String,
-    result: Option<Value>,
+pub(crate) struct StoredPlan {
+    pub(crate) plan: Plan,
+    pub(crate) actor: String,
+    pub(crate) result: Option<Value>,
 }
 #[derive(schemars::JsonSchema, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

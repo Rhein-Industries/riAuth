@@ -165,6 +165,13 @@ const RETAINED: &[&str] = &[
     "workflow_definitions",
     // Highest reviewed configured revision. A restored older definition must not start below it.
     "workflow_reviewed",
+    // Exact-content approval records. Restoring the catalog without them would
+    // drop the selection or let an older unapproved revision start.
+    "workflow_reviews",
+    "workflow_approvals",
+    "workflow_approval_plans",
+    "workflow_activation",
+    "workflow_revocations",
     "saml_subjects",
     "directory_users",
     "directory_bindings",

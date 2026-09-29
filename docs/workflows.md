@@ -1,6 +1,6 @@
 # Workflow definition model
 
-Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, a fail-closed reviewed pin for configured runs, W06 Platform authoring, and a held W07 extension contract.**
+Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, a fail-closed reviewed pin for configured runs, exact-content approval of one configured definition, W06 Platform authoring, and a held W07 extension contract.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 password, passkey and OIDC/SAML source reauthentication, plus request-bound
 configured OIDC consent, for a live bearer session.
@@ -1293,7 +1293,8 @@ definition is that entry, stores a reviewed pin beside `RunBinding`. The pin
 holds the definition revision, the definition fingerprint, and a policy digest.
 The digest is the SHA-256 hex of `riauth.workflow-reviewed/v1`, the active flag
 (`true` or `false`), the workflow id, the revision, and the fingerprint, each
-on its own line. `RunBinding` equality remains the definition id, revision,
+on its own line. An unapproved pin omits the approval id and dependency digest.
+`RunBinding` equality remains the definition id, revision,
 fingerprint, optional source registration, and optional `extension_sha256`.
 
 `workflow_reviewed` keeps the highest adopted pin for that workflow id and is
@@ -1326,7 +1327,7 @@ authorization code, or consent. A mismatched interaction binding is rejected
 without sealing. A stale pin is sealed first and keeps `Workflow policy changed`,
 `Workflow version was rolled back`, or `Workflow account is disabled`. Reading
 interaction state does not seal the run.
-The stored failure is `policy_changed`
+For an unapproved pin, the stored failure is `policy_changed`
 (`Workflow policy changed`) when the snapshot disagrees with the pin, the
 configured entry is missing or inactive, the live revision is higher, the live
 fingerprint or policy digest differs, the retained pin is missing or differs,
@@ -1346,9 +1347,9 @@ Code-owned revisions stay unpinned. That includes the shipped password, passkey,
 source reauthentication, invitation, and password-reset workflows. The pin is
 recorded only for configured start, configured passkey removal, configured
 consent, browser OIDC consent starts, and configured source-first passkey
-enrollment. The executor still
-selects active definitions from `config.toml`, not from the persisted
-`workflow_definitions` store.
+enrollment. With no activation pointer, the executor selects the active
+definition from `config.toml`. The `workflow_definitions` catalog stays unused
+for that selection.
 
 This executor matches `roadmap/w02-configured-executor-wave15` at
 `06b9793a943d2d0ab15c8990a009449f346adc33`: `RuntimeRun` and
@@ -1377,6 +1378,97 @@ runtime-executor tree, `close` untracks the account index if this slice is
 ported, and `workflow_password`, `workflow_resume`, and `workflow_cancel` use
 the same guards. Client fingerprints remain that tree's client-policy pins;
 this slice also seals when those fingerprints change.
+
+## Exact-content approval
+
+An activation pointer selects the definition embedded in its immutable approval
+for configured start, configured passkey removal, configured consent, configured
+source-first passkey enrollment, and browser consent start. The operator file
+stays unchanged. When `config.workflows` still names that id, the entry has to
+be active and byte-equal to the approved definition; any other entry refuses
+review, activation, and start with `Workflow configuration diverges from the
+approved definition`. A catalog row that differs at the same revision refuses
+activation with `Workflow store diverges from the approved definition` and
+rolls that write back. Once an approval is current, a catalog row that no
+longer matches makes a later verifier seal the open run as `policy_changed`. Omitting the id from `config.workflows`
+leaves the stored approval as the selection, including after `Core::open`.
+
+The author records a desired-state plan with exactly one workflow and empty
+users, groups, clients, sources, source links, and delegated grants. A second
+enabled administrator approves or refuses that stored plan. A third enabled
+administrator activates an approval. The three parties are distinct, non-agent,
+and non-delegated. Each authority digest is the live review binding of that
+administrator. A disabled party, a party who is no longer an administrator, or
+a changed digest refuses with `Workflow approval authority changed` before the
+plan base revision is compared. An agent caller is forbidden. The portal routes
+are `POST /api/admin/workflows/review` (`plan_id`, `decision`),
+`POST /api/admin/workflows/activate` (`plan_id`), and
+`POST /api/admin/workflows/revoke` (`workflow_id`), under the same same-origin
+writer guard as plan and apply. Configured execution stays
+`POST /api/workflows/configured/{workflow}`.
+
+Review and activation require the plan hash to match its content digest. A
+mutated plan returns `Plan was modified; create a new plan` and writes no
+review. Approve writes an immutable `workflow_reviews` row and leaves
+`meta.revision` unchanged. Refuse writes that same immutable review. When the
+catalog row equals the refused proposal and is not the current live approval,
+refuse restores the plan's previous catalog value in that write and then bumps
+`meta.revision`. Activating a refused plan returns `Workflow review was refused`.
+
+Activation writes `workflow_definitions`, `workflow_approvals`,
+`workflow_approval_plans`, and `workflow_activation` in one `store.write`.
+Those buckets, plus `workflow_reviews` and `workflow_revocations`, are retained
+across restore. The approval row stays immutable. Repeating activate for the
+same executor, while the pointer still names that approval, returns the stored
+approval and leaves `meta.revision` unchanged. A revoked or replaced pointer
+stays retired: the same plan returns `Workflow approval already exists`. The
+response selection is `approved-definition` and `configuration_file` is
+`unchanged`. The writer lock is the existing redb lock or PostgreSQL advisory
+lock. Other clients stay connected, and `config.toml` stays unchanged.
+
+The approved policy digest appends the approval id and the dependency digest
+to the five unapproved lines, with the active flag forced to `true`. The
+dependency digest is the SHA-256 hex of `riauth.workflow-approval-dependencies/v1`,
+`profile=platform`, the supported adapter label, then `sources=none` or one
+sorted line per referenced source (`source={id}` plus the SHA-256 of that
+source record), then `extension=none` or one line per custom stage
+(`extension={stage}`, the guest module hash, and its permissions). A disabled
+or missing referenced source, or a missing extension stage, refuses. Sources
+and extensions the graph does not use stay outside the digest. The digest
+covers the platform profile, the adapter, those source records, and those
+extension modules.
+
+A higher approved revision replaces the high-water and seals open pinned runs
+for that id as `policy_changed`. The same revision and fingerprint may be
+approved again. The new approval id replaces the high-water, and the open run
+still seals because its stored approval id differs. A revision below the
+retained pin returns `Workflow version was rolled back` and writes no pointer.
+After an approval exists for an id, a higher `config.workflows` revision does
+not start a run. An unapproved open run whose id later gains any approval seals
+as `policy_changed` even when the definition bytes match.
+
+Revocation writes an immutable `workflow_revocations` row, deletes the
+activation pointer, leaves the approval row in place, seals open pinned runs,
+and bumps `meta.revision`. A finished or cancelled run stays in that state.
+With the pointer gone and no `config.workflows` entry, a new start returns
+`Configured workflow is unavailable`. The same revision can start from
+configuration again only after a higher revision replaces the high-water, or
+after a new approval of those bytes is activated.
+
+Changed content leaves the sealed run closed and leaves its evidence unused.
+The next execution is a new run of the approved definition and collects its own
+proofs. Cancellation stays `cancelled`. A password call on a run that
+activation already sealed returns `Workflow run is already final`. A password
+call on a run that is still open, after configuration diverges, returns
+`Workflow policy changed`, commits the denial, and adds no evidence.
+
+Browser selector usability still reads `config.workflows`. A run missing from
+`workflow_account_runs` seals on its next verifier call. Same-actor
+`apply_state` can still change `workflow_definitions`; that write is checked
+against the approval. The activation pointer stays the selector. Idempotent activate of a pointer
+that is still current returns the stored approval after a party is later
+disabled, while a new start then fails with `Workflow policy changed`. This
+approval does not establish RI-WF-002.
 
 ## Left to later work
 
@@ -1411,12 +1503,12 @@ These are not implemented or established by this slice:
 * Binding the remaining security dependencies. `RunBinding` covers the
   definition's ID, revision and fingerprint. New source-verifier runs also pin
   the live source registration, and a guest run pins `extension_sha256` of the
-  module that started it. Configured runs loaded from `config.workflows` store
-  a reviewed pin beside that binding, as described above. The rest of the
-  `Environment`, and the approval record RI-WF-002 requires, remain unbound.
-  The source receipt separately pins its explicit account link. Safe resume of
-  changed content, code-owned revisions outside `config.workflows`, and broader
-  dependency binding remain.
+  module that started it. Configured runs store a reviewed pin beside that
+  binding. An activated approval also binds the dependency digest described
+  above. The rest of the `Environment` stays outside that digest. The source
+  receipt separately pins its explicit account link. Continuation of a sealed
+  run, code-owned revisions outside `config.workflows`, and broader dependency
+  binding remain.
 * End-to-end invariant and race tests for the remaining verifier integrations
   across both durable backends. The shared
   [`invitation_passkey_bound_competing_completion` contract](../tests/contracts/shared.rs)
@@ -1445,8 +1537,9 @@ These are not implemented or established by this slice:
   assurance, rejection of untrusted upstream MFA, mandatory local factors and
   source-link revocation, with complete transaction rollback snapshots.
   Those other workflow executor paths still lack shared PostgreSQL evidence.
-* Management API as the executor's selection source, desired-state and the
-  persisted `workflow_definitions` store as that source, versioned multi-party
-  approval and safe resume, the editor and templates, extensions beyond the
-  existing guest gate, and product capability reporting or gating. The executor
-  still reads active definitions from `config.toml`.
+* The editor and templates, extensions beyond the existing guest gate, and
+  product capability reporting or gating. Desired-state apply remains a
+  same-actor catalog write. It becomes the executed definition through the
+  review and activation above. Unapproved `config.workflows` entries are still
+  selected from `config.toml`. Generic reviewer and executor roles, a
+  stopped-writer rewrite of that file, and multi-process exclusion remain.

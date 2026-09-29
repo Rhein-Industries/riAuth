@@ -12,6 +12,8 @@ use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, fmt};
 
+#[cfg(feature = "platform")]
+pub(crate) mod approval;
 mod essentials;
 #[cfg(feature = "platform")]
 pub(crate) mod evidence;
