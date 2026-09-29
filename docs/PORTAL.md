@@ -280,6 +280,22 @@ not an external mailbox. The viewport is CSS only, and this is not a screen
 reader. Hardware authenticators, synced passkeys, a phone hybrid, real mobile
 devices, screen readers, and external email remain open, and this Playwright
 project is not a CI job.
+`tools/browser/invitation-password.spec.js` is a separate headless journey on
+the same 390×844 CSS viewport. Chromium, Firefox, and WebKit each use the
+fixture's loopback SMTP capture and do not install a virtual authenticator.
+From the keyboard, an expired invitation submitted as a password reports that
+it has expired, hides both forms, and creates no session. Accepting the
+password invitation returns `completed` and `login_required`, sets no session
+cookie, and leaves `GET /api/portal` unauthorized. Opening that same link
+again reports that it was already used. The new password signs in, and signing
+out removes the session. The journey does not post to the invitation passkey
+endpoints, so a visible passkey choice stays unused. Passkey acceptance stays
+in `tools/browser/invitation-passkey.spec.js` and remains Chromium-only. The
+viewport is CSS only, and this is not a screen reader. The capture is the
+fixture's loopback SMTP listener, not an external mailbox. Hardware
+authenticators, synced passkeys, a phone hybrid, real mobile devices, screen
+readers, and external email remain open, and this Playwright project is not
+a CI job.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 
