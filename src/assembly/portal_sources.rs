@@ -100,7 +100,7 @@ impl Core {
             let (user, session) = self.portal_session(tx, sso)?;
             let sources = browser_sources(tx)?;
             let all = tx.list::<Source>("sources")?;
-            let links = crate::source::links_of(tx, &user.id)?
+            let links = super::source_catalog::source_links_of(tx, &user.id)?
                 .into_iter()
                 .map(|mut link| {
                     let name = all

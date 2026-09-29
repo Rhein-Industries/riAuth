@@ -471,9 +471,32 @@ fn source_links_keeps_session_scope_and_public_projection() {
                 "source_links",
                 "bob-link",
                 &json!({"source":"corp", "issuer":issuer, "subject":"bob-upstream", "user_id":bob_id}),
+            )?;
+            tx.put(
+                "source_links",
+                "alice-link-two",
+                &json!({"source":"corp", "issuer":issuer, "subject":"alice-upstream-two", "user_id":alice_id}),
             )
         })
         .unwrap();
+    let browser_cookie = |username: &str| {
+        fixture
+            .core
+            .portal_password(None, username.into(), common::PASSWORD.into(), None, false)
+            .unwrap()
+            .cookies
+            .into_iter()
+            .find_map(|cookie| {
+                cookie
+                    .split(';')
+                    .next()?
+                    .strip_prefix("riauth_sso=")
+                    .map(str::to_owned)
+            })
+            .unwrap()
+    };
+    let alice_browser = browser_cookie("alice");
+    let bob_browser = browser_cookie("bob");
     let before = fixture.snapshot().unwrap();
 
     assert_eq!(
@@ -485,18 +508,47 @@ fn source_links_keeps_session_scope_and_public_projection() {
         "invalid_token"
     );
     assert_eq!(
+        fixture.core.portal_source_links(None).unwrap_err().code,
+        "invalid_token"
+    );
+    assert_eq!(
         fixture.core.source_links(&fixture.admin).unwrap(),
         json!([])
     );
     let alice_links = fixture.core.source_links(&alice).unwrap();
     assert_eq!(
         alice_links,
-        json!([{"id":"alice-link", "source":"corp", "issuer":issuer, "subject":"alice-upstream"}])
+        json!([
+            {"id":"alice-link", "source":"corp", "issuer":issuer, "subject":"alice-upstream"},
+            {"id":"alice-link-two", "source":"corp", "issuer":issuer, "subject":"alice-upstream-two"}
+        ])
     );
     assert!(!alice_links.to_string().contains(SECRET));
     assert_eq!(
         fixture.core.source_links(&bob).unwrap(),
         json!([{"id":"bob-link", "source":"corp", "issuer":issuer, "subject":"bob-upstream"}])
+    );
+    let alice_page = fixture
+        .core
+        .portal_source_links(Some(&alice_browser))
+        .unwrap();
+    assert_eq!(alice_page["user"]["id"], alice_id);
+    assert_eq!(
+        alice_page["links"],
+        json!([
+            {"id":"alice-link", "source":"corp", "issuer":issuer, "subject":"alice-upstream", "name":"Corporate source"},
+            {"id":"alice-link-two", "source":"corp", "issuer":issuer, "subject":"alice-upstream-two", "name":"Corporate source"}
+        ])
+    );
+    assert!(!alice_page.to_string().contains(SECRET));
+    let bob_page = fixture
+        .core
+        .portal_source_links(Some(&bob_browser))
+        .unwrap();
+    assert_eq!(bob_page["user"]["id"], bob_id);
+    assert_eq!(
+        bob_page["links"],
+        json!([{"id":"bob-link", "source":"corp", "issuer":issuer, "subject":"bob-upstream", "name":"Corporate source"}])
     );
     fixture.assert_snapshot(&before);
 

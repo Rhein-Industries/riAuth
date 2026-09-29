@@ -1102,15 +1102,6 @@ impl Core {
     }
 }
 
-/// The upstream accounts linked to a user.
-pub(crate) fn links_of(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
-    Ok(tx
-        .list::<Link>("source_links")?
-        .into_iter()
-        .filter(|(_, l)| l.user_id == user_id)
-        .map(|(id, l)| json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject}))
-        .collect())
-}
 pub(crate) fn enabled(tx: &Tx<'_>, id: &str) -> Result<Source> {
     tx.get::<Source>("sources", id)?
         .filter(|s| s.enabled)

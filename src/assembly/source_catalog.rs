@@ -4,10 +4,20 @@ use crate::{
     core::Core,
     crypto::digest,
     error::Result,
-    source::{Login, Source, SourceInput, Start},
+    source::{Link, Login, Source, SourceInput, Start},
     store::Tx,
 };
 use serde_json::{Value, json};
+
+/// The upstream accounts linked to a user, in storage iteration order.
+pub(crate) fn source_links_of(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
+    Ok(tx
+        .list::<Link>("source_links")?
+        .into_iter()
+        .filter(|(_, l)| l.user_id == user_id)
+        .map(|(id, l)| json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject}))
+        .collect())
+}
 
 impl Core {
     pub fn source_put(&self, token: &str, input: SourceInput) -> Result<Value> {
@@ -56,7 +66,7 @@ impl Core {
     pub fn source_links(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let (user, _) = self.session(tx, token)?;
-            Ok(json!(crate::source::links_of(tx, &user.id)?))
+            Ok(json!(source_links_of(tx, &user.id)?))
         })
     }
 

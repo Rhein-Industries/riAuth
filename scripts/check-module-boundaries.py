@@ -895,13 +895,37 @@ def main() -> None:
                 or source_links is None
                 or not re.search(r"\.\s*store\s*\.\s*read\s*\(", source_links)
                 or not (0 <= source_links.find("self.session")
-                        < source_links.find("source::links_of"))
+                        < source_links.find("source_links_of"))
                 or source_links_raw is None
                 or not re.search(r"\bpub\s+fn\s+source_links\s*\(", source_catalog)
                 or not re.search(r"self\.session\s*\(\s*tx\s*,\s*token\s*\)\s*\?", source_links_raw)
-                or not re.search(r"source::links_of\s*\(\s*tx\s*,\s*&user\.id\s*\)\s*\?", source_links_raw)
+                or not re.search(r"source_links_of\s*\(\s*tx\s*,\s*&user\.id\s*\)\s*\?", source_links_raw)
             ):
                 errors.append("src/source.rs: session-scoped source link read belongs in assembly")
+            link_projection = rust_function_body(source_catalog, "source_links_of")
+            link_projection_compact = re.sub(r"\s+", "", link_projection or "")
+            portal_links = rust_function_body(
+                (SRC / "assembly/portal_sources.rs").read_text(), "portal_source_links"
+            )
+            portal_links_compact = re.sub(r"\s+", "", portal_links or "")
+            if (
+                rust_function_body(source_protocol, "links_of") is not None
+                or link_projection is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_links_of\s*\(", source_catalog)
+                or not (0 <= link_projection_compact.find('tx.list::<Link>("source_links")?')
+                        < link_projection_compact.find(".filter(|(_,l)|l.user_id==user_id)")
+                        < link_projection_compact.find('json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject})')
+                        < link_projection_compact.find(".collect())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(|\.sort", link_projection)
+                or portal_links is None
+                or not (0 <= portal_links_compact.find("self.store.read(|tx|")
+                        < portal_links_compact.find("self.portal_session(tx,sso)?")
+                        < portal_links_compact.find("browser_sources(tx)?")
+                        < portal_links_compact.find('tx.list::<Source>("sources")?')
+                        < portal_links_compact.find("super::source_catalog::source_links_of(tx,&user.id)?")
+                        < portal_links_compact.find('link["name"]=json!(name.unwrap_or_else('))
+            ):
+                errors.append("src/source.rs: source link storage projection belongs in assembly")
             source_stage_assembly = (SRC / "assembly/source_stage.rs").read_text()
             pending_stage = rust_function_body(source_stage_assembly, "enforce_pending_stage")
             pending_compact = re.sub(r"\s+", "", pending_stage or "")
