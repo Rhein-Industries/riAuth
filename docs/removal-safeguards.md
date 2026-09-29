@@ -121,15 +121,28 @@ groups, PAM approvers, directory configuration, or capabilities change. A
 supplied If-Match must be the current management revision. Repeating the same
 idempotency key and fingerprint returns the stored result. A different If-Match
 or body returns `Idempotency key was used for a different request`. Manifests
-that name another resource family, and manifests with
-`target_state_fingerprint`, still compare the global revision. Removal
+that name another resource family, other than one client display-name change,
+and manifests with `target_state_fingerprint`, still compare the global
+revision. Removal confirmation is unchanged.
+
+A manifest that names one existing client and changes only its display name
+stores a client dependency digest with its base revision. An unrelated audited
+write may advance `meta.revision` while that plan remains usable. The client
+record, its credential version, the signing key it uses, issuer ownership,
+referenced policy groups and users, referenced sources, listener bindings, and
+device-trust configuration invalidate it with `Desired-state client name
+dependencies changed`. A client that a proxy, LDAP, or RADIUS listener already
+names stays on the global revision, because those listeners read file-backed
+secrets. A supplied If-Match must be the current management revision. The same
+idempotency key and fingerprint return the stored result. Scope, credential,
+endpoint, status, and policy edits stay on the global revision, and removal
 confirmation is unchanged.
 
 | Path | Snapshot checks | Destructive boundary |
 | --- | --- | --- |
 | LDAP users and mapped memberships | Critical paged-results control on every page; successful completion; bounded cookies, pages, rows, bytes and time; no referrals, duplicate DNs or stable IDs | Apply resumes a durable plan-bound crawl, checks exact completed entries, plan content, current authority, configuration and local revision, recomputes impact and requires confirmation before reconciliation |
 | Workspace/Entra users, groups and members | Required collection shape; unique IDs across pages; bounded pages, rows, bytes and time; no empty continuation pages or repeated cursors; exact totals, when supplied, must agree and complete; next links stay on the same collection and origin | Same apply checks as LDAP; existing tenant and stable-identity ownership checks remain |
-| Desired-state named resources | Explicit manifest resources only; omission leaves them unchanged | Apply recomputes disable and membership impact before the first mutation, validates exact content and current actor authority, then commits atomically. Group-only manifests accept an unrelated management revision when membership, member identity, ownership, and membership policy still match; every other manifest still requires the global revision. |
+| Desired-state named resources | Explicit manifest resources only; omission leaves them unchanged | Apply recomputes disable and membership impact before the first mutation, validates exact content and current actor authority, then commits atomically. Group-only manifests accept an unrelated management revision when membership, member identity, ownership, and membership policy still match. A single existing client's display-name change accepts an unrelated management revision when its credential, signing key, policy references, and issuer ownership still match. Every other manifest still requires the global revision. |
 | Outbound SCIM filtered lookup | Explicit Resources array and exact totalResults; at most one matching externalId; optional startIndex must be 1 and itemsPerPage must match; continuation/error responses fail | No POST/PATCH or successful item advancement from incomplete lookup; a missing previously linked resource requires inspection |
 | Outbound SCIM group/user update | Complete bounded, unique member-value arrays before membership replacement, and before accepting a group as already up to date whenever it has reviewed managed or desired members (an omitted, `null` or paginated `members` field never counts as empty); the post-write read-back must report the same explicit membership; explicit boolean active state before disabling | Remote member removals must belong to the exact reviewed previous managed link; unexpected remote membership and omission of retained managed members fail closed. ETags protect the conditional PATCH. Authority, revision and lease are checked again before dispatch |
 

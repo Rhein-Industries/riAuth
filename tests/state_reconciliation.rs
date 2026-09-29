@@ -1,4 +1,4 @@
-//! Focused desired-state controller, removal review, and group dependency checks.
+//! Focused desired-state controller, removal review, and dependency checks.
 #[path = "common/mod.rs"]
 mod common;
 
@@ -17,7 +17,7 @@ use riauth::{
     state::{ApplyRequest, GroupSpec, Manifest, Plan},
 };
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, net::IpAddr};
 use tower::ServiceExt;
 
 fn manifest(value: serde_json::Value) -> Manifest {
@@ -894,5 +894,429 @@ async fn group_desired_state_http_replays_the_same_request() {
     assert_eq!(opened, applied);
     assert_eq!(receipts(&f), 1);
     assert_eq!(audits(&f, "group.reconcile"), reconciles + 1);
+    drop(app);
+}
+
+fn client_record(f: &Fixture, id: &str) -> riauth::model::Client {
+    f.core.store.get("clients", id).unwrap().unwrap()
+}
+
+fn client_manifest(
+    f: &Fixture,
+    id: &str,
+    name: &str,
+    scopes: Option<BTreeSet<String>>,
+) -> Manifest {
+    let client = client_record(f, id);
+    let scopes = scopes.unwrap_or_else(|| client.scopes.clone());
+    manifest(json!({
+        "api_version": "riauth/v1",
+        "clients": [{
+            "client_id": client.id,
+            "name": name,
+            "confidential": client.confidential(),
+            "service": client.service,
+            "enabled": client.enabled,
+            "redirect_uris": client.redirect_uris,
+            "scopes": scopes,
+            "allowed_groups": client.allowed_groups,
+            "require_mfa": client.require_mfa,
+            "settings": client.settings,
+            "secret_ref": null,
+            "secret_version": null
+        }]
+    }))
+}
+
+#[test]
+fn client_name_desired_state_keeps_credentials_policy_and_authority() {
+    let mut f = Fixture::new();
+    f.user("alice");
+    f.user("stranger");
+    f.client("portal", false);
+    f.core.create_group(&f.admin, "readers").unwrap();
+    // Preview reconciliation writes the client, so a bound listener is accepted
+    // only when that client already has an eligible LDAP policy. The binding
+    // still leaves this plan on the global revision.
+    let mut portal = client_record(&f, "portal");
+    portal.settings.ldap = Some(riauth::ldap_server::Settings {
+        base_dn: "dc=riauth,dc=test".into(),
+        search_groups: BTreeSet::from(["readers".into()]),
+    });
+    f.core
+        .store
+        .write(|tx| tx.put("clients", "portal", &portal))
+        .unwrap();
+    f.core.config.ldap_listeners.insert(
+        "local".into(),
+        riauth::ldap_server::Listener {
+            listen: "127.0.0.1:1389".parse().unwrap(),
+            client_id: "portal".into(),
+            allowed_peers: BTreeSet::from([IpAddr::from([127, 0, 0, 1])]),
+            tls_cert_file: None,
+            tls_key_file: None,
+            ldaps: false,
+            local_unencrypted: true,
+        },
+    );
+    let bound = f
+        .core
+        .plan_state(&f.admin, client_manifest(&f, "portal", "Bound", None))
+        .unwrap();
+    assert!(bound.client_dependencies.is_none());
+    assert!(bound.group_dependencies.is_none());
+    rename(&f, "stranger", "Unrelated");
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&bound)),
+        "Connector plan expired or source configuration or local revision changed; create a new plan",
+    );
+    f.core.config.ldap_listeners.clear();
+
+    let mut portal = client_record(&f, "portal");
+    portal.allowed_groups.insert("readers".into());
+    f.core
+        .store
+        .write(|tx| tx.put("clients", "portal", &portal))
+        .unwrap();
+    let plan = f
+        .core
+        .plan_state(&f.admin, client_manifest(&f, "portal", "Portal", None))
+        .unwrap();
+    assert!(
+        plan.client_dependencies
+            .as_ref()
+            .is_some_and(|digest| !digest.is_empty())
+    );
+    assert!(plan.group_dependencies.is_none());
+    assert_eq!(plan.removal_impact.disabled_clients, 0);
+    assert!(!plan.removal_impact.review_required);
+    f.core.create_group(&f.admin, "extras").unwrap();
+    assert!(revision(&f) > plan.base_revision);
+    refused(
+        &f,
+        || {
+            context::scope(
+                Some(RequestContext {
+                    idempotency_key: Some("client-stale".into()),
+                    fingerprint: "client-stale".into(),
+                    revision: Some(plan.base_revision),
+                    ..Default::default()
+                }),
+                || f.core.apply_state(&f.admin, request(&plan)),
+            )
+        },
+        "Configuration revision changed",
+    );
+    assert_eq!(receipts(&f), 0);
+
+    let saved_keys: riauth::crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let mut rotated = saved_keys.clone();
+    rotated.active.kid.push_str("-rotated");
+    f.core
+        .store
+        .write(|tx| tx.put("meta", "keys", &rotated))
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state client name dependencies changed",
+    );
+    f.core
+        .store
+        .write(|tx| tx.put("meta", "keys", &saved_keys))
+        .unwrap();
+
+    let saved = client_record(&f, "portal");
+    let mut hashed = saved.clone();
+    hashed.secret_hash = Some("rotated-secret-hash".into());
+    f.core
+        .store
+        .write(|tx| tx.put("clients", "portal", &hashed))
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state client name dependencies changed",
+    );
+    f.core
+        .store
+        .write(|tx| tx.put("clients", "portal", &saved))
+        .unwrap();
+
+    f.core
+        .group_member(&f.admin, "readers", "alice", true)
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&plan)),
+        "Desired-state client name dependencies changed",
+    );
+    f.core
+        .group_member(&f.admin, "readers", "alice", false)
+        .unwrap();
+
+    let mut tampered = plan.clone();
+    tampered.client_dependencies = Some("tampered".into());
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&tampered)),
+        "Plan was modified; create a new plan",
+    );
+    let original: Value = f.core.store.get("plans", &plan.plan_id).unwrap().unwrap();
+    let mut raw = original.clone();
+    raw["plan"]["manifest"]["users"] = json!([{
+        "username": "alice",
+        "display_name": "Test User",
+        "email": "alice@example.test"
+    }]);
+    f.core
+        .store
+        .write(|tx| tx.put("plans", &plan.plan_id, &raw))
+        .unwrap();
+    let stored: Value = f.core.store.get("plans", &plan.plan_id).unwrap().unwrap();
+    let mutated: Plan = serde_json::from_value(stored["plan"].clone()).unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&mutated)),
+        "Desired-state client name dependencies do not match this manifest",
+    );
+    f.core
+        .store
+        .write(|tx| tx.put("plans", &plan.plan_id, &original))
+        .unwrap();
+
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "client-planner".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "client.write".into(),
+                    resource: "client/portal".into(),
+                }],
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let delegated = f
+        .core
+        .plan_state(&agent, client_manifest(&f, "portal", "Delegated", None))
+        .unwrap();
+    assert!(delegated.client_dependencies.is_some());
+    let record: riauth::agent::Agent = f
+        .core
+        .store
+        .get("agents", "client-planner")
+        .unwrap()
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut cleared = record.clone();
+            cleared.permissions.clear();
+            tx.put("agents", "client-planner", &cleared)
+        })
+        .unwrap();
+    refused(
+        &f,
+        || f.core.apply_state(&agent, request(&delegated)),
+        "Connector plan content or authority changed; create and review a new plan",
+    );
+
+    let scopes = BTreeSet::from(["openid".to_string(), "profile".to_string()]);
+    let legacy = f
+        .core
+        .plan_state(
+            &f.admin,
+            client_manifest(&f, "portal", "portal", Some(scopes)),
+        )
+        .unwrap();
+    assert!(legacy.client_dependencies.is_none());
+    assert!(legacy.group_dependencies.is_none());
+    rename(&f, "stranger", "Still unrelated");
+    refused(
+        &f,
+        || f.core.apply_state(&f.admin, request(&legacy)),
+        "Connector plan expired or source configuration or local revision changed; create a new plan",
+    );
+
+    let renamed = client_manifest(&f, "portal", "Shifted", None);
+    let first = f.core.state_reconcile(&f.admin, renamed.clone()).unwrap();
+    assert_eq!(first["decision"], "awaiting_review");
+    assert_eq!(first["reason"], "manual_mode");
+    assert!(first["plan"]["client_dependencies"].as_str().is_some());
+    let base = first["plan"]["base_revision"].as_u64().unwrap();
+    rename(&f, "stranger", "Moved");
+    assert!(revision(&f) > base);
+    let second = f.core.state_reconcile(&f.admin, renamed.clone()).unwrap();
+    assert_eq!(second["plan"]["plan_id"], first["plan"]["plan_id"]);
+    // A secret hash would also change confidentiality, which desired-state
+    // refuses as a client-type change. Rotate the signing key instead so the
+    // controller must mint a new plan without leaving the name-only shape.
+    let saved_keys: riauth::crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let mut rotated = saved_keys.clone();
+    rotated.active.kid.push_str("-shifted");
+    f.core
+        .store
+        .write(|tx| tx.put("meta", "keys", &rotated))
+        .unwrap();
+    let third = f.core.state_reconcile(&f.admin, renamed).unwrap();
+    assert_ne!(third["plan"]["plan_id"], first["plan"]["plan_id"]);
+    f.core
+        .store
+        .write(|tx| tx.put("meta", "keys", &saved_keys))
+        .unwrap();
+    assert_eq!(client_record(&f, "portal").name, "portal");
+    let shift_plan: Plan = serde_json::from_value(first["plan"].clone()).unwrap();
+    let reconciles = audits(&f, "client.reconcile");
+    let applied = f.core.apply_state(&f.admin, request(&shift_plan)).unwrap();
+    assert_eq!(applied["applied"], true);
+    assert_eq!(client_record(&f, "portal").name, "Shifted");
+    assert_eq!(audits(&f, "client.reconcile"), reconciles + 1);
+    assert_eq!(
+        f.core.apply_state(&f.admin, request(&shift_plan)).unwrap(),
+        applied
+    );
+    assert_eq!(receipts(&f), 0);
+}
+
+#[tokio::test]
+async fn client_name_desired_state_http_replays_the_same_request() {
+    let f = Fixture::new();
+    f.user("stranger");
+    f.client("portal", false);
+    let plan = f
+        .core
+        .plan_state(&f.admin, client_manifest(&f, "portal", "Portal", None))
+        .unwrap();
+    assert!(plan.client_dependencies.is_some());
+    rename(&f, "stranger", "Unrelated");
+    let live = revision(&f);
+    assert!(live > plan.base_revision);
+    let app = riauth::api::router(f.core.clone());
+    let body = apply_json(&plan, None);
+    let (status, stale) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(plan.base_revision),
+        Some("client-stale"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(stale["error_description"], "Configuration revision changed");
+    assert_eq!(receipts(&f), 0);
+
+    let saved_keys: riauth::crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let mut rotated = saved_keys.clone();
+    rotated.active.kid.push_str("-rotated");
+    f.core
+        .store
+        .write(|tx| tx.put("meta", "keys", &rotated))
+        .unwrap();
+    let (status, denied) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(live),
+        Some("client-deny"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        denied["error_description"],
+        "Desired-state client name dependencies changed"
+    );
+    assert_eq!(receipts(&f), 0);
+    f.core
+        .store
+        .write(|tx| tx.put("meta", "keys", &saved_keys))
+        .unwrap();
+    assert_eq!(revision(&f), live);
+
+    let reconciles = audits(&f, "client.reconcile");
+    let applies = audits(&f, "state.apply");
+    let (status, applied) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(live),
+        Some("client-once"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(applied["applied"], true);
+    assert_eq!(applied["revision"].as_u64().unwrap(), live + 1);
+    assert_eq!(client_record(&f, "portal").name, "Portal");
+    assert_eq!(audits(&f, "client.reconcile"), reconciles + 1);
+    assert_eq!(audits(&f, "state.apply"), applies + 1);
+    assert_eq!(receipts(&f), 1);
+    let (status, replayed) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(live),
+        Some("client-once"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed, applied);
+    assert_eq!(audits(&f, "client.reconcile"), reconciles + 1);
+    assert_eq!(receipts(&f), 1);
+    let (status, other_body) = call(
+        &app,
+        &f.admin,
+        apply_json(&plan, Some("other")),
+        Some(live),
+        Some("client-once"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        other_body["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh_stale) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(live),
+        Some("client-fresh"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        fresh_stale["error_description"],
+        "Configuration revision changed"
+    );
+    assert_eq!(receipts(&f), 1);
+    let current = revision(&f);
+    let (status, again) = call(
+        &app,
+        &f.admin,
+        body.clone(),
+        Some(current),
+        Some("client-current"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(again, applied);
+    assert_eq!(audits(&f, "client.reconcile"), reconciles + 1);
+    assert_eq!(receipts(&f), 1);
+    drop(app);
+    let f = f.reopen_with(|_| {});
+    let app = riauth::api::router(f.core.clone());
+    let (status, opened) = call(&app, &f.admin, body, Some(live), Some("client-once")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(opened, applied);
+    assert_eq!(receipts(&f), 1);
+    assert_eq!(audits(&f, "client.reconcile"), reconciles + 1);
+    assert_eq!(client_record(&f, "portal").name, "Portal");
     drop(app);
 }

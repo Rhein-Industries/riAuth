@@ -131,10 +131,14 @@ pub struct Plan {
     pub issuer: String,
     pub base_revision: u64,
     /// Membership, member identity, ownership, and membership policy for a
-    /// group-only manifest. Absent on every other plan, which still compares
-    /// `base_revision` with `meta.revision`.
+    /// group-only manifest. Absent unless the manifest is group-only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_dependencies: Option<String>,
+    /// Signing key, client credential, referenced policy objects, and issuer
+    /// ownership for one existing client's display-name change. Absent on
+    /// every other plan, which still compares `base_revision` with `meta.revision`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_dependencies: Option<String>,
     pub expires_at: u64,
     pub manifest: Manifest,
     pub changes: Vec<Change>,
@@ -769,10 +773,14 @@ fn group_only(manifest: &Manifest) -> bool {
         && manifest.workflows.is_empty()
 }
 
-fn group_dependency_canonical(value: &impl Serialize) -> Result<String> {
+fn dependency_digest(version: &str, value: &impl Serialize) -> Result<String> {
     let mut value = serde_json::to_value(value).map_err(Error::internal)?;
     value.sort_all_objects();
-    Ok(digest(&format!("{GROUP_DEPENDENCY_VERSION}\n{value}")))
+    Ok(digest(&format!("{version}\n{value}")))
+}
+
+fn group_dependency_canonical(value: &impl Serialize) -> Result<String> {
+    dependency_digest(GROUP_DEPENDENCY_VERSION, value)
 }
 
 fn group_person_dependency(tx: &Tx<'_>, id: &str) -> Result<Value> {
@@ -843,17 +851,248 @@ fn group_dependency_digest(
     }))
 }
 
+const CLIENT_NAME_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-name/v1";
+
+/// One existing client, and no other resource family. Secret rotation and a
+/// target-state fingerprint stay on the global counter.
+fn client_name_shape(manifest: &Manifest) -> bool {
+    manifest.target_state_fingerprint.is_none()
+        && manifest.users.is_empty()
+        && manifest.groups.is_empty()
+        && manifest.sources.is_empty()
+        && manifest.source_links.is_empty()
+        && manifest.workflows.is_empty()
+        && manifest.clients.len() == 1
+        && manifest.clients[0].secret_ref.is_none()
+        && manifest.clients[0].secret_version.is_none()
+}
+
+fn listener_binds_client(config: &crate::config::Config, id: &str) -> bool {
+    config.ldap_listeners.values().any(|listener| listener.client_id == id)
+        || config
+            .proxy_listeners
+            .values()
+            .any(|listener| listener.routes.values().any(|target| target.client_id == id))
+        || config
+            .radius_listeners
+            .values()
+            .any(|listener| listener.nas.values().any(|nas| nas.client_id == id))
+}
+
+fn bound_listeners(config: &crate::config::Config, id: &str) -> Value {
+    let ldap: BTreeMap<_, _> = config
+        .ldap_listeners
+        .iter()
+        .filter(|(_, listener)| listener.client_id == id)
+        .map(|(name, listener)| (name.clone(), listener.clone()))
+        .collect();
+    let proxy: BTreeMap<_, _> = config
+        .proxy_listeners
+        .iter()
+        .filter(|(_, listener)| {
+            listener
+                .routes
+                .values()
+                .any(|target| target.client_id == id)
+        })
+        .map(|(name, listener)| (name.clone(), listener.clone()))
+        .collect();
+    let radius: BTreeMap<_, _> = config
+        .radius_listeners
+        .iter()
+        .filter(|(_, listener)| listener.nas.values().any(|nas| nas.client_id == id))
+        .map(|(name, listener)| (name.clone(), listener.clone()))
+        .collect();
+    json!({"ldap": ldap, "proxy": proxy, "radius": radius})
+}
+
+fn predicate_refs(
+    predicate: &crate::model::claims::Predicate,
+    groups: &mut BTreeSet<String>,
+    sources: &mut BTreeSet<String>,
+) {
+    use crate::model::claims::Predicate::{All, Any, GroupMember, Not, VerifiedSource};
+    match predicate {
+        GroupMember { group } => {
+            groups.insert(group.clone());
+        }
+        VerifiedSource { source } => {
+            sources.insert(source.clone());
+        }
+        All { of } | Any { of } => {
+            for child in of {
+                predicate_refs(child, groups, sources);
+            }
+        }
+        Not { condition } => predicate_refs(condition, groups, sources),
+        _ => {}
+    }
+}
+
+fn add_policy_rule(
+    rule: &crate::model::claims::Rule,
+    groups: &mut BTreeSet<String>,
+    users: &mut BTreeSet<String>,
+) {
+    groups.extend(rule.all_groups.iter().cloned());
+    groups.extend(rule.any_groups.iter().cloned());
+    groups.extend(rule.denied_groups.iter().cloned());
+    users.extend(rule.users.iter().cloned());
+    users.extend(rule.denied_users.iter().cloned());
+}
+
+fn client_policy_refs(client: &Client) -> (BTreeSet<String>, BTreeSet<String>, BTreeSet<String>) {
+    let mut groups = BTreeSet::new();
+    let mut users = BTreeSet::new();
+    let mut sources = BTreeSet::new();
+    add_policy_rule(&client.settings.policy.access, &mut groups, &mut users);
+    for rule in client.settings.policy.scopes.values() {
+        add_policy_rule(rule, &mut groups, &mut users);
+    }
+    groups.extend(client.allowed_groups.iter().cloned());
+    if let Some(ldap) = &client.settings.ldap {
+        groups.extend(ldap.search_groups.iter().cloned());
+    }
+    if let Some(conditional) = client.settings.policy.conditional() {
+        for predicate in conditional
+            .access
+            .iter()
+            .chain(conditional.scopes.values().flatten())
+            .chain(conditional.claim_mappings.iter().map(|mapping| &mapping.when))
+        {
+            predicate_refs(predicate, &mut groups, &mut sources);
+        }
+    }
+    (groups, users, sources)
+}
+
+/// True when the manifest's only client difference is its display name.
+fn client_name_change(tx: &Tx<'_>, spec: &ClientSpec) -> Result<bool> {
+    let Some(live) = tx.get::<Client>("clients", &spec.client_id)? else {
+        return Ok(false);
+    };
+    if spec.name == live.name {
+        return Ok(false);
+    }
+    let mut projected = client_spec(&live);
+    projected.name = spec.name.clone();
+    Ok(value(&projected)? == value(spec)?)
+}
+
+fn client_name_dependency_digest(
+    config: &crate::config::Config,
+    tx: &Tx<'_>,
+    id: &str,
+) -> Result<String> {
+    let Some(client) = tx.get::<Client>("clients", id)? else {
+        return Err(Error::conflict(
+            "Desired-state client name dependencies changed",
+        ));
+    };
+    if client.id != id {
+        return Err(Error::conflict(
+            "Desired-state client name dependencies changed",
+        ));
+    }
+    // Private signing material is hashed here and is not returned on the plan.
+    let signing_keys = crate::keyring::for_client(tx, &client)?;
+    let (group_names, user_names, source_names) = client_policy_refs(&client);
+    let mut groups = BTreeMap::new();
+    for name in group_names {
+        let group = tx.get::<Group>("groups", &name)?;
+        if group.as_ref().is_some_and(|group| group.name != name) {
+            return Err(Error::conflict(
+                "Desired-state client name dependencies changed",
+            ));
+        }
+        groups.insert(name, group);
+    }
+    let mut usernames = BTreeMap::new();
+    for name in user_names {
+        usernames.insert(name.clone(), tx.get::<String>("usernames", &name)?);
+    }
+    let mut sources = BTreeMap::new();
+    for name in source_names {
+        sources.insert(
+            name.clone(),
+            tx.get::<crate::source::Source>("sources", &name)?
+                .map(|source| source.enabled),
+        );
+    }
+    let mut issuer_claims = BTreeMap::new();
+    for (_, other) in tx.list::<Client>("clients")? {
+        if other.id != client.id
+            && let Some(issuer) = other.settings.issuer.clone()
+        {
+            issuer_claims.insert(other.id, issuer);
+        }
+    }
+    dependency_digest(
+        CLIENT_NAME_DEPENDENCY_VERSION,
+        &json!({
+            "client": client,
+            "credential_version": tx.get::<Value>("credential_versions", &format!("client/{id}"))?,
+            "signing_keys": signing_keys,
+            "primary_issuer": tx.get::<String>("meta", "issuer")?,
+            "issuer_claims": issuer_claims,
+            "groups": groups,
+            "usernames": usernames,
+            "sources": sources,
+            "listeners": bound_listeners(config, id),
+            "policy": {
+                "issuer": config.issuer,
+                "capabilities": config.capabilities,
+                "device_trust": config.device_trust,
+            },
+        }),
+    )
+}
+
+fn client_name_dependencies(
+    config: &crate::config::Config,
+    tx: &Tx<'_>,
+    manifest: &Manifest,
+) -> Result<Option<String>> {
+    if !client_name_shape(manifest) {
+        return Ok(None);
+    }
+    let spec = &manifest.clients[0];
+    // RADIUS NAS secrets and listener TLS files are read from disk when a
+    // listener names this client. Those bytes are not a store record, so this
+    // family stays on the global revision while the binding exists.
+    if listener_binds_client(config, &spec.client_id) || !client_name_change(tx, spec)? {
+        return Ok(None);
+    }
+    Ok(Some(client_name_dependency_digest(
+        config,
+        tx,
+        &spec.client_id,
+    )?))
+}
+
 fn plan_revision_current(
     config: &crate::config::Config,
     tx: &Tx<'_>,
     plan: &Plan,
     revision: u64,
 ) -> Result<bool> {
+    if plan.group_dependencies.is_some() && plan.client_dependencies.is_some() {
+        return Ok(false);
+    }
     if let Some(expected) = &plan.group_dependencies {
         if !group_only(&plan.manifest) {
             return Ok(false);
         }
         return Ok(group_dependency_digest(config, tx, &plan.manifest)? == *expected);
+    }
+    if let Some(expected) = &plan.client_dependencies {
+        if !client_name_shape(&plan.manifest) {
+            return Ok(false);
+        }
+        return Ok(
+            client_name_dependency_digest(config, tx, &plan.manifest.clients[0].client_id)?
+                == *expected,
+        );
     }
     Ok(plan.base_revision == revision)
 }
@@ -999,34 +1238,43 @@ impl Core {
     }
     pub fn plan_state(&self, token: &str, manifest: Manifest) -> Result<Plan> {
         manifest.validate()?;
-        let (actor, revision, changes, impact, authority_digest, group_dependencies) =
-            self.store.preview(|tx| {
-                let actor = self.principal(tx, token)?;
-                if actor.delegated {
-                    return Err(Error::forbidden());
-                }
-                manifest.require_issuer(&self.config.issuer)?;
-                manifest.require_target_state(tx, &self.config.issuer)?;
-                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-                let impact = state_removal_impact(tx, &manifest)?;
-                let authority_digest = ReviewBinding::new(tx, &actor, &())?.authority_digest;
-                // Capture dependencies before preview reconciliation mutates the
-                // group inside this transaction. Preview then aborts.
-                let group_dependencies = if group_only(&manifest) {
-                    Some(group_dependency_digest(&self.config, tx, &manifest)?)
-                } else {
-                    None
-                };
-                let changes = reconcile(self, tx, &actor, &manifest, &BTreeMap::new(), true)?;
-                Ok((
-                    actor,
-                    revision,
-                    changes,
-                    impact,
-                    authority_digest,
-                    group_dependencies,
-                ))
-            })?;
+        let (
+            actor,
+            revision,
+            changes,
+            impact,
+            authority_digest,
+            group_dependencies,
+            client_dependencies,
+        ) = self.store.preview(|tx| {
+            let actor = self.principal(tx, token)?;
+            if actor.delegated {
+                return Err(Error::forbidden());
+            }
+            manifest.require_issuer(&self.config.issuer)?;
+            manifest.require_target_state(tx, &self.config.issuer)?;
+            let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+            let impact = state_removal_impact(tx, &manifest)?;
+            let authority_digest = ReviewBinding::new(tx, &actor, &())?.authority_digest;
+            // Capture dependencies before preview reconciliation mutates the
+            // resource inside this transaction. Preview then aborts.
+            let group_dependencies = if group_only(&manifest) {
+                Some(group_dependency_digest(&self.config, tx, &manifest)?)
+            } else {
+                None
+            };
+            let client_dependencies = client_name_dependencies(&self.config, tx, &manifest)?;
+            let changes = reconcile(self, tx, &actor, &manifest, &BTreeMap::new(), true)?;
+            Ok((
+                actor,
+                revision,
+                changes,
+                impact,
+                authority_digest,
+                group_dependencies,
+                client_dependencies,
+            ))
+        })?;
         let mut plan = Plan {
             api_version: "riauth.plan/v1".into(),
             plan_id: crypto::id(),
@@ -1034,6 +1282,7 @@ impl Core {
             issuer: self.config.issuer.clone(),
             base_revision: revision,
             group_dependencies,
+            client_dependencies,
             expires_at: now() + 900,
             manifest,
             changes,
@@ -1044,11 +1293,20 @@ impl Core {
         plan.hash = digest(&serde_json::to_string(&plan).map_err(Error::internal)?);
         self.store.write(|tx| {
             let current = self.principal(tx, token)?;
-            let dependencies_current = match &plan.group_dependencies {
-                Some(expected) => {
+            let dependencies_current = match (&plan.group_dependencies, &plan.client_dependencies)
+            {
+                (Some(_), Some(_)) => false,
+                (Some(expected), None) => {
                     group_dependency_digest(&self.config, tx, &plan.manifest)? == *expected
                 }
-                None => true,
+                (None, Some(expected)) => {
+                    client_name_dependency_digest(
+                        &self.config,
+                        tx,
+                        &plan.manifest.clients[0].client_id,
+                    )? == *expected
+                }
+                (None, None) => true,
             };
             if current.id != actor.id
                 || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
@@ -1096,10 +1354,18 @@ impl Core {
             let context = crate::context::current();
             let supplied_revision = context.as_ref().and_then(|item| item.revision);
             let fingerprint = context.as_ref().map(|item| item.fingerprint.clone());
-            // Receipts bind this family only. Other manifests keep their
-            // previous apply behavior, including ignoring an idempotency key.
+            // Receipts bind dependency-scoped families only. Other manifests
+            // keep their previous apply behavior, including ignoring an
+            // idempotency key.
             let group_plan = input.plan.group_dependencies.is_some();
-            let receipt_key = if group_plan {
+            let client_plan = input.plan.client_dependencies.is_some();
+            if group_plan && client_plan {
+                return Err(Error::conflict(
+                    "Desired-state dependency scope does not match this manifest",
+                ));
+            }
+            let scoped_plan = group_plan || client_plan;
+            let receipt_key = if scoped_plan {
                 context.as_ref().and_then(|item| {
                     item.idempotency_key
                         .as_ref()
@@ -1129,19 +1395,22 @@ impl Core {
             if serde_json::to_value(&input.plan).map_err(Error::internal)? != serde_json::to_value(&stored.plan).map_err(Error::internal)? {
                 return Err(Error::conflict("Plan was modified; create a new plan"));
             }
-            if group_plan {
-                if !group_only(&input.plan.manifest) {
-                    return Err(Error::conflict(
-                        "Desired-state group dependencies do not match this manifest",
-                    ));
-                }
+            if group_plan && !group_only(&input.plan.manifest) {
+                return Err(Error::conflict(
+                    "Desired-state group dependencies do not match this manifest",
+                ));
+            }
+            if client_plan && !client_name_shape(&input.plan.manifest) {
+                return Err(Error::conflict(
+                    "Desired-state client name dependencies do not match this manifest",
+                ));
+            }
+            if scoped_plan && let Some(expected) = supplied_revision {
                 // If-Match remains the live management revision. The stored
                 // base_revision is not that header.
-                if let Some(expected) = supplied_revision {
-                    let current = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-                    if expected != current {
-                        return Err(Error::conflict("Configuration revision changed"));
-                    }
+                let current = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                if expected != current {
+                    return Err(Error::conflict("Configuration revision changed"));
                 }
             }
             if let Some(result) = stored.result.as_ref() {
@@ -1154,12 +1423,25 @@ impl Core {
                     return Err(Error::conflict("Desired-state group dependencies changed"));
                 }
             }
+            if client_plan {
+                let live = client_name_dependency_digest(
+                    &self.config,
+                    tx,
+                    &input.plan.manifest.clients[0].client_id,
+                )?;
+                if input.plan.client_dependencies.as_deref() != Some(live.as_str()) {
+                    return Err(Error::conflict(
+                        "Desired-state client name dependencies changed",
+                    ));
+                }
+            }
             input.plan.manifest
                 .require_target_state(tx, &self.config.issuer)?;
             let impact = state_removal_impact(tx, &input.plan.manifest)?;
-            // A matching group digest replaces the global revision comparison.
-            // Expiry, authority, impact, and removal confirmation stay here.
-            let revision = if group_plan {
+            // A matching dependency digest replaces the global revision
+            // comparison. Expiry, authority, impact, and removal confirmation
+            // stay here.
+            let revision = if scoped_plan {
                 tx.get::<u64>("meta", "revision")?.unwrap_or(0)
             } else {
                 input.plan.base_revision

@@ -4,9 +4,9 @@
 //! uses that reopen. One test loads a loopback server certificate and opens
 //! its database with the production TLS client and a keygen database key.
 //! That certificate step restarts the same primary. One group-only
-//! desired-state test reopens the pool and does not fence the primary. A later
-//! test stops the primary and promotes the standby. The promotion is a
-//! loopback drill, not production HA.
+//! desired-state test and one client display-name test reopen the pool and do
+//! not fence the primary. A later test stops the primary and promotes the
+//! standby. The promotion is a loopback drill, not production HA.
 #![cfg(feature = "test-support")]
 
 use axum::{
@@ -19,6 +19,7 @@ use riauth::{
     config::Config,
     context::{self, RequestContext},
     core::Core,
+    crypto::Keys,
     error::Result,
     model::{
         Client, ClientPatch, ClientPolicyBinding, ClientPolicyInput, Group, GroupChangeBinding,
@@ -31,6 +32,7 @@ use serde_json::{Value, json};
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
+    net::IpAddr,
     path::PathBuf,
     process::Command,
     sync::Arc,
@@ -819,6 +821,286 @@ fn restore_user(h: &Harness, id: &str, saved: &User) {
 
 fn apply_json(plan: &Plan, run_id: Option<&str>) -> Value {
     json!({"plan": plan, "secrets": {}, "run_id": run_id})
+}
+
+fn portal(h: &Harness) {
+    h.core
+        .create_client(
+            &h.admin,
+            NewClient {
+                client_id: "portal".into(),
+                name: "portal".into(),
+                confidential: false,
+                redirect_uris: vec!["http://localhost:7777/callback?existing=1".into()],
+                scopes: ["openid", "profile", "email"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                allowed_groups: BTreeSet::new(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings::default(),
+            },
+        )
+        .unwrap();
+}
+
+fn client_record(h: &Harness, id: &str) -> Client {
+    h.core.store.get("clients", id).unwrap().unwrap()
+}
+
+fn client_manifest(
+    h: &Harness,
+    id: &str,
+    name: &str,
+    scopes: Option<BTreeSet<String>>,
+) -> Manifest {
+    let client = client_record(h, id);
+    let scopes = scopes.unwrap_or_else(|| client.scopes.clone());
+    serde_json::from_value(json!({
+        "api_version": "riauth/v1",
+        "clients": [{
+            "client_id": client.id,
+            "name": name,
+            "confidential": client.confidential(),
+            "service": client.service,
+            "enabled": client.enabled,
+            "redirect_uris": client.redirect_uris,
+            "scopes": scopes,
+            "allowed_groups": client.allowed_groups,
+            "require_mfa": client.require_mfa,
+            "settings": client.settings,
+            "secret_ref": null,
+            "secret_version": null
+        }]
+    }))
+    .unwrap()
+}
+
+#[test]
+#[ignore = "requires the disposable cluster from scripts/test-postgres.sh"]
+fn postgres_client_name_desired_state_dependencies_and_replay() {
+    let mut h = Harness::new();
+    assert_eq!(h.core.store.backend(), "postgresql");
+    user_id(&h, "alice");
+    user_id(&h, "stranger");
+    portal(&h);
+    h.core.create_group(&h.admin, "readers").unwrap();
+    // Preview reconciliation writes the client, so a bound listener is accepted
+    // only when that client already has an eligible LDAP policy. The binding
+    // still leaves this plan on the global revision.
+    let mut record = client_record(&h, "portal");
+    record.settings.ldap = Some(riauth::ldap_server::Settings {
+        base_dn: "dc=riauth,dc=test".into(),
+        search_groups: BTreeSet::from(["readers".into()]),
+    });
+    h.core
+        .store
+        .write(|tx| tx.put("clients", "portal", &record))
+        .unwrap();
+    h.core.config.ldap_listeners.insert(
+        "local".into(),
+        riauth::ldap_server::Listener {
+            listen: "127.0.0.1:1389".parse().unwrap(),
+            client_id: "portal".into(),
+            allowed_peers: BTreeSet::from([IpAddr::from([127, 0, 0, 1])]),
+            tls_cert_file: None,
+            tls_key_file: None,
+            ldaps: false,
+            local_unencrypted: true,
+        },
+    );
+    let bound = plan_named(&h, "Bound", None);
+    assert!(bound.client_dependencies.is_none());
+    assert!(bound.group_dependencies.is_none());
+    rename_user(&h, "stranger", "Unrelated");
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&bound)),
+        409,
+        "Connector plan expired or source configuration or local revision changed; create a new plan",
+    );
+    h.core.config.ldap_listeners.clear();
+
+    let mut record = client_record(&h, "portal");
+    record.allowed_groups.insert("readers".into());
+    h.core
+        .store
+        .write(|tx| tx.put("clients", "portal", &record))
+        .unwrap();
+    let plan = plan_named(&h, "Portal", None);
+    assert!(
+        plan.client_dependencies
+            .as_ref()
+            .is_some_and(|digest| !digest.is_empty())
+    );
+    assert!(plan.group_dependencies.is_none());
+    h.core.create_group(&h.admin, "extras").unwrap();
+    assert!(revision(&h) > plan.base_revision);
+    deny(
+        &h,
+        || {
+            context::scope(
+                Some(RequestContext {
+                    idempotency_key: Some("client-stale".into()),
+                    fingerprint: "client-stale".into(),
+                    revision: Some(plan.base_revision),
+                    ..Default::default()
+                }),
+                || h.core.apply_state(&h.admin, apply_to(&plan)),
+            )
+        },
+        409,
+        "Configuration revision changed",
+    );
+    assert_eq!(receipt_count(&h), 0);
+
+    let saved_keys: Keys = h.core.store.get("meta", "keys").unwrap().unwrap();
+    let mut rotated = saved_keys.clone();
+    rotated.active.kid.push_str("-rotated");
+    h.core
+        .store
+        .write(|tx| tx.put("meta", "keys", &rotated))
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state client name dependencies changed",
+    );
+    h.core
+        .store
+        .write(|tx| tx.put("meta", "keys", &saved_keys))
+        .unwrap();
+    let saved = client_record(&h, "portal");
+    let mut hashed = saved.clone();
+    hashed.secret_hash = Some("rotated-secret-hash".into());
+    h.core
+        .store
+        .write(|tx| tx.put("clients", "portal", &hashed))
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state client name dependencies changed",
+    );
+    h.core
+        .store
+        .write(|tx| tx.put("clients", "portal", &saved))
+        .unwrap();
+    h.core
+        .group_member(&h.admin, "readers", "alice", true)
+        .unwrap();
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&plan)),
+        409,
+        "Desired-state client name dependencies changed",
+    );
+    h.core
+        .group_member(&h.admin, "readers", "alice", false)
+        .unwrap();
+
+    let scopes = BTreeSet::from(["openid".to_string(), "profile".to_string()]);
+    let legacy = plan_named(&h, "portal", Some(scopes));
+    assert!(legacy.client_dependencies.is_none());
+    rename_user(&h, "stranger", "Still unrelated");
+    deny(
+        &h,
+        || h.core.apply_state(&h.admin, apply_to(&legacy)),
+        409,
+        "Connector plan expired or source configuration or local revision changed; create a new plan",
+    );
+
+    let live = revision(&h);
+    let app = riauth::api::router(h.core.clone());
+    let body = apply_json(&plan, None);
+    let reconciles = audit_count(&h, "client.reconcile");
+    let applies = audit_count(&h, "state.apply");
+    let (status, applied) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("client-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(applied["applied"], true);
+    assert_eq!(applied["revision"].as_u64().unwrap(), live + 1);
+    assert_eq!(client_record(&h, "portal").name, "Portal");
+    assert_eq!(audit_count(&h, "client.reconcile"), reconciles + 1);
+    assert_eq!(audit_count(&h, "state.apply"), applies + 1);
+    assert_eq!(receipt_count(&h), 1);
+    let (status, replayed) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("client-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replayed, applied);
+    assert_eq!(audit_count(&h, "client.reconcile"), reconciles + 1);
+    assert_eq!(receipt_count(&h), 1);
+    let (status, other_body) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        apply_json(&plan, Some("other")),
+        Some(live),
+        Some("client-once"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        other_body["error_description"],
+        "Idempotency key was used for a different request"
+    );
+    let (status, fresh_stale) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body.clone(),
+        Some(live),
+        Some("client-fresh"),
+    ));
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        fresh_stale["error_description"],
+        "Configuration revision changed"
+    );
+    assert_eq!(receipt_count(&h), 1);
+    drop(app);
+    let name = client_record(&h, "portal").name;
+    let h = h.reopen();
+    let app = riauth::api::router(h.core.clone());
+    let (status, opened) = drive(call(
+        &app,
+        "POST",
+        "/api/state/apply",
+        &h.admin,
+        body,
+        Some(live),
+        Some("client-once"),
+    ));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(opened, applied);
+    assert_eq!(receipt_count(&h), 1);
+    assert_eq!(audit_count(&h, "client.reconcile"), reconciles + 1);
+    assert_eq!(client_record(&h, "portal").name, name);
+    drop(app);
+}
+
+fn plan_named(h: &Harness, name: &str, scopes: Option<BTreeSet<String>>) -> Plan {
+    h.core
+        .plan_state(&h.admin, client_manifest(h, "portal", name, scopes))
+        .unwrap()
 }
 
 #[test]
