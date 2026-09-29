@@ -2,7 +2,7 @@
 pub use super::saml_types::Settings;
 pub(crate) use super::saml_types::UpstreamSession;
 use super::{Login, Source, UpstreamIdentity};
-use crate::assembly::{BrowserReturn, take_browser_return};
+use crate::assembly::{BrowserReturn, SamlSourceClaim, take_browser_return};
 use crate::{
     core::{Core, audit, validate_display, validate_email, validate_name},
     crypto::{self, Keys, SigningKey, digest, now},
@@ -155,48 +155,11 @@ impl Core {
         let encoded = params
             .get("SAMLResponse")
             .ok_or_else(|| Error::bad("Missing SAMLResponse"))?;
-        // Commit the retirement. Err would roll back and let this RelayState
-        // complete after the previous IdP certificate is restored.
-        #[expect(
-            clippy::large_enum_variant,
-            reason = "Short lived transaction state remains inline"
-        )]
-        enum Claim {
-            Ready(Source, Login),
-            Retired,
-        }
-        let claim = self.store.write(|tx| {
-            // A disabled source still has a record. Filtering it out here would
-            // roll back and let this RelayState complete after re-enable.
-            let source = tx.get::<Source>("sources", id)?;
-            if source.as_ref().is_some_and(|source| source.saml.is_none()) {
-                return Err(Error::bad("Source is not SAML"));
+        let (source, pending) = match self.saml_source_callback_claim(id, state)? {
+            SamlSourceClaim::Retired => {
+                return Err(Error::bad("SAML source changed; restart login"));
             }
-            let mut pending = tx
-                .get::<Login>("source_logins", &digest(state))?
-                .filter(|p| p.source == id && !p.claimed && p.expires_at > now())
-                .ok_or_else(|| Error::bad("SAML source request expired or already used"))?;
-            if super::presented_source_retired(source.as_ref(), &pending.fingerprint) {
-                pending.claimed = true;
-                pending.failed = true;
-                tx.put("source_logins", &digest(state), &pending)?;
-                audit(tx, "upstream", "source.login_failed", id)?;
-                return Ok(Claim::Retired);
-            }
-            let source =
-                source.ok_or_else(|| Error::bad("SAML source request expired or already used"))?;
-            let settings = source
-                .saml
-                .as_ref()
-                .ok_or_else(|| Error::bad("Source is not SAML"))?;
-            settings.validate(&source)?;
-            pending.claimed = true;
-            tx.put("source_logins", &digest(state), &pending)?;
-            Ok(Claim::Ready(source, pending))
-        })?;
-        let (source, pending) = match claim {
-            Claim::Retired => return Err(Error::bad("SAML source changed; restart login")),
-            Claim::Ready(source, pending) => (source, pending),
+            SamlSourceClaim::Ready(source, pending) => (source, pending),
         };
         let result = (|| {
             let xml = String::from_utf8(

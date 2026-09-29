@@ -804,12 +804,49 @@ def main() -> None:
                 errors.append("src/cloud_operations.rs: credential verification write belongs in assembly")
         if path == SRC / "source/saml.rs":
             saml_source = path.read_text()
+            assembly_source_claim = (SRC / "assembly/source_saml_claim.rs").read_text()
+            callback_adapter = rust_function_body(saml_source, "saml_source_callback")
+            callback_compact = re.sub(r"\s+", "", callback_adapter or "")
+            callback_claim = rust_function_body(assembly_source_claim, "saml_source_callback_claim")
+            callback_claim_compact = re.sub(r"\s+", "", callback_claim or "")
             assembly_source_return = (SRC / "assembly/source_saml_return.rs").read_text()
             return_adapter = rust_function_body(saml_source, "saml_source_browser_return")
             adapter_compact = re.sub(r"\s+", "", return_adapter or "")
             return_claim = rust_function_body(assembly_source_return, "take_browser_return")
             claim_compact = re.sub(r"\s+", "", return_claim or "")
             assembly_root = (SRC / "assembly.rs").read_text()
+            if (
+                rust_function_body(saml_source, "saml_source_callback_claim") is not None
+                or re.search(r"\benum\s+Claim\b", saml_source)
+                or callback_adapter is None
+                or not (0 <= callback_compact.find("params.insert(k,v).is_some()")
+                        < callback_compact.find(".filter(|s|s.len()==43)")
+                        < callback_compact.find('params.get("SAMLResponse")')
+                        < callback_compact.find("self.saml_source_callback_claim(id,state)?")
+                        < callback_compact.find("SamlSourceClaim::Retired=>")
+                        < callback_compact.find("SamlSourceClaim::Ready(source,pending)=>")
+                        < callback_compact.find("STANDARD.decode(encoded)")
+                        < callback_compact.find("verified_identity(")
+                        < callback_compact.find("self.store.write(|tx|"))
+                or callback_compact.count("self.store.write(|tx|") != 1
+                or callback_claim is None
+                or not (0 <= callback_claim_compact.find("self.store.write(|tx|")
+                        < callback_claim_compact.find('tx.get::<Source>("sources",id)?')
+                        < callback_claim_compact.find("source.saml.is_none()")
+                        < callback_claim_compact.find('tx.get::<Login>("source_logins",&digest(state))?')
+                        < callback_claim_compact.find("p.source==id&&!p.claimed&&p.expires_at>now()")
+                        < callback_claim_compact.find("presented_source_retired(source.as_ref(),&pending.fingerprint)")
+                        < callback_claim_compact.find("pending.failed=true")
+                        < callback_claim_compact.find('audit(tx,"upstream","source.login_failed",id)?')
+                        < callback_claim_compact.find("returnOk(SamlSourceClaim::Retired)")
+                        < callback_claim_compact.find("settings.validate(&source)?")
+                        < callback_claim_compact.rfind("Ok(SamlSourceClaim::Ready(source,pending))"))
+                or callback_claim_compact.count('tx.put("source_logins",&digest(state),&pending)?') != 2
+                or callback_claim_compact.count('audit(tx,"upstream","source.login_failed",id)?') != 1
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_claim\s*;", assembly_root)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_saml_claim::SamlSourceClaim\s*;", assembly_root)
+            ):
+                errors.append("src/source/saml.rs: initial SAML callback claim belongs in assembly")
             if (
                 rust_function_body(saml_source, "take_browser_return") is not None
                 or re.search(r"\benum\s+BrowserReturn\b", saml_source)

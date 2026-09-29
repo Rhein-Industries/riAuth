@@ -1219,6 +1219,103 @@ fn replacement_idp(name: &str) -> Upstream {
     }
 }
 
+#[test]
+fn saml_source_callback_claim_keeps_field_order_retirement_and_one_use() {
+    let f = Fixture::new();
+    let (mut source, upstream) = install_saml(&f);
+    let acs = f.core.saml_source_callback_url(&source.id);
+    let (retired, request, credential) = begin(&f, &source, None);
+    let response = upstream.response(&source, &acs, &request, None, false);
+    let encoded = STANDARD.encode(&response);
+    let audits = failed_audits(&f);
+
+    // Duplicate fields fail before the claim write and leave this RelayState usable.
+    let duplicate = f
+        .core
+        .saml_source_callback(
+            &source.id,
+            vec![
+                ("SAMLResponse".into(), encoded.clone()),
+                ("RelayState".into(), retired.clone()),
+                ("RelayState".into(), retired.clone()),
+            ],
+        )
+        .unwrap_err();
+    assert_eq!(duplicate.message, "Invalid SAML source POST fields");
+    assert_eq!(login_row(&f, &retired)["claimed"], false);
+    assert_eq!(login_row(&f, &retired)["failed"], false);
+    assert_eq!(failed_audits(&f), audits);
+
+    source.enabled = false;
+    put_saml(&f, &source);
+    let retired_error = post(&f, &source, &retired, &response).unwrap_err();
+    assert_eq!(retired_error.message, "SAML source changed; restart login");
+    assert_eq!(login_row(&f, &retired)["claimed"], true);
+    assert_eq!(login_row(&f, &retired)["failed"], true);
+    assert!(login_row(&f, &retired)["result"].is_null());
+    assert_eq!(failed_audits(&f), audits + 1);
+    assert!(finish(&f, &credential, true).is_err());
+
+    source.enabled = true;
+    put_saml(&f, &source);
+    let retired_replay = post(&f, &source, &retired, &response).unwrap_err();
+    assert_eq!(
+        retired_replay.message,
+        "SAML source request expired or already used"
+    );
+    assert_eq!(failed_audits(&f), audits + 1);
+
+    let (relay, request, _) = begin(&f, &source, None);
+    let response = upstream.response(&source, &acs, &request, None, false);
+    let wrong_provider = f
+        .core
+        .saml_source_callback(
+            "other",
+            vec![
+                ("SAMLResponse".into(), STANDARD.encode(&response)),
+                ("RelayState".into(), relay.clone()),
+            ],
+        )
+        .unwrap_err();
+    assert_eq!(
+        wrong_provider.message,
+        "SAML source request expired or already used"
+    );
+    assert_eq!(login_row(&f, &relay)["claimed"], false);
+    assert_eq!(failed_audits(&f), audits + 1);
+
+    assert_eq!(
+        post(&f, &source, &relay, &response).unwrap()["completed"],
+        true
+    );
+    let row = login_row(&f, &relay);
+    assert_eq!(row["claimed"], true);
+    assert_eq!(row["failed"], false);
+    assert_eq!(row["result"]["subject"], "opaque-subject");
+    let used_replay = post(&f, &source, &relay, &response).unwrap_err();
+    assert_eq!(
+        used_replay.message,
+        "SAML source request expired or already used"
+    );
+    assert_eq!(failed_audits(&f), audits + 1);
+
+    let (expired, request, _) = begin(&f, &source, None);
+    let response = upstream.response(&source, &acs, &request, None, false);
+    let mut row = login_row(&f, &expired);
+    row["expires_at"] = json!(now() - 1);
+    f.core
+        .store
+        .write(|tx| tx.put("source_logins", &digest(&expired), &row))
+        .unwrap();
+    let expired_error = post(&f, &source, &expired, &response).unwrap_err();
+    assert_eq!(
+        expired_error.message,
+        "SAML source request expired or already used"
+    );
+    assert_eq!(login_row(&f, &expired)["claimed"], false);
+    assert_eq!(failed_audits(&f), audits + 1);
+}
+
 /// Old and new pinned IdP certificates both verify. A removed certificate cannot
 /// authenticate, and restoring it does not finish a login presented while that
 /// certificate was absent. An unpresented login can still complete after the
