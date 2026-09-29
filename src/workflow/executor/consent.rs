@@ -9,6 +9,36 @@ use crate::{
 
 const CONSENTS: &str = "workflow_consents";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BrowserGraph {
+    Session,
+    Passkey,
+    PasswordTotp,
+}
+
+impl BrowserGraph {
+    fn supported(self, definition: &super::super::Definition) -> bool {
+        match self {
+            Self::Session => super::super::supported_configured_session_consent(definition),
+            Self::Passkey => super::super::supported_configured_passkey_consent(definition),
+            Self::PasswordTotp => {
+                super::super::supported_configured_password_totp_consent(definition)
+            }
+        }
+    }
+}
+
+/// Every browser verifier write checks the same live cookie, exact OIDC preparation,
+/// account, session and reviewed graph. This is never derived from a bearer token.
+pub(crate) struct BrowserTotp<'a> {
+    pub workflow: &'a str,
+    pub interaction: &'a str,
+    pub cookie: &'a str,
+    pub session: &'a Session,
+    pub authorization: &'a Authorization,
+    pub run_id: &'a str,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Pin {
@@ -472,7 +502,7 @@ fn browser_consent_start_in(
     session: &Session,
     authorization: &Authorization,
     browser_expires_at: u64,
-    reauthentication: bool,
+    graph: BrowserGraph,
 ) -> Result<String> {
     if core.config.browser_consent_workflow.as_deref() != Some(workflow)
         || authorization.request_binding.as_deref() != Some(interaction)
@@ -489,17 +519,17 @@ fn browser_consent_start_in(
         .ok_or_else(|| Error::conflict("Browser consent workflow changed"))?;
     let checked =
         validate(configured.definition.clone(), &Environment::platform()).map_err(invalid_error)?;
-    if checked.definition().id.as_str() != workflow
-        || if reauthentication {
-            !super::super::supported_configured_passkey_consent(checked.definition())
-        } else {
-            !super::super::supported_configured_session_consent(checked.definition())
-        }
-    {
+    if checked.definition().id.as_str() != workflow || !graph.supported(checked.definition()) {
         return Err(Error::conflict("Browser consent workflow changed"));
     }
     let at = now();
     let user = core.identity_user(tx, &session.identity)?;
+    if graph == BrowserGraph::PasswordTotp {
+        crate::password::require_local(tx, &user)?;
+        if user.totp_secret.is_none() || user.totp_pending.is_some() {
+            return Err(Error::forbidden());
+        }
+    }
     let live = core
         .browser_session(tx, Some(browser_cookie))?
         .ok_or_else(Error::unauthorized)?;
@@ -588,7 +618,7 @@ fn browser_consent_start_in(
         token_hash: session.token_hash.clone(),
         browser_hash: Some(digest(browser_cookie)),
         expires_at,
-        requires_mfa: false,
+        requires_mfa: graph == BrowserGraph::PasswordTotp,
         source: None,
         authorization: None,
         consent: None,
@@ -602,7 +632,7 @@ fn browser_consent_start_in(
         &mut request,
         session,
         authorization,
-        reauthentication,
+        graph != BrowserGraph::Session,
         Some(interaction),
         at,
     )?;
@@ -637,7 +667,7 @@ pub(crate) fn browser_consent_decide_in(
         session,
         authorization,
         browser_expires_at,
-        false,
+        BrowserGraph::Session,
     )?;
     let mut run = load_runtime(tx, &run_id)?;
     let checked = run.validated()?;
@@ -649,7 +679,7 @@ pub(crate) fn browser_consent_decide_in(
     clippy::too_many_arguments,
     reason = "Reviewed transaction inputs remain explicit"
 )]
-fn browser_passkey_run(
+fn browser_reauthentication_run(
     core: &Core,
     tx: &Tx<'_>,
     workflow: &str,
@@ -658,6 +688,7 @@ fn browser_passkey_run(
     session: &Session,
     authorization: &Authorization,
     run_id: &str,
+    graph: BrowserGraph,
 ) -> Result<(RuntimeRun, Validated)> {
     if core.config.browser_consent_workflow.as_deref() != Some(workflow)
         || authorization.request_binding.as_deref() != Some(interaction)
@@ -676,7 +707,7 @@ fn browser_passkey_run(
     {
         return Err(Error::forbidden());
     }
-    if !super::super::supported_configured_passkey_consent(checked.definition())
+    if !graph.supported(checked.definition())
         || checked.definition().id.as_str() != workflow
         || core
             .config
@@ -688,6 +719,12 @@ fn browser_passkey_run(
         || run.record.account_epoch != session.identity.epoch
     {
         return Err(Error::forbidden());
+    }
+    let live = core
+        .browser_session(tx, Some(browser_cookie))?
+        .ok_or_else(Error::unauthorized)?;
+    if live.id != session.id || live.token_hash != session.token_hash {
+        return Err(Error::unauthorized());
     }
     let request: RequestAuthority = tx
         .get(REQUESTS, &run.record.request)?
@@ -706,6 +743,137 @@ fn browser_passkey_run(
     }
     authority(core, tx, &run.record, at)?;
     Ok((run, checked))
+}
+
+fn browser_passkey_run(
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
+    run_id: &str,
+) -> Result<(RuntimeRun, Validated)> {
+    browser_reauthentication_run(
+        core,
+        tx,
+        workflow,
+        interaction,
+        browser_cookie,
+        session,
+        authorization,
+        run_id,
+        BrowserGraph::Passkey,
+    )
+}
+
+fn browser_totp_run(
+    core: &Core,
+    tx: &Tx<'_>,
+    binding: &BrowserTotp<'_>,
+) -> Result<(RuntimeRun, Validated)> {
+    browser_reauthentication_run(
+        core,
+        tx,
+        binding.workflow,
+        binding.interaction,
+        binding.cookie,
+        binding.session,
+        binding.authorization,
+        binding.run_id,
+        BrowserGraph::PasswordTotp,
+    )
+}
+
+pub(crate) fn browser_totp_owner(
+    core: &Core,
+    tx: &Tx<'_>,
+    binding: &BrowserTotp<'_>,
+    record: &StoredRun,
+) -> Result<()> {
+    let (run, _) = browser_totp_run(core, tx, binding)?;
+    if run.record != *record {
+        return Err(Error::forbidden());
+    }
+    Ok(())
+}
+
+pub(crate) fn browser_totp_stage_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    binding: &BrowserTotp<'_>,
+) -> Result<&'static str> {
+    let (run, checked) = browser_totp_run(core, tx, binding)?;
+    match &run.record.state {
+        RunState::Active { step, .. } => match checked.step(step).map(|step| &step.action) {
+            Some(Action::VerifyPassword {}) => Ok("password"),
+            Some(Action::VerifyTotp {}) => Ok("totp"),
+            Some(Action::RequestConsent {}) => Ok("consent"),
+            _ => Err(Error::forbidden()),
+        },
+        _ => Err(Error::forbidden()),
+    }
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed browser binding remains explicit"
+)]
+pub(crate) fn browser_totp_start_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
+    browser_expires_at: u64,
+) -> Result<String> {
+    let run_id = browser_consent_start_in(
+        core,
+        tx,
+        workflow,
+        interaction,
+        browser_cookie,
+        session,
+        authorization,
+        browser_expires_at,
+        BrowserGraph::PasswordTotp,
+    )?;
+    let binding = BrowserTotp {
+        workflow,
+        interaction,
+        cookie: browser_cookie,
+        session,
+        authorization,
+        run_id: &run_id,
+    };
+    if browser_totp_stage_in(core, tx, &binding)? != "password" {
+        return Err(Error::forbidden());
+    }
+    Ok(run_id)
+}
+
+pub(crate) fn browser_totp_code_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    binding: &BrowserTotp<'_>,
+    code: String,
+) -> Result<View> {
+    let (mut run, checked) = browser_totp_run(core, tx, binding)?;
+    totp::browser_code_in(core, tx, &mut run, &checked, code)
+}
+
+pub(crate) fn browser_totp_decide_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    binding: &BrowserTotp<'_>,
+    approve: bool,
+) -> Result<String> {
+    let (mut run, checked) = browser_totp_run(core, tx, binding)?;
+    let view = decide_loaded(core, tx, &checked, &mut run, approve)?;
+    view.authorization_response.ok_or_else(Error::forbidden)
 }
 
 /// The interaction page may inspect only its own live, exact prepared consent run.
@@ -764,7 +932,7 @@ pub(crate) fn browser_passkey_consent_start_in(
             session,
             authorization,
             browser_expires_at,
-            true,
+            BrowserGraph::Passkey,
         )?
     };
     let (mut run, _) = browser_passkey_run(

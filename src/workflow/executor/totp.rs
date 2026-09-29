@@ -101,6 +101,155 @@ fn recovery_fallback_allowed(checked: &Validated) -> bool {
         || configured_password_path(definition) == Some(ConfiguredPasswordPath::TotpOrRecovery)
 }
 
+/// The browser presents its bound HttpOnly session and interaction cookie to
+/// reserve and spend a TOTP attempt in one transaction. No handle can be lost
+/// across a browser restart, and the same verifier consumes the spent step.
+pub(crate) fn browser_code_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &mut RuntimeRun,
+    checked: &Validated,
+    code: String,
+) -> Result<View> {
+    let code = zeroize::Zeroizing::new(code);
+    if code.len() > 8 {
+        return Err(Error::bad("Invalid factor submission"));
+    }
+    let at = now();
+    settle_time(core, tx, checked, run, at)?;
+    if run.record.state.is_final() {
+        return run.view(checked);
+    }
+    let RunState::Active { step, attempt } = &run.record.state else {
+        return Err(Error::conflict("Workflow run is already final"));
+    };
+    if checked.step(step).map(|step| &step.action) != Some(&Action::VerifyTotp {})
+        || run.in_flight.is_some()
+        || run.executions >= checked.definition().limits.max_executions
+    {
+        return Err(Error::conflict("Workflow step cannot accept this code"));
+    }
+    let reservation = InFlight {
+        nonce: crypto::id(),
+        step: step.clone(),
+        attempt: *attempt,
+        step_started_at: run.step_started_at,
+        source: None,
+        passkey: None,
+        totp: Some(digest(&crypto::random_token("ri_workflow_totp_"))),
+        recovery_code: None,
+        enrollment: None,
+        totp_enrollment: None,
+    };
+    run.in_flight = Some(reservation);
+    run.executions += 1;
+    tx.put(RUNS, &run.record.id, run)?;
+    match verify_code_in(core, tx, run, checked, Factor::Totp, &code, at)? {
+        Ok(view) => Ok(view),
+        // The lockout attempt was already spent. Return state so the browser
+        // can persist any terminal denial in this same transaction.
+        Err(error) if error.code == "rate_limited" => run.view(checked),
+        Err(error) => Err(error),
+    }
+}
+
+fn verify_code_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &mut RuntimeRun,
+    checked: &Validated,
+    factor: Factor,
+    code: &str,
+    at: u64,
+) -> Result<Result<View>> {
+    let RunState::Active { step, attempt } = &run.record.state else {
+        return Err(Error::forbidden());
+    };
+    if checked.step(step).map(|step| &step.action) != Some(&factor.action()) {
+        return Err(Error::forbidden());
+    }
+    let run_id = run.record.id.clone();
+    let (mut user, request) = authority(core, tx, &run.record, at)?;
+    let primary = primary(core, tx, checked, run, &user, &request, at)?;
+    // Share the ordinary account lockout, including a browser submission.
+    let attempts = tx
+        .get::<Attempts>("attempts", &user.username)?
+        .unwrap_or_default();
+    if attempts.locked_until > at {
+        fail_attempt(core, tx, checked, run, AttemptResult::Failed, at)?;
+        return Ok(Err(Error::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited",
+            "Too many attempts; try again later",
+        )));
+    }
+    let verified = match factor {
+        Factor::Totp => {
+            let spent = crypto::totp_step_with(
+                user.totp_secret.as_deref().ok_or_else(Error::forbidden)?,
+                &user.username,
+                code,
+                at,
+                user.totp_last_step,
+                &user.totp_settings,
+            )?;
+            if spent.is_some() {
+                user.totp_last_step = spent;
+            }
+            spent.is_some()
+        }
+        Factor::RecoveryCode => crate::authenticator::consume_recovery_code(&mut user, code),
+    };
+    if !verified {
+        record_credential_failure(tx, &user, at)?;
+        audit(tx, &user.id, factor.event(false), &run_id)?;
+        fail_attempt(core, tx, checked, run, AttemptResult::Failed, at)?;
+        return Ok(Ok(run.view(checked)?));
+    }
+    tx.put("users", &user.id, &user)?;
+    tx.delete("attempts", &user.username)?;
+    let receipt = StoredEvidence {
+        id: crypto::id(),
+        proof: factor.proof(),
+        action: factor.action(),
+        step: step.clone(),
+        attempt: *attempt,
+        account: user.id.clone(),
+        account_epoch: user.epoch,
+        session: run.record.session.clone(),
+        request: request.id,
+        run: run_id.clone(),
+        binding: run.record.binding.clone(),
+        verified_at: at,
+        expires_at: primary
+            .expires_at
+            .min(primary.verified_at.saturating_add(RECEIPT_SECONDS))
+            .min(request.expires_at)
+            .min(at.saturating_add(RECEIPT_SECONDS)),
+        consumed: false,
+        source: None,
+    };
+    run.attempts.push(Attempt {
+        step: step.clone(),
+        ordinal: *attempt,
+        started_at: run.step_started_at,
+        finished_at: at,
+        result: AttemptResult::Verified,
+    });
+    run.in_flight = None;
+    finish_step(
+        core,
+        tx,
+        checked,
+        run,
+        Label::fixed("verified"),
+        Some(receipt),
+        at,
+    )?;
+    audit(tx, &user.id, factor.event(true), &run_id)?;
+    Ok(Ok(run.view(checked)?))
+}
+
 /// These exact session paths need fresh password and current TOTP proofs.
 /// Recovery codes cannot substitute for the current factor here.
 fn session_password_primary(
@@ -521,88 +670,7 @@ impl Core {
             {
                 return Err(Error::forbidden());
             }
-            let (mut user, request) = authority(self, tx, &run.record, at)?;
-            let primary = primary(self, tx, &checked, &run, &user, &request, at)?;
-            // Share the ordinary account lockout. Cancelling or starting a new
-            // workflow cannot reset the code-guessing budget.
-            let attempts = tx
-                .get::<Attempts>("attempts", &user.username)?
-                .unwrap_or_default();
-            if attempts.locked_until > at {
-                fail_attempt(self, tx, &checked, &mut run, AttemptResult::Failed, at)?;
-                return Ok(Err(Error::new(
-                    StatusCode::TOO_MANY_REQUESTS,
-                    "rate_limited",
-                    "Too many attempts; try again later",
-                )));
-            }
-            let verified = match factor {
-                Factor::Totp => {
-                    let step = crypto::totp_step_with(
-                        user.totp_secret.as_deref().ok_or_else(Error::forbidden)?,
-                        &user.username,
-                        &code,
-                        at,
-                        user.totp_last_step,
-                        &user.totp_settings,
-                    )?;
-                    if step.is_some() {
-                        user.totp_last_step = step;
-                    }
-                    step.is_some()
-                }
-                Factor::RecoveryCode => {
-                    crate::authenticator::consume_recovery_code(&mut user, &code)
-                }
-            };
-            if !verified {
-                record_credential_failure(tx, &user, at)?;
-                audit(tx, &user.id, factor.event(false), id)?;
-                fail_attempt(self, tx, &checked, &mut run, AttemptResult::Failed, at)?;
-                return Ok(Ok(run.view(&checked)?));
-            }
-            tx.put("users", &user.id, &user)?;
-            tx.delete("attempts", &user.username)?;
-            let receipt = StoredEvidence {
-                id: crypto::id(),
-                proof: factor.proof(),
-                action: factor.action(),
-                step: step.clone(),
-                attempt: *attempt,
-                account: user.id.clone(),
-                account_epoch: user.epoch,
-                session: run.record.session.clone(),
-                request: request.id,
-                run: run.record.id.clone(),
-                binding: run.record.binding.clone(),
-                verified_at: at,
-                expires_at: primary
-                    .expires_at
-                    .min(primary.verified_at.saturating_add(RECEIPT_SECONDS))
-                    .min(request.expires_at)
-                    .min(at.saturating_add(RECEIPT_SECONDS)),
-                consumed: false,
-                source: None,
-            };
-            run.attempts.push(Attempt {
-                step: step.clone(),
-                ordinal: *attempt,
-                started_at: run.step_started_at,
-                finished_at: at,
-                result: AttemptResult::Verified,
-            });
-            run.in_flight = None;
-            finish_step(
-                self,
-                tx,
-                &checked,
-                &mut run,
-                Label::fixed("verified"),
-                Some(receipt),
-                at,
-            )?;
-            audit(tx, &user.id, factor.event(true), id)?;
-            Ok(Ok(run.view(&checked)?))
+            verify_code_in(self, tx, &mut run, &checked, factor, &code, at)
         })?
     }
 }

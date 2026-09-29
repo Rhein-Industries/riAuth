@@ -151,6 +151,23 @@ impl Core {
     /// Verify only this run's reserved password attempt. Successful verification
     /// produces a W03 receipt; it never produces a browser login or a session.
     pub fn workflow_password(&self, token: &str, id: &str, password: String) -> Result<View> {
+        self.workflow_password_with(
+            id,
+            password,
+            |core, tx, run| owned(core, tx, token, run),
+            |_, _| Ok(()),
+        )
+    }
+
+    /// Browser verification checks live cookie and request ownership on both sides
+    /// of password hashing; terminal responses are persisted in the same write.
+    pub(crate) fn workflow_password_with(
+        &self,
+        id: &str,
+        password: String,
+        owner: impl Fn(&Core, &Tx<'_>, &StoredRun) -> Result<()>,
+        finished: impl Fn(&Tx<'_>, &View) -> Result<()>,
+    ) -> Result<View> {
         let password = Zeroizing::new(password);
         if password.len() > 1024 {
             return Err(Error::bad("Password is too long"));
@@ -162,7 +179,7 @@ impl Core {
             if let Some(error) = version::commit_reviewed_seal(self, tx, &mut run)? {
                 return Ok(Err(error));
             }
-            owned(self, tx, token, &run.record)?;
+            owner(self, tx, &run.record)?;
             if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
                 seal_stale_extension(self, tx, &checked, &mut run, now())?;
                 return Ok(Err(Error::conflict("Workflow extension changed")));
@@ -221,7 +238,7 @@ impl Core {
             if let Some(error) = version::commit_reviewed_seal(self, tx, &mut run)? {
                 return Ok(Err(error));
             }
-            owned(self, tx, token, &run.record)?;
+            owner(self, tx, &run.record)?;
             let at = now();
             if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
                 seal_stale_extension(self, tx, &checked, &mut run, at)?;
@@ -247,13 +264,16 @@ impl Core {
             // A different sign-in can lock the account while hashing runs.
             if let Err(error) = crate::password::unlocked(tx, &user)? {
                 fail_attempt(self, tx, &checked, &mut run, AttemptResult::Failed, at)?;
+                finished(tx, &run.view(&checked)?)?;
                 return Ok(Err(error));
             }
             if !verified {
                 record_credential_failure(tx, &user, at)?;
                 audit(tx, &user.id, "workflow.password.failed", id)?;
                 fail_attempt(self, tx, &checked, &mut run, AttemptResult::Failed, at)?;
-                return Ok(Ok(run.view(&checked)?));
+                let view = run.view(&checked)?;
+                finished(tx, &view)?;
+                return Ok(Ok(view));
             }
             let expires_at = verified_at
                 .saturating_add(RECEIPT_SECONDS)
@@ -311,7 +331,9 @@ impl Core {
                 tx.delete("attempts", &user.username)?;
             }
             audit(tx, &user.id, "workflow.password.verified", id)?;
-            Ok(Ok(run.view(&checked)?))
+            let view = run.view(&checked)?;
+            finished(tx, &view)?;
+            Ok(Ok(view))
         })?
     }
 }

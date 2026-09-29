@@ -2962,3 +2962,322 @@ async fn ended_session_logout_page_says_this_browser_is_still_signed_in() {
     }
     assert!(f.core.portal_apps(Some(&bob)).is_ok());
 }
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn configured_browser_password_totp_consent_spends_exact_preparation_once() {
+    let mut f = Fixture::new();
+    let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+    definition.id = Id::new("browser-password-totp-consent").unwrap();
+    definition.origin = Origin::Configured;
+    definition.limits.max_duration_seconds = 120;
+    definition.limits.max_executions = 6;
+    definition.steps[0].transitions[0].to = Id::new("password").unwrap();
+    let mut document = serde_json::to_value(definition).unwrap();
+    let steps = document["steps"].as_array().unwrap().clone();
+    document["steps"] = json!([
+        steps[0],
+        {"id":"password", "action":{"type":"verify_password"}, "max_attempts":2,
+         "timeout_seconds":120, "cancellable":true, "transitions":[
+            {"on":"verified","to":"totp"}, {"on":"failed","to":"denied"}]},
+        {"id":"totp", "action":{"type":"verify_totp"}, "max_attempts":2,
+         "timeout_seconds":120, "cancellable":true, "transitions":[
+            {"on":"verified","to":"consent"}, {"on":"failed","to":"denied"}]},
+        steps[1]
+    ]);
+    document["steps"][3]["timeout_seconds"] = json!(120);
+    document["terminals"][0]["requires"] = json!([["session", "password", "totp", "consent"]]);
+    document["terminals"][0]["max_proof_age_seconds"] = json!(120);
+    f.core.config.workflows.insert(
+        "browser-password-totp-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: serde_json::from_value(document).unwrap(),
+        },
+    );
+    f.core.config.browser_consent_workflow = Some("browser-password-totp-consent".into());
+    f.core.config.validate().unwrap();
+    client(&f, "app", true, true, Default::default());
+    let alice = f.user("alice");
+    f.user("bob");
+    let enrollment = f.core.mfa_begin(&alice).unwrap();
+    let totp = crypto::totp(enrollment["secret"].as_str().unwrap(), "alice").unwrap();
+    f.core
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
+        .unwrap();
+    let login = f
+        .core
+        .portal_password(
+            None,
+            "alice".into(),
+            PASSWORD.into(),
+            Some(totp.generate(now()).to_string()),
+            false,
+        )
+        .unwrap();
+    let alice_sso = login
+        .cookies
+        .iter()
+        .find_map(|cookie| {
+            cookie
+                .split(';')
+                .next()
+                .unwrap()
+                .strip_prefix("riauth_sso=")
+        })
+        .unwrap()
+        .to_owned();
+    let bob_sso = browser(&f, "bob");
+    let alice_sid = sid(&f, &alice_sso);
+    let stored = session(&f, &alice_sid);
+    let session_count = f.core.store.list::<Session>("sessions").unwrap().len();
+    let app = riauth::api::router(f.core.clone());
+    let verifier = crypto::random_token("");
+    let mut request = f.request("app", &verifier);
+    request.prompt = Some("login consent".into());
+    let i = start(&f, &app, &request, Some(&alice_sso)).await;
+    let state = get_state(&app, &i, Some(&alice_sso)).await.body;
+    assert_eq!(state["status"], "authenticate");
+    assert_eq!(state["requirements"]["configured_totp"], true);
+    assert_eq!(state["requirements"]["configured_stage"], "password");
+    assert!(state["requirements"].get("configured_passkey").is_none());
+    assert_ne!(
+        decide(&app, &i, Some(&alice_sso), true, &state)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_ne!(
+        password(&app, &i, Some(&bob_sso), "bob", None).await.status,
+        StatusCode::OK
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("workflow_runs")
+            .unwrap()
+            .is_empty()
+    );
+
+    let first = password(&app, &i, Some(&alice_sso), "alice", None).await;
+    assert_eq!(first.status, StatusCode::OK, "{}", first.text);
+    assert_eq!(first.body["requirements"]["configured_stage"], "totp");
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &i.id)
+        .unwrap()
+        .unwrap();
+    let run_id = text(&pending, "configured_run");
+    let prepared = text(&pending["request"], "transaction_id");
+    assert_ne!(
+        password(&app, &i, Some(&alice_sso), "alice", None)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_ne!(call(&app, post(&i.path("/password"), &i.cookies(Some(&bob_sso)),
+        json!({"username":"bob", "password":"", "otp":totp.generate(now() + 30).to_string()})))
+        .await.status, StatusCode::OK);
+
+    drop(app);
+    let f = f.reopen_with(|config| {
+        assert_eq!(
+            config.browser_consent_workflow.as_deref(),
+            Some("browser-password-totp-consent")
+        )
+    });
+    let app = riauth::api::router(f.core.clone());
+    let resumed = get_state(&app, &i, Some(&alice_sso)).await.body;
+    assert_eq!(resumed["requirements"]["configured_stage"], "totp");
+    let spent = call(
+        &app,
+        post(
+            &i.path("/password"),
+            &i.cookies(Some(&alice_sso)),
+            json!({"username":"alice", "password":"", "otp":totp.generate(now()).to_string()}),
+        ),
+    )
+    .await;
+    assert_eq!(spent.status, StatusCode::OK, "{}", spent.text);
+    assert_eq!(spent.body["requirements"]["configured_stage"], "totp");
+    let verified = call(
+        &app,
+        post(
+            &i.path("/password"),
+            &i.cookies(Some(&alice_sso)),
+            json!({"username":"alice", "password":"", "otp":totp.generate(now() + 30).to_string()}),
+        ),
+    )
+    .await;
+    assert_eq!(verified.status, StatusCode::OK, "{}", verified.text);
+    assert_eq!(verified.body["status"], "consent");
+    assert_ne!(
+        decide(&app, &i, Some(&bob_sso), true, &verified.body)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    let approved = decide(&app, &i, Some(&alice_sso), true, &verified.body).await;
+    assert_eq!(approved.status, StatusCode::OK, "{}", approved.text);
+    assert_eq!(approved.body["status"], "complete");
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        session_count
+    );
+    assert_eq!(
+        serde_json::to_value(session(&f, &alice_sid).identity).unwrap(),
+        serde_json::to_value(stored.identity).unwrap()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("authentication", &digest(&prepared))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("workflow_runs", &run_id)
+            .unwrap()
+            .unwrap()["record"]["state"]["outcome"],
+        "consent_granted"
+    );
+    assert_ne!(
+        decide(&app, &i, Some(&alice_sso), true, &verified.body)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    let delivered = resume(&app, &i, Some(&alice_sso)).await;
+    assert_eq!(delivered.status, StatusCode::FOUND);
+    let issued = grant(&f, &delivered.location());
+    assert_eq!(issued.identity.session_id, alice_sid);
+    assert_eq!(issued.identity.amr, vec!["pwd", "otp"]);
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+    assert_eq!(
+        resume(&app, &i, Some(&alice_sso)).await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    let mut denied_request = f.request("app", &crypto::random_token(""));
+    denied_request.prompt = Some("login consent".into());
+    let denied = start(&f, &app, &denied_request, Some(&alice_sso)).await;
+    let denied_password = password(&app, &denied, Some(&alice_sso), "alice", None).await;
+    assert_eq!(
+        denied_password.body["requirements"]["configured_stage"],
+        "totp"
+    );
+    let denied_pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &denied.id)
+        .unwrap()
+        .unwrap();
+    let denied_key = digest(&text(&denied_pending["request"], "transaction_id"));
+    let refused = decide(
+        &app,
+        &denied,
+        Some(&alice_sso),
+        false,
+        &denied_password.body,
+    )
+    .await;
+    assert_eq!(refused.status, StatusCode::OK, "{}", refused.text);
+    assert_eq!(refused.body["status"], "complete");
+    assert!(
+        f.core
+            .store
+            .get::<Value>("authentication", &denied_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        resume(&app, &denied, Some(&alice_sso))
+            .await
+            .location()
+            .contains("access_denied")
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let mut expired_request = f.request("app", &crypto::random_token(""));
+    expired_request.prompt = Some("login consent".into());
+    let expired = start(&f, &app, &expired_request, Some(&alice_sso)).await;
+    let expired_pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &expired.id)
+        .unwrap()
+        .unwrap();
+    let expired_key = digest(&text(&expired_pending["request"], "transaction_id"));
+    f.core
+        .store
+        .write(|tx| {
+            let mut row: Value = tx.get("authentication", &expired_key)?.unwrap();
+            row["expires_at"] = json!(now() - 1);
+            tx.put("authentication", &expired_key, &row)
+        })
+        .unwrap();
+    assert_eq!(
+        get_state(&app, &expired, Some(&alice_sso)).await.body["status"],
+        "unavailable"
+    );
+    assert_ne!(
+        password(&app, &expired, Some(&alice_sso), "alice", None)
+            .await
+            .status,
+        StatusCode::OK
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+
+    let mut failed_request = f.request("app", &crypto::random_token(""));
+    failed_request.prompt = Some("login consent".into());
+    let failed = start(&f, &app, &failed_request, Some(&alice_sso)).await;
+    let failed_pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &failed.id)
+        .unwrap()
+        .unwrap();
+    let failed_key = digest(&text(&failed_pending["request"], "transaction_id"));
+    let wrong_body = json!({"username":"alice", "password":"wrong-password", "otp":null});
+    let first_wrong = call(
+        &app,
+        post(
+            &failed.path("/password"),
+            &failed.cookies(Some(&alice_sso)),
+            wrong_body.clone(),
+        ),
+    )
+    .await;
+    assert_eq!(
+        first_wrong.body["requirements"]["configured_stage"],
+        "password"
+    );
+    let second_wrong = call(
+        &app,
+        post(
+            &failed.path("/password"),
+            &failed.cookies(Some(&alice_sso)),
+            wrong_body,
+        ),
+    )
+    .await;
+    assert_eq!(second_wrong.status, StatusCode::OK, "{}", second_wrong.text);
+    assert_eq!(second_wrong.body["status"], "complete");
+    assert!(
+        f.core
+            .store
+            .get::<Value>("authentication", &failed_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        resume(&app, &failed, Some(&alice_sso))
+            .await
+            .location()
+            .contains("access_denied")
+    );
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
+}

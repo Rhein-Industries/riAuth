@@ -12,6 +12,7 @@
     force_authn: ["Confirm it's you", "{App} asks you to sign in again."],
     max_age: ["Confirm it's you", "Your sign-in is older than {App} allows."],
     step_up: ["Extra verification needed", "{App} requires a passkey or an authenticator code."],
+    configured_totp: ["Enter your authenticator code", "Confirm with your current authenticator code to continue to {App}."],
     select_account: ["Choose an account for {App}", "Sign in with the account you want to use."]
   };
   const ACTIVE = new Set(["authenticate", "consent", "confirm"]);
@@ -162,11 +163,14 @@
     $("signin-app-host").textContent = host ? `You'll return to ${host}` : ""; $("signin-app-host").hidden = !host;
     const account = next.account, pinned = next.pinned === true && !!account;
     const configuredPasskey = next.kind === "authorize" && next.requirements?.configured_passkey === true && !!account;
+    const configuredTotp = next.kind === "authorize" && next.requirements?.configured_totp === true && !!account;
+    const totpStage = configuredTotp ? next.requirements?.configured_stage : null;
     $("signin-account").hidden = !pinned;
     $("signin-account-text").textContent = pinned ? `Signed in as ${account.display_name} (@${account.username})` : "";
-    $("signin-switch").hidden = configuredPasskey;
+    $("signin-switch").hidden = configuredPasskey || configuredTotp;
     $("signin-form").hidden = configuredPasskey;
-    $("signin-divider").hidden = configuredPasskey || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable();
+    $("signin-passkey").hidden = configuredTotp || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable();
+    $("signin-divider").hidden = configuredPasskey || configuredTotp || !RiAuthCapabilities.usable("identity.passkeys") || !RiAuth.passkeysAvailable();
     $("signin-passkey").textContent = configuredPasskey ? "Verify with your passkey" : "Sign in with a passkey";
     $("signin-passkey-cancel").textContent = configuredPasskey ? "Cancel passkey verification" : "Cancel passkey sign-in";
     // Keep what the user typed across polls; reset it when the account changes.
@@ -175,11 +179,17 @@
     if (pinned) $("signin-username").value = account.username;
     else if (changed) $("signin-username").value = account?.username || "";
     const mfa = next.requirements?.mfa === true;
-    $("signin-otp").required = mfa;
-    $("signin-requirement").hidden = !mfa;
+    $("signin-password").parentElement.hidden = totpStage === "totp";
+    $("signin-password").required = totpStage !== "totp";
+    $("signin-otp").parentElement.hidden = totpStage === "password";
+    $("signin-otp").required = totpStage === "totp" || (!configuredTotp && mfa);
+    $("signin-otp").parentElement.querySelector("label").textContent = configuredTotp ? "Current authenticator code" : "Authenticator or recovery code (if enabled)";
+    $("signin-otp-hint").textContent = configuredTotp ? "Use the current code from your authenticator app." : "Leave empty if your account has no authenticator app.";
+    $("signin-submit").textContent = totpStage === "password" ? "Verify password" : totpStage === "totp" ? "Verify code" : "Sign in";
+    $("signin-requirement").hidden = configuredTotp || !mfa;
     $("signin-requirement-text").textContent = `${app()} requires a passkey or an authenticator code.`;
     $("signin-cancel").textContent = `Cancel and return to ${app()}`;
-    const key = `${next.pinned}:${next.session_ref}:${configuredPasskey}`;
+    const key = `${next.pinned}:${next.session_ref}:${configuredPasskey}:${configuredTotp}`;
     if (flowKey !== key) {
       void flow?.cancel(); passkeyAttempt += 1;
       $("signin-passkey-cancel").hidden = true;
@@ -300,8 +310,8 @@
     event.preventDefault();
     if (acting) return;
     const username = $("signin-username").value.trim(), password = $("signin-password").value, otp = code($("signin-otp").value);
-    if (!username || !password) { clearError("signin-error"); showError("signin-error", "Enter your username and password."); return; }
-    if ($("signin-otp").required && !otp) { clearError("signin-error"); showError("signin-error", "Enter your authenticator or recovery code, or sign in with a passkey."); return; }
+    if (!username || ($("signin-password").required && !password)) { clearError("signin-error"); showError("signin-error", "Enter your username and password."); return; }
+    if ($("signin-otp").required && !otp) { clearError("signin-error"); showError("signin-error", state?.requirements?.configured_totp ? "Enter your current authenticator code." : "Enter your authenticator or recovery code, or sign in with a passkey."); return; }
     $("signin-password").value = "";
     act($("signin-submit"), "signin-error", async () => {
       await cancelPasskey();

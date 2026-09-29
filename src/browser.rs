@@ -121,18 +121,22 @@ impl Core {
             #[cfg(not(feature = "platform"))]
             let configured_consent: Option<&str> = None;
             #[cfg(feature = "platform")]
-            let configured_passkey = configured_consent.is_some_and(|name| {
+            let configured_reauthentication = configured_consent.is_some_and(|name| {
                 self.config.workflows.get(name).is_some_and(|entry| {
                     entry.active
-                        && crate::workflow::supported_configured_passkey_consent(&entry.definition)
+                        && (crate::workflow::supported_configured_passkey_consent(
+                            &entry.definition,
+                        ) || crate::workflow::supported_configured_password_totp_consent(
+                            &entry.definition,
+                        ))
                 })
             });
             #[cfg(not(feature = "platform"))]
-            let configured_passkey = false;
+            let configured_reauthentication = false;
             if configured_consent.is_some()
                 && (client.settings.source_stage.is_some()
                     || request.has_prompt("select_account")
-                    || (!configured_passkey
+                    || (!configured_reauthentication
                         && (request.has_prompt("login") || request.max_age == Some(0))))
             {
                 return Err(Error::oauth(
@@ -434,9 +438,146 @@ impl Core {
         password: String,
         otp: Option<String>,
     ) -> Result<BrowserReply> {
-        let (_, pin) = self.authorize_open(id, binding, sso)?;
+        let (pending, pin) = self.authorize_open(id, binding, sso)?;
+        #[cfg(not(feature = "platform"))]
+        let _ = &pending;
+        #[cfg(feature = "platform")]
+        if let Some(workflow) = pending.configured_consent.as_deref()
+            && self.config.workflows.get(workflow).is_some_and(|entry| {
+                entry.active
+                    && crate::workflow::supported_configured_password_totp_consent(
+                        &entry.definition,
+                    )
+            })
+        {
+            if let Some(cookie) = sso.filter(|_| pin.is_some()) {
+                return self.authorize_totp_password(
+                    id, binding, cookie, workflow, username, password, otp,
+                );
+            }
+            if pending.configured_run.is_some() {
+                return Err(Error::unauthorized());
+            }
+        }
         let staged = self.browser_password_login(username, password, otp, pin.as_deref())?;
         self.authorize_attach(id, binding, sso, &staged, pin.as_deref())
+    }
+
+    #[cfg(feature = "platform")]
+    fn authorize_totp_password(
+        &self,
+        id: &str,
+        binding: Option<&str>,
+        cookie: &str,
+        workflow: &str,
+        username: String,
+        password: String,
+        otp: Option<String>,
+    ) -> Result<BrowserReply> {
+        use crate::workflow::executor::{
+            BrowserTotp, browser_totp_code_in, browser_totp_owner, browser_totp_stage_in,
+            browser_totp_start_in,
+        };
+        let (run_id, stage, session, request) = self.store.write(|tx| {
+            let mut p = undecided(interaction(tx, id, binding)?)?;
+            if p.configured_consent.as_deref() != Some(workflow) {
+                return Err(Error::forbidden());
+            }
+            let session = self
+                .browser_session(tx, Some(cookie))?
+                .ok_or_else(Error::unauthorized)?;
+            let user = self.identity_user(tx, &session.identity)?;
+            if user.username != username {
+                return Err(account_changed());
+            }
+            let client = tx
+                .get::<Client>("clients", &p.request.client_id)?
+                .ok_or_else(Error::forbidden)?;
+            if p.configured_client.as_deref() != Some(client_fingerprint(&client)?.as_str())
+                || !needs_reauthentication(&client, &p.request, &session.identity)
+            {
+                return Err(Error::forbidden());
+            }
+            let run_id = if let Some(run_id) = p.configured_run.as_deref() {
+                run_id.to_owned()
+            } else {
+                let run_id = browser_totp_start_in(
+                    self,
+                    tx,
+                    workflow,
+                    id,
+                    cookie,
+                    &session,
+                    &p.request,
+                    p.expires_at,
+                )?;
+                p.configured_run = Some(run_id.clone());
+                tx.put("browser_authorizations", id, &p)?;
+                run_id
+            };
+            let owner = BrowserTotp {
+                workflow,
+                interaction: id,
+                cookie,
+                session: &session,
+                authorization: &p.request,
+                run_id: &run_id,
+            };
+            let stage = browser_totp_stage_in(self, tx, &owner)?;
+            Ok((run_id, stage, session, p.request))
+        })?;
+        let owner = BrowserTotp {
+            workflow,
+            interaction: id,
+            cookie,
+            session: &session,
+            authorization: &request,
+            run_id: &run_id,
+        };
+        let save_final = |tx: &Tx<'_>, view: &crate::workflow::executor::View| -> Result<()> {
+            if let Some(callback) = &view.authorization_response {
+                let mut p = undecided(interaction(tx, id, binding)?)?;
+                if p.configured_run.as_deref() != Some(run_id.as_str())
+                    || p.configured_consent.as_deref() != Some(workflow)
+                {
+                    return Err(Error::forbidden());
+                }
+                p.callback = Some(callback.clone());
+                p.approved_by = Some(session.id.clone());
+                tx.put("browser_authorizations", id, &p)?;
+            }
+            Ok(())
+        };
+        match stage {
+            "password" => {
+                self.workflow_password_with(
+                    &run_id,
+                    password,
+                    |core, tx, run| browser_totp_owner(core, tx, &owner, run),
+                    save_final,
+                )?;
+            }
+            "totp" => {
+                let code = otp.ok_or_else(|| Error::bad("Enter a current authenticator code"))?;
+                self.store.write(|tx| {
+                    let p = undecided(interaction(tx, id, binding)?)?;
+                    if p.configured_run.as_deref() != Some(run_id.as_str()) {
+                        return Err(Error::forbidden());
+                    }
+                    let view = browser_totp_code_in(self, tx, &owner, code)?;
+                    save_final(tx, &view)
+                })?;
+            }
+            _ => return Err(Error::conflict("Consent is awaiting a decision")),
+        }
+        let body = self.authorize_state(id, binding, Some(cookie))?;
+        Ok(BrowserReply {
+            form_post: false,
+            body,
+            location: None,
+            refresh: None,
+            cookies: vec![],
+        })
     }
     /// A pinned account signs in with its own passkeys; otherwise the browser offers any.
     pub fn authorize_passkey_start(
@@ -485,6 +626,16 @@ impl Core {
         if p.configured_run.is_some() {
             return Err(Error::forbidden());
         }
+        #[cfg(feature = "platform")]
+        if pin.is_some()
+            && p.configured_consent.as_deref().is_some_and(|workflow| {
+                self.config.workflows.get(workflow).is_some_and(|entry| {
+                    crate::workflow::supported_configured_password_totp_consent(&entry.definition)
+                })
+            })
+        {
+            return Err(Error::forbidden());
+        }
         self.browser_passkey_start(pin.as_deref(), &format!("oidc:{id}"), &p.browser_hash)
     }
     pub fn authorize_passkey_finish(
@@ -530,6 +681,9 @@ impl Core {
         if p.configured_consent.as_deref().is_some_and(|workflow| {
             self.config.workflows.get(workflow).is_some_and(|entry| {
                 crate::workflow::supported_configured_passkey_consent(&entry.definition)
+                    || crate::workflow::supported_configured_password_totp_consent(
+                        &entry.definition,
+                    )
             })
         }) && pin.is_some()
         {
@@ -607,6 +761,12 @@ impl Core {
                                 &entry.definition,
                             )
                     });
+                    let totp = self.config.workflows.get(workflow).is_some_and(|entry| {
+                        entry.active
+                            && crate::workflow::supported_configured_password_totp_consent(
+                                &entry.definition,
+                            )
+                    });
                     if approve {
                         let client = tx
                             .get::<Client>("clients", &p.request.client_id)?
@@ -622,7 +782,24 @@ impl Core {
                         }) {
                             return Err(account_changed());
                         }
-                        p.callback = Some(if passkey {
+                        p.callback = Some(if totp {
+                            crate::workflow::executor::browser_totp_decide_in(
+                                self,
+                                tx,
+                                &crate::workflow::executor::BrowserTotp {
+                                    workflow,
+                                    interaction: id,
+                                    cookie: sso.ok_or_else(Error::unauthorized)?,
+                                    session,
+                                    authorization: &p.request,
+                                    run_id: p
+                                        .configured_run
+                                        .as_deref()
+                                        .ok_or_else(Error::forbidden)?,
+                                },
+                                true,
+                            )?
+                        } else if passkey {
                             crate::workflow::executor::browser_passkey_consent_decide_in(
                                 self,
                                 tx,
@@ -662,17 +839,33 @@ impl Core {
                             .map_or("anonymous", |value| value.identity.user_id.as_str());
                         p.callback = Some(if let Some(run_id) = p.configured_run.as_deref() {
                             let session = session.as_ref().ok_or_else(Error::unauthorized)?;
-                            crate::workflow::executor::browser_passkey_consent_decide_in(
-                                self,
-                                tx,
-                                workflow,
-                                id,
-                                sso.ok_or_else(Error::unauthorized)?,
-                                session,
-                                &p.request,
-                                run_id,
-                                false,
-                            )?
+                            if totp {
+                                crate::workflow::executor::browser_totp_decide_in(
+                                    self,
+                                    tx,
+                                    &crate::workflow::executor::BrowserTotp {
+                                        workflow,
+                                        interaction: id,
+                                        cookie: sso.ok_or_else(Error::unauthorized)?,
+                                        session,
+                                        authorization: &p.request,
+                                        run_id,
+                                    },
+                                    false,
+                                )?
+                            } else {
+                                crate::workflow::executor::browser_passkey_consent_decide_in(
+                                    self,
+                                    tx,
+                                    workflow,
+                                    id,
+                                    sso.ok_or_else(Error::unauthorized)?,
+                                    session,
+                                    &p.request,
+                                    run_id,
+                                    false,
+                                )?
+                            }
                         } else {
                             self.authorization_denied(tx, &p.request, actor)?
                         });
@@ -759,6 +952,8 @@ impl Core {
                             || !(crate::workflow::supported_configured_session_consent(
                                 &entry.definition,
                             ) || crate::workflow::supported_configured_passkey_consent(
+                                &entry.definition,
+                            ) || crate::workflow::supported_configured_password_totp_consent(
                                 &entry.definition,
                             ))
                     }))
@@ -976,6 +1171,8 @@ impl Core {
                             &entry.definition,
                         ) || crate::workflow::supported_configured_passkey_consent(
                             &entry.definition,
+                        ) || crate::workflow::supported_configured_password_totp_consent(
+                            &entry.definition,
                         ))
                 });
             #[cfg(not(feature = "platform"))]
@@ -1053,9 +1250,30 @@ impl Core {
         });
         #[cfg(not(feature = "platform"))]
         let configured_passkey = false;
+        #[cfg(feature = "platform")]
+        let configured_totp = p.configured_consent.as_deref().is_some_and(|workflow| {
+            self.config.workflows.get(workflow).is_some_and(|entry| {
+                entry.active
+                    && crate::workflow::supported_configured_password_totp_consent(
+                        &entry.definition,
+                    )
+            })
+        });
+        #[cfg(feature = "platform")]
+        let browser = if configured_totp {
+            let mut totp_probe = probe(true);
+            totp_probe.amr = vec!["pwd".into(), "otp".into()];
+            !mfa || !needs_step_up(&client, request, &totp_probe)
+        } else {
+            browser
+        };
         state["requirements"] = json!({"mfa": mfa, "browser": browser});
         if configured_passkey {
             state["requirements"]["configured_passkey"] = json!(true);
+        }
+        #[cfg(feature = "platform")]
+        if configured_totp {
+            state["requirements"]["configured_totp"] = json!(true);
         }
         state["consent"] = json!({"required": required, "scopes": scopes, "attributes": null, "resource": request.resource, "remember_default": p.configured_consent.is_none(), "remember_enabled": p.configured_consent.is_none()});
         if !browser {
@@ -1118,6 +1336,63 @@ impl Core {
             state["status"] = json!(if ready { "consent" } else { "authenticate" });
             if !ready {
                 state["reason"] = json!("step_up");
+            }
+            return Ok(state);
+        }
+        #[cfg(feature = "platform")]
+        if configured_totp {
+            if !needs_reauthentication(&client, request, &session.identity) {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Password and TOTP reauthentication is not required".into()),
+                );
+            }
+            let stage = if let Some(run_id) = p.configured_run.as_deref() {
+                let Some(cookie) = sso else {
+                    return unavailable(
+                        state,
+                        "access_denied",
+                        Some("Bound browser session is unavailable".into()),
+                    );
+                };
+                let owner = crate::workflow::executor::BrowserTotp {
+                    workflow: p
+                        .configured_consent
+                        .as_deref()
+                        .ok_or_else(Error::forbidden)?,
+                    interaction: &p.id,
+                    cookie,
+                    session: &session,
+                    authorization: request,
+                    run_id,
+                };
+                match crate::workflow::executor::browser_totp_stage_in(self, tx, &owner) {
+                    Ok(stage) => stage,
+                    Err(error) if error.status.is_server_error() => return Err(error),
+                    Err(_) => {
+                        return unavailable(
+                            state,
+                            "access_denied",
+                            Some("Bound consent run is unavailable".into()),
+                        );
+                    }
+                }
+            } else {
+                "password"
+            };
+            state["requirements"]["configured_stage"] = json!(stage);
+            state["status"] = json!(if stage == "consent" {
+                "consent"
+            } else {
+                "authenticate"
+            });
+            if stage != "consent" {
+                state["reason"] = json!(if stage == "totp" {
+                    "configured_totp"
+                } else {
+                    "prompt_login"
+                });
             }
             return Ok(state);
         }

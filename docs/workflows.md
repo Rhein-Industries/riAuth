@@ -15,8 +15,8 @@ authorized by an existing-passkey proof or both fresh password and current-TOTP
 proofs for a local account without a passkey, mail-proven password recovery, and
 first-password or first-passkey invitation acceptance. Their real verifiers
 finalize the credential, proof consumption and epoch change atomically.
-Ordinary sign-in, other enrollment, browser consent and source-stage paths are
-unchanged; browser recovery and invitation acceptance
+Ordinary sign-in, other enrollment and source-stage paths are unchanged;
+browser recovery and invitation acceptance
 keep their existing responses and require a separate sign-in.
 The W04 Platform conditional application policy now narrows existing client
 authorization and projects scoped claims from verified session signals; see
@@ -403,14 +403,15 @@ Platform can opt browser OIDC interactions for all clients into the exact
 session-only graph by setting top-level
 `browser_consent_workflow = "local-consent"` in the server configuration,
 where the name identifies one active canonical `session` → `consent` definition,
-or the exact `session` → `passkey` → `consent` reauthentication definition.
+the exact `session` → `passkey` → `consent` reauthentication definition, or the
+exact `session` → `password` → `totp` → `consent` definition described above.
 Configuration validation rejects a missing, inactive, or different graph;
 Essentials rejects the setting. For this selected browser path, the server
 prepares one cryptorandom OIDC transaction bound to the browser interaction ID
 and the account already signed in, if any. The HttpOnly SSO cookie, interaction
 binding cookie, live account/session, prepared transaction, request content,
 client policy, and explicit page decision are rechecked before approval. The
-session proof, any required passkey proof, and approval receipt are consumed
+session proof, required reauthentication proofs, and approval receipt are consumed
 with code issuance in one write;
 the finished run is retained for replay checks. A signed-out Deny spends the
 same exact preparation and returns the normal denial callback without a code.
@@ -434,8 +435,18 @@ request. The run and browser session expire independently within the configured
 expired, or changed graph or session fails closed without ordinary-consent
 fallback. The global browser selector is exact: choosing the passkey graph makes
 requests that do not need reauthentication unavailable through this adapter.
-Browser integration for password/TOTP reauthentication, SAML consent, and
-remembered-consent creation remains unsupported.
+The password/TOTP graph also requires reauthentication and a live browser SSO
+session. Its page sends the password and current authenticator code in separate
+submissions to `POST /oauth/resume/{id}/password`; the durable run moves from
+password to TOTP to the explicit Allow/Deny decision. Each verifier checks the
+HttpOnly SSO cookie, interaction binding, exact prepared transaction, client,
+account, session and run. TOTP spends its current step transactionally and cannot
+be replaced by a recovery code. Bounded failures or an explicit Deny close the
+run and spend the prepared request; approval consumes both fresh proofs without
+upgrading the stored session or issuing a new one. Browser reloads resume the
+current stage, and a failed or changed authority has no ordinary-consent
+fallback. The selected graph rejects requests that do not need reauthentication.
+SAML configured consent and remembered-consent creation remain unsupported.
 
 Standard terminal OIDC preparations, outside embedded source stages, admit at
 most 64 live indexed attempts per request hash. At capacity, a new preparation

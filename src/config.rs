@@ -630,7 +630,10 @@ impl Config {
             if !cfg!(feature = "platform")
                 || selected.is_none_or(|entry| {
                     !(crate::workflow::supported_configured_session_consent(&entry.definition)
-                        || crate::workflow::supported_configured_passkey_consent(&entry.definition))
+                        || crate::workflow::supported_configured_passkey_consent(&entry.definition)
+                        || crate::workflow::supported_configured_password_totp_consent(
+                            &entry.definition,
+                        ))
                 })
             {
                 bail!("Browser consent needs an active supported configured workflow");

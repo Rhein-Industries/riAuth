@@ -15,9 +15,10 @@ mod totp;
 mod totp_enrollment;
 mod version;
 pub(crate) use consent::{
-    browser_consent_decide_in, browser_passkey_consent_cancel_in,
+    BrowserTotp, browser_consent_decide_in, browser_passkey_consent_cancel_in,
     browser_passkey_consent_decide_in, browser_passkey_consent_finish_in,
-    browser_passkey_consent_ready_in, browser_passkey_consent_start_in,
+    browser_passkey_consent_ready_in, browser_passkey_consent_start_in, browser_totp_code_in,
+    browser_totp_decide_in, browser_totp_owner, browser_totp_stage_in, browser_totp_start_in,
 };
 pub use passkey::PasskeyChallenge;
 pub use source::SourceStart;
