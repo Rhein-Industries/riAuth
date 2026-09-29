@@ -8,6 +8,9 @@
   issued challenge, before calling Google. The device signature over that
   embedding is still checked only by Google's verify endpoint. Google's
   challenge-signing key is not pinned.
+- The raw service-account JSON is wiped after parsing, and each request wipes
+  its bearer and body on drop. Copies the HTTP client holds for the call, and
+  bytes left by an earlier reallocation, stay outside that wipe.
 - This slice was not executed against `verifiedaccess.googleapis.com` or a
   managed Chrome device. `deviceSignals` are not evaluated, profile-only
   responses are rejected, and I07 stays open.

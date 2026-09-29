@@ -12,7 +12,10 @@
 //! `encrypted_key_info`, so this module compares the embedded data and signature
 //! bytes with the issued challenge and still posts the original response bytes
 //! for Google to check that device signature. Google's challenge-signing key is
-//! not pinned. This module was not executed against
+//! not pinned. The raw service-account JSON is wiped after parsing, and each
+//! request wipes its bearer and body on drop. Copies held by the HTTP client
+//! for the duration of the call, and bytes left by an earlier reallocation,
+//! stay outside that wipe. This module was not executed against
 //! `verifiedaccess.googleapis.com` or a managed Chrome device.
 
 use super::TrustConfig;
@@ -52,9 +55,22 @@ const ACCEPTABLE_TRUST: &[&str] = &[
 
 pub struct VerifiedAccessRequest {
     pub url: &'static str,
-    pub bearer: Option<String>,
+    pub bearer: Option<Zeroizing<String>>,
     pub content_type: Option<&'static str>,
-    pub body: Vec<u8>,
+    pub body: Zeroizing<Vec<u8>>,
+}
+
+fn wipe_verified_access_request(request: &mut VerifiedAccessRequest) {
+    if let Some(token) = &mut request.bearer {
+        token.zeroize();
+    }
+    request.body.zeroize();
+}
+
+impl Drop for VerifiedAccessRequest {
+    fn drop(&mut self) {
+        wipe_verified_access_request(self);
+    }
 }
 
 pub struct VerifiedAccessResponse {
@@ -81,7 +97,7 @@ impl VerifiedAccessTransport for ProductionTransport {
         let mut builder = http_client()?
             .post(url)
             .header("accept", "application/json")
-            .body(request.body.clone());
+            .body(request.body.as_slice().to_vec());
         if let Some(kind) = request.content_type {
             builder = builder.header("content-type", kind);
         }
@@ -89,7 +105,7 @@ impl VerifiedAccessTransport for ProductionTransport {
             if !valid_bearer(token) {
                 return Err(remote_unavailable());
             }
-            builder = builder.bearer_auth(token);
+            builder = builder.bearer_auth(token.as_str());
         }
         let response = builder.send().map_err(|_| remote_unavailable())?;
         let status = response.status().as_u16();
@@ -117,12 +133,14 @@ pub(crate) fn generate_challenge(
 ) -> Result<String> {
     let account = load_account(config).map_err(|_| super::unavailable())?;
     let token = access_token(&account, cache, transport)?;
+    drop(account);
     let response = transport.post(&VerifiedAccessRequest {
         url: GENERATE_URL,
-        bearer: Some(token.to_string()),
+        bearer: Some(token.clone()),
         content_type: None,
-        body: Vec::new(),
+        body: Zeroizing::new(Vec::<u8>::new()),
     })?;
+    drop(token);
     let body = require_http_ok(&response)?;
     let value: Value = serde_json::from_slice(body).map_err(|_| remote_unavailable())?;
     let challenge = value
@@ -156,6 +174,7 @@ pub(crate) fn verify_challenge_response(
     let account = load_account(config).map_err(|_| super::unavailable())?;
     let identity = require_identity(config)?;
     let token = access_token(&account, cache, transport)?;
+    drop(account);
     let body = serde_json::to_vec(&json!({
         "challengeResponse": challenge_response,
         "expectedIdentity": identity,
@@ -163,10 +182,11 @@ pub(crate) fn verify_challenge_response(
     .map_err(|_| remote_unavailable())?;
     let response = transport.post(&VerifiedAccessRequest {
         url: VERIFY_URL,
-        bearer: Some(token.to_string()),
+        bearer: Some(token.clone()),
         content_type: Some("application/json"),
-        body,
+        body: Zeroizing::new(body),
     })?;
+    drop(token);
     let bytes = require_http_ok(&response)?;
     accept_device(config, bytes)
 }
@@ -264,21 +284,32 @@ fn access_token(
         return Ok(token);
     }
     let assertion = sign_assertion(account)?;
-    let body = serde_urlencoded::to_string([
-        ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-        ("assertion", assertion.as_str()),
-    ])
-    .map_err(|_| remote_unavailable())?;
-    let response = transport.post(&VerifiedAccessRequest {
+    let encoded = Zeroizing::new(
+        serde_urlencoded::to_string([
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", assertion.as_str()),
+        ])
+        .map_err(|_| remote_unavailable())?,
+    );
+    drop(assertion);
+    let mut response = transport.post(&VerifiedAccessRequest {
         url: TOKEN_URL,
         bearer: None,
         content_type: Some("application/x-www-form-urlencoded"),
-        body: body.into_bytes(),
+        body: Zeroizing::new(encoded.as_bytes().to_vec()),
     })?;
-    let bytes = require_http_ok(&response)?;
-    let value: Value = serde_json::from_slice(bytes).map_err(|_| remote_unavailable())?;
+    drop(encoded);
+    let mut raw = take_ok_body(&mut response)?;
+    let parsed = serde_json::from_slice::<Value>(&raw);
+    raw.zeroize();
+    let mut value = parsed.map_err(|_| remote_unavailable())?;
+    let token = match value.get_mut("access_token").map(Value::take) {
+        Some(Value::String(token)) => Zeroizing::new(token),
+        _ => Zeroizing::new(String::new()),
+    };
     if value.get("error").is_some()
         || value.get("token_type").and_then(Value::as_str) != Some("Bearer")
+        || !valid_bearer(&token)
     {
         return Err(remote_unavailable());
     }
@@ -292,16 +323,11 @@ fn access_token(
         .and_then(Value::as_u64)
         .filter(|seconds| (60..=ASSERTION_TTL).contains(seconds))
         .ok_or_else(remote_unavailable)?;
-    let token = value
-        .get("access_token")
-        .and_then(Value::as_str)
-        .filter(|token| valid_bearer(token))
-        .ok_or_else(remote_unavailable)?;
     let mut guard = cache.lock().map_err(|_| remote_unavailable())?;
     guard.fingerprint = fingerprint;
     guard.refresh_at = now().saturating_add(expires_in).saturating_sub(60);
-    guard.token = Some(Zeroizing::new(token.to_owned()));
-    Ok(Zeroizing::new(token.to_owned()))
+    guard.token = Some(token.clone());
+    Ok(token)
 }
 
 fn cached_token(cache: &Mutex<TokenCache>, fingerprint: &str) -> Result<Option<Zeroizing<String>>> {
@@ -347,6 +373,12 @@ impl Drop for ServiceAccount {
     }
 }
 
+impl ServiceAccountFile {
+    fn wipe(&mut self) {
+        self.private_key.zeroize();
+    }
+}
+
 #[derive(Deserialize)]
 struct ServiceAccountFile {
     #[serde(rename = "type")]
@@ -361,15 +393,24 @@ struct ServiceAccountFile {
     universe_domain: Option<String>,
 }
 
+impl Drop for ServiceAccountFile {
+    fn drop(&mut self) {
+        self.wipe();
+    }
+}
+
 fn load_account(config: &TrustConfig) -> Result<ServiceAccount> {
     let path = config
         .service_account_file
         .as_deref()
         .ok_or_else(|| Error::bad("Verified Access service-account file is unavailable"))?;
-    let text = crate::config::read_private_secret(path, 16 * 1024)
+    let mut text: Zeroizing<String> = crate::config::read_private_secret(path, 16 * 1024)
         .map_err(|_| Error::bad("Verified Access service-account file is unavailable"))?;
-    let mut file: ServiceAccountFile = serde_json::from_str(&text)
-        .map_err(|_| Error::bad("Verified Access service-account key is invalid"))?;
+    let parsed = serde_json::from_str::<ServiceAccountFile>(&text);
+    text.zeroize();
+    drop(text);
+    let mut file =
+        parsed.map_err(|_| Error::bad("Verified Access service-account key is invalid"))?;
     let valid = file.kind == "service_account"
         && file.token_uri == TOKEN_URL
         && file.auth_uri.as_deref().is_none_or(|uri| uri == AUTH_URL)
@@ -381,14 +422,15 @@ fn load_account(config: &TrustConfig) -> Result<ServiceAccount> {
         && valid_key_id(&file.private_key_id)
         && valid_pkcs8(&file.private_key);
     if !valid {
-        file.private_key.zeroize();
         return Err(Error::bad("Verified Access service-account key is invalid"));
     }
-    Ok(ServiceAccount {
-        client_email: file.client_email,
-        private_key_id: file.private_key_id,
-        private_key: file.private_key,
-    })
+    let account = ServiceAccount {
+        client_email: std::mem::take(&mut file.client_email),
+        private_key_id: std::mem::take(&mut file.private_key_id),
+        private_key: std::mem::take(&mut file.private_key),
+    };
+    drop(file);
+    Ok(account)
 }
 
 fn valid_pkcs8(pem_text: &str) -> bool {
@@ -662,6 +704,15 @@ fn require_http_ok(response: &VerifiedAccessResponse) -> Result<&[u8]> {
         return Err(remote_unavailable());
     }
     Ok(&response.body)
+}
+
+fn take_ok_body(response: &mut VerifiedAccessResponse) -> Result<Zeroizing<Vec<u8>>> {
+    if response.status != 200 || response.body.len() > MAX_BODY {
+        tracing::warn!(status = response.status, "verified access request failed");
+        response.body.zeroize();
+        return Err(remote_unavailable());
+    }
+    Ok(Zeroizing::new(std::mem::take(&mut response.body)))
 }
 
 fn http_client() -> Result<reqwest::blocking::Client> {
@@ -940,5 +991,66 @@ mod tests {
             ])
             .is_err()
         );
+    }
+
+    #[test]
+    fn raw_service_account_json_and_request_credentials_are_wiped() {
+        let raw = r#"{"type":"service_account","client_email":"verified-access@test-project.iam.gserviceaccount.com","private_key_id":"key-1","private_key":"-----BEGIN PRIVATE KEY-----\nsecret-private-key-material\n-----END PRIVATE KEY-----\n","token_uri":"https://oauth2.googleapis.com/token"}"#;
+        let mut text = Zeroizing::new(raw.to_owned());
+        let mut file: ServiceAccountFile = serde_json::from_str(&text).unwrap();
+        assert!(text.contains("secret-private-key-material"));
+        assert!(file.private_key.contains("secret-private-key-material"));
+        text.zeroize();
+        assert!(text.is_empty());
+        file.wipe();
+        assert!(file.private_key.is_empty());
+        drop(file);
+        drop(text);
+
+        let mut request = VerifiedAccessRequest {
+            url: TOKEN_URL,
+            bearer: Some(Zeroizing::new("ya29.secret-token".into())),
+            content_type: Some("application/x-www-form-urlencoded"),
+            body: Zeroizing::new(b"assertion=secret-assertion".to_vec()),
+        };
+        assert!(
+            request
+                .bearer
+                .as_deref()
+                .is_some_and(|token| token.contains("secret-token"))
+        );
+        assert!(request.body.windows(6).any(|window| window == b"secret"));
+        wipe_verified_access_request(&mut request);
+        assert!(
+            request
+                .bearer
+                .as_deref()
+                .is_some_and(|token| token.is_empty())
+        );
+        assert!(request.body.is_empty());
+        drop(request);
+
+        let mut accepted = VerifiedAccessResponse {
+            status: 200,
+            body: br#"{"access_token":"ya29.secret-token","token_type":"Bearer"}"#.to_vec(),
+        };
+        let mut raw_body = take_ok_body(&mut accepted).unwrap();
+        assert!(accepted.body.is_empty());
+        assert!(
+            std::str::from_utf8(&raw_body)
+                .unwrap()
+                .contains("secret-token")
+        );
+        raw_body.zeroize();
+        assert!(raw_body.is_empty());
+        drop(raw_body);
+
+        let mut denied = VerifiedAccessResponse {
+            status: 401,
+            body: b"ya29.secret-token".to_vec(),
+        };
+        let error = take_ok_body(&mut denied).unwrap_err();
+        assert!(!error.message.contains("secret-token"));
+        assert!(denied.body.is_empty());
     }
 }

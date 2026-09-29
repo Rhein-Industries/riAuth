@@ -746,8 +746,11 @@ mod google {
             self.calls.lock().unwrap().push(Recorded {
                 url: request.url,
                 content_type: request.content_type,
-                body: request.body.clone(),
-                bearer: request.bearer.clone(),
+                body: request.body.to_vec(),
+                bearer: request
+                    .bearer
+                    .as_ref()
+                    .map(|token| token.as_str().to_owned()),
             });
             self.replies.lock().unwrap().pop_front().ok_or_else(|| {
                 riauth::error::Error::new(

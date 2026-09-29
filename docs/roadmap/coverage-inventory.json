@@ -2263,6 +2263,11 @@
           "ref": "src/verified_access.rs::embedded_signed_data_binds_the_response_to_the_issued_challenge",
           "kind": "rust",
           "ci": "ci-check"
+        },
+        {
+          "ref": "src/verified_access.rs::raw_service_account_json_and_request_credentials_are_wiped",
+          "kind": "rust",
+          "ci": "ci-check"
         }
       ],
       "documentation": [
