@@ -43,6 +43,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Testing](testing.md) | Local checks and deployment validation |
 | [Q07 parser assurance](q07-parser-assurance.md) | Bounded parser/dependency checks, a local SCIM parser repair, and remaining assurance work |
 | [Q08 exact edition matrix](roadmap/q08-exact-edition-bundles.md) | Local Essentials/Platform build, configuration and storage evidence; Linux release artifact gates |
+| [Q08 native ARM64 local run](roadmap/q08-native-arm64-local-6ca4779.md) | Exact-source native Linux ARM64 binaries and local images, smoke results, and open release gates |
 | [Q09 benchmark slice](roadmap/q09-benchmark-slice.md) | One local session-read measurement protocol, its fixture check, and the open benchmark gate |
 | [Q10 installed release gate](roadmap/q10-installed-release-gate.md) | Native packaged-binary transition and recovery gate, local preflight evidence, and remaining external checks |
 | [Q11 release evidence](roadmap/q11-release-evidence.md) | Source intake text, a verify-only checker, and a source SPDX producer called from the Linux packager source; a release SBOM, signatures, a review record, and Linux ARM64 execution stay open |

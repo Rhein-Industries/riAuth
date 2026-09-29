@@ -1,5 +1,12 @@
 # Q10 installed release gate: first bounded slice
 
+The [later native ARM64 local run](q08-native-arm64-local-6ca4779.md) used
+source binaries from accepted commit
+`6ca4779b68cf41e29af490d2aca6ea3d59e1f2bd`. Its direct installed-binary
+drill failed when Platform opened the Essentials store because the stored
+active-capability agreement differed. Both editions passed separate
+same-edition restore; the official release-asset gate remains open.
+
 The native `package` job now runs
 [`check-installed-release-gate.py`](../../scripts/check-installed-release-gate.py)
 once on Linux x86-64 and once on Linux ARM64, after packaging and the existing
@@ -74,15 +81,17 @@ runs the same small fixture tests before any release tag is packaged.
 
 The native Linux x86-64 and Linux ARM64 release jobs must run this gate and the
 existing archive/image smoke on assets from one checked tag. The publish job
-must still pass `check-release-bundle.py` across both architectures. Neither a
-native run nor a complete release asset set exists locally for the accepted
-head. Docker images, deployed services, PostgreSQL restore, external identity
-peers, and actual previous-version schema migration or rollback remain outside
-this slice. A version rollback needs a compatible previous release binary and
-backup format; the current package job supplies only one version.
+must still pass `check-release-bundle.py` across both architectures. No native
+release-job result or complete official release asset set exists locally for
+the accepted head. The later ARM64 local binaries and images are recorded above;
+their cross-edition drill failed before Platform served. Deployed services,
+PostgreSQL restore, external identity peers, and actual previous-version schema
+migration or rollback remain outside this slice. A version rollback needs a
+compatible previous release binary and backup format; the current package job
+supplies only one version.
 
 The accepted [Q08 evidence](q08-exact-edition-bundles.md) covers local macOS
 source binaries built from `4ca7558ee8563a0c5eedc1f13d4a9a6faa6a8d4a`.
 Those hashes do not identify artifacts built from the later accepted head.
-Q08's exact Linux ARM64 and release archive/image gaps remain open until the
-native release jobs supply and verify them.
+Q08's Linux ARM64 **release** archive/image and combined-architecture gaps
+remain open until the native release jobs supply and verify them.

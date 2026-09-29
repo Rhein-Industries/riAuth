@@ -1,5 +1,10 @@
 # Q08 exact edition bundle matrix
 
+For a later, separate native Linux ARM64 local build at accepted commit
+`6ca4779b68cf41e29af490d2aca6ea3d59e1f2bd`, see
+[Q08 native ARM64 local evidence](q08-native-arm64-local-6ca4779.md). The
+release and cross-edition gates recorded there remain open.
+
 Observation: 2026-09-29 UTC. Source revision
 `4ca7558ee8563a0c5eedc1f13d4a9a6faa6a8d4a`; `Cargo.lock` SHA-256
 `f3c9de0e5c5bd7b5bea6aa1f7ce1e2fc827815b94838f1aec2f8231e1f9fc347`.
