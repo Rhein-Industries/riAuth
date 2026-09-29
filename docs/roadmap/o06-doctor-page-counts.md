@@ -31,7 +31,7 @@ Storage telemetry records each page as a bounded scan because the limit is 128, 
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md). Doctor still reports the active signing key id after `jwk()` succeeds.
 - Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.
-- An Essentials redacted deactivation aggregate. The Platform read stays on [deactivation diagnostics](o06-deactivation-diagnostics.md). Essentials keeps `GET /api/provisioning/deactivations`. The account check for that aggregate is `user.offboard`, which Essentials does not make available, and the missing-account administrator path would publish the stored target name.
+- The shared deactivation aggregate is [provisioning deactivation diagnostics](o06-provisioning-deactivation-diagnostics.md). It uses `provisioner.read` and `user.read`, withholds a missing account, and omits the target name. The Platform read on [deactivation diagnostics](o06-deactivation-diagnostics.md) still uses `user.offboard` and can show a missing account's target name to a full administrator.
 - A production deadline for walking every user, client, and logout value. The counts are paged, and each page is released, but each stored value is still decoded in full and has no size cap on this path.
 - `/readyz`, `/livez`, Prometheus, and Grafana. This slice adds no series and no dashboard JSON.
 - The scheduled-offboarding job aggregate still reads `offboard_jobs`.

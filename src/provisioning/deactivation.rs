@@ -1041,13 +1041,26 @@ fn row_view_for(tx: &Tx<'_>, row: &Deactivation, viewer: &Principal) -> Result<V
 
 /// The recorded username is historical evidence, never an authorization key.
 /// A rename or reuse of that name must not transfer access to this identity.
-pub(super) fn row_readable(tx: &Tx<'_>, row: &Deactivation, viewer: &Principal) -> Result<bool> {
+/// A missing account is not readable, including for a full administrator.
+pub(super) fn readable_user(
+    tx: &Tx<'_>,
+    row: &Deactivation,
+    viewer: &Principal,
+) -> Result<Option<User>> {
     if !viewer.allows("provisioner.read", &format!("provisioner/{}", row.target)) {
-        return Ok(false);
+        return Ok(None);
     }
-    Ok(tx.get::<User>("users", &row.user_id)?.is_some_and(|user| {
-        user.id == row.user_id && viewer.allows("user.read", &format!("user/{}", user.username))
-    }))
+    let Some(user) = tx.get::<User>("users", &row.user_id)? else {
+        return Ok(None);
+    };
+    if user.id != row.user_id || !viewer.allows("user.read", &format!("user/{}", user.username)) {
+        return Ok(None);
+    }
+    Ok(Some(user))
+}
+
+pub(super) fn row_readable(tx: &Tx<'_>, row: &Deactivation, viewer: &Principal) -> Result<bool> {
+    Ok(readable_user(tx, row, viewer)?.is_some())
 }
 
 pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {

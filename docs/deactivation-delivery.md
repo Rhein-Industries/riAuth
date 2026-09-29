@@ -241,7 +241,10 @@ rows.
 This page records the source behavior of the read. It sent no request to
 the route. It called no connector and deployed no dashboard. It did not
 re-run the deactivation diagnostic tests, and it did not start PostgreSQL.
-Essentials has no redacted aggregate for this route. `doctor`, `/readyz`,
+Essentials does not serve this Platform route. Both editions serve
+`GET /api/operations/provisioning/deactivations`, documented in
+[provisioning deactivation diagnostics](roadmap/o06-provisioning-deactivation-diagnostics.md).
+That read withholds a missing account and omits the target name. `doctor`, `/readyz`,
 `/livez`, and the existing Prometheus counters keep the behavior described
 above. The [A01 coverage inventory](roadmap/coverage-inventory.md) still
 describes D04 at revision `96e23e2`.

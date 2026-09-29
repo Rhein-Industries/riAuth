@@ -27,6 +27,7 @@ use std::{
 };
 use zeroize::{Zeroize, Zeroizing};
 mod deactivation;
+mod deactivation_diagnostics;
 mod dispatch_recovery;
 pub use dispatch_recovery::RecoverDispatch;
 #[derive(Clone, Debug, Serialize, Deserialize)]

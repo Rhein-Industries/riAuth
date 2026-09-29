@@ -62,7 +62,7 @@ Until one of those exists, this repository does not emit a storage-occupancy ser
 - Connector lag. A schedule can store `last_completed_at`, the local unix time when its then-current `last_job` was stored completed. That time can remain after `last_job` changes. It is not a remote high-water mark and not downstream delivery completion. `next_run` still moves when a job is enqueued. The field is on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - The occupancy and key-health contract in the sections above.
-- An Essentials redacted deactivation aggregate. The Platform read stays on [deactivation diagnostics](o06-deactivation-diagnostics.md). The account check for that aggregate is `user.offboard`, which Essentials does not make available.
+- The shared deactivation aggregate is [provisioning deactivation diagnostics](o06-provisioning-deactivation-diagnostics.md). It uses `provisioner.read` and `user.read`, withholds a missing account, and omits the target name. The Platform read on [deactivation diagnostics](o06-deactivation-diagnostics.md) still uses `user.offboard` and can show a missing account's target name to a full administrator.
 
 ## Local check
 
