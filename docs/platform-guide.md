@@ -13,19 +13,24 @@ an audit review, one LDAP directory import, and one outbound SCIM target.
 Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
-as Essentials section 11. The binaries are the Platform build. The commands
-in sections 1 through 13 are the ones implemented in this tree: `[features]` in
+as Essentials section 11. The install in section 1 selects the Platform
+build. The loopback record's binary reported the Essentials catalog, as that
+record states. The commands in sections 1 through 13 are the ones implemented
+in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
 [standalone client](../crates/riauthctl/src/main.rs).
 
-Reading this page does not mean those steps were executed here. The three
-slices were checked by reading the source and the current docs, then by
-`python3 scripts/check-docs.py`. Section 14 was source-reviewed and was not
-executed here. No Cargo build was run, no server was
-started, and no browser, group change, claim preview, audit export, LDAP
-plan, SCIM delivery, workflow plan, SAML import, source registration, LDAP
-listener, invitation, backup, or accessibility pass was recorded. The
+The three slices were checked by reading the source and the current docs,
+then by `python3 scripts/check-docs.py`. Section 14 was source-reviewed and
+remains unrun. One disposable loopback run of artifact capabilities, local
+`init`, `serve`, `/readyz`, CLI `login`, `doctor`, and one `local-demo`
+client create is recorded in
+[Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
+build was run. That binary's catalog `edition` was `essentials`. The record
+lists the browser, hardware, peer, and Essentials-guide steps that remain
+unrun, including groups, claims, audit, backup, passkeys, invitation
+acceptance, and every external directory or federation peer. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
@@ -136,12 +141,20 @@ binaries. The second installs the base remote client. Its default features
 are empty, so USB support is absent.
 
 `riauth capabilities` prints the artifact catalog without opening a database
-([capability.rs](../src/capability.rs)). In that document, `edition` is
-`platform`, `build_features` is `["essentials", "platform"]`, and `scope` is
-`artifact`. Every `feature_states` entry has `usable` set to `null`. That
-catalog describes the binary. It does not say that a peer, a browser, or an
-authenticator is healthy, and it does not mean the extra Platform features
-are configured.
+([capability.rs](../src/capability.rs)). After the Platform install above,
+`edition` is `platform`, `build_features` is `["essentials", "platform"]`,
+and `scope` is `artifact`. Every `feature_states` entry has `usable` set to
+`null`. That catalog describes the binary. It does not say that a peer, a
+browser, or an authenticator is healthy, and it does not mean the extra
+Platform features are configured.
+
+The loopback record ran this command on the already built accepted
+`target/debug/riauth`. That catalog reported `edition` `essentials`,
+`build_features` `["essentials"]`, and `scope` `artifact`. All 87
+`feature_states` entries had `usable`, `enabled`, `configured`, and
+`runtime_ready` set to `null`. Sixty had `compiled` true and 27 had
+`compiled` false. This task did not run `cargo install`, so the Platform
+catalog line above was not the document that command printed.
 
 This install is one set of Platform binaries plus the remote client. The
 instance created in the next section is loopback redb, with the issuer
@@ -175,11 +188,16 @@ riauth-maintenance --config deployment-private/platform-lab/riauth.toml init \
 The command prompts for a password and does not echo it. The password must be
 12 to 1024 bytes ([crypto.rs](../src/crypto.rs)). `init` writes
 `deployment-private/platform-lab/riauth.toml`, creates the redb directory
-`data` beside that file, and records the store as Platform. Relative paths
+`data` beside that file, and records the store as the running binary's
+edition. The Platform install above records Platform. Relative paths
 are resolved from the configuration file's directory. The generated files are
 under `deployment-private/`, which this repository ignores.
 `reviewed_client_creation` defaults to false, so the application created
-later does not wait for a creation review.
+later does not wait for a creation review. The loopback record used
+`riauth init` with these arguments plus `--password-stdin` and
+`--non-interactive`. Its generated file had `reviewed_client_creation = false`.
+Its `doctor` result listed `storage` `redb` and `healthy` true, with no
+edition field. That run did not launch `riauth-maintenance`.
 
 Leave the service running in this terminal:
 
@@ -220,7 +238,9 @@ riauth --server http://localhost:9000 doctor
 ```
 
 `login` prompts for the same password and writes `~/.config/riauth/session.json`.
-`doctor` uses that session. Keep the file private.
+`doctor` uses that session. Keep the file private. The loopback record passed
+`--session-file` and `--password-stdin`, and the default session path stayed
+absent.
 
 ### Alternative: the administrator chooses the first credentials in the browser
 
@@ -287,6 +307,15 @@ writes the one-time secret there. Standard output names `credential_file` and
 omits the secret. Repeating the command needs the same `--idempotency-key`
 and a new secret-file path; the details are in the
 [riauthctl README](../crates/riauthctl/README.md).
+
+`riauth client create` is the server CLI, a separate command. Without both
+`--idempotency-key` and `--if-revision` it stops locally with the message in
+section 13, before it sends the request. A confidential client then needs
+`--output-file` or `--show-secrets`. That command has no `--secret-file`.
+With `--output-file`, standard output names `output_file` and `written`, and
+the secret stays in the private file. The loopback record created
+`local-demo` that way. It did not run the `riauthctl` command printed above,
+and it did not start the application on port 3000.
 
 If `--scope` is omitted, a non-service client asks for
 `openid profile email offline_access`. This slice sets `openid,profile` so
@@ -1144,17 +1173,16 @@ the revision check. A different body or a different If-Match with that
 key returns `Idempotency key was used for a different request`. A supplied
 revision that is already stale fails with `Configuration revision changed`.
 
-The accepted CLI stops when either flag is missing. The message is:
+The server CLI stops when either flag is missing. The message is:
 `Signing-key configuration requires --idempotency-key and --if-revision (from riauth revision)`.
 The source string wraps `riauth revision` in backticks. The HTTP writer
 returns `Signing-key configuration requires Idempotency-Key and If-Match`.
-Both strings were read from accepted commit `03482b5`: the CLI gate covers
-`keys import`, `keys bind`, and `keys generate`, and the HTTP gate is the
-request-context check in `configure_key`. This checkout's `src/cli.rs` and
-`src/assembly/keyring.rs` were compared with that commit and do not contain
-those strings. The global flags exist in this checkout, and the imports
-below pass them. This procedure prints the two imports. `keys bind` and
-`keys generate` stay unprinted, and they were not run.
+In this tree, the CLI gate in [src/cli.rs](../src/cli.rs) covers `keys import`,
+`keys bind`, and `keys generate`, and `configure_key` in
+[src/assembly/keyring.rs](../src/assembly/keyring.rs) checks the request
+context before `mutation`. The imports below pass both flags. This procedure
+prints the two imports. `keys bind` and `keys generate` stay unprinted. The
+loopback record did not run a signing-key command.
 
 `source put` follows the scoped-mutation rule. An agent or a delegated
 human sends `If-Match` with the current revision. The administrator
@@ -1385,9 +1413,9 @@ The manifest does not put a SAML source. The source is the separate
 
 ### Unrun and peer evidence
 
-This task did not create keys or metadata, did not run `revision` or
-`keys import`, and did not run `saml import-sp`, `validate`, `plan`,
-`apply`, `saml metadata`, `source put`, `source list`, or
+This task did not create keys or metadata, did not run the `revision` or
+`keys import` printed in this section, and did not run `saml import-sp`,
+`validate`, `plan`, `apply`, `saml metadata`, `source put`, `source list`, or
 `source metadata`. It did not run `source start` or `source finish`.
 No service provider loaded the identity provider metadata. No upstream
 identity provider received an AuthnRequest or posted a response. Logout,
@@ -1454,18 +1482,19 @@ different body or a different If-Match with that key returns
 `Idempotency key was used for a different request`. A supplied revision
 that is already stale fails with `Configuration revision changed`.
 
-The accepted CLI stops when either flag is missing. The message is:
+The server CLI stops when either flag is missing, before it chooses a secret
+destination or sends the request. The message is:
 `Client writes require --idempotency-key and --if-revision (from riauth revision)`.
 The source string wraps `riauth revision` in backticks. The HTTP writer
-returns `Client writes require Idempotency-Key and If-Match`. Both strings
-were read from accepted commit `03482b5`: `run_client` covers create,
-update, disable, and enable, and `create_client` calls
-`require_client_retry_binding` before `mutation`. The client-write commit
-`b60962c` is an ancestor of `03482b5`. This checkout's `src/cli.rs` and
-`src/core.rs` were compared with that commit and do not contain those
-client-write strings. The global flags exist in this checkout, and the
-create below passes them. Section 7 already passes the same pair on
-`riauthctl client update`. This section prints `client create` only.
+returns `Client writes require Idempotency-Key and If-Match`. In this tree,
+`run_client` in [src/cli.rs](../src/cli.rs) covers create, update, disable,
+and enable, and `create_client` calls `require_client_retry_binding` in
+[src/core.rs](../src/core.rs) before `mutation`. The loopback record ran
+`riauth client create local-demo` once without those flags and received that
+message with exit code 1, then created `local-demo` with both flags. That
+client is the section 3 application. It is separate from the
+`legacy-directory` command printed below. Section 7 already passes the same
+pair on `riauthctl client update`. This section prints `client create` only.
 
 `agent create` follows the scoped-mutation rule. An agent or a delegated
 human sends `If-Match` with the current revision. The administrator
@@ -1582,10 +1611,11 @@ credentials.
 
 ### Unrun and peer evidence
 
-This task did not write the settings file, did not run `revision` or
-`client create`, did not create the agent, did not add the listener, did
-not restart `serve`, and did not open an LDAP connection. No `ldap3` client
-and no third-party directory client was run. The automated network fixtures
+This task did not write the settings file, did not run the `revision` or
+`client create` printed in this section, did not create the agent, did not
+add the listener, did not restart `serve`, and did not open an LDAP
+connection. No `ldap3` client and no third-party directory client was run.
+The automated network fixtures
 described on the LDAP provider page are tests in this repository. They are
 not a result from this lab. Section 9's directory import remains a separate,
 also unrun, procedure.
@@ -1709,7 +1739,7 @@ Platform install above does not configure the extra surfaces they draw.
 | [Architecture system map](architecture.md) | A combined diagram of browsers, the CLI, nginx and Traefik, HTTP, LDAP and RADIUS listeners, redb or PostgreSQL, and external peers. | It is a map of the codebase's surfaces. Sections 9 and 10 document a directory client and an outbound SCIM target. Section 13 documents one LDAP provider listener. Those commands were not run, and the listener was not started. RADIUS and proxy listeners stay unset. The diagram was not run against this install. |
 | [Q08 exact edition matrix](roadmap/q08-exact-edition-bundles.md) | A local build observation at source revision `4ca7558`, including native binary hashes and a note that Linux release files were absent. | It is not an observation of this worktree's revision. This task did not rebuild the matrix. |
 | Release archives named by [deployment examples](deployment-examples.md) and [release notes](release-notes.md) | Linux native archives, maintenance archives, `riauthctl` archives, container archives, `SHA256SUMS`, and `build-provenance` files. | They were not downloaded, loaded, or started here. `deploy/compose-small.yml` and `deploy/compose-distributed.yml` remain documented image layouts for a later deployment. |
-| `riauth capabilities` | Artifact catalog for the binary on `PATH`. | `usable` is null until a configured instance reports runtime state. Compiled Platform features are not configured features. |
+| `riauth capabilities` | Artifact catalog for the binary on `PATH`. | The loopback record's artifact catalog had `usable` null on every entry, and its `edition` was `essentials`. A configured instance's runtime report is a different document. Compiled Platform features are not configured features. |
 
 ## Manual accessibility gates
 
@@ -1740,10 +1770,11 @@ It does not finish the Platform guide, and it does not finish D01.
 Sections 6 through 13 are source-reviewed procedures. The generated `init`
 file still has no directory, no SCIM target, no workflow, no SAML client,
 and no LDAP listener until the operator adds them. Those commands were not
-executed here. Sections 11 through 13 name the configured workflow, the SAML
-identity-provider and source commands, and the LDAP provider listener.
-No workflow run, service provider, upstream identity provider, or LDAP
-client was contacted.
+executed here. The loopback record's `local-demo` create is the section 3
+server-CLI step, outside sections 6 through 13. Sections 11 through 13 name
+the configured workflow, the SAML identity-provider and source commands, and
+the LDAP provider listener. No workflow run, service provider, upstream
+identity provider, or LDAP client was contacted.
 
 Still outside this slice, as later tasks:
 
@@ -1807,9 +1838,13 @@ Still outside this slice, as later tasks:
   [SSF delivery](ssf-delivery.md) page covers stopped, retrying, and
   cancelled outbound Shared Signals deliveries. The backup commands here are
   entry points.
-- Any claim that a person completed install, sign-in, the OIDC redirect,
-  passkey enrollment, backup, restore, the group membership, the claim
-  preview, the audit export, an LDAP directory plan or apply, a SCIM plan
-  or apply, a workflow plan or a configured-workflow run, a SAML metadata
-  exchange with a peer, an LDAP provider bind, or an invitation acceptance
-  on this revision. Those claims need a run. This page does not supply one.
+- Any claim that a person completed `cargo install`, the browser sign-in at
+  `/apps`, the OIDC redirect, passkey enrollment, backup, restore, the group
+  membership, the claim preview, the audit export, an LDAP directory plan or
+  apply, a SCIM plan or apply, a workflow plan or a configured-workflow run,
+  a SAML metadata exchange with a peer, an LDAP provider bind, or an
+  invitation acceptance. The
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) supplies
+  `riauth capabilities`, local `init`, `serve`, `/readyz`, CLI `login`,
+  `doctor`, and one `local-demo` client create on a binary whose catalog
+  edition was `essentials`. D01 remains incomplete.
