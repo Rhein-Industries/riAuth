@@ -1,6 +1,6 @@
 # Workflow definition model
 
-Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, W06 Platform authoring, and a W07 controlled-extension host.**
+Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, W06 Platform authoring, and a held W07 extension contract.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 password, passkey and OIDC/SAML source reauthentication, plus request-bound
 configured OIDC consent, for a live bearer session.
@@ -127,8 +127,8 @@ epoch, request and run to which it belongs. Its optional session must match
 the run's exactly; `session`, `consent` and `passkey_removed` proofs require one. A custom stage
 can route by its outputs but never
 produces a proof, cannot reuse built-in signal names and only receives
-permissions that its registration grants. The host below applies that rule again
-at execution time.
+permissions that its registration grants. The held host repeats that rule
+for a direct call. Configuration and the executor do not reach it.
 
 Source receipts additionally retain the source fingerprint, exact linked
 subject/account record and consumed upstream transaction reference. The
@@ -953,13 +953,16 @@ not require a revision increase.
 
 Platform compiles the capability `workflow.controlled_extensions`. The running
 instance reports it as not configured and not usable. This build rejects an
-attempt to disable that name, because server startup does not yet call the host.
-Essentials does not compile the capability. A definition that names a custom
-stage still fails configuration: the authoring environment has no stage
+attempt to disable that name, because server startup does not call an extension
+runtime. Essentials does not compile the capability. A definition that names a
+custom stage still fails configuration: the authoring environment has no stage
 registry, and a custom stage is not an executable adapter.
+[`extension_gate::execute`](../src/workflow/extension_gate.rs) refuses every
+checked module with `external_runtime_required`.
 
-[`workflow::extension::Host`](../src/workflow/extension.rs) is the execution
-seam for an exceptional, in-process stage. Registration names the stage, the
+[`workflow::extension::Host`](../src/workflow/extension.rs) is a held in-process
+contract for a native registrant. It is not an isolation boundary and it is not
+on the configured path. Registration names the stage, the
 permissions it may grant (`read_profile`, `read_groups`, `read_request`,
 `network`), and the resource caps. A call runs only when the host was opened
 enabled on a Platform binary, the definition is a configured Platform workflow,
@@ -986,9 +989,57 @@ A result that arrives after the deadline is discarded. The worker is not
 preempted; it occupies one in-flight slot until it returns. A panic in the
 stage becomes a failure rather than a label.
 
-This host does not load scripts, WebAssembly, or dynamic libraries. Native code
-registered with the host is not sandboxed from the rest of the process. The
-boundary is the invocation contract above.
+This host does not load scripts, WebAssembly, or dynamic libraries. A native
+registrant shares the server process: it can call any API it can name, open a
+socket, and keep running after the host's deadline discards the label. Safe
+Rust in this crate cannot preempt that thread or interpose on its syscalls.
+`unsafe_code = forbid`, and `Cargo.toml` does not link a Wasm or scripting
+engine.
+
+## Isolated runtime required
+
+A configured custom stage stays rejected until an engine outside this crate can
+instantiate the module under the gate's limits. The integration point is
+[`workflow::extension_gate`](../src/workflow/extension_gate.rs). Do not point
+the executor at [`Host::invoke`](../src/workflow/extension.rs).
+
+`check` accepts one JSON manifest, `riauth.workflow-extension/v1`, of at most
+128 KiB, with no unknown fields:
+
+| Field | Bound |
+| --- | --- |
+| `stage` | Workflow id grammar |
+| `outputs` | 1–8 distinct labels, excluding `verified`, `failed`, `completed`, `granted`, `denied` |
+| `permissions` | Distinct `read_profile`, `read_groups`, `read_request`. `network` is rejected |
+| `network` | The string `deny` |
+| `fuel` | 1–10,000 instructions, counted by the engine |
+| `memory_bytes` | 1–65,536, fixed linear memory, no growth |
+| `max_input_bytes` | 1–4,096 projected identifier bytes |
+| `max_output_bytes` | 1–4,096, measured and then dropped |
+| `timeout_seconds` | 1–30, enforced by the engine's clock |
+| `module_base64` | Standard base64, 1 byte through `memory_bytes`, and at most 65,536 |
+| `module_sha256` | 64 lowercase hex characters of the decoded module |
+
+`check` hashes the decoded bytes, compares them to `module_sha256`, and drops
+the bytes. `Checked` keeps the length and the hash. `execute` returns
+`external_runtime_required` and has no success value while `RUNTIME_LINKED` is
+false. A future engine has to be linked before that constant can change, and
+`execute` must still fail closed until that engine is the function body.
+
+The engine's instance has no host imports: no WASI, filesystem, socket, clock,
+or randomness. Fuel exhaustion, a trap, a timeout, or an oversized output is a
+denial, not a label. The only result that may be returned to the workflow is
+one declared output label. `Action::proof` stays empty for it. The input is the
+same projected identifier view the held host already defines, and only for
+permissions the step requested and the manifest granted.
+
+When that engine exists, configuration may accept a custom stage only after
+`check` succeeds, the stage id matches, the step's permissions are a subset,
+and the step's output and timeout caps are within the manifest. The executor
+then calls the engine for that step alone. It still rechecks account, session,
+request, and receipt authority around the run. The manifest hash has to be
+covered by run binding before a changed module can ride an old run. This build
+does none of those steps.
 
 ## Left to later work
 
@@ -1017,9 +1068,8 @@ These are not implemented or established by this slice:
   attempt timing, enforce retry and run bounds, cancellation and expiry, and
   recheck account, session, request and receipt authority in the final
   transaction. The password paths reject upstream-only accounts. Custom-stage
-  execution is the separate host above: it is not connected to the executor,
-  HTTP API, desired-state activation, or a network connector, and a stuck call
-  is not preempted.
+  execution stays closed: the held host is unwired, and the manifest gate
+  refuses to run a module until an isolated engine is linked.
 * Binding the remaining security dependencies. `RunBinding` covers the
   definition's ID, revision and fingerprint, and new source-verifier runs also
   pin the live source registration. It does not cover custom-stage registrations
