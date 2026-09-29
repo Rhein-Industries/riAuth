@@ -20,6 +20,8 @@ the store is still serving.
 [Administrator lockout](admin-lockout.md) covers attempt locks, lost recovery
 codes, and browser account recovery while a second administrator can still
 sign in.
+[Deactivation delivery](deactivation-delivery.md) investigates incomplete or
+ambiguous outbound deactivation with the accepted redacted Platform read.
 
 ## What the archive holds
 

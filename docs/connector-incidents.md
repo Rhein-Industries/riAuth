@@ -225,7 +225,11 @@ lease in flight reads as `failed`. The job view includes `attempts`,
 `next_attempt`, `error`, and `item` for the latest item. The worker does
 not store the target's HTTP status. Delivery is at least once. The full
 state machine, including OAuth refresh and deactivation holds, stays in
-[outbound provisioning](scim.md#outbound-provisioning).
+[outbound provisioning](scim.md#outbound-provisioning). Incomplete or
+ambiguous deactivation rows, including a row no offboarding job records,
+use the redacted Platform read in
+[deactivation delivery](deactivation-delivery.md). `provision deactivations`
+on this page remains the detailed list.
 
 Local revocation and the outbound intent are already committed before remote
 delivery. Stopping delivery does not restore the local account. A job whose
@@ -409,7 +413,9 @@ for this task.
 The [A01 coverage inventory](roadmap/coverage-inventory.md) still describes
 D04 at revision `96e23e2`. This page does not finish D04. Lockout while
 another administrator can sign in is
-[administrator lockout](admin-lockout.md). Escrow of a backup or database
+[administrator lockout](admin-lockout.md). Incomplete or ambiguous
+deactivation delivery is
+[deactivation delivery](deactivation-delivery.md). Escrow of a backup or database
 key, PostgreSQL PITR and multi-node failover, TLS to PostgreSQL, peer login
 after restore, Compose or systemd restore, and Windows device recovery
 remain open in [operational recovery](operational-recovery.md#remaining-d04-gates).

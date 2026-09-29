@@ -49,6 +49,8 @@ job. See [PostgreSQL responsibilities](recovery.md#postgresql-responsibilities-a
 A serving store, with a second enabled human administrator who can still sign
 in, follows [administrator lockout](admin-lockout.md). That procedure leaves
 the server up. The break-glass row above is the stopped-store command.
+Incomplete or ambiguous outbound deactivation, while the store is still
+serving, follows [deactivation delivery](deactivation-delivery.md).
 
 A PostgreSQL outage with the riAuth process still up is a database problem
 first. The disposable PostgreSQL drill saw `/livez` stay at 200, `/readyz`
@@ -530,6 +532,11 @@ Still open:
   [connector dependency incidents](connector-incidents.md) for LDAP, outbound
   SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks. That page
   was checked against source. The provider calls it names were not run.
+- Incomplete or ambiguous deactivation delivery. The investigation procedure
+  is [deactivation delivery](deactivation-delivery.md). It describes the
+  accepted Platform read `GET /api/operations/offboarding/deactivations` at
+  integration commit `58e5ef3`. This slice did not call that route, a
+  connector, or a dashboard.
 - Retrieving an escrowed backup key or database key on another host. The
   drills recorded wrong-key refusal only.
 - PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous
