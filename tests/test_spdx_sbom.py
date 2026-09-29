@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -719,6 +720,92 @@ class SpdxProducer(unittest.TestCase):
             missing_dir = self.cli(self.produce_args(fixture, directory / "missing-dir" / "out.json"))
             self.assert_failed(missing_dir, "output directory does not exist")
             self.assertFalse((directory / "missing-dir").exists())
+
+    def test_attacker_tmp_symlink_is_untouched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            fixture = self.write_minimal(directory)
+            victim = directory / "victim"
+            victim_bytes = b"victim-not-the-document\n"
+            victim.write_bytes(victim_bytes)
+            victim_ino = victim.stat().st_ino
+            planted = directory / "out.json.tmp"
+            planted.symlink_to(victim)
+            planted_target = os.readlink(planted)
+            out = directory / "out.json"
+            sentinel = b"sentinel-not-a-sbom\n"
+            out.write_bytes(sentinel)
+            names = sorted(path.name for path in directory.iterdir())
+
+            refused = self.cli(self.produce_args(
+                fixture, out, ("--expect", "sample.bin=" + ("0" * 64)),
+            ))
+            self.assert_failed(refused, "input sha256 mismatch")
+            self.assertEqual(out.read_bytes(), sentinel)
+            self.assertEqual(victim.read_bytes(), victim_bytes)
+            self.assertEqual(victim.stat().st_ino, victim_ino)
+            self.assertTrue(planted.is_symlink())
+            self.assertEqual(os.readlink(planted), planted_target)
+            self.assertEqual(sorted(path.name for path in directory.iterdir()), names)
+
+            produced = self.cli(self.produce_args(fixture, out))
+            self.assertEqual(produced.returncode, 0, produced.stderr)
+            self.assertEqual(produced.stderr, "")
+            self.assertEqual(victim.read_bytes(), victim_bytes)
+            self.assertEqual(victim.stat().st_ino, victim_ino)
+            self.assertTrue(planted.is_symlink())
+            self.assertEqual(os.readlink(planted), planted_target)
+            self.assertFalse(out.is_symlink())
+            self.assertTrue(out.is_file())
+            document = out.read_bytes()
+            self.assertIn(b"This output is not a release SBOM.", document)
+            self.assertNotIn(b"victim-not-the-document", document)
+            self.assertNotEqual(document, sentinel)
+            self.assertEqual(sorted(path.name for path in directory.iterdir()), names)
+
+    def test_replace_failure_keeps_output_and_tmp_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            victim = directory / "victim"
+            victim_bytes = b"victim-not-the-document\n"
+            victim.write_bytes(victim_bytes)
+            victim_ino = victim.stat().st_ino
+            planted = directory / "out.json.tmp"
+            planted.symlink_to(victim)
+            planted_target = os.readlink(planted)
+            out = directory / "out.json"
+            sentinel = b"sentinel-not-a-sbom\n"
+            out.write_bytes(sentinel)
+            names = sorted(path.name for path in directory.iterdir())
+            seen = {}
+
+            def refuse_replace(source, destination):
+                temporary = pathlib.Path(source)
+                seen["name"] = temporary.name
+                seen["parent"] = temporary.parent.resolve()
+                seen["regular"] = temporary.is_file() and not temporary.is_symlink()
+                seen["bytes"] = temporary.read_bytes()
+                seen["destination"] = pathlib.Path(destination)
+                raise OSError("replace refused")
+
+            with mock.patch.object(spdx.os, "replace", side_effect=refuse_replace):
+                with self.assertRaisesRegex(spdx.SpdxError, "output was not written"):
+                    spdx.write_bytes(out, b"complete-document")
+            self.assertEqual(seen["bytes"], b"complete-document")
+            self.assertTrue(seen["regular"])
+            self.assertNotEqual(seen["name"], "out.json.tmp")
+            self.assertTrue(seen["name"].startswith(".riauth-write-"))
+            self.assertTrue(seen["name"].endswith(".tmp"))
+            self.assertEqual(seen["parent"], directory.resolve())
+            self.assertEqual(seen["destination"], out)
+            self.assertFalse((directory / seen["name"]).exists())
+            self.assertEqual(out.read_bytes(), sentinel)
+            self.assertFalse(out.is_symlink())
+            self.assertEqual(victim.read_bytes(), victim_bytes)
+            self.assertEqual(victim.stat().st_ino, victim_ino)
+            self.assertTrue(planted.is_symlink())
+            self.assertEqual(os.readlink(planted), planted_target)
+            self.assertEqual(sorted(path.name for path in directory.iterdir()), names)
 
     def test_verify_accepts_only_the_canonical_bytes(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -12,6 +12,7 @@ import json
 import os
 import pathlib
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -508,6 +509,22 @@ def collect_files(named_paths, expectations):
     return files
 
 
+def discard_regular_temporary(name):
+    """Remove a temporary regular file. Leave symlinks and other nodes alone."""
+    if not name:
+        return
+    try:
+        info = os.lstat(name)
+    except OSError:
+        return
+    if not stat.S_ISREG(info.st_mode):
+        return
+    try:
+        os.unlink(name)
+    except OSError:
+        return
+
+
 def write_bytes(path, payload):
     path = pathlib.Path(path)
     if path.is_symlink():
@@ -517,14 +534,36 @@ def write_bytes(path, payload):
     parent = path.parent
     if str(parent) not in ("", ".") and not parent.exists():
         raise SpdxError(f"output directory does not exist: {parent}")
-    temporary = path.with_name(path.name + ".tmp")
+    directory = pathlib.Path.cwd() if str(parent) in ("", ".") else parent
+    # Exclusive regular file: do not open a predictable NAME.tmp symlink.
+    temporary_name = None
+    published = False
     try:
-        temporary.write_bytes(payload)
-        os.replace(temporary, path)
+        handle = tempfile.NamedTemporaryFile(
+            mode="wb",
+            delete=False,
+            dir=directory,
+            prefix=".riauth-write-",
+            suffix=".tmp",
+        )
+        temporary_name = handle.name
+        try:
+            written = handle.write(payload)
+            if written != len(payload):
+                raise OSError("incomplete temporary write")
+            handle.flush()
+        finally:
+            handle.close()
+        info = os.lstat(temporary_name)
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError("temporary output is not a regular file")
+        os.replace(temporary_name, path)
+        published = True
     except OSError as error:
-        if temporary.exists() and temporary.is_file() and not temporary.is_symlink():
-            temporary.unlink()
         raise SpdxError(f"output was not written: {error}") from error
+    finally:
+        if not published:
+            discard_regular_temporary(temporary_name)
 
 
 def assemble(metadata, lock_path, target, features, no_default_features, named_paths, expectations):

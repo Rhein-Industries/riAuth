@@ -108,9 +108,10 @@ Each `--file NAME=PATH` hashes one regular file. `NAME` uses only
 `A-Za-z0-9._+-` and is the only file name stored. The producer refuses a
 directory, a symlink, a missing path, a duplicate name, an empty file list,
 and an output path that is also an input. `--expect NAME=SHA256` refuses a
-file whose bytes hash to a different value. The write uses a temporary file
-beside the destination and replaces that destination only after the document
-is complete, so a refusal leaves an existing output file unchanged.
+file whose bytes hash to a different value. The write creates a uniquely
+named regular file in the output directory and replaces the destination only
+after the document is complete, so a refusal leaves an existing output file
+unchanged. A pre-existing `.tmp` symlink beside the destination is not opened.
 
 Path packages stay source `path`. They do not get a registry checksum or a
 `pkg:cargo` purl. Any other source needs a lowercase SHA-256 in `Cargo.lock`.
