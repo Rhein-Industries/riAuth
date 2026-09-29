@@ -840,6 +840,13 @@ fn migration_preflight_classifies_keycloak_native_kinds_without_leaking() {
 
 /// Initializes an instance in `dir`, serves it and logs the administrator in.
 fn serve_with_admin(dir: &Path) -> (PathBuf, PathBuf, Server) {
+    serve_with_admin_configured(dir, |_| {})
+}
+
+fn serve_with_admin_configured(
+    dir: &Path,
+    configure: impl FnOnce(&Path),
+) -> (PathBuf, PathBuf, Server) {
     let config = dir.join("riauth.toml");
     let session = dir.join("session.json");
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -860,6 +867,7 @@ fn serve_with_admin(dir: &Path) -> (PathBuf, PathBuf, Server) {
         ],
         Some("cli-integration-password\n"),
     ));
+    configure(&config);
     let mut server = Server(
         Command::new(env!("CARGO_BIN_EXE_riauth"))
             .arg("--config")
@@ -1234,6 +1242,102 @@ fn cli_windows_device_writes_require_retry_binding_and_replay_once() {
             1,
             "{action} was audited more than once"
         );
+    }
+}
+
+#[test]
+fn cli_certificate_bind_and_revoke_require_retry_binding() {
+    use openssl::{
+        asn1::Asn1Time,
+        bn::BigNum,
+        ec::{EcGroup, EcKey},
+        hash::MessageDigest,
+        nid::Nid,
+        pkey::PKey,
+        x509::{X509, X509NameBuilder, extension::{BasicConstraints, KeyUsage}},
+    };
+    let dir = TempDir::new().unwrap();
+    let trust = dir.path().join("mtls-root.pem");
+    let key = PKey::from_ec_key(
+        EcKey::generate(&EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap()).unwrap(),
+    ).unwrap();
+    let mut name = X509NameBuilder::new().unwrap();
+    name.append_entry_by_text("CN", "CLI mTLS root").unwrap();
+    let name = name.build();
+    let mut certificate = X509::builder().unwrap();
+    certificate.set_version(2).unwrap();
+    certificate.set_serial_number(&BigNum::from_u32(1).unwrap().to_asn1_integer().unwrap()).unwrap();
+    certificate.set_subject_name(&name).unwrap();
+    certificate.set_issuer_name(&name).unwrap();
+    certificate.set_pubkey(&key).unwrap();
+    certificate.set_not_before(&Asn1Time::from_unix(riauth::crypto::now() as i64 - 60).unwrap()).unwrap();
+    certificate.set_not_after(&Asn1Time::from_unix(riauth::crypto::now() as i64 + 86_400).unwrap()).unwrap();
+    certificate.append_extension(BasicConstraints::new().critical().ca().build().unwrap()).unwrap();
+    certificate.append_extension(KeyUsage::new().critical().key_cert_sign().crl_sign().build().unwrap()).unwrap();
+    certificate.sign(&key, MessageDigest::sha256()).unwrap();
+    std::fs::write(&trust, certificate.build().to_pem().unwrap()).unwrap();
+
+    let (config, session, _server) = serve_with_admin_configured(dir.path(), |path| {
+        let mut value = riauth::config::Config::load(path).unwrap();
+        value.trusted_proxies = vec!["127.0.0.1".parse().unwrap()];
+        value.client_certificates = Some(riauth::mtls::ClientCertAuth {
+            trust_anchors_file: trust.clone(),
+            mode: riauth::mtls::ClientCertMode::Optional,
+            crl_file: None,
+            forwarded_header: Some("X-Client-Cert".into()),
+        });
+        std::fs::write(path, toml::to_string_pretty(&value).unwrap()).unwrap();
+    });
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap().to_string();
+    let at = revision();
+    for args in [
+        vec!["--if-revision", &at, "certificate", "bind", "admin", "--san-email", "admin@example.test"],
+        vec!["--idempotency-key", "missing-revision", "certificate", "bind", "admin", "--san-email", "admin@example.test"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Certificate binding writes require"));
+    }
+    let bind = [
+        "--if-revision", &at, "--idempotency-key", "cli-mtls-bind",
+        "certificate", "bind", "admin", "--san-email", "admin@example.test",
+    ];
+    let bound = success(cli(&bind));
+    let id = bound["id"].as_str().unwrap().to_owned();
+    assert_eq!(success(cli(&bind)), bound);
+    assert_eq!(revision().parse::<u64>().unwrap(), at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&[
+        "--if-revision", &at, "--idempotency-key", "cli-mtls-bind",
+        "certificate", "bind", "admin", "--san-email", "changed@example.test",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision", &at, "--idempotency-key", "cli-mtls-stale",
+        "certificate", "bind", "admin", "--san-email", "other@example.test",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let revoke_at = revision();
+    for args in [
+        vec!["--if-revision", &revoke_at, "certificate", "revoke", &id],
+        vec!["--idempotency-key", "missing-revoke-revision", "certificate", "revoke", &id],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Certificate binding writes require"));
+    }
+    let revoke = [
+        "--if-revision", &revoke_at, "--idempotency-key", "cli-mtls-revoke",
+        "certificate", "revoke", &id,
+    ];
+    let revoked = success(cli(&revoke));
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(success(cli(&revoke)), revoked);
+    assert_eq!(revision().parse::<u64>().unwrap(), revoke_at.parse::<u64>().unwrap() + 1);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for action in ["mtls.bind", "mtls.revoke"] {
+        assert_eq!(events.as_array().unwrap().iter()
+            .filter(|event| event["action"] == action && event["target"] == id)
+            .count(), 1, "{action} was audited more than once");
     }
 }
 

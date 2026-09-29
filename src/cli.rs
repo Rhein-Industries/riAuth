@@ -1521,6 +1521,9 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Certificate { command } => match command {
             CertificateCommand::List => remote.call(Method::GET, "/api/certificates", None, true).await?,
             CertificateCommand::Bind { username, file, san_uri, san_email } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Certificate binding writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 use std::io::Read;
                 let certificate_pem = if let Some(file) = file {
                     let mut certificate = String::new();
@@ -1535,7 +1538,12 @@ pub async fn run(cli: Cli) -> Result<()> {
                 }
                 remote.call(Method::POST, "/api/certificates", Some(json!({"username": username, "certificate_pem": certificate_pem, "san_uri": san_uri, "san_email": san_email})), true).await?
             }
-            CertificateCommand::Revoke { id } => remote.call(Method::DELETE, &format!("/api/certificates/{}", segment(&id)?), None, true).await?,
+            CertificateCommand::Revoke { id } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Certificate binding writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE, &format!("/api/certificates/{}", segment(&id)?), None, true).await?
+            },
         },
         Command::Saml { command: SamlCommand::LogoutStatus { ticket } } => remote.call(Method::GET, &format!("/saml/logout/{}/status",segment(&ticket)?),None,false).await?,
         Command::Saml { command: SamlCommand::Metadata { client_id, out } } => {

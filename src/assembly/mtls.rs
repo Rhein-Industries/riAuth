@@ -6,12 +6,12 @@ use crate::{
     error::{Error, Result},
     model::{AuthenticationTransaction, Identity, Session, User, UserView},
     mtls::{
-        BindInput, Binding, ClientCertAuth, ClientCertMode, LoginLink, MtlsTx,
-        binding_matches, parse_pem, presented_chain, rejected, selector, validate_san_uri,
-        verify_chain,
+        BindInput, Binding, ClientCertAuth, ClientCertMode, LoginLink, MtlsTx, binding_matches,
+        parse_pem, presented_chain, rejected, selector, validate_san_uri, verify_chain,
     },
     store::Tx,
 };
+use axum::http::StatusCode;
 use serde_json::{Value, json};
 use std::{collections::BTreeSet, net::IpAddr};
 
@@ -101,6 +101,19 @@ fn end_binding_sessions(tx: &Tx<'_>, binding_id: &str) -> Result<()> {
 }
 
 impl Core {
+    fn require_certificate_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Certificate binding writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn client_certificate_bind(&self, token: &str, input: BindInput) -> Result<Value> {
         validate_name(&input.username)?;
         let profile = profile(self)?.clone();
@@ -113,6 +126,7 @@ impl Core {
             }
             Ok(())
         })?;
+        Self::require_certificate_retry_binding()?;
         let certificate_pem = input
             .certificate_pem
             .as_ref()
@@ -242,6 +256,7 @@ impl Core {
         })
     }
     pub fn client_certificate_revoke(&self, token: &str, id: &str) -> Result<Value> {
+        Self::require_certificate_retry_binding()?;
         self.mutation(token, |tx| {
             let binding = tx
                 .get::<Binding>("mtls_bindings", id)?

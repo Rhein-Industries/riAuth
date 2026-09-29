@@ -1,4 +1,8 @@
 //! Live HTTPS client-certificate handshakes plus library checks for headers and revocation.
+use axum::{
+    body::Body,
+    http::{Method, Request, StatusCode},
+};
 use openssl::{
     asn1::Asn1Time,
     bn::BigNum,
@@ -12,16 +16,57 @@ use openssl::{
     },
 };
 use riauth::{
+    agent::{NewAgent, Permission},
     config::Config,
     core::Core,
     crypto::{self, digest, now},
     model::{AuthenticationTransaction, NewUser, Session, UserPatch},
     mtls::BindInput,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{net::SocketAddr, path::Path, process::Command, time::Duration};
+use tower::ServiceExt;
 
 const PASSWORD: &str = "test-password-for-fixtures-only";
+
+async fn certificate_http(
+    app: &axum::Router,
+    method: Method,
+    path: &str,
+    token: &str,
+    key: Option<&str>,
+    revision: Option<u64>,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"));
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    if let Some(revision) = revision {
+        request = request.header("if-match", format!("\"{revision}\""));
+    }
+    let payload = body.map_or_else(Body::empty, |body| {
+        Body::from(serde_json::to_vec(&body).unwrap())
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            request
+                .header("content-type", "application/json")
+                .body(payload)
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = axum::body::to_bytes(response.into_body(), 32_768)
+        .await
+        .unwrap();
+    (status, serde_json::from_slice(&body).unwrap())
+}
 
 #[test]
 fn config_round_trip_keeps_client_certificates_optional() {
@@ -91,6 +136,228 @@ surprise = true
         )
         .is_err()
     );
+}
+
+#[tokio::test]
+async fn certificate_http_writes_require_bound_retry_and_audit_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (root, _) = issue("retry root", 1, None, Kind::Ca { pathlen: 1 }, When::Valid);
+    let trust = dir.path().join("trust.pem");
+    std::fs::write(&trust, root.to_pem().unwrap()).unwrap();
+    let core = Core::initialize(
+        Config {
+            issuer: "http://localhost:9000".into(),
+            data_dir: dir.path().join("data"),
+            trusted_proxies: vec!["192.0.2.1".parse().unwrap()],
+            client_certificates: Some(riauth::mtls::ClientCertAuth {
+                trust_anchors_file: trust,
+                mode: riauth::mtls::ClientCertMode::Optional,
+                crl_file: None,
+                forwarded_header: Some("X-Client-Cert".into()),
+            }),
+            ..Config::default()
+        },
+        NewUser {
+            username: "admin".into(),
+            password: PASSWORD.into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let admin = core.login("admin".into(), PASSWORD.into(), None).unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    core.create_user(
+        &admin,
+        NewUser {
+            username: "alice".into(),
+            password: PASSWORD.into(),
+            email: None,
+            display_name: "Alice".into(),
+            admin: false,
+        },
+    )
+    .unwrap();
+    let alice = core.login("alice".into(), PASSWORD.into(), None).unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let agent = core
+        .create_agent(
+            &admin,
+            NewAgent {
+                id: "other-certificate-writer".into(),
+                permissions: vec![Permission {
+                    action: "mtls.bind".into(),
+                    resource: "user/bob".into(),
+                }],
+                ttl: 3600,
+                parent: None,
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let app = riauth::api::router(core.clone());
+    let revision = || {
+        core.store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let at = revision();
+    let input = json!({"username":"alice","san_email":"alice@example.test"});
+    for (key, version) in [(None, None), (Some("bind"), None), (None, Some(at))] {
+        let (status, _) = certificate_http(
+            &app,
+            Method::POST,
+            "/api/certificates",
+            &admin,
+            key,
+            version,
+            Some(input.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::PRECONDITION_REQUIRED);
+    }
+    assert!(
+        core.store
+            .list::<Value>("mtls_bindings")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(revision(), at);
+    assert_eq!(
+        certificate_http(
+            &app,
+            Method::POST,
+            "/api/certificates",
+            &alice,
+            Some("unauthorized"),
+            Some(at),
+            Some(input.clone())
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        certificate_http(
+            &app,
+            Method::POST,
+            "/api/certificates",
+            &agent,
+            Some("wrong-scope"),
+            Some(at),
+            Some(input.clone())
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+
+    let bind = || {
+        certificate_http(
+            &app,
+            Method::POST,
+            "/api/certificates",
+            &admin,
+            Some("bind"),
+            Some(at),
+            Some(input.clone()),
+        )
+    };
+    let (status, bound) = bind().await;
+    assert_eq!(status, StatusCode::OK);
+    let id = bound["id"].as_str().unwrap().to_owned();
+    assert_eq!(bind().await, (status, bound.clone()));
+    assert_eq!(revision(), at + 1);
+    assert_eq!(core.store.list::<Value>("mtls_bindings").unwrap().len(), 1);
+    let mut changed = input.clone();
+    changed["san_email"] = json!("changed@example.test");
+    assert_eq!(
+        certificate_http(
+            &app,
+            Method::POST,
+            "/api/certificates",
+            &admin,
+            Some("bind"),
+            Some(at),
+            Some(changed)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        certificate_http(
+            &app,
+            Method::POST,
+            "/api/certificates",
+            &admin,
+            Some("stale-bind"),
+            Some(at),
+            Some(input)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(revision(), at + 1);
+
+    let revoke_at = revision();
+    let path = format!("/api/certificates/{id}");
+    for (key, version) in [
+        (None, None),
+        (Some("revoke"), None),
+        (None, Some(revoke_at)),
+    ] {
+        assert_eq!(
+            certificate_http(&app, Method::DELETE, &path, &admin, key, version, None)
+                .await
+                .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    let revoke = || {
+        certificate_http(
+            &app,
+            Method::DELETE,
+            &path,
+            &admin,
+            Some("revoke"),
+            Some(revoke_at),
+            None,
+        )
+    };
+    let (status, revoked) = revoke().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(revoke().await, (status, revoked));
+    assert_eq!(revision(), revoke_at + 1);
+    assert!(
+        core.store
+            .list::<Value>("mtls_bindings")
+            .unwrap()
+            .is_empty()
+    );
+    let events = core.audit_events(&admin, 100).unwrap();
+    for action in ["mtls.bind", "mtls.revoke"] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == action && event["target"] == id)
+                .count(),
+            1,
+            "{action} was audited more than once"
+        );
+    }
 }
 
 #[tokio::test]
