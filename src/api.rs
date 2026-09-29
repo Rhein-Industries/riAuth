@@ -511,6 +511,10 @@ pub fn router(core: Core) -> Router {
         .route("/api/state/plans/{id}", get(plan_status))
         .route("/api/operations/logout", get(logout_deliveries))
         .route("/api/operations/doctor", get(doctor))
+        .route(
+            "/api/operations/reconciliation",
+            get(reconciliation_diagnostics),
+        )
         .route("/api/operations/metrics", get(metrics))
         .route("/api/operations/prometheus", get(prometheus))
         .route("/api/operations/backup", post(backup))
@@ -3204,6 +3208,7 @@ async fn mail_deliveries(State(app): State<App>, headers: HeaderMap) -> Result<J
 session_handler!(provisioning_targets, provisioning_targets);
 session_handler!(reconciliation_schedules, reconciliation_schedules);
 session_handler!(reconciliation_jobs, reconciliation_jobs);
+session_handler!(reconciliation_diagnostics, reconciliation_diagnostics);
 async fn reconciliation_event(
     State(app): State<App>,
     headers: HeaderMap,

@@ -97,6 +97,10 @@ endpoint is `POST /api/reconciliation/{kind}/{id}/events` with
 `{"event_id":"stable-source-event-id"}` and that agent's bearer token. Repeating
 an event ID returns the same retained job. Scoped status is available at
 `GET /api/reconciliation/schedules` and `GET /api/reconciliation/jobs`.
+`GET /api/operations/reconciliation` is the instance-wide redacted failure
+read for `operations.read` on `operations/reconciliation`. It does not replace
+those scoped reads. A schedule `next_run` there is the next enqueue time.
+See [reconciliation diagnostics](roadmap/o06-reconciliation-diagnostics.md).
 Controller outcomes distinguish `local_applied`, `downstream_queued`,
 `pending_prior_delivery`, and `none` for review. The SCIM delivery worker owns
 remote delivery and its separate job status; a controller's completed queue

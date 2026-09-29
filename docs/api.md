@@ -326,6 +326,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/state/revision` | Revision for conditional mutations |
 | GET | `/api/operations/doctor` | Storage/key/admin diagnostics |
 | GET | `/api/operations/offboarding` | Platform scheduled-offboarding counts and at most 50 redacted attention items; `operations.read` on `operations/offboarding`; a username also needs `user.offboard` on that stored user; `has_error` records a stored error and the text stays on the job read |
+| GET | `/api/operations/reconciliation` | Reconciliation-controller counts and at most 50 redacted attention rows; `operations.read` on `operations/reconciliation`; `has_error` records a stored error and the text stays on the schedule and job reads; `next_run` is the next enqueue time |
 | GET | `/api/operations/metrics` | Process counters and capacity |
 | GET | `/api/operations/prometheus` | Authenticated Prometheus text metrics |
 | GET | `/api/operations/mail` | Redacted email-delivery state |

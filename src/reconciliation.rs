@@ -1,5 +1,7 @@
 //! Durable, scoped triggers for the P01 connector plan/apply controllers.
 //! A controller credential is read afresh for every run. It is never stored in a job.
+//! `Core::reconciliation_diagnostics` reports stored controller failures with a
+//! fixed action and leaves the stored error text on the schedule and job reads.
 use crate::{
     agent::{Agent, Principal},
     background::{Background, Job as BackgroundJob, TargetPermit},
@@ -26,6 +28,10 @@ const JOBS: &str = "reconciliation_jobs";
 const MAX_JOBS: usize = 256;
 const MAX_ATTEMPTS: u32 = 4;
 const LEASE_SECONDS: u64 = 900;
+const DIAGNOSTIC_ITEMS: usize = 50;
+/// Stored by schedule disable before a queued periodic job is dispatched.
+/// The diagnostic omits that stale row and does not copy this sentence.
+const DISABLED_BEFORE_DISPATCH: &str = "Schedule disabled before dispatch";
 
 #[derive(Clone)]
 struct ExecutionLease {
@@ -474,6 +480,125 @@ fn make_job(
     })
 }
 
+#[derive(Default, Serialize)]
+struct DiagnosticCounts {
+    schedules: u64,
+    schedules_with_error: u64,
+    jobs: u64,
+    queued: u64,
+    running: u64,
+    completed: u64,
+    failed: u64,
+    stale: u64,
+    attention: u64,
+}
+
+struct Listed {
+    rank: u8,
+    id: String,
+    body: Value,
+}
+
+fn status_name(status: Status) -> &'static str {
+    match status {
+        Status::Queued => "queued",
+        Status::Running => "running",
+        Status::Completed => "completed",
+        Status::Failed => "failed",
+        Status::Stale => "stale",
+    }
+}
+
+fn origin_name(origin: &Origin) -> &'static str {
+    match origin {
+        Origin::Schedule => "schedule",
+        Origin::Event => "event",
+    }
+}
+
+fn job_needs_attention(job: &Job) -> bool {
+    match job.status {
+        Status::Failed => true,
+        Status::Stale => job.last_error.as_deref() != Some(DISABLED_BEFORE_DISPATCH),
+        Status::Queued | Status::Running => job.last_error.is_some(),
+        Status::Completed => false,
+    }
+}
+
+fn job_next_action(job: &Job) -> &'static str {
+    match job.status {
+        Status::Failed => "inspect_connector_and_replan",
+        Status::Stale => "refresh_authority_and_replan",
+        Status::Queued => "wait_for_retry",
+        Status::Running => "wait_for_worker",
+        Status::Completed => "review_local_result",
+    }
+}
+
+fn count_schedule(counts: &mut DiagnosticCounts, schedule: &Schedule) {
+    counts.schedules = counts.schedules.saturating_add(1);
+    if schedule.last_error.is_some() {
+        counts.schedules_with_error = counts.schedules_with_error.saturating_add(1);
+        counts.attention = counts.attention.saturating_add(1);
+    }
+}
+
+fn count_job(counts: &mut DiagnosticCounts, job: &Job) {
+    counts.jobs = counts.jobs.saturating_add(1);
+    match job.status {
+        Status::Queued => counts.queued = counts.queued.saturating_add(1),
+        Status::Running => counts.running = counts.running.saturating_add(1),
+        Status::Completed => counts.completed = counts.completed.saturating_add(1),
+        Status::Failed => counts.failed = counts.failed.saturating_add(1),
+        Status::Stale => counts.stale = counts.stale.saturating_add(1),
+    }
+    if job_needs_attention(job) {
+        counts.attention = counts.attention.saturating_add(1);
+    }
+}
+
+fn schedule_item(schedule: &Schedule) -> Listed {
+    Listed {
+        rank: 3,
+        id: schedule.scope.clone(),
+        body: json!({
+            "record": "schedule",
+            "scope": schedule.scope,
+            "enabled": schedule.enabled,
+            "interval_seconds": schedule.interval_seconds,
+            "next_run": schedule.next_run,
+            "last_job": schedule.last_job,
+            "agent_id": schedule.agent_id,
+            "has_error": schedule.last_error.is_some(),
+            "next_action": "inspect_controller",
+        }),
+    }
+}
+
+fn job_item(job: &Job) -> Listed {
+    let rank = match job.status {
+        Status::Failed => 0,
+        Status::Stale => 1,
+        Status::Queued | Status::Running => 2,
+        Status::Completed => 3,
+    };
+    Listed {
+        rank,
+        id: job.id.clone(),
+        body: json!({
+            "record": "job",
+            "id": job.id,
+            "scope": job.scope,
+            "status": status_name(job.status),
+            "origin": origin_name(&job.origin),
+            "attempts": job.attempts,
+            "next_attempt": job.next_attempt,
+            "has_error": job.last_error.is_some(),
+            "next_action": job_next_action(job),
+        }),
+    }
+}
+
 fn ensure_capacity(tx: &Tx<'_>) -> Result<()> {
     let jobs = tx.list::<Job>(JOBS)?;
     if jobs.len() < MAX_JOBS {
@@ -706,6 +831,50 @@ impl Core {
             }
             rows.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
             serde_json::to_value(rows).map_err(Error::internal)
+        })
+    }
+
+    /// Counts for every stored reconciliation schedule and retained job, plus
+    /// at most 50 redacted attention rows. `has_error` is presence of a stored
+    /// `last_error`; the text stays on the schedule and job reads. `next_run`
+    /// is the next enqueue time. This read does not change readiness, doctor,
+    /// or probes.
+    pub fn reconciliation_diagnostics(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let _actor =
+                self.management(tx, token, "operations.read", "operations/reconciliation")?;
+            let mut counts = DiagnosticCounts::default();
+            let mut listed = Vec::new();
+            for (_, schedule) in tx.list::<Schedule>(SCHEDULES)? {
+                count_schedule(&mut counts, &schedule);
+                if schedule.last_error.is_some() {
+                    listed.push(schedule_item(&schedule));
+                }
+            }
+            for (_, job) in tx.list::<Job>(JOBS)? {
+                count_job(&mut counts, &job);
+                if job_needs_attention(&job) {
+                    listed.push(job_item(&job));
+                }
+            }
+            listed.sort_by(|left, right| {
+                left.rank
+                    .cmp(&right.rank)
+                    .then_with(|| left.id.cmp(&right.id))
+            });
+            let truncated = listed.len() > DIAGNOSTIC_ITEMS;
+            listed.truncate(DIAGNOSTIC_ITEMS);
+            let items: Vec<Value> = listed.into_iter().map(|item| item.body).collect();
+            Ok(json!({
+                "schema_version": "riauth.reconciliation-diagnostics/v1",
+                "checked_at": now(),
+                "affects_readiness": false,
+                "limits": { "attention_items": DIAGNOSTIC_ITEMS },
+                "counts": counts,
+                "listed": items.len(),
+                "truncated": truncated,
+                "items": items,
+            }))
         })
     }
 

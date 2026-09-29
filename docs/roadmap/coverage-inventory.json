@@ -2982,9 +2982,10 @@
       ],
       "label": "extend",
       "journey": "module",
-      "current_state": "Prometheus metrics, doctor, logout and mail delivery endpoints, an alert rules template, and an alert webhook remain. Platform GET /api/operations/offboarding (riauth offboard diagnostics) counts every scheduled-offboarding job and lists at most 50 redacted attention items: failed jobs, done jobs whose live downstream state is pending or incomplete, and scheduled or running jobs that already have last_error. Items and visible targets report has_error and leave the stored error text on the job read. operations.read on operations/offboarding sees the counts; an item also requires user.offboard on the stored username. Hidden targets still decide downstream state. affects_readiness is false, and doctor, /readyz, and /livez stay on their existing answers. There are no dashboards and no connector-lag, storage-pressure, or key-problem signals. Node mismatch remains O03. queues.offboard_jobs.failed still counts status failed only. Downstream resolved is an attestation. Failed jobs outside scheduled offboarding stay on the provisioning, reconciliation, and mail reads. This read scans offboard_jobs and does not add a Prometheus series.",
+      "current_state": "Prometheus metrics, doctor, logout and mail delivery endpoints, an alert rules template, and an alert webhook remain. Platform GET /api/operations/offboarding (riauth offboard diagnostics) counts every scheduled-offboarding job and lists at most 50 redacted attention items: failed jobs, done jobs whose live downstream state is pending or incomplete, and scheduled or running jobs that already have last_error. Items and visible targets report has_error and leave the stored error text on the job read. operations.read on operations/offboarding sees the counts; an item also requires user.offboard on the stored username. Hidden targets still decide downstream state. affects_readiness is false, and doctor, /readyz, and /livez stay on their existing answers. There are no dashboards and no connector-lag, storage-pressure, or key-problem signals. Node mismatch remains O03. queues.offboard_jobs.failed still counts status failed only. Downstream resolved is an attestation. Failed provisioning jobs and mail deliveries stay on their existing reads. GET /api/operations/reconciliation counts stored reconciliation schedules and retained jobs and lists at most 50 redacted attention rows: failed jobs, stale jobs other than a schedule disabled before dispatch, queued or running jobs that already have last_error, and schedules that already have last_error. Items report has_error and a fixed next_action, and leave stored error text on the schedule and job reads. next_run is the next enqueue time, so this read does not measure connector lag. operations.read on operations/reconciliation sees every controller scope. affects_readiness is false. The offboarding read still scans offboard_jobs and does not add a Prometheus series.",
       "implementation": [
         "src/offboarding.rs",
+        "src/reconciliation.rs",
         "src/api.rs",
         "src/cli.rs",
         "src/operations.rs",
@@ -2995,6 +2996,11 @@
       "tests_existing": [
         {
           "ref": "tests/offboarding.rs::offboarding_diagnostics_reports_incomplete_and_failed_without_secrets",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/reconciliation_diagnostics.rs::reconciliation_diagnostics_reports_controller_failures_without_secrets",
           "kind": "rust",
           "ci": "ci-check"
         },
@@ -3010,7 +3016,8 @@
         }
       ],
       "tests_run_in_this_task": [
-        "offboarding_diagnostics_reports_incomplete_and_failed_without_secrets"
+        "offboarding_diagnostics_reports_incomplete_and_failed_without_secrets",
+        "reconciliation_diagnostics_reports_controller_failures_without_secrets"
       ],
       "documentation": [
         "docs/operations.md",
@@ -3020,7 +3027,9 @@
         "docs/connector-incidents.md",
         "docs/scim.md",
         "docs/editions.md",
+        "docs/removal-safeguards.md",
         "docs/roadmap/o06-offboarding-diagnostics.md",
+        "docs/roadmap/o06-reconciliation-diagnostics.md",
         "docs/enterprise/PLATFORM-04.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
@@ -3028,7 +3037,7 @@
         "Dashboards",
         "Connector lag",
         "Storage pressure and key problems",
-        "Failed jobs outside scheduled offboarding"
+        "Provisioning-job and mail failure text"
       ],
       "unverified": []
     },
