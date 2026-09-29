@@ -924,7 +924,10 @@ impl Core {
         });
         #[cfg(not(feature = "platform"))]
         let configured_passkey = false;
-        state["requirements"] = json!({"mfa": mfa, "browser": browser, "configured_passkey": configured_passkey});
+        state["requirements"] = json!({"mfa": mfa, "browser": browser});
+        if configured_passkey {
+            state["requirements"]["configured_passkey"] = json!(true);
+        }
         state["consent"] = json!({"required": required, "scopes": scopes, "attributes": null, "resource": request.resource, "remember_default": p.configured_consent.is_none(), "remember_enabled": p.configured_consent.is_none()});
         if !browser {
             return unavailable(state, "step_up_unavailable", None);
