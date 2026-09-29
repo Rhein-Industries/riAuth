@@ -761,9 +761,9 @@ def main() -> None:
                 or preflight_call is None
                 or not (0 <= verify.find("resource(kind, id)") < preflight_call.start()
                         < verify.find("match kind") < verify.find("cloud_connection_probe")
-                        < verify.find("self.mutation"))
+                        < verify.find("cloud_operation_record_credential_check"))
                 or re.search(r"\.\s*store\s*\.\s*read\s*\(", masked_rust_source(path.read_text()))
-                or re.search(r"\b(?:management|replay_receipt)\s*\(", verify[:verify.find("self.mutation")])
+                or re.search(r"\b(?:management|replay_receipt)\s*\(", verify)
                 or preflight is None
                 or not re.search(r"\.\s*store\s*\.\s*read\s*\(", preflight)
                 or not (0 <= preflight.find("self.management") < preflight.find("replay_receipt")
@@ -776,6 +776,32 @@ def main() -> None:
                 or not re.search(r'tx\.get\s*::<\s*u64\s*>\s*\(\s*"meta"\s*,\s*"revision"\s*\)', preflight_raw)
             ):
                 errors.append("src/cloud_operations.rs: credential replay and revision preflight belongs in assembly")
+            record = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_record_credential_check"
+            )
+            record_raw = rust_function_body(catalog_source, "cloud_operation_record_credential_check")
+            record_call = (
+                re.search(
+                    r"\bself\.cloud_operation_record_credential_check\s*\(\s*token\s*,\s*&scope\s*,\s*outcome\s*\)",
+                    verify,
+                )
+                if verify is not None else None
+            )
+            if (
+                verify is None
+                or record_call is None
+                or not (0 <= verify.find("let outcome = match self.cloud_connection_probe")
+                        < record_call.start())
+                or re.search(r"\.\s*(?:mutation|store\s*\.\s*(?:read|write))\s*\(", masked_rust_source(path.read_text()))
+                or record is None
+                or not (0 <= record.find("self.mutation") < record.find("self.management")
+                        < record.find("tx.put") < record.find("audit") < record.find("Ok(outcome)"))
+                or record_raw is None
+                or not re.search(r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.sync"\s*,\s*scope\s*\)', record_raw)
+                or not re.search(r'tx\.put\s*\(\s*"cloud_connection_checks"\s*,\s*scope\s*,\s*&outcome\s*\)', record_raw)
+                or not re.search(r'audit\s*\(\s*tx\s*,\s*&actor\.id\s*,\s*"cloud_directory\.credential_verify"\s*,\s*scope\s*\)', record_raw)
+            ):
+                errors.append("src/cloud_operations.rs: credential verification write belongs in assembly")
         if path == SRC / "source.rs" and rust_function_body(
             masked_rust_source(path.read_text()), "source_list"
         ) is not None:

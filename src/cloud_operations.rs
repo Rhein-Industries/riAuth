@@ -1,6 +1,6 @@
 //! Shared, sanitized operational view of configured cloud directory connectors.
 use crate::{
-    core::{Core, audit, validate_name},
+    core::{Core, validate_name},
     crypto::now,
     error::{Error, Result},
     reconciliation::controller_fingerprint,
@@ -286,11 +286,6 @@ impl Core {
                 "message": "Token request or first users page failed; inspect the configured credential and provider access",
             }),
         };
-        self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "directory.sync", &scope)?;
-            tx.put("cloud_connection_checks", &scope, &outcome)?;
-            audit(tx, &actor.id, "cloud_directory.credential_verify", &scope)?;
-            Ok(outcome)
-        })
+        self.cloud_operation_record_credential_check(token, &scope, outcome)
     }
 }

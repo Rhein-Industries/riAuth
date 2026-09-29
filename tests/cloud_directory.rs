@@ -3905,6 +3905,90 @@ fn cloud_credential_preflight_replays_before_revision_and_provider_access() {
     assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
 }
 
+#[test]
+fn cloud_credential_write_rechecks_revocation_after_provider_access() {
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let token = agent_token(
+        &fixture,
+        "credential-midflight-revoke",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    *directory.state.token_pause.lock().unwrap() = Some((entered_tx, release_rx));
+
+    let core = fixture.core.clone();
+    let verify = thread::spawn(move || core.cloud_verify_credential(&token, "workspace", "corp"));
+    entered_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    fixture
+        .core
+        .revoke_agent(&fixture.admin, "credential-midflight-revoke")
+        .unwrap();
+    let revoked = fixture.snapshot().unwrap();
+    release_tx.send(()).unwrap();
+
+    assert_eq!(verify.join().unwrap().unwrap_err().code, "invalid_token");
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    assert_eq!(directory.state.directory_hits.load(Ordering::Relaxed), 1);
+    fixture.assert_snapshot(&revoked);
+}
+
+#[test]
+fn cloud_credential_write_rechecks_revision_after_provider_access() {
+    use riauth::context::{RequestContext, scope};
+
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let token = agent_token(
+        &fixture,
+        "credential-midflight-revision",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let revision = fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap();
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    *directory.state.token_pause.lock().unwrap() = Some((entered_tx, release_rx));
+
+    let core = fixture.core.clone();
+    let verify = thread::spawn(move || {
+        scope(
+            Some(RequestContext {
+                idempotency_key: Some("credential-midflight-revision".into()),
+                fingerprint: "credential-midflight-revision".into(),
+                revision: Some(revision),
+                ..Default::default()
+            }),
+            || core.cloud_verify_credential(&token, "workspace", "corp"),
+        )
+    });
+    entered_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("meta", "revision", &(revision + 1)))
+        .unwrap();
+    let changed = fixture.snapshot().unwrap();
+    release_tx.send(()).unwrap();
+
+    let error = verify.join().unwrap().unwrap_err();
+    assert_eq!(error.code, "conflict");
+    assert_eq!(error.message, "Configuration revision changed");
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+    assert_eq!(directory.state.directory_hits.load(Ordering::Relaxed), 1);
+    fixture.assert_snapshot(&changed);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
     use axum::{

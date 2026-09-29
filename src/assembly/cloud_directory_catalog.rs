@@ -2,7 +2,7 @@
 
 use crate::{
     cloud_directory::Provider,
-    core::Core,
+    core::{Core, audit},
     crypto::digest,
     error::{Error, Result},
     model::Group,
@@ -57,6 +57,20 @@ impl Core {
                 }
             }
             Ok(None)
+        })
+    }
+
+    pub(crate) fn cloud_operation_record_credential_check(
+        &self,
+        token: &str,
+        scope: &str,
+        outcome: Value,
+    ) -> Result<Value> {
+        self.mutation(token, |tx| {
+            let actor = self.management(tx, token, "directory.sync", scope)?;
+            tx.put("cloud_connection_checks", scope, &outcome)?;
+            audit(tx, &actor.id, "cloud_directory.credential_verify", scope)?;
+            Ok(outcome)
         })
     }
 
