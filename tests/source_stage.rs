@@ -1786,9 +1786,42 @@ async fn stage_resume_consumes_retried_request_after_cancel() {
     );
     f.assert_snapshot(&reserved);
 
-    f.core
+    let rejected = f
+        .core
         .source_stage_cancel(&stage_id, &authorization_id)
         .unwrap();
+    assert_eq!(rejected["status"], "cancelled");
+    let old_stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    let old_login: Value = f
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(old_stage["used"], true);
+    assert_eq!(old_stage["cancelled"], true);
+    assert_eq!(old_login["failed"], true);
+    assert!(
+        f.core
+            .store
+            .get::<String>("source_polls", login["poll_hash"].as_str().unwrap())
+            .unwrap()
+            .is_none()
+    );
+    let after_rejection = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .source_stage_resume(&stage_id, &authorization_id, None)
+            .unwrap_err()
+            .message,
+        "Source stage already used"
+    );
+    f.assert_snapshot(&after_rejection);
     let retried = f.core.authorization_prepare(None, request).unwrap();
     let next_stage = text(&retried["source_stage"], "stage_id");
     assert_ne!(next_stage, stage_id);
@@ -1800,6 +1833,35 @@ async fn stage_resume_consumes_retried_request_after_cancel() {
             .unwrap()
             .as_deref(),
         Some(next_stage.as_str())
+    );
+    let next_record: Value = f
+        .core
+        .store
+        .get("source_stages", &next_stage)
+        .unwrap()
+        .unwrap();
+    let next_login: Value = f
+        .core
+        .store
+        .get("source_logins", next_record["login_key"].as_str().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(next_login["failed"], false);
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_polls", next_login["poll_hash"].as_str().unwrap())
+            .unwrap()
+            .as_deref(),
+        next_record["login_key"].as_str()
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("source_logins", &login_key)
+            .unwrap()
+            .unwrap()["failed"],
+        true
     );
 
     let next_authorization_id = text(&retried["source_stage"], "authorization_id");

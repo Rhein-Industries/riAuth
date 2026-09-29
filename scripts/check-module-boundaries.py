@@ -1007,6 +1007,32 @@ def main() -> None:
                 or 'tx.put("source_stages",&stage.id,stage)' not in re.sub(r"\s+", "", persist_resume)
             ):
                 errors.append("src/source.rs: source stage resume bearer and one-use writes belong in assembly")
+            stage_rejection = rust_function_body(source_protocol, "reject_stage")
+            stage_rejection_compact = re.sub(r"\s+", "", stage_rejection or "")
+            stage_rejection_raw = rust_function_body(path.read_text(), "reject_stage")
+            persist_rejection = rust_function_body(source_stage_assembly, "persist_stage_rejection")
+            persist_rejection_compact = re.sub(r"\s+", "", persist_rejection or "")
+            if (
+                stage_rejection is None
+                or stage_rejection_raw is None
+                or not (0 <= stage_rejection_compact.find("stage.used=true")
+                        < stage_rejection_compact.find("stage.cancelled=true")
+                        < stage_rejection_compact.find("self.persist_stage_rejection(tx,stage)?")
+                        < stage_rejection_compact.find("self.stage_denial(tx,stage,error,description)?"))
+                or re.search(
+                    r'\btx\s*\.\s*(?:put|delete)\s*\(\s*"(?:source_stages|source_polls|source_logins)"',
+                    stage_rejection_raw,
+                )
+                or persist_rejection is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_stage_rejection\s*\(", source_stage_assembly)
+                or not (0 <= persist_rejection_compact.find('tx.put("source_stages",&stage.id,stage)?')
+                        < persist_rejection_compact.find('tx.get::<Login>("source_logins",&stage.login_key)?')
+                        < persist_rejection_compact.find("pending.failed=true")
+                        < persist_rejection_compact.find('tx.delete("source_polls",&pending.poll_hash)?')
+                        < persist_rejection_compact.find('tx.put("source_logins",&stage.login_key,&pending)?')
+                        < persist_rejection_compact.find("Ok(())"))
+            ):
+                errors.append("src/source.rs: terminal source stage rejection writes belong in assembly")
             source_finish_assembly = (SRC / "assembly/source_finish.rs").read_text()
             source_finish = rust_function_body(source_finish_assembly, "source_finish")
             source_finish_compact = re.sub(r"\s+", "", source_finish or "")

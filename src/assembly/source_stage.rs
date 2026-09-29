@@ -1,8 +1,12 @@
 //! Embedded source stage transaction entrypoints over concrete Core storage.
 
 use crate::{
-    core::Core, crypto::digest, error::Result, model::AuthenticationTransaction,
-    source::SourceStage, store::Tx,
+    core::Core,
+    crypto::digest,
+    error::Result,
+    model::AuthenticationTransaction,
+    source::{Login, SourceStage},
+    store::Tx,
 };
 use serde_json::Value;
 
@@ -34,6 +38,16 @@ impl Core {
 
     pub(crate) fn persist_stage_resume_use(&self, tx: &Tx<'_>, stage: &SourceStage) -> Result<()> {
         tx.put("source_stages", &stage.id, stage)
+    }
+
+    pub(crate) fn persist_stage_rejection(&self, tx: &Tx<'_>, stage: &SourceStage) -> Result<()> {
+        tx.put("source_stages", &stage.id, stage)?;
+        if let Some(mut pending) = tx.get::<Login>("source_logins", &stage.login_key)? {
+            pending.failed = true;
+            tx.delete("source_polls", &pending.poll_hash)?;
+            tx.put("source_logins", &stage.login_key, &pending)?;
+        }
+        Ok(())
     }
 
     pub fn source_stage_resume(

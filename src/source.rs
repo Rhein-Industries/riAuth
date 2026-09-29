@@ -465,7 +465,7 @@ pub(crate) struct SourceStage {
     expires_at: u64,
     used: bool,
     cancelled: bool,
-    login_key: String,
+    pub(crate) login_key: String,
     transaction: String,
     browser_id: Option<String>,
 }
@@ -1054,12 +1054,7 @@ impl Core {
         stage.used = true;
         // Terminal failure keeps this exact request from being completed by another session.
         stage.cancelled = true;
-        tx.put("source_stages", &stage.id, &stage)?;
-        if let Some(mut pending) = tx.get::<Login>("source_logins", &stage.login_key)? {
-            pending.failed = true;
-            tx.delete("source_polls", &pending.poll_hash)?;
-            tx.put("source_logins", &stage.login_key, &pending)?;
-        }
+        self.persist_stage_rejection(tx, stage)?;
         let redirect = self.stage_denial(tx, stage, error, description)?;
         Ok(json!({
             "status": "rejected",
