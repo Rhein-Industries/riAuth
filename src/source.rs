@@ -463,21 +463,6 @@ struct SourceStage {
 }
 
 impl Core {
-    pub fn source_put(&self, token: &str, input: SourceInput) -> Result<Value> {
-        let secret = input.client_secret.map(zeroize::Zeroizing::new);
-        self.mutation(token, |tx| {
-            let actor = self.principal(tx, token)?;
-            crate::management::write_source(
-                tx,
-                &actor,
-                &input.source,
-                crate::management::SourceWrite::Direct {
-                    secret: secret.as_deref().map(String::as_str),
-                },
-            )?;
-            Ok(json!(input.source))
-        })
-    }
     pub fn source_start(&self, id: &str, input: Start, token: Option<&str>) -> Result<Value> {
         self.store.write(|tx| {
             self.source_start_in(tx, id, &input, token, None)

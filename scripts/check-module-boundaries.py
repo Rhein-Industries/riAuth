@@ -802,10 +802,31 @@ def main() -> None:
                 or not re.search(r'audit\s*\(\s*tx\s*,\s*&actor\.id\s*,\s*"cloud_directory\.credential_verify"\s*,\s*scope\s*\)', record_raw)
             ):
                 errors.append("src/cloud_operations.rs: credential verification write belongs in assembly")
-        if path == SRC / "source.rs" and rust_function_body(
-            masked_rust_source(path.read_text()), "source_list"
-        ) is not None:
-            errors.append("src/source.rs: authorized source catalog read belongs in assembly")
+        if path == SRC / "source.rs":
+            source_protocol = masked_rust_source(path.read_text())
+            source_catalog = (SRC / "assembly/source_catalog.rs").read_text()
+            if rust_function_body(source_protocol, "source_list") is not None:
+                errors.append("src/source.rs: authorized source catalog read belongs in assembly")
+            source_put = rust_function_body(
+                masked_rust_source(source_catalog), "source_put"
+            )
+            source_put_raw = rust_function_body(source_catalog, "source_put")
+            if (
+                rust_function_body(source_protocol, "source_put") is not None
+                or re.search(r"\bself\.mutation\s*\(", source_protocol)
+                or source_put is None
+                or not (0 <= source_put.find("Zeroizing::new")
+                        < source_put.find("self.mutation")
+                        < source_put.find("self.principal")
+                        < source_put.find("management::write_source")
+                        < source_put.find("Ok(json!(input.source))"))
+                or source_put_raw is None
+                or not re.search(r"\bpub\s+fn\s+source_put\s*\(", source_catalog)
+                or "SourceWrite::Direct" not in source_put_raw
+                or "secret.as_deref().map(String::as_str)" not in source_put_raw
+                or "&input.source" not in source_put_raw
+            ):
+                errors.append("src/source.rs: source configuration mutation belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
