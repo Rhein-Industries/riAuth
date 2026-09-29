@@ -693,6 +693,9 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
         "operations.vault_transit_signing" => !config.signers.is_empty(),
         "access.temporary_entitlements" => !config.pam_approvers.is_empty(),
         "ssf.push" => facts.ssf_stream,
+        // The host exists, but nothing in configuration or the executor registers
+        // or runs a stage. Advertising it as usable would skip that gate.
+        "workflow.controlled_extensions" => false,
         // Shared local protocols and Platform routes with no instance-wide
         // prerequisite can serve an authorized request immediately.
         _ => true,
@@ -1371,5 +1374,57 @@ mod tests {
                 .unwrap();
             assert_eq!(stored.settings, ProviderSettings::default());
         }
+    }
+
+    #[test]
+    fn controlled_extensions_are_platform_only_and_unconfigured() {
+        use crate::workflow::extension::CAPABILITY;
+        assert!(agent::FEATURES.contains(&CAPABILITY));
+        assert!(agent::PLATFORM_FEATURES.contains(&CAPABILITY));
+        assert!(!compiled_for(
+            CAPABILITY,
+            crate::edition::Target::Essentials
+        ));
+        assert!(compiled_for(CAPABILITY, crate::edition::Target::Platform));
+        let config = Config::default();
+        assert!(!configured(CAPABILITY, &config, &Facts::default()));
+        let mut disabled = config.clone();
+        disabled.capabilities.disabled.insert(CAPABILITY.to_owned());
+        let platform = validate_config_for(&disabled, crate::edition::Target::Platform)
+            .unwrap_err()
+            .to_string();
+        assert!(platform.contains("cannot be disabled"), "{platform}");
+        let essentials = validate_config_for(&disabled, crate::edition::Target::Essentials)
+            .unwrap_err()
+            .to_string();
+        assert!(essentials.contains("not compiled"), "{essentials}");
+
+        let dir = tempfile::tempdir().unwrap();
+        let core = Core::initialize(
+            Config {
+                data_dir: dir.path().into(),
+                ..Default::default()
+            },
+            crate::model::NewUser {
+                username: "admin".into(),
+                password: "capability-test-password".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let state = &runtime(&core).unwrap()["feature_states"][CAPABILITY];
+        assert_eq!(state["compiled"], true);
+        assert_eq!(state["enabled"], true);
+        assert_eq!(state["configured"], false);
+        assert_eq!(state["usable"], false);
+        assert_eq!(state["reason"], "not_configured");
+        assert!(
+            !runtime(&core).unwrap()["features"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(CAPABILITY))
+        );
     }
 }

@@ -353,6 +353,7 @@ pub const FEATURES: &[&str] = &[
     "identity.https_client_certificates",
     "identity.device_trust",
     "ssf.push",
+    "workflow.controlled_extensions",
 ];
 
 pub const PLATFORM_FEATURES: &[&str] = &[
@@ -382,6 +383,7 @@ pub const PLATFORM_FEATURES: &[&str] = &[
     "identity.https_client_certificates",
     "identity.device_trust",
     "ssf.push",
+    "workflow.controlled_extensions",
 ];
 
 pub fn capabilities() -> Value {

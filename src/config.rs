@@ -991,4 +991,52 @@ mod tests {
         configured.password_history = 25;
         assert!(configured.validate().is_err());
     }
+
+    #[test]
+    fn configured_custom_stage_is_rejected_before_execution() {
+        let definition = crate::workflow::parse(
+            br#"{
+            "format": "riauth.workflow/v1",
+            "id": "risk-route",
+            "revision": 1,
+            "category": "authentication",
+            "origin": "configured",
+            "entry": "risk",
+            "limits": {"max_duration_seconds": 600, "max_executions": 4},
+            "steps": [{
+                "id": "risk",
+                "action": {
+                    "type": "custom",
+                    "stage": "risk-check",
+                    "outputs": ["allow", "block"],
+                    "permissions": ["read_request"],
+                    "max_output_bytes": 128
+                },
+                "max_attempts": 1,
+                "timeout_seconds": 30,
+                "cancellable": true,
+                "transitions": [
+                    {"on": "allow", "to": "denied"},
+                    {"on": "block", "to": "denied"},
+                    {"on": "failed", "to": "denied"}
+                ]
+            }],
+            "terminals": [{"id": "denied", "outcome": "denied", "requires": []}]
+        }"#,
+        )
+        .unwrap();
+        let mut configured: Config = toml::from_str(
+            "issuer='http://127.0.0.1:9000'\nlisten='127.0.0.1:9000'\ndata_dir='data'\naccess_token_ttl=300\nrefresh_token_ttl=2592000\nsession_ttl=28800\n",
+        )
+        .unwrap();
+        configured.workflows.insert(
+            definition.id.as_str().to_owned(),
+            crate::workflow::ConfiguredWorkflow {
+                active: true,
+                definition,
+            },
+        );
+        let error = configured.validate().unwrap_err().to_string();
+        assert!(error.contains("Unknown stage"), "{error}");
+    }
 }

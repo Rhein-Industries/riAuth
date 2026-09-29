@@ -4,8 +4,9 @@
 //! enrollment, recovery, consent and sensitive-action journeys. The W02 executor
 //! consumes only [`Validated`] definitions and exposes password, passkey and upstream source
 //! reauthentication for live bearer sessions, plus configured local verifier and
-//! request-bound consent paths;
-//! see `docs/workflows.md`.
+//! request-bound consent paths. The W07 controlled-extension host in
+//! [`extension`] admits a registered custom stage under explicit permissions and
+//! resource limits and is not an executor path. See `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ mod essentials;
 pub(crate) mod evidence;
 #[cfg(feature = "platform")]
 pub mod executor;
+pub mod extension;
 mod validate;
 
 pub use essentials::{builtin, defaults};

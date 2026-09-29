@@ -668,6 +668,18 @@ journeys without an operator-designed workflow.
 configurable-workflow engine. RI-WF-001 is adjacent enforcement, not proof of
 arbitrary workflow safety. No baseline regression establishes this whole contract.
 
+**Controlled-extension slice.** [The host](../../src/workflow/extension.rs)
+runs a registered Platform stage only when that capability is compiled and the
+caller opened the host enabled. The call sees opaque identifiers for permissions
+the step requested and the registration granted. It caps input bytes, output
+bytes, duration, in-flight calls, and network permits. A permit carries no
+response body and opens no socket. The result is a declared routing label;
+output bytes are dropped, and `Action::proof` stays empty for that label. A
+late label is discarded. Essentials does not compile
+`workflow.controlled_extensions`, and the instance report leaves it not
+configured. This is not the Q02 engine adapter: configuration still rejects a
+custom stage, and the executor does not call the host.
+
 **Missing coverage / later contract.** Q02-C07 needs the future engine adapter:
 missing/disabled stage, changed definition/dependency, forged next-stage state,
 wrong account/request and weaker credential route all reject without issuance.

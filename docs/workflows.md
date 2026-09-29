@@ -1,6 +1,6 @@
 # Workflow definition model
 
-Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, and W06 Platform authoring.**
+Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, W06 Platform authoring, and a W07 controlled-extension host.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 password, passkey and OIDC/SAML source reauthentication, plus request-bound
 configured OIDC consent, for a live bearer session.
@@ -42,8 +42,9 @@ session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
 Source reauthentication uses server-defined workflows; source-first passkey
 enrollment accepts only the exact configured definition described below.
-Other configured enrollment and recovery shapes, custom
-stages and other authentication chains or consent shapes remain unconnected.
+Other configured enrollment and recovery shapes and other authentication
+chains or consent shapes remain unconnected. Custom stages are not part of
+those executor paths.
 
 ## Scope
 
@@ -126,7 +127,8 @@ epoch, request and run to which it belongs. Its optional session must match
 the run's exactly; `session`, `consent` and `passkey_removed` proofs require one. A custom stage
 can route by its outputs but never
 produces a proof, cannot reuse built-in signal names and only receives
-permissions that its registration grants.
+permissions that its registration grants. The host below applies that rule again
+at execution time.
 
 Source receipts additionally retain the source fingerprint, exact linked
 subject/account record and consumed upstream transaction reference. The
@@ -947,6 +949,47 @@ source, and registered custom stages. The caller supplies those references in an
 fingerprints, so a change to a default shows up in review. The model itself does
 not require a revision increase.
 
+## Controlled extensions
+
+Platform compiles the capability `workflow.controlled_extensions`. The running
+instance reports it as not configured and not usable. This build rejects an
+attempt to disable that name, because server startup does not yet call the host.
+Essentials does not compile the capability. A definition that names a custom
+stage still fails configuration: the authoring environment has no stage
+registry, and a custom stage is not an executable adapter.
+
+[`workflow::extension::Host`](../src/workflow/extension.rs) is the execution
+seam for an exceptional, in-process stage. Registration names the stage, the
+permissions it may grant (`read_profile`, `read_groups`, `read_request`,
+`network`), and the resource caps. A call runs only when the host was opened
+enabled on a Platform binary, the definition is a configured Platform workflow,
+and every permission the step requests was granted. The view copies only those
+requested identifiers. Each identifier is at most 64 bytes and uses lowercase
+letters, digits, `.`, `_`, and `-`. Groups are capped at 32. Input, output, and
+network response budgets are capped at 4,096 bytes. A stage timeout cannot
+exceed 30 seconds, and the effective deadline is the tighter of the step and
+the registration. At most 16 stages are registered and at most 4 calls run at
+once.
+
+`network` requires an allowlist of 1–8 exact hostnames and budgets of at most
+4 requests and 4,096 response bytes. `localhost`, `.local`, numeric addresses,
+wildcards, ports, and uppercase names are rejected. `fetch` returns a permit
+for that declared size or a denial. It does not open a socket or return a body.
+A step that does not request `network` is denied even when the registration
+has an allowlist.
+
+The accepted result is one declared routing label. Output bytes are measured
+against the tighter cap and then dropped, so they cannot become evidence,
+claims, or a stored audit payload. `Action::proof` is empty for that label.
+Reserved signal names are rejected again even if a caller bypassed validation.
+A result that arrives after the deadline is discarded. The worker is not
+preempted; it occupies one in-flight slot until it returns. A panic in the
+stage becomes a failure rather than a label.
+
+This host does not load scripts, WebAssembly, or dynamic libraries. Native code
+registered with the host is not sandboxed from the rest of the process. The
+boundary is the invocation contract above.
+
 ## Left to later work
 
 These are not implemented or established by this slice:
@@ -970,10 +1013,13 @@ These are not implemented or established by this slice:
   A denial after an epoch change also remains blocked by current-facts binding;
   W02 must resolve such runs with its expiry/cancellation or mutation protocol.
 * Other configured enrollment, recovery, authentication or consent chains,
-  custom stage execution, and the other built-in verifiers. The configured local
-  verifier paths store attempt timing, enforce retry and run bounds, cancellation
-  and expiry, and recheck account, session, request and receipt authority in the
-  final transaction. The password paths reject upstream-only accounts.
+  and the other built-in verifiers. The configured local verifier paths store
+  attempt timing, enforce retry and run bounds, cancellation and expiry, and
+  recheck account, session, request and receipt authority in the final
+  transaction. The password paths reject upstream-only accounts. Custom-stage
+  execution is the separate host above: it is not connected to the executor,
+  HTTP API, desired-state activation, or a network connector, and a stuck call
+  is not preempted.
 * Binding the remaining security dependencies. `RunBinding` covers the
   definition's ID, revision and fingerprint, and new source-verifier runs also
   pin the live source registration. It does not cover custom-stage registrations
