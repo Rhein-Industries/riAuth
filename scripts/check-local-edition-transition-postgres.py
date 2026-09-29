@@ -34,6 +34,10 @@ EXCLUDED = {
     "meta/revision", "meta/version_activation", "meta/edition_provenance",
     "meta/node_security",
 }
+TRANSITION_METADATA = {
+    "meta/issuer", "meta/node_security", "meta/version_activation",
+    "meta/edition_provenance",
+}
 
 
 def rows(programs, port, database):
@@ -49,6 +53,38 @@ def rows(programs, port, database):
         if name not in EXCLUDED and not name.startswith("meta/edition_transition_history/"):
             result[name] = hashlib.sha256(bytes.fromhex(value_hex)).hexdigest()
     return result
+
+
+def transition_metadata(programs, port, database):
+    output = subprocess.check_output([
+        programs["psql"], "-h", "127.0.0.1", "-p", str(port),
+        "-U", "riauth_test", "-d", database, "-At", "-F", "|", "-c",
+        "SELECT encode(key,'hex'),encode(value,'hex') FROM riauth_store.records_v1 ORDER BY key",
+    ], text=True)
+    result = {}
+    for line in output.splitlines():
+        key_hex, value_hex = line.split("|", 1)
+        name = bytes.fromhex(key_hex).decode()
+        if name in TRANSITION_METADATA:
+            result[name] = json.loads(bytes.fromhex(value_hex))
+    matrix.require(set(result) == TRANSITION_METADATA, "transition metadata is incomplete")
+    matrix.require(result["meta/node_security"]["format"] == 2,
+                   "transition requires a current security agreement")
+    return result
+
+
+def require_target_metadata(before, after, target):
+    matrix.require(after["meta/issuer"] == before["meta/issuer"],
+                   "transition changed the issuer")
+    for field in ("issuer", "authentication"):
+        matrix.require(after["meta/node_security"][field] == before["meta/node_security"][field],
+                       f"transition changed security agreement {field}")
+    matrix.require(after["meta/node_security"]["active_capabilities"] !=
+                   before["meta/node_security"]["active_capabilities"],
+                   "target active capabilities were not switched")
+    matrix.require(after["meta/version_activation"]["edition"] == target and
+                   after["meta/edition_provenance"]["last_activated_edition"] == target,
+                   "target edition metadata was not coordinated")
 
 
 def require_preserved(before, after, direction):
@@ -101,6 +137,7 @@ def main():
                                                 root / "config", pg_config)
             first = matrix.serve(essentials / "riauth", config, base)
             before = rows(programs, port, database)
+            before_metadata = transition_metadata(programs, port, database)
             matrix.require(any(key.startswith("users/") for key in before), "no identities stored")
             refused = gate.cli(platform_bins / "riauth", "--config", config, "serve", expected=None)
             matrix.require("active capabilities" in refused["error"]["message"],
@@ -148,6 +185,8 @@ def main():
             matrix.require(upgrade["activated_edition"] == "platform", "upgrade failed")
             upgraded_rows = rows(programs, port, database)
             require_preserved(before, upgraded_rows, "upgrade")
+            upgraded_metadata = transition_metadata(programs, port, database)
+            require_target_metadata(before_metadata, upgraded_metadata, "platform")
             second = matrix.serve(platform_bins / "riauth", config, base)
             refused = gate.cli(essentials / "riauth", "--config", config, "serve", expected=None)
             matrix.require("Platform" in refused["error"]["message"] or
@@ -162,6 +201,11 @@ def main():
                                  "--token", plan["transition_token"])
             matrix.require(downgrade["activated_edition"] == "essentials", "downgrade failed")
             require_preserved(before_down, rows(programs, port, database), "downgrade")
+            returned_metadata = transition_metadata(programs, port, database)
+            require_target_metadata(upgraded_metadata, returned_metadata, "essentials")
+            matrix.require(returned_metadata["meta/node_security"]["active_capabilities"] ==
+                           before_metadata["meta/node_security"]["active_capabilities"],
+                           "Essentials active capabilities were not restored")
             third = matrix.serve(essentials / "riauth", config, base)
             report = {"schema": "riauth.local-native-postgres-transition/v1",
                       "release_gate_result": False, "architecture": "linux/aarch64",
@@ -174,6 +218,9 @@ def main():
                       "baseline_rows": len(before), "upgrade_preserved_rows": len(before),
                       "downgrade_preserved_rows": len(before_down),
                       "other_client_refused": True,
+                      "issuer_and_authentication_preserved": True,
+                      "active_capabilities_switched": True,
+                      "edition_and_version_metadata_coordinated": True,
                       "editions": [first["edition"], second["edition"], third["edition"]]}
             with args.evidence.open("x") as destination:
                 json.dump(report, destination, indent=2, sort_keys=True)
