@@ -512,6 +512,7 @@ impl GrantFixture {
                 Some(other)
                     if other != value
                         && key != "meta/revision"
+                        && key != "meta/user_listing_cursor_epoch"
                         && class(key) != Some(Class::LoggedOut) =>
                 {
                     changed.push(key.clone())
@@ -523,7 +524,8 @@ impl GrantFixture {
             if !before.contains_key(key)
                 && !(key.starts_with("index_")
                     || key.starts_with("audit/")
-                    || key == "meta/recovery")
+                    || key == "meta/recovery"
+                    || key == "meta/user_listing_cursor_epoch")
             {
                 extra.push(key.clone());
             }
@@ -532,6 +534,20 @@ impl GrantFixture {
             missing.is_empty() && changed.is_empty() && extra.is_empty(),
             "missing={missing:?} extra={extra:?} changed={changed:?}"
         );
+        // Restore stamps a fresh epoch so a cursor from the previous timeline
+        // cannot be presented again. Identity records themselves stay put.
+        let epoch = after
+            .get("meta/user_listing_cursor_epoch")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty());
+        assert!(epoch.is_some(), "restore must stamp a user-listing cursor epoch");
+        if let Some(previous) = before.get("meta/user_listing_cursor_epoch") {
+            assert_ne!(
+                after.get("meta/user_listing_cursor_epoch"),
+                Some(previous),
+                "restore must rotate the user-listing cursor epoch"
+            );
+        }
         assert!(restored.userinfo(&self.access).is_err());
         assert!(restored.me(&self.alice).is_err());
         assert!(restored.me(&self.fixture.admin).is_err());
