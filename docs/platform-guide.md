@@ -14,13 +14,15 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records four loopback observations. The first
+build. The walkthrough records five loopback observations. The first
 reported the Essentials catalog. The second was a copied Platform debug
 server whose artifact catalog had `edition` `platform` and `build_features`
 `["essentials", "platform"]`. The third used that same server snapshot with
 separate `riauthctl` and `riauth-maintenance` snapshots supplied for a later
 source revision. The fourth used only that server snapshot and ran the
-section 5 backup, restore, and recovery-status entry points. The commands
+section 5 backup, restore, and recovery-status entry points. The fifth used
+only that server snapshot, opened an isolated browser at `/apps`, and stopped
+the section 4 passkey ceremony before a credential was stored. The commands
 in sections 1 through 13 are the ones implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
 [offline maintenance](../src/cli/local.rs), and the
@@ -28,7 +30,7 @@ in sections 1 through 13 are the ones implemented in this tree: `[features]` in
 
 The three slices were checked by reading the source and the current docs,
 then by `python3 scripts/check-docs.py`. Section 14 was source-reviewed and
-remains unrun. Four disposable loopback runs are recorded in
+remains unrun. Five disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
 build was run for any of them. The first stopped after one `local-demo`
 client create on the Essentials catalog. The second repeated setup on the
@@ -39,8 +41,12 @@ sections 4 and 5, and `group get` / `group has-member`. The third ran
 claim commands, then the server CLI `explain` and audit commands. `riauthctl`
 has no `doctor` subcommand. The fourth ran section 5 `keygen`, `backup`,
 `restore`, and `recovery status` on the server snapshot. It left `recovery
-complete`, `recover-admin`, and a second server unrun. Browser, hardware,
-peer, passkey, invitation, and Essentials-guide execution remain unrun. The
+complete`, `recover-admin`, and a second server unrun. The fifth signed in
+at `/apps` with the password form, opened **Sign-in and security**, and
+cancelled **Add a passkey** when Chrome required iCloud Keychain, the Chrome
+profile, a USB security key, or Touch ID. Rename, remove, passkey sign-in,
+hardware, peers, invitation acceptance, and Essentials-guide execution
+remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
 against revision `96e23e2`, when editions were not in the tree. That row was
 left as historical planning evidence.
@@ -437,6 +443,44 @@ The dialog text says to pick this device, another device, or a security key
 in the browser prompt. Synced passkeys, phones, and physical keys are part of
 the manual accessibility and authenticator gates below. This slice does not
 record a result for them.
+
+### Loopback observation
+
+The [walkthrough](roadmap/d01-platform-cli-walkthrough.md) records one
+isolated-browser attempt on a copy of the Platform server snapshot supplied
+for `58357fd`. Password sign-in at <http://localhost:9000/apps> opened the
+applications page for the local `admin` account. **Sign in with a passkey**
+was already in view on that first visit, before any passkey existed.
+**Sign-in and security** reported **You have no passkeys yet.** The name
+field was changed to `loopback-lab`, and **Add a passkey** opened the
+browser prompt.
+
+Chrome showed a sheet titled **Add a passkey?** The sheet said that
+`localhost` supports passkeys and that a passkey for `admin` would be saved
+in Passwords, and it named Touch ID as the save action. Escape on that sheet
+opened **Choose where to save your passkey for localhost**. The choices were
+iCloud Keychain, Your Chrome profile, and USB security key. Cancel on that
+chooser returned the dialog to **Add a passkey**. The status text was
+`Adding the passkey was cancelled or timed out. Select the add button to try
+again, or Cancel change.` The name field still contained `loopback-lab`. The
+dialog had no passkey row, so **Rename** and **Remove** had nothing to
+change.
+
+The same account's server CLI `passkey list` returned `[]`. iCloud Keychain,
+the Chrome profile, Touch ID, and a USB security key stayed unused. `cargo
+install` and the printed `riauthctl passkey` commands stayed unrun.
+
+The printed commands, portal routes, and enrollment and removal rules in
+this section match the tree. Browser enrollment asks for a resident
+credential with user verification. The terminal USB registration path asks
+with the non-resident flag, and that flag is advisory. Server `passkey enroll`
+and `passkey login` stop before a ceremony because USB support is not compiled
+into the server binary. The two-passkey sentence above covers this setup
+administrator. The same conflict also covers a later administrator whose
+password hash is empty. Step 6 describes **Sign in with a passkey** on a
+later visit. This run also saw that button on the first unsigned visit. The
+page shows it when `identity.passkeys` is usable and the browser can use
+passkeys, including when the account has no passkey yet.
 
 ### Optional terminal USB, separate from this self-service path
 
@@ -1915,13 +1959,16 @@ spec itself says it does not claim:
 - iOS or Android
 - a spoken screen reader (VoiceOver, TalkBack, or NVDA)
 
-Those five are manual gates. This task did not run the Playwright spec, a
-desktop browser, or a screen reader. [Passkeys](passkeys.md) also says
+Those five are manual gates. This task did not run the Playwright spec or a
+spoken screen reader. Section 4 records one isolated desktop browser on
+loopback. That browser signed in at `/apps` and cancelled the passkey prompt
+before a credential existed. Physical keys, synced passkeys, phones, and
+spoken screen readers remain manual gates. [Passkeys](passkeys.md) also says
 physical hardware and platform compatibility still need testing on the
-intended devices. A cancelled browser prompt, a synced passkey, and a
-security key used from Safari or a phone remain manual checks for each
-deployment. The Platform admin page and workflow editor are not part of that
-spec and were not checked here.
+intended devices. The cancelled prompt in section 4 is one loopback
+observation. A synced passkey and a security key used from Safari or a phone
+remain manual checks for each deployment. The Platform admin page and
+workflow editor are not part of that spec and were not checked here.
 
 ## What remains for D01
 
@@ -1938,9 +1985,11 @@ printed client update, and the server CLI `explain` and audit commands.
 `riauthctl doctor` exited 2 locally. Both of those chains skipped sections
 4 and 5. A later run executed the section 5 entry points on the server
 snapshot: `keygen`, `backup`, `restore` into a new directory, and `recovery
-status`. That run left section 4, `recovery complete`, `recover-admin`, and
-a second server unrun. Sections 9 through 13 remain
-source-reviewed procedures. The generated `init` file still has no directory,
+status`. That run left `recovery complete`, `recover-admin`, and a second
+server unrun. A fifth run opened section 4 in an isolated browser, signed
+in at `/apps`, and cancelled passkey enrollment before a credential
+existed. Rename, remove, and passkey sign-in stayed unrun. Sections 9
+through 13 remain source-reviewed procedures. The generated `init` file still has no directory,
 no SCIM target, no workflow, no SAML client, and no LDAP listener until the
 operator adds them. Those later commands were not executed here. Sections 11
 through 13 name the configured workflow, the SAML identity-provider and
@@ -2009,13 +2058,13 @@ Still outside this slice, as later tasks:
   [SSF delivery](ssf-delivery.md) page covers stopped, retrying, and
   cancelled outbound Shared Signals deliveries. The backup commands here are
   entry points.
-- Any claim that a person completed `cargo install`, the browser sign-in at
-  `/apps`, the OIDC redirect, passkey enrollment, `recovery complete`,
-  `recover-admin`, an LDAP directory plan or
+- Any claim that a person completed `cargo install`, the OIDC redirect,
+  passkey enrollment, passkey rename or removal, passkey sign-in,
+  `recovery complete`, `recover-admin`, an LDAP directory plan or
   apply, a SCIM plan or apply, a workflow plan or a configured-workflow run,
   a SAML metadata exchange with a peer, an LDAP provider bind, or an
   invitation acceptance. The
-  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has four runs.
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has five runs.
   The first supplies `riauth capabilities`, local `init`, `serve`, `/readyz`,
   CLI `login`, `doctor`, and one `local-demo` client create on a binary whose
   catalog edition was `essentials`. The second supplies the same setup on a
@@ -2025,4 +2074,6 @@ Still outside this slice, as later tasks:
   `riauthctl` client, group, and claim commands, then server CLI `explain`
   and audit. The fourth supplies section 5 `keygen`, `backup`, `restore`,
   and `recovery status` on the Platform server snapshot, with the restored
-  service left closed. D01 remains incomplete.
+  service left closed. The fifth supplies password sign-in at `/apps` and a
+  cancelled **Add a passkey** on that same server snapshot. The server then
+  listed no passkeys. D01 remains incomplete.

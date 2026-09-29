@@ -3,7 +3,7 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records four disposable loopback runs of the
+This page records five disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
 a Platform-catalog server snapshot and continued through the server CLI group,
@@ -11,9 +11,11 @@ claim, and audit commands. The third copied that same server snapshot plus
 separate `riauthctl` and `riauth-maintenance` snapshots and ran the printed
 maintenance init and remote client commands. The fourth copied only that
 server snapshot and ran the section 5 backup, restore, and recovery-status
-entry points. No run used a browser, an external peer, or `cargo install`.
+entry points. The fifth copied only that server snapshot and opened section 4
+in an isolated browser. No run used an external peer or `cargo install`.
 The first two runs did not launch `riauthctl` or `riauth-maintenance`. The
-fourth run did not launch them either.
+fourth and fifth runs did not launch them either. The fifth run is the only
+run that opened a browser, and it stored no passkey.
 
 ## Essentials catalog run
 
@@ -1486,3 +1488,236 @@ Still unrun on this run:
 An earlier lab in the same hour completed this same command sequence. Its
 evidence file was discarded before it was kept, and that directory was
 removed. The numbers above are from the kept run. D01 remains incomplete.
+
+## Section 4 passkey prompt
+
+The docs worktree for this record is
+`080452a45c97535fa858ddfd2d72148fbe4760ff`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. The authorized binary was the Platform server
+snapshot
+`/tmp/riauth-platform-58357fd-immutable/riauth`, the same file the catalog
+run, the remote-administration run, and the section 5 run copied. Its mode
+stayed `-r-x------`, its size stayed 289661864 bytes, its mtime stayed
+`2026-09-29 17:00:59 +0200`, and its SHA-256 stayed
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. The
+snapshot path was not executed. A copy lived in a new `mktemp` directory
+under `/tmp`, mode `700`. The copy was chmod `700`, its SHA-256 matched the
+snapshot before any command, and its inode differed. This page calls that
+directory `$LAB`. The copy's real path is not recorded. `riauthctl` and
+`riauth-maintenance` were not launched. `deployment-private/` was not written.
+
+`riauth --version` printed `riauth 0.1.1`. Root help exited 0 with
+`Usage: riauth [OPTIONS] <COMMAND>`. This run did not print
+`riauth capabilities` or `riauth doctor`. The passkey and portal files at
+this revision match the snapshot's source. The only `src/cli.rs` change
+since that source is the agent-revocation idempotency check. It is outside
+this section.
+
+Help was read on the copy:
+
+| Command | Usage line |
+| --- | --- |
+| `passkey` | `Usage: riauth passkey [OPTIONS] <COMMAND>` |
+| `passkey list` | `Usage: riauth passkey list [OPTIONS]` |
+| `passkey remove` | `Usage: riauth passkey remove [OPTIONS] <ID>` |
+| `passkey enroll` | `Usage: riauth passkey enroll [OPTIONS] --name <NAME>` |
+| `passkey login` | `Usage: riauth passkey login [OPTIONS] <USERNAME>` |
+
+`passkey --help` also lists `start` and `finish`. `enroll` is described as
+enrollment with a connected USB FIDO2 authenticator. `login` is described as
+authentication with a connected USB FIDO2 authenticator. `start` saves
+public ceremony options for an external authenticator client. `finish`
+completes a saved ceremony from a WebAuthn JSON response. `list` was the
+only one of these verbs executed. The printed section 4 USB commands are
+`riauthctl`, not these server verbs.
+
+### Setup
+
+Free space on the data volume stayed above 7 GiB. Port 9000 was free before
+serve. Both default home session files were absent. The prerequisite was a
+section 2 loopback on this copy:
+
+```sh
+riauth --config $LAB/riauth.toml --non-interactive init \
+  --issuer http://localhost:9000 \
+  --listen 127.0.0.1:9000 \
+  --data-dir data \
+  --admin admin \
+  --password-stdin
+```
+
+Exit 0. Standard error was `Creating instance and signing key…`, 37 bytes.
+Standard output had `initialized` true and issuer `http://localhost:9000`.
+The configuration file was mode `600` and 430 bytes. It contained no
+administrator password, no `database_key_file`, and no PostgreSQL block.
+`$LAB/data/riauth.redb` was mode `600` and 1056768 bytes.
+
+```sh
+riauth --config $LAB/riauth.toml serve
+```
+
+`/readyz` returned HTTP 200:
+
+```json
+{"duties":{"authentication":true,"background_jobs":true,"protocol_listeners":true},"issuer":"http://localhost:9000","role":"integrated","service":"riAuth","status":"ok","version":"0.1.1"}
+```
+
+`protocol_listeners` true does not mean a listener stanza was configured.
+At the last scan, after `passkey list`, the serve log was 3459 bytes. A
+scan for the administrator password and for a PEM header found no hits. The
+log contained the `background_overloaded` marker. The log text is not copied.
+
+### Browser
+
+Desktop interaction used the Cua driver 0.30.3. Accessibility and screen
+recording were granted. The driver launched a new isolated Chromium profile
+and copied no existing profile data. The page was `http://localhost:9000/apps`,
+titled `Your applications · riAuth`.
+
+Before sign-in, the page showed **Sign in with a passkey** in the viewport,
+the password form, and **Sign in with your terminal**. The username field
+read back as `admin`. The password value was not exposed in the page tree.
+Submitting **Sign in** opened the catalogue. The account control was
+**Signed in as admin (@admin)**. The notice was **Some applications need
+extra verification. Add a passkey or an authenticator app under Sign-in and
+security.** The catalogue heading was **All applications (0)**.
+
+**Sign-in and security** showed **Sign in without a password. Adding or
+removing a passkey signs you out everywhere.** The status was **You have no
+passkeys yet.** The name field was prefilled `macOS` and then replaced with
+`loopback-lab`. The visible hint was **Choose this device, another device
+or a security key in your browser's passkey prompt.** A trusted browser
+click on **Add a passkey** was refused before dispatch: that input route
+will not foreground standalone Chromium on macOS. A page activation started
+the ceremony, and the add controls became disabled.
+
+Chrome then showed a sheet parented to the applications window. Its heading
+was **Add a passkey?** Its text said that `localhost` supports passkeys and
+that a passkey for `admin` would be saved in Passwords. A static label named
+Touch ID as the save action. The sheet's own Cancel control was outside the
+background click target. Escape on the sheet did not cancel the ceremony. It
+opened a window titled **Choose where to save your passkey for localhost**,
+with buttons **iCloud Keychain**, **Your Chrome profile**, **USB security
+key**, and **Cancel**. Cancel on that chooser was pressed. The chooser
+window disappeared.
+
+The portal status then read `Adding the passkey was cancelled or timed out.
+Select the add button to try again, or Cancel change.` The name field still
+contained `loopback-lab`, the button was still **Add a passkey**, and no
+passkey row appeared. **Rename** and **Remove** were therefore not
+available. None of iCloud Keychain, the Chrome profile, Touch ID, or a USB
+security key was selected.
+
+Chrome also showed **Save password?** for the lab account. **Never** was
+pressed. A following window list for that browser contained only the
+applications window. The Cua session was ended, and the isolated browser
+process was gone before the lab was removed.
+
+### Empty passkey list
+
+The browser session was not reused for the CLI. A separate server CLI login
+wrote `$LAB/cli-session.json`, mode `600`. Standard error was empty. The
+password was absent from standard output and standard error, and standard
+output did not contain a session token. The account fields were `admin`
+true, `email_verified` false, `enabled` true, `id`
+`5c290300-cf0d-41b1-9f86-3f83691e1118`, `mfa_enabled` false, and `username`
+`admin`.
+
+```sh
+riauth --config $LAB/riauth.toml \
+  --server http://localhost:9000 \
+  --session-file $LAB/cli-session.json \
+  --non-interactive \
+  passkey list
+```
+
+Exit 0. Standard error was empty. Standard output was `[]`. A repeat of
+that list immediately before shutdown was empty as well. Both default home
+session files stayed absent.
+
+### Source review
+
+Section 4's printed commands and the portal passkey API match this tree.
+The comparison below was read from source. The USB bail strings were not
+executed on the snapshot.
+
+The portal page uses `GET /api/portal/passkeys`,
+`POST /api/portal/passkeys/registration/start` with `name` and
+`expected_user_id`, and finish and cancel routes under that registration
+prefix. Rename is `POST /api/portal/passkeys/{id}/rename`. Remove is
+`POST /api/portal/passkeys/{id}/remove`. Those handlers live in
+[portal/http.rs](../../src/portal/http.rs). Browser start calls
+`passkey_register_start_in` with the resident flag true
+([portal.rs](../../src/portal.rs)). The resulting authenticator selection
+is `residentKey` `required`, `requireResidentKey` true, and user
+verification required ([assembly/passkey.rs](../../src/assembly/passkey.rs)).
+The flag is advisory: the stored ceremony is unchanged, and a non-resident
+key can still enroll. The relying party id and origin come from the issuer
+URL ([passkey.rs](../../src/passkey.rs)). For `http://localhost:9000` that
+is hostname `localhost` and origin `http://localhost:9000`. The Chrome
+sheet named `localhost`. This run did not decode the ceremony JSON.
+
+Server CLI `passkey list` is `GET /api/passkeys`. Remove is `DELETE` and
+rename is `PATCH` on `/api/passkeys/{id}` ([api.rs](../../src/api.rs)).
+CLI registration start posts `{name}` and passes the resident flag false.
+`passkey enroll` and `passkey login` call `require_support` before a
+ceremony ([cli.rs](../../src/cli.rs)). That function always stops with the
+message that terminal USB passkeys moved to `riauthctl`
+([cli/usb.rs](../../src/cli/usb.rs)). The base `riauthctl` stops with the
+message that USB passkeys are unavailable until it is rebuilt with
+`--features terminal-usb` ([riauthctl usb.rs](../../crates/riauthctl/src/usb.rs)).
+With that feature, `--non-interactive` stops because touch and PIN input
+are required ([riauthctl main.rs](../../crates/riauthctl/src/main.rs)).
+The printed commands are `passkey enroll --name security-key` and
+`passkey login admin`. Both match that clap shape. Neither command was run,
+and `cargo install` was not run.
+
+A factor change is allowed through 300 seconds after `auth_time`
+([signin.rs](../../src/signin.rs)). Once the account has a passkey or an
+authenticator app, the session also has to be an MFA session
+([identity.rs](../../src/identity.rs)). Adding or removing a passkey sets
+`sessions_revoked` true. Rename does not. Removing the last passkey of an
+account with an empty password hash conflicts. An administrator in that
+state must keep two passkeys. The guide sentence about the setup
+administrator remains true. The same conflict covers any later
+administrator whose password hash is empty. This lab account had a password
+and no passkeys, so those conflicts were not reached.
+
+**Sign in with a passkey** is shown when `identity.passkeys` is usable and
+`PublicKeyCredential` is available in a secure context
+([app.js](../../src/portal/app.js), [auth.js](../../src/portal/auth.js)).
+The button was visible on the first unsigned visit. Step 6's later-visit
+wording is the guide's sequence. The page condition does not require an
+existing passkey. The observed cancellation text is the page's
+`NotAllowedError` or `AbortError` status.
+
+### Cleanup
+
+SIGTERM stopped serve, and SIGKILL was not required. The lab, including the
+copy, the password file, the session, and the redb file, was removed. After
+cleanup the snapshot hash and mode were unchanged, port 9000 was free, and
+both default home session files were absent. Free space on the data volume
+stayed above 7 GiB.
+
+### Unrun on this passkey attempt
+
+The executed chain is `riauth init`, serve, `/readyz`, password sign-in at
+`/apps`, opening **Sign-in and security**, starting **Add a passkey**,
+cancelling the Chrome chooser, server CLI login, and `passkey list`.
+
+Still unrun on this run:
+
+- storing a passkey, **Rename**, **Remove**, and **Sign in with a passkey**
+  after enrollment
+- iCloud Keychain, the Chrome profile, Touch ID, and a USB security key
+- `cargo install`
+- `riauthctl` and `riauth-maintenance`, including the printed
+  `passkey enroll` and `passkey login` lines
+- server `passkey enroll`, `passkey login`, `passkey start`,
+  `passkey finish`, and `passkey remove`
+- `riauth doctor`, `recovery complete`, `recover-admin`, and a second server
+- sections 6 through 14
+- a physical key, a synced passkey, a phone, a spoken screen reader, an
+  external peer, and the Essentials guide
+
+D01 remains incomplete.
