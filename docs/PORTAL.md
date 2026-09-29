@@ -202,6 +202,20 @@ physical security key, a synced passkey, a phone, or a mobile operating system.
 An engine whose page has no WebAuthn is skipped. Hardware authenticators and
 real mobile devices remain manual gates, and this Playwright project is not a
 CI job.
+`tools/browser/authenticator-recovery.spec.js` is a separate headless journey
+on the same 390×844 CSS viewport. The password-only fixture account enrolls an
+authenticator app from the setup key shown on the page. An empty code and a
+wrong code move focus to the error. A current time-based code then turns the
+app on. Enrollment ends the account's other browser session while that browser
+keeps its cookie, shows ten single-use recovery codes once, and leaves that
+list open until the codes are confirmed saved. A password without a code is
+rejected, and focus moves to the sign-in error. One recovery code signs in and
+is then rejected; a different code still signs in, and the remaining count
+drops from 10 to 9 and then to 8. The journey reads the setup key from the page
+and computes the six-digit code. This is not a phone authenticator app, a
+physical device, or a mobile operating system, and the viewport is CSS only.
+Hardware authenticators, real mobile devices, and email recovery remain open,
+and this Playwright project is not a CI job.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 
