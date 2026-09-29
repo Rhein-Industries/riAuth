@@ -219,6 +219,31 @@ pub(crate) fn seal_session_run(core: &Core, session_id: &str, except: Option<&st
     reject_stale_reviewed(core, &run_id)
 }
 
+/// Commit denial when the browser selector no longer applies to this pinned run.
+/// The caller has already returned a stale pin's own conflict. A final or
+/// unpinned run is left unchanged so this write can commit. A pin that fails
+/// inside this write keeps that failure's conflict after the seal commits.
+pub(crate) fn seal_lost_browser_selection(core: &Core, id: &str) -> Result<()> {
+    let failure = core.store.write(|tx| {
+        let Some(mut run) = tx.get::<RuntimeRun>(RUNS, id)? else {
+            return Ok(None);
+        };
+        if run.record.id != id || run.reviewed.is_none() || run.record.state.is_final() {
+            return Ok(None);
+        }
+        if let Some(failure) = reviewed_failure(core, tx, &run)? {
+            seal_reviewed(tx, &mut run, failure)?;
+            return Ok(Some(failure));
+        }
+        seal_reviewed(tx, &mut run, ReviewedFailure::PolicyChanged)?;
+        Ok(None)
+    })?;
+    if let Some(failure) = failure {
+        return Err(Error::conflict(failure.message()));
+    }
+    Ok(())
+}
+
 pub(super) fn reject_if_stale(core: &Core, tx: &Tx<'_>, run_id: &str) -> Result<()> {
     let Some(run) = tx.get::<RuntimeRun>(RUNS, run_id)? else {
         return Ok(());

@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use webauthn_rs::prelude::PublicKeyCredential;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Pending {
     id: String,
     code: String,
@@ -444,20 +444,45 @@ impl Core {
         if let Some(run_id) = pending.configured_run.as_deref() {
             crate::workflow::executor::seal_reviewed_run(self, run_id)?;
         }
-        let Some(cookie) = sso else {
+        if let Some(cookie) = sso
+            && let Some(session) = self
+                .store
+                .read(|tx| self.browser_session(tx, Some(cookie)))?
+        {
+            crate::workflow::executor::seal_session_run(
+                self,
+                &session.id,
+                pending.configured_run.as_deref(),
+            )?;
+        }
+        // A decided request keeps request_decided. Selector loss seals only
+        // while this continuation can still spend the pinned run, and only
+        // after a stale pin has returned its own conflict.
+        if undecided(pending.clone()).is_err() {
+            return Ok(());
+        }
+        let Some(workflow) = pending.configured_consent.as_deref() else {
             return Ok(());
         };
-        let Some(session) = self
-            .store
-            .read(|tx| self.browser_session(tx, Some(cookie)))?
-        else {
+        if !self.browser_consent_selection_lost(workflow) {
+            return Ok(());
+        }
+        let Some(run_id) = pending.configured_run.as_deref() else {
             return Ok(());
         };
-        crate::workflow::executor::seal_session_run(
-            self,
-            &session.id,
-            pending.configured_run.as_deref(),
-        )
+        crate::workflow::executor::seal_lost_browser_selection(self, run_id)
+    }
+    #[cfg(feature = "platform")]
+    fn browser_consent_selection_lost(&self, workflow: &str) -> bool {
+        self.config.browser_consent_workflow.as_deref() != Some(workflow)
+            || self.config.workflows.get(workflow).is_none_or(|entry| {
+                !entry.active
+                    || !(crate::workflow::supported_configured_session_consent(&entry.definition)
+                        || crate::workflow::supported_configured_passkey_consent(&entry.definition)
+                        || crate::workflow::supported_configured_password_totp_consent(
+                            &entry.definition,
+                        ))
+            })
     }
     /// Browser password sign-in for this request. The body is the interaction state.
     pub fn authorize_password(
@@ -991,17 +1016,7 @@ impl Core {
             let p = undecided(interaction(tx, id, binding)?)?;
             #[cfg(feature = "platform")]
             if let Some(workflow) = p.configured_consent.as_deref()
-                && (self.config.browser_consent_workflow.as_deref() != Some(workflow)
-                    || self.config.workflows.get(workflow).is_none_or(|entry| {
-                        !entry.active
-                            || !(crate::workflow::supported_configured_session_consent(
-                                &entry.definition,
-                            ) || crate::workflow::supported_configured_passkey_consent(
-                                &entry.definition,
-                            ) || crate::workflow::supported_configured_password_totp_consent(
-                                &entry.definition,
-                            ))
-                    }))
+                && self.browser_consent_selection_lost(workflow)
             {
                 return Err(Error::conflict("Browser consent workflow changed"));
             }
@@ -1209,17 +1224,7 @@ impl Core {
             #[cfg(not(feature = "platform"))]
             let _ = workflow;
             #[cfg(feature = "platform")]
-            let selected = self.config.browser_consent_workflow.as_deref() == Some(workflow)
-                && self.config.workflows.get(workflow).is_some_and(|entry| {
-                    entry.active
-                        && (crate::workflow::supported_configured_session_consent(
-                            &entry.definition,
-                        ) || crate::workflow::supported_configured_passkey_consent(
-                            &entry.definition,
-                        ) || crate::workflow::supported_configured_password_totp_consent(
-                            &entry.definition,
-                        ))
-                });
+            let selected = !self.browser_consent_selection_lost(workflow);
             #[cfg(not(feature = "platform"))]
             let selected = false;
             if !selected || client.settings.source_stage.is_some() {

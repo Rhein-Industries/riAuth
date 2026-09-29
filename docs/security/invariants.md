@@ -687,7 +687,10 @@ retains the highest adopted pin. A missing retained pin, a policy change, a
 disabled account, or a rolled-back revision seals the open run as denied, with
 no new evidence and no grant. Browser OIDC password, TOTP, and passkey consent
 commit that seal before a factor, ceremony, or decision write, including after
-the store is reopened onto a changed policy. Reopening the store keeps that pin
+the store is reopened onto a changed policy. When the pin still matches, a
+browser continuation whose consent selection changed, was removed, or no longer
+names a usable adapter commits that denial before `Browser consent workflow changed`,
+and restoring the selection does not resume the run. Reopening the store keeps that pin
 and a denial already recorded for the run. A later compatible revision starts a
 new run and leaves the sealed run denied. Code-owned revisions that are absent from `config.workflows` stay
 unpinned, and the persisted authoring store is not the executor's selection

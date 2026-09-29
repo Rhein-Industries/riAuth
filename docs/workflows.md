@@ -1282,6 +1282,15 @@ the denial has to be committed first. The seal finishes at the snapshot's
 denied terminal when that terminal exists, and as cancelled otherwise. It
 writes no evidence and issues no grant. A browser continuation after that
 seal adds no consent completion and leaves the authorization code unissued.
+When that pin still matches, a correctly bound continuation whose
+`browser_consent_workflow` selection changed, was removed, or no longer names
+an active supported consent adapter commits the same denied terminal before
+the existing `Browser consent workflow changed` conflict. Restoring the
+selection does not resume the run, spend its evidence, or issue a grant,
+authorization code, or consent. A mismatched interaction binding is rejected
+without sealing. A stale pin is sealed first and keeps `Workflow policy changed`,
+`Workflow version was rolled back`, or `Workflow account is disabled`. Reading
+interaction state does not seal the run.
 The stored failure is `policy_changed`
 (`Workflow policy changed`) when the snapshot disagrees with the pin, the
 configured entry is missing or inactive, the live revision is higher, the live

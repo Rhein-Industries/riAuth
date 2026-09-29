@@ -44,6 +44,26 @@ impl BackendFixture {
         }
     }
 
+    /// Drop the open store and open the same files again after `edit`.
+    /// The disposable database, when there is one, stays mounted.
+    pub fn reopen_edited(self, edit: impl FnOnce(&mut Config)) -> Self {
+        let Self {
+            fixture: Fixture { _dir, core, admin },
+            _database,
+        } = self;
+        let mut config = core.config.clone();
+        drop(core);
+        edit(&mut config);
+        Self {
+            fixture: Fixture {
+                _dir,
+                core: Core::open(config).unwrap(),
+                admin,
+            },
+            _database,
+        }
+    }
+
     /// A database-native restore of this instance's current state: PostgreSQL
     /// clones the database (a new database OID; `TEMPLATE` keeps relation OIDs);
     /// redb copies the closed file. The copy is opened; the original is discarded.

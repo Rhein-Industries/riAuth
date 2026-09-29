@@ -9,6 +9,8 @@ use axum::{
     http::{HeaderMap, Request, StatusCode},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+#[cfg(feature = "platform")]
+use common::backend::{Backend, BackendFixture};
 use common::{Fixture, PASSWORD, strings, text};
 use http_body_util::BodyExt;
 #[cfg(feature = "platform")]
@@ -3392,23 +3394,66 @@ fn reopen_config(f: Fixture, edit: impl FnOnce(&mut riauth::config::Config)) -> 
 }
 
 #[cfg(feature = "platform")]
-async fn open_browser_totp_consent(revision: u32) -> OpenConsent {
-    let mut f = Fixture::new();
+struct StagedConsent {
+    interaction: Interaction,
+    run_id: String,
+    evidence: Vec<String>,
+    consents: Vec<String>,
+    step_evidence: Vec<String>,
+    codes: usize,
+    identity: Value,
+}
+
+#[cfg(feature = "platform")]
+fn install_password_totp(config: &mut riauth::config::Config, revision: u32) {
     let definition = password_totp_consent(revision);
     assert_eq!(definition.steps[2].id.as_str(), "totp");
-    f.core.config.workflows.insert(
+    config.workflows.insert(
         "browser-password-totp-consent".into(),
         ConfiguredWorkflow {
             active: true,
             definition,
         },
     );
-    f.core.config.browser_consent_workflow = Some("browser-password-totp-consent".into());
-    f.core.config.validate().unwrap();
-    client(&f, "app", true, true, Default::default());
+    config.browser_consent_workflow = Some("browser-password-totp-consent".into());
+    config.validate().unwrap();
+}
+
+#[cfg(feature = "platform")]
+fn insert_named_password_totp(config: &mut riauth::config::Config, id: &str, revision: u32) {
+    let mut definition = password_totp_consent(revision);
+    definition.id = Id::new(id).unwrap();
+    config.workflows.insert(
+        id.into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition,
+        },
+    );
+}
+
+#[cfg(feature = "platform")]
+fn sso_from_cookies(cookies: &[String]) -> String {
+    cookies
+        .iter()
+        .find_map(|cookie| {
+            cookie
+                .split(';')
+                .next()
+                .unwrap()
+                .strip_prefix("riauth_sso=")
+        })
+        .unwrap()
+        .to_owned()
+}
+
+#[cfg(feature = "platform")]
+fn prepare_alice_totp(f: &Fixture) -> (String, String) {
+    client(f, "app", true, true, Default::default());
     let alice = f.user("alice");
     let enrollment = f.core.mfa_begin(&alice).unwrap();
-    let totp = crypto::totp(enrollment["secret"].as_str().unwrap(), "alice").unwrap();
+    let secret = enrollment["secret"].as_str().unwrap().to_owned();
+    let totp = crypto::totp(&secret, "alice").unwrap();
     f.core
         .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
         .unwrap();
@@ -3422,23 +3467,66 @@ async fn open_browser_totp_consent(revision: u32) -> OpenConsent {
             false,
         )
         .unwrap();
-    let sso = login
-        .cookies
-        .iter()
-        .find_map(|cookie| {
-            cookie
-                .split(';')
-                .next()
-                .unwrap()
-                .strip_prefix("riauth_sso=")
-        })
+    (sso_from_cookies(&login.cookies), secret)
+}
+
+#[cfg(feature = "platform")]
+fn portal_sso(f: &Fixture, secret: &str) -> String {
+    let totp = crypto::totp(secret, "alice").unwrap();
+    let login = f
+        .core
+        .portal_password(
+            None,
+            "alice".into(),
+            PASSWORD.into(),
+            Some(totp.generate(now() + 30).to_string()),
+            false,
+        )
+        .unwrap();
+    sso_from_cookies(&login.cookies)
+}
+
+#[cfg(feature = "platform")]
+fn assert_open_run(f: &Fixture, id: &str) {
+    let run = stored_run(f, id);
+    assert!(run["reviewed_failure"].is_null());
+    assert_eq!(run["record"]["state"]["state"], "active");
+    assert!(run.get("authorization_response").is_none());
+}
+
+#[cfg(feature = "platform")]
+fn assert_run_denied(f: &Fixture, id: &str, failure: &str, steps: &[String]) {
+    let run = stored_run(f, id);
+    assert_eq!(run["reviewed_failure"], failure);
+    assert_eq!(run["record"]["state"]["outcome"], "denied");
+    assert!(run.get("authorization_response").is_none());
+    assert_eq!(step_evidence(&run), steps);
+}
+
+#[cfg(feature = "platform")]
+fn assert_rows_unspent(f: &Fixture, staged: &StagedConsent) {
+    assert_eq!(sorted_keys(f, "workflow_evidence"), staged.evidence);
+    assert_eq!(sorted_keys(f, "workflow_consents"), staged.consents);
+    assert_eq!(
+        f.core.store.list::<Code>("codes").unwrap().len(),
+        staged.codes
+    );
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &staged.interaction.id)
         .unwrap()
-        .to_owned();
+        .unwrap();
+    assert!(pending["callback"].is_null());
+}
+
+#[cfg(feature = "platform")]
+async fn stage_totp_interaction(f: &Fixture, sso: &str) -> StagedConsent {
     let app = riauth::api::router(f.core.clone());
     let mut request = f.request("app", &crypto::random_token(""));
     request.prompt = Some("login consent".into());
-    let interaction = start(&f, &app, &request, Some(&sso)).await;
-    let first = password(&app, &interaction, Some(&sso), "alice", None).await;
+    let interaction = start(f, &app, &request, Some(sso)).await;
+    let first = password(&app, &interaction, Some(sso), "alice", None).await;
     assert_eq!(first.status, StatusCode::OK, "{}", first.text);
     assert_eq!(first.body["requirements"]["configured_stage"], "totp");
     let pending: Value = f
@@ -3449,10 +3537,9 @@ async fn open_browser_totp_consent(revision: u32) -> OpenConsent {
         .unwrap();
     let run_id = text(&pending, "configured_run");
     assert!(pending["callback"].is_null());
-    let run = stored_run(&f, &run_id);
-    assert!(run["reviewed_failure"].is_null());
-    assert!(run.get("authorization_response").is_none());
-    let account = session(&f, &sid(&f, &sso)).identity.user_id;
+    let run = stored_run(f, &run_id);
+    assert_open_run(f, &run_id);
+    let account = session(f, &sid(f, sso)).identity.user_id;
     let index: Value = f
         .core
         .store
@@ -3466,21 +3553,38 @@ async fn open_browser_totp_consent(revision: u32) -> OpenConsent {
             .iter()
             .any(|value| value.as_str() == Some(run_id.as_str()))
     );
-    let evidence = sorted_keys(&f, "workflow_evidence");
+    let evidence = sorted_keys(f, "workflow_evidence");
     assert!(!evidence.is_empty());
-    let open = OpenConsent {
+    let staged = StagedConsent {
         evidence,
-        consents: sorted_keys(&f, "workflow_consents"),
+        consents: sorted_keys(f, "workflow_consents"),
         step_evidence: step_evidence(&run),
         codes: f.core.store.list::<Code>("codes").unwrap().len(),
-        identity: serde_json::to_value(session(&f, &sid(&f, &sso)).identity).unwrap(),
-        f,
-        sso,
+        identity: serde_json::to_value(session(f, &sid(f, sso)).identity).unwrap(),
         interaction,
         run_id,
     };
     drop(app);
-    open
+    staged
+}
+
+#[cfg(feature = "platform")]
+async fn open_browser_totp_consent(revision: u32) -> OpenConsent {
+    let mut f = Fixture::new();
+    install_password_totp(&mut f.core.config, revision);
+    let (sso, _) = prepare_alice_totp(&f);
+    let staged = stage_totp_interaction(&f, &sso).await;
+    OpenConsent {
+        evidence: staged.evidence,
+        consents: staged.consents,
+        step_evidence: staged.step_evidence,
+        codes: staged.codes,
+        identity: staged.identity,
+        f,
+        sso,
+        interaction: staged.interaction,
+        run_id: staged.run_id,
+    }
 }
 
 #[cfg(feature = "platform")]
@@ -3707,3 +3811,1007 @@ async fn browser_totp_consent_rollback_reopen_seals_without_a_grant() {
         open.codes
     );
 }
+
+#[cfg(feature = "platform")]
+fn local_password(revision: u32, timeout: u64) -> workflow::Definition {
+    workflow::parse(
+        serde_json::json!({
+            "format": "riauth.workflow/v1",
+            "id": "local-password",
+            "revision": revision,
+            "category": "authentication",
+            "origin": "configured",
+            "entry": "password",
+            "limits": {"max_duration_seconds": 600, "max_executions": 3},
+            "steps": [{
+                "id": "password",
+                "action": {"type": "verify_password"},
+                "max_attempts": 3,
+                "timeout_seconds": timeout,
+                "cancellable": true,
+                "transitions": [
+                    {"on": "verified", "to": "success"},
+                    {"on": "failed", "to": "denied"}
+                ]
+            }],
+            "terminals": [
+                {"id": "success", "outcome": "authenticated", "requires": [["password"]]},
+                {"id": "denied", "outcome": "denied", "requires": []}
+            ]
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .unwrap()
+}
+
+#[cfg(feature = "platform")]
+fn install_local_password(hosted: &mut BackendFixture, revision: u32, timeout: u64) {
+    hosted.core.config.workflows.insert(
+        "local-password".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: local_password(revision, timeout),
+        },
+    );
+    hosted.core.config.validate().unwrap();
+}
+
+#[cfg(feature = "platform")]
+fn assert_bearer_denied(hosted: &BackendFixture, id: &str, code: &str) {
+    let run: Value = hosted.core.store.get("workflow_runs", id).unwrap().unwrap();
+    assert_eq!(run["reviewed_failure"], code);
+    assert_eq!(run["record"]["state"]["outcome"], "denied");
+    assert!(run.get("authorization_response").is_none());
+    assert!(run["record"]["steps"].as_array().unwrap().is_empty());
+}
+
+#[cfg(feature = "platform")]
+fn assert_authenticated(view: &riauth::workflow::executor::View) {
+    assert!(matches!(
+        view.state,
+        workflow::RunState::Finished {
+            outcome: workflow::Outcome::Authenticated,
+            ..
+        }
+    ));
+}
+
+#[cfg(feature = "platform")]
+fn pin_policy(mut hosted: BackendFixture, token: &str) -> BackendFixture {
+    let started = hosted
+        .core
+        .workflow_configured_start(token, "local-password")
+        .unwrap();
+    let id = started.id.clone();
+    assert_eq!(started.reviewed_revision, Some(1));
+    assert!(started.reviewed_failure.is_none());
+    hosted = hosted.reopen_edited(|config| {
+        config
+            .workflows
+            .get_mut("local-password")
+            .unwrap()
+            .definition
+            .steps[0]
+            .timeout_seconds = 30;
+    });
+    let rejected = hosted
+        .core
+        .workflow_password(token, &id, PASSWORD.into())
+        .unwrap_err();
+    assert_eq!(rejected.message, "Workflow policy changed");
+    assert_bearer_denied(&hosted, &id, "policy_changed");
+    let pin: Value = hosted
+        .core
+        .store
+        .get("workflow_reviewed", "local-password")
+        .unwrap()
+        .unwrap();
+    assert_eq!(pin["revision"], 1);
+    hosted = hosted.reopen_edited(|config| {
+        config
+            .workflows
+            .get_mut("local-password")
+            .unwrap()
+            .definition = local_password(1, 120);
+    });
+    assert!(
+        hosted
+            .core
+            .workflow_password(token, &id, PASSWORD.into())
+            .is_err()
+    );
+    assert_bearer_denied(&hosted, &id, "policy_changed");
+    let fresh = hosted
+        .core
+        .workflow_configured_start(token, "local-password")
+        .unwrap();
+    assert_ne!(fresh.id, id);
+    assert_eq!(fresh.reviewed_revision, Some(1));
+    let done = hosted
+        .core
+        .workflow_password(token, &fresh.id, PASSWORD.into())
+        .unwrap();
+    assert_authenticated(&done);
+    assert_bearer_denied(&hosted, &id, "policy_changed");
+    hosted
+}
+
+#[cfg(feature = "platform")]
+fn pin_rollback(mut hosted: BackendFixture, token: &str) -> BackendFixture {
+    hosted = hosted.reopen_edited(|config| {
+        config
+            .workflows
+            .get_mut("local-password")
+            .unwrap()
+            .definition = local_password(2, 120);
+    });
+    let higher = hosted
+        .core
+        .workflow_configured_start(token, "local-password")
+        .unwrap();
+    assert_eq!(higher.reviewed_revision, Some(2));
+    hosted = hosted.reopen_edited(|config| {
+        config
+            .workflows
+            .get_mut("local-password")
+            .unwrap()
+            .definition = local_password(1, 120);
+    });
+    let rolled = hosted
+        .core
+        .workflow_password(token, &higher.id, PASSWORD.into())
+        .unwrap_err();
+    assert_eq!(rolled.message, "Workflow version was rolled back");
+    assert_bearer_denied(&hosted, &higher.id, "rolled_back");
+    hosted = hosted.reopen_edited(|_config| {});
+    assert!(
+        hosted
+            .core
+            .workflow_password(token, &higher.id, PASSWORD.into())
+            .is_err()
+    );
+    assert_bearer_denied(&hosted, &higher.id, "rolled_back");
+    let stored: Value = hosted
+        .core
+        .store
+        .get("workflow_reviewed", "local-password")
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored["revision"], 2);
+    hosted = hosted.reopen_edited(|config| {
+        config
+            .workflows
+            .get_mut("local-password")
+            .unwrap()
+            .definition = local_password(3, 120);
+    });
+    assert_bearer_denied(&hosted, &higher.id, "rolled_back");
+    let restarted = hosted
+        .core
+        .workflow_configured_start(token, "local-password")
+        .unwrap();
+    assert_ne!(restarted.id, higher.id);
+    assert_eq!(restarted.reviewed_revision, Some(3));
+    let done = hosted
+        .core
+        .workflow_password(token, &restarted.id, PASSWORD.into())
+        .unwrap();
+    assert_authenticated(&done);
+    assert_bearer_denied(&hosted, &higher.id, "rolled_back");
+    hosted
+}
+
+#[cfg(feature = "platform")]
+fn pin_disabled_account(mut hosted: BackendFixture) -> BackendFixture {
+    hosted
+        .core
+        .create_user(
+            &hosted.admin,
+            NewUser {
+                username: "alice".into(),
+                password: PASSWORD.into(),
+                email: None,
+                display_name: "Alice".into(),
+                admin: false,
+            },
+        )
+        .unwrap();
+    let alice = text(
+        &hosted
+            .core
+            .login("alice".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let started = hosted
+        .core
+        .workflow_configured_start(&alice, "local-password")
+        .unwrap();
+    assert!(started.reviewed_revision.is_some());
+    let id = started.id;
+    let before: Value = hosted
+        .core
+        .store
+        .get("workflow_runs", &id)
+        .unwrap()
+        .unwrap();
+    let account = text(&before["record"], "account");
+    let index: Value = hosted
+        .core
+        .store
+        .get("workflow_account_runs", &account)
+        .unwrap()
+        .unwrap();
+    assert!(
+        index["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value.as_str() == Some(id.as_str()))
+    );
+    hosted
+        .core
+        .update_user(
+            &hosted.admin,
+            "alice",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_bearer_denied(&hosted, &id, "user_disabled");
+    assert!(
+        hosted
+            .core
+            .store
+            .get::<Value>("workflow_account_runs", &account)
+            .unwrap()
+            .is_none()
+    );
+    hosted = hosted.reopen_edited(|_config| {});
+    assert!(
+        hosted
+            .core
+            .workflow_password(&alice, &id, PASSWORD.into())
+            .is_err()
+    );
+    assert_bearer_denied(&hosted, &id, "user_disabled");
+    hosted
+        .core
+        .update_user(
+            &hosted.admin,
+            "alice",
+            UserPatch {
+                enabled: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    hosted = hosted.reopen_edited(|_config| {});
+    let alice = text(
+        &hosted
+            .core
+            .login("alice".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    assert!(
+        hosted
+            .core
+            .workflow_password(&alice, &id, PASSWORD.into())
+            .is_err()
+    );
+    assert_bearer_denied(&hosted, &id, "user_disabled");
+    let fresh = hosted
+        .core
+        .workflow_configured_start(&alice, "local-password")
+        .unwrap();
+    assert_ne!(fresh.id, id);
+    let done = hosted
+        .core
+        .workflow_password(&alice, &fresh.id, PASSWORD.into())
+        .unwrap();
+    assert_authenticated(&done);
+    assert_bearer_denied(&hosted, &id, "user_disabled");
+    hosted
+}
+
+#[cfg(feature = "platform")]
+fn pin_missing_high_water(mut hosted: BackendFixture, token: &str) {
+    let started = hosted
+        .core
+        .workflow_configured_start(token, "local-password")
+        .unwrap();
+    let id = started.id;
+    hosted
+        .core
+        .store
+        .write(|tx| tx.delete("workflow_reviewed", "local-password"))
+        .unwrap();
+    hosted = hosted.reopen_edited(|_config| {});
+    assert!(
+        hosted
+            .core
+            .store
+            .get::<Value>("workflow_reviewed", "local-password")
+            .unwrap()
+            .is_none()
+    );
+    let rejected = hosted
+        .core
+        .workflow_password(token, &id, PASSWORD.into())
+        .unwrap_err();
+    assert_eq!(rejected.message, "Workflow policy changed");
+    assert_bearer_denied(&hosted, &id, "policy_changed");
+    hosted = hosted.reopen_edited(|_config| {});
+    assert!(
+        hosted
+            .core
+            .workflow_password(token, &id, PASSWORD.into())
+            .is_err()
+    );
+    assert_bearer_denied(&hosted, &id, "policy_changed");
+    let fresh = hosted
+        .core
+        .workflow_configured_start(token, "local-password")
+        .unwrap();
+    assert_ne!(fresh.id, id);
+    let done = hosted
+        .core
+        .workflow_password(token, &fresh.id, PASSWORD.into())
+        .unwrap();
+    assert_authenticated(&done);
+    assert_bearer_denied(&hosted, &id, "policy_changed");
+}
+
+#[cfg(feature = "platform")]
+fn pin_storage(backend: Backend) {
+    let mut hosted = backend.fixture();
+    install_local_password(&mut hosted, 1, 120);
+    let token = hosted.admin.clone();
+    hosted = pin_policy(hosted, &token);
+    hosted = pin_rollback(hosted, &token);
+    hosted = pin_disabled_account(hosted);
+    pin_missing_high_water(hosted, &token);
+}
+
+#[cfg(feature = "platform")]
+struct SealPlan {
+    message: &'static str,
+    failure: &'static str,
+    fresh: bool,
+}
+
+#[cfg(feature = "platform")]
+fn clear_selector(config: &mut riauth::config::Config) {
+    config.browser_consent_workflow = None;
+}
+
+#[cfg(feature = "platform")]
+fn restore_selector(config: &mut riauth::config::Config) {
+    config.browser_consent_workflow = Some("browser-password-totp-consent".into());
+}
+
+#[cfg(feature = "platform")]
+fn point_elsewhere(config: &mut riauth::config::Config) {
+    config.browser_consent_workflow = Some("browser-password-totp-other".into());
+}
+
+#[cfg(feature = "platform")]
+fn timeout_and_clear(config: &mut riauth::config::Config) {
+    config
+        .workflows
+        .get_mut("browser-password-totp-consent")
+        .unwrap()
+        .definition
+        .steps[2]
+        .timeout_seconds = 30;
+    config.browser_consent_workflow = None;
+}
+
+#[cfg(feature = "platform")]
+fn restore_timeout(config: &mut riauth::config::Config) {
+    config
+        .workflows
+        .get_mut("browser-password-totp-consent")
+        .unwrap()
+        .definition
+        .steps[2]
+        .timeout_seconds = 120;
+    config.browser_consent_workflow = Some("browser-password-totp-consent".into());
+}
+
+#[cfg(feature = "platform")]
+fn inactive_and_clear(config: &mut riauth::config::Config) {
+    config
+        .workflows
+        .get_mut("browser-password-totp-consent")
+        .unwrap()
+        .active = false;
+    config.browser_consent_workflow = None;
+}
+
+#[cfg(feature = "platform")]
+fn restore_active(config: &mut riauth::config::Config) {
+    config
+        .workflows
+        .get_mut("browser-password-totp-consent")
+        .unwrap()
+        .active = true;
+    config.browser_consent_workflow = Some("browser-password-totp-consent".into());
+}
+
+/// Browser HTTP on a thread of its own. The synchronous PostgreSQL client
+/// builds a current-thread runtime for each connection and panics on a thread
+/// that is already driving one. Request handlers reach storage from
+/// `spawn_blocking`, so this thread can reopen `Core` between calls.
+#[cfg(feature = "platform")]
+fn http<T: Send>(fut: impl std::future::Future<Output = T> + Send) -> T {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("browser http runtime")
+                    .block_on(fut)
+            })
+            .join()
+            .expect("browser http runtime")
+    })
+}
+
+/// `start` reads the authorization row after the redirect. That read stays on
+/// the caller so it is not nested inside the HTTP runtime.
+#[cfg(feature = "platform")]
+fn interaction_from_authorize(
+    f: &Fixture,
+    app: &Router,
+    request: &Authorization,
+    sso: &str,
+) -> Interaction {
+    let reply = http(async {
+        call(
+            app,
+            get(&authorize_uri(request), "text/html", &[("riauth_sso", sso)]),
+        )
+        .await
+    });
+    assert_eq!(reply.status, StatusCode::SEE_OTHER, "{}", reply.text);
+    let location = reply.location();
+    let id = location
+        .strip_prefix(&format!("{ORIGIN}/oauth/resume/"))
+        .unwrap()
+        .to_owned();
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &id)
+        .unwrap()
+        .unwrap();
+    Interaction {
+        binding: reply.cookie("riauth_return").unwrap(),
+        code: text(&pending, "code"),
+        id,
+    }
+}
+
+#[cfg(feature = "platform")]
+fn stage_totp_off_runtime(f: &Fixture, sso: &str) -> StagedConsent {
+    let app = riauth::api::router(f.core.clone());
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.prompt = Some("login consent".into());
+    let interaction = interaction_from_authorize(f, &app, &request, sso);
+    let first = http(password(&app, &interaction, Some(sso), "alice", None));
+    assert_eq!(first.status, StatusCode::OK, "{}", first.text);
+    assert_eq!(first.body["requirements"]["configured_stage"], "totp");
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &interaction.id)
+        .unwrap()
+        .unwrap();
+    let run_id = text(&pending, "configured_run");
+    assert!(pending["callback"].is_null());
+    let run = stored_run(f, &run_id);
+    assert_open_run(f, &run_id);
+    let account = session(f, &sid(f, sso)).identity.user_id;
+    let index: Value = f
+        .core
+        .store
+        .get("workflow_account_runs", &account)
+        .unwrap()
+        .unwrap();
+    assert!(
+        index["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value.as_str() == Some(run_id.as_str()))
+    );
+    let evidence = sorted_keys(f, "workflow_evidence");
+    assert!(!evidence.is_empty());
+    let staged = StagedConsent {
+        evidence,
+        consents: sorted_keys(f, "workflow_consents"),
+        step_evidence: step_evidence(&run),
+        codes: f.core.store.list::<Code>("codes").unwrap().len(),
+        identity: serde_json::to_value(session(f, &sid(f, sso)).identity).unwrap(),
+        interaction,
+        run_id,
+    };
+    drop(app);
+    staged
+}
+
+#[cfg(feature = "platform")]
+fn continuation_seals(
+    mut hosted: BackendFixture,
+    sso: &str,
+    bob_sso: Option<&str>,
+    edit: impl FnOnce(&mut riauth::config::Config),
+    restore: impl FnOnce(&mut riauth::config::Config),
+    plan: SealPlan,
+) -> BackendFixture {
+    let staged = stage_totp_off_runtime(&hosted, sso);
+    if let Some(bob) = bob_sso {
+        let app = riauth::api::router(hosted.core.clone());
+        let wrong = http(password(
+            &app,
+            &staged.interaction,
+            Some(bob),
+            "alice",
+            Some("000000"),
+        ));
+        assert_ne!(wrong.status, StatusCode::OK, "{}", wrong.text);
+        assert_open_run(&hosted, &staged.run_id);
+        drop(app);
+    }
+    hosted = hosted.reopen_edited(edit);
+    let app = riauth::api::router(hosted.core.clone());
+    let state = http(get_state(&app, &staged.interaction, Some(sso)));
+    assert_eq!(state.status, StatusCode::OK, "{}", state.text);
+    assert_eq!(state.body["status"], "unavailable");
+    assert_eq!(state.body["message"], "Configured consent is unavailable");
+    assert_open_run(&hosted, &staged.run_id);
+    let wrong_binding = http(call(
+        &app,
+        post(
+            &staged.interaction.path("/password"),
+            &[("riauth_return", "wrong-binding"), ("riauth_sso", sso)],
+            json!({"username": "alice", "password": PASSWORD, "otp": "000000"}),
+        ),
+    ));
+    assert_eq!(
+        wrong_binding.status,
+        StatusCode::UNAUTHORIZED,
+        "{}",
+        wrong_binding.text
+    );
+    assert_open_run(&hosted, &staged.run_id);
+    let blocked = http(password(
+        &app,
+        &staged.interaction,
+        Some(sso),
+        "alice",
+        Some("000000"),
+    ));
+    assert_eq!(blocked.status, StatusCode::CONFLICT, "{}", blocked.text);
+    assert_eq!(blocked.body["error_description"], plan.message);
+    assert_run_denied(&hosted, &staged.run_id, plan.failure, &staged.step_evidence);
+    assert_rows_unspent(&hosted, &staged);
+    drop(app);
+
+    hosted = hosted.reopen_edited(restore);
+    let app = riauth::api::router(hosted.core.clone());
+    let replay = http(password(
+        &app,
+        &staged.interaction,
+        Some(sso),
+        "alice",
+        Some("000000"),
+    ));
+    assert_ne!(replay.status, StatusCode::OK, "{}", replay.text);
+    assert_run_denied(&hosted, &staged.run_id, plan.failure, &staged.step_evidence);
+    assert_rows_unspent(&hosted, &staged);
+    let decided = http(async {
+        decide(
+            &app,
+            &staged.interaction,
+            Some(sso),
+            true,
+            &get_state(&app, &staged.interaction, Some(sso)).await.body,
+        )
+        .await
+    });
+    assert_ne!(decided.status, StatusCode::OK, "{}", decided.text);
+    assert_run_denied(&hosted, &staged.run_id, plan.failure, &staged.step_evidence);
+    assert_rows_unspent(&hosted, &staged);
+    if plan.fresh {
+        let fixture: &Fixture = &hosted;
+        let mut request = fixture.request("app", &crypto::random_token(""));
+        request.prompt = Some("login consent".into());
+        let fresh = interaction_from_authorize(fixture, &app, &request, sso);
+        let started = http(password(&app, &fresh, Some(sso), "alice", None));
+        assert_eq!(started.status, StatusCode::OK, "{}", started.text);
+        assert_eq!(started.body["requirements"]["configured_stage"], "totp");
+        let pending: Value = hosted
+            .core
+            .store
+            .get("browser_authorizations", &fresh.id)
+            .unwrap()
+            .unwrap();
+        assert_ne!(text(&pending, "configured_run"), staged.run_id);
+        assert!(pending["callback"].is_null());
+        assert_run_denied(&hosted, &staged.run_id, plan.failure, &staged.step_evidence);
+        assert_eq!(
+            hosted.core.store.list::<Code>("codes").unwrap().len(),
+            staged.codes
+        );
+    }
+    drop(app);
+    hosted
+}
+
+#[cfg(feature = "platform")]
+fn pin_browser_selector(backend: Backend) {
+    let mut hosted = backend.fixture();
+    install_password_totp(&mut hosted.core.config, 1);
+    insert_named_password_totp(&mut hosted.core.config, "browser-password-totp-other", 1);
+    hosted.core.config.validate().unwrap();
+    let (sso, _) = prepare_alice_totp(&hosted);
+    hosted.user("bob");
+    let bob = browser(&hosted, "bob");
+    hosted = continuation_seals(
+        hosted,
+        &sso,
+        None,
+        point_elsewhere,
+        restore_selector,
+        SealPlan {
+            message: "Browser consent workflow changed",
+            failure: "policy_changed",
+            fresh: false,
+        },
+    );
+    hosted = continuation_seals(
+        hosted,
+        &sso,
+        None,
+        timeout_and_clear,
+        restore_timeout,
+        SealPlan {
+            message: "Workflow policy changed",
+            failure: "policy_changed",
+            fresh: false,
+        },
+    );
+    hosted = continuation_seals(
+        hosted,
+        &sso,
+        None,
+        inactive_and_clear,
+        restore_active,
+        SealPlan {
+            message: "Workflow policy changed",
+            failure: "policy_changed",
+            fresh: false,
+        },
+    );
+    let _hosted = continuation_seals(
+        hosted,
+        &sso,
+        Some(&bob),
+        clear_selector,
+        restore_selector,
+        SealPlan {
+            message: "Browser consent workflow changed",
+            failure: "policy_changed",
+            fresh: true,
+        },
+    );
+}
+
+#[cfg(feature = "platform")]
+fn passkey_consent() -> workflow::Definition {
+    let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+    definition.id = Id::new("browser-passkey-consent").unwrap();
+    definition.origin = Origin::Configured;
+    definition.limits.max_duration_seconds = 120;
+    definition.limits.max_executions = 4;
+    definition.steps[0].transitions[0].to = Id::new("passkey").unwrap();
+    let mut passkey = workflow::builtin(&Id::new("essentials-passkey-sign-in").unwrap())
+        .unwrap()
+        .steps
+        .remove(0);
+    passkey.max_attempts = 2;
+    passkey.timeout_seconds = 120;
+    passkey.transitions[0].to = Id::new("consent").unwrap();
+    definition.steps.insert(1, passkey);
+    definition.steps[2].timeout_seconds = 120;
+    definition.terminals[0].requires = vec![vec![
+        workflow::Proof::Session,
+        workflow::Proof::Passkey,
+        workflow::Proof::Consent,
+    ]];
+    definition.terminals[0].max_proof_age_seconds = Some(120);
+    definition
+}
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn browser_passkey_consent_selector_removed_reopen_seals_without_a_grant() {
+    let mut f = Fixture::new();
+    f.core.config.workflows.insert(
+        "browser-passkey-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: passkey_consent(),
+        },
+    );
+    f.core.config.browser_consent_workflow = Some("browser-passkey-consent".into());
+    f.core.config.validate().unwrap();
+    client(&f, "app", true, true, Default::default());
+    let alice = f.user("alice");
+    f.user("bob");
+    let (_authenticator, _) = enroll(&f, &alice);
+    let alice_sso = browser(&f, "alice");
+    let bob_sso = browser(&f, "bob");
+    let app = riauth::api::router(f.core.clone());
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.prompt = Some("login consent".into());
+    let interaction = start(&f, &app, &request, Some(&alice_sso)).await;
+    let started = call(
+        &app,
+        post(
+            &interaction.path("/passkey/start"),
+            &interaction.cookies(Some(&alice_sso)),
+            json!({}),
+        ),
+    )
+    .await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text);
+    assert_eq!(started.body["workflow"]["state"]["step"], "passkey");
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &interaction.id)
+        .unwrap()
+        .unwrap();
+    let run_id = text(&pending, "configured_run");
+    let steps = step_evidence(&stored_run(&f, &run_id));
+    let evidence = sorted_keys(&f, "workflow_evidence");
+    let consents = sorted_keys(&f, "workflow_consents");
+    let codes = f.core.store.list::<Code>("codes").unwrap().len();
+    let wrong_session = call(
+        &app,
+        post(
+            &interaction.path("/passkey/start"),
+            &interaction.cookies(Some(&bob_sso)),
+            json!({}),
+        ),
+    )
+    .await;
+    assert_ne!(
+        wrong_session.status,
+        StatusCode::OK,
+        "{}",
+        wrong_session.text
+    );
+    assert_open_run(&f, &run_id);
+    drop(app);
+
+    f = reopen_config(f, |config| {
+        config.browser_consent_workflow = None;
+    });
+    let app = riauth::api::router(f.core.clone());
+    let state = get_state(&app, &interaction, Some(&alice_sso)).await;
+    assert_eq!(state.status, StatusCode::OK, "{}", state.text);
+    assert_eq!(state.body["status"], "unavailable");
+    assert_open_run(&f, &run_id);
+    let wrong_binding = call(
+        &app,
+        post(
+            &interaction.path("/passkey/start"),
+            &[
+                ("riauth_return", "wrong-binding"),
+                ("riauth_sso", alice_sso.as_str()),
+            ],
+            json!({}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        wrong_binding.status,
+        StatusCode::UNAUTHORIZED,
+        "{}",
+        wrong_binding.text
+    );
+    assert_open_run(&f, &run_id);
+    let blocked = call(
+        &app,
+        post(
+            &interaction.path("/passkey/start"),
+            &interaction.cookies(Some(&alice_sso)),
+            json!({}),
+        ),
+    )
+    .await;
+    assert_eq!(blocked.status, StatusCode::CONFLICT, "{}", blocked.text);
+    assert_eq!(
+        blocked.body["error_description"],
+        "Browser consent workflow changed"
+    );
+    assert_run_denied(&f, &run_id, "policy_changed", &steps);
+    assert_eq!(sorted_keys(&f, "workflow_evidence"), evidence);
+    assert_eq!(sorted_keys(&f, "workflow_consents"), consents);
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), codes);
+    let sealed: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &interaction.id)
+        .unwrap()
+        .unwrap();
+    assert!(sealed["callback"].is_null());
+    drop(app);
+
+    f = reopen_config(f, |config| {
+        config.browser_consent_workflow = Some("browser-passkey-consent".into());
+    });
+    let app = riauth::api::router(f.core.clone());
+    let replay = call(
+        &app,
+        post(
+            &interaction.path("/passkey/start"),
+            &interaction.cookies(Some(&alice_sso)),
+            json!({}),
+        ),
+    )
+    .await;
+    assert_ne!(replay.status, StatusCode::OK, "{}", replay.text);
+    let decided = decide(
+        &app,
+        &interaction,
+        Some(&alice_sso),
+        true,
+        &get_state(&app, &interaction, Some(&alice_sso)).await.body,
+    )
+    .await;
+    assert_ne!(decided.status, StatusCode::OK, "{}", decided.text);
+    assert_run_denied(&f, &run_id, "policy_changed", &steps);
+    assert_eq!(sorted_keys(&f, "workflow_evidence"), evidence);
+    assert_eq!(sorted_keys(&f, "workflow_consents"), consents);
+    assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), codes);
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &interaction.id)
+        .unwrap()
+        .unwrap();
+    assert!(pending["callback"].is_null());
+}
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn browser_totp_consent_user_disable_reopen_seals_without_a_grant() {
+    let mut f = Fixture::new();
+    install_password_totp(&mut f.core.config, 1);
+    let (sso, secret) = prepare_alice_totp(&f);
+    let staged = stage_totp_interaction(&f, &sso).await;
+    f = reopen_config(f, |_| {});
+    assert_open_run(&f, &staged.run_id);
+    let account = text(&stored_run(&f, &staged.run_id)["record"], "account");
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_run_denied(&f, &staged.run_id, "user_disabled", &staged.step_evidence);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("workflow_account_runs", &account)
+            .unwrap()
+            .is_none()
+    );
+    f = reopen_config(f, |_| {});
+    let app = riauth::api::router(f.core.clone());
+    let rejected = password(
+        &app,
+        &staged.interaction,
+        Some(&sso),
+        "alice",
+        Some("000000"),
+    )
+    .await;
+    assert_ne!(rejected.status, StatusCode::OK, "{}", rejected.text);
+    assert_run_denied(&f, &staged.run_id, "user_disabled", &staged.step_evidence);
+    assert_rows_unspent(&f, &staged);
+    drop(app);
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                enabled: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    f = reopen_config(f, |_| {});
+    let sso = portal_sso(&f, &secret);
+    let app = riauth::api::router(f.core.clone());
+    let replay = password(
+        &app,
+        &staged.interaction,
+        Some(&sso),
+        "alice",
+        Some("000000"),
+    )
+    .await;
+    assert_ne!(replay.status, StatusCode::OK, "{}", replay.text);
+    assert_run_denied(&f, &staged.run_id, "user_disabled", &staged.step_evidence);
+    assert_rows_unspent(&f, &staged);
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.prompt = Some("login consent".into());
+    let fresh = start(&f, &app, &request, Some(&sso)).await;
+    let started = password(&app, &fresh, Some(&sso), "alice", None).await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text);
+    assert_eq!(started.body["requirements"]["configured_stage"], "totp");
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &fresh.id)
+        .unwrap()
+        .unwrap();
+    assert_ne!(text(&pending, "configured_run"), staged.run_id);
+    assert!(pending["callback"].is_null());
+    assert_run_denied(&f, &staged.run_id, "user_disabled", &staged.step_evidence);
+    assert_eq!(
+        f.core.store.list::<Code>("codes").unwrap().len(),
+        staged.codes
+    );
+}
+
+#[cfg(feature = "platform")]
+macro_rules! reviewed_pin_storage_backends {
+    ($name:ident, $body:ident) => {
+        mod $name {
+            use super::{Backend, $body};
+
+            #[test]
+            fn redb() {
+                $body(Backend::Redb);
+            }
+
+            #[test]
+            fn redb_encrypted() {
+                $body(Backend::EncryptedRedb);
+            }
+
+            #[test]
+            #[ignore = "requires an isolated cluster; use scripts/test-contracts-postgres.sh"]
+            fn postgres() {
+                $body(Backend::Postgres);
+            }
+
+            #[test]
+            #[ignore = "requires an isolated cluster; use scripts/test-contracts-postgres.sh"]
+            fn postgres_encrypted() {
+                $body(Backend::EncryptedPostgres);
+            }
+        }
+    };
+}
+
+#[cfg(feature = "platform")]
+reviewed_pin_storage_backends!(reviewed_pin_storage, pin_storage);
+#[cfg(feature = "platform")]
+reviewed_pin_storage_backends!(reviewed_pin_browser, pin_browser_selector);
