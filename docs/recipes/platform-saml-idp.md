@@ -218,7 +218,7 @@ The encryption tail updates the same client so `encryption_certificate_pem` is t
 
 ## What this fixture does not prove
 
-xmlsec1 signs and checks the documents this test hands it. A service provider is a separate peer. No named service provider was connected. A separate ignored test, `tests/saml_sp_peer.rs`, drives GNU Lasso 2.9.0 through `scripts/test-saml-sp.sh`, including a re-signed Conditions lifetime rejection; that run is not this xmlsec fixture, it is not a CI peer, and named production service providers remain unconnected. The names in the migration inventory, including Keycloak and Okta, are not this fixture. `https://sp.example.com` in [saml.md](../saml.md) is the operator example. The fixture entity is `https://sp.example.test`.
+xmlsec1 signs and checks the documents this test hands it. A service provider is a separate peer. No named service provider was connected. A separate ignored test, `tests/saml_sp_peer.rs`, drives GNU Lasso 2.9.0 through `scripts/test-saml-sp.sh`, including a re-signed Conditions lifetime rejection and a helper Recipient rejection; that run is not this xmlsec fixture, it is not a CI peer, and named production service providers remain unconnected. The names in the migration inventory, including Keycloak and Okta, are not this fixture. `https://sp.example.com` in [saml.md](../saml.md) is the operator example. The fixture entity is `https://sp.example.test`.
 
 The ignored test was not run for this revision. The integration-job command is workflow text until that job runs on a commit. Distro `xmlsec1` in the workflow is unpinned. The `--help-all` check can drop `--lax-key-search`. This page does not record which flag the runner kept.
 

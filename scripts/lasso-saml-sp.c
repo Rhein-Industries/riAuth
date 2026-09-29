@@ -3,11 +3,11 @@
  * Loopback GNU Lasso SAML 2 service-provider helper.
  * This is a separate program. Do not link it into the riauth binary.
  *
- * request prints one signed AuthnRequest. accept checks the AuthnResponse
- * with signature verification forced on, then checks the assertion audience
- * and Conditions lifetime with Lasso's validators. It prints the NameID only
- * after those checks and lasso_login_accept_sso succeed. Recipient is not
- * compared by this Lasso login path.
+ * request prints one signed AuthnRequest. accept forces Lasso signature
+ * verification, then calls Lasso's audience and Conditions lifetime validators.
+ * Recipient is compared here: Lasso 2.9.0 has no Recipient validator on the
+ * login path. The NameID is printed only after every check and
+ * lasso_login_accept_sso succeed.
  */
 #include <lasso/lasso.h>
 #include <lasso/id-ff/identity.h>
@@ -177,8 +177,29 @@ static void reject_condition(const char *kind, int state) {
     exit(1);
 }
 
-/* Signature verification has already succeeded. These calls are Lasso's own
- * audience and Conditions NotBefore/NotOnOrAfter checks. */
+/* Lasso parses Recipient and the metadata ACS URL. It does not compare them. */
+static void require_helper_recipient(LassoSaml2Assertion *assertion, LassoServer *server) {
+    LassoSaml2SubjectConfirmationData *data;
+    char *service;
+    data = lasso_saml2_assertion_get_subject_confirmation_data(assertion, FALSE);
+    service = lasso_provider_get_assertion_consumer_service_url(LASSO_PROVIDER(server), NULL);
+    if (service == NULL || service[0] == '\0') {
+        g_free(service);
+        fprintf(stderr, "helper recipient: SP metadata has no assertion consumer service\n");
+        exit(1);
+    }
+    if (data == NULL || data->Recipient == NULL || strcmp(data->Recipient, service) != 0) {
+        g_free(service);
+        fprintf(
+            stderr,
+            "helper recipient: assertion Recipient does not match the SP assertion consumer service\n");
+        exit(1);
+    }
+    g_free(service);
+}
+
+/* Signature verification has already succeeded. Audience and Conditions
+ * lifetime are Lasso API checks. Recipient is the helper comparison above. */
 static void require_assertion_conditions(LassoLogin *login, LassoServer *server) {
     LassoNode *node = lasso_login_get_assertion(login);
     LassoSaml2Assertion *assertion;
@@ -198,10 +219,12 @@ static void require_assertion_conditions(LassoLogin *login, LassoServer *server)
         reject_condition("audience", (int)audience_state);
     }
     lifetime_state = lasso_saml2_assertion_validate_time_checks(assertion, 0, 0);
-    g_object_unref(node);
     if (lifetime_state != LASSO_SAML2_ASSERTION_VALID) {
+        g_object_unref(node);
         reject_condition("lifetime", (int)lifetime_state);
     }
+    require_helper_recipient(assertion, server);
+    g_object_unref(node);
 }
 
 static void require_line(const char *value, const char *label) {
@@ -321,7 +344,10 @@ static void accept_mode(int argc, char **argv) {
     name_id = LASSO_SAML2_NAME_ID(profile->nameIdentifier);
     require_line(name_id->content, "name_id");
     require_line(name_id->Format, "format");
-    printf("conditions: valid\n");
+    printf("signature: lasso\n");
+    printf("audience: lasso\n");
+    printf("lifetime: lasso\n");
+    printf("recipient: helper\n");
     printf("name_id: %s\n", name_id->content);
     printf("format: %s\n", name_id->Format);
     lasso_login_destroy(login);

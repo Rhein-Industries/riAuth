@@ -182,6 +182,52 @@ fn expire_conditions(xml: &str) -> String {
     expired
 }
 
+fn recipient_reject(output: &Output) {
+    assert!(!output.status.success(), "{}", show(output));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "helper recipient: assertion Recipient does not match the SP assertion consumer service"
+        ),
+        "expected helper Recipient rejection {}",
+        show(output)
+    );
+    assert!(
+        !stderr.contains("(-111)")
+            && !stderr.contains("lasso audience:")
+            && !stderr.contains("lasso lifetime:"),
+        "recipient rejection was another check {}",
+        show(output)
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stdout).contains("name_id:"),
+        "{}",
+        show(output)
+    );
+}
+
+const OTHER_ACS: &str = "https://sp.example.test/bad";
+
+/// Replace only SubjectConfirmationData Recipient. Audience, Conditions, and
+/// Destination stay as riAuth signed them. The caller re-signs.
+fn retarget_recipient(xml: &str) -> String {
+    let marker = "<saml:SubjectConfirmationData ";
+    let start = xml.find(marker).expect("subject confirmation");
+    let end = start + xml[start..].find('>').expect("subject confirmation tag");
+    let tag = &xml[start..end];
+    let recipient = attribute(tag, "Recipient");
+    assert_eq!(recipient, ACS);
+    assert_eq!(recipient.len(), OTHER_ACS.len());
+    let at = start + tag.find("Recipient=\"").expect("recipient") + "Recipient=\"".len();
+    let mut retargeted = xml.to_string();
+    retargeted.replace_range(at..at + recipient.len(), OTHER_ACS);
+    assert!(retargeted.contains(&format!("Recipient=\"{OTHER_ACS}\"")));
+    assert!(!retargeted.contains(&format!("Recipient=\"{ACS}\"")));
+    assert!(retargeted.contains(&format!("Destination=\"{ACS}\"")));
+    assert!(retargeted.contains(&format!(">{SP}<")));
+    retargeted
+}
+
 fn resign(xml: &str, pem: &str, certificate: &str) -> String {
     let key = risaml::crypto::keys::load_private_key(pem, None).expect("IdP signing key");
     let assertion =
@@ -443,6 +489,17 @@ fn lasso_signed_redirect_request_post_response_signature_and_metadata_key() {
         &expired_path,
         STANDARD.encode(expired_xml.as_bytes()).as_bytes(),
     );
+    let recipient_path = dir.join("recipient.b64");
+    let recipient_xml = resign(
+        &retarget_recipient(&without_signatures(&xml)),
+        &idp_keys.active.pem,
+        &idp_cert,
+    );
+    assert!(recipient_xml.contains("<ds:Signature"));
+    write_private(
+        &recipient_path,
+        STANDARD.encode(recipient_xml.as_bytes()).as_bytes(),
+    );
     let accept = |metadata: &Path, response: &Path| {
         let mut args = vec!["accept".to_string()];
         args.extend(prefix(metadata));
@@ -454,8 +511,12 @@ fn lasso_signed_redirect_request_post_response_signature_and_metadata_key() {
     signature_reject(&accept(&idp_metadata_path, &tamper_path));
     signature_reject(&accept(&wrong_metadata_path, &response_path));
     lifetime_reject(&accept(&idp_metadata_path, &expired_path));
+    recipient_reject(&accept(&idp_metadata_path, &recipient_path));
     let accepted = fields(&accept(&idp_metadata_path, &response_path));
-    assert_eq!(accepted["conditions"], "valid");
+    assert_eq!(accepted["signature"], "lasso");
+    assert_eq!(accepted["audience"], "lasso");
+    assert_eq!(accepted["lifetime"], "lasso");
+    assert_eq!(accepted["recipient"], "helper");
     assert_eq!(accepted["format"], NameIdFormat::Persistent.uri());
     assert!(xml.contains(&format!(">{}<", accepted["name_id"])));
 }
