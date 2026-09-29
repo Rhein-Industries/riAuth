@@ -1420,6 +1420,137 @@ fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and
     );
 }
 
+#[test]
+fn saml_browser_return_claim_keeps_provider_burn_replay_and_retirement() {
+    let f = Fixture::new();
+    let (mut source, upstream) = install_saml(&f);
+    let acs = f.core.saml_source_callback_url(&source.id);
+    let issue = |source: &Source| {
+        let started = browser_begin(&f, source);
+        let response = relay_response(&upstream, source, &acs, &started.request);
+        let token = text(
+            &post(&f, source, &started.relay, &response).unwrap(),
+            "browser_return",
+        );
+        (started, token)
+    };
+
+    let (first, first_token) = issue(&source);
+    let before = f.snapshot().unwrap();
+    let wrong_provider = f
+        .core
+        .saml_source_browser_return("other", Some(&first.cookie), Some(&first_token))
+        .unwrap_err();
+    assert_eq!(wrong_provider.code, "invalid_request");
+    f.assert_snapshot(&before);
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_returns", &digest(&first_token))
+            .unwrap(),
+        Some(digest(&first.relay))
+    );
+
+    let audits = failed_audits(&f);
+    let mismatch = f
+        .core
+        .saml_source_browser_return(&source.id, Some("wrong-browser"), Some(&first_token))
+        .unwrap_err();
+    assert_eq!(mismatch.code, "source_browser_mismatch");
+    hides(&mismatch, &[&first.cookie, &first_token]);
+    let row = login_row(&f, &first.relay);
+    assert_eq!(row["failed"], true);
+    assert!(row["result"].is_null());
+    assert!(row["browser_return"].is_null());
+    assert!(
+        f.core
+            .store
+            .get::<String>("source_returns", &digest(&first_token))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(failed_audits(&f), audits + 1);
+    let replay = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&first.cookie), Some(&first_token))
+        .unwrap_err();
+    assert_eq!(replay.code, "invalid_request");
+    assert_eq!(failed_audits(&f), audits + 1);
+
+    let (retiring, retired_token) = issue(&source);
+    source.enabled = false;
+    put_saml(&f, &source);
+    let audits = failed_audits(&f);
+    let retired = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&retiring.cookie), Some(&retired_token))
+        .unwrap_err();
+    assert_eq!(retired.message, "SAML source changed; restart login");
+    hides(&retired, &[&retiring.cookie, &retired_token]);
+    let row = login_row(&f, &retiring.relay);
+    assert_eq!(row["failed"], true);
+    assert!(row["result"].is_null());
+    assert!(row["browser_return"].is_null());
+    assert!(
+        f.core
+            .store
+            .get::<String>("source_returns", &digest(&retired_token))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(failed_audits(&f), audits + 1);
+    source.enabled = true;
+    put_saml(&f, &source);
+    assert_eq!(
+        f.core
+            .saml_source_browser_return(&source.id, Some(&retiring.cookie), Some(&retired_token))
+            .unwrap_err()
+            .code,
+        "invalid_request"
+    );
+    assert_eq!(failed_audits(&f), audits + 1);
+
+    let (confirmed, confirmed_token) = issue(&source);
+    f.core
+        .saml_source_browser_return(&source.id, Some(&confirmed.cookie), Some(&confirmed_token))
+        .unwrap();
+    let row = login_row(&f, &confirmed.relay);
+    assert_eq!(row["browser_return_confirmed"], true);
+    assert_eq!(row["failed"], false);
+    assert!(row["browser_return"].is_null());
+    assert_eq!(
+        f.core
+            .saml_source_browser_return(&source.id, Some(&confirmed.cookie), Some(&confirmed_token))
+            .unwrap_err()
+            .code,
+        "invalid_request"
+    );
+    assert_eq!(failed_audits(&f), audits + 1);
+
+    let (expired, expired_token) = issue(&source);
+    let mut expired_row = login_row(&f, &expired.relay);
+    expired_row["expires_at"] = json!(now() - 1);
+    f.core
+        .store
+        .write(|tx| tx.put("source_logins", &digest(&expired.relay), &expired_row))
+        .unwrap();
+    assert_eq!(
+        f.core
+            .saml_source_browser_return(&source.id, Some(&expired.cookie), Some(&expired_token))
+            .unwrap_err()
+            .code,
+        "invalid_request"
+    );
+    assert!(
+        f.core
+            .store
+            .get::<String>("source_returns", &digest(&expired_token))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(failed_audits(&f), audits + 1);
+}
+
 /// A browser return presented while the pinned source differs ends that login.
 /// Restoring the previous certificate does not confirm it. A return that was
 /// never presented during the change can still confirm after the original

@@ -802,6 +802,43 @@ def main() -> None:
                 or not re.search(r'audit\s*\(\s*tx\s*,\s*&actor\.id\s*,\s*"cloud_directory\.credential_verify"\s*,\s*scope\s*\)', record_raw)
             ):
                 errors.append("src/cloud_operations.rs: credential verification write belongs in assembly")
+        if path == SRC / "source/saml.rs":
+            saml_source = path.read_text()
+            assembly_source_return = (SRC / "assembly/source_saml_return.rs").read_text()
+            return_adapter = rust_function_body(saml_source, "saml_source_browser_return")
+            adapter_compact = re.sub(r"\s+", "", return_adapter or "")
+            return_claim = rust_function_body(assembly_source_return, "take_browser_return")
+            claim_compact = re.sub(r"\s+", "", return_claim or "")
+            assembly_root = (SRC / "assembly.rs").read_text()
+            if (
+                rust_function_body(saml_source, "take_browser_return") is not None
+                or re.search(r"\benum\s+BrowserReturn\b", saml_source)
+                or return_adapter is None
+                or not (0 <= adapter_compact.find("returned.filter(|value|value.len()<=256)")
+                        < adapter_compact.find("started.filter(|value|value.len()<=256)")
+                        < adapter_compact.find("letreturned_digest=digest(returned)")
+                        < adapter_compact.find("self.store.write(|tx|take_browser_return(tx,id,started.as_deref(),&returned_digest))?")
+                        < adapter_compact.find("BrowserReturn::Confirmed=>Ok(())")
+                        < adapter_compact.find("BrowserReturn::Burned=>Err(super::browser_mismatch())")
+                        < adapter_compact.find("BrowserReturn::Retired=>Err(Error::bad("))
+                or return_claim is None
+                or not (0 <= claim_compact.find('tx.get::<String>("source_returns",returned_digest)?')
+                        < claim_compact.find('tx.get::<Login>("source_logins",&login_key)?')
+                        < claim_compact.find("ifpending.source!=id")
+                        < claim_compact.find("crypto::constant_eq(bound,returned_digest)")
+                        < claim_compact.find("pending.expires_at<=now()")
+                        < claim_compact.find('tx.get::<Source>("sources",id)?')
+                        < claim_compact.find("presented_source_retired(source.as_ref(),&pending.fingerprint)")
+                        < claim_compact.find("browser_binding_matches(pending.browser_binding.as_deref().unwrap_or(\"\"),started)")
+                        < claim_compact.find("pending.browser_return_confirmed=true")
+                        < claim_compact.rfind("Ok(BrowserReturn::Confirmed)"))
+                or claim_compact.count('tx.delete("source_returns",returned_digest)?') != 3
+                or claim_compact.count('super::clear_browser_return(tx,&pending)?') != 3
+                or claim_compact.count('audit(tx,"upstream","source.login_failed",id)?') != 2
+                or not re.search(r"#\[cfg\(feature\s*=\s*\"platform\"\)\]\s*mod\s+source_saml_return\s*;", assembly_root)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_saml_return::\{BrowserReturn,\s*take_browser_return\}\s*;", assembly_root)
+            ):
+                errors.append("src/source/saml.rs: one-use browser return claim belongs in assembly")
         if path == SRC / "source.rs":
             source_protocol = masked_rust_source(path.read_text())
             source_catalog = (SRC / "assembly/source_catalog.rs").read_text()

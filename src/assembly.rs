@@ -91,6 +91,10 @@ mod source_finish;
 pub(crate) use source_finish::clear_browser_return;
 mod source_identity;
 pub use source_identity::validate_identity as source_validate_identity;
+#[cfg(feature = "platform")]
+mod source_saml_return;
+#[cfg(feature = "platform")]
+pub(crate) use source_saml_return::{BrowserReturn, take_browser_return};
 mod source_stage;
 pub(crate) use source_stage::callback_source_stage;
 pub(crate) use source_stage::cleanup_expired_source_state;
