@@ -2537,6 +2537,30 @@ async fn cancel_stage_binding_and_one_use_effects_commit_together() {
     );
     f.assert_snapshot(&before);
 
+    let mut mismatched = stage.clone();
+    mismatched["id"] = json!("wrong-stage-id");
+    f.core
+        .store
+        .write(|tx| tx.put("source_stages", &stage_id, &mismatched))
+        .unwrap();
+    let forged = f.snapshot().unwrap();
+    for result in [
+        f.core
+            .source_stage_cancel(&stage_id, &authorization_id)
+            .map(|_| ()),
+        f.core
+            .source_stage_resume(&stage_id, &authorization_id, None)
+            .map(|_| ()),
+    ] {
+        assert_eq!(result.unwrap_err().code, "access_denied");
+    }
+    f.assert_snapshot(&forged);
+    f.core
+        .store
+        .write(|tx| tx.put("source_stages", &stage_id, &stage))
+        .unwrap();
+    f.assert_snapshot(&before);
+
     let cancelled = f
         .core
         .source_stage_cancel(&stage_id, &authorization_id)
@@ -2856,6 +2880,7 @@ async fn source_stage_callback_result_commits_failure_and_success_once() {
     let failed = callback().await.unwrap();
     assert_eq!(failed["completed"], false);
     assert_eq!(failed["source_stage"]["stage_id"], stage_id);
+    assert_eq!(failed["source_stage"]["authorization_id"], authorization_id);
     assert!(failed.get("session_token").is_none());
     let login: Value = f
         .core
@@ -2900,6 +2925,10 @@ async fn source_stage_callback_result_commits_failure_and_success_once() {
     assert_eq!(
         authenticated["source_stage"]["stage_id"],
         prepared["source_stage"]["stage_id"]
+    );
+    assert_eq!(
+        authenticated["source_stage"]["authorization_id"],
+        prepared["source_stage"]["authorization_id"]
     );
     assert!(authenticated.get("session_token").is_none());
     let audits = f.core.audit_events(&f.admin, 100).unwrap();

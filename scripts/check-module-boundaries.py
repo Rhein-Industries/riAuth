@@ -1245,6 +1245,56 @@ def main() -> None:
                 or 'tx.put("source_stages",&stage.id,stage)' not in re.sub(r"\s+", "", persist_resume)
             ):
                 errors.append("src/source.rs: source stage resume bearer and one-use writes belong in assembly")
+            stage_loader = rust_function_body(source_stage_assembly, "load_source_stage")
+            stage_loader_compact = re.sub(r"\s+", "", stage_loader or "")
+            cancel_stage = rust_function_body(path.read_text(), "cancel_stage")
+            cancel_stage_compact = re.sub(r"\s+", "", cancel_stage or "")
+            load_call = "crate::assembly::load_source_stage(tx,stage_id,authorization_id)?"
+            if (
+                rust_function_body(path.read_text(), "load_stage") is not None
+                or not (0 <= stage_resume_compact.find(load_call)
+                        < stage_resume_compact.find("ifstage.used||stage.cancelled"))
+                or cancel_stage is None
+                or not (0 <= cancel_stage_compact.find(load_call)
+                        < cancel_stage_compact.find("ifstage.used||stage.cancelled"))
+                or stage_loader is None
+                or not (0 <= stage_loader_compact.find('tx.get::<SourceStage>("source_stages",stage_id)?')
+                        < stage_loader_compact.find('Error::bad("Sourcestagenotfound")')
+                        < stage_loader_compact.find("!crypto::constant_eq(&stage.id,stage_id)")
+                        < stage_loader_compact.find("!crypto::constant_eq(&stage.authorization_id,authorization_id)")
+                        < stage_loader_compact.find("Error::forbidden()")
+                        < stage_loader_compact.rfind("Ok(stage)"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", stage_loader)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::load_source_stage\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: source stage ownership read belongs in assembly")
+            callback_stage = rust_function_body(source_stage_assembly, "callback_source_stage")
+            callback_stage_compact = re.sub(r"\s+", "", callback_stage or "")
+            callback_body = rust_function_body(path.read_text(), "callback_body")
+            callback_body_compact = re.sub(r"\s+", "", callback_body or "")
+            if (
+                callback_body is None
+                or not (0 <= callback_body_compact.find('"completed":!pending.failed')
+                        < callback_body_compact.find("crate::assembly::callback_source_stage(tx,pending,login_key)?")
+                        < callback_body_compact.find('body["source_stage"]=stage')
+                        < callback_body_compact.rfind("Ok(body)"))
+                or re.search(r'\btx\s*\.\s*get\s*::\s*<SourceStage>\s*\(\s*"source_stages"', callback_body)
+                or callback_stage is None
+                or not (0 <= callback_stage_compact.find("ifletSome(id)=&pending.stage")
+                        < callback_stage_compact.find('tx.get::<SourceStage>("source_stages",id)?')
+                        < callback_stage_compact.find("!stage.used")
+                        < callback_stage_compact.find("!stage.cancelled")
+                        < callback_stage_compact.find("stage.expires_at>now()")
+                        < callback_stage_compact.find("stage.login_key==login_key")
+                        < callback_stage_compact.find("stage.nonce==pending.nonce")
+                        < callback_stage_compact.find("stage.source_id==pending.source")
+                        < callback_stage_compact.find('"stage_id":stage.id')
+                        < callback_stage_compact.find('"authorization_id":stage.authorization_id')
+                        < callback_stage_compact.rfind("Ok(None)"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", callback_stage)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_stage::callback_source_stage\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: source callback stage projection belongs in assembly")
             stage_rejection = rust_function_body(source_protocol, "reject_stage")
             stage_rejection_compact = re.sub(r"\s+", "", stage_rejection or "")
             stage_rejection_raw = rust_function_body(path.read_text(), "reject_stage")

@@ -439,7 +439,7 @@ pub(crate) struct StartedLogin {
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct SourceStage {
     pub(crate) id: String,
-    authorization_id: String,
+    pub(crate) authorization_id: String,
     request_hash: String,
     pub(crate) suspension_hash: String,
     pub(crate) request: crate::oidc::Authorization,
@@ -837,7 +837,7 @@ impl Core {
         authorization_id: &str,
         otp: Option<&str>,
     ) -> Result<Result<Value>> {
-        let mut stage = load_stage(tx, stage_id, authorization_id)?;
+        let mut stage = crate::assembly::load_source_stage(tx, stage_id, authorization_id)?;
         if stage.used || stage.cancelled {
             return Err(Error::bad("Source stage already used"));
         }
@@ -969,7 +969,7 @@ impl Core {
         stage_id: &str,
         authorization_id: &str,
     ) -> Result<Value> {
-        let mut stage = load_stage(tx, stage_id, authorization_id)?;
+        let mut stage = crate::assembly::load_source_stage(tx, stage_id, authorization_id)?;
         if stage.used || stage.cancelled {
             return Err(Error::conflict("Source stage already completed"));
         }
@@ -1201,17 +1201,6 @@ pub(crate) fn suspension_hash(request: &crate::oidc::Authorization) -> Result<St
 fn requires_fresh_proof(request: &crate::oidc::Authorization) -> bool {
     request.has_prompt("login") || request.has_prompt("select_account") || request.max_age.is_some()
 }
-fn load_stage(tx: &Tx<'_>, stage_id: &str, authorization_id: &str) -> Result<SourceStage> {
-    let stage = tx
-        .get::<SourceStage>("source_stages", stage_id)?
-        .ok_or_else(|| Error::bad("Source stage not found"))?;
-    if !crypto::constant_eq(&stage.id, stage_id)
-        || !crypto::constant_eq(&stage.authorization_id, authorization_id)
-    {
-        return Err(Error::forbidden());
-    }
-    Ok(stage)
-}
 /// `expected` is the stored digest of the full binding cookie. A missing, oversized
 /// or different cookie fails closed. The compare covers both cookie halves at once.
 pub(crate) fn browser_binding_matches(expected: &str, presented: Option<&str>) -> bool {
@@ -1234,19 +1223,8 @@ pub(crate) fn callback_body(tx: &Tx<'_>, pending: &Login, login_key: &str) -> Re
         "completed": !pending.failed,
         "instruction": "Return to the CLI to inspect and finish the request"
     });
-    if let Some(id) = &pending.stage
-        && let Some(stage) = tx.get::<SourceStage>("source_stages", id)?
-        && !stage.used
-        && !stage.cancelled
-        && stage.expires_at > now()
-        && stage.login_key == login_key
-        && stage.nonce == pending.nonce
-        && stage.source_id == pending.source
-    {
-        body["source_stage"] = json!({
-            "stage_id": stage.id,
-            "authorization_id": stage.authorization_id
-        });
+    if let Some(stage) = crate::assembly::callback_source_stage(tx, pending, login_key)? {
+        body["source_stage"] = stage;
     }
     Ok(body)
 }

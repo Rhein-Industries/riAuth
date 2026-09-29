@@ -8,7 +8,45 @@ use crate::{
     source::{Link, Login, SourceStage, suspension_hash},
     store::Tx,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
+
+pub(crate) fn load_source_stage(
+    tx: &Tx<'_>,
+    stage_id: &str,
+    authorization_id: &str,
+) -> Result<SourceStage> {
+    let stage = tx
+        .get::<SourceStage>("source_stages", stage_id)?
+        .ok_or_else(|| Error::bad("Source stage not found"))?;
+    if !crypto::constant_eq(&stage.id, stage_id)
+        || !crypto::constant_eq(&stage.authorization_id, authorization_id)
+    {
+        return Err(Error::forbidden());
+    }
+    Ok(stage)
+}
+
+pub(crate) fn callback_source_stage(
+    tx: &Tx<'_>,
+    pending: &Login,
+    login_key: &str,
+) -> Result<Option<Value>> {
+    if let Some(id) = &pending.stage
+        && let Some(stage) = tx.get::<SourceStage>("source_stages", id)?
+        && !stage.used
+        && !stage.cancelled
+        && stage.expires_at > now()
+        && stage.login_key == login_key
+        && stage.nonce == pending.nonce
+        && stage.source_id == pending.source
+    {
+        return Ok(Some(json!({
+            "stage_id": stage.id,
+            "authorization_id": stage.authorization_id
+        })));
+    }
+    Ok(None)
+}
 
 pub(crate) fn ensure_stage_request_available(tx: &Tx<'_>, suspension: &str) -> Result<()> {
     if let Some(existing) = tx.get::<String>("source_stage_requests", suspension)?
