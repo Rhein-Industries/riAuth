@@ -17,6 +17,9 @@ local drills from PostgreSQL PITR and peer recovery.
 [Connector dependency incidents](connector-incidents.md) covers LDAP, outbound
 SCIM, Workspace, Entra, SMTP, Vault Transit, and alert-webhook failures while
 the store is still serving.
+[Administrator lockout](admin-lockout.md) covers attempt locks, lost recovery
+codes, and browser account recovery while a second administrator can still
+sign in.
 
 ## What the archive holds
 

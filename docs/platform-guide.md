@@ -1677,8 +1677,10 @@ Still outside this slice, as later tasks:
   open. The first D04 decision page is
   [operational recovery](operational-recovery.md); further emergency runbooks
   remain open. The [connector dependency incidents](connector-incidents.md) page covers
-  read, stop, and retry decisions for external dependencies. The backup
-  commands here are entry points.
+  read, stop, and retry decisions for external dependencies. The
+  [administrator lockout](admin-lockout.md) page covers a serving store when
+  a second human administrator can still sign in. The backup commands here
+  are entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP directory plan or apply, a SCIM plan

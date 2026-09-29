@@ -46,6 +46,10 @@ job. See [PostgreSQL responsibilities](recovery.md#postgresql-responsibilities-a
 | The live store opens and the backup key is gone | Keep serving. Generate a new backup key and take a new archive. Archives made with the lost key stay unreadable. |
 | The database key and every archive-plus-backup-key pair are gone | Initialize a new instance. The old users, subjects, clients, and signing keys stay unrecoverable. See [Unrecoverable cases](disaster-recovery.md#unrecoverable-cases). |
 
+A serving store, with a second enabled human administrator who can still sign
+in, follows [administrator lockout](admin-lockout.md). That procedure leaves
+the server up. The break-glass row above is the stopped-store command.
+
 A PostgreSQL outage with the riAuth process still up is a database problem
 first. The disposable PostgreSQL drill saw `/livez` stay at 200, `/readyz`
 return 503, and login return `storage_unavailable` (exit 6). Archive restore
@@ -512,9 +516,12 @@ planning evidence.
 
 Still open:
 
-- Lockout while another administrator can still sign in, including attempt
-  locks, lost recovery codes, and browser account recovery. Break-glass above
-  is the stopped-store command for a named account.
+- Administrator lockout while another administrator can still sign in. The
+  procedure and the disposable redb drill are in
+  [administrator lockout](admin-lockout.md). That drill called library methods
+  on a tempfile store, once on the default Platform features and once on
+  Essentials. It did not run the CLI, a browser, SMTP, LDAP, passkey-only
+  recovery, PostgreSQL, or break-glass.
 - Live connector and dependency failures. The decision page is
   [connector dependency incidents](connector-incidents.md) for LDAP, outbound
   SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks. That page

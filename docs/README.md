@@ -30,6 +30,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Disaster recovery](disaster-recovery.md) | What to keep outside backups, binary choice, restore order, validation and unrecoverable cases for Essentials and Platform |
 | [Operational recovery](operational-recovery.md) | Which recovery procedure to run, with preflight, break-glass, failure stops, and the recorded local-drill boundary |
 | [Connector dependency incidents](connector-incidents.md) | Read, stop, and retry boundary for LDAP, outbound SCIM, Workspace, Entra, SMTP, Vault Transit, and alert webhooks |
+| [Administrator lockout](admin-lockout.md) | Attempt locks, lost recovery codes, and browser recovery while a second administrator can still sign in |
 | [Restored-state recovery](recovery.md) | Session, proof and grant invalidation after restores, the serving gate and PostgreSQL recovery duties |
 | [External signing](kms.md) | Vault Transit keys and custody limits |
 | [Migration](migration.md) | Authentik import, preflight for other source systems, continuity, cutover and rollback guidance |

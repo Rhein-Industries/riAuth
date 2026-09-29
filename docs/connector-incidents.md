@@ -389,7 +389,8 @@ for this task.
 
 The [A01 coverage inventory](roadmap/coverage-inventory.md) still describes
 D04 at revision `96e23e2`. This page does not finish D04. Lockout while
-another administrator can sign in, escrow of a backup or database key,
-PostgreSQL PITR and multi-node failover, TLS to PostgreSQL, peer login
+another administrator can sign in is
+[administrator lockout](admin-lockout.md). Escrow of a backup or database
+key, PostgreSQL PITR and multi-node failover, TLS to PostgreSQL, peer login
 after restore, Compose or systemd restore, and Windows device recovery
 remain open in [operational recovery](operational-recovery.md#remaining-d04-gates).
