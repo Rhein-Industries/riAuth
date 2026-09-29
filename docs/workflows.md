@@ -141,7 +141,7 @@ success terminal satisfies, for every arriving set:
 | Outcome | Minimum proofs (category floor) |
 | --- | --- |
 | `authenticated` | `password`, `passkey` or `source` |
-| `enrolled` | `enrolled`. `enroll_credential` needs `session` plus `password` or `passkey`, or `invitation` for a first passkey or password; `replace_totp` needs `session` plus `passkey`, or `session`, `password` and `totp` |
+| `enrolled` | `enrolled`. `enroll_credential` needs `session` plus fresh `password`, `passkey` or `source`; current `totp` may authorize passkey enrollment only. `invitation` may authorize a first passkey or password only. `replace_totp` needs `session` plus `passkey`, or `session`, `password` and `totp` |
 | `recovered` | `password_reset`, which needs `reset_email` first |
 | `consent_granted` | `session` and `consent` |
 | `action_authorized` | `session` and `password` or `passkey` |

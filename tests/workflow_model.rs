@@ -942,6 +942,22 @@ fn enrollment_and_sensitive_actions_need_a_session_and_primary_factor() {
         json!([success("enrolled"), denied()]),
     );
     rejects(&totp_only, &platform(), Code::Precondition);
+    let mut totp_first_passkey = totp_only.clone();
+    totp_first_passkey["steps"][2]["action"]["credential"] = json!("passkey");
+    check(&totp_first_passkey, &platform()).unwrap();
+    let mut totp_reenrollment = totp_only.clone();
+    totp_reenrollment["steps"][2]["action"]["credential"] = json!("totp");
+    rejects(&totp_reenrollment, &platform(), Code::Precondition);
+    let mut totp_recovery_codes = totp_only.clone();
+    totp_recovery_codes["steps"][2]["action"]["credential"] = json!("recovery_codes");
+    rejects(&totp_recovery_codes, &platform(), Code::Precondition);
+
+    let mut primary_password = totp_only.clone();
+    primary_password["steps"][1]["action"] = json!({"type": "verify_password"});
+    check(&primary_password, &platform()).unwrap();
+    let mut source_passkey = totp_first_passkey.clone();
+    source_passkey["steps"][1]["action"] = json!({"type": "verify_source", "source": "corp-oidc"});
+    check(&source_passkey, &platform()).unwrap();
 
     let invited_factor = doc(
         "enrollment",
@@ -960,6 +976,12 @@ fn enrollment_and_sensitive_actions_need_a_session_and_primary_factor() {
         json!([success("enrolled"), denied()]),
     );
     rejects(&invited_factor, &platform(), Code::Precondition);
+    let mut invited_password = invited_factor.clone();
+    invited_password["steps"][1]["action"]["credential"] = json!("password");
+    check(&invited_password, &platform()).unwrap();
+    let mut invited_passkey = invited_factor.clone();
+    invited_passkey["steps"][1]["action"]["credential"] = json!("passkey");
+    check(&invited_passkey, &platform()).unwrap();
 
     let totp_action = doc(
         "sensitive_action",

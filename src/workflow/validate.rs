@@ -407,12 +407,17 @@ fn unmet(action: &Action, held: u16) -> Option<&'static str> {
             Some("an account-binding proof")
         }
         Action::EnrollCredential { credential } => {
+            // TOTP is a second factor: it may authorize adding a first passkey
+            // to an existing session, but cannot alone bootstrap a password,
+            // another TOTP secret or recovery codes. Runtime adapters still
+            // require the exact account, session and request-bound receipt.
             let reverified = any(&[Proof::Session])
-                && any(&[Proof::Password, Proof::Passkey, Proof::Totp, Proof::Source]);
+                && (any(&[Proof::Password, Proof::Passkey, Proof::Source])
+                    || (*credential == Credential::Passkey && any(&[Proof::Totp])));
             let invited = any(&[Proof::Invitation])
                 && matches!(credential, Credential::Passkey | Credential::Password);
             (!reverified && !invited).then_some(
-                "a session with fresh password, passkey, TOTP or source verification, or an invitation for a first passkey or password",
+                "a session with fresh password, passkey or source verification (TOTP only for passkey enrollment), or an invitation for a first passkey or password",
             )
         }
         Action::ReplaceTotp {}
