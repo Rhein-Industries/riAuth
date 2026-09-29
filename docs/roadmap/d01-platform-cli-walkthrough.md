@@ -1508,10 +1508,13 @@ directory `$LAB`. The copy's real path is not recorded. `riauthctl` and
 
 `riauth --version` printed `riauth 0.1.1`. Root help exited 0 with
 `Usage: riauth [OPTIONS] <COMMAND>`. This run did not print
-`riauth capabilities` or `riauth doctor`. The passkey and portal files at
-this revision match the snapshot's source. The only `src/cli.rs` change
-since that source is the agent-revocation idempotency check. It is outside
-this section.
+`riauth capabilities` or `riauth doctor`. The browser behavior below was
+observed from that immutable snapshot. The passkey-specific functions
+cited in the source review were compared with snapshot source `58357fd`
+and were unchanged. The comparison is limited to those functions.
+`src/portal/self_service/security.js` differs from that snapshot in its
+session-revocation control. `src/cli.rs` also differs from that snapshot
+outside the cited passkey functions.
 
 Help was read on the copy:
 
