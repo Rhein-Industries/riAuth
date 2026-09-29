@@ -605,14 +605,21 @@ access_read!(access_requests, list_access_requests);
 #[cfg(feature = "platform")]
 access_read!(access_grants, list_access_grants);
 
+#[cfg(feature = "platform")]
+fn access_writer(app: &App, headers: &HeaderMap) -> Result<String> {
+    let token = writer(app, headers)?;
+    super::access_review::require_write_preconditions(headers)?;
+    Ok(token)
+}
+
 macro_rules! decide {
-    ($name:ident, |$core:ident, $token:ident, $id:ident| $call:expr) => {
+    ($name:ident, $writer:ident, |$core:ident, $token:ident, $id:ident| $call:expr) => {
         async fn $name(
             State(app): State<App>,
             headers: HeaderMap,
             Path($id): Path<String>,
         ) -> Result<Json<Value>> {
-            let $token = writer(&app, &headers)?;
+            let $token = $writer(&app, &headers)?;
             app.run(move |$core| {
                 $core
                     .store
@@ -624,15 +631,15 @@ macro_rules! decide {
     };
 }
 #[cfg(feature = "platform")]
-decide!(approve, |core, token, id| core
+decide!(approve, access_writer, |core, token, id| core
     .decide_access(&token, &id, true));
 #[cfg(feature = "platform")]
-decide!(deny, |core, token, id| core
+decide!(deny, access_writer, |core, token, id| core
     .decide_access(&token, &id, false));
 #[cfg(feature = "platform")]
-decide!(revoke_grant, |core, token, id| core
+decide!(revoke_grant, access_writer, |core, token, id| core
     .revoke_access(&token, &id));
-decide!(rotate_secret, |core, token, id| core
+decide!(rotate_secret, writer, |core, token, id| core
     .rotate_client_secret(&token, &id));
 
 #[derive(Deserialize)]

@@ -78,6 +78,11 @@ fn credential(app: &App, headers: &HeaderMap) -> Result<String> {
 
 fn writer(app: &App, headers: &HeaderMap) -> Result<String> {
     browser_write_guard(app, headers)?;
+    require_write_preconditions(headers)?;
+    credential(app, headers)
+}
+
+pub(super) fn require_write_preconditions(headers: &HeaderMap) -> Result<()> {
     if headers.get("idempotency-key").is_none() || headers.get("if-match").is_none() {
         return Err(Error::new(
             StatusCode::PRECONDITION_REQUIRED,
@@ -85,7 +90,7 @@ fn writer(app: &App, headers: &HeaderMap) -> Result<String> {
             "Access review requires Idempotency-Key and If-Match",
         ));
     }
-    credential(app, headers)
+    Ok(())
 }
 
 async fn review(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {

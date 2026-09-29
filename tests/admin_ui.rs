@@ -57,6 +57,24 @@ struct Call<'a> {
     body: Option<Value>,
 }
 
+#[cfg(feature = "platform")]
+fn access_write<'a>(
+    cookie: &'a str,
+    origin: &'a str,
+    key: Option<&'a str>,
+    revision: Option<u64>,
+) -> Call<'a> {
+    Call {
+        method: "POST",
+        cookie: Some(cookie),
+        portal: true,
+        origin: Some(origin),
+        key,
+        revision,
+        ..Default::default()
+    }
+}
+
 async fn send(app: &axum::Router, uri: &str, call: Call<'_>) -> (StatusCode, HeaderMap, Value) {
     let mut request = Request::builder()
         .method(if call.method.is_empty() {
@@ -527,13 +545,17 @@ async fn retained_grant_is_visible_and_revocable_after_approver_rules_are_remove
     );
 
     let origin = origin(&core);
-    let write = Call {
-        method: "POST",
-        cookie: Some(&admin_cookie),
-        portal: true,
-        origin: Some(&origin),
-        ..Default::default()
-    };
+    let revision = core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap_or(0);
+    let write = access_write(
+        &admin_cookie,
+        &origin,
+        Some("retained-grant-revoke"),
+        Some(revision),
+    );
     let (status, _, revoked) = send(
         &app,
         &format!("/api/admin/access/grants/{grant_id}/revoke"),
@@ -543,6 +565,192 @@ async fn retained_grant_is_visible_and_revocable_after_approver_rules_are_remove
     assert_eq!(status, StatusCode::OK, "{revoked}");
     assert!(revoked["revoked_at"].is_u64());
     assert_eq!(core.me(&requester).unwrap()["groups"], json!([]));
+}
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn legacy_access_decisions_require_preconditions_and_replay_once() {
+    use riauth::{config::Config, pam::NewAccessRequest};
+
+    let fixture = Fixture::new();
+    fixture.core.create_group(&fixture.admin, "ops").unwrap();
+    let alice = fixture.user("alice");
+    let bob = fixture.user("bob");
+    let mut config: Config = fixture.core.config.clone();
+    config
+        .pam_approvers
+        .insert("ops".into(), ["admin".into()].into());
+    let Fixture {
+        _dir,
+        core: original,
+        admin,
+    } = fixture;
+    drop(original);
+    let core = Core::open(config).unwrap();
+    let request = |token: &str| {
+        core.request_access(
+            token,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Release support".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let approve_id = request(&alice);
+    let deny_id = request(&bob);
+    let cookie = sso_cookie(&core, &admin);
+    let origin = origin(&core);
+    let app = riauth::api::router(core.clone());
+    let revision = || {
+        core.store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let audit_count = |action: &str, target: &str| {
+        core.audit_events(&admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action && event["target"] == target)
+            .count()
+    };
+    let approve_path = format!("/api/admin/access/requests/{approve_id}/approve");
+    let deny_path = format!("/api/admin/access/requests/{deny_id}/deny");
+    let decision_at = revision();
+    for path in [&approve_path, &deny_path] {
+        for (key, expected) in [
+            (None, None),
+            (Some("missing-revision"), None),
+            (None, Some(decision_at)),
+        ] {
+            let (status, _, _) =
+                send(&app, path, access_write(&cookie, &origin, key, expected)).await;
+            assert_eq!(status, StatusCode::PRECONDITION_REQUIRED, "{path}");
+        }
+        let (status, _, _) = send(
+            &app,
+            path,
+            access_write(
+                &cookie,
+                &origin,
+                Some("stale-decision"),
+                Some(decision_at - 1),
+            ),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{path}");
+    }
+    assert_eq!(revision(), decision_at);
+    assert_eq!(audit_count("access.approve", &approve_id), 0);
+    assert_eq!(audit_count("access.deny", &deny_id), 0);
+
+    let approved = send(
+        &app,
+        &approve_path,
+        access_write(&cookie, &origin, Some("legacy-approve"), Some(decision_at)),
+    )
+    .await;
+    assert_eq!(approved.0, StatusCode::OK, "{}", approved.2);
+    let grant_id = approved.2["grant"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        send(
+            &app,
+            &approve_path,
+            access_write(&cookie, &origin, Some("legacy-approve"), Some(decision_at))
+        )
+        .await
+        .2,
+        approved.2
+    );
+    assert_eq!(audit_count("access.approve", &approve_id), 1);
+    assert_eq!(revision(), decision_at + 1);
+
+    let deny_at = revision();
+    let denied = send(
+        &app,
+        &deny_path,
+        access_write(&cookie, &origin, Some("legacy-deny"), Some(deny_at)),
+    )
+    .await;
+    assert_eq!(denied.0, StatusCode::OK, "{}", denied.2);
+    assert_eq!(
+        send(
+            &app,
+            &deny_path,
+            access_write(&cookie, &origin, Some("legacy-deny"), Some(deny_at))
+        )
+        .await
+        .2,
+        denied.2
+    );
+    assert_eq!(audit_count("access.deny", &deny_id), 1);
+    assert_eq!(revision(), deny_at + 1);
+
+    let revoke_path = format!("/api/admin/access/grants/{grant_id}/revoke");
+    let revoke_at = revision();
+    for (key, expected) in [
+        (None, None),
+        (Some("missing-revision"), None),
+        (None, Some(revoke_at)),
+    ] {
+        let (status, _, _) = send(
+            &app,
+            &revoke_path,
+            access_write(&cookie, &origin, key, expected),
+        )
+        .await;
+        assert_eq!(status, StatusCode::PRECONDITION_REQUIRED);
+    }
+    assert_eq!(
+        send(
+            &app,
+            &revoke_path,
+            access_write(&cookie, &origin, Some("stale-revoke"), Some(revoke_at - 1))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(revision(), revoke_at);
+    assert_eq!(audit_count("access.revoke", &grant_id), 0);
+    let revoked = send(
+        &app,
+        &revoke_path,
+        access_write(&cookie, &origin, Some("legacy-revoke"), Some(revoke_at)),
+    )
+    .await;
+    assert_eq!(revoked.0, StatusCode::OK, "{}", revoked.2);
+    assert_eq!(
+        send(
+            &app,
+            &revoke_path,
+            access_write(&cookie, &origin, Some("legacy-revoke"), Some(revoke_at))
+        )
+        .await
+        .2,
+        revoked.2
+    );
+    assert_eq!(audit_count("access.revoke", &grant_id), 1);
+    assert_eq!(revision(), revoke_at + 1);
+    assert_eq!(core.me(&alice).unwrap()["groups"], json!([]));
+    assert_eq!(
+        send(
+            &app,
+            &revoke_path,
+            access_write(&cookie, &origin, Some("new-revoke"), Some(revoke_at))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(audit_count("access.revoke", &grant_id), 1);
 }
 
 #[tokio::test]
