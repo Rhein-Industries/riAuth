@@ -21,8 +21,8 @@ in sections 1 through 13 are the ones implemented in this tree: `[features]` in
 
 Reading this page does not mean those steps were executed here. The three
 slices were checked by reading the source and the current docs, then by
-`python3 scripts/check-docs.py`. Section 14 was read from accepted commit
-`58e5ef3` and was not executed here. No Cargo build was run, no server was
+`python3 scripts/check-docs.py`. Section 14 was source-reviewed and was not
+executed here. No Cargo build was run, no server was
 started, and no browser, group change, claim preview, audit export, LDAP
 plan, SCIM delivery, workflow plan, SAML import, source registration, LDAP
 listener, invitation, backup, or accessibility pass was recorded. The
@@ -1596,23 +1596,20 @@ This is the same invited person's page as Essentials section 11. It is
 separate from the signed-in passkey task in section 4 and from the
 configured password workflow in section 11. Issuing an invitation, the
 `[mail]` table, and the password-only `riauth account accept` command stay
-in [Account email and recovery](lifecycle.md). The enrollment routes are in
-[Passkeys](passkeys.md). This checkout's passkeys page still says the
-invitation page offers only a password and that the passkey endpoints are
-for authenticator clients. Accepted `58e5ef3` also shows the passkey choice
-on that page. [Portal](PORTAL.md) in this checkout does not record the two
-headless journeys. This section states the acceptance contract and does not
-copy that write-up.
+in [Account email and recovery](lifecycle.md). The enrollment routes and the
+browser choice are in [Passkeys](passkeys.md). The headless journeys are
+recorded in [Portal](PORTAL.md). This section states the acceptance contract
+and does not copy that write-up.
 
 The configuration from section 2 has no `[mail]` table. `identity.invitations`
 is compiled on Essentials and on Platform. It becomes usable when `[mail]`
 passes the local SMTP material check in `require_local_material`. This task
 did not add `[mail]`, did not issue an invitation, and did not send a message.
-On accepted `58e5ef3`, `account invite` and `account revoke-invitation` stop
-locally unless both `--idempotency-key` and `--if-revision` are present. The
-message is `Invitation writes require --idempotency-key and --if-revision (from riauth revision)`.
-The source string wraps `riauth revision` in backticks. This checkout's
-invite arm does not contain that bail. This section does not print an invite.
+`account invite` and `account revoke-invitation` stop locally unless both
+`--idempotency-key` and `--if-revision` are present. The message is
+`Invitation writes require --idempotency-key and --if-revision (from riauth revision)`.
+The source string wraps `riauth revision` in backticks. This section does not
+print an invite.
 
 ### Capability gating
 
@@ -1665,10 +1662,7 @@ is the password completion and does not call the passkey endpoints.
 
 ### Browser test limits
 
-The password journey and the Chromium CDP passkey journey were read from
-accepted `58e5ef3`, which contains the passkey page from `a72a086`.
-Accepted `0312427` adds a simulated-credential passkey journey on Chromium,
-Firefox, and WebKit. This task did not run any of them.
+This task did not run these browsers, and it did not send mail.
 
 `tools/browser/invitation-password.spec.js` is a headless keyboard journey
 at 390 by 844 CSS pixels on Chromium, Firefox, and WebKit. It uses the
@@ -1684,8 +1678,8 @@ because that authenticator exists only in Chromium. The virtual
 authenticator is not a physical key, a synced passkey, a phone, or a
 mobile operating system.
 
-`tools/browser/invitation-passkey-shim.spec.js` is the later journey from
-accepted `0312427`. Chromium, Firefox, and WebKit each install Playwright's
+`tools/browser/invitation-passkey-shim.spec.js` is the simulated-credential
+journey. Chromium, Firefox, and WebKit each install Playwright's
 simulated WebAuthn credential before the page loads. The shim replaces
 `navigator.credentials`, generates a P-256 key in the test process, and
 sets the user-verified bit itself. It does not prompt, and it is not the
@@ -1699,15 +1693,10 @@ ceremony stays in `invitation-passkey.spec.js`.
 
 None of these journeys is an external mailbox, a spoken screen reader, a
 phone hybrid, a mobile operating system, or a release. Playwright stays
-outside CI. The viewport is CSS pixels. This checkout does not contain
-those spec files. This task did not run them, and it did not send mail.
-
-The page behavior was read from accepted `58e5ef3` in `src/portal/account.js`,
-`src/portal/account.html`, `src/portal/http.rs`, `src/api/invitation.rs`,
-and `src/lifecycle/invitation/passkey.rs`. This checkout's `account.js` and
-`account.html` were compared with that commit and do not contain the passkey
-form. The shipped invitation workflow in this checkout already stores the
-empty session and returns the same JSON.
+outside CI. The viewport is CSS pixels. The page is
+`src/portal/account.js` and `src/portal/account.html`. The password handler
+is `src/portal/http.rs`. The passkey routes are `src/api/invitation.rs` and
+`src/lifecycle/invitation/passkey.rs`.
 
 ## Unverified architecture artifacts
 
