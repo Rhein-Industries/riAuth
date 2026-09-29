@@ -298,8 +298,8 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET, POST | `/api/sources` | List/upsert upstream identity-source configuration |
 | GET | `/api/saml/{id}/metadata`, `/api/saml/sources/{id}/metadata` | JSON wrappers for signed XML metadata |
 | GET | `/api/account/invitations` | Accounts waiting to accept an invitation: link status and expiry, groups, inviter and, with `operations.read`, delivery state. Never returns codes |
-| POST | `/api/account/invitations` | Invite a disabled, non-administrator account with approved groups |
-| DELETE | `/api/account/invitations/{username}` | Revoke its pending invitation |
+| POST | `/api/account/invitations` | Invite a disabled, non-administrator account with approved groups; requires `Idempotency-Key` and `If-Match: "<revision>"` |
+| DELETE | `/api/account/invitations/{username}` | Revoke its pending invitation; requires `Idempotency-Key` and `If-Match: "<revision>"` |
 | GET, POST | `/api/offboard/jobs` | List/schedule durable offboarding jobs with live per-target downstream outcomes; `user.offboard` |
 | GET | `/api/offboard/jobs/{id}` | Inspect an offboarding job |
 | POST | `/api/offboard/jobs/{id}/reschedule`, `/api/offboard/jobs/{id}/cancel` | Update a scheduled job or request cancellation; see [ENT-10](enterprise/ENT-10.md) |

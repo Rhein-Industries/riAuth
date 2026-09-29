@@ -684,6 +684,7 @@ impl Core {
         })
     }
     pub fn account_invite(&self, token: &str, input: Invitation) -> Result<Value> {
+        Self::require_invitation_retry_binding()?;
         require_mail(self)?;
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
@@ -691,10 +692,23 @@ impl Core {
         })
     }
     pub fn account_invitation_revoke(&self, token: &str, username: &str) -> Result<Value> {
+        Self::require_invitation_retry_binding()?;
         self.mutation(token, |tx| {
             let actor = self.principal(tx, token)?;
             crate::management::revoke_invitation(tx, &actor, username)
         })
+    }
+    fn require_invitation_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Invitation writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
     }
     /// Invited accounts that have not accepted yet, with the state of their current link.
     /// Each part obeys the reader's own read permissions: people by `user.read`, groups by

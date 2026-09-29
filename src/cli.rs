@@ -1744,10 +1744,18 @@ pub async fn run(cli: Cli) -> Result<()> {
             AccountCommand::VerifyRequest => remote.call(Method::POST,"/api/account/verify-request",None,true).await?,
             AccountCommand::ResetRequest { username } => remote.call(Method::POST,"/api/account/reset-request",Some(json!({"username":username})),false).await?,
             AccountCommand::Invite { file } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Invitation writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 let invitation:crate::lifecycle::Invitation=serde_json::from_slice(&fs::read(file)?)?;
                 remote.call(Method::POST,"/api/account/invitations",Some(json!(invitation)),true).await?
             },
-            AccountCommand::RevokeInvitation { username } => remote.call(Method::DELETE,&format!("/api/account/invitations/{}",segment(&username)?),None,true).await?,
+            AccountCommand::RevokeInvitation { username } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Invitation writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE,&format!("/api/account/invitations/{}",segment(&username)?),None,true).await?
+            },
             AccountCommand::Deliveries => remote.call(Method::GET,"/api/operations/mail",None,true).await?,
             command => {
                 let (purpose,stdin)=match command {AccountCommand::Verify{token_stdin}=>(crate::lifecycle::Purpose::Verify,token_stdin),AccountCommand::Reset{token_stdin}=>(crate::lifecycle::Purpose::Reset,token_stdin),AccountCommand::Accept{token_stdin}=>(crate::lifecycle::Purpose::Invite,token_stdin),_=>unreachable!()};

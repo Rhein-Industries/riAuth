@@ -1380,7 +1380,7 @@
       title: `Revoke the invitation for ${username}?`, ok: "Revoke invitation", danger: true,
       text: "The emailed link stops working now. The account stays disabled and keeps its username; you can send a new link from their page.",
       run: async (_, key) => {
-        await api("DELETE", `admin/invitations/${seg(username)}`, undefined, { key });
+        await api("DELETE", `admin/invitations/${seg(username)}`, undefined, { revision: data.revision, key });
         await saved(`Revoked the invitation for ${username}. Its link no longer works.`);
       },
     });
@@ -1601,7 +1601,7 @@
         if (!email) throw invalid("Enter the email address the invitation goes to.");
         // Same default as an account created with a password: the username.
         const body = { username, email, display_name: value(form, "new-display") || username, groups: selectedGroups(form, "invite") };
-        await api("POST", "admin/invitations", body, { key });
+        await api("POST", "admin/invitations", body, { revision: data.revision, key });
         await saved(`Invitation queued for ${email}. The link works for ${days(data.lifetime)}.`, hash("people", username));
         return;
       }

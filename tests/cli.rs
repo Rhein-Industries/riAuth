@@ -1174,6 +1174,30 @@ fn cli_client_writes_require_retry_binding_and_replay_once() {
     }
 }
 
+#[test]
+fn cli_invitation_writes_require_retry_binding() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let file = dir.path().join("invite.json");
+    std::fs::write(&file, r#"{"username":"invited","email":"invited@example.test","display_name":"Invited"}"#).unwrap();
+    let file = file.to_str().unwrap();
+    let at = success(invoke(dir.path(), &config, &session, &["revision"], None))["revision"]
+        .as_u64().unwrap().to_string();
+    for args in [
+        vec!["--if-revision", &at, "account", "invite", "--file", file],
+        vec!["--idempotency-key", "invite-key", "account", "invite", "--file", file],
+        vec!["--if-revision", &at, "account", "revoke-invitation", "invited"],
+        vec!["--idempotency-key", "revoke-key", "account", "revoke-invitation", "invited"],
+    ] {
+        let (_, error) = failure(invoke(dir.path(), &config, &session, &args, None));
+        assert!(error["message"].as_str().unwrap().contains("Invitation writes require"));
+    }
+    // The complete CLI binding reaches the server. No mail transport is configured here.
+    let (_, error) = failure(invoke(dir.path(), &config, &session,
+        &["--if-revision", &at, "--idempotency-key", "bound-invite", "account", "invite", "--file", file], None));
+    assert_eq!(error["http_status"], 503);
+}
+
 /// M03: the CLI's direct and desired-state application writes reach the same
 /// management seam as the HTTP API, with the same type, retry and stale rules.
 #[test]
