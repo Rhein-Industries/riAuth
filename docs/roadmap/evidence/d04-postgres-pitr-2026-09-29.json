@@ -1,0 +1,316 @@
+{
+  "scope": {
+    "date": "2026-09-29",
+    "storage": "postgres",
+    "operation": "pitr_named_restore_point",
+    "loopback": true,
+    "local_unencrypted": true,
+    "physical_copy": true,
+    "base_backup": true,
+    "pitr": true,
+    "recovery_target_name": "riauth_d04_pitr",
+    "logical_restore": false,
+    "recovery_complete_run": false,
+    "cargo_build": false,
+    "production_files": false,
+    "temporary_files_removed": true,
+    "server_process_stopped": true,
+    "issuer": "http://127.0.0.1:53367",
+    "postgres_port": 53366
+  },
+  "outcome": "observed",
+  "detail": "WAL archive recovery to named restore point riauth_d04_pitr on one temporary PostgreSQL 16.14 cluster moved timeline 1 to 2 and kept the system identifier and database oid 16384 / records oid 16386. The restored copy had 25 rows and revision 0. The later user create had left 32 rows and revision 1. recovery status before any restored serve reported serving_allowed true and no pending gate. recovery invalidate --database-restored ran before that serve, wrote cause database_restore, removed one session and one session token, and left passwords 1 and signing_keys 1 in reconcile. The first restored serve exited 5 before a listener. The follow-up doctor was connection refused. recovery complete was not run. The production gate stays open.",
+  "checks": [
+    {
+      "id": "binary",
+      "exit_code": 0,
+      "observed": {
+        "sha256": "de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069",
+        "bytes": 289661864,
+        "edition": "platform",
+        "version": "0.1.1",
+        "build_features": [
+          "essentials",
+          "platform"
+        ],
+        "copied_from_snapshot": true
+      }
+    },
+    {
+      "id": "source",
+      "exit_code": 0,
+      "observed": {
+        "readyz_http_status": 200,
+        "login_user": "drill-admin",
+        "login_admin": true,
+        "session_file_mode": "0600",
+        "doctor": {
+          "healthy": true,
+          "schema_version": 3,
+          "revision": 0,
+          "issuer": "http://127.0.0.1:53367",
+          "storage": "postgresql",
+          "encrypted_at_rest": false,
+          "users": 1,
+          "enabled_administrators": 1,
+          "clients": 0,
+          "pending_logout_deliveries": 0,
+          "tls": "reverse_proxy"
+        },
+        "recovery_status": {
+          "backend": "postgresql",
+          "policy": "riauth.recovery/v1",
+          "initialized": true,
+          "schema": 3,
+          "serving_allowed": true,
+          "pending_present": false,
+          "recorded": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "observed": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "database_oid_equal": true,
+          "records_oid_equal": true,
+          "system_identifier_equal": true
+        },
+        "records": 25,
+        "meta_revision": 0,
+        "revision_row_present": false,
+        "database_oid": 16384,
+        "records_oid": 16386,
+        "timeline_id": 1,
+        "pg_is_in_recovery": false,
+        "ssl": "off",
+        "wal_level": "replica",
+        "archive_mode": "on",
+        "archive_failed_count": 0,
+        "server_version": "16.14 (Homebrew)"
+      }
+    },
+    {
+      "id": "base_backup",
+      "exit_code": 0,
+      "observed": {
+        "tool": "pg_basebackup",
+        "format": "plain",
+        "wal_method": "stream",
+        "checkpoint": "fast",
+        "backup_label_present": true,
+        "backup_manifest_present": true,
+        "backup_kib": 47152,
+        "pg_version_file": "16",
+        "post_backup_wal_archived": true
+      }
+    },
+    {
+      "id": "restore_point",
+      "exit_code": 0,
+      "observed": {
+        "name": "riauth_d04_pitr",
+        "lsn": "0/4000090",
+        "wal_file": "000000010000000000000004",
+        "archived": true,
+        "state_a": {
+          "rows": 25,
+          "revision": 0,
+          "revision_row_present": false
+        }
+      }
+    },
+    {
+      "id": "later_write",
+      "exit_code": 0,
+      "observed": {
+        "user": "drill-extra",
+        "if_revision": 0,
+        "idempotency_key_stored": false,
+        "body_stored": false,
+        "state_b": {
+          "rows": 32,
+          "revision": 1,
+          "revision_row_present": true
+        },
+        "rows_differ": true,
+        "revision_differs": true,
+        "later_wal_archived": true,
+        "archive_failed_count": 0,
+        "archived_count": 6
+      }
+    },
+    {
+      "id": "restored_before_open",
+      "exit_code": 0,
+      "observed": {
+        "recovery_target_name": "riauth_d04_pitr",
+        "recovery_target_action": "promote",
+        "recovery_target_timeline": "current",
+        "stopped_at_named_restore_point": true,
+        "ended_before_target": false,
+        "selected_timeline_id": 2,
+        "pg_is_in_recovery": false,
+        "archive_mode": "off",
+        "ssl": "off",
+        "backup_label_still_present": false,
+        "records": 25,
+        "meta_revision": 0,
+        "revision_row_present": false,
+        "rows_equal_state_a": true,
+        "rows_equal_state_b": false,
+        "revision_equal_state_a": true,
+        "revision_equal_state_b": false,
+        "database_oid": 16384,
+        "records_oid": 16386,
+        "database_oid_equal": true,
+        "records_oid_equal": true,
+        "system_identifier_equal": true,
+        "timeline_id": 2,
+        "source_timeline_id": 1,
+        "timeline_changed": true,
+        "server_version": "16.14 (Homebrew)",
+        "serve_started_before_invalidate": false
+      }
+    },
+    {
+      "id": "status_before_invalidate",
+      "exit_code": 0,
+      "observed": {
+        "recovery_status": {
+          "backend": "postgresql",
+          "policy": "riauth.recovery/v1",
+          "initialized": true,
+          "schema": 3,
+          "serving_allowed": true,
+          "pending_present": false,
+          "recorded": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "observed": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "database_oid_equal": true,
+          "records_oid_equal": true,
+          "system_identifier_equal": true
+        }
+      }
+    },
+    {
+      "id": "invalidate",
+      "exit_code": 0,
+      "observed": {
+        "serving_allowed": false,
+        "pending": {
+          "id": "11f61635-4dfb-494d-a83c-759c46a4a9f6",
+          "cause": "database_restore",
+          "policy": "riauth.recovery/v1",
+          "invalidated": {
+            "session_tokens": 1,
+            "sessions": 1
+          },
+          "reconcile": {
+            "enabled_accounts": 1,
+            "passwords": 1,
+            "signing_keys": 1
+          },
+          "epoch_advanced_users": 1,
+          "completed_at": null,
+          "lineage_present": false
+        }
+      }
+    },
+    {
+      "id": "status_after_invalidate",
+      "exit_code": 0,
+      "observed": {
+        "recovery_status": {
+          "backend": "postgresql",
+          "policy": "riauth.recovery/v1",
+          "initialized": true,
+          "schema": 3,
+          "serving_allowed": false,
+          "pending_present": true,
+          "recorded": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "observed": {
+            "system_identifier_present": true,
+            "database_oid": 16384,
+            "records_oid": 16386
+          },
+          "database_oid_equal": true,
+          "records_oid_equal": true,
+          "system_identifier_equal": true,
+          "pending": {
+            "id": "11f61635-4dfb-494d-a83c-759c46a4a9f6",
+            "cause": "database_restore",
+            "policy": "riauth.recovery/v1",
+            "invalidated": {
+              "session_tokens": 1,
+              "sessions": 1
+            },
+            "reconcile": {
+              "enabled_accounts": 1,
+              "passwords": 1,
+              "signing_keys": 1
+            },
+            "epoch_advanced_users": 1,
+            "completed_at": null,
+            "lineage_present": false
+          }
+        },
+        "records": 28
+      }
+    },
+    {
+      "id": "serve_after_invalidate",
+      "exit_code": 5,
+      "observed": {
+        "listener_started": false,
+        "serve_exit": 5,
+        "serve_error_lines": [
+          "error: Restored state requires reconciliation; run `riauth recovery status`"
+        ],
+        "listening_log": false,
+        "old_session": {
+          "exit_code": 1,
+          "ok": false,
+          "code": "operation_failed",
+          "http_status": 0,
+          "message": "error sending request for url (http://127.0.0.1:53367/api/operations/doctor): client error (Connect): tcp connect error: Connection refused (os error 61)"
+        },
+        "recovery_complete_run": false
+      }
+    }
+  ],
+  "commands": [
+    "initdb --auth-local=trust --auth-host=reject --encoding=UTF8 --locale=C --no-instructions",
+    "pg_ctl -D pgdata -l source.log -w -t 30 start",
+    "psql -h 127.0.0.1 -p 53366 -d postgres -c \"CREATE DATABASE riauth_d04_pitr\"",
+    "riauth init --issuer http://127.0.0.1:53367 --listen 127.0.0.1:53367 --admin drill-admin --password-stdin --postgres-config src-postgres.json",
+    "riauth serve",
+    "riauth login drill-admin --password-stdin --session-file session.json",
+    "riauth doctor --session-file session.json",
+    "riauth recovery status",
+    "pg_basebackup -D base -h 127.0.0.1 -p 53366 -X stream --checkpoint=fast --no-password",
+    "psql -h 127.0.0.1 -p 53366 -d postgres -c \"SELECT pg_create_restore_point('riauth_d04_pitr')\"",
+    "psql -h 127.0.0.1 -p 53366 -d postgres -c \"SELECT pg_switch_wal()\"",
+    "riauth user create drill-extra --password-stdin --idempotency-key generated --if-revision 0",
+    "pg_ctl -D pgdata -m fast stop",
+    "pg_ctl -D base -l base.log -w -t 60 start",
+    "riauth recovery status",
+    "riauth recovery invalidate --database-restored",
+    "riauth recovery status",
+    "riauth serve",
+    "riauth doctor --session-file session.json"
+  ]
+}

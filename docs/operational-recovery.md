@@ -468,8 +468,9 @@ disposable temp file so the restart could be observed.
 
 [Restored issuer after recovery complete](#restored-issuer-after-recovery-complete)
 records a later disposable store that ran `recovery complete` and a fresh
-local password login. PostgreSQL PITR, escrow, a relying party, and the
-Compose, systemd, and Windows layouts stay in
+local password login. The loopback named restore point is
+[Loopback PostgreSQL PITR](#loopback-postgresql-pitr). Escrow, a relying
+party, and the Compose, systemd, and Windows layouts stay in
 [Remaining D04 gates](#remaining-d04-gates). The loopback TLS result is
 [Loopback PostgreSQL TLS connection](#loopback-postgresql-tls-connection).
 
@@ -850,6 +851,11 @@ and signing-key reconcile counts stayed at 1. A later disposable
 pre-backup session, and `recovery invalidate --database-restored` applied
 cause `database_restore` and closed serving. That observation is
 [Loopback PostgreSQL base backup](#loopback-postgresql-base-backup).
+A later disposable named restore point kept those lineage ids after the
+timeline moved from 1 to 2. `recovery status` still reported
+`serving_allowed` true. `recovery invalidate --database-restored` closed
+serving before the restored `serve`. That observation is
+[Loopback PostgreSQL PITR](#loopback-postgresql-pitr).
 
 Read that pending id from the same config:
 
@@ -954,12 +960,14 @@ Redacted observations are
 - After login the record count was 25. The temporary cluster, certificates,
   connection file, session file, and server process were removed.
 
-PITR, promotion, fencing, multi-node readiness, a remote PostgreSQL host,
-a public CA, and client certificates remain open. The disposable logical
-dump and restore is
+Promotion beyond the later single-node restore point, fencing, multi-node
+readiness, a remote PostgreSQL host, a public CA, and client certificates
+remain open. The disposable logical dump and restore is
 [Loopback PostgreSQL logical dump and restore](#loopback-postgresql-logical-dump-and-restore).
 The disposable base backup is
 [Loopback PostgreSQL base backup](#loopback-postgresql-base-backup).
+The named restore point is
+[Loopback PostgreSQL PITR](#loopback-postgresql-pitr).
 The local password login is a service login on this issuer.
 
 ## Loopback PostgreSQL logical dump and restore
@@ -1029,10 +1037,12 @@ count, `recovery status` reports the lineage mismatch before any open, and
 the first `serve` applies `storage_lineage_changed`, refuses the listener,
 and leaves the password and signing key in the reconcile counts. A
 deployment restore that still holds those credentials waits for
-reconciliation outside this drill. Same-cluster PITR keeps the lineage
-ids as well, and this logical dump drill did not run PITR. The physical
-base-backup observation is
+reconciliation outside this drill. The later same-cluster PITR drill kept
+the lineage ids as well. This logical dump drill did not run PITR. The
+physical base-backup observation is
 [Loopback PostgreSQL base backup](#loopback-postgresql-base-backup).
+The named restore point is
+[Loopback PostgreSQL PITR](#loopback-postgresql-pitr).
 Promotion, fencing, multi-node readiness, escrow, a real relying-party
 login, and the Compose, systemd, and Windows layouts stay open. The
 temporary cluster, connection files, session files, and server process
@@ -1099,21 +1109,116 @@ replacement data directory on one temporary loopback cluster keeps lineage
 equal, so `recovery status` allows serving and a pre-backup session is
 accepted until `recovery invalidate --database-restored`. That command is
 the explicit barrier. It does not rotate the password or the signing key.
-This drill stopped at the pending gate. PITR was not run: there was no
-archive restore command and no recovery target. Promotion, fencing,
+This drill stopped at the pending gate. It used no WAL archive restore
+command and no recovery target. The later named restore point is
+[Loopback PostgreSQL PITR](#loopback-postgresql-pitr). Promotion, fencing,
 multi-node readiness, escrow, a real relying-party login, and the Compose,
 systemd, and Windows layouts stay open. The temporary cluster, connection
 file, session file, and server processes were removed.
+
+## Loopback PostgreSQL PITR
+
+On 2026-09-29 a disposable PostgreSQL 16.14 cluster listened on
+`127.0.0.1` with `ssl` off, `wal_level` `replica`, `max_wal_senders` 10,
+and `archive_mode` on. The archive command copied each finished WAL segment
+into a lab directory and kept an existing file only when the size matched.
+Before the source postmaster stopped, `pg_stat_archiver` reported
+`archived_count` 6 and `failed_count` 0. Local and `127.0.0.1/32` trust
+covered ordinary and replication connections. `::1` was rejected. The
+connection file was mode 0600, used `sslmode=disable` and
+`local_unencrypted` true, and contained no password. The binary was a temp
+copy of Platform `riauth` SHA-256
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`
+(edition `platform`, build features `essentials` and `platform`, version
+`0.1.1`). The issuer was `http://127.0.0.1:53367`, a port other than D01's
+`9000`. PostgreSQL listened on port `53366`. Redacted observations are
+[d04-postgres-pitr-2026-09-29.json](roadmap/evidence/d04-postgres-pitr-2026-09-29.json).
+
+- Source `/readyz` returned 200. Login for `drill-admin` returned `admin`
+  true and saved a mode 0600 session file in the temp directory. `doctor`
+  reported `healthy` true, schema 3, revision 0, `storage` `postgresql`,
+  one user, one enabled administrator, `encrypted_at_rest` false, and `tls`
+  `reverse_proxy`. That `tls` field is the HTTP listener. This config has
+  no `database_key_file` and no `tls_cert_file`. Source `recovery status`
+  reported `serving_allowed` true and matching lineage (database oid 16384,
+  records oid 16386, timeline 1). `riauth_store.records_v1` held 25 rows.
+  The `meta/revision` row was absent. riAuth reads that absence as revision
+  0, which matched `doctor`. The home session file was unchanged.
+- After that source `serve` stopped, plain
+  `pg_basebackup -X stream --checkpoint=fast` wrote 47152 KiB, including
+  `backup_label` and `backup_manifest`. A WAL switch archived the segment
+  open at the end of the backup. The record count was still 25 and the
+  revision was still 0. `pg_create_restore_point('riauth_d04_pitr')`
+  returned LSN `0/4000090` in WAL file `000000010000000000000004`. The next
+  switch archived that file.
+- The source issuer was started again. `user create drill-extra` used
+  `--if-revision` 0 and a fresh idempotency key. The command exited 0. The
+  idempotency key and the request body were not stored. After that process
+  stopped, the table held 32 rows and the `meta/revision` value was the
+  integer 1. A further WAL switch archived that later segment. The source
+  postmaster was then stopped.
+- The backup directory kept `backup_label`. An empty `recovery.signal` was
+  added. Recovery named `riauth_d04_pitr`, with `recovery_target_action`
+  `promote`, `recovery_target_timeline` `current`,
+  `recovery_target_inclusive` on, and `archive_mode` off. `restore_command`
+  copied archived segments into that data directory. `pg_ctl` started it on
+  the same loopback port.
+- The server log recorded
+  `database system is ready to accept read-only connections`, then
+  `recovery stopping at restore point "riauth_d04_pitr"`, then
+  `selected new timeline ID: 2`. The following probe saw `pg_is_in_recovery`
+  false, timeline 2, `archive_mode` off, `recovery_target_name`
+  `riauth_d04_pitr`, and `backup_label` gone. The system identifier,
+  database oid, and records oid matched the source. The restored table held
+  25 rows, and the `meta/revision` row was absent again. That is the
+  pre-target state. The later 32 rows and revision 1 were absent from this
+  copy.
+- `recovery status` on the restored copy, before any riAuth open, reported
+  `serving_allowed` true and no pending gate. Lineage was still equal. The
+  lineage comparison uses the system identifier, database oid, and records
+  oid. The new timeline stayed outside that comparison. The first restored
+  `serve` ran after `recovery invalidate --database-restored`.
+- `recovery invalidate --database-restored` returned `serving_allowed`
+  false. The pending id was `11f61635-4dfb-494d-a83c-759c46a4a9f6`, cause
+  `database_restore`, policy `riauth.recovery/v1`. It removed one session
+  and one session token. Reconcile counts were `enabled_accounts` 1,
+  `passwords` 1, and `signing_keys` 1. One user epoch advanced.
+  `completed_at` stayed null. The pending record carried no lineage change.
+  A following `recovery status` still showed equal lineage and
+  `serving_allowed` false because the pending gate was present. The row
+  count was 28.
+- That next `serve` exited 5. Its stderr line was the pending-gate conflict
+  text: Restored state requires reconciliation; run `riauth recovery status`.
+  The log had no `riAuth listening` line. `doctor` with the pre-restore
+  session file exited 1. The code was `operation_failed`, the HTTP status
+  was 0, and the message was connection refused to
+  `http://127.0.0.1:53367`. That call received no authentication response.
+- `recovery complete` stayed unrun. The invalidate command removes the
+  session and leaves the stored password and signing key in the reconcile
+  counts. The attestation flag would mark the gate complete while those
+  values remained. The production gate stays open.
+
+The safe limit is that observation. A named restore point on one temporary
+loopback cluster changed the timeline from 1 to 2 and kept the lineage ids,
+so `recovery status` still allowed serving until
+`recovery invalidate --database-restored`. The restored copy matched the
+pre-target 25 rows and revision 0. The invalidate command is the explicit
+barrier. It does not rotate the password or the signing key. This drill
+stopped at the pending gate. Promotion and fencing beyond this single-node
+loopback promote, multi-node readiness, escrow, a real relying-party login,
+and the Compose, systemd, and Windows layouts stay open. The temporary
+cluster, WAL archive, connection file, session file, and server processes
+were removed.
 
 ## Recorded local drills
 
 These files are observations from 2026-09-29. The lost-backup-key drill, the
 database-key-file drill, the database-key restart drill, the recovery
 complete drill, the PostgreSQL TLS drill, the PostgreSQL logical
-dump/restore drill, and the PostgreSQL base-backup drill added their own
-files and left the two R05 files as they were. Each drill used a disposable
-store, generated its own keys and accounts, and removed them on exit. None
-opened a deployment store.
+dump/restore drill, the PostgreSQL base-backup drill, and the PostgreSQL
+PITR drill added their own files and left the two R05 files as they were.
+Each drill used a disposable store, generated its own keys and accounts, and
+removed them on exit. None opened a deployment store.
 
 | Evidence | Scope | Result |
 | --- | --- | --- |
@@ -1126,6 +1231,7 @@ opened a deployment store.
 | [d04-postgres-tls-2026-09-29.json](roadmap/evidence/d04-postgres-tls-2026-09-29.json) | Disposable loopback PostgreSQL 16.14. Private CA, SAN DNS `localhost`, no IP SAN. Temp copy of Platform `riauth` SHA-256 `de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. Issuer `http://127.0.0.1:56538`. | Init, serve, `/readyz` 200, `drill-admin` login, and `doctor` succeeded. `storage` `postgresql`, `encrypted_at_rest` false, `tls` `reverse_proxy` for the HTTP listener. `pg_stat_ssl` `ssl` true, TLSv1.3, no client certificate. Wrong CA and host `127.0.0.1` each exited 6, `storage_unavailable`, with no published config and no store relation. |
 | [d04-postgres-dump-restore-2026-09-29.json](roadmap/evidence/d04-postgres-dump-restore-2026-09-29.json) | Disposable loopback PostgreSQL 16.14. Custom-format `pg_dump` / `pg_restore` into a fresh database on the same cluster. `local_unencrypted` true. Temp copy of Platform `riauth` SHA-256 `de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. Issuer `http://127.0.0.1:58839`, PostgreSQL port `58838`. | 25 records before and after restore. `recovery status` before open: `serving_allowed` false, no pending gate, system identifier equal, database and records oids unequal. `serve` exit 5, no listener, pending id `fb7347a2-e262-4e58-a716-b9abf59a346b`, cause `storage_lineage_changed`. One session and one session token removed. Reconcile `passwords` 1 and `signing_keys` 1. Pre-dump session and password login were connection refused. `recovery complete` unrun. Production gate stays open. |
 | [d04-postgres-base-backup-2026-09-29.json](roadmap/evidence/d04-postgres-base-backup-2026-09-29.json) | Disposable loopback PostgreSQL 16.14. Plain `pg_basebackup -X stream --checkpoint=fast`, then `pg_ctl` start of that data directory. `local_unencrypted` true. Temp copy of Platform `riauth` SHA-256 `de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. Issuer `http://127.0.0.1:62103`, PostgreSQL port `62102`. | Lineage stayed equal, timeline 1, 25 records. `recovery status` before open: `serving_allowed` true, no pending gate. `serve` listened, `/readyz` 200, and the pre-backup session `doctor` succeeded. `recovery invalidate --database-restored` pending id `d60df2ea-b218-41e6-b972-2cdd6dd74539`, cause `database_restore`. One session and one session token removed. Reconcile `passwords` 1 and `signing_keys` 1. Next `serve` exit 5, no listener. Follow-up `doctor` was connection refused. `recovery complete` unrun. Production gate stays open. |
+| [d04-postgres-pitr-2026-09-29.json](roadmap/evidence/d04-postgres-pitr-2026-09-29.json) | Disposable loopback PostgreSQL 16.14. WAL archive, plain `pg_basebackup`, and recovery to named restore point `riauth_d04_pitr` with `restore_command` and `recovery_target_action` `promote`. `local_unencrypted` true. Temp copy of Platform `riauth` SHA-256 `de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. Issuer `http://127.0.0.1:53367`, PostgreSQL port `53366`. | Timeline 1 to 2. Lineage stayed equal. Restored copy had 25 rows and revision 0. The later write had 32 rows and revision 1. `recovery status` before invalidate: `serving_allowed` true, no pending gate. `recovery invalidate --database-restored` pending id `11f61635-4dfb-494d-a83c-759c46a4a9f6`, cause `database_restore`, ran before the restored `serve`. One session and one session token removed. Reconcile `passwords` 1 and `signing_keys` 1. First restored `serve` exit 5, no listener. Follow-up `doctor` was connection refused. `recovery complete` unrun. Production gate stays open. |
 
 The command lines that produced the R05 files, and the gates they leave open,
 are in the [R05 local recovery drill](roadmap/recovery-drill-r05.md).
@@ -1180,9 +1286,10 @@ Still open:
   `riauth.backup/v3` archive, restored it under a new database key, ran
   `recovery complete`, served the restored issuer, and accepted a fresh
   local password login. Escrow retrieval remains open.
-- PostgreSQL PITR, asynchronous promotion, fencing, and multi-node
-  readiness. A disposable custom-format `pg_dump` / `pg_restore` into a
-  fresh database on one temporary loopback cluster is recorded in
+- PostgreSQL promotion beyond a single loopback restore point, fencing,
+  and multi-node readiness. A disposable custom-format `pg_dump` /
+  `pg_restore` into a fresh database on one temporary loopback cluster is
+  recorded in
   [Loopback PostgreSQL logical dump and restore](#loopback-postgresql-logical-dump-and-restore).
   It kept 25 records, reported the lineage barrier before any open, and
   made `serve` exit 5 before a listener. That open removed one session and
@@ -1193,10 +1300,20 @@ Still open:
   The started copy kept equal lineage, `serving_allowed` stayed true, and
   the pre-backup session `doctor` succeeded until
   `recovery invalidate --database-restored`. That command removed the
-  session, and the next `serve` exited 5. `recovery complete` stayed
-  unrun in both drills. The production restore gate stays open because
-  those credentials remain until an operator reconciles them, and the
-  attestation command leaves the stored password and signing key in place.
+  session, and the next `serve` exited 5. A disposable WAL archive restore
+  to the named point `riauth_d04_pitr` is recorded in
+  [Loopback PostgreSQL PITR](#loopback-postgresql-pitr). The timeline moved
+  from 1 to 2. Lineage stayed equal, so `recovery status` before invalidate
+  reported `serving_allowed` true. The restored copy had 25 rows and
+  revision 0. The later user create had left 32 rows and revision 1 on the
+  source. `recovery invalidate --database-restored` ran before the restored
+  `serve`, removed one session and one session token, and left one password
+  and one signing key in the reconcile counts. That `serve` exited 5. The
+  follow-up `doctor` was connection refused. `recovery complete` stayed
+  unrun in the dump, base-backup, and PITR drills. The production restore
+  gate stays open because those credentials remain until an operator
+  reconciles them, and the attestation command leaves the stored password
+  and signing key in place.
 - PostgreSQL TLS for a remote host, a public CA, or client certificates. The
   R05 disposable cluster used loopback trust authentication. The loopback
   private-CA connection, the wrong-CA refusal, and the `127.0.0.1` hostname
