@@ -1,4 +1,8 @@
 mod common;
+use axum::{
+    body::Body,
+    http::{Method, Request, StatusCode},
+};
 use common::{Fixture, PASSWORD, text};
 use riauth::{
     agent::{NewAgent, Permission},
@@ -10,6 +14,46 @@ use riauth::{
     windows_login::{EnrollDevice, WindowsLogin},
 };
 use serde_json::{Value, json};
+use tower::ServiceExt;
+
+async fn device_http(
+    app: &axum::Router,
+    method: Method,
+    path: &str,
+    token: &str,
+    key: Option<&str>,
+    revision: Option<u64>,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"));
+    if let Some(key) = key {
+        request = request.header("idempotency-key", key);
+    }
+    if let Some(revision) = revision {
+        request = request.header("if-match", format!("\"{revision}\""));
+    }
+    let payload = body.map_or_else(Body::empty, |body| {
+        Body::from(serde_json::to_vec(&body).unwrap())
+    });
+    let response = app
+        .clone()
+        .oneshot(
+            request
+                .header("content-type", "application/json")
+                .body(payload)
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = axum::body::to_bytes(response.into_body(), 32_768)
+        .await
+        .unwrap();
+    (status, serde_json::from_slice(&body).unwrap())
+}
 
 fn enroll(fx: &Fixture, id: &str, username: &str, offline_ttl: Option<u64>) -> Value {
     fx.core
@@ -1044,4 +1088,158 @@ fn agent_enrollment_fences_temporary_access_and_preserves_device_replay() {
         )
         .is_ok()
     );
+}
+
+#[tokio::test]
+async fn windows_device_http_writes_require_bound_retries_without_rotating_twice() {
+    let fx = Fixture::new();
+    let alice = fx.user("alice");
+    let app = riauth::api::router(fx.core.clone());
+    let revision = || {
+        fx.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let at = revision();
+    let input =
+        json!({"id":"laptop","display_name":"Alice laptop","username":"alice","offline_ttl":600});
+    for (key, version) in [(None, None), (Some("enroll"), None), (None, Some(at))] {
+        let (status, _) = device_http(
+            &app,
+            Method::POST,
+            "/api/windows-devices",
+            &fx.admin,
+            key,
+            version,
+            Some(input.clone()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::PRECONDITION_REQUIRED);
+    }
+    assert!(
+        fx.core
+            .store
+            .list::<Value>("windows_devices")
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(revision(), at);
+
+    let (status, _) = device_http(
+        &app,
+        Method::POST,
+        "/api/windows-devices",
+        &alice,
+        Some("unauthorized-enroll"),
+        Some(at),
+        Some(input.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let enroll = || {
+        device_http(
+            &app,
+            Method::POST,
+            "/api/windows-devices",
+            &fx.admin,
+            Some("enroll"),
+            Some(at),
+            Some(input.clone()),
+        )
+    };
+    let (status, first) = enroll().await;
+    assert_eq!(status, StatusCode::OK);
+    let secret = text(&first, "device_secret");
+    let offline = text(&first, "offline_ticket");
+    assert!(fx.core.windows_offline_verify(&secret, &offline).is_ok());
+    let (status, replay) = enroll().await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(first == replay);
+    assert_eq!(revision(), at + 1);
+    assert_eq!(
+        fx.core
+            .store
+            .get::<Value>("windows_devices", "laptop")
+            .unwrap()
+            .unwrap()["secret_hash"],
+        digest(&secret)
+    );
+
+    let mut changed = input.clone();
+    changed["display_name"] = json!("Another laptop");
+    let (status, _) = device_http(
+        &app,
+        Method::POST,
+        "/api/windows-devices",
+        &fx.admin,
+        Some("enroll"),
+        Some(at),
+        Some(changed),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = device_http(
+        &app,
+        Method::POST,
+        "/api/windows-devices",
+        &fx.admin,
+        Some("stale-enroll"),
+        Some(at),
+        Some(input),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(fx.core.windows_offline_verify(&secret, &offline).is_ok());
+
+    let revoke_at = revision();
+    for (key, version) in [
+        (None, None),
+        (Some("revoke"), None),
+        (None, Some(revoke_at)),
+    ] {
+        let (status, _) = device_http(
+            &app,
+            Method::DELETE,
+            "/api/windows-devices/laptop",
+            &fx.admin,
+            key,
+            version,
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::PRECONDITION_REQUIRED);
+    }
+    let revoke = || {
+        device_http(
+            &app,
+            Method::DELETE,
+            "/api/windows-devices/laptop",
+            &fx.admin,
+            Some("revoke"),
+            Some(revoke_at),
+            None,
+        )
+    };
+    let (status, revoked) = revoke().await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(revoke().await, (status, revoked));
+    assert_eq!(revision(), revoke_at + 1);
+    assert!(fx.core.windows_offline_verify(&secret, &offline).is_err());
+    let events = fx.core.audit_events(&fx.admin, 100).unwrap();
+    for action in ["device.enroll", "device.revoke"] {
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == action && event["target"] == "laptop")
+                .count(),
+            1,
+            "{action} was audited more than once"
+        );
+    }
 }

@@ -23,9 +23,9 @@ Permission `device.enroll` is scoped to `device/<id>` or `*`. An agent cannot en
 CLI:
 
 ```sh
-riauth windows-device enroll laptop --username alice --display-name "Alice laptop" --offline-ttl 43200 --show-secrets
+riauth --if-revision "$revision" --idempotency-key "$enroll_key" --show-secrets windows-device enroll laptop --username alice --display-name "Alice laptop" --offline-ttl 43200
 riauth windows-device list
-riauth windows-device revoke laptop
+riauth --if-revision "$current_revision" --idempotency-key "$revoke_key" windows-device revoke laptop
 # Device secret from RIAUTH_WINDOWS_DEVICE_SECRET, or --secret-stdin.
 # Password from --password-stdin. Do not read both secrets from stdin.
 RIAUTH_OTP=123456 riauth windows-device login --device-id laptop --username alice --password-stdin --show-secrets
@@ -44,7 +44,7 @@ HTTP, relative to the issuer path:
 | POST | `/api/windows-devices/tickets/redeem` | None. The sign-in ticket in the body |
 | POST | `/api/windows-devices/offline/verify` | None. Device secret plus offline ticket |
 
-Agent mutations use the normal `If-Match` revision and optional `Idempotency-Key`. Login, redeem, and offline verify are not idempotent management mutations. A retried login mints another ticket; unused tickets expire after 300 seconds.
+Enrollment and revocation require `Idempotency-Key` and `If-Match: "<revision>"` for every bearer caller, including administrators and agents. Obtain the current revision with `riauth revision`; use a distinct key for each new operation and reuse the same key, revision, and body for an exact retry. An exact enrollment retry returns the committed secret without rotating it again. Login, redeem, and offline verify are protocol operations, so a retried login mints another ticket; unused tickets expire after 300 seconds.
 
 JSON Schemas: `riauth schema windows-device` and `riauth schema windows-login`.
 

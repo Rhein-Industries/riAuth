@@ -1175,6 +1175,69 @@ fn cli_client_writes_require_retry_binding_and_replay_once() {
 }
 
 #[test]
+fn cli_windows_device_writes_require_retry_binding_and_replay_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap().to_string();
+    let at = revision();
+    for args in [
+        vec!["--if-revision", &at, "windows-device", "enroll", "laptop", "--username", "admin", "--display-name", "Admin laptop", "--show-secrets"],
+        vec!["--idempotency-key", "missing-revision", "windows-device", "enroll", "laptop", "--username", "admin", "--display-name", "Admin laptop", "--show-secrets"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Windows device writes require"));
+    }
+    let enroll = [
+        "--if-revision", &at, "--idempotency-key", "cli-device-enroll",
+        "windows-device", "enroll", "laptop", "--username", "admin",
+        "--display-name", "Admin laptop", "--show-secrets",
+    ];
+    let first = success(cli(&enroll));
+    assert_eq!(first["device"]["id"], "laptop");
+    assert!(first["device_secret"].as_str().is_some());
+    assert!(success(cli(&enroll)) == first);
+    assert_eq!(revision().parse::<u64>().unwrap(), at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&[
+        "--if-revision", &at, "--idempotency-key", "cli-device-enroll",
+        "windows-device", "enroll", "laptop", "--username", "admin",
+        "--display-name", "Changed laptop", "--show-secrets",
+    ]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&[
+        "--if-revision", &at, "--idempotency-key", "cli-device-stale",
+        "windows-device", "enroll", "other", "--username", "admin",
+        "--display-name", "Other laptop", "--show-secrets",
+    ]));
+    assert_eq!(stale["http_status"], 409);
+
+    let revoke_at = revision();
+    for args in [
+        vec!["--if-revision", &revoke_at, "windows-device", "revoke", "laptop"],
+        vec!["--idempotency-key", "missing-revoke-revision", "windows-device", "revoke", "laptop"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Windows device writes require"));
+    }
+    let revoke = [
+        "--if-revision", &revoke_at, "--idempotency-key", "cli-device-revoke",
+        "windows-device", "revoke", "laptop",
+    ];
+    let revoked = success(cli(&revoke));
+    assert_eq!(revoked["revoked"], true);
+    assert_eq!(success(cli(&revoke)), revoked);
+    assert_eq!(revision().parse::<u64>().unwrap(), revoke_at.parse::<u64>().unwrap() + 1);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    for action in ["device.enroll", "device.revoke"] {
+        assert_eq!(
+            events.as_array().unwrap().iter().filter(|event| event["action"] == action && event["target"] == "laptop").count(),
+            1,
+            "{action} was audited more than once"
+        );
+    }
+}
+
+#[test]
 fn cli_invitation_writes_require_retry_binding() {
     let dir = TempDir::new().unwrap();
     let (config, session, _server) = serve_with_admin(dir.path());

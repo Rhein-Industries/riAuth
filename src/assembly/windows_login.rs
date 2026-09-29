@@ -127,12 +127,26 @@ fn verify_reauth(core: &Core, tx: &Tx<'_>, user: &User, token: &str, at: u64) ->
 }
 
 impl Core {
+    fn require_windows_device_retry_binding() -> Result<()> {
+        if let Some(context) = crate::context::current()
+            && (context.idempotency_key.is_none() || context.revision.is_none())
+        {
+            return Err(Error::new(
+                StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Windows device writes require Idempotency-Key and If-Match",
+            ));
+        }
+        Ok(())
+    }
+
     pub fn windows_device_enroll(
         &self,
         token: &str,
         input: windows_login::EnrollDevice,
     ) -> Result<Value> {
         let request = crate::management::WindowsDeviceEnrollment::new(input)?;
+        Self::require_windows_device_retry_binding()?;
         self.mutation(token, |tx| {
             let written = crate::management::enroll_windows_device(self, tx, token, &request)?;
             Ok(json!({
@@ -146,6 +160,7 @@ impl Core {
 
     pub fn windows_device_revoke(&self, token: &str, id: &str) -> Result<Value> {
         validate_name(id)?;
+        Self::require_windows_device_retry_binding()?;
         self.mutation(token, |tx| {
             let device = crate::management::revoke_windows_device(self, tx, token, id)?;
             Ok(view(&device))

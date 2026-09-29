@@ -1489,11 +1489,19 @@ pub async fn run(cli: Cli) -> Result<()> {
         },
         Command::WindowsDevice { command } => match command {
             WindowsDeviceCommand::Enroll { id, username, display_name, offline_ttl } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Windows device writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
                 remote.secret_destination()?;
                 remote.call(Method::POST, "/api/windows-devices", Some(json!({"id": id, "username": username, "display_name": display_name, "offline_ttl": offline_ttl})), true).await?
             }
             WindowsDeviceCommand::List => remote.call(Method::GET, "/api/windows-devices", None, true).await?,
-            WindowsDeviceCommand::Revoke { id } => remote.call(Method::DELETE, &format!("/api/windows-devices/{}", segment(&id)?), None, true).await?,
+            WindowsDeviceCommand::Revoke { id } => {
+                if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                    bail!("Windows device writes require --idempotency-key and --if-revision (from `riauth revision`)");
+                }
+                remote.call(Method::DELETE, &format!("/api/windows-devices/{}", segment(&id)?), None, true).await?
+            },
             WindowsDeviceCommand::Login { device_id, username, secret_stdin, password_stdin, reauth_session_stdin } => {
                 if secret_stdin && (password_stdin || reauth_session_stdin) {
                     bail!("Read only one value from stdin; put the device secret in RIAUTH_WINDOWS_DEVICE_SECRET");
