@@ -59,6 +59,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [SAML](saml.md) | IdP/source profiles, signatures, encryption and logout |
 | [Platform SAML IdP recipe](recipes/platform-saml-idp.md) | Fixture SP entity, the assertions the ignored xmlsec1 test makes, and the peer gaps that fixture leaves |
 | [SCIM](scim.md) | Inbound directory API and outbound reconciliation |
+| [Platform inbound SCIM recipe](recipes/platform-inbound-scim.md) | In-process HTTP fixture, the assertions that test makes, and the named-client gap that fixture leaves |
 | [LDAP synchronization](ldap.md) | Upstream directory plans and password authentication |
 | [LDAP import recipe](recipes/ldap-import.md) | Disposable OpenLDAP fixture, the assertions the ignored import test makes, and the peer gaps that fixture leaves |
 | [LDAP provider](ldap-provider.md) | Read-only LDAP listener and search behavior |

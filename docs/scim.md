@@ -34,6 +34,8 @@ GET User/Group, GET list and POST `.search` support `attributes` and `excludedAt
 
 See [SCIM protocol](https://www.rfc-editor.org/rfc/rfc7644.html) and [SCIM schemas](https://www.rfc-editor.org/rfc/rfc7643.html). The local HTTP test covers credential ownership, retries, filtering, atomic patch failure, group membership and session invalidation; it does not establish compatibility with every directory product.
 
+The [inbound SCIM recipe](recipes/platform-inbound-scim.md) names `scim_http_provisioning_is_owned_atomic_retriable_and_deprovisions_sessions`, separates its HTTP checks from its in-process calls, and records the source behavior that function leaves unasserted. That test was not run for the recipe. No named SCIM client is connected.
+
 ## Outbound provisioning
 
 Server-configured targets can receive selected users and optional groups through agent-reviewed, immutable plans:

@@ -846,7 +846,8 @@ Still outside this slice:
   the [OIDC relying-party recipe](recipes/oidc-relying-party.md),
   the [Platform SAML IdP recipe](recipes/platform-saml-idp.md),
   the [LDAP import recipe](recipes/ldap-import.md),
-  and the [upstream OIDC recipe](recipes/upstream-oidc.md)
+  the [upstream OIDC recipe](recipes/upstream-oidc.md),
+  and the [inbound SCIM recipe](recipes/platform-inbound-scim.md)
   are the D03 recipes written so far. Forward auth, the LDAP provider,
   and the SAML IdP are Platform profiles. The LDAP import recipe and the
   upstream OIDC recipe cover both editions. The relying-party recipe is the
