@@ -1724,6 +1724,85 @@ fn query(redirect: &str) -> std::collections::HashMap<String, String> {
         .into_owned()
         .collect()
 }
+
+#[tokio::test]
+async fn stage_start_reserves_one_request_and_retry_rebinds_after_cancel() {
+    let f = Fixture::new();
+    let _upstream = Upstream::new(&f, true).await;
+    stage_client(&f, false);
+    let (request, _) = authorization(&f, None, None);
+    let prepared = f.core.authorization_prepare(None, request.clone()).unwrap();
+    let stage_id = text(&prepared["source_stage"], "stage_id");
+    let authorization_id = text(&prepared["source_stage"], "authorization_id");
+    let transaction = text(&prepared, "transaction_id");
+    let stage: Value = f
+        .core
+        .store
+        .get("source_stages", &stage_id)
+        .unwrap()
+        .unwrap();
+    let suspension = text(&stage, "suspension_hash");
+    let login_key = text(&stage, "login_key");
+    let login: Value = f
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(stage["authorization_id"], authorization_id);
+    assert_eq!(stage["transaction"], transaction);
+    assert_eq!(login["stage"], stage_id);
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_stage_requests", &suspension)
+            .unwrap()
+            .as_deref(),
+        Some(stage_id.as_str())
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_polls", login["poll_hash"].as_str().unwrap())
+            .unwrap()
+            .as_deref(),
+        Some(login_key.as_str())
+    );
+    let authentication: Value = f
+        .core
+        .store
+        .get("authentication", &digest(&transaction))
+        .unwrap()
+        .unwrap();
+    assert_eq!(authentication["source_stage"], stage_id);
+
+    let reserved = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .authorization_prepare(None, request.clone())
+            .unwrap_err()
+            .message,
+        "An embedded source stage is already pending for this authorization request"
+    );
+    f.assert_snapshot(&reserved);
+
+    f.core
+        .source_stage_cancel(&stage_id, &authorization_id)
+        .unwrap();
+    let retried = f.core.authorization_prepare(None, request).unwrap();
+    let next_stage = text(&retried["source_stage"], "stage_id");
+    assert_ne!(next_stage, stage_id);
+    assert_ne!(text(&retried, "transaction_id"), transaction);
+    assert_eq!(
+        f.core
+            .store
+            .get::<String>("source_stage_requests", &suspension)
+            .unwrap()
+            .as_deref(),
+        Some(next_stage.as_str())
+    );
+}
+
 #[tokio::test]
 async fn suspend_then_resume_completes_the_original_request_and_replay_fails() {
     let f = Fixture::new();

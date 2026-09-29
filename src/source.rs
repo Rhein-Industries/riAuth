@@ -453,8 +453,8 @@ pub(crate) struct StartedLogin {
     pub(crate) body: Value,
 }
 #[derive(Clone, Serialize, Deserialize)]
-struct SourceStage {
-    id: String,
+pub(crate) struct SourceStage {
+    pub(crate) id: String,
     authorization_id: String,
     request_hash: String,
     suspension_hash: String,
@@ -810,9 +810,9 @@ impl Core {
             return Err(Error::internal("source stage expiry exceeds 10 minutes"));
         }
         let transaction = crypto::random_token("ri_auth_");
-        tx.put(
-            "authentication",
-            &digest(&transaction),
+        self.persist_source_stage_authentication(
+            tx,
+            &transaction,
             &AuthenticationTransaction {
                 request_hash: request_hash.clone(),
                 user_id: start.user_id.clone(),
@@ -847,8 +847,7 @@ impl Core {
         {
             return Err(Error::internal("source stage binding failed"));
         }
-        tx.put("source_stages", &stage.id, &stage)?;
-        tx.put("source_stage_requests", &suspension, &stage.id)?;
+        self.persist_source_stage_binding(tx, &stage, &suspension)?;
         audit(
             tx,
             stage.user_id.as_deref().unwrap_or("anonymous"),

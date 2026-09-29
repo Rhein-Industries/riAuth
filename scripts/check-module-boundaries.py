@@ -903,6 +903,45 @@ def main() -> None:
             ):
                 errors.append("src/source.rs: session-scoped source link read belongs in assembly")
             source_stage_assembly = (SRC / "assembly/source_stage.rs").read_text()
+            stage_creation = rust_function_body(source_protocol, "begin_source_stage")
+            stage_creation_compact = re.sub(r"\s+", "", stage_creation or "")
+            stage_creation_raw = rust_function_body(path.read_text(), "begin_source_stage")
+            stage_auth_write = rust_function_body(
+                source_stage_assembly, "persist_source_stage_authentication"
+            )
+            stage_binding_write = rust_function_body(
+                source_stage_assembly, "persist_source_stage_binding"
+            )
+            stage_auth_compact = re.sub(r"\s+", "", stage_auth_write or "")
+            stage_binding_compact = re.sub(r"\s+", "", stage_binding_write or "")
+            if (
+                stage_creation is None
+                or stage_creation_raw is None
+                or not (0 <= stage_creation_compact.find("self.source_start_in(")
+                        < stage_creation_compact.find("self.persist_source_stage_authentication(")
+                        < stage_creation_compact.find("tx.get::<Login>(")
+                        < stage_creation_compact.find("login.nonce!=stage.nonce")
+                        < stage_creation_compact.find("self.persist_source_stage_binding(")
+                        < stage_creation_compact.find("audit("))
+                or "Some(&stage_id)" not in stage_creation
+                or "source_stage:Some(stage_id.clone())" not in stage_creation_compact
+                or "login.stage.as_deref()!=Some(stage.id.as_str())" not in stage_creation_compact
+                or "login.source!=stage.source_id" not in stage_creation_compact
+                or "self.persist_source_stage_authentication(tx,&transaction,&AuthenticationTransaction{" not in stage_creation_compact
+                or "self.persist_source_stage_binding(tx,&stage,&suspension)?" not in stage_creation_compact
+                or re.search(
+                    r'\btx\s*\.\s*(?:put|delete)\s*\(\s*"(?:authentication|source_stages|source_stage_requests)"',
+                    stage_creation_raw,
+                )
+                or stage_auth_write is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_source_stage_authentication\s*\(", source_stage_assembly)
+                or 'tx.put("authentication",&digest(transaction),pending)' not in stage_auth_compact
+                or stage_binding_write is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+persist_source_stage_binding\s*\(", source_stage_assembly)
+                or not (0 <= stage_binding_compact.find('tx.put("source_stages",&stage.id,stage)?')
+                        < stage_binding_compact.find('tx.put("source_stage_requests",suspension,&stage.id)'))
+            ):
+                errors.append("src/source.rs: source stage creation one-use writes belong in assembly")
             source_stage_cancel = rust_function_body(
                 masked_rust_source(source_stage_assembly), "source_stage_cancel"
             )
