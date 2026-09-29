@@ -15,7 +15,8 @@ one binary and one backend.
 
 The default dataset is a fresh `init`: the bootstrap administrator, no extra
 users, and no group memberships. `--directory-users` and `--directory-groups`
-default to zero. When either is greater than zero, the script creates that
+default to zero. `--directory-users N` creates N accounts in addition to that
+administrator. When either flag is greater than zero, the script creates that
 many extra users and groups, then adds the administrator and every extra user
 to each of those groups. `GET /api/me` walks the administrator's per-user
 group index (`index_user_groups`), so those group names are the session-read
@@ -86,8 +87,11 @@ python3 scripts/q09_benchmark_slice.py \
 ```
 
 Add `--directory-users N --directory-groups G` for a verified larger directory.
-The default remains one administrator and no memberships. The report names that
-directory `q09-Nu-Gg`, so eight users and eight groups are `q09-8u-8g`.
+The default remains one administrator and no memberships. `N` is extra users
+in addition to that administrator, and `G` is groups. The report names that
+directory `q09-Nu-Gg`. `q09-2u-2g` is the administrator plus two extra users
+(three accounts) and two groups. `q09-8u-8g` is the administrator plus eight
+extra users (nine accounts) and eight groups.
 `--build-profile`, `--build-toolchain`, and `--build-features` are recorded as
 supplied. The script still hashes the measured file and does not infer the
 compiler from it.
@@ -107,9 +111,10 @@ as their working directory, and the report records the absolute artifact path.
 The fixture check shipped with the script is `--self-check` and
 `tests/test_q09_benchmark_slice.py`. The fixture proves the script's
 percentiles, error accounting, redaction, RSS/CPU sampling, background-counter
-delta, and group-writer overlap. It also builds a two-user, two-group
-directory, requires `Idempotency-Key` and `If-Match` on those writes, and
-checks the administrator's session-read groups, the user list, and each
+delta, and group-writer overlap. It also builds a `q09-2u-2g` directory:
+two extra users in addition to the bootstrap administrator (three accounts)
+and two groups. It requires `Idempotency-Key` and `If-Match` on those writes,
+and checks the administrator's session-read groups, the user list, and each
 group's members. Password values used for the extra users stay out of the
 report. A product run is what meets the real server's revision bumps and
 password hashing.
@@ -122,10 +127,11 @@ worktree. Their latency, throughput, and RSS stay in those reports.
 
 Accepted commit `db533e7` follows the benchmark script through `c992815`.
 Four same-head `q09-2u-2g` product runs at that commit were reported as
-verified for Essentials and Platform, each on redb and PostgreSQL: 40 quiet
-reads and 40 interference reads, zero read errors, and writer overlap. Those
-JSON reports are not in this worktree. Their latency, throughput, and RSS stay
-in those reports.
+verified for Essentials and Platform, each on redb and PostgreSQL. That name
+is two extra users in addition to the administrator (three accounts) and two
+groups. The reported result was 40 quiet reads and 40 interference reads,
+zero read errors, and writer overlap. Those JSON reports are not in this
+worktree. Their latency, throughput, and RSS stay in those reports.
 
 ### `q09-8u-8g` on macOS, dev profile
 
@@ -163,7 +169,8 @@ build features were `essentials` and `platform`.
 
 The shape was `--iterations 40 --warmup 5 --interference-cap 30
 --directory-users 8 --directory-groups 8`. The dataset name is `q09-8u-8g`:
-8 extra users, 8 groups, 72 memberships, and 9 members in each group. The
+8 extra users in addition to the bootstrap administrator (nine accounts),
+8 groups, 72 memberships, and 9 members in each group. The
 administrator session read listed `q09-dir-0001` through `q09-dir-0008`, and
 `dataset.verified` is true. The estimated general-request budget is 337, under
 the 500 cap. TLS was off and database encryption was off. The PostgreSQL runs
