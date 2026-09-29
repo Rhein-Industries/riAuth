@@ -10,6 +10,7 @@ use riauth::{
     jose::ClientAuthMethod,
     model::{Identity, Session},
     source::{Finish, OAuthProfile, Source, SourceIdentity, SourceInput, Start},
+    state::Manifest,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -786,6 +787,129 @@ fn source_links_keeps_session_scope_and_public_projection() {
         json!([{"id":"bob-link", "source":"corp", "issuer":issuer, "subject":"bob-upstream"}])
     );
     fixture.assert_snapshot(&after_logout);
+}
+
+#[test]
+fn source_link_export_keeps_scope_order_and_missing_user_failure() {
+    let fixture = Fixture::new();
+    let alice = fixture.user("alice");
+    let bob = fixture.user("bob");
+    let alice_id = fixture.core.me(&alice).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let bob_id = fixture.core.me(&bob).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let corp = oauth_source();
+    let mut other = corp.clone();
+    other.id = "other".into();
+    other.name = "Other source".into();
+    other.issuer = "https://other.example.test".into();
+    other.authorization_endpoint = "https://other.example.test/authorize".into();
+    other.token_endpoint = "https://other.example.test/token".into();
+    other.oauth_profile.as_mut().unwrap().userinfo_endpoint =
+        "https://other.example.test/userinfo".into();
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put("sources", &corp.id, &corp)?;
+            tx.put("sources", &other.id, &other)?;
+            for (id, source, issuer, subject, user_id) in [
+                ("a-allowed", "corp", &corp.issuer, "alice-corp", &alice_id),
+                ("b-user-denied", "corp", &corp.issuer, "bob-corp", &bob_id),
+                (
+                    "c-source-denied",
+                    "other",
+                    &other.issuer,
+                    "alice-other",
+                    &alice_id,
+                ),
+            ] {
+                tx.put(
+                    "source_links",
+                    id,
+                    &json!({"source":source,"issuer":issuer,"subject":subject,"user_id":user_id}),
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let reader = fixture
+        .core
+        .create_agent(
+            &fixture.admin,
+            NewAgent {
+                id: "source-export-reader".into(),
+                permissions: vec![
+                    Permission {
+                        action: "source.read".into(),
+                        resource: "source/corp".into(),
+                    },
+                    Permission {
+                        action: "user.read".into(),
+                        resource: "user/alice".into(),
+                    },
+                ],
+                ttl: 3600,
+                parent: None,
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let before = fixture.snapshot().unwrap();
+    let admin_links =
+        fixture.core.export_state(&fixture.admin).unwrap()["manifest"]["source_links"].clone();
+    assert_eq!(
+        admin_links,
+        json!([
+            {"source":"corp","username":"alice","subject":"alice-corp","issuer":corp.issuer},
+            {"source":"corp","username":"bob","subject":"bob-corp","issuer":corp.issuer},
+            {"source":"other","username":"alice","subject":"alice-other","issuer":other.issuer}
+        ])
+    );
+    assert_eq!(
+        fixture.core.export_state(&reader).unwrap()["manifest"]["source_links"],
+        json!([{"source":"corp","username":"alice","subject":"alice-corp","issuer":corp.issuer}])
+    );
+    fixture.assert_snapshot(&before);
+
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "source_links",
+                "z-missing-user",
+                &json!({"source":"other","issuer":other.issuer,"subject":"missing","user_id":"missing-user"}),
+            )
+        })
+        .unwrap();
+    let before_failure = fixture.snapshot().unwrap();
+    for token in [&reader, &fixture.admin] {
+        let error = fixture.core.export_state(token).unwrap_err();
+        assert_eq!(error.code, "server_error");
+        assert_eq!(error.message, "Internal server error");
+    }
+    let error = fixture
+        .core
+        .plan_state(
+            &fixture.admin,
+            Manifest {
+                api_version: "riauth/v1".into(),
+                target_state_fingerprint: Some("A".repeat(43)),
+                ..Default::default()
+            },
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error.code, "server_error");
+    assert_eq!(error.message, "Internal server error");
+    fixture.assert_snapshot(&before_failure);
 }
 
 #[test]

@@ -1,10 +1,12 @@
 //! Authorized source catalog read over concrete storage.
 
 use crate::{
+    agent::Principal,
     core::Core,
     crypto::digest,
-    error::Result,
-    source::{Link, Login, Source, SourceInput, Start},
+    error::{Error, Result},
+    model::User,
+    source::{Link, LinkSpec, Login, Source, SourceInput, Start},
     store::Tx,
 };
 use serde_json::{Value, json};
@@ -16,6 +18,32 @@ pub(crate) fn source_links_of(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> 
         .into_iter()
         .filter(|(_, l)| l.user_id == user_id)
         .map(|(id, l)| json!({"id":id,"source":l.source,"issuer":l.issuer,"subject":l.subject}))
+        .collect())
+}
+
+pub(crate) fn export_all_links(tx: &Tx<'_>) -> Result<Vec<LinkSpec>> {
+    let mut output = Vec::new();
+    for (_, link) in tx.list::<Link>("source_links")? {
+        let user = tx
+            .get::<User>("users", &link.user_id)?
+            .ok_or_else(|| Error::internal("Linked user missing"))?;
+        output.push(LinkSpec {
+            source: link.source,
+            subject: link.subject,
+            username: user.username,
+            issuer: Some(link.issuer),
+        });
+    }
+    Ok(output)
+}
+
+pub(crate) fn export_links(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<LinkSpec>> {
+    Ok(export_all_links(tx)?
+        .into_iter()
+        .filter(|link| {
+            actor.allows("source.read", &format!("source/{}", link.source))
+                && actor.allows("user.read", &format!("user/{}", link.username))
+        })
         .collect())
 }
 

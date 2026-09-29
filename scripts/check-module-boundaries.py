@@ -967,6 +967,46 @@ def main() -> None:
                         < portal_links_compact.find('link["name"]=json!(name.unwrap_or_else('))
             ):
                 errors.append("src/source.rs: source link storage projection belongs in assembly")
+            export_all = rust_function_body(source_catalog, "export_all_links")
+            export_all_compact = re.sub(r"\s+", "", export_all or "")
+            export_scoped = rust_function_body(source_catalog, "export_links")
+            export_scoped_compact = re.sub(r"\s+", "", export_scoped or "")
+            source_export_all = rust_function_body(path.read_text(), "export_all_links")
+            source_export_scoped = rust_function_body(path.read_text(), "export_links")
+            assembly_exports = re.sub(r"\s+", "", (SRC / "assembly.rs").read_text())
+            state_source = (SRC / "state.rs").read_text()
+            state_export = rust_function_body(state_source, "export_state")
+            state_export_compact = re.sub(r"\s+", "", state_export or "")
+            live_target = rust_function_body(state_source, "live_target_identity")
+            if (
+                re.sub(r"\s+", "", source_export_all or "") != "crate::assembly::source_export_all_links(tx)"
+                or re.sub(r"\s+", "", source_export_scoped or "") != "crate::assembly::source_export_links(tx,actor)"
+                or "export_all_linksassource_export_all_links" not in assembly_exports
+                or "export_linksassource_export_links" not in assembly_exports
+                or export_all is None
+                or not (0 <= export_all_compact.find('tx.list::<Link>("source_links")?')
+                        < export_all_compact.find('tx.get::<User>("users",&link.user_id)?')
+                        < export_all_compact.find('Error::internal("Linkedusermissing")')
+                        < export_all_compact.find("output.push(LinkSpec{")
+                        < export_all_compact.find("source:link.source")
+                        < export_all_compact.find("subject:link.subject")
+                        < export_all_compact.find("username:user.username")
+                        < export_all_compact.find("issuer:Some(link.issuer)")
+                        < export_all_compact.rfind("Ok(output)"))
+                or export_scoped is None
+                or not (0 <= export_scoped_compact.find("export_all_links(tx)?")
+                        < export_scoped_compact.find('actor.allows("source.read",&format!("source/{}",link.source))')
+                        < export_scoped_compact.find('actor.allows("user.read",&format!("user/{}",link.username))')
+                        < export_scoped_compact.find(".collect())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(|\.sort", export_all + export_scoped)
+                or state_export is None
+                or not (0 <= state_export_compact.find("self.store.read(|tx|")
+                        < state_export_compact.find("self.principal(tx,token)?")
+                        < state_export_compact.find("crate::source::export_links(tx,&actor)?"))
+                or live_target is None
+                or "crate::source::export_all_links(tx)?" not in live_target
+            ):
+                errors.append("src/source.rs: source link export reads and scope filter belong in assembly")
             source_stage_assembly = (SRC / "assembly/source_stage.rs").read_text()
             pending_stage = rust_function_body(source_stage_assembly, "enforce_pending_stage")
             pending_compact = re.sub(r"\s+", "", pending_stage or "")

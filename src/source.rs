@@ -145,28 +145,10 @@ pub(crate) fn reconcile_link(
     }))
 }
 pub(crate) fn export_all_links(tx: &Tx<'_>) -> Result<Vec<LinkSpec>> {
-    let mut output = Vec::new();
-    for (_, link) in tx.list::<Link>("source_links")? {
-        let user = tx
-            .get::<User>("users", &link.user_id)?
-            .ok_or_else(|| Error::internal("Linked user missing"))?;
-        output.push(LinkSpec {
-            source: link.source,
-            subject: link.subject,
-            username: user.username,
-            issuer: Some(link.issuer),
-        });
-    }
-    Ok(output)
+    crate::assembly::source_export_all_links(tx)
 }
 pub(crate) fn export_links(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<LinkSpec>> {
-    Ok(export_all_links(tx)?
-        .into_iter()
-        .filter(|link| {
-            actor.allows("source.read", &format!("source/{}", link.source))
-                && actor.allows("user.read", &format!("user/{}", link.username))
-        })
-        .collect())
+    crate::assembly::source_export_links(tx, actor)
 }
 
 /// Persisted reservation metadata is shared by both editions. Essentials must
