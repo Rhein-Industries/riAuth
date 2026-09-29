@@ -241,6 +241,7 @@ pub(crate) fn authorization_identity(
         id: evidence.source.as_str().to_owned(),
         fingerprint: evidence.fingerprint.clone(),
         link: evidence.link.clone(),
+        pin_retired: false,
     })
 }
 

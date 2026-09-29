@@ -2559,6 +2559,14 @@ pub(crate) fn unlink_source(
     Ok(result)
 }
 
+fn idp_certificate_pin(source: &Source) -> &[String] {
+    source
+        .saml
+        .as_ref()
+        .map(|settings| settings.idp_certificates_pem.as_slice())
+        .unwrap_or(&[])
+}
+
 pub(crate) fn write_source(
     tx: &Tx<'_>,
     actor: &Principal,
@@ -2588,7 +2596,13 @@ pub(crate) fn write_source(
             return Err(Error::bad("Confidential source requires a secret"));
         }
     }
-    let changed = tx.get::<Source>("sources", &source.id)?.as_ref() != Some(source);
+    let previous = tx.get::<Source>("sources", &source.id)?;
+    let changed = previous.as_ref() != Some(source);
+    // Mark only rows this certificate-pin write revokes. An earlier revocation
+    // stays unmarked, so a later trust change cannot spend a signed logout on it.
+    let pin_changed = previous.as_ref().is_none_or(|stored| {
+        idp_certificate_pin(stored) != idp_certificate_pin(source)
+    });
     tx.put("sources", &source.id, source)?;
     if changed {
         for (_, mut session) in tx.list::<crate::model::Session>("sessions")? {
@@ -2600,6 +2614,11 @@ pub(crate) fn write_source(
                 && !session.revoked
             {
                 session.revoked = true;
+                if pin_changed
+                    && let Some(linked) = session.identity.source.as_mut()
+                {
+                    linked.pin_retired = true;
+                }
                 tx.put("sessions", &session.id, &session)?;
                 crate::logout::queue_session(tx, &session.id)?;
                 crate::ssf::enqueue(

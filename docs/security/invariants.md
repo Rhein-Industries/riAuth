@@ -241,8 +241,10 @@ the path commits, or revoke another actor's family merely by guessing a code.
 [passkeys](../../src/passkey.rs) finish paths; [Windows](../../src/windows_login.rs)
 `windows_ticket_redeem`; [SAML logout](../../src/saml/logout.rs) `source_logout`
 records a request only after its signature verifies and every session index
-matches a source session, including one already revoked by a pinned-certificate
-change. Nested `Ok(Err(...))` differs from a transaction error:
+matches a source session whose fingerprint is current, or a session the same
+pinned-certificate write revoked. A session revoked for another reason stays
+unmatched after a later trust change, so that signed request stays unrecorded.
+Nested `Ok(Err(...))` differs from a transaction error:
 the former can commit failure/replay state, the latter rolls the writer back.
 
 **Existing regressions.** [OIDC](../../tests/identity/oidc.rs)
@@ -253,7 +255,8 @@ the former can commit failure/replay state, the latter rolls the writer back.
 [factors](../../tests/identity/factors.rs)
 `unknown_discoverable_credential_is_rejected_and_ceremony_consumed`;
 [SAML logout](../../tests/identity/saml_logout.rs)
-`saml_source_logout_after_certificate_rollover_is_one_time_and_replay_spares_the_next_login`.
+`saml_source_logout_after_certificate_rollover_is_one_time_and_replay_spares_the_next_login`,
+`saml_source_logout_unrelated_revocation_does_not_consume_old_request_after_trust_replacement`.
 
 **Missing coverage / later contract.** Q02-C03 records each path's success,
 client-error consumption, server-error rollback and replay-family effect.

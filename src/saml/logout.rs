@@ -602,13 +602,15 @@ pub(crate) fn source_logout(
         {
             continue;
         }
-        // A pinned-certificate change revokes this row and leaves its previous
-        // fingerprint. The index still names that source session, so a verified
-        // request is consumed when the row is already revoked.
+        // pin_retired is set only by the certificate-pin write that revokes the
+        // row. Any other revoked row keeps the old fingerprint unmatched, so a
+        // current signer cannot spend an old request through it.
         if let Some(session) = tx.session_record(&sid)?
             && session.expires_at > now()
             && session.identity.source.as_ref().is_some_and(|linked| {
-                linked.id == id && (linked.fingerprint == fingerprint || session.revoked)
+                linked.id == id
+                    && (linked.fingerprint == fingerprint
+                        || (session.revoked && linked.pin_retired))
             })
         {
             sessions.insert(sid);

@@ -101,6 +101,7 @@ async fn source_unlink_receipts_bind_live_self_service_sessions_across_interface
                     id: "upstream".into(),
                     fingerprint: "fixture".into(),
                     link: id.into(),
+                    pin_retired: false,
                 });
                 linked.token_hash = digest(&format!("ri_session_{subject}"));
                 tx.put("sessions", &session_id, &linked)?;

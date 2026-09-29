@@ -1076,6 +1076,7 @@ impl Core {
                     id: source.id.clone(),
                     fingerprint: pending.fingerprint.clone(),
                     link: link_id,
+                    pin_retired: false,
                 }),
             },
             expires_at: (now() + self.config.session_ttl).min(
