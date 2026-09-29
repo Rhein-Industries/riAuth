@@ -1243,6 +1243,11 @@ fn delivery_outcomes_separate_refused_ambiguous_retried_and_stopped_work() {
     );
 
     // Operator reconciliation: restore the remote account and retry the stale row.
+    // The claim that resolved Alice froze the due cutoff. This retry is due at
+    // the current second, which can fall outside that cutoff. The sweep then
+    // inspects no row, deletes the cursor, and leaves the retry pending with
+    // no attempt consumed. The next step has a fresh cutoff and dispatches.
+    // A retry inside the frozen cutoff dispatches on the first step.
     let mut remote = scim_body(&bob);
     remote["id"] = json!("p-bob");
     remote["meta"] = json!({"version": "1"});
@@ -1253,8 +1258,31 @@ fn delivery_outcomes_separate_refused_ambiguous_retried_and_stopped_work() {
         .provisioning_deactivation_retry(&f.admin, id)
         .unwrap();
     assert_eq!(retried["delivery_state"], "pending");
-    assert!(f.core.deactivation_step().unwrap());
-    assert_eq!(listed(&f, &bob)["delivery_state"], "succeeded");
+    let due_at = retried["next_attempt"].clone();
+    let mut delivered = false;
+    for _ in 0..2 {
+        let dispatched = f.core.deactivation_step().unwrap();
+        let row = listed(&f, &bob);
+        if row["delivery_state"] == "succeeded" {
+            assert!(dispatched, "succeeded without a dispatch: {row}");
+            assert_eq!(row["outcome"], "deactivated", "{row}");
+            assert_eq!(row["uncertain"], false, "{row}");
+            delivered = true;
+            break;
+        }
+        assert!(!dispatched, "dispatch left the retry undelivered: {row}");
+        assert_eq!(row["status"], "pending", "{row}");
+        assert!(row["hold"].is_null(), "{row}");
+        assert_eq!(row["attempts"], 0, "{row}");
+        assert_eq!(row["delivery_state"], "pending", "{row}");
+        assert_eq!(row["uncertain"], false, "{row}");
+        assert_eq!(row["next_attempt"], due_at, "{row}");
+    }
+    assert!(
+        delivered,
+        "retried deactivation was not delivered: {}",
+        listed(&f, &bob)
+    );
     assert_eq!(payroll.user("p-bob")["active"], false);
     assert_eq!(
         f.core
