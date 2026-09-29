@@ -3,13 +3,11 @@ use crate::{
     core::Core,
     error::{Error, Result},
     model::{Session, User},
-    pam::{self, AccessGrant, AccessRequest, NewAccessRequest},
+    pam::{AccessGrant, AccessRequest, NewAccessRequest},
     store::Tx,
 };
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
-
-const PENDING: &str = "pending";
 
 /// Groups conferred by an unexpired, unrevoked grant with no known third-party
 /// credential exposure. This does not read `Group.members`.
@@ -28,23 +26,7 @@ pub fn extra_groups(tx: &Tx<'_>, user_id: &str, now: u64) -> Result<BTreeSet<Str
 }
 
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
-    for (key, request) in tx.maintenance_page::<AccessRequest>("access_requests")? {
-        let anchor = if request.status == PENDING {
-            request.created_at
-        } else {
-            request.decided_at.unwrap_or(request.created_at)
-        };
-        if anchor.saturating_add(pam::RETAIN_SECONDS) <= at {
-            tx.delete("access_requests", &key)?;
-        }
-    }
-    for (key, grant) in tx.maintenance_page::<AccessGrant>("access_grants")? {
-        let anchor = grant.revoked_at.unwrap_or(grant.expires_at);
-        if anchor.saturating_add(pam::RETAIN_SECONDS) <= at {
-            tx.delete("access_grants", &key)?;
-        }
-    }
-    Ok(())
+    crate::management::cleanup_access(tx, at)
 }
 
 impl Core {

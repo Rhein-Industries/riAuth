@@ -946,7 +946,8 @@ impl Core {
         self.store
             .write(|tx| crate::workflow::executor::cleanup(tx, at))?;
         #[cfg(feature = "platform")]
-        self.store.write(|tx| crate::pam::cleanup(tx, at))?;
+        self.store
+            .write(|tx| crate::management::cleanup_access(tx, at))?;
         self.store
             .write(|tx| crate::identity::logout_queue::cleanup(tx, at))?;
         #[cfg(feature = "platform")]

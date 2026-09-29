@@ -809,6 +809,127 @@ async fn expired_grant_revoke_rejects_fresh_writes_but_replays_committed_result(
 }
 
 #[tokio::test]
+async fn pam_cleanup_preserves_api_replay_and_only_prunes_retained_history() {
+    let f = PamFixture::new();
+    let app = riauth::api::router(f.core.clone());
+    let request_at = f.revision();
+    let ask = || {
+        bearer(
+            "/api/access/requests",
+            &f.alice,
+            "cleanup-request",
+            Some(request_at),
+            Some(json!({"group":"ops","reason":"Time-limited support","ttl":3600})),
+        )
+    };
+    let requested = send(&app, ask()).await;
+    assert_eq!(requested.0, StatusCode::OK);
+    let request_id = text(&requested.1, "id");
+    let decision_at = f.revision();
+    let approve_path = format!("/api/access/requests/{request_id}/approve");
+    let approve = || {
+        bearer(
+            &approve_path,
+            &f.approver,
+            "cleanup-approval",
+            Some(decision_at),
+            None,
+        )
+    };
+    let approved = send(&app, approve()).await;
+    assert_eq!(approved.0, StatusCode::OK);
+    let grant_id = text(&approved.1["grant"], "id");
+    let revision = f.revision();
+    let receipts = f.core.store.list::<Value>("receipts").unwrap().len();
+
+    f.core.cleanup().unwrap();
+    assert_eq!(send(&app, ask()).await, requested);
+    assert_eq!(send(&app, approve()).await, approved);
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!(["ops"]));
+    assert_eq!(f.revision(), revision);
+    assert_eq!(
+        f.core.store.list::<Value>("receipts").unwrap().len(),
+        receipts
+    );
+
+    // Expiry removes authority immediately, but cleanup retains the row and
+    // exact committed receipt until their independent retention deadlines.
+    f.core
+        .store
+        .write(|tx| {
+            let mut grant: AccessGrant = tx.get("access_grants", &grant_id)?.unwrap();
+            grant.expires_at = now() - 1;
+            tx.put("access_grants", &grant_id, &grant)
+        })
+        .unwrap();
+    assert_eq!(f.core.me(&f.alice).unwrap()["groups"], json!([]));
+    f.core.cleanup().unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<AccessGrant>("access_grants", &grant_id)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(send(&app, approve()).await, approved);
+    assert_eq!(
+        send(
+            &app,
+            bearer(
+                &format!("/api/access/grants/{grant_id}/revoke"),
+                &f.approver,
+                "cleanup-fresh-revoke",
+                Some(revision),
+                None,
+            ),
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(f.audit_count("access.revoke", &grant_id), 0);
+
+    // Advance all three persisted deadlines together to model the later
+    // maintenance pass, including the receipt tombstone's own lifetime.
+    f.core
+        .store
+        .write(|tx| {
+            let old = now() - 8 * 86_400;
+            let mut request: AccessRequest = tx.get("access_requests", &request_id)?.unwrap();
+            request.decided_at = Some(old);
+            tx.put("access_requests", &request_id, &request)?;
+            let mut grant: AccessGrant = tx.get("access_grants", &grant_id)?.unwrap();
+            grant.expires_at = old;
+            tx.put("access_grants", &grant_id, &grant)?;
+            for (key, mut receipt) in tx.list::<Value>("receipts")? {
+                receipt["expires_at"] = json!(old);
+                tx.put("receipts", &key, &receipt)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    f.core.cleanup().unwrap();
+    assert!(
+        f.core
+            .store
+            .get::<AccessRequest>("access_requests", &request_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<AccessGrant>("access_grants", &grant_id)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(f.core.store.list::<Value>("receipts").unwrap().len(), 0);
+    assert_eq!(f.audit_count("access.request", &request_id), 1);
+    assert_eq!(f.audit_count("access.approve", &request_id), 1);
+    assert_eq!(f.revision(), revision);
+}
+
+#[tokio::test]
 async fn temporary_access_fences_parent_agent_and_help_desk_credentials_until_end() {
     let f = PamFixture::new();
     let operator = f.user("operator");

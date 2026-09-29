@@ -22,6 +22,8 @@
 //! delivery cookie; the same writer owns start, one-time poll and cancellation.
 //! Platform temporary-access requests, decisions and revocations use live
 //! human-session authority, scoped receipts and the management revision.
+//! Its maintenance cleanup shares the writer boundary, but only removes
+//! retained history; no caller, revision or retry receipt exists for a sweep.
 //! Platform SSF receiver and administrator stream writes use live owner/scope
 //! checks, the management revision and keyed receipts in one transaction.
 //! RFC 7591 registration reaches the same write path with its own bounded
@@ -49,7 +51,9 @@ pub(crate) use devices::{DeviceDecisionAuthority, decide_device, device_approval
 #[cfg(feature = "platform")]
 pub(crate) use pam::review_access;
 #[cfg(feature = "platform")]
-pub(crate) use pam::{decide_access, request_access, revoke_access, validate_access_request};
+pub(crate) use pam::{
+    cleanup_access, decide_access, request_access, revoke_access, validate_access_request,
+};
 pub(crate) use portal_approvals::{
     PortalPollOutcome, cancel_portal_sign_in, decide_portal_sign_in, poll_portal_sign_in,
     start_portal_sign_in,

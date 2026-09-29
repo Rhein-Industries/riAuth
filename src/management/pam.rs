@@ -72,6 +72,29 @@ pub(crate) fn validate_access_request(input: &NewAccessRequest) -> Result<()> {
     crate::pam::validate_request(input)
 }
 
+/// A maintenance-only transaction writer. Entitlement expiry is enforced by
+/// `extra_groups` at read time; this sweep only removes retained history.
+/// With no caller request, it must not create a receipt, revision or audit.
+pub(crate) fn cleanup_access(tx: &Tx<'_>, at: u64) -> Result<()> {
+    for (key, request) in tx.maintenance_page::<AccessRequest>("access_requests")? {
+        let anchor = if request.status == PENDING {
+            request.created_at
+        } else {
+            request.decided_at.unwrap_or(request.created_at)
+        };
+        if anchor.saturating_add(RETAIN_SECONDS) <= at {
+            tx.delete("access_requests", &key)?;
+        }
+    }
+    for (key, grant) in tx.maintenance_page::<AccessGrant>("access_grants")? {
+        let anchor = grant.revoked_at.unwrap_or(grant.expires_at);
+        if anchor.saturating_add(RETAIN_SECONDS) <= at {
+            tx.delete("access_grants", &key)?;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn request_access(
     core: &Core,
     tx: &Tx<'_>,
