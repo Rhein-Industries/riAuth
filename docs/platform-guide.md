@@ -14,7 +14,7 @@ Sections 11 through 13 add three Platform-only procedures: one configured
 password workflow, one SAML service provider and one SAML source, and one
 LDAP provider listener. Section 14 is the same browser invitation contract
 as Essentials section 11. The install in section 1 selects the Platform
-build. The walkthrough records ten loopback observations. The first
+build. The walkthrough records eleven loopback observations. The first
 reported the Essentials catalog. The second was a copied Platform debug
 server whose artifact catalog had `edition` `platform` and `build_features`
 `["essentials", "platform"]`. The third used that same server snapshot with
@@ -36,7 +36,13 @@ jobs` against one disposable loopback SCIM fixture. The tenth used
 only that server snapshot and ran section 13 `schema provider`,
 `client create`, and `agent create`, restarted `serve` with
 `[ldap_listeners.legacy]`, and searched that LDAPS listener with Homebrew
-OpenLDAP `ldapsearch`. The commands in sections
+OpenLDAP `ldapsearch`. The eleventh used only that server snapshot and ran
+section 12 `schema`, `saml import-sp`, `validate`, `plan`, `apply`,
+`saml metadata`, both printed `keys import` commands, `source put`,
+`source list`, `source metadata`, and `source start` without `--link`.
+It checked the exported metadata with `xmlsec1` and completed one
+loopback login with a local GNU Lasso helper. It did not run
+`source finish` and it did not open a browser. The commands in sections
 1 through 13 are the ones
 implemented in this tree: `[features]` in
 [Cargo.toml](../Cargo.toml), the [server CLI](../src/cli.rs),
@@ -45,7 +51,7 @@ implemented in this tree: `[features]` in
 
 The three slices were checked by reading the source and the current docs,
 then by `python3 scripts/check-docs.py`. Section 14's password acceptance
-was run once on loopback. Ten disposable loopback runs are recorded in
+was run once on loopback. Eleven disposable loopback runs are recorded in
 [Platform CLI walkthrough](roadmap/d01-platform-cli-walkthrough.md). No Cargo
 build was run for any of them. The first stopped after one `local-demo`
 client create on the Essentials catalog. The second repeated setup on the
@@ -75,7 +81,15 @@ jobs` against a disposable loopback SCIM fixture. The tenth created
 local group `staff`, added `admin`, created enabled non-administrator
 `outsider` outside `staff`, created public client `legacy-directory` and
 agent `ldap-directory`, restarted `serve` with one LDAPS listener, and
-searched that listener with Homebrew OpenLDAP `ldapsearch`. Rename,
+searched that listener with Homebrew OpenLDAP `ldapsearch`. The eleventh
+created four local RSA domains, imported `saml-signing` and `source-sp`,
+imported service-provider metadata for `https://sp.example.com/metadata`,
+validated and applied public client `legacy-sp`, exported identity-provider
+metadata, put source `corporate-saml`, wrote source metadata to a new file
+after the printed path was refused, and ran `source start` without
+`--link`. `xmlsec1` verified both metadata signatures. A local GNU Lasso
+helper completed one signed redirect and HTTP-POST acceptance. `source
+finish` was not run. Rename,
 remove, passkey sign-in, passkey invitation acceptance, hardware, peers, and
 Essentials-guide execution remain unrun. The
 [A01 coverage inventory](roadmap/coverage-inventory.md) still describes D01
@@ -90,7 +104,10 @@ import and outbound SCIM steps on this Platform server. Sections 11 through
 against a disposable OpenLDAP listener. Section 10 was executed once on
 loopback against a disposable SCIM fixture. Section 13 was executed
 once on loopback against a private CA and one LDAPS listener. Section 12
-was read from this tree and was not executed. Assembly and
+was executed once on loopback. The printed source-metadata path was
+refused because the imported service-provider file already existed, and
+the export was written to a new file. `source finish` was not run.
+Assembly and
 downgrade rules stay in [server editions](editions.md).
 
 ## Shared semantics
@@ -1481,8 +1498,11 @@ the service provider's metadata XML, an RSA private key PEM, and the matching
 public certificate PEM. `saml import-sp` reads at most 48 KiB plus one byte
 of XML and 16 KiB plus one byte of the certificate. `keys import` reads the
 private key through the private-file reader, limited to 16384 bytes. Keep
-those files owner-readable under `deployment-private/platform-lab/`. This
-task did not create them.
+those files owner-readable under `deployment-private/platform-lab/`. The
+section 12 loopback record created an identity-provider key and certificate,
+service-provider metadata, a source service-provider key and certificate,
+and one pinned upstream certificate in its disposable lab. It did not write
+`deployment-private/` in the worktree.
 
 The upstream half needs the same kind of local RSA key, the service-provider
 certificate that matches it, and one to four pinned identity-provider
@@ -1528,8 +1548,9 @@ In this tree, the CLI gate in [src/cli.rs](../src/cli.rs) covers `keys import`,
 `keys bind`, and `keys generate`, and `configure_key` in
 [src/assembly/keyring.rs](../src/assembly/keyring.rs) checks the request
 context before `mutation`. The imports below pass both flags. This procedure
-prints the two imports. `keys bind` and `keys generate` stay unprinted. Neither
-loopback record ran a signing-key command.
+prints the two imports. `keys bind` and `keys generate` stay unprinted. The
+section 12 loopback record ran both printed imports and did not run
+`keys bind` or `keys generate`.
 
 `source put` follows the scoped-mutation rule. An agent or a delegated
 human sends `If-Match` with the current revision. The administrator
@@ -1642,9 +1663,11 @@ adds none.
 
 The public metadata URL, relative to this issuer, is
 `/saml/legacy-sp/metadata`. The browser sign-in and logout behavior is the
-SAML page's. Registering the exported metadata at a service provider, and
-starting a login from that service provider, is peer work this task did not
-do.
+SAML page's. The section 12 loopback record verified the exported metadata
+with `xmlsec1` and completed one signed redirect plus HTTP-POST acceptance
+with a local GNU Lasso helper. That helper did not contact
+`https://sp.example.com`. No named service provider was registered, and
+logout was not run.
 
 For the upstream source, import a second local RS256 domain and write a
 `SourceInput` file. `riauth schema source-input` prints that schema. Omit
@@ -1701,7 +1724,9 @@ riauth --server http://localhost:9000 source put \
   --file deployment-private/platform-lab/corporate-saml.json
 riauth --server http://localhost:9000 source list
 riauth --server http://localhost:9000 source metadata corporate-saml \
-  --out deployment-private/platform-lab/sp-metadata.xml
+  --out deployment-private/platform-lab/source-metadata.xml
+riauth --server http://localhost:9000 source start corporate-saml \
+  --out deployment-private/platform-lab/source-transaction.json
 ```
 
 `source put` posts the file to `/api/sources`. The source signing domain
@@ -1710,13 +1735,18 @@ certificate must match it. A missing domain fails with
 `SAML source signing domain is missing`. A mismatched certificate fails with
 `SAML source SP certificate does not match its signing domain`.
 
-`source metadata` writes the metadata XML privately. The public copy is
+`source metadata` writes the metadata XML privately. An existing `--out`
+fails with `Refusing to overwrite` and the path. That output must not be
+the `sp-metadata.xml` file already passed to `saml import-sp`. The command
+above uses `source-metadata.xml`. The public copy is
 `/saml/sources/corporate-saml/metadata`, and the assertion consumer is
 `/saml/sources/corporate-saml/acs`, both relative to this issuer. Registering
 that metadata at the upstream identity provider was not done.
 
-`source start` and `source finish` are implemented. This task did not run
-them. `source start` refuses an existing `--out` with
+`source start` and `source finish` are implemented. The section 12 record
+ran `source start corporate-saml` without `--link` and did not fetch the
+printed authorization URL. It did not run `source finish`. `source start`
+refuses an existing `--out` with
 `Source transaction file already exists`, writes the credential privately,
 and prints `authorization_url`, `transaction_file`, and `instruction`.
 The instruction text is `Authenticate at the upstream provider, then inspect and finish this request in the CLI`.
@@ -1753,22 +1783,39 @@ sessions that already carry that source. This example has no such session.
 
 `validate` on the client manifest, once `settings.saml` is the report
 object, prints `valid` true and `secret_values_read` false. `resources`
-counts that one client. Plan and apply follow the same review rules as
+counts that one client. The section 12 snapshot accepted that object with
+`secret_ref` and `secret_version` omitted. It also accepted the printed
+`SourceInput` with `client_secret` omitted and with `name_attribute`,
+`email_attribute`, `email_verified_attribute`, `slo_redirect_url`, and
+`slo_post_url` omitted. The stored source had those five fields null.
+`ClientSpec` in [src/state.rs](../src/state.rs) and source `Settings` in
+[src/source/saml_types.rs](../src/source/saml_types.rs) declare those fields
+without `#[serde(default)]`. This snapshot did not return `missing field`.
+Plan and apply follow the same review rules as
 section 11. Apply of a new client records a create for `client/legacy-sp`.
 The manifest does not put a SAML source. The source is the separate
 `source put`.
 
 ### Unrun and peer evidence
 
-This task did not create keys or metadata, did not run the `revision` or
-`keys import` printed in this section, and did not run `saml import-sp`,
-`validate`, `plan`, `apply`, `saml metadata`, `source put`, `source list`, or
-`source metadata`. It did not run `source start` or `source finish`.
-No service provider loaded the identity provider metadata. No upstream
-identity provider received an AuthnRequest or posted a response. Logout,
-assertion encryption, and a browser source-stage run were not exercised.
-The `xmlsec1` cargo tests in the SAML page are test commands, not operator
-steps, and they were not run.
+The section 12 loopback record created the local key and metadata files,
+then ran `revision`, both printed `keys import` commands, `saml import-sp`,
+`schema provider`, `schema manifest`, `schema source-input`, `validate`,
+`plan`, `apply`, `saml metadata`, `source put`, `source list`,
+`source metadata`, and `source start` without `--link`. `xmlsec1` verified
+the two exported metadata files. A local GNU Lasso 2.9.0 helper loaded the
+identity-provider metadata and accepted one HTTP-POST response. The helper
+did not contact `https://sp.example.com`. `source start` did not fetch
+`https://idp.example.com`.
+
+Still unrun: `source finish`, logout, assertion encryption, a browser
+source-stage login, `keys bind`, `keys generate`, and the `xmlsec1` cargo
+tests named on the SAML page. `scripts/test-saml-sp.sh` was not run. No
+named service provider and no upstream identity provider received the
+metadata or an AuthnRequest. The Lasso helper is not a customer peer and
+not a conformance result. The snapshot's upstream callback differs from
+the current source, so this record does not treat `source finish`, an ACS
+post, or a browser source-stage login as a current-source observation.
 
 ## 13. Serve one LDAP provider listener
 
@@ -2295,16 +2342,27 @@ same server snapshot: `schema provider`, `client create` for public client
 OpenLDAP `ldapsearch` with `LDAPTLS_REQCERT=hard`. The service search
 returned `admin` and group `staff`. The `admin` password bind returned only
 that account. A wrong password and enabled non-member `outsider` each
-exited 49. An unrelated CA was rejected before the bind. Section 12 remains
-a source-reviewed procedure. The generated `init` file contains empty `[directories]`,
+exited 49. An unrelated CA was rejected before the bind. Section 12 was
+executed once on that same server snapshot: both printed `keys import`
+commands, `saml import-sp`, `validate`, `plan`, `apply`, `saml metadata`,
+`source put`, `source list`, `source metadata`, and `source start` without
+`--link`. The printed `source metadata --out` path was the existing
+service-provider metadata file and exited with `Refusing to overwrite`.
+The export was written to a new file. `xmlsec1` verified both signatures.
+A local GNU Lasso helper completed one signed redirect and HTTP-POST
+acceptance. `source finish` was not run. The generated `init` file contains empty `[directories]`,
 `[workspace_directories]`, `[entra_directories]`, `[scim_targets]`,
 `[ldap_listeners]`, `[proxy_listeners]`, `[radius_listeners]`, and
 `[signers]` tables, and no directory id until the operator appends one. It
-has no workflow table and no SAML client. Inbound SCIM and SAML commands
-were not executed here. The section 13 listener was one loopback LDAPS peer
+has no workflow table and no SAML client. Inbound SCIM commands were not
+executed here. The section 12 run did execute the SAML preparation commands
+above. The section 13 listener was one loopback LDAPS peer
 with a private CA. It was not Active Directory, not a customer directory,
 and not a production TLS deployment. No named service provider, SaaS
-directory, or upstream identity provider was contacted. The section 9
+directory, or upstream identity provider was contacted. The section 12
+Lasso helper and `xmlsec1` checks were local signature and login checks on
+loopback metadata. They were not a named service provider, not a customer
+identity provider, and not a conformance suite. The section 9
 directory was the disposable loopback `slapd`, not a customer directory.
 The section 10 peer was a disposable loopback SCIM fixture, not a customer
 directory and not a conformance suite.
@@ -2386,8 +2444,12 @@ Still outside this slice, as later tasks:
   wrong-password rejection, and non-member rejection were run against a
   disposable loopback LDAPS listener. Homebrew OpenLDAP `ldapsearch`
   verified that leaf. The listener was not Active Directory and was not a
-  production TLS deployment. The
-  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has ten runs.
+  production TLS deployment. One section 12 preparation chain was run on
+  that same server snapshot. `xmlsec1` checked the exported metadata, and a
+  local GNU Lasso helper completed one signed redirect and HTTP-POST
+  acceptance. That helper was not a named service provider and not a
+  conformance suite. `source finish` was not run. The
+  [loopback record](roadmap/d01-platform-cli-walkthrough.md) has eleven runs.
   The first supplies `riauth capabilities`, local `init`, `serve`, `/readyz`,
   CLI `login`, `doctor`, and one `local-demo` client create on a binary whose
   catalog edition was `essentials`. The second supplies the same setup on a
@@ -2413,4 +2475,9 @@ Still outside this slice, as later tasks:
   `staff`. The tenth supplies section 13 `schema provider`, `client create`,
   `agent create`, the LDAPS listener on `127.0.0.1:1636`, and Homebrew
   OpenLDAP `ldapsearch` on that same server snapshot. The service search
-  returned `admin` and group `staff`. D01 remains incomplete.
+  returned `admin` and group `staff`. The eleventh supplies section 12
+  schema, both `keys import` commands, `saml import-sp`, validate, plan,
+  apply, `saml metadata`, `source put`, `source list`, `source metadata`,
+  and `source start` without `--link` on that same server snapshot.
+  `xmlsec1` verified the exported metadata. A local GNU Lasso helper
+  accepted one HTTP-POST response. `source finish` was not run. D01 remains incomplete.

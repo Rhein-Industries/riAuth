@@ -3,7 +3,7 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
-This page records ten disposable loopback runs of the
+This page records eleven disposable loopback runs of the
 [Platform guide](../platform-guide.md). The first used an Essentials-catalog
 binary in place and stopped after one client registration. The second copied
 a Platform-catalog server snapshot and continued through the server CLI group,
@@ -23,12 +23,18 @@ ninth copied only that server snapshot and ran section 10 `provision targets`,
 disposable loopback SCIM fixture. The tenth copied only that server
 snapshot and ran section 13 `schema provider`, `client create`, and
 `agent create`, restarted `serve` with one LDAPS listener, and searched it
-with Homebrew OpenLDAP `ldapsearch`. No run used an external peer or
+with Homebrew OpenLDAP `ldapsearch`. The eleventh copied only that server
+snapshot and ran section 12 schema, `saml import-sp`, validate, plan,
+apply, `saml metadata`, both printed `keys import` commands, `source put`,
+`source list`, `source metadata`, and `source start` without `--link`.
+It verified exported metadata with `xmlsec1` and completed one loopback
+login with a local GNU Lasso helper. No run used an external peer or
 `cargo install`. The first two runs did not launch `riauthctl` or
-`riauth-maintenance`. The fourth, fifth, sixth, seventh, eighth, ninth, and
-tenth runs did not launch them either. The fifth and sixth runs opened a
-browser. The fifth stored no passkey. The sixth did not start a passkey
-ceremony. The seventh, eighth, ninth, and tenth did not open a browser.
+`riauth-maintenance`. The fourth, fifth, sixth, seventh, eighth, ninth,
+tenth, and eleventh runs did not launch them either. The fifth and sixth
+runs opened a browser. The fifth stored no passkey. The sixth did not
+start a passkey ceremony. The seventh, eighth, ninth, tenth, and eleventh
+did not open a browser.
 
 ## Essentials catalog run
 
@@ -3056,6 +3062,221 @@ Still unrun on this run:
 - `directory workspace` and `directory entra`
 - inbound `riauth scim`
 - agent rotate and agent revoke
+- `cargo install`
+- `riauthctl` and `riauth-maintenance`
+- `riauth doctor`
+- `recovery complete`, `recover-admin`, and a second server
+- a browser and the Essentials guide
+
+D01 remains incomplete.
+
+## Section 12 SAML preparation
+
+The docs worktree for this record is
+`298cbec18eeccc3235c64368df50e505f5946418`. No Cargo build was run.
+`CARGO_TARGET_DIR` was unset. The authorized binary was the Platform server
+snapshot
+`/tmp/riauth-platform-58357fd-immutable/riauth`, the same file the earlier
+server-snapshot runs copied. Its SHA-256 is
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`, mode
+`500`, 289661864 bytes, inode `316450570`. The run copied it with `cp -c`,
+then `chmod 700` on the copy only. The copy's hash matched and its inode
+was `317866210`. The immutable file was not executed. Free space on the
+data volume was 43219172 KiB before the copy and 43291228 KiB after it.
+Both stayed above 8 GiB. The Q09 Essentials binary's hash matched
+`c6f0ba061663393c0d7874e1dac19ccd2bca48d781555e86a7717b4653a8a7dd`. It was
+not copied and not executed. No printed command returned `unrecognized
+subcommand` or `unexpected argument`.
+
+`riauth --version` printed `riauth 0.1.1`. `capabilities` reported edition
+`platform`, interface `server`, version `0.1.1`, `schema_version`
+`riauth.capabilities/v2`, 29 schemas, `build_features` `essentials` and
+`platform`, and target `aarch64` `macos`. The catalog document was 20679
+bytes, SHA-256
+`cfefe1f42f9cee05d3adbdbd41bb0fa00a6f1c95005d314fb47a1b6f2a8d76d1`.
+
+`init` exited 0. Its stderr was 37 bytes, the line
+`Creating instance and signing key…` plus a newline. `/readyz` returned
+status `ok`, role `integrated`, version `0.1.1`, 187 bytes, with
+`authentication`, `background_jobs`, and `protocol_listeners` true. The
+server listened on `127.0.0.1:9000`. The session file was a lab file, mode
+`600`. Neither default home session file was written. `riauth doctor` was
+not run.
+
+OpenSSL was 3.6.4, dated 25 Aug 2026. The lab generated four self-signed
+RSA 2048 certificates, each valid for 30 days. Each private key's SPKI
+matched its certificate before use. One pair was imported as
+`saml-signing`. A second pair signed the service-provider metadata and was
+not imported. A third pair was imported as `source-sp`. A fourth
+certificate was pinned on the source and its key was not used to sign.
+The host `idp.example.com` was not contacted. Fingerprints and certificate
+hashes stay in the redacted evidence. Private keys are not copied here.
+
+`schema provider` wrote 28537 bytes and titled the document
+`ProviderSettings`. `schema manifest` wrote 59679 bytes, title `Manifest`,
+required `api_version`. `schema source-input` wrote 6425 bytes, title
+`SourceInput`, required `source`.
+
+Revision was 0 before the first import. The printed import used
+`--idempotency-key saml-signing-import`, `--if-revision 0`, id
+`saml-signing`, and algorithm `RS256`. It exited 0 and returned `id`
+`saml-signing`, `active.alg` `RS256`, `active.kty` `RSA`, `active.use`
+`sig`, and `retained_verification_keys` 0.
+
+`saml import-sp` was local. The metadata entity ID was
+`https://sp.example.com/metadata`, the ACS was
+`https://sp.example.com/acs`, NameID was persistent, and the embedded
+certificate was the unimported service-provider signing certificate. The
+command exited 0. The report was mode `600`. `metadata_trust` was
+`explicit_local_operator_input`. `required_scopes` were `openid` and
+`saml`. `unresolved` was empty. `sp_encryption_certificate_pem` was null.
+The instruction was `Review endpoints, NameID and attribute mappings; select a matching IdP signing domain, then apply through the normal client manifest.`
+
+The validated client object copied `settings.saml` from that report and
+set `settings.signing_key` to `saml-signing`. It omitted `secret_ref` and
+`secret_version`. `validate` exited 0 with `valid` true, `validation`
+`local_schema`, `resources` 1, and `secret_values_read` false. `ClientSpec`
+at `58357fd` and at this docs commit declares those two fields without
+`#[serde(default)]`. This snapshot did not return `missing field`.
+
+`plan` exited 0. Plan id was `4e3e73a7-b7f9-4b55-89f4-c62ad6a71fbb`,
+`base_revision` 1, `reconciliation_mode` `manual-review`, and the only
+change was `create` of `client/legacy-sp`. `removal_impact` was
+`disabled_users` 0, `missing_users` 0, `removed_memberships` 0, and
+`review_required` false. The plan `hash` was 43 characters. Apply did not
+take a separate hash check and did not pass `--confirm-removals`. Apply
+exited 0 with `applied` true, `changed` true, the same plan id, and
+revision 2.
+
+`saml metadata legacy-sp` wrote `idp-metadata.xml`, mode `600`, 4109 bytes,
+SHA-256
+`247d7b83844dd357f5ce102c49412aa0e66cd0910358e55a9398c5fa5731f4ed`. The
+entity ID was `http://localhost:9000/saml/legacy-sp/metadata`.
+`WantAuthnRequestsSigned` was true. HTTP-POST and HTTP-Redirect bindings
+were present. `xmlsec1` 1.3.12, with `--verify`, the identity-provider
+certificate as `--pubkey-cert-pem` and `--trusted-pem`,
+`--enabled-reference-uris same-doc`, `--id-attr:ID` on `Response`,
+`Assertion`, and `EntityDescriptor`, and the signature node xpath, exited
+0 and printed `Verification status: OK`. That check does not sign or verify
+an HTTP-Redirect AuthnRequest.
+
+The service-provider helper was `scripts/lasso-saml-sp.c` compiled with
+`cc` against GNU Lasso 2.9.0. `scripts/test-saml-sp.sh` was not run, and
+`cargo test` was not run. The helper's request mode exited 0, binding
+`redirect`, relay `lasso-relay`, query names `SAMLRequest`, `RelayState`,
+`SigAlg`, and `Signature`, and `SigAlg`
+`http://www.w3.org/2001/04/xmldsig-more#rsa-sha256`. One `GET` of
+`/saml/legacy-sp/sso` with `Accept: application/json` returned 200,
+`protocol` `saml`, `status` `authorization_pending`, `client_id`
+`legacy-sp`, and a resume path under `/saml/resume/`. The response set
+cookie name `riauth_saml` on that path. The cookie value and the user code
+are not recorded. `request approve` with `--yes`, `--username admin`, and
+`--password-stdin` exited 0. `reauthentication_required` was false,
+`require_mfa` was false, `delivery` was `original_browser`, and the NameID
+format was persistent. The session file hash did not change. Resume with
+that cookie returned 200 HTML. The form action was
+`https://sp.example.com/acs`, which was not contacted. The field names were
+`SAMLResponse` and `RelayState`, and `RelayState` was `lasso-relay`. The
+helper's accept mode exited 0 and printed `signature` `lasso`, `audience`
+`lasso`, `lifetime` `lasso`, and `recipient` `helper`. A NameID was
+present, length 36, format persistent. The NameID value and the response
+are not recorded. This helper is a local fixture. It is not a named
+service provider and not a SAML conformance suite.
+
+Revision was 2 before the second import. That import used
+`--idempotency-key source-sp-import`, `--if-revision 2`, id `source-sp`,
+and algorithm `RS256`. It exited 0 with the same public-key shape and
+`retained_verification_keys` 0.
+
+The printed `SourceInput` omitted `client_secret` and omitted
+`name_attribute`, `email_attribute`, `email_verified_attribute`,
+`slo_redirect_url`, and `slo_post_url`. `source put` exited 0. The stored
+source id was `corporate-saml`, `allow_admin_login` false,
+`auto_provision` false, `token_endpoint_auth_method` `none`,
+`name_id_format` `persistent`, and those five SAML fields null.
+`require_encrypted_assertions` was false. Source `Settings` at `58357fd`
+and at this docs commit is the same file and declares those fields without
+`#[serde(default)]`. This snapshot did not return `missing field`.
+`source list` returned one source, `corporate-saml`.
+
+`source metadata corporate-saml --out` pointed at the existing
+`sp-metadata.xml` from `saml import-sp`. It exited 1 with
+`Refusing to overwrite` and that path. The imported file's hash did not
+change. An earlier attempt in this session stopped at that refusal, before
+`source start`. This record keeps the refusal and continues. The same
+command with `--out` of a new `source-metadata.xml` exited 0. The product
+file was mode `600`, 5233 bytes, SHA-256
+`42ee2713af3844ccf454c5cd35922c0f05c16e9df5994e7d0c2409867e5a40e1`. The
+entity ID was `urn:company:riauth-sp`. `AuthnRequestsSigned` and
+`WantAssertionsSigned` were true. The assertion consumer location was
+`http://localhost:9000/saml/sources/corporate-saml/acs`. `xmlsec1 --verify --trusted-pem` with the `source-sp` certificate and
+`--id-attr:ID EntityDescriptor` exited 0 and printed
+`Verification status: OK`. The
+preserved XML copies each have one extra trailing newline. The hashes
+above are the product files.
+
+`source start corporate-saml` passed `--out` and did not pass `--link`.
+It exited 0. The instruction was `Authenticate at the upstream provider, then inspect and finish this request in the CLI`.
+The transaction file was mode `600`. Its keys were `issuer`, `source`,
+`token`, and `expires_at`. `issuer` was `http://localhost:9000` and
+`source` was `corporate-saml`. The token prefix was `ri_source_` and the
+token value was not retained. The authorization URL used scheme `https`,
+host `idp.example.com`, and path `/sso`. Its query names were
+`SAMLRequest`, `RelayState`, `SigAlg`, and `Signature`. `SigAlg` was
+`http://www.w3.org/2001/04/xmldsig-more#rsa-sha256`. The URL was not
+fetched. Query values are not recorded. `source finish` was not run.
+
+`git diff --numstat 58357fd 298cbec` for the files compared here:
+`src/cli.rs` is 12 insertions and 1 deletion, and that diff is the agent
+create, rotate, and revoke local checks. It does not mention
+`SamlCommand`, `SourceCommand`, `KeysCommand`, `saml import-sp`,
+`source put`, `source start`, or `source finish`. `src/saml.rs`,
+`src/saml/wire.rs`, `src/assembly/saml.rs`, `src/source/saml_types.rs`, and
+`scripts/lasso-saml-sp.c` are unchanged. `src/source.rs` is 35 insertions
+and 119 deletions. `src/source/saml.rs` is 17 insertions and 216 deletions.
+The current tree adds `src/assembly/source_saml_claim.rs`,
+`source_saml_cleanup.rs`, `source_saml_keys.rs`, `source_saml_record.rs`,
+and `source_saml_return.rs`. `src/api.rs` adds
+`GET /api/operations/provisioning/deactivations`, which this run did not
+call. `src/state.rs` is 157 insertions and 23 deletions and does not change
+the `ClientSpec` secret fields. This is not a whole-tree comparison. The
+identity-provider metadata, import, SSO, and Lasso exchange use files that
+are unchanged between the snapshot and this docs commit. `source start`
+built its URL inside the snapshot. `source finish` and the upstream ACS
+were not run, because that callback path moved and the current source adds
+`SAML source changed; restart login`.
+
+The evidence script exited 0. Its cleanup stopped `serve` with SIGTERM.
+SIGKILL was not required. It re-hashed the snapshot, found port 9000 free,
+found both default home session files absent, and removed the lab
+directory. The cleanup proof records `lab_removed` true, snapshot hash
+match, mode `500`, `printed_ok` true, and a clean secret scan. Free space
+after cleanup was 43240276 KiB. The redacted evidence, command status,
+metadata, server log, and cleanup proof were written outside the lab
+before the lab directory was removed.
+
+### Unrun on this SAML preparation run
+
+The executed chain is `riauth init`, `serve`, `/readyz`, local `--version`
+and `capabilities`, server CLI login, `revision`, `keys import
+saml-signing`, `saml import-sp`, `schema provider`, `schema manifest`,
+`schema source-input`, `validate`, `plan`, `apply`, `saml metadata`, the
+`xmlsec1` metadata check, the local Lasso request, one SSO `GET`,
+`request approve`, resume, Lasso accept, `revision`, `keys import
+source-sp`, `source put`, `source list`, the refused printed
+`source metadata` path, `source metadata` to a new file, the second
+`xmlsec1` check, and `source start` without `--link`.
+
+Still unrun on this run:
+
+- `source finish`, an upstream ACS post, and a browser source-stage login
+- fetching `https://idp.example.com` or `https://sp.example.com`
+- logout, assertion encryption, `keys bind`, and `keys generate`
+- `--confirm-removals`
+- `scripts/test-saml-sp.sh` and the SAML page's `xmlsec1` cargo tests
+- a named service provider, a customer identity provider, and a conformance suite
+- `directory workspace` and `directory entra`
+- inbound `riauth scim`
 - `cargo install`
 - `riauthctl` and `riauth-maintenance`
 - `riauth doctor`
