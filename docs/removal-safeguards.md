@@ -126,10 +126,10 @@ groups, PAM approvers, directory configuration, or capabilities change. A
 supplied If-Match must be the current management revision. Repeating the same
 idempotency key and fingerprint returns the stored result. A different If-Match
 or body returns `Idempotency key was used for a different request`. Manifests
-that name another resource family, other than one client display-name change
-or one user display-name change, and manifests with
-`target_state_fingerprint`, still compare the global revision. Removal
-confirmation is unchanged.
+that name another resource family, other than one client display-name change,
+one client catalogue-description change, or one user display-name change, and
+manifests with `target_state_fingerprint`, still compare the global revision.
+Removal confirmation is unchanged.
 
 A manifest that names one existing client and changes only its display name
 stores a client dependency digest with its base revision. An unrelated audited
@@ -143,6 +143,23 @@ secrets. A supplied If-Match must be the current management revision. The same
 idempotency key and fingerprint return the stored result. Scope, credential,
 endpoint, status, and policy edits stay on the global revision, and removal
 confirmation is unchanged.
+
+A manifest that names one existing client and changes only its catalogue
+description stores a description dependency digest with its base revision. An
+unrelated audited write may advance `meta.revision` while that plan remains
+usable. The digest uses the same client record, credential version, signing
+key, issuer ownership, referenced policy groups and users, referenced sources,
+listener bindings, and device-trust configuration as the display-name digest,
+with version `riauth/desired-state-client-description/v1`. A mismatch returns
+`Desired-state client description dependencies changed`. A client that a proxy,
+LDAP, or RADIUS listener already names stays on the global revision, because
+those listeners read file-backed secrets. Category, icon, accent, the hidden
+flag, launch URL, and launch scopes stay on the global revision. A supplied
+If-Match must be the current management revision. The same idempotency key and
+fingerprint return the stored result. The write does not revoke grants or
+sessions. A SAML check that pinned the previous client fingerprint fails closed
+on that check; those flows are not inputs to this digest. Removal confirmation
+is unchanged.
 
 A manifest that names one existing user and changes only that person's display
 name stores a user dependency digest with its base revision. An unrelated
@@ -163,7 +180,7 @@ Removal confirmation is unchanged.
 | --- | --- | --- |
 | LDAP users and mapped memberships | Critical paged-results control on every page; successful completion; bounded cookies, pages, rows, bytes and time; no referrals, duplicate DNs or stable IDs | Apply resumes a durable plan-bound crawl, checks exact completed entries, plan content, current authority, configuration and local revision, recomputes impact and requires confirmation before reconciliation |
 | Workspace/Entra users, groups and members | Required collection shape; unique IDs across pages; bounded pages, rows, bytes and time; no empty continuation pages or repeated cursors; exact totals, when supplied, must agree and complete; next links stay on the same collection and origin | Same apply checks as LDAP; existing tenant and stable-identity ownership checks remain |
-| Desired-state named resources | Explicit manifest resources only; omission leaves them unchanged | Apply recomputes disable and membership impact before the first mutation, validates exact content and current actor authority, then commits atomically. Group-only manifests accept an unrelated management revision when membership, member identity, ownership, and membership policy still match. A single existing client's display-name change accepts an unrelated management revision when its credential, signing key, policy references, and issuer ownership still match. A single existing user's display-name change accepts an unrelated management revision when that account's credentials, passkeys, and directory ownership still match. Every other manifest still requires the global revision. |
+| Desired-state named resources | Explicit manifest resources only; omission leaves them unchanged | Apply recomputes disable and membership impact before the first mutation, validates exact content and current actor authority, then commits atomically. Group-only manifests accept an unrelated management revision when membership, member identity, ownership, and membership policy still match. A single existing client's display-name change accepts an unrelated management revision when its credential, signing key, policy references, and issuer ownership still match. A single existing client's catalogue-description change accepts an unrelated management revision when that same material still matches. A single existing user's display-name change accepts an unrelated management revision when that account's credentials, passkeys, and directory ownership still match. Every other manifest still requires the global revision. |
 | Outbound SCIM filtered lookup | Explicit Resources array and exact totalResults; at most one matching externalId; optional startIndex must be 1 and itemsPerPage must match; continuation/error responses fail | No POST/PATCH or successful item advancement from incomplete lookup; a missing previously linked resource requires inspection |
 | Outbound SCIM group/user update | Complete bounded, unique member-value arrays before membership replacement, and before accepting a group as already up to date whenever it has reviewed managed or desired members (an omitted, `null` or paginated `members` field never counts as empty); the post-write read-back must report the same explicit membership; explicit boolean active state before disabling | Remote member removals must belong to the exact reviewed previous managed link; unexpected remote membership and omission of retained managed members fail closed. ETags protect the conditional PATCH. Authority, revision and lease are checked again before dispatch |
 

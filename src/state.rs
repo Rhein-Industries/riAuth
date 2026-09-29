@@ -144,6 +144,12 @@ pub struct Plan {
     /// still compares `base_revision` with `meta.revision`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_dependencies: Option<String>,
+    /// Client record, credential, signing key, and policy references for one
+    /// existing client's catalogue description. Absent unless that description
+    /// is the manifest's only change. Listener-bound clients and every other
+    /// client edit still compare `base_revision` with `meta.revision`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_description_dependencies: Option<String>,
     pub expires_at: u64,
     pub manifest: Manifest,
     pub changes: Vec<Change>,
@@ -999,26 +1005,38 @@ fn client_name_dependency_digest(
     tx: &Tx<'_>,
     id: &str,
 ) -> Result<String> {
+    client_record_dependency_digest(
+        config,
+        tx,
+        id,
+        CLIENT_NAME_DEPENDENCY_VERSION,
+        "Desired-state client name dependencies changed",
+    )
+}
+
+/// Private signing material is hashed here and is not returned on the plan.
+/// Display-name and catalogue-description plans share these inputs and differ
+/// by the version string mixed into the digest.
+fn client_record_dependency_digest(
+    config: &crate::config::Config,
+    tx: &Tx<'_>,
+    id: &str,
+    version: &str,
+    conflict: &str,
+) -> Result<String> {
     let Some(client) = tx.get::<Client>("clients", id)? else {
-        return Err(Error::conflict(
-            "Desired-state client name dependencies changed",
-        ));
+        return Err(Error::conflict(conflict));
     };
     if client.id != id {
-        return Err(Error::conflict(
-            "Desired-state client name dependencies changed",
-        ));
+        return Err(Error::conflict(conflict));
     }
-    // Private signing material is hashed here and is not returned on the plan.
     let signing_keys = crate::keyring::for_client(tx, &client)?;
     let (group_names, user_names, source_names) = client_policy_refs(&client);
     let mut groups = BTreeMap::new();
     for name in group_names {
         let group = tx.get::<Group>("groups", &name)?;
         if group.as_ref().is_some_and(|group| group.name != name) {
-            return Err(Error::conflict(
-                "Desired-state client name dependencies changed",
-            ));
+            return Err(Error::conflict(conflict));
         }
         groups.insert(name, group);
     }
@@ -1043,7 +1061,7 @@ fn client_name_dependency_digest(
         }
     }
     dependency_digest(
-        CLIENT_NAME_DEPENDENCY_VERSION,
+        version,
         &json!({
             "client": client,
             "credential_version": tx.get::<Value>("credential_versions", &format!("client/{id}"))?,
@@ -1082,6 +1100,65 @@ fn client_name_dependencies(
         config,
         tx,
         &spec.client_id,
+    )?))
+}
+
+const CLIENT_DESCRIPTION_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-description/v1";
+
+/// One existing client, and no other resource family. Secret rotation,
+/// delegated grants, and a target-state fingerprint stay on the global counter.
+fn client_description_shape(manifest: &Manifest) -> bool {
+    client_name_shape(manifest) && manifest.delegated_grants.is_empty()
+}
+
+fn catalogue_description(spec: &ClientSpec) -> String {
+    spec.settings
+        .app
+        .as_ref()
+        .map(|app| app.description.clone())
+        .unwrap_or_default()
+}
+
+/// True when the manifest's only client difference is its catalogue description.
+/// Category, icon, accent, hidden, launch URL, and launch scopes stay global.
+fn client_description_change(tx: &Tx<'_>, spec: &ClientSpec) -> Result<bool> {
+    let Some(live) = tx.get::<Client>("clients", &spec.client_id)? else {
+        return Ok(false);
+    };
+    if catalogue_description(spec) == catalogue_description(&client_spec(&live)) {
+        return Ok(false);
+    }
+    let mut projected = client_spec(&live);
+    let description = catalogue_description(spec);
+    projected
+        .settings
+        .app
+        .get_or_insert_with(Default::default)
+        .description = description;
+    Ok(value(&projected)? == value(spec)?)
+}
+
+fn client_description_dependencies(
+    config: &crate::config::Config,
+    tx: &Tx<'_>,
+    manifest: &Manifest,
+) -> Result<Option<String>> {
+    if !client_description_shape(manifest) {
+        return Ok(None);
+    }
+    let spec = &manifest.clients[0];
+    // The same file-backed listener secrets that keep a display-name change on
+    // the global revision apply here. Validation reads those files whenever a
+    // listener names this client.
+    if listener_binds_client(config, &spec.client_id) || !client_description_change(tx, spec)? {
+        return Ok(None);
+    }
+    Ok(Some(client_record_dependency_digest(
+        config,
+        tx,
+        &spec.client_id,
+        CLIENT_DESCRIPTION_DEPENDENCY_VERSION,
+        "Desired-state client description dependencies changed",
     )?))
 }
 
@@ -1182,6 +1259,7 @@ enum DependencyScope<'a> {
     Group(&'a str),
     Client(&'a str),
     User(&'a str),
+    Description(&'a str),
     Mixed,
 }
 
@@ -1190,11 +1268,13 @@ fn dependency_scope(plan: &Plan) -> DependencyScope<'_> {
         plan.group_dependencies.as_deref(),
         plan.client_dependencies.as_deref(),
         plan.user_dependencies.as_deref(),
+        plan.client_description_dependencies.as_deref(),
     ) {
-        (None, None, None) => DependencyScope::Global,
-        (Some(value), None, None) => DependencyScope::Group(value),
-        (None, Some(value), None) => DependencyScope::Client(value),
-        (None, None, Some(value)) => DependencyScope::User(value),
+        (None, None, None, None) => DependencyScope::Global,
+        (Some(value), None, None, None) => DependencyScope::Group(value),
+        (None, Some(value), None, None) => DependencyScope::Client(value),
+        (None, None, Some(value), None) => DependencyScope::User(value),
+        (None, None, None, Some(value)) => DependencyScope::Description(value),
         _ => DependencyScope::Mixed,
     }
 }
@@ -1228,6 +1308,18 @@ fn plan_revision_current(
                 return Ok(false);
             }
             Ok(user_display_dependency_digest(tx, &plan.manifest.users[0].username)? == expected)
+        }
+        DependencyScope::Description(expected) => {
+            if !client_description_shape(&plan.manifest) {
+                return Ok(false);
+            }
+            Ok(client_record_dependency_digest(
+                config,
+                tx,
+                &plan.manifest.clients[0].client_id,
+                CLIENT_DESCRIPTION_DEPENDENCY_VERSION,
+                "Desired-state client description dependencies changed",
+            )? == expected)
         }
     }
 }
@@ -1386,6 +1478,7 @@ impl Core {
             group_dependencies,
             client_dependencies,
             user_dependencies,
+            client_description_dependencies,
         ) = self.store.preview(|tx| {
             let actor = self.principal(tx, token)?;
             if actor.delegated {
@@ -1405,6 +1498,8 @@ impl Core {
             };
             let client_dependencies = client_name_dependencies(&self.config, tx, &manifest)?;
             let user_dependencies = user_display_dependencies(tx, &manifest)?;
+            let client_description_dependencies =
+                client_description_dependencies(&self.config, tx, &manifest)?;
             let changes = reconcile(self, tx, &actor, &manifest, &BTreeMap::new(), true)?;
             Ok((
                 actor,
@@ -1415,6 +1510,7 @@ impl Core {
                 group_dependencies,
                 client_dependencies,
                 user_dependencies,
+                client_description_dependencies,
             ))
         })?;
         let mut plan = Plan {
@@ -1426,6 +1522,7 @@ impl Core {
             group_dependencies,
             client_dependencies,
             user_dependencies,
+            client_description_dependencies,
             expires_at: now() + 900,
             manifest,
             changes,
@@ -1452,6 +1549,15 @@ impl Core {
                 DependencyScope::User(expected) => {
                     user_display_dependency_digest(tx, &plan.manifest.users[0].username)?
                         == expected
+                }
+                DependencyScope::Description(expected) => {
+                    client_record_dependency_digest(
+                        &self.config,
+                        tx,
+                        &plan.manifest.clients[0].client_id,
+                        CLIENT_DESCRIPTION_DEPENDENCY_VERSION,
+                        "Desired-state client description dependencies changed",
+                    )? == expected
                 }
             };
             if current.id != actor.id
@@ -1506,12 +1612,18 @@ impl Core {
             let group_plan = input.plan.group_dependencies.is_some();
             let client_plan = input.plan.client_dependencies.is_some();
             let user_plan = input.plan.user_dependencies.is_some();
-            if u8::from(group_plan) + u8::from(client_plan) + u8::from(user_plan) > 1 {
+            let description_plan = input.plan.client_description_dependencies.is_some();
+            if u8::from(group_plan)
+                + u8::from(client_plan)
+                + u8::from(user_plan)
+                + u8::from(description_plan)
+                > 1
+            {
                 return Err(Error::conflict(
                     "Desired-state dependency scope does not match this manifest",
                 ));
             }
-            let scoped_plan = group_plan || client_plan || user_plan;
+            let scoped_plan = group_plan || client_plan || user_plan || description_plan;
             let receipt_key = if scoped_plan {
                 context.as_ref().and_then(|item| {
                     item.idempotency_key
@@ -1557,6 +1669,11 @@ impl Core {
                     "Desired-state user display-name dependencies do not match this manifest",
                 ));
             }
+            if description_plan && !client_description_shape(&input.plan.manifest) {
+                return Err(Error::conflict(
+                    "Desired-state client description dependencies do not match this manifest",
+                ));
+            }
             if scoped_plan && let Some(expected) = supplied_revision {
                 // If-Match remains the live management revision. The stored
                 // base_revision is not that header.
@@ -1595,6 +1712,20 @@ impl Core {
                 if input.plan.user_dependencies.as_deref() != Some(live.as_str()) {
                     return Err(Error::conflict(
                         "Desired-state user display-name dependencies changed",
+                    ));
+                }
+            }
+            if description_plan {
+                let live = client_record_dependency_digest(
+                    &self.config,
+                    tx,
+                    &input.plan.manifest.clients[0].client_id,
+                    CLIENT_DESCRIPTION_DEPENDENCY_VERSION,
+                    "Desired-state client description dependencies changed",
+                )?;
+                if input.plan.client_description_dependencies.as_deref() != Some(live.as_str()) {
+                    return Err(Error::conflict(
+                        "Desired-state client description dependencies changed",
                     ));
                 }
             }

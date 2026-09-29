@@ -93,13 +93,17 @@ Unrelated audited writes may advance `meta.revision` while the proposal stays
 usable. Direct management If-Match, reviewed grants, reviewed client policy,
 client creation, client status, and client endpoint plans still require the
 global management revision. A desired-state manifest that names any resource
-besides groups, a client change other than one display name, or a user change
-other than one display name, still compares its stored base revision with that
-counter. A groups-only manifest keeps the stored base revision and compares
-live group membership, member identity and ownership, and membership policy. A
-single client display-name manifest keeps its stored base revision and compares
-that client's credential, signing key, policy references, and issuer ownership.
-A single user display-name manifest keeps its stored base revision and compares
+besides groups, a client change other than one display name or one catalogue
+description, or a user change other than one display name, still compares its
+stored base revision with that counter. A groups-only manifest keeps the stored
+base revision and compares live group membership, member identity and
+ownership, and membership policy. A single client display-name manifest keeps
+its stored base revision and compares that client's credential, signing key,
+policy references, and issuer ownership. A single client catalogue-description
+manifest keeps its stored base revision and compares that same material.
+Category, icon, accent, the hidden flag, launch URL, launch scopes, and a
+listener-bound client stay on the global revision. A single user display-name
+manifest keeps its stored base revision and compares
 that account's credentials, passkeys, and directory ownership; see
 [removal safeguards](removal-safeguards.md). SCIM User and Group If-Match
 compares the resource ETag. A caller that sends If-Match on this membership
