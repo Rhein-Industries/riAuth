@@ -1813,3 +1813,108 @@ fn people_applications_and_sessions_use_exact_remote_authority() {
         Some("targeted-run")
     );
 }
+
+#[test]
+fn selected_session_revoke_sends_receipt_without_configuration_revision() {
+    const CURRENT: &str = "00000000-0000-4000-8000-000000000011";
+    const TARGET: &str = "00000000-0000-4000-8000-000000000012";
+    let server = MockServer::start(|origin, request| match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => login_reply("ri_session_revoke_caller"),
+        "/api/me" => Reply::json(format!("{{\"session_id\":\"{CURRENT}\"}}")),
+        target if target == format!("/api/sessions/{TARGET}") => Reply::json("{\"revoked\":true}"),
+        target if target == format!("/api/sessions/{CURRENT}") => Reply::json("{\"revoked\":true}"),
+        _ => Reply::error("{\"error\":\"invalid_request\"}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["login", "admin", "--password-stdin"],
+        Some("admin-password\n"),
+    ));
+    for _ in 0..2 {
+        assert_ok(&run(
+            &server.origin,
+            &session,
+            &[
+                "--idempotency-key",
+                "selected-revoke",
+                "session",
+                "revoke",
+                TARGET,
+            ],
+            None,
+        ));
+    }
+    assert!(
+        session.exists(),
+        "another session's revocation keeps this caller live"
+    );
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["session", "revoke", TARGET],
+        None,
+    ));
+    let deletes: Vec<_> = server
+        .requests()
+        .into_iter()
+        .filter(|request| request.method == "DELETE")
+        .collect();
+    assert_eq!(deletes.len(), 3);
+    assert_eq!(deletes[0].target, format!("/api/sessions/{TARGET}"));
+    assert_eq!(
+        deletes[0].header("idempotency-key"),
+        Some("selected-revoke")
+    );
+    assert_eq!(
+        deletes[1].header("idempotency-key"),
+        Some("selected-revoke")
+    );
+    assert!(deletes[2].header("idempotency-key").is_some());
+    assert_ne!(
+        deletes[2].header("idempotency-key"),
+        Some("selected-revoke")
+    );
+    for request in &deletes {
+        assert_eq!(request.header("if-match"), None);
+        assert_eq!(
+            request.header("authorization"),
+            Some("Bearer ri_session_revoke_caller")
+        );
+    }
+    let rejected = run(
+        &server.origin,
+        &session,
+        &["--idempotency-key", "self", "session", "revoke", CURRENT],
+        None,
+    );
+    assert!(!rejected.status.success());
+    assert!(output_text(&rejected).contains("cannot replay"));
+    assert_eq!(
+        server
+            .requests()
+            .iter()
+            .filter(|request| request.method == "DELETE")
+            .count(),
+        3,
+        "a keyed self-revocation must stop before a write"
+    );
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &["session", "revoke", CURRENT],
+        None,
+    ));
+    assert!(!session.exists());
+    let self_delete = server
+        .requests()
+        .into_iter()
+        .find(|request| {
+            request.method == "DELETE" && request.target == format!("/api/sessions/{CURRENT}")
+        })
+        .unwrap();
+    assert_eq!(self_delete.header("idempotency-key"), None);
+}

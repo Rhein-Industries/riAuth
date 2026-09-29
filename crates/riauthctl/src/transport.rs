@@ -32,7 +32,7 @@ pub(crate) enum AuthorizationPreparation {
 }
 
 struct MutationHeaders {
-    revision: u64,
+    revision: Option<u64>,
     idempotency_key: String,
 }
 
@@ -250,6 +250,33 @@ impl Remote {
             .await
     }
 
+    /// Session revocation has a caller-bound receipt but no configuration
+    /// revision. Preserve the exact selected-session request key across CLI retries.
+    pub(crate) async fn request_api_receipted<T: Serialize + ?Sized>(
+        &self,
+        verified: &VerifiedIssuer,
+        method: Method,
+        path: &str,
+        body: Option<&T>,
+        bearer: &str,
+        run_id: Option<&str>,
+        idempotency_key: &str,
+    ) -> Result<Value> {
+        self.request_at(
+            &verified.api_base,
+            method,
+            path,
+            body,
+            Some(bearer),
+            run_id,
+            Some(&MutationHeaders {
+                revision: None,
+                idempotency_key: idempotency_key.to_owned(),
+            }),
+        )
+        .await
+    }
+
     /// OAuth authorization deliberately returns a callback redirect instead of JSON.
     /// The HTTP client never follows that redirect with a session bearer.
     pub(crate) async fn authorization_prepare(
@@ -337,7 +364,7 @@ impl Remote {
                 .context("Revision response is missing a numeric revision")?,
         };
         let headers = MutationHeaders {
-            revision,
+            revision: Some(revision),
             idempotency_key: idempotency_key
                 .map(str::to_owned)
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
@@ -379,9 +406,10 @@ impl Remote {
             request = request.header("x-riauth-run-id", run_id);
         }
         if let Some(mutation) = mutation {
-            request = request
-                .header("if-match", format!("\"{}\"", mutation.revision))
-                .header("idempotency-key", &mutation.idempotency_key);
+            if let Some(revision) = mutation.revision {
+                request = request.header("if-match", format!("\"{revision}\""));
+            }
+            request = request.header("idempotency-key", &mutation.idempotency_key);
         }
         decode_response(request.send().await?).await
     }

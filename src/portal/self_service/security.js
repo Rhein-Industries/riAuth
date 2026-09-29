@@ -86,9 +86,11 @@
       const button = node("button", "button secondary", "Revoke session");
       button.type = "button";
       button.setAttribute("aria-label", `Revoke ${session.current ? "this browser's" : session.kind} session signed in ${date(session.auth_time)}`);
+      let retryKey = null;
       RiAuth.guard(button, () => act(button, `sessions/${encodeURIComponent(session.id)}/revoke`,
         session.current ? "Sign out this browser session?" : "Revoke this session?",
-        "Session revoked. Your other riAuth sessions remain available."));
+        "Session revoked. Your other riAuth sessions remain available.",
+        session.current ? null : () => (retryKey ||= crypto.randomUUID())));
       row.append(details, button); return row;
     });
     $("session-list").replaceChildren(...sessions);

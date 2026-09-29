@@ -212,7 +212,7 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | GET | `/api/me` | Current user/session or agent/permissions |
 | POST | `/api/logout` | Revoke current end-user session and associated grants; return optional `saml_logout_url` |
 | GET | `/api/sessions` | Current user's unrevoked sessions, each with `kind`: `browser` (no bearer token) or `terminal` |
-| DELETE | `/api/sessions/{id}` | Own session, administrator, or exact authorized agent |
+| DELETE | `/api/sessions/{id}` | Own session, administrator, or exact authorized agent; `Idempotency-Key` replays an exact revocation of another session while the caller remains live, without a configuration `If-Match` |
 | POST | `/api/password` | Current password, new `password`, optional `otp`; local password accounts only (409 `password_unavailable`, checked before the password); an account whose only factor is a passkey needs an MFA session from the last five minutes; invalidate old sessions/grants |
 | POST | `/api/mfa/enroll` | Session signed in within five minutes (else 403 `reauthentication_required`); MFA session when the account already has TOTP or a passkey (else 403 `mfa_required`); 409 when an app is enabled; return the pending secret/URI, bound to this session |
 | POST | `/api/mfa/replace` | Same rules; start replacing the enabled app, which keeps working until `mfa/confirm` |

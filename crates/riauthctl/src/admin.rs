@@ -505,8 +505,8 @@ pub(crate) async fn session(
                 .await
         }
         SessionCommand::Revoke { id } => {
-            if options.if_revision.is_some() || options.idempotency_key.is_some() {
-                bail!("Session revocation does not support If-Match or idempotency receipts");
+            if options.if_revision.is_some() {
+                bail!("Session revocation does not support If-Match");
             }
             let path = format!("/api/sessions/{}", segment(&id)?);
             let verified = remote.verify_issuer().await?;
@@ -514,7 +514,7 @@ pub(crate) async fn session(
             let current_id = if remote.is_agent() {
                 None
             } else {
-                remote
+                let me = remote
                     .request_api(
                         &verified,
                         Method::GET,
@@ -523,22 +523,49 @@ pub(crate) async fn session(
                         Some(credential.token()),
                         None,
                     )
-                    .await?
-                    .get("session_id")
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            };
-            let result = remote
-                .request_api(
-                    &verified,
-                    Method::DELETE,
-                    &path,
-                    None::<&()>,
-                    Some(credential.token()),
-                    options.run_id,
+                    .await?;
+                Some(
+                    me.get("session_id")
+                        .and_then(Value::as_str)
+                        .context("Current session response is missing its ID")?
+                        .to_owned(),
                 )
-                .await?;
-            if current_id.as_deref() == Some(id.as_str()) {
+            };
+            let current = current_id.as_deref() == Some(id.as_str());
+            if current && options.idempotency_key.is_some() {
+                bail!(
+                    "Current-session revocation cannot replay after its credential is invalidated; omit --idempotency-key"
+                );
+            }
+            let result = if current {
+                remote
+                    .request_api(
+                        &verified,
+                        Method::DELETE,
+                        &path,
+                        None::<&()>,
+                        Some(credential.token()),
+                        options.run_id,
+                    )
+                    .await?
+            } else {
+                let key = options
+                    .idempotency_key
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                remote
+                    .request_api_receipted(
+                        &verified,
+                        Method::DELETE,
+                        &path,
+                        None::<&()>,
+                        credential.token(),
+                        options.run_id,
+                        &key,
+                    )
+                    .await?
+            };
+            if current {
                 remote.remove_session()?;
             }
             Ok(result)
