@@ -487,6 +487,111 @@ fn source_write_prior_and_group_read_keep_permission_and_error_order() {
 }
 
 #[test]
+fn source_binding_change_scopes_links_and_allows_unlinked_retry() {
+    let fixture = Fixture::new();
+    let source = oauth_source();
+    fixture
+        .core
+        .source_put(
+            &fixture.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: Some(SECRET.into()),
+            },
+        )
+        .unwrap();
+    let mut other = source.clone();
+    other.id = "other".into();
+    other.name = "Other source".into();
+    other.issuer = "https://other.example.test".into();
+    other.client_id = "other-client".into();
+    fixture
+        .core
+        .source_put(
+            &fixture.admin,
+            SourceInput {
+                source: other.clone(),
+                client_secret: Some(SECRET.into()),
+            },
+        )
+        .unwrap();
+    let alice = fixture.user("alice");
+    let alice_id = fixture.core.me(&alice).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "source_links",
+                "other-link",
+                &json!({
+                    "source":"other", "issuer":other.issuer,
+                    "subject":"private-other-subject", "user_id":alice_id,
+                }),
+            )
+        })
+        .unwrap();
+    let put = |source: Source| {
+        fixture.core.source_put(
+            &fixture.admin,
+            SourceInput {
+                source,
+                client_secret: None,
+            },
+        )
+    };
+
+    let mut changed = source.clone();
+    changed.client_id = "corp-client-next".into();
+    assert_eq!(put(changed.clone()).unwrap(), json!(changed));
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "source_links",
+                "corp-link",
+                &json!({
+                    "source":"corp", "issuer":source.issuer,
+                    "subject":"private-corp-subject", "user_id":alice_id,
+                }),
+            )
+        })
+        .unwrap();
+    let mut new_identity = changed.clone();
+    new_identity.issuer = "https://changed.example.test".into();
+    let before = fixture.snapshot().unwrap();
+    let denied = put(new_identity.clone()).unwrap_err();
+    assert_eq!(denied.code, "conflict");
+    assert_eq!(
+        denied.message,
+        "Issuer, upstream client ID and OAuth identity mapping are immutable while accounts are linked"
+    );
+    assert!(!denied.to_string().contains("private-corp-subject"));
+    fixture.assert_snapshot(&before);
+
+    let mut renamed = changed.clone();
+    renamed.name = "Renamed source".into();
+    assert_eq!(put(renamed.clone()).unwrap(), json!(renamed));
+    fixture
+        .core
+        .store
+        .write(|tx| tx.delete("source_links", "corp-link"))
+        .unwrap();
+    let result = put(new_identity.clone()).unwrap();
+    assert_eq!(result, json!(new_identity));
+    assert!(!result.to_string().contains("private-other-subject"));
+    assert!(!result.to_string().contains("private-corp-subject"));
+    assert_eq!(
+        fixture.core.store.get::<Source>("sources", "corp").unwrap(),
+        Some(new_identity)
+    );
+}
+
+#[test]
 fn source_enabled_lookup_keeps_missing_disabled_and_request_error_order() {
     let fixture = Fixture::new();
     let request_bound = || Start {

@@ -376,12 +376,7 @@ impl Source {
             actor.require("group.members", &format!("group/{group}"))?;
             crate::assembly::require_source_group(tx, group)?;
         }
-        if prior.identity_binding_changed
-            && tx
-                .list::<Link>("source_links")?
-                .iter()
-                .any(|(_, l)| l.source == self.id)
-        {
+        if prior.identity_binding_changed && crate::assembly::source_has_links(tx, &self.id)? {
             return Err(Error::conflict(
                 "Issuer, upstream client ID and OAuth identity mapping are immutable while accounts are linked",
             ));

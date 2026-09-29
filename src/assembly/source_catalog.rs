@@ -43,6 +43,13 @@ pub(crate) fn require_source_group(tx: &Tx<'_>, group: &str) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn source_has_links(tx: &Tx<'_>, source_id: &str) -> Result<bool> {
+    Ok(tx
+        .list::<Link>("source_links")?
+        .iter()
+        .any(|(_, link)| link.source == source_id))
+}
+
 /// The upstream accounts linked to a user, in storage iteration order.
 pub(crate) fn source_links_of(tx: &Tx<'_>, user_id: &str) -> Result<Vec<Value>> {
     Ok(tx

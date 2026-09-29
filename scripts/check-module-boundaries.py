@@ -854,6 +854,8 @@ def main() -> None:
             prior_compact = re.sub(r"\s+", "", write_prior or "")
             require_group = rust_function_body(source_catalog, "require_source_group")
             group_compact = re.sub(r"\s+", "", require_group or "")
+            source_links_check = rust_function_body(source_catalog, "source_has_links")
+            links_compact = re.sub(r"\s+", "", source_links_check or "")
             if (
                 require_source_write is None
                 or not (0 <= write_compact.find("self.validate()?")
@@ -865,9 +867,10 @@ def main() -> None:
                         < write_compact.find("validate_name(group)?")
                         < write_compact.find('actor.require("group.members",&format!("group/{group}"))?')
                         < write_compact.find("crate::assembly::require_source_group(tx,group)?")
-                        < write_compact.find("prior.identity_binding_changed")
-                        < write_compact.find('tx.list::<Link>("source_links")?'))
+                        < write_compact.find("ifprior.identity_binding_changed&&crate::assembly::source_has_links(tx,&self.id)?")
+                        < write_compact.find('Error::conflict("Issuer,upstreamclientIDandOAuthidentitymappingareimmutablewhileaccountsarelinked"'))
                 or re.search(r'\btx\s*\.\s*get\s*::\s*<(?:Source|Group)>\s*\(', require_source_write)
+                or re.search(r'\btx\s*\.\s*list\s*::\s*<Link>\s*\(', require_source_write)
                 or write_prior is None
                 or not (0 <= prior_compact.find('tx.get::<Source>("sources",&source.id)?')
                         < prior_compact.find("stored.allow_admin_login")
@@ -879,11 +882,18 @@ def main() -> None:
                 or not (0 <= group_compact.find('tx.get::<Group>("groups",group)?')
                         < group_compact.find('Error::bad("Sourcereferencesanunknowngroup")')
                         < group_compact.rfind("Ok(())"))
+                or source_links_check is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_has_links\s*\([^)]*\)\s*->\s*Result<bool>", source_catalog)
+                or not (0 <= links_compact.find('tx.list::<Link>("source_links")?')
+                        < links_compact.find(".any(|(_,link)|link.source==source_id)"))
+                or any(field in links_compact for field in ("link.subject", "link.issuer", "json!"))
                 or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", write_prior + require_group)
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", source_links_check or "")
                 or "source_write_prior" not in (SRC / "assembly.rs").read_text()
                 or "require_source_group" not in (SRC / "assembly.rs").read_text()
+                or "source_has_links" not in (SRC / "assembly.rs").read_text()
             ):
-                errors.append("src/source.rs: source write prior and group reads belong in assembly")
+                errors.append("src/source.rs: source write prior, group and linked-account reads belong in assembly")
             source_put = rust_function_body(
                 masked_rust_source(source_catalog), "source_put"
             )
