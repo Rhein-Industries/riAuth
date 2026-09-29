@@ -71,7 +71,7 @@ The archive stores paths, not those file contents. The full list is
 | Database key (`--database-key-file`) | Read before `--out` is created. Omit it only when the restored store should be plaintext. The same file rules apply. A native redb or PostgreSQL copy of an encrypted store still needs the key it was written with. |
 | PostgreSQL connection file and `postgres.json` | `--postgres-config` loads the JSON and connects before `--out` is created. The connection file is owner-only and at most 16 KiB, with 1–8 hosts. The target database must be empty. |
 | Device-trust PEM or JWKS (Platform) | `config.validate` reads the file before `--out` is created. A missing or invalid file fails as `Invalid backup configuration`. |
-| RADIUS NAS secrets, RadSec, and EAP-TLS files (Platform) | Read when the restored store is reopened, after the import commits. A failure leaves `<out>/.riauth.restore-pending.toml` and no published `riauth.toml`. |
+| RADIUS NAS secrets, RadSec, and EAP-TLS files (Platform) | Read when the restored store is reopened, after the import commits. A failure leaves `$new_output/.riauth.restore-pending.toml` and no published `riauth.toml`. |
 | SMTP password file | Read in serving preflight, before listeners start. A bad file fails `serve` as `SMTP configuration unusable`. |
 | TLS, LDAP, SCIM, signer, Workspace, and Entra files | Paths are copied into the restored configuration. Their contents are read at use. Vault Transit private keys stay in Vault; restore does not contact Vault. |
 
@@ -80,22 +80,32 @@ the absolute `--config` used by the systemd unit and the container image,
 those paths are absolute paths on the original host. Provision those absolute
 paths before restore. A relative device-trust path is opened from the restore
 process's working directory on the first check. The reopen then loads
-`<out>/.riauth.restore-pending.toml` and resolves a relative path beside
-`<out>`, which is also where RADIUS files are opened. A first check that
+`$new_output/.riauth.restore-pending.toml` and resolves a relative path beside
+`$new_output`, which is also where RADIUS files are opened. A first check that
 passes from the working directory can still fail on reopen.
 
 ## Safe preflight
 
 Run this set before `restore`, `recover-admin`, `recovery invalidate`, or
 `recovery complete`. It does not take a backup, write a recovery record, or
-start a listener.
+start a listener. Each block below assigns its paths and passes every
+expansion in double quotes. Replace the `deployment-private/...` values with
+the paths for this recovery. For a plaintext restore, omit `database_key` and
+its `key_mode` line.
 
 ```sh
+set -eu
+live_config="deployment-private/live/riauth.toml"
+new_output="deployment-private/restore-out"
+backup_key="deployment-private/keys/backup.key"
+database_key="deployment-private/keys/database.key"
+
 riauth --json capabilities
-riauth --config <live-config> recovery status
-test -d "$(dirname <new-output>)"
-test ! -e <new-output>
-python3 -c '
+riauth --config "$live_config" recovery status
+test -d "$(dirname "$new_output")"
+test ! -e "$new_output"
+key_mode() {
+  python3 -c '
 import os, stat, sys
 path = sys.argv[1]
 info = os.stat(path)
@@ -103,12 +113,14 @@ mode = stat.S_IMODE(info.st_mode)
 if not stat.S_ISREG(info.st_mode) or info.st_size > 128 or mode & 0o077:
     raise SystemExit("reject")
 print("owner-only key file")
-' <backup-key>
+' "$1"
+}
+key_mode "$backup_key"
+key_mode "$database_key"
 ```
 
-Repeat the Python check for `<database-key>` when the store is encrypted.
-The check prints a status word and does not print or decode the key. Restore
-still rejects a file that is not base64url for 32 bytes.
+The key check prints a status word and does not print or decode the key.
+Restore still rejects a file that is not base64url for 32 bytes.
 
 `capabilities` prints `edition`, `build_features`, and `version` with
 `usable` null. `recovery status` is read-only for store records: it does not
@@ -120,7 +132,7 @@ opens the store read-only. A store another process already owns fails with
 while other riAuth clients are still connected; the mutating commands below
 perform the client count.
 
-Confirm `<new-output>` is a new path. Restore never replaces an existing
+Confirm `$new_output` is a new path. Restore never replaces an existing
 directory or a database that already holds records, and it does not switch
 DNS or the load balancer.
 
@@ -131,16 +143,39 @@ an authenticated CLI session. The redb drill recorded a sessionless backup
 as `operation_failed` (exit 1) with no output file.
 
 ```sh
+set -eu
+archive="deployment-private/backup.riauth"
+backup_key="deployment-private/keys/backup.key"
+database_key="deployment-private/keys/database.key"
+new_output="deployment-private/restore-out"
+
 riauth-maintenance restore \
-  --backup <archive> \
-  --key-file <backup-key> \
-  --database-key-file <database-key> \
-  --out <new-output>
+  --backup "$archive" \
+  --key-file "$backup_key" \
+  --database-key-file "$database_key" \
+  --out "$new_output"
 ```
 
-For an empty PostgreSQL database, add `--postgres-config <postgres.json>`.
-Without that flag, restore writes redb even when the archive came from
-PostgreSQL.
+For an empty PostgreSQL database, use this block instead. Without
+`--postgres-config`, restore writes redb even when the archive came from
+PostgreSQL. Omit `--database-key-file` and `database_key` when the new store
+should be plaintext.
+
+```sh
+set -eu
+archive="deployment-private/backup.riauth"
+backup_key="deployment-private/keys/backup.key"
+database_key="deployment-private/keys/database.key"
+new_output="deployment-private/restore-out"
+postgres_config="deployment-private/postgres.json"
+
+riauth-maintenance restore \
+  --backup "$archive" \
+  --key-file "$backup_key" \
+  --database-key-file "$database_key" \
+  --out "$new_output" \
+  --postgres-config "$postgres_config"
+```
 
 A v3 archive is authenticated entirely before `--out` exists. On success the
 data object contains `"verified": true`, `"storage"` of `redb` or
@@ -151,9 +186,13 @@ or incident record. The attestation flag is your statement. riAuth does not
 check it.
 
 ```sh
-riauth --config <new-output>/riauth.toml recovery status
-riauth --config <new-output>/riauth.toml recovery complete \
-  --recovery-id <pending.id> \
+set -eu
+restored_config="deployment-private/restore-out/riauth.toml"
+recovery_id="replace-with-pending-id"
+
+riauth --config "$restored_config" recovery status
+riauth --config "$restored_config" recovery complete \
+  --recovery-id "$recovery_id" \
   --persistent-credentials-reconciled
 ```
 
@@ -186,12 +225,16 @@ the JWKS without asking riAuth remain valid until they expire; see
 [What this does not establish](recovery.md#what-this-does-not-establish).
 
 ```sh
-riauth-maintenance --config <live-config> recover-admin <username> --password-stdin
+set -eu
+live_config="deployment-private/live/riauth.toml"
+username="admin"
+
+riauth-maintenance --config "$live_config" recover-admin "$username" --password-stdin
 ```
 
 Success data is `{"recovered": true, "sessions_revoked": true}`. On a restored
-store that has not yet opened its gate, pass `<new-output>/riauth.toml` as
-`--config`. The command opens the store first. A same-version store whose
+store that has not yet opened its gate, set `live_config` to the same path as
+`$restored_config`. The command opens the store first. A same-version store whose
 activation record already matches is left as it is. A PostgreSQL lineage
 change on that open applies the restored-state policy before the password is
 set, and that new gate still has to be completed. The password command
@@ -227,7 +270,10 @@ run imported a v3 archive into an empty database on one temporary loopback
 cluster.
 
 ```sh
-riauth --config <live-config> recovery invalidate --database-restored
+set -eu
+live_config="deployment-private/live/riauth.toml"
+
+riauth --config "$live_config" recovery invalidate --database-restored
 ```
 
 The flag is required. The command stops when another `riauth` session is
@@ -261,7 +307,7 @@ reconciliation; run `riauth recovery status`.
 | Parent of `--out` is missing | `invalid_request`, exit 2. The message includes the I/O error. | Create the parent, then retry. |
 | PostgreSQL target already has records, or another riAuth client is connected | `conflict`, exit 5. The occupied-database drill kept the source serving and wrote no output directory. | Restore into an empty database after every node is stopped. |
 | Device-trust file missing or invalid | `invalid_request`, exit 2, `Invalid backup configuration`, before `--out` exists. | Place the file at the archived path and retry. |
-| Reopen fails after import (RADIUS material, edition, issuer, or schema) | The import can remain, with `.riauth.restore-pending.toml` and no published `riauth.toml`. | Discard `<out>`. Drop and recreate the PostgreSQL database. Do not serve that target. |
+| Reopen fails after import (RADIUS material, edition, issuer, or schema) | The import can remain, with `.riauth.restore-pending.toml` and no published `riauth.toml`. | Discard `$new_output`. Drop and recreate the PostgreSQL database. Do not serve that target. |
 | `serve` while the gate is pending | `conflict`, exit 5. The message names `riauth recovery status`. Both drills saw exit 5 with the listener closed. | Review the pending id, then `recovery complete`. |
 | Wrong `--recovery-id` | `conflict`, exit 5. Both drills left the gate in place. | Read `recovery status` again and use that id. |
 | `--persistent-credentials-reconciled` omitted | `invalid_request`, exit 2, before any write. Both drills left the gate in place. | Review the credential classes, then repeat the command with the flag. |
