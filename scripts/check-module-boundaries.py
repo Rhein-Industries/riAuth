@@ -532,8 +532,9 @@ def main() -> None:
                 errors.append("src/cloud_directory.rs: snapshot retention belongs in assembly")
         if path == SRC / "cloud_operations.rs":
             operations = rust_function_body(masked_rust_source(path.read_text()), "cloud_operations")
+            catalog_source = (SRC / "assembly/cloud_directory_catalog.rs").read_text()
             missing_groups = rust_function_body(
-                masked_rust_source((SRC / "assembly/cloud_directory_catalog.rs").read_text()),
+                masked_rust_source(catalog_source),
                 "cloud_operation_missing_groups",
             )
             if (
@@ -548,6 +549,45 @@ def main() -> None:
                 )
             ):
                 errors.append("src/cloud_operations.rs: authorized local-group lookup belongs in assembly")
+            can_sync = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_can_sync"
+            )
+            can_sync_raw = rust_function_body(catalog_source, "cloud_operation_can_sync")
+            can_sync_call = (
+                re.search(
+                    r"\blet\s+can_sync\s*=\s*self\.cloud_operation_can_sync\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    operations,
+                )
+                if operations is not None
+                else None
+            )
+            if (
+                operations is None
+                or can_sync_call is None
+                or not (
+                    operations.find("cloud_operation_missing_groups")
+                    < can_sync_call.start()
+                    < operations.find("reconciliation_schedules")
+                )
+                or re.search(
+                    r"\.\s*store\s*\.\s*read\s*\(",
+                    operations[
+                        operations.find("cloud_operation_missing_groups"):
+                        operations.find("reconciliation_schedules")
+                    ],
+                )
+                or re.search(r"\bprincipal\s*\(", operations)
+                or can_sync is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", can_sync)
+                or not re.search(
+                    r"\bprincipal\s*\(\s*tx\s*,\s*token\s*\)\s*\?\s*\.\s*allows\s*\(",
+                    can_sync,
+                )
+                or re.search(r"\bmanagement\s*\(", can_sync)
+                or can_sync_raw is None
+                or not re.search(r'\.allows\s*\(\s*"directory\.sync"\s*,\s*scope\s*\)', can_sync_raw)
+            ):
+                errors.append("src/cloud_operations.rs: sync authority read belongs in assembly")
         if path == SRC / "source.rs" and rust_function_body(
             masked_rust_source(path.read_text()), "source_list"
         ) is not None:

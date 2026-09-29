@@ -3364,6 +3364,56 @@ fn cloud_operations_group_mapping_read_keeps_scope_and_local_state() {
     assert_eq!(ready["validation"]["missing_local_groups"], json!([]));
 }
 
+#[test]
+fn cloud_operations_sync_authority_controls_controller_view() {
+    use riauth::reconciliation::ControllerConfig;
+
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    fixture.core.config.reconciliation_controllers.insert(
+        "workspace/corp".into(),
+        ControllerConfig {
+            agent_id: "syncer".into(),
+            credential_file: fixture._dir.path().join("controller-token"),
+            interval_seconds: 300,
+        },
+    );
+    let reader = agent_token(
+        &fixture,
+        "cloud-reader",
+        vec![permission("directory.read", "workspace/corp")],
+    );
+    let syncer = agent_token(
+        &fixture,
+        "cloud-sync-reader",
+        vec![
+            permission("directory.read", "workspace/corp"),
+            permission("directory.sync", "workspace/corp"),
+        ],
+    );
+
+    let read_only = fixture
+        .core
+        .cloud_operations(&reader, "workspace", "corp")
+        .unwrap();
+    assert!(read_only["schedule"].is_null());
+    assert!(read_only["controller"].is_null());
+
+    let with_sync = fixture
+        .core
+        .cloud_operations(&syncer, "workspace", "corp")
+        .unwrap();
+    assert_eq!(with_sync["schedule"]["state"], "not_started");
+    assert_eq!(with_sync["schedule"]["interval_seconds"], 300);
+    assert!(with_sync["controller"].is_object());
+    assert_redacted(&with_sync);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() {
     use axum::{

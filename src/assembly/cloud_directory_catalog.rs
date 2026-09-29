@@ -24,6 +24,11 @@ impl Core {
         })
     }
 
+    pub(crate) fn cloud_operation_can_sync(&self, token: &str, scope: &str) -> Result<bool> {
+        self.store
+            .read(|tx| Ok(self.principal(tx, token)?.allows("directory.sync", scope)))
+    }
+
     pub fn cloud_directories(&self, token: &str, kind: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
         self.store.read(|tx| {

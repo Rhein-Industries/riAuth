@@ -130,9 +130,7 @@ impl Core {
         let missing_local_groups =
             self.cloud_operation_missing_groups(token, &scope, &configuration)?;
         // Existing reconciliation APIs already filter by the caller's sync authority.
-        let can_sync = self
-            .store
-            .read(|tx| Ok(self.principal(tx, token)?.allows("directory.sync", &scope)))?;
+        let can_sync = self.cloud_operation_can_sync(token, &scope)?;
         let schedule = self
             .reconciliation_schedules(token)?
             .as_array()
