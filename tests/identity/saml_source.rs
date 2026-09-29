@@ -1372,3 +1372,167 @@ fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and
         user_id
     );
 }
+
+/// A browser return presented while the pinned source differs ends that login.
+/// Restoring the previous certificate does not confirm it. A return that was
+/// never presented during the change can still confirm after the original
+/// certificate is restored. Issuer and subject stay on the first account.
+#[test]
+fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confirm() {
+    let f = Fixture::new();
+    let (mut source, old) = install_saml(&f);
+    let replacement = replacement_idp("Replacement IdP");
+    let acs = f.core.saml_source_callback_url(&source.id);
+
+    // Unpresented return: a certificate round trip leaves it confirmable.
+    let parked = browser_begin(&f, &source);
+    let parked_xml = old.response(&source, &acs, &parked.request, None, false);
+    let parked_body = post(&f, &source, &parked.relay, &parked_xml).unwrap();
+    assert_eq!(parked_body["completed"], true);
+    let parked_token = text(&parked_body, "browser_return");
+    assert!(!parked_body.to_string().contains(&old.cert));
+    assert_eq!(
+        login_row(&f, &parked.relay)["browser_return"],
+        digest(&parked_token)
+    );
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![replacement.cert.clone()];
+    put_saml(&f, &source);
+    assert_eq!(login_row(&f, &parked.relay)["failed"], false);
+    assert_eq!(login_row(&f, &parked.relay)["browser_return_confirmed"], false);
+    assert_eq!(
+        f.core.store.list::<String>("source_returns").unwrap().len(),
+        1
+    );
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![old.cert.clone()];
+    put_saml(&f, &source);
+    f.core
+        .saml_source_browser_return(&source.id, Some(&parked.cookie), Some(&parked_token))
+        .unwrap();
+    let parked_row = login_row(&f, &parked.relay);
+    assert_eq!(parked_row["browser_return_confirmed"], true);
+    assert_eq!(parked_row["failed"], false);
+    assert_eq!(parked_row["result"]["subject"], "opaque-subject");
+    let first = finish(&f, &parked.credential, true).unwrap();
+    let user_id = text(&first["user"], "id");
+    let session = text(&first, "session_token");
+    assert!(f.core.me(&session).is_ok());
+    assert_eq!(saml_links(&f).len(), 1);
+    assert_eq!(saml_links(&f)[0]["issuer"], source.issuer);
+    assert_eq!(saml_links(&f)[0]["subject"], "opaque-subject");
+    assert_eq!(saml_links(&f)[0]["user_id"], user_id);
+    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+
+    // Presented during the change: missing and unknown tokens do not end it.
+    let started = browser_begin(&f, &source);
+    let xml = old.response(&source, &acs, &started.request, None, false);
+    let body = post(&f, &source, &started.relay, &xml).unwrap();
+    assert_eq!(body["completed"], true);
+    let token = text(&body, "browser_return");
+    assert_eq!(login_row(&f, &started.relay)["claimed"], true);
+    assert_eq!(login_row(&f, &started.relay)["failed"], false);
+    assert_eq!(login_row(&f, &started.relay)["result"]["subject"], "opaque-subject");
+    assert_eq!(login_row(&f, &started.relay)["browser_return"], digest(&token));
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![replacement.cert.clone()];
+    put_saml(&f, &source);
+    assert!(f.core.me(&session).is_err());
+    assert!(f.core.me(&f.admin).is_ok());
+    assert_eq!(login_row(&f, &started.relay)["failed"], false);
+    let missing = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&started.cookie), None)
+        .unwrap_err();
+    assert_eq!(missing.code, "invalid_request");
+    assert!(missing.to_string().contains("already used"));
+    hides(&missing, &[&started.cookie, &token, &old.cert, &replacement.cert]);
+    let unknown = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&started.cookie), Some("not-a-return"))
+        .unwrap_err();
+    assert_eq!(unknown.code, "invalid_request");
+    hides(&unknown, &[&started.cookie, &token, &started.relay]);
+    assert_eq!(login_row(&f, &started.relay)["failed"], false);
+    assert_eq!(login_row(&f, &started.relay)["result"]["subject"], "opaque-subject");
+    assert_eq!(
+        f.core.store.list::<String>("source_returns").unwrap().len(),
+        1
+    );
+    let settled = accounts(&f);
+    let audits = failed_audits(&f);
+    let replays = replay_entries(&f);
+    let retired = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&started.cookie), Some(&token))
+        .unwrap_err();
+    assert_eq!(retired.status.as_u16(), 400);
+    assert_eq!(retired.code, "invalid_request");
+    assert!(retired.to_string().contains("SAML source changed"));
+    hides(
+        &retired,
+        &[
+            &old.cert,
+            &replacement.cert,
+            &started.cookie,
+            &token,
+            &started.relay,
+            &xml,
+        ],
+    );
+    let row = login_row(&f, &started.relay);
+    assert_eq!(row["failed"], true);
+    assert_eq!(row["claimed"], true);
+    assert!(row["result"].is_null());
+    assert!(row["browser_return"].is_null());
+    assert_eq!(row["browser_return_confirmed"], false);
+    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    assert_eq!(failed_audits(&f), audits + 1);
+    assert_eq!(replay_entries(&f), replays);
+    assert_eq!(accounts(&f), settled);
+    let replay = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&started.cookie), Some(&token))
+        .unwrap_err();
+    assert_eq!(replay.code, "invalid_request");
+    assert!(replay.to_string().contains("already used"));
+    hides(&replay, &[&started.cookie, &token, &started.relay, &old.cert, &xml]);
+    assert_eq!(login_row(&f, &started.relay)["failed"], true);
+
+    source.saml.as_mut().unwrap().idp_certificates_pem = vec![old.cert.clone()];
+    put_saml(&f, &source);
+    assert!(f.core.me(&f.admin).is_ok());
+    let restored = f
+        .core
+        .saml_source_browser_return(&source.id, Some(&started.cookie), Some(&token))
+        .unwrap_err();
+    assert_eq!(restored.code, "invalid_request");
+    assert!(restored.to_string().contains("already used"));
+    hides(
+        &restored,
+        &[&old.cert, &replacement.cert, &token, &started.cookie, &started.relay, &xml],
+    );
+    assert!(finish(&f, &started.credential, true).is_err());
+    assert_eq!(
+        f.core
+            .portal_source_review(Some(&started.credential))
+            .unwrap_err()
+            .code,
+        "source_login_expired"
+    );
+    assert_eq!(login_row(&f, &started.relay)["failed"], true);
+    assert!(login_row(&f, &started.relay)["result"].is_null());
+    assert_eq!(saml_links(&f).len(), 1);
+    assert_eq!(saml_links(&f)[0]["issuer"], "urn:example:enterprise-idp");
+    assert_eq!(saml_links(&f)[0]["subject"], "opaque-subject");
+    assert_eq!(saml_links(&f)[0]["user_id"], user_id);
+    assert_eq!(accounts(&f), settled);
+
+    let (relay, request, credential) = begin(&f, &source, None);
+    let response = old.response(&source, &acs, &request, None, false);
+    assert_eq!(post(&f, &source, &relay, &response).unwrap()["completed"], true);
+    let again = finish(&f, &credential, true).unwrap();
+    assert_eq!(text(&again["user"], "id"), user_id);
+    assert!(f.core.me(&text(&again, "session_token")).is_ok());
+    assert_eq!(saml_links(&f).len(), 1);
+    assert_eq!(saml_links(&f)[0]["subject"], "opaque-subject");
+    assert_eq!(saml_links(&f)[0]["issuer"], source.issuer);
+    assert_eq!(saml_links(&f)[0]["user_id"], user_id);
+}

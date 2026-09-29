@@ -267,7 +267,9 @@ impl Core {
     /// Confirms a browser-started SAML login. `returned` is the one-time token from the
     /// ACS response; `started` is the Lax cookie from `portal_source_start`. A missing
     /// or unknown return token does not end the login. A real return token whose start
-    /// cookie is missing or belongs to another browser does.
+    /// cookie is missing or belongs to another browser does. A return whose pinned
+    /// source changed ends the login in the same write, so restoring the previous
+    /// certificate does not confirm it.
     pub fn saml_source_browser_return(
         &self,
         id: &str,
@@ -287,6 +289,7 @@ impl Core {
         match outcome {
             BrowserReturn::Confirmed => Ok(()),
             BrowserReturn::Burned => Err(super::browser_mismatch()),
+            BrowserReturn::Retired => Err(Error::bad("SAML source changed; restart login")),
             BrowserReturn::Unknown => {
                 Err(Error::bad("SAML browser return expired or already used"))
             }
@@ -297,6 +300,7 @@ impl Core {
 enum BrowserReturn {
     Confirmed,
     Burned,
+    Retired,
     Unknown,
 }
 
@@ -332,8 +336,20 @@ fn take_browser_return(
         return Ok(BrowserReturn::Unknown);
     }
     let source = super::enabled(tx, id)?;
-    if pending.fingerprint != source.fingerprint()? {
-        return Err(Error::bad("SAML source changed; restart login"));
+    // Commit the retirement. Err would roll the writer back and leave this
+    // one-time return confirmable after the previous certificate is restored.
+    let retire = match source.fingerprint() {
+        Ok(fingerprint) => fingerprint != pending.fingerprint,
+        Err(_) => true,
+    };
+    if retire {
+        pending.failed = true;
+        pending.result = None;
+        super::clear_browser_return(tx, &pending)?;
+        pending.browser_return = None;
+        tx.put("source_logins", &login_key, &pending)?;
+        audit(tx, "upstream", "source.login_failed", id)?;
+        return Ok(BrowserReturn::Retired);
     }
     if !super::browser_binding_matches(pending.browser_binding.as_deref().unwrap_or(""), started)
     {
