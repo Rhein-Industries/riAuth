@@ -101,10 +101,9 @@ fn recovery_fallback_allowed(checked: &Validated) -> bool {
         || configured_password_path(definition) == Some(ConfiguredPasswordPath::TotpOrRecovery)
 }
 
-/// This mutation has two primary proofs. A recovery code cannot replace the
-/// current TOTP: possession of the old factor is required before new-secret
-/// generation, and both receipts must still name this exact run and request.
-fn replacement_primary(
+/// These mutations need both fresh password and current TOTP proofs. Recovery
+/// codes cannot replace the current factor or authorize passkey removal.
+fn password_totp_primary(
     core: &Core,
     tx: &Tx<'_>,
     checked: &Validated,
@@ -113,15 +112,16 @@ fn replacement_primary(
     request: &RequestAuthority,
     at: u64,
 ) -> Result<StoredEvidence> {
-    if !supported_configured_password_totp_replacement(checked.definition())
+    let removal = supported_configured_password_totp_passkey_removal(checked.definition());
+    if !(supported_configured_password_totp_replacement(checked.definition()) || removal)
         || !request.requires_mfa
         || request.source.is_some()
         || request.authorization.is_some()
         || request.consent.is_some()
         || request.recovery.is_some()
         || request.invitation.is_some()
-        || request.removal.is_some()
-        || user.has_passkeys
+        || request.removal.is_some() != removal
+        || user.has_passkeys != removal
         || user.totp_secret.is_none()
         || user.totp_pending.is_some()
         || at < run.step_started_at
@@ -130,6 +130,13 @@ fn replacement_primary(
         return Err(Error::forbidden());
     }
     crate::password::require_local(tx, user)?;
+    if removal
+        && !tx
+            .get::<Session>("sessions", &request.session)?
+            .is_some_and(|session| session.identity.mfa)
+    {
+        return Err(Error::forbidden());
+    }
     let [session, password] = run.record.steps.as_slice() else {
         return Err(Error::forbidden());
     };
@@ -246,8 +253,10 @@ fn primary(
     if supported_configured_totp_first_passkey_enrollment(checked.definition()) {
         return first_passkey_primary(core, tx, checked, run, user, request, at);
     }
-    if supported_configured_password_totp_replacement(checked.definition()) {
-        return replacement_primary(core, tx, checked, run, user, request, at);
+    if supported_configured_password_totp_replacement(checked.definition())
+        || supported_configured_password_totp_passkey_removal(checked.definition())
+    {
+        return password_totp_primary(core, tx, checked, run, user, request, at);
     }
     let proof = match (checked.definition().id.as_str(), request.source.is_some()) {
         (source::TOTP_WORKFLOW, true) => Proof::Source,

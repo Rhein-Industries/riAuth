@@ -97,6 +97,8 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     let first_totp = supported_configured_password_totp_enrollment(checked.definition());
     let first_passkey = supported_configured_password_passkey_enrollment(checked.definition());
     let replace_totp = supported_configured_password_totp_replacement(checked.definition());
+    let remove_with_totp =
+        supported_configured_password_totp_passkey_removal(checked.definition());
     let extension = supported_configured_extension_password(checked.definition());
     let mfa = match checked.definition().id.as_str() {
         PASSWORD_WORKFLOW => false,
@@ -104,6 +106,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
         _ if first_totp => false,
         _ if first_passkey => false,
         _ if replace_totp => true,
+        _ if remove_with_totp => true,
         _ if extension => false,
         _ => configured_password_path(checked.definition())
             .ok_or_else(Error::forbidden)?
@@ -121,6 +124,14 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
                 || request.recovery.is_some()
                 || request.invitation.is_some()
                 || request.removal.is_some()))
+        || (remove_with_totp
+            && (!user.has_passkeys
+                || user.totp_pending.is_some()
+                || request.removal.is_none()
+                || request.authorization.is_some()
+                || request.consent.is_some()
+                || request.recovery.is_some()
+                || request.invitation.is_some()))
         || (first_passkey && crate::passkey::passkey_count(tx, &user.id)? != 0)
     {
         return Err(Error::forbidden());

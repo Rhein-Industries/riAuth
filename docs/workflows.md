@@ -35,8 +35,9 @@ without a passkey using its current TOTP to enroll a first passkey, or fresh
 password and current-TOTP proofs to replace TOTP; or a linked upstream-only
 account using a fresh source assertion to enroll its first passkey.
 It also supports one configured recovery shape: explicit reset-mail verification
-and password reset in the same transaction, plus one configured sensitive action:
-removal of an exact passkey after a live session and fresh verified passkey proof.
+and password reset in the same transaction, plus two exact configured sensitive
+action paths for passkey removal: a live session with fresh verified passkey
+proof, or an MFA session with fresh local password and current TOTP proofs.
 The W02/W03 workflow proof receipts remain bound to their account,
 session, request and run, and this client policy cannot produce a workflow proof
 or success outcome.
@@ -664,31 +665,41 @@ replacement shapes remain unavailable.
 
 ## Configured passkey removal
 
-Platform accepts one exact `sensitive_action` definition with the steps
+Platform accepts two exact `sensitive_action` definitions. The first has
 `session → passkey → remove`: `resume_session`, `verify_passkey`, then
-`remove_passkey`. Each successful step routes unconditionally to the next,
-every failed step routes to denial, and the success terminal requires the
-session, passkey and passkey-removed proofs with a 120-second maximum proof
-age. The run is limited to 600 seconds and eight executions. The session and
-remove steps get one attempt each, the passkey step at most three; all are
+`remove_passkey`. The second has `session → password → totp → remove` with
+`verify_password` and `verify_totp` in place of the passkey verifier. Each
+successful step routes unconditionally to the next, every failed step routes
+to denial, and the success terminal requires exactly the session, selected
+factor proofs and passkey-removed proof with a 120-second maximum proof age.
+Runs last at most 600 seconds and allow at most eight executions. Session and
+remove steps get one attempt each, factor steps at most three; all are
 cancellable. Config, start and resume reject other configured removal shapes.
 
 `POST /api/workflows/configured/{workflow}/passkey-removal` takes a bearer
 token and `{"credential_id":"..."}`. The server pins that existing credential
 to the account, session, request, run and definition before any challenge.
-Use `POST /api/workflows/{id}/passkey/start` and
+For the passkey path, use `POST /api/workflows/{id}/passkey/start` and
 `POST /api/workflows/{id}/passkey` for a fresh signed user-verified WebAuthn
-assertion, then `POST /api/workflows/{id}/passkey-removal` with the same bearer
-to commit the pinned target. The final endpoint accepts no target ID or caller
-signal. Ordinary configured start cannot enter this path.
+assertion. For the password and TOTP path, submit the password at
+`POST /api/workflows/{id}/password`, reserve the current TOTP attempt at
+`POST /api/workflows/{id}/totp/start`, then submit its challenge and code at
+`POST /api/workflows/{id}/totp`. This path requires an existing MFA bearer
+session, a local password and an enrolled TOTP factor; a recovery code cannot
+replace the current code. Both paths commit through
+`POST /api/workflows/{id}/passkey-removal` with the same bearer. The final
+endpoint accepts no target ID or caller signal. Ordinary configured start
+cannot enter either path.
 
-The final writer rechecks the live session, exact target owner, unspent proofs,
-expiry and an independent local password or enough other passkeys to avoid
+The final writer rechecks the enabled account, live session, exact target
+owner, unspent proofs, expiry and an independent local password or enough
+other passkeys to avoid
 removing the last usable authenticator. It deletes the credential, advances the
 account epoch, queues session revocation, audits removal, consumes proofs and
 finalizes the run atomically. Cancellation and expiry cannot commit removal;
-replay cannot repeat it. No new session is issued. Essentials does not accept
-this configured definition. Directory-managed passwords are not treated as an
+replay cannot repeat it. The password and TOTP path does not raise the bearer
+session's assurance. No new session is issued. Essentials does not accept
+either configured definition. Directory-managed passwords are not treated as an
 independent local recovery route for this guard.
 
 ## Password recovery finalization

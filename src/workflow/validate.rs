@@ -472,9 +472,11 @@ fn unmet(action: &Action, held: u16) -> Option<&'static str> {
         }
         Action::RemovePasskey {}
             if held & mask(&[Proof::Session, Proof::Passkey])
-                != mask(&[Proof::Session, Proof::Passkey]) =>
+                != mask(&[Proof::Session, Proof::Passkey])
+                && held & mask(&[Proof::Session, Proof::Password, Proof::Totp])
+                    != mask(&[Proof::Session, Proof::Password, Proof::Totp]) =>
         {
-            Some("a live session and fresh verified passkey")
+            Some("a live session with a fresh passkey, or fresh password and current TOTP proofs")
         }
         Action::ResetPassword {} if !any(&[Proof::ResetEmail]) => Some("a reset mail proof"),
         _ => None,

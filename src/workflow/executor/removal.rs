@@ -124,28 +124,39 @@ fn verified_session(
     checked: &Validated,
     run: &RuntimeRun,
     at: u64,
-) -> Result<(User, Session, RequestAuthority, u64)> {
+) -> Result<(User, Session, RequestAuthority, u64, bool)> {
     if !supported_configured_passkey_removal(checked.definition()) {
         return Err(Error::forbidden());
     }
+    let password_totp = supported_configured_password_totp_passkey_removal(checked.definition());
+    let prerequisites: &[Proof] = if password_totp {
+        &[Proof::Session, Proof::Password, Proof::Totp]
+    } else {
+        &[Proof::Session, Proof::Passkey]
+    };
     let (user, request) = authority(core, tx, &run.record, at)?;
     let RunState::Active { step, .. } = &run.record.state else {
         return Err(Error::forbidden());
     };
     if request.removal.is_none()
         || run.credential_mutation.is_some()
-        || run.record.steps.len() != 2
+        || run.record.steps.len() != prerequisites.len()
+        || (password_totp
+            && (!request.requires_mfa
+                || user.totp_secret.is_none()
+                || user.totp_pending.is_some()))
         || checked.step(step).map(|value| &value.action) != Some(&Action::RemovePasskey {})
     {
         return Err(Error::forbidden());
     }
     let mut factor_at = None;
-    for (recorded, proof) in run
-        .record
-        .steps
-        .iter()
-        .zip([Proof::Session, Proof::Passkey])
-    {
+    for (index, (recorded, proof)) in run.record.steps.iter().zip(prerequisites).enumerate() {
+        let proof = *proof;
+        if recorded.step != checked.definition().steps[index].id
+            || recorded.signal != Label::fixed("verified")
+        {
+            return Err(Error::forbidden());
+        }
         let reference = recorded.evidence.as_deref().ok_or_else(Error::forbidden)?;
         let evidence: StoredEvidence = tx.get(EVIDENCE, reference)?.ok_or_else(Error::forbidden)?;
         super::super::evidence::check_evidence(
@@ -160,7 +171,7 @@ fn verified_session(
         )
         .map_err(invalid_error)?;
         evidence_authority(core, tx, &run.record, &evidence, at)?;
-        if proof == Proof::Passkey {
+        if proof == Proof::Passkey || proof == Proof::Totp {
             factor_at = Some(evidence.verified_at);
         }
     }
@@ -168,17 +179,34 @@ fn verified_session(
         .get("sessions", &request.session)?
         .ok_or_else(Error::forbidden)?;
     let factor_at = factor_at.ok_or_else(Error::forbidden)?;
+    if password_totp && !session.identity.mfa {
+        return Err(Error::forbidden());
+    }
+    if password_totp {
+        crate::password::require_local(tx, &user)?;
+        if let Err(error) = crate::password::unlocked(tx, &user)? {
+            return Err(error);
+        }
+    }
+    let original_mfa = session.identity.mfa;
+    let original_amr = session.identity.amr.clone();
+    // The password-and-TOTP path freshens only this local copy, without
+    // changing or elevating the stored bearer session.
     session.identity = Identity {
         user_id: user.id.clone(),
         epoch: user.epoch,
         session_id: session.id.clone(),
         auth_time: factor_at,
-        mfa: true,
-        amr: vec!["webauthn".into(), "mfa".into()],
+        mfa: if password_totp { original_mfa } else { true },
+        amr: if password_totp {
+            original_amr
+        } else {
+            vec!["webauthn".into(), "mfa".into()]
+        },
         source: None,
     };
     crate::passkey::require_fresh_factor(&user, &session)?;
-    Ok((user, session, request, factor_at))
+    Ok((user, session, request, factor_at, password_totp))
 }
 
 fn receipt(run: &RuntimeRun, request: &RequestAuthority, at: u64) -> Result<StoredEvidence> {
@@ -205,12 +233,13 @@ fn receipt(run: &RuntimeRun, request: &RequestAuthority, at: u64) -> Result<Stor
 }
 
 /// This capability is constructed only from the verified server-side target
-/// and two live unspent receipts in the writer that finalizes the action.
+/// and all live unspent receipts in the writer that finalizes the action.
 pub(super) struct Verified {
     before: StoredRun,
     evidence: StoredEvidence,
     pin: Pin,
     factor_at: u64,
+    password_totp: bool,
 }
 
 impl Verified {
@@ -246,13 +275,36 @@ impl Verified {
         let mut session: Session = tx
             .get("sessions", &self.pin.session)?
             .ok_or_else(Error::forbidden)?;
+        if self.password_totp
+            != supported_configured_password_totp_passkey_removal(
+                &load_runtime(tx, &run.id)?.definition,
+            )
+            || (self.password_totp
+                && (!session.identity.mfa
+                    || user.totp_secret.is_none()
+                    || user.totp_pending.is_some()))
+        {
+            return Err(Error::forbidden());
+        }
+        if self.password_totp {
+            crate::password::require_local(tx, &user)?;
+            if let Err(error) = crate::password::unlocked(tx, &user)? {
+                return Err(error);
+            }
+        }
+        let original_mfa = session.identity.mfa;
+        let original_amr = session.identity.amr.clone();
         session.identity = Identity {
             user_id: user.id.clone(),
             epoch: user.epoch,
             session_id: session.id.clone(),
             auth_time: self.factor_at,
-            mfa: true,
-            amr: vec!["webauthn".into(), "mfa".into()],
+            mfa: if self.password_totp { original_mfa } else { true },
+            amr: if self.password_totp {
+                original_amr
+            } else {
+                vec!["webauthn".into(), "mfa".into()]
+            },
             source: None,
         };
         crate::passkey::require_fresh_factor(&user, &session)?;
@@ -292,13 +344,15 @@ impl Core {
             if run.executions >= checked.definition().limits.max_executions {
                 return Err(Error::conflict("Workflow execution limit reached"));
             }
-            let (_, _, request, factor_at) = verified_session(self, tx, &checked, &run, now())?;
+            let (_, _, request, factor_at, password_totp) =
+                verified_session(self, tx, &checked, &run, now())?;
             let evidence = receipt(&run, &request, now())?;
             let mutation = Verified {
                 before: run.record.clone(),
                 evidence: evidence.clone(),
                 pin: request.removal.ok_or_else(Error::forbidden)?,
                 factor_at,
+                password_totp,
             };
             run.executions += 1;
             finish_step_with_mutation(

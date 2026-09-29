@@ -27,6 +27,7 @@ use super::{
     supported_configured_passkey, supported_configured_passkey_enrollment,
     supported_configured_passkey_removal, supported_configured_password_passkey_enrollment,
     supported_configured_password_reset, supported_configured_password_totp_enrollment,
+    supported_configured_password_totp_passkey_removal,
     supported_configured_password_totp_replacement, supported_configured_totp_enrollment,
     supported_configured_totp_first_passkey_enrollment, supported_configured_totp_replacement,
     validate,
@@ -1127,8 +1128,8 @@ impl Core {
     }
 
     /// The target ID is pinned to a live account/session/request before any
-    /// verifier challenge. The configured definition may only select the exact
-    /// session, UV passkey, remove-passkey path.
+    /// verifier challenge. The configured definition may select only an exact
+    /// UV passkey or local password plus current TOTP removal path.
     pub fn workflow_configured_passkey_removal_start(
         &self,
         token: &str,
@@ -1226,6 +1227,8 @@ impl Core {
                 supported_configured_totp_replacement(checked.definition());
             let configured_password_totp_replacement =
                 supported_configured_password_totp_replacement(checked.definition());
+            let configured_removal_totp =
+                supported_configured_password_totp_passkey_removal(checked.definition());
             let extension_password =
                 supported_configured_extension_password(checked.definition());
             if matches!(
@@ -1234,6 +1237,7 @@ impl Core {
             ) || configured_password.is_some()
                 || configured_password_totp_enrollment
                 || configured_password_totp_replacement
+                || configured_removal_totp
                 || configured_first_passkey
                 || configured_totp_first_passkey
                 || extension_password
@@ -1306,6 +1310,15 @@ impl Core {
             {
                 return Err(Error::conflict(
                     "Password and TOTP replacement is unavailable for this account",
+                ));
+            }
+            if configured_removal_totp
+                && (user.totp_secret.is_none()
+                    || user.totp_pending.is_some()
+                    || !session.identity.mfa)
+            {
+                return Err(Error::conflict(
+                    "Password and TOTP passkey removal is unavailable for this account",
                 ));
             }
             let guest = extension_guest(self, checked)?;
@@ -1402,6 +1415,7 @@ impl Core {
                 requires_mfa: checked.definition().id.as_str() == password::TOTP_WORKFLOW
                     || configured_password.is_some_and(ConfiguredPasswordPath::requires_mfa)
                     || configured_password_totp_replacement
+                    || configured_removal_totp
                     || configured_totp_first_passkey,
                 source: None,
                 authorization: None,

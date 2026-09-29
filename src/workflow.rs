@@ -612,9 +612,14 @@ fn supported_configured_totp_change(
         && routes(enroll, "completed", &success.id)
 }
 
-/// One configured sensitive action may remove a request-pinned passkey after
-/// a live session and fresh UV proof. The target is never a definition field.
+/// Remove a request-pinned passkey after either exact, fresh factor path.
+/// The target is never a definition field.
 pub(crate) fn supported_configured_passkey_removal(definition: &Definition) -> bool {
+    supported_configured_passkey_removal_uv(definition)
+        || supported_configured_password_totp_passkey_removal(definition)
+}
+
+fn supported_configured_passkey_removal_uv(definition: &Definition) -> bool {
     if definition.origin != Origin::Configured
         || definition.category != Category::SensitiveAction
         || definition.steps.len() != 3
@@ -674,6 +679,79 @@ pub(crate) fn supported_configured_passkey_removal(definition: &Definition) -> b
             .all(|proof| success.requires[0].contains(&proof))
         && routes(session, "verified", &passkey.id)
         && routes(passkey, "verified", &remove.id)
+        && routes(remove, "completed", &success.id)
+}
+
+/// An MFA session may remove its exact pinned passkey after a fresh local
+/// password and current TOTP code. Recovery codes are not a substitute.
+pub(crate) fn supported_configured_password_totp_passkey_removal(
+    definition: &Definition,
+) -> bool {
+    if definition.origin != Origin::Configured
+        || definition.category != Category::SensitiveAction
+        || definition.steps.len() != 4
+        || definition.terminals.len() != 2
+        || definition.entry != definition.steps[0].id
+        || definition.limits.max_duration_seconds > 600
+        || definition.limits.max_executions > 8
+    {
+        return false;
+    }
+    let [session, password, totp, remove] = definition.steps.as_slice() else {
+        return false;
+    };
+    let success = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::ActionAuthorized);
+    let denied = definition
+        .terminals
+        .iter()
+        .find(|terminal| terminal.outcome == Outcome::Denied);
+    let (Some(success), Some(denied)) = (success, denied) else {
+        return false;
+    };
+    let routes = |step: &Step, verified: &'static str, target: &Id| {
+        step.transitions.len() == 2
+            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed(verified) && &transition.to == target
+            })
+            && step.transitions.iter().any(|transition| {
+                transition.on == Label::fixed("failed") && transition.to == denied.id
+            })
+    };
+    session.id.as_str() == "session"
+        && password.id.as_str() == "password"
+        && totp.id.as_str() == "totp"
+        && remove.id.as_str() == "remove"
+        && success.id.as_str() == "success"
+        && denied.id.as_str() == "denied"
+        && matches!(session.action, Action::ResumeSession {})
+        && matches!(password.action, Action::VerifyPassword {})
+        && matches!(totp.action, Action::VerifyTotp {})
+        && matches!(remove.action, Action::RemovePasskey {})
+        && session.max_attempts == 1
+        && password.max_attempts <= 3
+        && totp.max_attempts <= 3
+        && remove.max_attempts == 1
+        && session.timeout_seconds <= 60
+        && password.timeout_seconds <= 300
+        && totp.timeout_seconds <= 120
+        && remove.timeout_seconds <= 120
+        && session.cancellable
+        && password.cancellable
+        && totp.cancellable
+        && remove.cancellable
+        && success.max_proof_age_seconds.is_some_and(|age| age <= 120)
+        && success.requires.len() == 1
+        && success.requires[0].len() == 4
+        && [Proof::Session, Proof::Password, Proof::Totp, Proof::PasskeyRemoved]
+            .into_iter()
+            .all(|proof| success.requires[0].contains(&proof))
+        && routes(session, "verified", &password.id)
+        && routes(password, "verified", &totp.id)
+        && routes(totp, "verified", &remove.id)
         && routes(remove, "completed", &success.id)
 }
 
