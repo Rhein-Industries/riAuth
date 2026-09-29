@@ -888,14 +888,17 @@ Still outside this slice, as later tasks:
   compiled inclusion, protocol direction, and the peers named by tests.
   The [Platform forward-auth recipe](recipes/platform-forward-auth.md),
   the [Platform LDAP-provider recipe](recipes/platform-ldap-provider.md),
-  and the [OIDC relying-party recipe](recipes/oidc-relying-party.md)
+  the [OIDC relying-party recipe](recipes/oidc-relying-party.md),
+  and the [Platform SAML IdP recipe](recipes/platform-saml-idp.md)
   are the D03 recipes written so far. The relying-party recipe is the
   authorization-code fixture, and its client is the in-tree router rather
-  than a named application. The LDAP provider recipe is separate from LDAP
-  import. The other integration recipes (D03) and acceptance against
-  category targets (D05) are still open. The first emergency decision page
-  is [operational recovery](operational-recovery.md) (D04). The rest of D04
-  remains open; the backup commands in this guide remain entry points.
+  than a named application. The SAML IdP recipe follows the xmlsec1 fixture.
+  A named service provider remains an open peer. SAML source remains a
+  separate profile. The LDAP provider recipe is separate from LDAP import.
+  Other D03 recipes and acceptance against category targets (D05) remain
+  open. The first D04 decision page is
+  [operational recovery](operational-recovery.md); further emergency runbooks
+  remain open. The backup commands here are entry points.
 - Any claim that a person completed install, sign-in, the OIDC redirect,
   passkey enrollment, backup, restore, the group membership, the claim
   preview, the audit export, an LDAP plan or apply, or a SCIM plan or apply

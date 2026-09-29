@@ -94,6 +94,8 @@ RIAUTH_TEST_XMLSEC=/path/to/xmlsec1 cargo test --locked --test identity \
   saml_independent_xmlsec -- --ignored --nocapture
 ```
 
+The [Platform SAML IdP recipe](recipes/platform-saml-idp.md) records the client that the ignored test creates, the xmlsec1 arguments it passes, the results `exercise` requires, and the distance from xmlsec1 to a named service provider. The test was not run for the recipe.
+
 References: [OASIS SAML bindings](https://docs.oasis-open.org/security/saml/v2.0/saml-bindings-2.0-os.pdf), [SAML profiles](https://docs.oasis-open.org/security/saml/v2.0/saml-profiles-2.0-os.pdf), [Authentik SAML](https://docs.goauthentik.io/add-secure-apps/providers/saml/), [risaml](https://github.com/Rhein-Industries/risaml) (Rhein Industries' fork of [saml-rs](https://github.com/salasebas/opensaml-rs)).
 
 

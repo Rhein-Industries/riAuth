@@ -52,6 +52,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Passkeys](passkeys.md) | Browser passkeys, USB and split WebAuthn ceremonies |
 | [Account lifecycle](lifecycle.md) | Invitations, email verification, password recovery and what still needs the terminal |
 | [SAML](saml.md) | IdP/source profiles, signatures, encryption and logout |
+| [Platform SAML IdP recipe](recipes/platform-saml-idp.md) | Fixture SP entity, the assertions the ignored xmlsec1 test makes, and the peer gaps that fixture leaves |
 | [SCIM](scim.md) | Inbound directory API and outbound reconciliation |
 | [LDAP synchronization](ldap.md) | Upstream directory plans and password authentication |
 | [LDAP provider](ldap-provider.md) | Read-only LDAP listener and search behavior |
