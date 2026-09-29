@@ -82,6 +82,7 @@ mod signin;
 pub use signin::{bearer_backed, bind_proof, discard_staged, proof_valid};
 mod source_callback;
 mod source_catalog;
+mod source_finish;
 mod source_stage;
 #[cfg(feature = "platform")]
 mod ssf;

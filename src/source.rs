@@ -201,13 +201,13 @@ pub(crate) struct Login {
     pub(crate) claimed: bool,
     pub(crate) result: Option<UpstreamIdentity>,
     pub(crate) failed: bool,
-    attempts: u32,
+    pub(crate) attempts: u32,
     /// Embedded authorization stage that must resume this login. Standalone logins leave this empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    stage: Option<String>,
+    pub(crate) stage: Option<String>,
     /// Server-owned workflow reservation; never accepted from a source API body.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    workflow: Option<WorkflowBinding>,
+    pub(crate) workflow: Option<WorkflowBinding>,
     /// Digest of the full browser binding cookie (`credential.digest(state)`).
     /// CLI, embedded-stage and workflow logins leave this empty, as do records
     /// written before the cookie was required.
@@ -765,31 +765,6 @@ impl Core {
         .await
         .map_err(Error::internal)?
     }
-    pub fn source_finish(&self, input: Finish) -> Result<Value> {
-        let credential = zeroize::Zeroizing::new(input.credential);
-        self.store.write(|tx| {
-            let state = tx
-                .get::<String>("source_polls", &digest(&credential))?
-                .ok_or_else(Error::unauthorized)?;
-            let mut pending = tx
-                .get::<Login>("source_logins", &state)?
-                .filter(|p| p.expires_at > now() && !p.failed && p.attempts < 5)
-                .ok_or_else(Error::unauthorized)?;
-            if pending.stage.is_some() || pending.workflow.is_some() {
-                return Err(Error::bad(
-                    "Resume the bound source stage or workflow for this login",
-                ));
-            }
-            self.complete_source_login(
-                tx,
-                &state,
-                &mut pending,
-                input.approve,
-                input.otp.as_deref(),
-                None,
-            )
-        })?
-    }
     /// Finishes a browser's login in one transaction. `bind` first checks a link's target
     /// against the browser, and `deliver` then hands the new session to it. If either fails,
     /// the whole finish rolls back: the proof stays unspent and no link or session is written.
@@ -822,7 +797,7 @@ impl Core {
             }
         })?
     }
-    fn complete_source_login(
+    pub(crate) fn complete_source_login(
         &self,
         tx: &Tx<'_>,
         state: &str,

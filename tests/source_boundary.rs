@@ -5,10 +5,10 @@ use common::Fixture;
 use riauth::{
     agent::{NewAgent, Permission},
     context::{RequestContext, scope},
-    crypto::digest,
+    crypto::{digest, now},
     jose::ClientAuthMethod,
     model::Session,
-    source::{OAuthProfile, Source, SourceInput, Start},
+    source::{Finish, OAuthProfile, Source, SourceInput, Start},
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -511,4 +511,171 @@ fn source_links_keeps_session_scope_and_public_projection() {
         json!([{"id":"bob-link", "source":"corp", "issuer":issuer, "subject":"bob-upstream"}])
     );
     fixture.assert_snapshot(&after_logout);
+}
+
+#[test]
+fn source_finish_charges_bad_factor_and_consumes_credential_once() {
+    let fixture = Fixture::new();
+    let source = oauth_source();
+    fixture
+        .core
+        .source_put(
+            &fixture.admin,
+            SourceInput {
+                source: source.clone(),
+                client_secret: Some(SECRET.into()),
+            },
+        )
+        .unwrap();
+    let alice = fixture.user("alice");
+    let alice_id = fixture.core.me(&alice).unwrap()["user"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let enrollment = fixture.core.mfa_begin(&alice).unwrap();
+    let totp = riauth::crypto::totp(enrollment["secret"].as_str().unwrap(), "alice").unwrap();
+    fixture
+        .core
+        .mfa_confirm(&alice, &totp.generate((now() / 30 - 1) * 30).to_string())
+        .unwrap();
+    let subject = "bound-subject";
+    let link_id = digest(&format!("{}\0{}\0{subject}", source.id, source.issuer));
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "source_links",
+                &link_id,
+                &json!({"source":source.id,"issuer":source.issuer,"subject":subject,"user_id":alice_id}),
+            )
+        })
+        .unwrap();
+    let started = fixture
+        .core
+        .source_start(
+            "corp",
+            Start {
+                link: false,
+                authentication_transaction: None,
+            },
+            None,
+        )
+        .unwrap();
+    let credential = started["credential"]["token"].as_str().unwrap().to_owned();
+    let state = url::Url::parse(started["authorization_url"].as_str().unwrap())
+        .unwrap()
+        .query_pairs()
+        .find(|(key, _)| key == "state")
+        .unwrap()
+        .1
+        .to_string();
+    let login_key = digest(&state);
+    let mut pending: Value = fixture
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    pending["claimed"] = json!(true);
+    pending["result"] = json!({
+        "subject":subject,"name":"Alice","email":null,"email_verified":false,
+        "mfa":false,"auth_time":now(),"expires_at":null,"saml_session":null
+    });
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("source_logins", &login_key, &pending))
+        .unwrap();
+    let finish = |approve, otp: Option<&str>| {
+        fixture.core.source_finish(Finish {
+            credential: credential.clone(),
+            approve,
+            otp: otp.map(str::to_owned),
+        })
+    };
+    let review = finish(false, None).unwrap();
+    assert_eq!(review["status"], "review");
+    assert!(!review.to_string().contains("ri_session_"));
+    assert!(!review.to_string().contains(&credential));
+    assert!(!review.to_string().contains(SECRET));
+    let session_count = fixture
+        .core
+        .store
+        .list::<Session>("sessions")
+        .unwrap()
+        .len();
+
+    let error = finish(true, Some("wrong-code")).unwrap_err();
+    assert_eq!(error.code, "invalid_token");
+    assert!(!error.to_string().contains(&credential));
+    assert!(!error.to_string().contains("ri_session_"));
+    let charged: Value = fixture
+        .core
+        .store
+        .get("source_logins", &login_key)
+        .unwrap()
+        .unwrap();
+    assert_eq!(charged["attempts"], 1);
+    assert_eq!(charged["failed"], false);
+    assert_eq!(charged["result"], pending["result"]);
+    assert_eq!(
+        fixture
+            .core
+            .store
+            .list::<Session>("sessions")
+            .unwrap()
+            .len(),
+        session_count
+    );
+    assert_eq!(
+        fixture
+            .core
+            .audit_events(&fixture.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "source.login" && event["target"] == "corp")
+            .count(),
+        0
+    );
+
+    let completed = finish(true, Some(&totp.generate(now()).to_string())).unwrap();
+    assert_eq!(completed["status"], "complete");
+    assert!(!completed.to_string().contains(&credential));
+    assert!(!completed.to_string().contains(SECRET));
+    let session = completed["session_token"].as_str().unwrap();
+    assert_eq!(fixture.core.me(session).unwrap()["user"]["id"], alice_id);
+    assert!(
+        fixture
+            .core
+            .store
+            .get::<Value>("source_logins", &login_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        fixture
+            .core
+            .store
+            .get::<String>("source_polls", &digest(&credential))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        fixture
+            .core
+            .audit_events(&fixture.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "source.login" && event["target"] == "corp")
+            .count(),
+        1
+    );
+    let after = fixture.snapshot().unwrap();
+    assert_eq!(finish(true, None).unwrap_err().code, "invalid_token");
+    fixture.assert_snapshot(&after);
 }

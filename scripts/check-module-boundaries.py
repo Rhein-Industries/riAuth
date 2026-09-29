@@ -919,6 +919,31 @@ def main() -> None:
                 )
             ):
                 errors.append("src/source.rs: charged source stage resume writer belongs in assembly")
+            source_finish_assembly = (SRC / "assembly/source_finish.rs").read_text()
+            source_finish = rust_function_body(source_finish_assembly, "source_finish")
+            source_finish_compact = re.sub(r"\s+", "", source_finish or "")
+            if (
+                rust_function_body(source_protocol, "source_finish") is not None
+                or len(re.findall(r"\bself\.store\.write\s*\(", source_protocol)) != 1
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_finish_browser\s*<", path.read_text())
+                or source_finish is None
+                or not re.search(r"\bpub\s+fn\s+source_finish\s*\(", source_finish_assembly)
+                or not (0 <= source_finish_compact.find("Zeroizing::new(input.credential)")
+                        < source_finish_compact.find("self.store.write")
+                        < source_finish_compact.find('tx.get::<String>("source_polls",&digest(&credential))')
+                        < source_finish_compact.find('tx.get::<Login>("source_logins",&state)')
+                        < source_finish_compact.find("p.expires_at>now()&&!p.failed&&p.attempts<5")
+                        < source_finish_compact.find("pending.stage.is_some()||pending.workflow.is_some()")
+                        < source_finish_compact.find("self.complete_source_login"))
+                or not re.search(
+                    r"self\.complete_source_login\(tx,&state,&mutpending,input\.approve,input\.otp\.as_deref\(\),None,?\)",
+                    source_finish_compact,
+                )
+                or not source_finish_compact.endswith("})?")
+                or not re.search(r"\bpub\(crate\)\s+fn\s+complete_source_login\s*\(", path.read_text())
+                or not re.search(r"\bmod\s+source_finish\s*;", (SRC / "assembly.rs").read_text())
+            ):
+                errors.append("src/source.rs: charged source finish writer belongs in assembly")
             source_callback = rust_function_body(source_protocol, "source_callback")
             source_callback_raw = rust_function_body(path.read_text(), "source_callback")
             callback_assembly = (SRC / "assembly/source_callback.rs").read_text()
