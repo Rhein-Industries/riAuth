@@ -1075,7 +1075,7 @@ impl Core {
         self.radius_eap_validate_identity(tx, identity)?;
         crate::mtls::validate_identity(tx, identity)?;
         crate::directory::validate_identity(self, tx, identity)?;
-        crate::source::validate_identity(tx, identity)?;
+        crate::assembly::source_validate_identity(tx, identity)?;
         crate::identity::validate_user(tx, identity)
     }
     pub(crate) fn dummy_password_hash(&self) -> &str {

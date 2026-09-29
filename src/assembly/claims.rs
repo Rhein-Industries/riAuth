@@ -31,7 +31,7 @@ impl ClaimsTx for Tx<'_> {
     }
 
     fn verified_upstream_source(&self, identity: &Identity) -> Result<Option<String>> {
-        crate::source::validate_identity(self, identity)?;
+        crate::assembly::source_validate_identity(self, identity)?;
         Ok(identity
             .source
             .as_ref()

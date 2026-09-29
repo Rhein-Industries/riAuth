@@ -4,11 +4,12 @@ mod common;
 use common::Fixture;
 use riauth::{
     agent::{NewAgent, Permission},
+    claims::ClaimsTx,
     context::{RequestContext, scope},
     crypto::{digest, now},
     jose::ClientAuthMethod,
-    model::Session,
-    source::{Finish, OAuthProfile, Source, SourceInput, Start},
+    model::{Identity, Session},
+    source::{Finish, OAuthProfile, Source, SourceIdentity, SourceInput, Start},
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
@@ -61,6 +62,228 @@ fn oauth_source() -> Source {
         trusted_mfa_acr: Default::default(),
         allow_admin_login: false,
     }
+}
+
+fn bind_test_source_session(
+    fixture: &Fixture,
+    token: &str,
+    source: &Source,
+    link_id: &str,
+) -> (String, Identity) {
+    let sid: String = fixture
+        .core
+        .store
+        .get("session_tokens", &digest(token))
+        .unwrap()
+        .unwrap();
+    let mut session: Session = fixture.core.store.get("sessions", &sid).unwrap().unwrap();
+    session.identity.source = Some(SourceIdentity {
+        id: source.id.clone(),
+        fingerprint: source.fingerprint().unwrap(),
+        link: link_id.into(),
+        pin_retired: false,
+    });
+    let identity = session.identity.clone();
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put("sources", &source.id, source)?;
+            tx.put(
+                "source_links",
+                link_id,
+                &json!({"source":source.id,"issuer":source.issuer,"subject":link_id,"user_id":identity.user_id}),
+            )?;
+            tx.put("sessions", &sid, &session)
+        })
+        .unwrap();
+    (sid, identity)
+}
+
+fn verified_source(
+    fixture: &Fixture,
+    identity: &Identity,
+) -> riauth::error::Result<Option<String>> {
+    fixture
+        .core
+        .store
+        .read(|tx| tx.verified_upstream_source(identity))
+}
+
+#[test]
+fn source_identity_trust_rechecks_link_fingerprint_enabled_source_and_ldap_bypass() {
+    let fixture = Fixture::new();
+    let source = oauth_source();
+    let alice = fixture.user("alice");
+    let (_, identity) = bind_test_source_session(&fixture, &alice, &source, "alice-link");
+    assert!(fixture.core.me(&alice).is_ok());
+    assert_eq!(
+        verified_source(&fixture, &identity).unwrap(),
+        Some("corp".into())
+    );
+
+    let mut ldap = identity.clone();
+    ldap.source.as_mut().unwrap().id = "ldap/imported".into();
+    assert!(
+        fixture
+            .core
+            .store
+            .read(|tx| riauth::source::validate_identity(tx, &ldap))
+            .is_ok()
+    );
+    assert_eq!(verified_source(&fixture, &ldap).unwrap(), None);
+
+    let wrong_user = json!({"source":"corp","issuer":source.issuer,"subject":"alice-link","user_id":"different-user"});
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("source_links", "alice-link", &wrong_user))
+        .unwrap();
+    assert_eq!(fixture.core.me(&alice).unwrap_err().code, "invalid_token");
+    assert_eq!(
+        verified_source(&fixture, &identity).unwrap_err().code,
+        "invalid_token"
+    );
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "source_links",
+                "alice-link",
+                &json!({"source":"corp","issuer":source.issuer,"subject":"alice-link","user_id":identity.user_id}),
+            )
+        })
+        .unwrap();
+    assert!(fixture.core.me(&alice).is_ok());
+
+    let mut changed = source.clone();
+    changed.name.push_str(" changed");
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("sources", &changed.id, &changed))
+        .unwrap();
+    assert_eq!(fixture.core.me(&alice).unwrap_err().code, "invalid_token");
+    assert_eq!(
+        verified_source(&fixture, &identity).unwrap_err().code,
+        "invalid_token"
+    );
+
+    changed = source.clone();
+    changed.enabled = false;
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("sources", &changed.id, &changed))
+        .unwrap();
+    assert_eq!(fixture.core.me(&alice).unwrap_err().code, "invalid_token");
+    assert_eq!(
+        verified_source(&fixture, &identity).unwrap_err().code,
+        "invalid_token"
+    );
+}
+
+#[test]
+fn source_identity_trust_requires_live_saml_session_and_admin_permission() {
+    let fixture = Fixture::new();
+    let mut source = oauth_source();
+    source.oauth_profile = None;
+    source.saml = Some(riauth::source::saml::Settings {
+        signing_key: "test-only".into(),
+        sp_certificate_pem: "test-only".into(),
+        idp_certificates_pem: vec![],
+        name_id_format: Default::default(),
+        name_attribute: None,
+        email_attribute: None,
+        email_verified_attribute: None,
+        require_encrypted_assertions: false,
+        slo_redirect_url: None,
+        slo_post_url: None,
+    });
+    let alice = fixture.user("alice");
+    let (sid, identity) = bind_test_source_session(&fixture, &alice, &source, "alice-link");
+    assert_eq!(fixture.core.me(&alice).unwrap_err().code, "invalid_token");
+    assert_eq!(
+        verified_source(&fixture, &identity).unwrap_err().code,
+        "invalid_token"
+    );
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "saml_source_sessions",
+                &sid,
+                &json!({"subject":null,"index":"upstream","expires_at":now()-1}),
+            )
+        })
+        .unwrap();
+    assert_eq!(fixture.core.me(&alice).unwrap_err().code, "invalid_token");
+    assert_eq!(
+        verified_source(&fixture, &identity).unwrap_err().code,
+        "invalid_token"
+    );
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "saml_source_sessions",
+                &sid,
+                &json!({"subject":null,"index":"upstream","expires_at":now()+3600}),
+            )
+        })
+        .unwrap();
+    assert!(fixture.core.me(&alice).is_ok());
+    assert_eq!(
+        verified_source(&fixture, &identity).unwrap(),
+        Some("corp".into())
+    );
+
+    let (admin_sid, mut admin_identity) =
+        bind_test_source_session(&fixture, &fixture.admin, &source, "admin-link");
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(
+                "saml_source_sessions",
+                &admin_sid,
+                &json!({"subject":null,"index":"upstream","expires_at":now()+3600}),
+            )
+        })
+        .unwrap();
+    assert_eq!(
+        fixture.core.me(&fixture.admin).unwrap_err().code,
+        "invalid_token"
+    );
+    assert_eq!(
+        verified_source(&fixture, &admin_identity).unwrap_err().code,
+        "invalid_token"
+    );
+    source.allow_admin_login = true;
+    admin_identity.source.as_mut().unwrap().fingerprint = source.fingerprint().unwrap();
+    let mut admin_session: Session = fixture
+        .core
+        .store
+        .get("sessions", &admin_sid)
+        .unwrap()
+        .unwrap();
+    admin_session.identity = admin_identity.clone();
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put("sources", &source.id, &source)?;
+            tx.put("sessions", &admin_sid, &admin_session)
+        })
+        .unwrap();
+    assert!(fixture.core.me(&fixture.admin).is_ok());
+    assert_eq!(
+        verified_source(&fixture, &admin_identity).unwrap(),
+        Some("corp".into())
+    );
 }
 
 #[test]

@@ -805,6 +805,47 @@ def main() -> None:
         if path == SRC / "source.rs":
             source_protocol = masked_rust_source(path.read_text())
             source_catalog = (SRC / "assembly/source_catalog.rs").read_text()
+            source_identity = (SRC / "assembly/source_identity.rs").read_text()
+            identity_read = rust_function_body(source_identity, "validate_identity")
+            identity_compact = re.sub(r"\s+", "", identity_read or "")
+            core_identity = rust_function_body(
+                (SRC / "core.rs").read_text(), "identity_user_unbound"
+            )
+            core_identity_compact = re.sub(r"\s+", "", core_identity or "")
+            claims_identity = rust_function_body(
+                (SRC / "assembly/claims.rs").read_text(), "verified_upstream_source"
+            )
+            claims_identity_compact = re.sub(r"\s+", "", claims_identity or "")
+            if (
+                rust_function_body(source_protocol, "validate_identity") is not None
+                or not re.search(r"\bpub\s+use\s+crate::assembly::source_validate_identity\s+as\s+validate_identity\s*;", path.read_text())
+                or not re.search(r"\bpub\s+use\s+source_identity::validate_identity\s+as\s+source_validate_identity\s*;", (SRC / "assembly.rs").read_text())
+                or identity_read is None
+                or not (0 <= identity_compact.find('context.id.starts_with("ldap/")')
+                        < identity_compact.find("enabled(tx,&context.id).map_err(|_|Error::unauthorized())?")
+                        < identity_compact.find('tx.get::<Link>("source_links",&context.link)?')
+                        < identity_compact.find("context.fingerprint!=source.fingerprint()?")
+                        < identity_compact.find("link.user_id!=identity.user_id")
+                        < identity_compact.find("link.source!=context.id")
+                        < identity_compact.find("source.saml.is_some()")
+                        < identity_compact.find('tx.get::<saml::UpstreamSession>("saml_source_sessions",&identity.session_id)?')
+                        < identity_compact.find("s.expires_at.is_some_and(|at|at<=now())")
+                        < identity_compact.find("!source.allow_admin_login")
+                        < identity_compact.find('tx.get::<User>("users",&identity.user_id)?')
+                        < identity_compact.find("u.admin")
+                        < identity_compact.rfind("Ok(())"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", identity_read)
+                or core_identity is None
+                or not (0 <= core_identity_compact.find("self.radius_eap_validate_identity(tx,identity)?")
+                        < core_identity_compact.find("crate::mtls::validate_identity(tx,identity)?")
+                        < core_identity_compact.find("crate::directory::validate_identity(self,tx,identity)?")
+                        < core_identity_compact.find("crate::assembly::source_validate_identity(tx,identity)?")
+                        < core_identity_compact.find("crate::identity::validate_user(tx,identity)"))
+                or claims_identity is None
+                or not (0 <= claims_identity_compact.find("crate::assembly::source_validate_identity(self,identity)?")
+                        < claims_identity_compact.find("Ok(identity.source.as_ref()"))
+            ):
+                errors.append("src/source.rs: source identity trust reads belong in assembly")
             if rust_function_body(source_protocol, "source_list") is not None:
                 errors.append("src/source.rs: authorized source catalog read belongs in assembly")
             source_put = rust_function_body(

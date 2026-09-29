@@ -84,6 +84,8 @@ mod source_callback;
 mod source_catalog;
 mod source_finish;
 pub(crate) use source_finish::clear_browser_return;
+mod source_identity;
+pub use source_identity::validate_identity as source_validate_identity;
 mod source_stage;
 pub(crate) use source_stage::cleanup_expired_source_state;
 #[cfg(feature = "platform")]

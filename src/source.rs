@@ -9,6 +9,7 @@ mod saml_types;
 pub(crate) mod workflow;
 #[cfg(feature = "platform")]
 use crate::assembly::clear_browser_return;
+pub use crate::assembly::source_validate_identity as validate_identity;
 pub use crate::model::federation::SourceIdentity;
 use crate::{
     agent::Principal,
@@ -1124,39 +1125,6 @@ pub(crate) fn presented_source_retired(source: Option<&Source>, pending_fingerpr
 pub(crate) fn link_key(source: &str, issuer: &str, subject: &str) -> String {
     digest(&format!("{source}\0{issuer}\0{subject}"))
 }
-pub fn validate_identity(tx: &Tx<'_>, identity: &Identity) -> Result<()> {
-    if let Some(context) = &identity.source {
-        if context.id.starts_with("ldap/") {
-            return Ok(());
-        } // Validated against server configuration by Core.
-        let source = enabled(tx, &context.id).map_err(|_| Error::unauthorized())?;
-        let link = tx
-            .get::<Link>("source_links", &context.link)?
-            .ok_or_else(Error::unauthorized)?;
-        if context.fingerprint != source.fingerprint()?
-            || link.user_id != identity.user_id
-            || link.source != context.id
-        {
-            return Err(Error::unauthorized());
-        }
-        if source.saml.is_some()
-            && tx
-                .get::<saml::UpstreamSession>("saml_source_sessions", &identity.session_id)?
-                .is_none_or(|s| s.expires_at.is_some_and(|at| at <= now()))
-        {
-            return Err(Error::unauthorized());
-        }
-        if !source.allow_admin_login
-            && tx
-                .get::<User>("users", &identity.user_id)?
-                .is_some_and(|u| u.admin)
-        {
-            return Err(Error::unauthorized());
-        }
-    }
-    Ok(())
-}
-
 async fn bounded_json(mut response: reqwest::Response) -> Result<Value> {
     if !response.status().is_success() || response.content_length().is_some_and(|n| n > 65536) {
         return Err(Error::bad(
