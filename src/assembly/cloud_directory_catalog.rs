@@ -1,9 +1,14 @@
 //! Scoped cloud-directory catalog read over concrete storage.
 
 use crate::{
-    cloud_directory::Provider, core::Core, error::Result, model::Group,
+    cloud_directory::Provider,
+    core::Core,
+    crypto::digest,
+    error::{Error, Result},
+    model::Group,
     reconciliation::CloudControllerCheck,
 };
+use axum::http::StatusCode;
 use serde_json::{Value, json};
 
 impl Core {
@@ -18,6 +23,40 @@ impl Core {
         self.store.read(|tx| {
             self.management(tx, token, "directory.sync", scope)?;
             Ok(())
+        })
+    }
+
+    pub(crate) fn cloud_operation_credential_preflight(
+        &self,
+        token: &str,
+        scope: &str,
+    ) -> Result<Option<Value>> {
+        self.store.read(|tx| {
+            let actor = self.management(tx, token, "directory.sync", scope)?;
+            if let Some(context) = crate::context::current() {
+                if let Some(key) = &context.idempotency_key {
+                    let receipt_key = digest(&format!("{}\0{key}", actor.id));
+                    let permissions = serde_json::to_value(&actor.permissions)
+                        .map_err(Error::internal)?;
+                    if let Some(result) = crate::context::replay_receipt(
+                        tx, &receipt_key, &context.fingerprint, &permissions,
+                    )? {
+                        return Ok(Some(result));
+                    }
+                }
+                if actor.agent && context.revision.is_none() {
+                    return Err(Error::new(
+                        StatusCode::PRECONDITION_REQUIRED,
+                        "precondition_required",
+                        "Agent mutations require If-Match with the current revision, or use plan/apply",
+                    ));
+                }
+                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+                if context.revision.is_some_and(|expected| expected != revision) {
+                    return Err(Error::conflict("Configuration revision changed"));
+                }
+            }
+            Ok(None)
         })
     }
 

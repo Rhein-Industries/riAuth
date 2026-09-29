@@ -3828,6 +3828,83 @@ async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() 
     assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
 }
 
+#[test]
+fn cloud_credential_preflight_replays_before_revision_and_provider_access() {
+    use riauth::context::{RequestContext, scope};
+
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let verifier = agent_token(
+        &fixture,
+        "credential_verifier",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
+    let other = agent_token(
+        &fixture,
+        "other_verifier",
+        vec![permission("directory.sync", "workspace/other")],
+    );
+    let revision = fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap();
+    let verify = |token: &str, key: &str, fingerprint: &str, expected_revision| {
+        scope(
+            Some(RequestContext {
+                idempotency_key: Some(key.into()),
+                fingerprint: fingerprint.into(),
+                revision: expected_revision,
+                ..Default::default()
+            }),
+            || fixture.core.cloud_verify_credential(token, "workspace", "corp"),
+        )
+    };
+
+    assert_eq!(
+        verify(&other, "scope", "same-request", Some(revision))
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    assert_eq!(
+        verify(&verifier, "missing-revision", "same-request", None)
+            .unwrap_err()
+            .code,
+        "precondition_required"
+    );
+    assert_eq!(
+        verify(&verifier, "stale", "same-request", Some(revision + 1))
+            .unwrap_err()
+            .message,
+        "Configuration revision changed"
+    );
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+
+    let first = verify(&verifier, "verify", "same-request", Some(revision)).unwrap();
+    assert_eq!(first["connected"], true);
+    assert_redacted(&first);
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+
+    fixture
+        .core
+        .store
+        .write(|tx| tx.put("meta", "revision", &(revision + 1)))
+        .unwrap();
+    assert_eq!(
+        verify(&verifier, "verify", "different-request", Some(revision))
+            .unwrap_err()
+            .message,
+        "Idempotency key was used for a different request"
+    );
+    assert_eq!(
+        verify(&verifier, "verify", "same-request", Some(revision)).unwrap(),
+        first
+    );
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
     use axum::{

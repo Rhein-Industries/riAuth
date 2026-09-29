@@ -1,11 +1,10 @@
 //! Shared, sanitized operational view of configured cloud directory connectors.
 use crate::{
     core::{Core, audit, validate_name},
-    crypto::{digest, now},
+    crypto::now,
     error::{Error, Result},
     reconciliation::controller_fingerprint,
 };
-use axum::http::StatusCode;
 use serde_json::{Value, json};
 use std::{path::Path, time::UNIX_EPOCH};
 
@@ -253,33 +252,7 @@ impl Core {
         let scope = resource(kind, id)?;
         // Check authority, replay, and preconditions before contacting a provider.
         // The probe must run outside a store writer; a remote peer can take seconds.
-        if let Some(replay) = self.store.read(|tx| {
-            let actor = self.management(tx, token, "directory.sync", &scope)?;
-            if let Some(context) = crate::context::current() {
-                if let Some(key) = &context.idempotency_key {
-                    let receipt_key = digest(&format!("{}\0{key}", actor.id));
-                    let permissions = serde_json::to_value(&actor.permissions)
-                        .map_err(Error::internal)?;
-                    if let Some(result) = crate::context::replay_receipt(
-                        tx, &receipt_key, &context.fingerprint, &permissions,
-                    )? {
-                        return Ok(Some(result));
-                    }
-                }
-                if actor.agent && context.revision.is_none() {
-                    return Err(Error::new(
-                        StatusCode::PRECONDITION_REQUIRED,
-                        "precondition_required",
-                        "Agent mutations require If-Match with the current revision, or use plan/apply",
-                    ));
-                }
-                let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-                if context.revision.is_some_and(|expected| expected != revision) {
-                    return Err(Error::conflict("Configuration revision changed"));
-                }
-            }
-            Ok(None)
-        })? {
+        if let Some(replay) = self.cloud_operation_credential_preflight(token, &scope)? {
             return Ok(replay);
         }
         match kind {

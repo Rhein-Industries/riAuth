@@ -744,6 +744,38 @@ def main() -> None:
                 or re.search(r"\.\s*store\s*\.\s*read\s*\(", probe)
             ):
                 errors.append("src/cloud_operations.rs: post-probe sync recheck belongs in assembly")
+            verify = rust_function_body(masked_rust_source(path.read_text()), "cloud_verify_credential")
+            preflight = rust_function_body(
+                masked_rust_source(catalog_source), "cloud_operation_credential_preflight"
+            )
+            preflight_raw = rust_function_body(catalog_source, "cloud_operation_credential_preflight")
+            preflight_call = (
+                re.search(
+                    r"\bself\.cloud_operation_credential_preflight\s*\(\s*token\s*,\s*&scope\s*\)\s*\?",
+                    verify,
+                )
+                if verify is not None else None
+            )
+            if (
+                verify is None
+                or preflight_call is None
+                or not (0 <= verify.find("resource(kind, id)") < preflight_call.start()
+                        < verify.find("match kind") < verify.find("cloud_connection_probe")
+                        < verify.find("self.mutation"))
+                or re.search(r"\.\s*store\s*\.\s*read\s*\(", masked_rust_source(path.read_text()))
+                or re.search(r"\b(?:management|replay_receipt)\s*\(", verify[:verify.find("self.mutation")])
+                or preflight is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", preflight)
+                or not (0 <= preflight.find("self.management") < preflight.find("replay_receipt")
+                        < preflight.find("actor.agent") < preflight.find("tx.get::<u64>"))
+                or preflight_raw is None
+                or not re.search(r'self\.management\s*\(\s*tx\s*,\s*token\s*,\s*"directory\.sync"\s*,\s*scope\s*\)', preflight_raw)
+                or "digest(&format!" not in preflight_raw
+                or "actor.permissions" not in preflight_raw
+                or "context.fingerprint" not in preflight_raw
+                or not re.search(r'tx\.get\s*::<\s*u64\s*>\s*\(\s*"meta"\s*,\s*"revision"\s*\)', preflight_raw)
+            ):
+                errors.append("src/cloud_operations.rs: credential replay and revision preflight belongs in assembly")
         if path == SRC / "source.rs" and rust_function_body(
             masked_rust_source(path.read_text()), "source_list"
         ) is not None:
