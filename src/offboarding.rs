@@ -14,7 +14,9 @@
 //! confirmed the deactivation.
 //!
 //! `Core::offboarding_diagnostics` reuses that classification for an operator
-//! aggregate. Attention items are redacted. The read does not change readiness.
+//! aggregate. Attention items are redacted: stored `last_error` text stays on
+//! the job read, and the aggregate reports only whether an error is present.
+//! The read does not change readiness.
 
 pub use crate::offboarding_types::{ACTIONS, BUCKET, Job, MAX_ATTEMPTS, Status};
 use crate::{
@@ -318,7 +320,7 @@ fn downstream_rollup(
                         "hold_recognized": true,
                         "outcome": Value::Null,
                         "attempts": 0,
-                        "last_error": Value::Null,
+                        "has_error": false,
                         "delivered_at": Value::Null,
                         "uncertain": false,
                         "next_action": "delivery_record_expired",
@@ -362,8 +364,8 @@ fn attention_target(
         .hold
         .as_deref()
         .filter(|hold| KNOWN_HOLDS.contains(hold));
-    let last_error = row.last_error.as_deref().and_then(redacted_text);
-    let action = target_next_action(delivery_state, status, hold, last_error.is_some());
+    let has_error = row.last_error.is_some();
+    let action = target_next_action(delivery_state, status, hold, has_error);
     AttentionTarget {
         name: target.to_owned(),
         delivery: id.to_owned(),
@@ -377,7 +379,7 @@ fn attention_target(
             "hold_recognized": recognized,
             "outcome": public_outcome(row.outcome.as_deref()),
             "attempts": row.attempts,
-            "last_error": last_error,
+            "has_error": has_error,
             "delivered_at": row.delivered_at,
             "uncertain": row.uncertain,
             "next_action": action,
@@ -397,20 +399,6 @@ fn deactivation_status_name(status: downstream::Status) -> &'static str {
     }
 }
 
-fn redacted_text(message: &str) -> Option<String> {
-    let cleaned: String = message
-        .chars()
-        .filter(|character| !character.is_control())
-        .take(200)
-        .collect();
-    let cleaned = cleaned.trim();
-    if cleaned.is_empty() {
-        None
-    } else {
-        Some(cleaned.to_owned())
-    }
-}
-
 fn public_outcome(outcome: Option<&str>) -> Option<&str> {
     match outcome {
         Some(
@@ -425,7 +413,7 @@ fn target_next_action(
     delivery_state: &str,
     status: &str,
     hold: Option<&str>,
-    last_error: bool,
+    has_error: bool,
 ) -> &'static str {
     match delivery_state {
         "ambiguous" => "attest_remote_state",
@@ -451,7 +439,7 @@ fn target_next_action(
                 | "recovered_dispatch",
             ) => "wait_for_dispatch_settlement",
             Some("retry") => "wait_for_retry",
-            _ if last_error => "inspect_deactivation",
+            _ if has_error => "inspect_deactivation",
             _ => "wait_for_deactivation",
         },
         _ => "inspect_deactivation",
@@ -638,7 +626,7 @@ fn attention_item(job: &Job, rollup: Option<&DownstreamRollup>) -> ListedItem {
             "username": job.username,
             "status": job_status_name(job.status),
             "attempts": job.attempts,
-            "last_error": job.last_error.as_deref().and_then(redacted_text),
+            "has_error": job.last_error.is_some(),
             "execute_at": job.execute_at,
             "next_attempt": job.next_attempt,
             "downstream_state": rollup.map(|rollup| rollup.state),
@@ -839,8 +827,9 @@ impl Core {
 
     /// Counts for every scheduled-offboarding job, plus redacted attention items
     /// the caller may already inspect. `status: done` is local revocation only.
-    /// A hidden target still decides `downstream_state`. This read does not
-    /// change readiness, doctor, or queue indexes.
+    /// A hidden target still decides `downstream_state`. `has_error` is presence
+    /// of a stored `last_error`; the text is left on the job read. This read does
+    /// not change readiness, doctor, or queue indexes.
     pub fn offboarding_diagnostics(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.management(tx, token, "operations.read", "operations/offboarding")?;
