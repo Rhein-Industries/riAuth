@@ -210,10 +210,7 @@ impl Core {
             })
             .collect::<Vec<_>>();
         let last_connection_check = self.cloud_operation_last_connection_check(token, &scope)?;
-        self.store.read(|tx| {
-            self.management(tx, token, "directory.read", &scope)?;
-            Ok(())
-        })?;
+        self.cloud_operation_authorize_read(token, &scope)?;
         Ok(json!({
             "kind": kind,
             "id": id,

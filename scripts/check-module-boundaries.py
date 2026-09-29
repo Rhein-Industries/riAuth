@@ -644,6 +644,22 @@ def main() -> None:
                 )
             ):
                 errors.append("src/cloud_operations.rs: scoped connection check read belongs in assembly")
+            read_auth_calls = (
+                list(re.finditer(
+                    r"\bself\.cloud_operation_authorize_read\s*\(\s*token\s*,\s*&scope\s*\)\s*\?\s*;",
+                    operations,
+                ))
+                if operations is not None
+                else []
+            )
+            if (
+                connection_call is None
+                or len(read_auth_calls) != 2
+                or not (connection_call.end() <= read_auth_calls[1].start() < operations.find("Ok(json!"))
+                or operations[connection_call.end():read_auth_calls[1].start()].strip()
+                or operations[read_auth_calls[1].end():operations.find("Ok(json!")].strip()
+            ):
+                errors.append("src/cloud_operations.rs: final read authorization must follow connection check")
             probe = rust_function_body(masked_rust_source(path.read_text()), "cloud_test_connection")
             probe_auth = rust_function_body(
                 masked_rust_source(catalog_source), "cloud_operation_authorize_probe"

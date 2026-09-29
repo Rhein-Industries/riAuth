@@ -3511,6 +3511,46 @@ fn cloud_operations_authorizes_before_missing_configuration() {
 }
 
 #[test]
+fn cloud_operations_revoked_reader_gets_no_view_or_write() {
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let reader = agent_token(
+        &fixture,
+        "cloud-view-reader",
+        vec![permission("directory.read", "workspace/corp")],
+    );
+    let before = fixture.snapshot().unwrap();
+
+    let view = fixture
+        .core
+        .cloud_operations(&reader, "workspace", "corp")
+        .unwrap();
+    assert_eq!(view["kind"], "workspace");
+    assert_eq!(view["id"], "corp");
+    fixture.assert_snapshot(&before);
+
+    fixture
+        .core
+        .revoke_agent(&fixture.admin, "cloud-view-reader")
+        .unwrap();
+    let revoked = fixture.snapshot().unwrap();
+    assert_eq!(
+        fixture
+            .core
+            .cloud_operations(&reader, "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "invalid_token"
+    );
+    fixture.assert_snapshot(&revoked);
+}
+
+#[test]
 fn cloud_connection_probe_authorizes_scope_before_upstream() {
     let directory = serve(
         "workspace",
