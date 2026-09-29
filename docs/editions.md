@@ -116,7 +116,10 @@ diagnostic route is Platform because a serving Essentials store cannot retain
 `offboard_jobs`. Platform `GET /api/operations/offboarding/deactivations` is the
 redacted read for incomplete and failed deactivation delivery. It pages the
 deactivation bucket and does not load offboarding jobs. Essentials keeps
-the shared deactivation rows and `GET /api/provisioning/deactivations`. Shared configuration, temporary access, offboarding and
+the shared deactivation rows and `GET /api/provisioning/deactivations`.
+Platform `GET /api/operations/ssf` is the redacted read for outbound Shared
+Signals delivery failures. Essentials rejects stored `ssf_deliveries` and does
+not serve that route. Shared configuration, temporary access, offboarding and
 remote-key records remain decodable for downgrade inspection; an Essentials
 binary still refuses to restore or open a store that retains them. Restore a Platform archive with Platform, then use the handoff
 below ([disaster recovery](disaster-recovery.md#choose-the-binary)). Outbound SCIM deactivation intent, which every account

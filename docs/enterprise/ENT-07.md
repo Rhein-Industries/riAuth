@@ -117,6 +117,8 @@ Outbound credential types are `password`, `otp`, `recovery-code` and `public-key
 
 The transition only enqueues. `deliver_once` signs and POSTs `application/secevent+jwt`. HTTP 500 and 429 retry with backoff, up to 5 attempts. Other 4xx and redirects stop and record failure. Tokens are not logged or stored on the queue record. Delivery remains at-least-once: recipients should deduplicate by SET `jti`, which stays stable across retries.
 
+Platform `GET /api/operations/ssf` is a separate read for that queue. It requires `operations.read` on `operations/ssf`, pages deliveries 128 at a time, and lists at most 50 redacted attention rows. An item also requires `ssf.configure` or `ssf.manage` on that stream. The response uses fixed `event` and `next_action` tokens and omits the endpoint, subject, audience, JTI, credential type, and raw event string. It does not change claim, finish, or cancel. See [SSF delivery diagnostics](../roadmap/o06-ssf-delivery-diagnostics.md).
+
 ## What an Apple Business Manager test still requires
 
 - A real ABM (or other) SSF transmitter, its issuer, and its JWKS.

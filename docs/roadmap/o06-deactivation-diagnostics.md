@@ -41,7 +41,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage pressure and key problems.
 - Provisioning-job error text, which stays on the provisioning job read.
-- Mail deliveries, which stay on the mail read.
+- Mail delivery status, which remains `GET /api/operations/mail` and the `mail_deliveries` queue gauges. No SMTP error string is stored. Outbound Shared Signals delivery failures are [SSF delivery diagnostics](o06-ssf-delivery-diagnostics.md).
 - `doctor`, `/readyz`, `/livez`, Prometheus, and Grafana. This slice adds no series and no dashboard JSON.
 - `riauthctl`, and any new `riauth` diagnostics subcommand. The existing `riauth offboard diagnostics` command remains the job aggregate.
 - An Essentials redacted deactivation aggregate. Essentials keeps the detailed deactivation list.

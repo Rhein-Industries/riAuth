@@ -740,6 +740,7 @@ fn platform_routes() -> Router<App> {
             "/api/operations/offboarding/deactivations",
             get(offboarding_deactivation_diagnostics),
         )
+        .route("/api/operations/ssf", get(ssf_delivery_diagnostics))
         .route(
             "/api/access/requests",
             get(access_requests).post(access_request_create),
@@ -2161,6 +2162,8 @@ session_handler!(
     offboarding_deactivation_diagnostics,
     offboarding_deactivation_diagnostics
 );
+#[cfg(feature = "platform")]
+session_handler!(ssf_delivery_diagnostics, ssf_delivery_diagnostics);
 session_handler!(groups, list_groups);
 session_handler!(clients, list_clients);
 session_handler!(mfa_begin, mfa_begin);

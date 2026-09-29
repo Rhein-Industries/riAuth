@@ -1,6 +1,7 @@
 //! Platform SSF Core entry points and concrete transaction operations.
 
 use crate::{
+    agent::Principal,
     core::{self, Core, audit},
     crypto::{SigningKey, digest, now},
     error::{Error, Result},
@@ -9,6 +10,7 @@ use crate::{
     ssf::*,
     store::Tx,
 };
+use serde::Serialize;
 use serde_json::{Value, json};
 
 impl SsfTx for Tx<'_> {
@@ -247,6 +249,75 @@ impl Core {
         })
     }
 
+    /// Counts for every stored outbound SSF delivery, plus at most 50 redacted
+    /// attention rows. Rows are read one storage page at a time. Stream records
+    /// are not loaded, so a deleted stream and an endpoint change are both
+    /// `cancelled`. A row with `delivered_at` is `delivered`. Endpoint URLs,
+    /// subjects, audiences, JTIs, credential types, and the raw event string
+    /// stay on the delivery record. This read does not claim, dispatch, or
+    /// change readiness.
+    pub fn ssf_delivery_diagnostics(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            let actor = self.management(tx, token, "operations.read", "operations/ssf")?;
+            let mut counts = DeliveryCounts::default();
+            let mut listed = Vec::with_capacity(DIAGNOSTIC_ITEMS);
+            let mut visible_attention = 0u64;
+            let mut after: Option<String> = None;
+            let page_size = crate::store::maintenance::PAGE;
+            loop {
+                let page = tx.scan::<Delivery>("ssf_deliveries", after.as_deref(), page_size)?;
+                let Some(last_key) = page.last().map(|(key, _)| key.clone()) else {
+                    break;
+                };
+                if after
+                    .as_ref()
+                    .is_some_and(|previous| last_key.as_str() <= previous.as_str())
+                {
+                    return Err(Error::internal(
+                        "SSF delivery diagnostic page did not advance",
+                    ));
+                }
+                let full = page.len() == page_size;
+                after = Some(last_key);
+                for (_, row) in page {
+                    let class = classify_delivery(&row);
+                    count_delivery(&mut counts, class);
+                    let visible = delivery_visible(&actor, &row.stream_id);
+                    if !visible {
+                        counts.withheld = counts.withheld.saturating_add(1);
+                    }
+                    let Some(action) = attention_action(class) else {
+                        continue;
+                    };
+                    counts.attention = counts.attention.saturating_add(1);
+                    if !visible {
+                        counts.withheld_attention = counts.withheld_attention.saturating_add(1);
+                        continue;
+                    }
+                    visible_attention = visible_attention.saturating_add(1);
+                    retain_delivery(&mut listed, delivery_item(&row, class, action));
+                }
+                if !full {
+                    break;
+                }
+            }
+            if listed.len() < DIAGNOSTIC_ITEMS {
+                sort_deliveries(&mut listed);
+            }
+            let items: Vec<Value> = listed.into_iter().map(|item| item.body).collect();
+            Ok(json!({
+                "schema_version": "riauth.ssf-delivery-diagnostics/v1",
+                "checked_at": now(),
+                "affects_readiness": false,
+                "limits": { "attention_items": DIAGNOSTIC_ITEMS },
+                "counts": counts,
+                "listed": items.len(),
+                "truncated": visible_attention > u64::try_from(DIAGNOSTIC_ITEMS).unwrap_or(u64::MAX),
+                "items": items,
+            }))
+        })
+    }
+
     pub fn deliver_once(&self) -> Result<Vec<Value>> {
         // The due index commits with each delivery. An empty snapshot needs no
         // writer; a concurrent enqueue will be picked up by a later pass. Treat
@@ -306,4 +377,155 @@ impl Core {
         self.store
             .write(|tx| finish_delivery(tx, id, attempt, status))
     }
+}
+
+const DIAGNOSTIC_ITEMS: usize = 50;
+
+#[derive(Clone, Copy)]
+enum DeliveryClass {
+    Pending,
+    Retrying,
+    Stopped,
+    Cancelled,
+    Delivered,
+}
+
+#[derive(Default, Serialize)]
+struct DeliveryCounts {
+    deliveries: u64,
+    pending: u64,
+    retrying: u64,
+    stopped: u64,
+    cancelled: u64,
+    delivered: u64,
+    attention: u64,
+    withheld: u64,
+    withheld_attention: u64,
+}
+
+struct ListedDelivery {
+    rank: u8,
+    id: String,
+    body: Value,
+}
+
+fn classify_delivery(row: &Delivery) -> DeliveryClass {
+    if row.delivered_at.is_some() {
+        DeliveryClass::Delivered
+    } else if row.stopped && row.last_failed {
+        DeliveryClass::Stopped
+    } else if row.stopped {
+        DeliveryClass::Cancelled
+    } else if row.last_failed {
+        DeliveryClass::Retrying
+    } else {
+        DeliveryClass::Pending
+    }
+}
+
+fn attention_action(class: DeliveryClass) -> Option<&'static str> {
+    Some(match class {
+        DeliveryClass::Stopped => "inspect_receiver",
+        DeliveryClass::Retrying => "wait_for_retry",
+        DeliveryClass::Cancelled => "delivery_cancelled",
+        DeliveryClass::Pending | DeliveryClass::Delivered => return None,
+    })
+}
+
+fn event_token(event: &str) -> &'static str {
+    if event == ACCOUNT_DISABLED {
+        "account_disabled"
+    } else if event == SESSION_REVOKED {
+        "session_revoked"
+    } else if event == CREDENTIAL_CHANGE {
+        "credential_change"
+    } else {
+        "unknown"
+    }
+}
+
+fn count_delivery(counts: &mut DeliveryCounts, class: DeliveryClass) {
+    counts.deliveries = counts.deliveries.saturating_add(1);
+    let slot = match class {
+        DeliveryClass::Pending => &mut counts.pending,
+        DeliveryClass::Retrying => &mut counts.retrying,
+        DeliveryClass::Stopped => &mut counts.stopped,
+        DeliveryClass::Cancelled => &mut counts.cancelled,
+        DeliveryClass::Delivered => &mut counts.delivered,
+    };
+    *slot = slot.saturating_add(1);
+}
+
+fn delivery_visible(actor: &Principal, stream_id: &str) -> bool {
+    let resource = format!("ssf/{stream_id}");
+    actor.allows("ssf.configure", &resource) || actor.allows("ssf.manage", &resource)
+}
+
+fn delivery_name(class: DeliveryClass) -> &'static str {
+    match class {
+        DeliveryClass::Pending => "pending",
+        DeliveryClass::Retrying => "retrying",
+        DeliveryClass::Stopped => "stopped",
+        DeliveryClass::Cancelled => "cancelled",
+        DeliveryClass::Delivered => "delivered",
+    }
+}
+
+fn delivery_rank(class: DeliveryClass) -> u8 {
+    match class {
+        DeliveryClass::Stopped => 0,
+        DeliveryClass::Retrying => 1,
+        DeliveryClass::Cancelled => 2,
+        DeliveryClass::Pending | DeliveryClass::Delivered => 3,
+    }
+}
+
+fn delivery_item(row: &Delivery, class: DeliveryClass, action: &str) -> ListedDelivery {
+    ListedDelivery {
+        rank: delivery_rank(class),
+        id: row.id.clone(),
+        body: json!({
+            "id": row.id,
+            "stream_id": row.stream_id,
+            "delivery_state": delivery_name(class),
+            "attempts": row.attempts,
+            "next_attempt": row.next_attempt,
+            "created_at": row.created_at,
+            "last_failed": row.last_failed,
+            "last_status": row.last_status,
+            "event": event_token(&row.event),
+            "next_action": action,
+        }),
+    }
+}
+
+fn sort_deliveries(items: &mut [ListedDelivery]) {
+    items.sort_by(|left, right| {
+        left.rank
+            .cmp(&right.rank)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+
+/// Keep the best `DIAGNOSTIC_ITEMS` rows. Worse rows are dropped immediately.
+fn retain_delivery(items: &mut Vec<ListedDelivery>, item: ListedDelivery) {
+    if items.len() < DIAGNOSTIC_ITEMS {
+        items.push(item);
+        if items.len() == DIAGNOSTIC_ITEMS {
+            sort_deliveries(items);
+        }
+        return;
+    }
+    let keep = {
+        let worst = items.last().expect("the retained list is full");
+        (item.rank, item.id.as_str()) < (worst.rank, worst.id.as_str())
+    };
+    if !keep {
+        return;
+    }
+    items.pop();
+    let pos = items.partition_point(|existing| {
+        (existing.rank, existing.id.as_str()) < (item.rank, item.id.as_str())
+    });
+    items.insert(pos, item);
 }

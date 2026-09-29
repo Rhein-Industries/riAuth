@@ -34,7 +34,7 @@ The read does not write an audit event. It is not on the maintenance hot path an
 - Connector lag. A schedule's `next_run` advances when a job is enqueued, which is not a measure of sync completion.
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage pressure and key problems.
-- Failed jobs outside scheduled offboarding. Provisioning jobs and mail deliveries keep their existing reads. Reconciliation controller failures have a separate redacted aggregate, [reconciliation diagnostics](o06-reconciliation-diagnostics.md). This offboarding read does not list them.
+- Failed jobs outside scheduled offboarding. Provisioning jobs keep their existing read, including stored error text. Mail delivery status remains `GET /api/operations/mail` and the `mail_deliveries` queue gauges; that read omits the recipient, subject, body, proof, and lease, and no SMTP error string is stored. Reconciliation controller failures have a separate redacted aggregate, [reconciliation diagnostics](o06-reconciliation-diagnostics.md). Outbound Shared Signals delivery failures are [SSF delivery diagnostics](o06-ssf-delivery-diagnostics.md). This offboarding read does not list them.
 - `doctor` and `queues.offboard_jobs.failed`. The failed queue counts `status: failed` only, so a done job with incomplete downstream work is still absent there.
 - Deactivation rows, including rows no offboarding job records. The row-level read pages the deactivation bucket and does not load these jobs. See [deactivation diagnostics](o06-deactivation-diagnostics.md). This job aggregate still reads `offboard_jobs`.
 - A production backlog deadline for the full job scan.

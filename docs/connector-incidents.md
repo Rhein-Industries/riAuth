@@ -64,7 +64,9 @@ neither pending nor failed in that queue. For mail,
 `queues.mail_deliveries.failed` includes a row that has
 already attempted, released its lease, and is waiting for the next retry.
 Read `riauth account deliveries` before treating that count as a stopped
-message.
+message. `queues.ssf_deliveries.failed` counts a retrying row, a stopped
+failure, and a cancelled row together. Platform `GET /api/operations/ssf`
+splits those states. See [SSF delivery diagnostics](roadmap/o06-ssf-delivery-diagnostics.md).
 
 An occupied connector lane or target returns `connector_overloaded` (HTTP 503,
 exit 6) and `Retry-After: 1`. The message says no work started. A manual
