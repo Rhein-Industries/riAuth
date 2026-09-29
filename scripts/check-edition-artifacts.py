@@ -173,6 +173,19 @@ def archive_server(binary, config, log):
     return process
 
 
+def assert_downgrade_rejection(downgrade, preflight):
+    assert downgrade.returncode, downgrade.stdout + downgrade.stderr
+    direct = json.loads(downgrade.stdout)
+    assert direct["ok"] is False and "Platform" in direct["error"]["message"], direct
+    assert preflight.returncode == 5, preflight.stdout + preflight.stderr
+    report = json.loads(preflight.stdout)["data"]
+    assert report["ready"] is False, report
+    blockers = report["blockers"]
+    assert any(item["resource"] == "meta/edition_provenance" for item in blockers), blockers
+    assert any(item["resource"].startswith("agents/") and
+               "Platform build" in item["reason"] for item in blockers), blockers
+
+
 def check_archives(essentials, platform, maintenance, directory):
     binaries = {
         edition: archive_binary(archive, edition, directory)
@@ -209,9 +222,14 @@ def check_archives(essentials, platform, maintenance, directory):
                 [str(binaries["essentials"]), "--config", str(config), "--json", "serve"],
                 text=True, capture_output=True, timeout=15,
             )
-            output = downgrade.stdout + downgrade.stderr
-            assert downgrade.returncode and "Stored agent" in output and "Platform build" in output, output
+            preflight = subprocess.run(
+                [str(maintenance_binaries["platform"]), "--config", str(config), "--json",
+                 "transition-preflight", "--target", "essentials"],
+                text=True, capture_output=True, timeout=15,
+            )
+            assert_downgrade_rejection(downgrade, preflight)
     print("Native archives: edition, route, agent issuance and downgrade checks passed")
+    return maintenance_binaries["platform"]
 
 
 def docker(*args, input=None, timeout=30):
@@ -241,7 +259,7 @@ def check_image(edition, image, volume, listen):
         docker("rm", "-f", container)
 
 
-def check_images(essentials, platform):
+def check_images(essentials, platform, platform_maintenance):
     images = {"essentials": essentials, "platform": platform}
     volumes = {}
     try:
@@ -256,8 +274,15 @@ def check_images(essentials, platform):
             ["docker", "run", "--rm", "-v", f"{volumes['platform']}:/data", essentials,
              "--json", "serve"], text=True, capture_output=True, timeout=20,
         )
-        output = downgrade.stdout + downgrade.stderr
-        assert downgrade.returncode and "Stored agent" in output and "Platform build" in output, output
+        preflight = subprocess.run(
+            ["docker", "run", "--rm", "--entrypoint", "/usr/local/bin/riauth-maintenance",
+             "-v", f"{volumes['platform']}:/data",
+             "-v", f"{pathlib.Path(platform_maintenance).resolve()}:/usr/local/bin/riauth-maintenance:ro",
+             platform, "--config", "/data/riauth.toml", "--json",
+             "transition-preflight", "--target", "essentials"],
+            text=True, capture_output=True, timeout=20,
+        )
+        assert_downgrade_rejection(downgrade, preflight)
     finally:
         for volume in volumes.values():
             docker("volume", "rm", "-f", volume)
@@ -276,14 +301,15 @@ def main():
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="riauth-a05-") as temporary:
         directory = pathlib.Path(temporary)
-        check_archives(args.essentials_archive, args.platform_archive,
-                       {"essentials": args.essentials_maintenance_archive,
-                        "platform": args.platform_maintenance_archive}, directory)
+        platform_maintenance = check_archives(
+            args.essentials_archive, args.platform_archive,
+            {"essentials": args.essentials_maintenance_archive,
+             "platform": args.platform_maintenance_archive}, directory)
         check_tool_archive(args.riauthctl_archive, "riauthctl", directory)
-    if args.essentials_image or args.platform_image:
-        if not (args.essentials_image and args.platform_image):
-            parser.error("both image names are required")
-        check_images(args.essentials_image, args.platform_image)
+        if args.essentials_image or args.platform_image:
+            if not (args.essentials_image and args.platform_image):
+                parser.error("both image names are required")
+            check_images(args.essentials_image, args.platform_image, platform_maintenance)
 
 
 if __name__ == "__main__":
