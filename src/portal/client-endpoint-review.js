@@ -6,9 +6,15 @@
   const name = (v) => typeof v === "string" && /^[A-Za-z0-9_.@-]{1,64}$/.test(v) && ![".", ".."].includes(v);
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const list = (v, limit) => Array.isArray(v) && v.length <= limit && v.every((s) => typeof s === "string" && s.length > 0 && s.length <= 2048);
-  const endpointContent = (v) => v && Object.keys(v).length === 2 && list(v.redirect_uris, 32) && list(v.origins, 64)
+  const channel = (v) => v === null || typeof v === "string" && v.length > 0 && v.length <= 2048;
+  const endpointContent = (v) => v && Object.keys(v).length === 5 && list(v.redirect_uris, 32) && list(v.origins, 64)
+    && list(v.post_logout_redirect_uris, 32)
+    && channel(v.frontchannel_logout_uri) && channel(v.backchannel_logout_uri)
     && v.origins.every((s, i) => !i || v.origins[i - 1] < s);
-  const content = (client) => ({ redirect_uris: [...client.redirect_uris], origins: [...(client.origins || client.settings?.origins || [])].sort() });
+  const content = (client) => ({ redirect_uris: [...client.redirect_uris], origins: [...(client.origins || client.settings?.origins || [])].sort(),
+    post_logout_redirect_uris: [...(client.post_logout_redirect_uris || client.settings?.post_logout_redirect_uris || [])],
+    frontchannel_logout_uri: client.frontchannel_logout_uri ?? client.settings?.frontchannel_logout_uri ?? null,
+    backchannel_logout_uri: client.backchannel_logout_uri ?? client.settings?.backchannel_logout_uri ?? null });
   const effectNames = { revoke_families: "Token families to revoke", delete_authorization_codes: "Authorization codes to remove",
     delete_device_codes: "Device codes to remove", end_rp_sessions: "Relying-party sessions to end", queue_backchannel_logouts: "Back-channel logout notifications to queue" };
   const effects = (v) => v && Object.keys(v).length === 6 && v.restore_revoked_grants === false
@@ -36,8 +42,8 @@
   }
   function unavailable(client) {
     if (!client) return "The application is unavailable. Refresh to load its current state.";
-    if (["saml", "proxy", "ldap", "radius"].some((key) => client.settings?.[key])) return "Redirect and origin review supports OAuth applications only.";
-    if (client.settings?.require_device_trust && !RiAuthCapabilities.usable("identity.device_trust")) return "Device trust must be available before this application's redirects or origins can change.";
+    if (["saml", "proxy", "ldap", "radius"].some((key) => client.settings?.[key])) return "Endpoint review supports OAuth applications only.";
+    if (client.settings?.require_device_trust && !RiAuthCapabilities.usable("identity.device_trust")) return "Device trust must be available before this application's endpoints can change.";
     return null;
   }
   let generation = 0, clock, savedDraft = null, decision = null;
@@ -49,9 +55,9 @@
     if (!e.status || e.status >= 500) return "The response was lost or incomplete. The action may have completed. Refresh or recover the same request before taking another action.";
     if (e.status === 403) return "This action is not allowed. The author, every reviewer and executor must be distinct, currently authorized full administrators. Refresh and check the participants.";
     if (e.status === 404) return "This application or change is unavailable. Check the exact client or change ID.";
-    if ([409, 428].includes(e.status)) return "The server refused this change: its content, authority, dependencies or status changed, or its revocation snapshot is outside the supported bounds. Refresh to inspect it. Oversized or exchange-dependent applications need a separately scoped review.";
+    if ([409, 428].includes(e.status)) return "The server refused this change: its format, content, authority, dependencies or status changed, or its revocation snapshot is outside the supported bounds. Refresh to inspect it. Oversized or exchange-dependent applications need a separately scoped review.";
     if (e.status === 429) return "Too many requests. Wait a minute before retrying.";
-    return "The server rejected this change. The redirect URIs or origins must change and pass the existing URL validation. Oversized, shared-family or token-exchange snapshots and unsupported dependencies need a separately scoped change. Credentials are preserved.";
+    return "The server rejected this change. At least one endpoint must change and pass the existing URL validation. Oversized, shared-family or token-exchange snapshots and unsupported dependencies need a separately scoped change. Credentials are preserved.";
   }
   function view({ id, api, h, me, users, clients, identityChanged, sessionLost }) {
     const run = ++generation, owner = me?.user?.id;
@@ -65,8 +71,8 @@
     const active = () => run === generation && root.isConnected;
     const status = h("p", { class: "form-error", role: "alert", tabindex: "-1", hidden: true });
     root.append(h("section", { class: "page-heading" }, h("div", {}, h("p", { class: "eyebrow" }, "APPLICATIONS"),
-      h("h1", { tabindex: "-1" }, id ? "Review redirect URIs and origins" : "Reviewed redirects and origins"),
-      h("p", { class: "page-description" }, "Stage exact OAuth callback addresses and browser origins. A second administrator reviews them and a third applies them once. Credentials and all other settings are preserved."))), status);
+      h("h1", { tabindex: "-1" }, id ? "Review application endpoints" : "Reviewed application endpoints"),
+      h("p", { class: "page-description" }, "Stage exact OAuth callbacks, browser origins and logout URLs. A second administrator reviews them and a third applies them once. Credentials and all other settings are preserved."))), status);
     const localError = (text) => { status.textContent = text; status.hidden = false; status.focus(); };
     const error = (e) => { if (active()) { if (e.status === 401) sessionLost(401); else localError(message(e)); } };
     const button = (text, click, attrs = {}) => h("button", { type: "button", class: "button secondary", onclick: click, ...attrs }, text);
@@ -76,7 +82,9 @@
     const actor = (id) => h("span", { class: "grant-identity" }, h("strong", {}, users.find((u) => u.id === id)?.username || "Administrator"), h("code", {}, id));
     const date = (at) => h("time", { datetime: new Date(at * 1000).toISOString() }, new Date(at * 1000).toLocaleString(undefined, { timeZoneName: "short" }));
     const stateCard = (title, value, id) => h("section", { class: "admin-card" }, h("h2", {}, title),
-      facts([["Redirect URIs", value.redirect_uris.join("\n") || "None"], ["Browser origins", value.origins.join("\n") || "None"]]),
+      facts([["Redirect URIs", value.redirect_uris.join("\n") || "None"], ["Browser origins", value.origins.join("\n") || "None"],
+        ["Post-logout redirect URIs", value.post_logout_redirect_uris.join("\n") || "None"],
+        ["Front-channel logout URL", value.frontchannel_logout_uri || "None"], ["Back-channel logout URL", value.backchannel_logout_uri || "None"]]),
       h("pre", { class: "creation-content", id }, JSON.stringify(value, null, 2)));
     async function session() {
       await RiAuthCapabilities.refresh();
@@ -88,7 +96,7 @@
       return live;
     }
     if (!me?.user?.admin || !sessionMarker) {
-      root.append(h("p", { class: "notice" }, "A verified browser session with a full administrator account is required to review redirect URIs and origins."));
+      root.append(h("p", { class: "notice" }, "A verified browser session with a full administrator account is required to review application endpoints."));
       return { node: root };
     }
     const otherDecision = decision && decision.id !== id;
@@ -120,7 +128,9 @@
           const reason = unavailable(current); if (reason) { localError(reason); return; }
           const before = content(current); if (!endpointContent(before)) throw { status: 502 };
           savedDraft = { owner, sessionMarker, client_id: clientId, client: current, before, revision: live.revision,
-            redirects: before.redirect_uris.join("\n"), origins: before.origins.join("\n"), pending: null, blocked: false };
+            redirects: before.redirect_uris.join("\n"), origins: before.origins.join("\n"),
+            logout: before.post_logout_redirect_uris.join("\n"), frontchannel: before.frontchannel_logout_uri || "",
+            backchannel: before.backchannel_logout_uri || "", pending: null, blocked: false };
           status.hidden = true; draft(savedDraft);
         } catch (e) { error(e); }
         finally { loading = false; if (active()) updateSelection(); }
@@ -136,38 +146,48 @@
       function draft(record) {
         const redirects = h("textarea", { id: "endpoint-redirects", rows: "4", maxlength: "65536", autocomplete: "off", spellcheck: "false", value: record.redirects });
         const origins = h("textarea", { id: "endpoint-origins", rows: "4", maxlength: "65536", autocomplete: "off", spellcheck: "false", value: record.origins });
+        const logout = h("textarea", { id: "endpoint-logout", rows: "4", maxlength: "65536", autocomplete: "off", spellcheck: "false", value: record.logout });
+        const frontchannel = h("input", { id: "endpoint-frontchannel", type: "url", maxlength: "2048", autocomplete: "off", spellcheck: "false", value: record.frontchannel });
+        const backchannel = h("input", { id: "endpoint-backchannel", type: "url", maxlength: "2048", autocomplete: "off", spellcheck: "false", value: record.backchannel });
         const ack = h("input", { id: "endpoint-stage-ack", type: "checkbox" });
         const preview = h("pre", { id: "endpoint-preview", class: "creation-content" });
         const stage = h("button", { type: "submit", class: "button primary" }, "Stage exact endpoints");
         const notice = h("p", { class: "field-hint" });
-        const form = h("form", { class: "admin-form admin-card", novalidate: true }, h("h2", {}, "After · proposed redirects and origins"),
+        const form = h("form", { class: "admin-form admin-card", novalidate: true }, h("h2", {}, "After · proposed endpoints"),
           field("Redirect URIs", redirects, "One exact callback per line, in the proposed order. Empty removes all callbacks. Existing HTTPS, loopback and native-client rules apply."),
-          field("Browser origins", origins, "One exact origin per line, without a path. Empty removes browser CORS access."), preview,
+          field("Browser origins", origins, "One exact origin per line, without a path. Empty removes browser CORS access."),
+          field("Post-logout redirect URIs", logout, "One exact address per line, in the proposed order. Empty removes all registered post-logout redirects. HTTPS or HTTP loopback only; no wildcards, fragments or reserved logout query parameters."),
+          field("Front-channel logout URL", frontchannel, "One exact HTTPS or HTTP loopback URL. Empty removes this channel. Future browser logout pages use the current URL, including for existing sessions."),
+          field("Back-channel logout URL", backchannel, "One exact HTTPS or HTTP loopback URL. Empty stops new notifications. Already queued notifications retain their original destination."), preview,
           h("p", { class: "field-hint", id: "endpoint-draft-revision" }, `Based on management revision ${record.revision}. Refresh keeps this draft and its original revision.`), notice,
-          h("label", { class: "checkbox", for: ack.id }, ack, "I checked every redirect URI and browser origin, including removals."),
+          h("label", { class: "checkbox", for: ack.id }, ack, "I checked every callback, browser origin and logout URL, including removals."),
           h("div", { class: "form-actions" }, stage));
         let busy = false;
         const lines = (s) => s.split("\n").map((v) => v.trim()).filter(Boolean);
-        const body = () => ({ redirect_uris: lines(record.redirects), origins: [...new Set(lines(record.origins))].sort() });
+        const body = () => ({ redirect_uris: lines(record.redirects), origins: [...new Set(lines(record.origins))].sort(), post_logout_redirect_uris: lines(record.logout),
+          frontchannel_logout_uri: record.frontchannel.trim() || null, backchannel_logout_uri: record.backchannel.trim() || null });
         function update() {
           const locked = busy || !!record.pending;
-          redirects.disabled = origins.disabled = locked;
+          redirects.disabled = origins.disabled = logout.disabled = frontchannel.disabled = backchannel.disabled = locked;
           updateSelection(); select.disabled ||= busy; load.disabled ||= busy;
           ack.disabled = locked || record.blocked;
           stage.disabled = busy || record.blocked || otherDecision || !record.pending && (!ack.checked || same(body(), record.before));
           stage.textContent = record.pending ? "Retry same staging request" : "Stage exact endpoints";
           preview.textContent = JSON.stringify(record.pending?.body || body(), null, 2);
           notice.textContent = record.pending ? "Staging is unconfirmed. Content, revision and request key are locked. Retry the same request; a page reload discards this recovery intent."
-            : "Only these two complete fields change. Enabled applications keep their grants. For disabled applications the existing writer revokes grants; stage binds those exact effects. Other settings and credentials are preserved.";
+            : "Only these five complete fields change. Enabled applications keep their grants. For disabled applications the existing writer revokes grants and queues logout to the prior back-channel URL; stage binds those exact effects. Other settings and credentials are preserved.";
         }
         redirects.addEventListener("input", () => { record.redirects = redirects.value; ack.checked = false; update(); });
         origins.addEventListener("input", () => { record.origins = origins.value; ack.checked = false; update(); });
+        logout.addEventListener("input", () => { record.logout = logout.value; ack.checked = false; update(); });
+        frontchannel.addEventListener("input", () => { record.frontchannel = frontchannel.value; ack.checked = false; update(); });
+        backchannel.addEventListener("input", () => { record.backchannel = backchannel.value; ack.checked = false; update(); });
         ack.addEventListener("change", update);
-        editor.replaceChildren(stateCard("Before · loaded redirects and origins", record.before, "endpoint-draft-before"), form); update();
+        editor.replaceChildren(stateCard("Before · loaded endpoints", record.before, "endpoint-draft-before"), form); update();
         form.addEventListener("submit", async (event) => {
           event.preventDefault();
           if (stage.disabled || savedDraft !== record || loading) return;
-          const after = body(); if (!endpointContent(after)) { localError("Provide at most 32 redirect URIs and 64 exact origins, up to 2048 characters each."); return; }
+          const after = body(); if (!endpointContent(after)) { localError("Provide at most 32 callback URIs, 64 exact origins, 32 post-logout redirect URIs and one URL per logout channel, up to 2048 characters each."); return; }
           const retry = !!record.pending;
           record.pending ||= { body: after, revision: record.revision, key: crypto.randomUUID() };
           busy = true; status.hidden = true; update();
@@ -217,12 +237,12 @@
     }
     function state() {
       if (pending()) return ["Outcome unknown", "warn", "Recover the original request to confirm its result. Its content, revision and request key cannot change."];
-      if (row.status === "executed") return ["Executed", "ok", "The exact redirect URIs and origins and revocation effects were applied once. No secret was issued or changed."];
+      if (row.status === "executed") return ["Executed", "ok", "The exact callback, origin and logout endpoints and revocation effects were applied once. No secret was issued or changed."];
       if (row.status === "cancelled") return ["Cancelled", "muted", "This change cannot be approved or executed."];
       if (row.proposal.expires_at <= Date.now() / 1000) return ["Expired", "warn", "The approval window ended. Stage a new proposal."];
       if (rejected || row.proposal.base_revision !== currentSession.revision) return ["Stale", "warn", "Authority, policy, dependencies or revision changed. Stage a new proposal for a new review."];
-      return row.status === "approved" ? ["Approved", "info", "An independent administrator may apply these exact redirect URIs and origins once."]
-        : ["Awaiting review", "info", "An administrator other than the author must approve the redirect URIs and origins and exact revocation effects."];
+      return row.status === "approved" ? ["Approved", "info", "An independent administrator may apply these exact endpoints once."]
+        : ["Awaiting review", "info", "An administrator other than the author must approve the endpoints and exact revocation effects."];
     }
     function draw() {
       const p = row.proposal, client = clients.find((c) => c.client_id === p.client_id);
@@ -258,18 +278,18 @@
           facts([["Resource", h("code", {}, p.resource)], ["Application enabled", p.client_enabled ? "Yes" : "No"], ["Author", actor(p.author.id)], ["Reviewers", reviewers],
             ["Executor", row.executor ? actor(row.executor.id) : "Not executed"], ["Created", date(p.created_at)], ["Expires", date(p.expires_at)],
             ...(row.executed_at ? [["Executed", date(row.executed_at)]] : [])])),
-        h("div", { class: "grant-comparison" }, stateCard("Before · redirect URIs and origins", p.before, "endpoint-before"), stateCard("After · redirect URIs and origins", p.after, "endpoint-after")),
+        h("div", { class: "grant-comparison" }, stateCard("Before · endpoints", p.before, "endpoint-before"), stateCard("After · endpoints", p.after, "endpoint-after")),
         h("section", { class: "admin-card" }, h("h2", {}, "Exact revocation effects"),
           facts(Object.entries(effectNames).map(([key, label]) => [label, String(p.effects[key])])),
           h("pre", { class: "creation-content", id: "endpoint-effects" }, JSON.stringify(p.effects, null, 2)),
-          h("p", { class: "notice" }, "Enabled applications retain their existing grants and pending codes. Editing a disabled application keeps the existing revocation behavior shown here; new protocol activity makes that snapshot stale. Logout delivery is asynchronous. Credentials, enabled state and all other settings are preserved.")),
+          h("p", { class: "notice" }, "Enabled applications retain their existing grants and pending codes. Editing a disabled application keeps the existing revocation behavior shown here; new protocol activity makes that snapshot stale. Cleanup queues notifications to the prior back-channel URL, before the new settings are stored. Already queued notifications keep their original destination. Future browser logout pages use the current front-channel URL, including for existing sessions. Logout delivery is asynchronous. Credentials, enabled state and all other settings are preserved.")),
         h("section", { class: "admin-card" }, h("h2", {}, "Immutable approval binding"),
           facts([["Change ID", h("code", { id: "endpoint-id" }, p.id)], ["Canonical digest", h("code", { id: "endpoint-digest" }, row.digest)],
             ["Management revision", String(p.base_revision)], ["Resource dependencies", h("code", {}, p.resource_revision)], ["Policy dependencies", h("code", {}, p.policy_revision)]]),
-          h("p", { class: "field-hint" }, "Approval binds the redirect URIs and origins, all revocation effects, dependencies and expiry. Freshness is rechecked by the server. Changed intent requires a new proposal."),
+          h("p", { class: "field-hint" }, "Approval binds the callback, origin and logout endpoints, all revocation effects, dependencies and expiry. Freshness is rechecked by the server. Changed intent requires a new proposal."),
           field("Review link", h("input", { id: "endpoint-review-link", readOnly: true, value: new URL(route(id), location.href).href }), "Share with the next administrator; the link contains no credential.")),
         h("section", { class: "admin-card" }, h("h2", {}, "Your action"), hint, capability,
-          h("label", { class: "checkbox", for: ack.id }, ack, "I checked the redirect URIs and origins, revocation effects, digest and dependencies."),
+          h("label", { class: "checkbox", for: ack.id }, ack, "I checked all callback, origin and logout endpoints, revocation effects, digest and dependencies."),
           h("div", { class: "form-actions" }, approve, execute, cancel, recover),
           h("a", { class: "button secondary", href: `#/applications/${encodeURIComponent(p.client_id)}` }, "Go to the application")));
       clearInterval(clock); clock = setInterval(update, 1000); update();

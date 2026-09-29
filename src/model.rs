@@ -110,12 +110,18 @@ pub struct ClientStatusInput {
 }
 pub type ClientCreationBinding = crate::delegation::GrantChangeBinding;
 
-/// Exact replacement of OAuth callbacks and browser CORS origins only.
+/// Exact replacement of OAuth callbacks, browser CORS origins and logout endpoints.
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ClientEndpointInput {
     pub redirect_uris: Vec<String>,
     pub origins: BTreeSet<String>,
+    pub post_logout_redirect_uris: Vec<String>,
+    // Explicit null removes a channel. Missing fields must never imply removal.
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub frontchannel_logout_uri: Option<String>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub backchannel_logout_uri: Option<String>,
 }
 pub type ClientEndpointBinding = crate::delegation::GrantChangeBinding;
 

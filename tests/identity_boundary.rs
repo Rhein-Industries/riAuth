@@ -8,7 +8,7 @@ use riauth::{
     core::Core,
     crypto,
     error::{Error, Result},
-    model::{ClientPatch, NewUser, ProviderSettings, User},
+    model::{NewUser, ProviderSettings, User},
     ssf::{ACCOUNT_DISABLED, CREDENTIAL_CHANGE, Delivery},
     store::{Store, Tx},
     windows_login::{EnrollDevice, WindowsLogin},
@@ -158,20 +158,14 @@ fn identity_effects_rollback_preview_and_retry_with_the_storage_transaction() {
                 .as_str()
                 .unwrap()
                 .to_owned();
-            f.client("rp", false);
-            f.core
-                .update_client(
-                    &f.admin,
-                    "rp",
-                    ClientPatch {
-                        settings: Some(ProviderSettings {
-                            backchannel_logout_uri: Some("https://rp.example/logout".into()),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    },
-                )
-                .unwrap();
+            f.client_with_settings(
+                "rp",
+                false,
+                ProviderSettings {
+                    backchannel_logout_uri: Some("https://rp.example/logout".into()),
+                    ..Default::default()
+                },
+            );
             let _tokens = f.tokens("rp", &session, None);
             let uid: String = f.core.store.get("usernames", "alice").unwrap().unwrap();
             let user: User = f.core.store.get("users", &uid).unwrap().unwrap();
@@ -303,20 +297,14 @@ fn rp_logout_queue_ends_only_matching_sessions_and_enqueues_once() {
         let f = fixture(encrypted);
         let alice_session = f.user("alice");
         let bob_session = f.user("bob");
-        f.client("rp", false);
-        f.core
-            .update_client(
-                &f.admin,
-                "rp",
-                ClientPatch {
-                    settings: Some(ProviderSettings {
-                        backchannel_logout_uri: Some("https://rp.example/logout".into()),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
+        f.client_with_settings(
+            "rp",
+            false,
+            ProviderSettings {
+                backchannel_logout_uri: Some("https://rp.example/logout".into()),
+                ..Default::default()
+            },
+        );
         let _alice_tokens = f.tokens("rp", &alice_session, None);
         let _bob_tokens = f.tokens("rp", &bob_session, None);
         let alice: String = f.core.store.get("usernames", "alice").unwrap().unwrap();

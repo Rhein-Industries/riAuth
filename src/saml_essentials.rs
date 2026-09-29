@@ -127,7 +127,7 @@ impl Core {
 
 pub mod logout {
     use super::{BTreeSet, Core, Error, Reply, Result, Tx, Value, json};
-    use crate::model::Session;
+    use crate::{model::Session, session_protocol::PostLogoutReturn};
 
     #[derive(Default)]
     pub(crate) struct Finish {
@@ -161,8 +161,12 @@ pub mod logout {
         _core: &Core,
         _tx: &Tx<'_>,
         _sid: &str,
-        original: Option<String>,
+        original: Option<PostLogoutReturn>,
     ) -> Result<Value> {
-        Ok(json!({"redirect_uri": original}))
+        Ok(json!({"redirect_uri": original.map(|target| target.rendered_uri)}))
+    }
+
+    pub(crate) fn is_continuation(_core: &Core, _tx: &Tx<'_>, _sid: &str, _uri: &str) -> Result<bool> {
+        Ok(false)
     }
 }

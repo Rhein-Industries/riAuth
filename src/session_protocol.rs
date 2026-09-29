@@ -20,10 +20,45 @@ pub struct Confirmation {
     pub(crate) user_id: Option<String>,
     pub(crate) session_id: Option<String>,
     pub(crate) redirect_uri: Option<String>,
+    /// Exact registered URI before URL serialization and the addition of state.
+    /// Older confirmations lack this binding and must finish without a redirect.
+    #[serde(default)]
+    pub(crate) post_logout_redirect_uri: Option<String>,
+    /// Session actually revoked by confirmation. A no-hint terminal decision
+    /// has no session_id until the decision is made.
+    #[serde(default)]
+    pub(crate) completed_session_id: Option<String>,
     pub(crate) result: Option<Value>,
     /// Who asked for this sign-out, shown to the approving terminal.
     #[serde(default)]
     pub(crate) requested_from: Option<Value>,
+}
+
+/// The exact OIDC logout return approved at request time. SAML can keep this
+/// internal continuation while checking the external destination at delivery.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct PostLogoutReturn {
+    pub(crate) client_id: String,
+    pub(crate) registered_uri: String,
+    pub(crate) rendered_uri: String,
+}
+impl PostLogoutReturn {
+    pub(crate) fn new(client_id: &str, registered_uri: &str, rendered_uri: String) -> Self {
+        Self {
+            client_id: client_id.into(),
+            registered_uri: registered_uri.into(),
+            rendered_uri,
+        }
+    }
+
+    pub(crate) fn allowed_by(&self, client: Option<&Client>) -> bool {
+        client.is_some_and(|client| {
+            client
+                .settings
+                .post_logout_redirect_uris
+                .contains(&self.registered_uri)
+        })
+    }
 }
 
 /// Logout and session-state records from the caller's transaction.
@@ -64,6 +99,33 @@ pub fn logout_redirect(
         uri.query_pairs_mut().append_pair("state", state);
     }
     Ok(Some(uri.into()))
+}
+/// Recheck the exact registration in the transaction deciding or delivering logout.
+/// Removal must suppress the return redirect, never prevent local session revocation.
+pub(crate) fn confirmation_redirect(
+    tx: &impl SessionProtocolTx,
+    c: &Confirmation,
+) -> Result<Option<String>> {
+    let (Some(client_id), Some(uri)) = (&c.client_id, &c.post_logout_redirect_uri) else {
+        return Ok(None);
+    };
+    let allowed = tx
+        .client(client_id)?
+        .is_some_and(|client| client.settings.post_logout_redirect_uris.contains(uri));
+    Ok(c.redirect_uri.clone().filter(|_| allowed))
+}
+pub(crate) fn confirmation_return(
+    tx: &impl SessionProtocolTx,
+    c: &Confirmation,
+) -> Result<Option<PostLogoutReturn>> {
+    let rendered = confirmation_redirect(tx, c)?;
+    Ok(c.client_id
+        .as_deref()
+        .zip(c.post_logout_redirect_uri.as_deref())
+        .zip(rendered)
+        .map(|((client_id, registered_uri), rendered_uri)| {
+            PostLogoutReturn::new(client_id, registered_uri, rendered_uri)
+        }))
 }
 pub fn frontchannel_urls(
     tx: &impl SessionProtocolTx,
@@ -143,8 +205,9 @@ pub(crate) fn settle(
     c: &mut Confirmation,
     logged_out: bool,
 ) -> Result<()> {
+    let redirect = confirmation_redirect(tx, c)?;
     c.result =
-        Some(json!({"logged_out":logged_out,"redirect_uri":c.redirect_uri,"frontchannel_urls":[]}));
+        Some(json!({"logged_out":logged_out,"redirect_uri":redirect,"frontchannel_urls":[]}));
     tx.put_logout_confirmation(c)
 }
 pub(crate) fn deny(tx: &impl SessionProtocolTx, c: &mut Confirmation, actor: &str) -> Result<()> {

@@ -16,10 +16,16 @@ pub fn set(
     let before = ClientEndpointInput {
         redirect_uris: client.redirect_uris.clone(),
         origins: client.settings.origins.clone(),
+        post_logout_redirect_uris: client.settings.post_logout_redirect_uris.clone(),
+        frontchannel_logout_uri: client.settings.frontchannel_logout_uri.clone(),
+        backchannel_logout_uri: client.settings.backchannel_logout_uri.clone(),
     };
     let after = ClientEndpointInput {
         redirect_uris: redirects.unwrap_or(client.redirect_uris),
         origins: origins.unwrap_or(client.settings.origins),
+        post_logout_redirect_uris: client.settings.post_logout_redirect_uris,
+        frontchannel_logout_uri: client.settings.frontchannel_logout_uri,
+        backchannel_logout_uri: client.settings.backchannel_logout_uri,
     };
     if before == after {
         return;

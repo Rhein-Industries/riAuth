@@ -10,12 +10,18 @@ test.beforeAll(async ({ request }) => {
   test.setTimeout(fixtureStartupMs + 20000);
   ({ fixture, stop: stopFixture } = await startFixture());
   for (const user of [reviewer, executor]) {
-    expect((await request.post(`${fixture.issuer}/api/users`, { headers: bearer(), data: { admin: true, ...user } })).ok()).toBe(true);
+    const state = await (await request.get(`${fixture.issuer}/api/state/revision`, { headers: bearer() })).json();
+    expect((await request.post(`${fixture.issuer}/api/users`, {
+      headers: { ...bearer(), 'if-match': `"${state.revision}"`, 'idempotency-key': `endpoint-review-create-${user.username}` },
+      data: { admin: true, ...user },
+    })).ok()).toBe(true);
   }
   for (const id of ['exact', 'stale', 'session', 'capability']) {
     expect((await request.post(`${fixture.issuer}/api/clients`, { headers: bearer(), data: {
       client_id: `endpoint-${id}`, name: `Endpoints ${id}`, confidential: true,
       redirect_uris: ['https://endpoint.example.test/callback'], scopes: ['openid', 'profile'],
+      settings: { post_logout_redirect_uris: ['https://endpoint.example.test/old-signed-out'],
+        frontchannel_logout_uri: 'https://endpoint.example.test/old-front', backchannel_logout_uri: 'https://endpoint.example.test/old-back' },
     } })).ok()).toBe(true);
   }
 });
@@ -33,14 +39,18 @@ async function open(page, id) {
 }
 async function draft(page, client, clear = false) {
   await page.goto(`${fixture.issuer}/admin#/applications/${client}`);
-  // Existing-client Save changes must not offer a second redirect or origin writer.
+  // Existing-client Save changes must not offer a second endpoint writer.
   await expect(page.locator('#app-redirects')).toHaveCount(0);
   await expect(page.locator('#app-origins')).toHaveCount(0);
-  await page.getByRole('link', { name: 'Review redirects and origins', exact: true }).click();
+  await expect(page.locator('#app-logout')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Review endpoints', exact: true }).click();
   await expect(page.getByLabel('Application', { exact: true })).toHaveValue(client);
   await page.getByLabel('Redirect URIs', { exact: true }).fill(clear ? '' : 'https://new.example.test/callback?tenant=one\nhttps://backup.example.test/cb');
   await page.getByLabel('Browser origins', { exact: true }).fill(clear ? '' : 'https://new.example.test');
-  await page.getByLabel('I checked every redirect URI and browser origin, including removals.').check();
+  await page.getByLabel('Post-logout redirect URIs', { exact: true }).fill(clear ? '' : 'https://new.example.test/signed-out?tenant=one\nhttp://127.0.0.1:7777/signed-out');
+  await page.getByLabel('Front-channel logout URL', { exact: true }).fill(clear ? '' : 'https://new.example.test/front?tenant=one');
+  await page.getByLabel('Back-channel logout URL', { exact: true }).fill(clear ? '' : 'https://new.example.test/back?tenant=one');
+  await page.getByLabel('I checked every callback, browser origin and logout URL, including removals.').check();
 }
 async function stage(page, client, clear = false) {
   await draft(page, client, clear);
@@ -48,7 +58,7 @@ async function stage(page, client, clear = false) {
   await expect(page.locator('#endpoint-status')).toHaveText('Awaiting review');
   return page.locator('#endpoint-id').innerText();
 }
-const acknowledge = (page) => page.getByLabel('I checked the redirect URIs and origins, revocation effects, digest and dependencies.').check();
+const acknowledge = (page) => page.getByLabel('I checked all callback, origin and logout endpoints, revocation effects, digest and dependencies.').check();
 const requestShape = (request) => ({ body: request.postDataJSON(), key: request.headers()['idempotency-key'], revision: request.headers()['if-match'] });
 async function rotateSession(context, user) {
   const other = await context.newPage();
@@ -84,17 +94,20 @@ test('exact endpoint review recovers bound requests once and preserves ordinary 
   await page.getByRole('button', { name: 'Stage exact endpoints', exact: true }).click();
   await staged;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(page.getByLabel('I checked every redirect URI and browser origin, including removals.')).not.toBeChecked();
+  await expect(page.getByLabel('I checked every callback, browser origin and logout URL, including removals.')).not.toBeChecked();
   // A retired view's late error must not clear the retained request key or let
   // the replacement view submit a fresh proposal for an uncertain stage.
   const retired = page.waitForResponse((r) => r.url().endsWith('/clients/endpoint-exact/endpoint-changes') && r.status() === 403);
   releaseStage(); await retired;
   await expect(page.getByRole('alert')).toBeHidden();
   await expect(page.getByLabel('Redirect URIs', { exact: true })).toBeDisabled();
+  await expect(page.getByLabel('Post-logout redirect URIs', { exact: true })).toBeDisabled();
+  await expect(page.getByLabel('Front-channel logout URL', { exact: true })).toBeDisabled();
+  await expect(page.getByLabel('Back-channel logout URL', { exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Retry same staging request' }).click();
   await expect(page.locator('#endpoint-status')).toHaveText('Awaiting review');
   expect(attempts).toHaveLength(2); expect(attempts[1]).toEqual(attempts[0]);
-  expect(attempts[0].body).toEqual({ redirect_uris: ['https://new.example.test/callback?tenant=one', 'https://backup.example.test/cb'], origins: ['https://new.example.test'] });
+  expect(attempts[0].body).toEqual({ redirect_uris: ['https://new.example.test/callback?tenant=one', 'https://backup.example.test/cb'], origins: ['https://new.example.test'], post_logout_redirect_uris: ['https://new.example.test/signed-out?tenant=one', 'http://127.0.0.1:7777/signed-out'], frontchannel_logout_uri: 'https://new.example.test/front?tenant=one', backchannel_logout_uri: 'https://new.example.test/back?tenant=one' });
   const id = change.proposal.id;
   await expect(page.locator('#endpoint-before')).toBeVisible();
   await expect(page.locator('#endpoint-after')).toBeVisible();
@@ -128,7 +141,7 @@ test('exact endpoint review recovers bound requests once and preserves ordinary 
       const response = await route.fetch(); expect(response.ok()).toBe(true);
       if (approvals.length === 1) {
         // A success response with altered content must not certify the original approval.
-        const altered = await response.json(); altered.proposal.after.redirect_uris[0] = 'https://substituted.example/callback';
+        const altered = await response.json(); altered.proposal.after.backchannel_logout_uri = 'https://substituted.example/back';
         await route.fulfill({ response, json: altered });
       } else await route.fulfill({ response });
     });
@@ -165,10 +178,11 @@ test('exact endpoint review recovers bound requests once and preserves ordinary 
     const events = await (await page.request.get(`${fixture.issuer}/api/audit?limit=100`, { headers: bearer() })).json();
     expect(events.filter((e) => e.action === 'reviewed_client_endpoints.execute' && e.details.change_id === id)).toHaveLength(1);
     const clients = await (await page.request.get(`${fixture.issuer}/api/clients`, { headers: bearer() })).json();
-    expect(clients.find((c) => c.client_id === 'endpoint-exact')).toMatchObject({ name: 'Renamed without status changes', redirect_uris: ['https://new.example.test/callback?tenant=one', 'https://backup.example.test/cb'] });
-    // Removing every callback and origin follows the same review path.
+    expect(clients.find((c) => c.client_id === 'endpoint-exact')).toMatchObject({ name: 'Renamed without status changes', redirect_uris: ['https://new.example.test/callback?tenant=one', 'https://backup.example.test/cb'],
+      settings: { post_logout_redirect_uris: change.proposal.after.post_logout_redirect_uris, frontchannel_logout_uri: change.proposal.after.frontchannel_logout_uri, backchannel_logout_uri: change.proposal.after.backchannel_logout_uri } });
+    // Removing all endpoints follows the same review path, with explicit null for both logout channels.
     const enable = await stage(page, 'endpoint-exact', true);
-    expect(JSON.parse(await page.locator('#endpoint-after').innerText())).toEqual({ redirect_uris: [], origins: [] });
+    expect(JSON.parse(await page.locator('#endpoint-after').innerText())).toEqual({ redirect_uris: [], origins: [], post_logout_redirect_uris: [], frontchannel_logout_uri: null, backchannel_logout_uri: null });
     await open(review, enable); await acknowledge(review); await review.getByRole('button', { name: 'Approve exact endpoints' }).click();
     await expect(review.locator('#endpoint-status')).toHaveText('Approved');
     await open(execute, enable); await acknowledge(execute); await execute.getByRole('button', { name: 'Apply endpoints once' }).click();
@@ -181,17 +195,23 @@ test('draft revisions, credential rotation, expiry and safe authorization errors
   const revision = await page.locator('#endpoint-draft-revision').innerText();
   expect((await page.request.patch(`${fixture.issuer}/api/clients/endpoint-stale`, { headers: bearer(), data: { name: 'Changed during draft' } })).ok()).toBe(true);
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await expect(page.getByLabel('I checked every redirect URI and browser origin, including removals.')).not.toBeChecked();
+  await expect(page.getByLabel('I checked every callback, browser origin and logout URL, including removals.')).not.toBeChecked();
   await expect(page.locator('#endpoint-draft-revision')).toHaveText(revision);
   await expect(page.getByLabel('Redirect URIs', { exact: true })).toHaveValue('https://new.example.test/callback?tenant=one\nhttps://backup.example.test/cb');
-  await page.getByLabel('I checked every redirect URI and browser origin, including removals.').check();
+  await expect(page.getByLabel('Post-logout redirect URIs', { exact: true })).toHaveValue('https://new.example.test/signed-out?tenant=one\nhttp://127.0.0.1:7777/signed-out');
+  await expect(page.getByLabel('Front-channel logout URL', { exact: true })).toHaveValue('https://new.example.test/front?tenant=one');
+  await expect(page.getByLabel('Back-channel logout URL', { exact: true })).toHaveValue('https://new.example.test/back?tenant=one');
+  await page.getByLabel('I checked every callback, browser origin and logout URL, including removals.').check();
   await page.getByRole('button', { name: 'Stage exact endpoints', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('server refused');
   await page.getByRole('button', { name: 'Load current endpoints' }).click();
   await expect(page.getByLabel('Redirect URIs', { exact: true })).toHaveValue('https://endpoint.example.test/callback');
+  await expect(page.getByLabel('Post-logout redirect URIs', { exact: true })).toHaveValue('https://endpoint.example.test/old-signed-out');
+  await expect(page.getByLabel('Front-channel logout URL', { exact: true })).toHaveValue('https://endpoint.example.test/old-front');
+  await expect(page.getByLabel('Back-channel logout URL', { exact: true })).toHaveValue('https://endpoint.example.test/old-back');
   await page.getByLabel('Redirect URIs', { exact: true }).fill('https://new.example.test/callback?tenant=one\nhttps://backup.example.test/cb');
   await page.getByLabel('Browser origins', { exact: true }).fill('https://new.example.test');
-  await page.getByLabel('I checked every redirect URI and browser origin, including removals.').check();
+  await page.getByLabel('I checked every callback, browser origin and logout URL, including removals.').check();
   await page.getByRole('button', { name: 'Stage exact endpoints', exact: true }).click();
   await expect(page.locator('#endpoint-status')).toHaveText('Awaiting review');
   const id = await page.locator('#endpoint-id').innerText();
@@ -234,7 +254,10 @@ test('same-account session changes discard drafts and uncertain decisions before
   const other = await rotateSession(page.context(), fixture.admin);
   await page.evaluate(() => document.querySelector('#refresh').click());
   await expect(page.getByLabel('Redirect URIs', { exact: true })).toHaveValue('https://endpoint.example.test/callback');
-  await expect(page.getByLabel('I checked every redirect URI and browser origin, including removals.')).not.toBeChecked();
+  await expect(page.getByLabel('Post-logout redirect URIs', { exact: true })).toHaveValue('https://endpoint.example.test/old-signed-out');
+  await expect(page.getByLabel('Front-channel logout URL', { exact: true })).toHaveValue('https://endpoint.example.test/old-front');
+  await expect(page.getByLabel('Back-channel logout URL', { exact: true })).toHaveValue('https://endpoint.example.test/old-back');
+  await expect(page.getByLabel('I checked every callback, browser origin and logout URL, including removals.')).not.toBeChecked();
   await other.close();
   const id = await stage(page, 'endpoint-session');
   const context = await browser.newContext();
@@ -251,7 +274,7 @@ test('same-account session changes discard drafts and uncertain decisions before
     await expect(review.locator('#endpoint-status')).toHaveText('Approved');
     await expect(review.getByRole('button', { name: 'Recover same request' })).toBeHidden();
     expect(approvals).toBe(1);
-    await expect(review.getByLabel('I checked the redirect URIs and origins, revocation effects, digest and dependencies.')).not.toBeChecked();
+    await expect(review.getByLabel('I checked all callback, origin and logout endpoints, revocation effects, digest and dependencies.')).not.toBeChecked();
     await otherReview.close();
     await context.clearCookies();
     await review.getByRole('button', { name: 'Refresh change' }).click();
@@ -274,20 +297,36 @@ test('unavailable provider capabilities prevent staging and malformed proposals 
     await route.fulfill({ response, json: capabilities });
   });
   await page.goto(`${fixture.issuer}/admin#/applications/endpoint-capability`);
-  await expect(page.getByText("Redirect and origin review is unavailable for this application's current provider or capabilities.")).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Review redirects and origins', exact: true })).toHaveCount(0);
+  await expect(page.getByText("Endpoint review is unavailable for this application's current provider or capabilities.")).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Review endpoints', exact: true })).toHaveCount(0);
   await page.goto(`${fixture.issuer}/admin#/client-endpoint-review/client%3Aendpoint-capability`);
   await expect(page.getByRole('button', { name: 'Load current endpoints' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Stage exact endpoints', exact: true })).toHaveCount(0);
   await page.unrouteAll({ behavior: 'wait' });
-  const staged = await request.post(`${fixture.issuer}/api/clients/endpoint-capability/endpoint-changes`, { headers: bearer(), data: { redirect_uris: ['https://new.example.test/callback?tenant=one', 'https://backup.example.test/cb'], origins: ['https://new.example.test'] } });
+  const staged = await request.post(`${fixture.issuer}/api/clients/endpoint-capability/endpoint-changes`, { headers: bearer(), data: { redirect_uris: ['https://new.example.test/callback?tenant=one', 'https://backup.example.test/cb'], origins: ['https://new.example.test'], post_logout_redirect_uris: ['https://new.example.test/signed-out?tenant=one', 'http://127.0.0.1:7777/signed-out'], frontchannel_logout_uri: 'https://new.example.test/front?tenant=one', backchannel_logout_uri: 'https://new.example.test/back?tenant=one' } });
   expect(staged.ok()).toBe(true); const change = await staged.json(), id = change.proposal.id;
-  await page.route(`**/api/admin/client-endpoint-changes/${id}`, async (route) => {
-    const altered = structuredClone(change); altered.proposal.after.enabled = false;
-    await route.fulfill({ json: altered });
-  });
-  await page.goto(`${fixture.issuer}/admin#/client-endpoint-review/${id}`);
-  await expect(page.getByRole('alert')).toContainText('response was lost or incomplete');
-  await expect(page.getByRole('button', { name: 'Approve exact endpoints' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Apply endpoints once' })).toHaveCount(0);
+  for (const missing of [null, 'frontchannel_logout_uri', 'backchannel_logout_uri']) {
+    const path = `**/api/admin/client-endpoint-changes/${id}`;
+    await page.route(path, async (route) => {
+      const altered = structuredClone(change);
+      if (missing) delete altered.proposal.after[missing];
+      else altered.proposal.after.enabled = false;
+      await route.fulfill({ json: altered });
+    });
+    await page.goto(`${fixture.issuer}/admin#/client-endpoint-review/${id}`);
+    // Revisiting the same fragment does not reload a proposal. Explicitly fetch
+    // each mocked response and wait for its validation before asserting refusal.
+    await page.getByRole('button', { name: 'Refresh change', exact: true }).click();
+    await expect(page.locator('.grant-detail')).not.toHaveAttribute('aria-busy', 'true');
+    await expect(page.getByRole('alert')).toContainText('response was lost or incomplete');
+    await expect(page.getByRole('button', { name: 'Approve exact endpoints' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Apply endpoints once' })).toHaveCount(0);
+    await page.unroute(path);
+  }
+  await page.getByRole('button', { name: 'Refresh change', exact: true }).click();
+  await expect(page.locator('#endpoint-digest')).toBeVisible();
+  expect(JSON.parse(await page.locator('#endpoint-after').innerText())).toEqual(change.proposal.after);
+  await expect(page.getByText('Front-channel logout URL', { exact: true }).last()).toBeVisible();
+  await expect(page.getByText('Back-channel logout URL', { exact: true }).last()).toBeVisible();
+  await expect(page.getByText(/Already queued notifications keep their original destination/)).toBeVisible();
 });

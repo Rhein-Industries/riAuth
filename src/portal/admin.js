@@ -6,7 +6,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const base = document.querySelector("meta[name=riauth-base]").content;
-  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants", "membership-review": "Reviewed membership", "client-creation-review": "Reviewed applications", "client-policy-review": "Reviewed access policies", "client-status-review": "Reviewed application status", "client-endpoint-review": "Reviewed redirects and origins" };
+  const SECTIONS = { applications: "Applications", people: "People", groups: "Groups", workflows: "Workflows", operations: "Connectors", deliveries: "Delivery outcomes", security: "Security", "grant-review": "Reviewed grants", "membership-review": "Reviewed membership", "client-creation-review": "Reviewed applications", "client-policy-review": "Reviewed access policies", "client-status-review": "Reviewed application status", "client-endpoint-review": "Reviewed endpoints" };
   const ICONS = ["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"];
   const ACCENTS = ["violet", "blue", "teal", "amber", "rose", "slate"];
   const CONFLICT = "The configuration changed after this page loaded, so this edit was not saved. Reload to review the latest values, then try again.";
@@ -532,13 +532,10 @@
     if (!client) return missing("applications", "Application");
     const app = client.settings.app || {};
     const oidcApp = !client.service && !client.settings.saml && !client.settings.proxy;
-    const native = () => Boolean(client.settings.native);
     const scopeInput = h("input", { id: "app-scopes", spellcheck: "false", autocomplete: "off", value: sorted(client.scopes).join(" ") });
-    const logout = h("textarea", { id: "app-logout", rows: "2", spellcheck: "false", value: client.settings.post_logout_redirect_uris.join("\n") });
     const mappingRows = client.settings.claim_mappings.map(fromMapping);
     const editor = oidcApp ? mappingEditor("app", mappingRows, () => sorted(words(scopeInput.value))) : null;
     scopeInput.addEventListener("change", () => { if (editor) editor.draw(); });
-    const uriField = (label, input, hint, kind) => h("div", { class: "field" }, h("label", { for: input.id }, label), input, h("p", { class: "field-hint" }, hint), uriFeedback(input, native, kind).node);
     const form = h("form", { class: "admin-form", novalidate: true },
       card("Details",
         field("Name", h("input", { id: "app-name", maxlength: "200", required: true, value: client.name })),
@@ -553,14 +550,13 @@
           !data.me?.user?.admin ? h("p", { class: "notice" }, "A full administrator must stage an access-policy review.")
             : RiAuthClientPolicyReview.unavailable(client) ? h("p", { class: "notice" }, RiAuthClientPolicyReview.unavailable(client))
             : link(hash("client-policy-review", `client:${client.client_id}`), "Review access policy", { class: "button secondary" })),
-      card("Redirect URIs and browser origins",
-        h("pre", { class: "creation-content" }, JSON.stringify({ redirect_uris: client.redirect_uris, origins: sorted(client.settings.origins) }, null, 2)),
-        !data.me?.user?.admin ? h("p", { class: "notice" }, "A full administrator must stage a redirect and origin review.")
-          : RiAuthClientEndpointReview.unavailable(client) ? h("p", { class: "notice" }, "Redirect and origin review is unavailable for this application's current provider or capabilities.")
-          : link(hash("client-endpoint-review", `client:${client.client_id}`), "Review redirects and origins", { class: "button secondary" })),
-      client.service ? null : card("Sign-in",
-        field("Scopes", scopeInput, OIDC_HINT),
-        oidcApp ? uriField("After sign-out, return to", logout, "Optional. Addresses the app may send people to after signing out.", "logout") : null),
+      card("OAuth callback and logout endpoints",
+        h("pre", { class: "creation-content" }, JSON.stringify({ redirect_uris: client.redirect_uris, origins: sorted(client.settings.origins), post_logout_redirect_uris: client.settings.post_logout_redirect_uris,
+          frontchannel_logout_uri: client.settings.frontchannel_logout_uri, backchannel_logout_uri: client.settings.backchannel_logout_uri }, null, 2)),
+        !data.me?.user?.admin ? h("p", { class: "notice" }, "A full administrator must stage an endpoint review.")
+          : RiAuthClientEndpointReview.unavailable(client) ? h("p", { class: "notice" }, "Endpoint review is unavailable for this application's current provider or capabilities.")
+          : link(hash("client-endpoint-review", `client:${client.client_id}`), "Review endpoints", { class: "button secondary" })),
+      client.service ? null : card("Sign-in", field("Scopes", scopeInput, OIDC_HINT)),
       oidcApp ? card("Claims", deliveryChecks("app", client.settings), h("h3", {}, "Custom claims"), editor.node) : null,
       card("Your applications page",
         field("Description", h("input", { id: "app-description", maxlength: "300", value: app.description || "" })),
@@ -583,7 +579,6 @@
       if (oidcApp) {
         checkMappings(mappingRows, scopes);
         Object.assign(settings, readDelivery(form, "app"), {
-          post_logout_redirect_uris: lines(logout.value),
           claim_mappings: mappingRows.map(toMapping),
         });
       }

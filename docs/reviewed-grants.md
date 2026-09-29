@@ -145,7 +145,7 @@ human grant-set replacement, bounded protected group membership, existing-client
 `allowed_groups` / `require_mfa` changes through [client policy review](reviewed-client-policy.md),
 opt-in [bounded client creation](reviewed-client-creation.md), and bounded
 [application enable/disable with exact revocation effects](reviewed-client-status.md).
-Existing OAuth [redirect URI and browser-origin changes](reviewed-client-endpoints.md)
+Existing OAuth [callback, browser-origin and logout endpoint changes](reviewed-client-endpoints.md)
 also require exact review, including the existing disabled-client revocation effects.
 The following management resource classes have no M05 author/reviewer/executor
 workflow; unsupported creation fails closed when creation review is enabled:
@@ -158,12 +158,12 @@ workflow; unsupported creation fails closed when creation review is enabled:
 - Advanced/initially-disabled client creation, supplied initial credentials and
   desired-state credential ownership remain outside bounded creation review;
   all unreviewed creation is blocked when that policy is enabled. Other
-  existing-client provider settings (conditional access/claims, scopes, provider-specific endpoints and post-logout URLs,
+  existing-client provider settings (conditional access/claims, scopes, provider-specific endpoints,
   grants, issuer/sector), credentials, registration templates and
   tokens have no M05 review. Existing-client `allowed_groups` and `require_mfa`
   changes require exact review. Enable/disable now requires exact review; oversized
   snapshots, cross-client token families and exchange dependencies remain outside the bounded slice
-  and fail closed. OAuth redirect URIs and browser origins now use endpoint review;
+  and fail closed. OAuth callbacks, browser origins and all three logout URL fields now use endpoint review;
   non-OAuth endpoints and oversized records remain outside that slice.
 - Agents, their permissions, parent bindings, credential rotation and revocation.
 - Federation sources/source links, directory/Workspace/Entra configuration and

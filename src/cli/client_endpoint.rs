@@ -9,7 +9,7 @@ use std::{fs::File, io::Read, path::PathBuf};
 
 #[derive(Subcommand)]
 pub enum ReviewCommand {
-    /// Stage exact redirect_uris and origins arrays from JSON
+    /// Stage exact callback/origin/post-logout arrays and nullable front/back-channel URLs from JSON
     Stage {
         client_id: String,
         #[arg(long)]

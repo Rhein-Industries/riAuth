@@ -8,8 +8,8 @@ use crate::{
     logout::{LogoutRequest, RpSession},
     model::{Client, Session, User},
     session_protocol::{
-        Confirmation, SessionProtocolTx, bound, deny, frontchannel_urls, logout_redirect, lookup,
-        session_state, settle,
+        Confirmation, SessionProtocolTx, bound, confirmation_redirect, confirmation_return, deny,
+        frontchannel_urls, logout_redirect, lookup, session_state, settle,
     },
     signin::{account_json, session_ref},
     store::Tx,
@@ -97,7 +97,7 @@ impl Core {
             let client=cid.as_ref().map(|id|tx.get::<Client>("clients",id)?.ok_or_else(||Error::bad("Unknown logout client"))).transpose()?;
             let redirect=logout_redirect(client.as_ref(),request.post_logout_redirect_uri.as_deref(),request.state.as_deref())?;
             let id=crypto::id(); let code=crypto::user_code(); let binding=crypto::random_token("ri_logout_");
-            let record=Confirmation{id:id.clone(),code:code.clone(),browser_hash:digest(&binding),expires_at:now()+600,client_id:cid,user_id,session_id,redirect_uri:redirect,result:None,requested_from};
+            let record=Confirmation{id:id.clone(),code:code.clone(),browser_hash:digest(&binding),expires_at:now()+600,client_id:cid,user_id,session_id,redirect_uri:redirect,post_logout_redirect_uri:request.post_logout_redirect_uri,completed_session_id:None,result:None,requested_from};
             tx.put("logout_confirmations",&id,&record)?;
             tx.put("logout_codes",&digest(&crypto::normalize_code(&code)?),&id)?;
             let path=self.logout_path(&id);
@@ -108,7 +108,8 @@ impl Core {
         self.store.read(|tx| {
             let (user,_)=self.session(tx,token)?; let c=lookup(tx,code)?;
             if c.user_id.as_ref().is_some_and(|id|id!=&user.id) {return Err(Error::forbidden());}
-            Ok(json!({"client_id":c.client_id,"redirect_uri":c.redirect_uri,"expires_at":c.expires_at,"decided":c.result.is_some(),"username":user.username,"session_id":c.session_id,"requested_from":c.requested_from}))
+            let redirect=confirmation_redirect(tx,&c)?;
+            Ok(json!({"client_id":c.client_id,"redirect_uri":redirect,"expires_at":c.expires_at,"decided":c.result.is_some(),"username":user.username,"session_id":c.session_id,"requested_from":c.requested_from}))
         })
     }
     pub fn logout_request_decide(&self, token: &str, code: &str, approve: bool) -> Result<Value> {
@@ -153,8 +154,10 @@ impl Core {
         tx.put("sessions", sid, &session)?;
         crate::logout::queue_session(tx, sid)?;
         crate::ssf::enqueue(tx, &user.id, crate::ssf::SESSION_REVOKED, "")?;
-        let propagation = crate::saml::logout::redirect(self, tx, sid, c.redirect_uri.clone())?;
+        let return_target = confirmation_return(tx, c)?;
+        let propagation = crate::saml::logout::redirect(self, tx, sid, return_target)?;
         let redirect = propagation["redirect_uri"].as_str();
+        c.completed_session_id = Some(sid.into());
         c.result =
             Some(json!({"logged_out":true,"redirect_uri":redirect,"frontchannel_urls":urls}));
         tx.put("logout_confirmations", &c.id, &*c)?;
@@ -184,8 +187,8 @@ impl Core {
                 Some(cid) => tx.get::<Client>("clients", cid)?,
                 None => None,
             };
-            let host = c
-                .redirect_uri
+            let redirect = confirmation_redirect(tx, &c)?;
+            let host = redirect
                 .as_deref()
                 .and_then(|uri| url::Url::parse(uri).ok())
                 .and_then(|uri| uri.host_str().map(String::from));
@@ -299,7 +302,45 @@ impl Core {
         self.store.read(|tx| {
             let c=tx.get::<Confirmation>("logout_confirmations",id)?.filter(|c|c.expires_at>now()).ok_or_else(||Error::missing("Logout confirmation expired"))?;
             if !binding.is_some_and(|b|crypto::constant_eq(&digest(b),&c.browser_hash)) {return Err(Error::unauthorized());}
-            Ok(c.result.unwrap_or_else(||json!({"interaction_required":true,"user_code":c.code,"resume_uri":self.logout_path(id)})))
+            // A completed result may predate a reviewed removal. Its internal
+            // SAML ticket can still finish logout; only the external return is stale.
+            let suppress_redirect = c.redirect_uri.is_some() && confirmation_redirect(tx, &c)?.is_none();
+            Ok(match c.result {
+                Some(mut result) => {
+                    let internal_saml = c
+                        .completed_session_id
+                        .as_deref()
+                        .or(c.session_id.as_deref())
+                        .zip(result["redirect_uri"].as_str())
+                        .map(|(sid, uri)| crate::saml::logout::is_continuation(self, tx, sid, uri))
+                        .transpose()?
+                        .unwrap_or(false);
+                    if suppress_redirect && !internal_saml {
+                        result["redirect_uri"] = Value::Null;
+                    }
+                    // Cached iframe URLs may have been removed or replaced by a
+                    // reviewed endpoint change since this decision was recorded.
+                    // A legacy result with no confirmed session can only be
+                    // delivered without its old iframe list.
+                    let front_session = if result["logged_out"] == true {
+                        c.completed_session_id.as_deref().or_else(|| {
+                            result["frontchannel_urls"]
+                                .as_array()
+                                .is_some_and(|urls| !urls.is_empty())
+                                .then(|| c.session_id.as_deref())
+                                .flatten()
+                        })
+                    } else {
+                        None
+                    };
+                    result["frontchannel_urls"] = json!(match front_session {
+                        Some(sid) => frontchannel_urls(tx, sid, &self.config.issuer)?,
+                        None => Vec::<String>::new(),
+                    });
+                    result
+                }
+                None => json!({"interaction_required":true,"user_code":c.code,"resume_uri":self.logout_path(id)}),
+            })
         })
     }
     pub fn session_check(

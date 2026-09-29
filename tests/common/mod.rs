@@ -130,6 +130,14 @@ impl Fixture {
         }
     }
     pub fn client(&self, cid: &str, confidential: bool) -> Option<String> {
+        self.client_with_settings(cid, confidential, ProviderSettings::default())
+    }
+    pub fn client_with_settings(
+        &self,
+        cid: &str,
+        confidential: bool,
+        settings: ProviderSettings,
+    ) -> Option<String> {
         let output = self
             .core
             .create_client(
@@ -143,7 +151,7 @@ impl Fixture {
                     allowed_groups: BTreeSet::new(),
                     require_mfa: false,
                     service: false,
-                    settings: Default::default(),
+                    settings,
                 },
             )
             .unwrap();

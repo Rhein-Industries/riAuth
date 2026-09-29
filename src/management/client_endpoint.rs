@@ -20,9 +20,12 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 const CHANGES: &str = "reviewed_client_endpoints";
-const VERSION: &str = "riauth/reviewed-client-endpoint/v1";
+const VERSION: &str = "riauth/reviewed-client-endpoint/v3";
 const LIFETIME: u64 = 900;
+const MAX_REDIRECTS: usize = 32;
+const MAX_POST_LOGOUT_REDIRECTS: usize = 32;
 const MAX_ORIGINS: usize = 64;
+const MAX_URI_BYTES: usize = 2048;
 const MAX_CLIENT_BYTES: usize = 65_536;
 const MAX_DEPENDENCY_MEMBERS: usize = 4096;
 const MAX_CHANGES: usize = 128;
@@ -30,7 +33,7 @@ const MAX_REVIEWERS: usize = 8;
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Proposal {
+struct Proposal<Content = ClientEndpointInput> {
     id: String,
     resource: String,
     client_id: String,
@@ -38,8 +41,8 @@ struct Proposal {
     client_name: String,
     client_enabled: bool,
     effects: Effects,
-    before: ClientEndpointInput,
-    after: ClientEndpointInput,
+    before: Content,
+    after: Content,
     base_revision: u64,
     resource_revision: String,
     policy_revision: String,
@@ -66,8 +69,8 @@ enum Status {
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Change {
-    proposal: Proposal,
+struct Change<Content = ClientEndpointInput> {
+    proposal: Proposal<Content>,
     digest: String,
     status: Status,
     approvals: Vec<Approval>,
@@ -84,7 +87,9 @@ fn canonical(value: &impl Serialize) -> Result<String> {
 fn policy_revision(config: &Config) -> Result<String> {
     canonical(&json!({"version": VERSION,
         "shared_revocation_policy": super::client_status::policy_revision(config)?,
+        "max_redirects": MAX_REDIRECTS, "max_post_logout_redirects": MAX_POST_LOGOUT_REDIRECTS,
         "max_origins": MAX_ORIGINS, "max_client_bytes": MAX_CLIENT_BYTES,
+        "max_uri_bytes": MAX_URI_BYTES,
         "required_reviews": 1, "lifetime": LIFETIME}))
 }
 
@@ -92,17 +97,24 @@ fn endpoints(client: &Client) -> ClientEndpointInput {
     ClientEndpointInput {
         redirect_uris: client.redirect_uris.clone(),
         origins: client.settings.origins.clone(),
+        post_logout_redirect_uris: client.settings.post_logout_redirect_uris.clone(),
+        frontchannel_logout_uri: client.settings.frontchannel_logout_uri.clone(),
+        backchannel_logout_uri: client.settings.backchannel_logout_uri.clone(),
     }
 }
 
 fn bounded_content(client: &Client) -> Result<()> {
-    if client.redirect_uris.len() > 32
+    if client.redirect_uris.len() > MAX_REDIRECTS
+        || client.settings.post_logout_redirect_uris.len() > MAX_POST_LOGOUT_REDIRECTS
         || client.settings.origins.len() > MAX_ORIGINS
         || client
             .redirect_uris
             .iter()
             .chain(&client.settings.origins)
-            .any(|v| v.len() > 2048)
+            .chain(&client.settings.post_logout_redirect_uris)
+            .chain(&client.settings.frontchannel_logout_uri)
+            .chain(&client.settings.backchannel_logout_uri)
+            .any(|v| v.len() > MAX_URI_BYTES)
         || serde_json::to_vec(client).map_err(Error::internal)?.len() > MAX_CLIENT_BYTES
     {
         return Err(Error::conflict(
@@ -139,11 +151,14 @@ fn prepare(
     bounded_content(&client)?;
     let before = endpoints(&client);
     if before == after {
-        return Err(Error::bad("Client redirect URIs and origins are unchanged"));
+        return Err(Error::bad("Client endpoints are unchanged"));
     }
     let mut next = client.clone();
     next.redirect_uris = after.redirect_uris.clone();
     next.settings.origins = after.origins.clone();
+    next.settings.post_logout_redirect_uris = after.post_logout_redirect_uris.clone();
+    next.settings.frontchannel_logout_uri = after.frontchannel_logout_uri.clone();
+    next.settings.backchannel_logout_uri = after.backchannel_logout_uri.clone();
     bounded_content(&next)?;
     let checked = check_client_as(
         tx,
@@ -156,7 +171,7 @@ fn prepare(
     )?;
     if checked.credential_change {
         return Err(Error::conflict(
-            "Reconcile client authentication before reviewing its redirect URIs and origins",
+            "Reconcile client authentication before reviewing its endpoints",
         ));
     }
     Ok((client, before, after))
@@ -205,9 +220,14 @@ fn resource_revision(
 }
 
 fn load(tx: &Tx<'_>, id: &str) -> Result<Change> {
-    let change = tx
-        .get::<Change>(CHANGES, id)?
+    let stored = tx
+        .get::<Value>(CHANGES, id)?
         .ok_or_else(|| Error::missing("Reviewed client endpoints change not found"))?;
+    // v1/v2 drafts did not bind every logout endpoint. Never default missing
+    // content to an empty list/null or reuse approvals after this extension.
+    let change: Change = serde_json::from_value(stored).map_err(|_| {
+        Error::conflict("Reviewed client endpoints format changed; stage a new proposal")
+    })?;
     if change.proposal.id != id || canonical(&change.proposal)? != change.digest {
         return Err(Error::conflict("Reviewed client endpoints content changed"));
     }
@@ -264,7 +284,12 @@ fn revalidate(core: &Core, tx: &Tx<'_>, actor: &Principal, change: &Change) -> R
     Ok(client)
 }
 
-fn audit_change(tx: &Tx<'_>, actor: &str, action: &str, change: &Change) -> Result<()> {
+fn audit_change<Content: Serialize>(
+    tx: &Tx<'_>,
+    actor: &str,
+    action: &str,
+    change: &Change<Content>,
+) -> Result<()> {
     let p = &change.proposal;
     audit_with_details(
         tx,
@@ -311,7 +336,9 @@ impl Core {
                 expires_at: at + LIFETIME,
             };
             let mut retained = 0;
-            for (key, old) in tx.scan::<Change>(CHANGES, None, MAX_CHANGES + 1)? {
+            // Retain and expire older drafts with their original audit content.
+            // They cannot execute or prevent staging a fresh v3 proposal.
+            for (key, old) in tx.scan::<Change<Value>>(CHANGES, None, MAX_CHANGES + 1)? {
                 if old.proposal.expires_at <= at {
                     if matches!(old.status, Status::Pending | Status::Approved) {
                         audit_change(tx, &actor.id, "reviewed_client_endpoints.expire", &old)?;
@@ -403,6 +430,12 @@ impl Core {
             let mut next = client.clone();
             next.redirect_uris = change.proposal.after.redirect_uris.clone();
             next.settings.origins = change.proposal.after.origins.clone();
+            next.settings.post_logout_redirect_uris =
+                change.proposal.after.post_logout_redirect_uris.clone();
+            next.settings.frontchannel_logout_uri =
+                change.proposal.after.frontchannel_logout_uri.clone();
+            next.settings.backchannel_logout_uri =
+                change.proposal.after.backchannel_logout_uri.clone();
             write_client_as(
                 tx,
                 &self.config,

@@ -9,6 +9,7 @@ use crate::{
     error::{Error, Result},
     model::{Client, Session},
     response::escape,
+    session_protocol::PostLogoutReturn,
     source::Source,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -179,6 +180,10 @@ pub(crate) struct ReturnResponse {
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub(crate) struct Finish {
     pub redirect: Option<String>,
+    /// Exact OIDC registration for an external return. Old flows lack it and
+    /// cannot safely deliver their cached redirect.
+    #[serde(default)]
+    pub return_binding: Option<PostLogoutReturn>,
     pub response: Option<ReturnResponse>,
     pub frontchannel_urls: BTreeSet<String>,
 }
@@ -211,6 +216,36 @@ fn flow_url(core: &impl SamlLogoutCore, id: &str) -> String {
         "{}/saml/logout/{id}",
         super::endpoint_base(core.logout_issuer())
     )
+}
+
+/// Only a stored ticket at our canonical SAML logout URL is an internal
+/// continuation. The confirmation may keep this URL when its external return
+/// registration has been removed.
+pub(crate) fn is_continuation(
+    core: &impl SamlLogoutCore,
+    tx: &impl SamlLogoutTx,
+    sid: &str,
+    uri: &str,
+) -> Result<bool> {
+    let prefix = format!("{}/saml/logout/", super::endpoint_base(core.logout_issuer()));
+    let Some(ticket) = uri.strip_prefix(&prefix) else {
+        return Ok(false);
+    };
+    if ticket.len() != 43
+        || !ticket
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+    {
+        return Ok(false);
+    }
+    if tx.session_ticket(sid)?.as_deref() != Some(ticket) {
+        return Ok(false);
+    }
+    Ok(tx.flow_record(&digest(ticket))?.is_some_and(|flow| {
+        flow.id == ticket
+            && flow.expires_at.saturating_add(86400) > now()
+            && uri == flow_url(core, &flow.id)
+    }))
 }
 
 // The optional response sender is excluded, preventing source/SP logout loops.
@@ -326,7 +361,7 @@ pub(crate) fn redirect(
     core: &impl SamlLogoutCore,
     tx: &impl SamlLogoutTx,
     sid: &str,
-    original: Option<String>,
+    original: Option<PostLogoutReturn>,
 ) -> Result<Value> {
     if let Some(ticket) = tx.session_ticket(sid)?
         && lookup(tx, &ticket).is_ok()
@@ -338,7 +373,8 @@ pub(crate) fn redirect(
         tx,
         &BTreeSet::from([sid.into()]),
         Finish {
-            redirect: original,
+            redirect: original.as_ref().map(|target| target.rendered_uri.clone()),
+            return_binding: original,
             ..Default::default()
         },
     )?;
@@ -382,8 +418,11 @@ fn finish_reply(core: &impl SamlLogoutCore, tx: &impl SamlLogoutTx, flow: &Flow)
             end.post,
             "SAMLResponse",
         )
-    } else if let Some(uri) = &flow.finish.redirect {
-        Ok(Reply::Redirect(uri.clone()))
+    } else if let Some(binding) = &flow.finish.return_binding
+        && flow.finish.redirect.as_deref() == Some(binding.rendered_uri.as_str())
+        && binding.allowed_by(tx.client_record(&binding.client_id)?.as_ref())
+    {
+        Ok(Reply::Redirect(binding.rendered_uri.clone()))
     } else {
         Ok(Reply::LogoutPage(flow.status(core)))
     }
@@ -594,6 +633,7 @@ pub(crate) fn source_logout(
         &sessions,
         Finish {
             redirect: None,
+            return_binding: None,
             response: Some(ReturnResponse {
                 peer,
                 request,

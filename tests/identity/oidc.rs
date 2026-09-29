@@ -2811,23 +2811,13 @@ fn resource_indicators_bind_consent_code_refresh_audience_and_online_policy() {
 #[test]
 fn logout_confirmation_session_checks_and_frontchannel_are_account_bound() {
     let f = Fixture::new();
-    f.client("app", false);
+    f.client_with_settings("app", false, ProviderSettings {
+        frontchannel_logout_uri: Some("https://app.example.test/front-logout".into()),
+        post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
+        ..Default::default()
+    });
     let alice = f.user("alice");
     let bob = f.user("bob");
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                settings: Some(ProviderSettings {
-                    frontchannel_logout_uri: Some("https://app.example.test/front-logout".into()),
-                    post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
     let sid: String = f
         .core
         .store
@@ -2941,20 +2931,10 @@ fn logout_confirmation_session_checks_and_frontchannel_are_account_bound() {
 
 const SIGNED_OUT: &str = "https://app.example.test/signed-out";
 fn logout_app(f: &Fixture) {
-    f.client("app", false);
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                settings: Some(ProviderSettings {
-                    post_logout_redirect_uris: vec![SIGNED_OUT.into()],
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    f.client_with_settings("app", false, ProviderSettings {
+        post_logout_redirect_uris: vec![SIGNED_OUT.into()],
+        ..Default::default()
+    });
 }
 fn rp_logout(hint: Option<&Value>) -> riauth::logout::LogoutRequest {
     riauth::logout::LogoutRequest {

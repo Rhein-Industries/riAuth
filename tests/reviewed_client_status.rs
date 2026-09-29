@@ -201,20 +201,14 @@ async fn exact_status_revokes_bound_grants_once_and_blocks_api_cli_state_bypass(
     let reviewer = administrator(&f, "reviewer");
     let executor = administrator(&f, "executor");
     let alice = f.user("alice");
-    let secret = f.client("app", true);
-    f.core
-        .update_client(
-            &f.admin,
-            "app",
-            ClientPatch {
-                settings: Some(ProviderSettings {
-                    backchannel_logout_uri: Some("https://app.example.test/logout".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    let secret = f.client_with_settings(
+        "app",
+        true,
+        ProviderSettings {
+            backchannel_logout_uri: Some("https://app.example.test/logout".into()),
+            ..Default::default()
+        },
+    );
     let scoped = f
         .core
         .create_agent(

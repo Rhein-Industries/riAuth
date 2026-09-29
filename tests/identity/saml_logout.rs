@@ -663,21 +663,11 @@ async fn saml_logout_oidc_continuation_http_and_confirmation() {
     let local = PKey::private_key_from_pem(keys.active.pem.as_bytes()).unwrap();
     let cert = saml_tests::cert(&local, "SAML bridge");
     provider(&f, "bridge", &sp, &cert, false);
-    f.client("oidc", false);
-    f.core
-        .update_client(
-            &f.admin,
-            "oidc",
-            ClientPatch {
-                settings: Some(ProviderSettings {
-                    post_logout_redirect_uris: vec!["https://app.example.test/finished".into()],
-                    frontchannel_logout_uri: Some("https://app.example.test/front".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    f.client_with_settings("oidc", false, ProviderSettings {
+        post_logout_redirect_uris: vec!["https://app.example.test/finished".into()],
+        frontchannel_logout_uri: Some("https://app.example.test/front".into()),
+        ..Default::default()
+    });
     let tokens = f.tokens("oidc", &alice, None);
     login_sp(&f, "bridge", &alice);
     // An ended RP grant is not proof that the parent session was revoked.
@@ -814,5 +804,254 @@ async fn saml_logout_oidc_continuation_http_and_confirmation() {
             .as_str()
             .unwrap()
             .contains("/saml/logout/")
+    );
+}
+
+#[tokio::test]
+async fn saml_logout_rechecks_reviewed_oidc_return_after_confirmation_and_flow_creation() {
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    const OLD: &str = "https://app.example.test/old-finish";
+    const NEW: &str = "https://app.example.test/new-finish";
+    const BACK: &str = "https://app.example.test/back";
+    let f = Fixture::new();
+    let administrator = |name: &str| {
+        f.core
+            .create_user(
+                &f.admin,
+                NewUser {
+                    username: name.into(),
+                    password: PASSWORD.into(),
+                    email: None,
+                    display_name: name.into(),
+                    admin: true,
+                },
+            )
+            .unwrap();
+        text(
+            &f.core.login(name.into(), PASSWORD.into(), None).unwrap(),
+            "session_token",
+        )
+    };
+    let reviewer = administrator("reviewer");
+    let executor = administrator("executor");
+    let sp = peer(None);
+    let keys: crypto::Keys = f.core.store.get("meta", "keys").unwrap().unwrap();
+    let local = PKey::private_key_from_pem(keys.active.pem.as_bytes()).unwrap();
+    let cert = saml_tests::cert(&local, "SAML return fence");
+    provider(&f, "bridge", &sp, &cert, false);
+    f.client_with_settings(
+        "oidc",
+        false,
+        ProviderSettings {
+            post_logout_redirect_uris: vec![OLD.into()],
+            backchannel_logout_uri: Some(BACK.into()),
+            ..Default::default()
+        },
+    );
+    let sessions = ["pending", "decided", "direct"].map(|name| {
+        let token = f.user(name);
+        let rp = f.tokens("oidc", &token, None);
+        login_sp(&f, "bridge", &token);
+        (token, rp)
+    });
+    let request = |tokens: &Value| riauth::logout::LogoutRequest {
+        id_token_hint: Some(text(tokens, "id_token")),
+        client_id: Some("oidc".into()),
+        post_logout_redirect_uri: Some(OLD.into()),
+        state: Some("preserved".into()),
+    };
+    let handle = |pending: &Value| {
+        let id = pending["resume_uri"]
+            .as_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .to_owned();
+        let binding = pending["set_cookie"]
+            .as_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .split_once('=')
+            .unwrap()
+            .1
+            .to_owned();
+        (id, binding)
+    };
+    // One confirmation waits for approval; another already has a flow whose
+    // cached Finish.redirect still contains OLD. Direct logout shares that path.
+    let pending = f
+        .core
+        .end_session(request(&sessions[0].1), None, None)
+        .unwrap();
+    let decided = f
+        .core
+        .end_session(request(&sessions[1].1), None, None)
+        .unwrap();
+    f.core
+        .logout_request_decide(&sessions[1].0, &text(&decided, "user_code"), true)
+        .unwrap();
+    let (decided_id, decided_binding) = handle(&decided);
+    let decided_flow = text(
+        &f.core
+            .logout_request_resume(&decided_id, Some(&decided_binding))
+            .unwrap(),
+        "redirect_uri",
+    );
+    let direct = f
+        .core
+        .end_session(request(&sessions[2].1), None, Some(&sessions[2].0))
+        .unwrap();
+    let direct_flow = text(&direct, "redirect_uri");
+    for uri in [&decided_flow, &direct_flow] {
+        assert!(uri.starts_with("http://localhost:9000/saml/logout/"));
+        let ticket = uri.rsplit('/').next().unwrap();
+        let flow: Value = f.core.store.get("saml_logout_flows", &digest(ticket)).unwrap().unwrap();
+        assert_eq!(flow["finish"]["redirect"], format!("{OLD}?state=preserved"));
+        assert_eq!(flow["finish"]["return_binding"]["registered_uri"], OLD);
+    }
+    let client: Client = f.core.store.get("clients", "oidc").unwrap().unwrap();
+    let change = f
+        .core
+        .stage_client_endpoint(
+            &f.admin,
+            "oidc",
+            ClientEndpointInput {
+                redirect_uris: client.redirect_uris,
+                origins: client.settings.origins,
+                post_logout_redirect_uris: vec![NEW.into()],
+                frontchannel_logout_uri: client.settings.frontchannel_logout_uri,
+                backchannel_logout_uri: client.settings.backchannel_logout_uri,
+            },
+        )
+        .unwrap();
+    let change_id = change["proposal"]["id"].as_str().unwrap();
+    let binding = || ClientEndpointBinding {
+        digest: text(&change, "digest"),
+    };
+    f.core
+        .approve_client_endpoint_change(&reviewer, change_id, binding())
+        .unwrap();
+    f.core
+        .execute_client_endpoint_change(&executor, change_id, binding())
+        .unwrap();
+    f.core
+        .logout_request_decide(&sessions[0].0, &text(&pending, "user_code"), true)
+        .unwrap();
+    let (pending_id, pending_binding) = handle(&pending);
+    let pending_flow = text(
+        &f.core
+            .logout_request_resume(&pending_id, Some(&pending_binding))
+            .unwrap(),
+        "redirect_uri",
+    );
+    assert!(pending_flow.starts_with("http://localhost:9000/saml/logout/"));
+    let pending_ticket = pending_flow.rsplit('/').next().unwrap();
+    let pending_record: Value = f.core.store.get("saml_logout_flows", &digest(pending_ticket)).unwrap().unwrap();
+    assert!(pending_record["finish"]["redirect"].is_null());
+    assert_eq!(
+        f.core
+            .logout_request_resume(&decided_id, Some(&decided_binding))
+            .unwrap()["redirect_uri"],
+        decided_flow
+    );
+    assert!(sessions.iter().all(|(token, _)| f.core.me(token).is_err()));
+    let queued = f
+        .core
+        .store
+        .list::<riauth::logout::Delivery>("logout_deliveries")
+        .unwrap();
+    assert_eq!(queued.len(), 3);
+    assert!(queued.iter().all(|(_, job)| job.uri == BACK));
+    let app = riauth::api::router(f.core.clone());
+    for (confirmation, continuation) in [(&pending, &pending_flow), (&decided, &decided_flow)] {
+        let resumed = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(confirmation["resume_uri"].as_str().unwrap())
+                    .header(
+                        "cookie",
+                        confirmation["set_cookie"]
+                            .as_str()
+                            .unwrap()
+                            .split(';')
+                            .next()
+                            .unwrap(),
+                    )
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(resumed.status().is_redirection());
+        assert_eq!(resumed.headers()["location"], continuation.as_str());
+    }
+    for uri in [&pending_flow, &decided_flow, &direct_flow] {
+        let ticket = uri.rsplit('/').next().unwrap();
+        let next = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!("/saml/logout/{ticket}"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(next.status().is_redirection());
+        let (xml, relay, _) = decode(
+            Reply::Redirect(next.headers()["location"].to_str().unwrap().into()),
+            &cert,
+            None,
+        );
+        let answer = response(
+            &xml,
+            "urn:test:bridge",
+            "http://localhost:9000/saml/bridge/sso",
+            "Success",
+        );
+        let callback = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!(
+                        "/saml/bridge/sso?{}",
+                        message(&sp, &answer, &relay, "SAMLResponse", false)
+                    ))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(callback.status().is_redirection());
+        let finished = app
+            .clone()
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri(format!("/saml/logout/{ticket}"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(finished.status(), 200);
+        assert!(!finished.headers().contains_key("location"));
+        let body: Value =
+            serde_json::from_slice(&finished.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(body["logged_out"], true);
+        assert!(body["redirect_uri"].is_null());
+    }
+    assert_eq!(
+        f.core
+            .store
+            .list::<riauth::logout::Delivery>("logout_deliveries")
+            .unwrap()
+            .len(),
+        3
     );
 }

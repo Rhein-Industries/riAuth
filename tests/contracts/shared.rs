@@ -612,20 +612,14 @@ pub fn identity_and_issuer_continuity(backend: Backend) {
 pub fn disable_reenable_revokes_dependents(backend: Backend) {
     for writer in ["core", "manifest", "scim-patch"] {
         let f = backend.fixture();
-        f.client("app", false);
-        f.core
-            .update_client(
-                &f.admin,
-                "app",
-                ClientPatch {
-                    settings: Some(riauth::model::ProviderSettings {
-                        backchannel_logout_uri: Some("https://app.example.test/logout".into()),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
+        f.client_with_settings(
+            "app",
+            false,
+            riauth::model::ProviderSettings {
+                backchannel_logout_uri: Some("https://app.example.test/logout".into()),
+                ..Default::default()
+            },
+        );
         let (alice, scim_id) =
             if writer == "scim-patch" {
                 let created = f.core.scim_write(&f.admin, "Users", None, json!({

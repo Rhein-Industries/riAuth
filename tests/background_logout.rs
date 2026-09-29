@@ -10,7 +10,7 @@ use common::{Fixture, text};
 use http_body_util::BodyExt;
 use riauth::{
     logout::Delivery,
-    model::{ClientPatch, ProviderSettings},
+    model::ProviderSettings,
 };
 use serde_json::Value;
 use std::{
@@ -44,20 +44,14 @@ async fn logout_returns_with_durable_pending_delivery_and_revoked_access() {
     );
     let server = tokio::spawn(async move { axum::serve(listener, rp).await.unwrap() });
     let f = Fixture::new();
-    f.client("rp", false);
-    f.core
-        .update_client(
-            &f.admin,
-            "rp",
-            ClientPatch {
-                settings: Some(ProviderSettings {
-                    backchannel_logout_uri: Some(uri),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    f.client_with_settings(
+        "rp",
+        false,
+        ProviderSettings {
+            backchannel_logout_uri: Some(uri),
+            ..Default::default()
+        },
+    );
     let session = f.user("employee");
     let tokens = f.tokens("rp", &session, None);
     let query =

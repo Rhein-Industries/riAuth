@@ -7,6 +7,7 @@ use crate::{
     identity::signals,
     logout::{Delivery, LogoutDeliveryWorker, LogoutHintTx, LogoutRequest, RpSession, queue_session, verify_hint},
     model::Client,
+    session_protocol::PostLogoutReturn,
     store::Tx,
 };
 use serde_json::{Value, json};
@@ -67,11 +68,12 @@ impl Core {
                 return Err(Error::bad("ID token does not identify a recent session"));
             }
             let redirect = crate::session_protocol::logout_redirect(Some(&client), request.post_logout_redirect_uri.as_deref(), request.state.as_deref())?;
+            let return_target = request.post_logout_redirect_uri.as_deref().zip(redirect).map(|(registered, rendered)| PostLogoutReturn::new(cid, registered, rendered));
             if rp.ended && tx.get::<crate::model::Session>("sessions",&rp.session_id)?.is_none_or(|s|s.revoked) {
                 let bearer_sid = bearer.map(|t| tx.get::<String>("session_tokens", &digest(t))).transpose()?.flatten();
                 let clear_sso = self.forget_browser(tx, browser_cookie, &rp.session_id)?;
                 if clear_sso || bearer_sid.as_deref() == Some(&rp.session_id) {
-                    let propagation=crate::saml::logout::redirect(self,tx,&rp.session_id,redirect)?;
+                    let propagation=crate::saml::logout::redirect(self,tx,&rp.session_id,return_target)?;
                     return Ok(json!({"logged_out":true,"redirect_uri":propagation["redirect_uri"],"frontchannel_urls":crate::session_protocol::frontchannel_urls(tx,&rp.session_id,&self.config.issuer)?,"clear_sso":clear_sso}));
                 }
             }
@@ -98,7 +100,7 @@ impl Core {
             signals::enqueue(tx, &session.identity.user_id, signals::SESSION_REVOKED, "")?;
             audit(tx, &session.identity.user_id, "oidc.logout", cid)?;
             let clear_sso = self.forget_browser(tx, browser_cookie, &session.id)?;
-            let propagation=crate::saml::logout::redirect(self,tx,&session.id,redirect)?;
+            let propagation=crate::saml::logout::redirect(self,tx,&session.id,return_target)?;
             Ok(json!({"logged_out": true, "redirect_uri": propagation["redirect_uri"], "frontchannel_urls": frontchannel, "clear_sso": clear_sso}))
         })
     }

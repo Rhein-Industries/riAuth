@@ -1038,6 +1038,7 @@ impl Core {
             &sessions,
             logout::Finish {
                 redirect: None,
+                return_binding: None,
                 response: Some(logout::ReturnResponse {
                     peer: logout::Peer::Client {
                         id: client.id.clone(),

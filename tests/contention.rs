@@ -153,7 +153,7 @@ fn logout_idle_probe_preserves_atomic_claims() {
         core::Core,
         crypto::digest,
         logout::{Delivery, queue_session},
-        model::{ClientPatch, ProviderSettings, Session},
+        model::{ProviderSettings, Session},
     };
 
     let mut backends = vec![Backend::Redb, Backend::EncryptedRedb];
@@ -162,21 +162,14 @@ fn logout_idle_probe_preserves_atomic_claims() {
     }
     for backend in backends {
         let fixture = backend.fixture();
-        fixture.client("logout-probe", false);
-        fixture
-            .core
-            .update_client(
-                &fixture.admin,
-                "logout-probe",
-                ClientPatch {
-                    settings: Some(ProviderSettings {
-                        backchannel_logout_uri: Some("https://rp.example.test/logout".into()),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
+        fixture.client_with_settings(
+            "logout-probe",
+            false,
+            ProviderSettings {
+                backchannel_logout_uri: Some("https://rp.example.test/logout".into()),
+                ..Default::default()
+            },
+        );
         fixture.tokens("logout-probe", &fixture.admin, None);
         let sid: String = fixture
             .core

@@ -2360,9 +2360,12 @@ fn check_client_as(
     }
     if review != ClientReview::Endpoints && existing.is_some_and(|c| {
         c.redirect_uris != next.redirect_uris || c.settings.origins != next.settings.origins
+            || c.settings.post_logout_redirect_uris != next.settings.post_logout_redirect_uris
+            || c.settings.frontchannel_logout_uri != next.settings.frontchannel_logout_uri
+            || c.settings.backchannel_logout_uri != next.settings.backchannel_logout_uri
     }) {
         return Err(Error::conflict(
-            "Client redirect URIs or browser origins require a reviewed client endpoint change",
+            "Client callbacks, browser origins or logout endpoints require a reviewed client endpoint change",
         ));
     }
     Ok(Checked {
