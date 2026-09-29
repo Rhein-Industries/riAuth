@@ -6,9 +6,11 @@ riAuth is managed through the CLI. It does not require an embedded LLM or MCP se
 
 A human administrator can grant the permissions needed by [the complete example](../examples/identity.toml). Run these examples from the repository root, where `deployment-private/` is ignored by Git; outside the checkout, use a private operator directory:
 
+Read the current numeric revision with `riauth revision`. Use it and a unique, stable operation key for this creation; repeat both values only when retrying this exact request.
+
 ```sh
 mkdir -p deployment-private
-riauth agent create deployer \
+riauth --if-revision '<revision>' --idempotency-key deployer-create-001 agent create deployer \
   --permission user.read=user/alice --permission user.write=user/alice \
   --permission group.read=group/staff --permission group.write=group/staff \
   --permission group.members=group/staff \
@@ -18,6 +20,8 @@ riauth agent create deployer \
   --permission audit.read=audit/events \
   --ttl 86400 --out deployment-private/deployer.json
 ```
+
+The credential is disclosed only in the first successful response and written to the new `--out` file. An HTTP exact retry, or a CLI retry with a new unused `--out` path, returns 409 `credential_already_issued` without a token or a second agent. Reusing the original CLI output path fails locally if the file exists. If the credential file was never written, inspect the agent and rotate its credential using the separate rotation command; do not create another agent to recover the token.
 
 Select the credential with `--agent-file` or `RIAUTH_AGENT_FILE`. Its issuer and expiration are checked locally and by the server. Selecting it never falls back to a human session. Credentials expire after 60 seconds to 30 days. A human administrator can rotate with `agent rotate deployer --out deployment-private/replacement.json`. Revocation uses `--if-revision REVISION --idempotency-key KEY agent revoke deployer`; get the revision with `riauth revision` and reuse the same key only for an exact retry. Rotation immediately invalidates the previous token and preserves permissions. The serving procedure for a stolen agent token, a client secret, and the neighboring session and signing-key actions is [credential compromise](credential-compromise.md).
 
@@ -102,9 +106,9 @@ riauth --agent-file deployment-private/deployer.json \
   --output-file deployment-private/reports-v2.json client rotate-secret reports
 ```
 
-Use the actual returned revision. Direct agent mutations require `--if-revision`; its HTTP equivalent is `If-Match: "42"`. A stale revision fails. Retry the same logical operation with the same key, body and path; the server returns the committed result without rotating again, even though the original revision is now stale. A different request with that key fails. Authentication and the agent's current permissions are checked on replay.
+Use the actual returned revision. Direct agent mutations require `--if-revision`; its HTTP equivalent is `If-Match: "42"`. Agent creation additionally requires `--idempotency-key` (`Idempotency-Key` over HTTP), including for a human administrator. A stale revision fails. For ordinary receipted mutations, retry the same logical operation with the same key, body and path; the server returns the committed result without rotating again, even though the original revision is now stale. Agent creation is the exception: an exact retry returns 409 `credential_already_issued` without the credential. A different request with that key fails. Authentication and the actor's current authority are checked on replay.
 
-Receipts return the original result for 24 hours. Expired receipts reject reuse for another six days, then are cleaned up. Never reuse an operation key for new work. After an uncertain operation outside the receipt window, inspect state before making a new plan. Failed transactions do not reserve the key. End-user login, OAuth exchanges and device approval do not use this mechanism; follow their protocol retry rules.
+Receipts normally return the original result for 24 hours; agent-creation receipts return only the conflict above, never the credential. Expired receipts reject reuse for another six days, then are cleaned up. Never reuse an operation key for new work. After an uncertain operation outside the receipt window, inspect state before making a new plan. Failed transactions do not reserve the key. End-user login, OAuth exchanges and device approval do not use this mechanism; follow their protocol retry rules.
 
 ## Output, secrets and errors
 
@@ -134,7 +138,7 @@ Prompts/progress go to stderr. `--non-interactive` and non-TTY input never promp
 | 5 | Conflict / stale state |
 | 6 | Rate limited or temporarily unavailable; bounded retry |
 
-`--output-file` writes the complete result into a new mode-0600 file and returns only its path. Client creation/rotation requires it or explicit `--show-secrets`. Agent create/rotate and recovery-code generation require their own `--out` sink. Existing destinations are rejected. Preserve operation keys when retrying a credential delivery failure, using a new output path. OAuth token commands intentionally deliver requested tokens and also support `--output-file`.
+`--output-file` writes the complete result into a new mode-0600 file and returns only its path. Client creation/rotation requires it or explicit `--show-secrets`. Agent create/rotate and recovery-code generation require their own `--out` sink. Existing destinations are rejected. Preserve operation keys when retrying a credential delivery failure, using a new output path. For agent creation, that exact retry returns 409 without creating the new file or re-disclosing the credential; inspect the agent and rotate if the first credential was lost. OAuth token commands intentionally deliver requested tokens and also support `--output-file`.
 
 ## Inventory and explanations
 

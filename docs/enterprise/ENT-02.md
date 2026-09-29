@@ -6,7 +6,7 @@ Scoped agent credentials stay independent principals. Parent ownership records w
 
 ## Create
 
-A human administrator bootstraps every agent. `riauth agent create <id> --parent <username>` and `POST /api/agents` accept an optional `parent` username. The parent must already exist, be enabled, and must not be an administrator. Unknown, disabled, and administrator parents are rejected. The stored field is `parent_user`, the parent's user id. Omit `parent` and the agent has no owner, which is the previous behavior.
+A human administrator bootstraps every agent. `riauth --if-revision '<revision>' --idempotency-key '<unique-key>' agent create <id> --parent <username> --out FILE` and `POST /api/agents` accept an optional `parent` username. Creation requires the current numeric revision from `riauth revision` and a unique, stable operation key (`If-Match` and `Idempotency-Key` over HTTP). Only the first committed response discloses the credential; a server-side exact retry returns 409 `credential_already_issued` without it. The CLI needs a new unused `--out` path to send that retry if the first file exists. If the credential file was never written, inspect the agent and rotate its credential separately. The parent must already exist, be enabled, and must not be an administrator. Unknown, disabled, and administrator parents are rejected. The stored field is `parent_user`, the parent's user id. Omit `parent` and the agent has no owner, which is the previous behavior.
 
 The link is immutable. Rotation replaces the token and extends expiry only. Id, permissions, and `parent_user` stay as created. Revoke still sets `enabled` false and deletes the token.
 

@@ -1647,10 +1647,11 @@ it in section 7 with `riauth client update`. It is separate from the
 the same pair on `riauthctl client update`. This section prints `client create`
 only.
 
-`agent create` follows the scoped-mutation rule. An agent or a delegated
-human sends `If-Match` with the current revision. The administrator
-session from section 2 can call the printed `agent create` without
-`--if-revision`.
+`agent create` requires a human administrator and both a unique
+`Idempotency-Key` and the current numeric revision in `If-Match`, including
+for the administrator session from section 2. The CLI equivalents are
+`--idempotency-key` and `--if-revision`. Read the revision again after
+`client create`, since that write advances it.
 
 ### Commands
 
@@ -1682,7 +1683,11 @@ riauth --server http://localhost:9000 \
   --scope openid,profile,email,groups \
   --group staff \
   --settings-file deployment-private/platform-lab/ldap-settings.json
-riauth --server http://localhost:9000 agent create ldap-directory \
+riauth --server http://localhost:9000 revision
+riauth --server http://localhost:9000 \
+  --idempotency-key ldap-directory-agent-create \
+  --if-revision '<current-revision>' \
+  agent create ldap-directory \
   --permission ldap.search=client/legacy-directory \
   --out deployment-private/platform-lab/ldap-agent.json
 ```
@@ -1699,7 +1704,12 @@ group name is the `search_groups` entry above.
 `agent create` writes the credential file at Unix mode 0600 and prints
 `agent` and `credential_file`. The token is inside that file. It is prefixed
 `ri_agent_`. The default lifetime is 86400 seconds. An existing `--out`
-fails with `Credential destination already exists`.
+fails with `Credential destination already exists`. The first committed
+response is the only disclosure of that token. A server-side exact retry
+with the original key, revision and body returns 409
+`credential_already_issued` without another token or audit; a CLI retry
+needs a new unused `--out` path if the first file exists. If the credential
+file was never written, inspect the agent and rotate its credential separately.
 
 Stop `serve` and append the listener. `allowed_peers` is one to 128
 explicit IP addresses. Unspecified and multicast addresses are rejected
