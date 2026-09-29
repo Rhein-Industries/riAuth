@@ -109,6 +109,7 @@ impl Tx<'_> {
         &self,
         bucket: &str,
         id: &str,
+        group_before: Option<&Value>,
         after: Option<&Value>,
     ) -> Result<()> {
         if bucket == "users" {
@@ -150,7 +151,10 @@ impl Tx<'_> {
             }
         }
         if bucket == "groups" {
-            let before = self.get::<crate::model::Group>(bucket, id)?;
+            let before = group_before
+                .map(|value| serde_json::from_value::<crate::model::Group>(value.clone()))
+                .transpose()
+                .map_err(Error::internal)?;
             let after = after
                 .map(|value| serde_json::from_value::<crate::model::Group>(value.clone()))
                 .transpose()
@@ -703,13 +707,13 @@ impl Tx<'_> {
                 count = count
                     .checked_add(1)
                     .ok_or_else(|| Error::internal("Collection count overflow"))?;
-                self.update_indexes(bucket, &id, Some(&value))
+                self.update_indexes(bucket, &id, None, Some(&value))
             })?;
             self.put("index_counts", bucket, &count)?;
         }
         for bucket in ["access", "refresh"] {
             self.for_each_rebuild_page::<Value>(bucket, check, |id, value| {
-                self.update_indexes(bucket, &id, Some(&value))
+                self.update_indexes(bucket, &id, None, Some(&value))
             })?;
         }
         for bucket in QUEUES {

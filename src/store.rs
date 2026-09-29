@@ -719,6 +719,7 @@ impl Tx<'_> {
         &self,
         bucket: &str,
         key: &str,
+        group_before: Option<&Value>,
         after: Option<Value>,
         transitions: &dyn RecordTransitions,
     ) -> Result<()> {
@@ -738,14 +739,25 @@ impl Tx<'_> {
             return Ok(());
         }
         let name = record_key(bucket, key);
-        let before_raw = self.get::<Value>(bucket, key)?;
-        let mut before_view = public_record(bucket, before_raw.as_ref(), transitions)?;
+        // Group writes already fetched the source before index maintenance.
+        // No Group source mutation occurs before this audit projection.
+        let fetched_before = if bucket == "groups" {
+            None
+        } else {
+            self.get::<Value>(bucket, key)?
+        };
+        let before_raw = if bucket == "groups" {
+            group_before
+        } else {
+            fetched_before.as_ref()
+        };
+        let mut before_view = public_record(bucket, before_raw, transitions)?;
         let mut after_view = public_record(bucket, after.as_ref(), transitions)?;
         redact_audit_value(&mut before_view);
         redact_audit_value(&mut after_view);
         let changed = credential_markers(
             bucket,
-            before_raw.as_ref(),
+            before_raw,
             after.as_ref(),
             &mut before_view,
             &mut after_view,
@@ -859,8 +871,8 @@ impl Tx<'_> {
             None
         };
         transitions.prepare_record(bucket, before.as_ref(), &mut public);
-        self.update_indexes(bucket, key, Some(&public))?;
-        self.record_change(bucket, key, Some(public.clone()), transitions)?;
+        self.update_indexes(bucket, key, before.as_ref(), Some(&public))?;
+        self.record_change(bucket, key, before.as_ref(), Some(public.clone()), transitions)?;
         self.import_record(bucket, key, &public)?;
         transitions.record_transition(self, bucket, key, before.as_ref(), Some(&public))
     }
@@ -897,8 +909,8 @@ impl Tx<'_> {
         } else {
             None
         };
-        self.update_indexes(bucket, key, None)?;
-        self.record_change(bucket, key, None, transitions)?;
+        self.update_indexes(bucket, key, before.as_ref(), None)?;
+        self.record_change(bucket, key, before.as_ref(), None, transitions)?;
         self.raw_put(&record_key(bucket, key), None)?;
         transitions.record_transition(self, bucket, key, before.as_ref(), None)
     }

@@ -468,6 +468,49 @@ pub fn group_binding_metadata(backend: Backend) {
     assert!(f.core.store.get::<String>(&overflow_bucket, &digest(&stale)).unwrap().is_none());
 }
 
+/// Updating a Group reads its large source value once. Index and audit work
+/// share that snapshot rather than fetching the same value again.
+pub fn group_write_source_read_amplification(backend: Backend) {
+    use riauth::telemetry::ReadContext;
+
+    let f = backend.fixture();
+    let name = "large-update-group";
+    let stale = format!("stale-{}", "x".repeat(200_000));
+    let mut group = Group {
+        name: name.into(),
+        members: BTreeSet::from([stale.clone()]),
+    };
+    f.core.store.write(|tx| tx.put("groups", name, &group)).unwrap();
+    let source_bytes = serde_json::to_vec(&group).unwrap().len() as u64;
+    let before_bytes = f.core.store.telemetry().reads.bytes(ReadContext::Writer);
+    group.members.insert("second-member".into());
+    f.core.store.write(|tx| tx.put("groups", name, &group)).unwrap();
+    let read_bytes = f.core.store.telemetry().reads.bytes(ReadContext::Writer) - before_bytes;
+    assert!(read_bytes >= source_bytes, "old Group source was not measured: {read_bytes}");
+    assert!(
+        read_bytes < source_bytes * 3 / 2,
+        "Group update fetched more than one large source value: {read_bytes} bytes for {source_bytes}-byte source"
+    );
+    eprintln!("Group update source={source_bytes} writer_read={read_bytes}");
+    let stored: Group = f.core.store.get("groups", name).unwrap().unwrap();
+    assert_eq!(stored.members, group.members);
+    let binding: Value = f.core.store.get("index_group_bindings", name).unwrap().unwrap();
+    let source: String = f.core.store.get("index_group_source_digests", name).unwrap().unwrap();
+    assert_eq!(binding["source_digest"], source);
+
+    let source_bytes = serde_json::to_vec(&group).unwrap().len() as u64;
+    let before_bytes = f.core.store.telemetry().reads.bytes(ReadContext::Writer);
+    f.core.store.write(|tx| tx.delete("groups", name)).unwrap();
+    let read_bytes = f.core.store.telemetry().reads.bytes(ReadContext::Writer) - before_bytes;
+    assert!(read_bytes >= source_bytes, "old Group source was not measured: {read_bytes}");
+    assert!(
+        read_bytes < source_bytes * 3 / 2,
+        "Group deletion fetched more than one large source value: {read_bytes} bytes for {source_bytes}-byte source"
+    );
+    eprintln!("Group delete source={source_bytes} writer_read={read_bytes}");
+    assert!(f.core.store.get::<Value>("index_group_bindings", name).unwrap().is_none());
+}
+
 /// S02: a large group directory has the same live membership and snapshot
 /// behavior on both storage backends, including the 128-row index page edge.
 pub fn indexed_user_group_membership(backend: Backend) {
