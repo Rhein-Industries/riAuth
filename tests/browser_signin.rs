@@ -3281,3 +3281,429 @@ async fn configured_browser_password_totp_consent_spends_exact_preparation_once(
     );
     assert_eq!(f.core.store.list::<Code>("codes").unwrap().len(), 1);
 }
+
+#[cfg(feature = "platform")]
+fn password_totp_consent(revision: u32) -> workflow::Definition {
+    let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+    definition.id = Id::new("browser-password-totp-consent").unwrap();
+    definition.origin = Origin::Configured;
+    definition.revision = revision;
+    definition.limits.max_duration_seconds = 120;
+    definition.limits.max_executions = 6;
+    definition.steps[0].transitions[0].to = Id::new("password").unwrap();
+    let mut document = serde_json::to_value(definition).unwrap();
+    let steps = document["steps"].as_array().unwrap().clone();
+    document["steps"] = json!([
+        steps[0],
+        {"id":"password", "action":{"type":"verify_password"}, "max_attempts":2,
+         "timeout_seconds":120, "cancellable":true, "transitions":[
+            {"on":"verified","to":"totp"}, {"on":"failed","to":"denied"}]},
+        {"id":"totp", "action":{"type":"verify_totp"}, "max_attempts":2,
+         "timeout_seconds":120, "cancellable":true, "transitions":[
+            {"on":"verified","to":"consent"}, {"on":"failed","to":"denied"}]},
+        steps[1]
+    ]);
+    document["steps"][3]["timeout_seconds"] = json!(120);
+    document["terminals"][0]["requires"] = json!([["session", "password", "totp", "consent"]]);
+    document["terminals"][0]["max_proof_age_seconds"] = json!(120);
+    serde_json::from_value(document).unwrap()
+}
+
+#[cfg(feature = "platform")]
+struct OpenConsent {
+    f: Fixture,
+    sso: String,
+    interaction: Interaction,
+    run_id: String,
+    evidence: Vec<String>,
+    consents: Vec<String>,
+    step_evidence: Vec<String>,
+    codes: usize,
+    identity: Value,
+}
+
+#[cfg(feature = "platform")]
+fn sorted_keys(f: &Fixture, bucket: &str) -> Vec<String> {
+    let mut keys: Vec<_> = f
+        .core
+        .store
+        .list::<Value>(bucket)
+        .unwrap()
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
+    keys.sort();
+    keys
+}
+
+#[cfg(feature = "platform")]
+fn stored_run(f: &Fixture, id: &str) -> Value {
+    f.core.store.get("workflow_runs", id).unwrap().unwrap()
+}
+
+#[cfg(feature = "platform")]
+fn step_evidence(run: &Value) -> Vec<String> {
+    run["record"]["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|step| step["evidence"].as_str().map(str::to_owned))
+        .collect()
+}
+
+#[cfg(feature = "platform")]
+fn assert_stale_run(open: &OpenConsent, failure: &str) {
+    let run = stored_run(&open.f, &open.run_id);
+    assert_eq!(run["reviewed_failure"], failure);
+    assert_eq!(run["record"]["state"]["outcome"], "denied");
+    assert!(run.get("authorization_response").is_none());
+    assert_eq!(step_evidence(&run), open.step_evidence);
+    assert_eq!(sorted_keys(&open.f, "workflow_evidence"), open.evidence);
+    assert_eq!(sorted_keys(&open.f, "workflow_consents"), open.consents);
+    assert_eq!(
+        open.f.core.store.list::<Code>("codes").unwrap().len(),
+        open.codes
+    );
+    let pending: Value = open
+        .f
+        .core
+        .store
+        .get("browser_authorizations", &open.interaction.id)
+        .unwrap()
+        .unwrap();
+    assert!(pending["callback"].is_null());
+    assert_eq!(
+        serde_json::to_value(session(&open.f, &sid(&open.f, &open.sso)).identity).unwrap(),
+        open.identity
+    );
+}
+
+#[cfg(feature = "platform")]
+fn reopen_config(f: Fixture, edit: impl FnOnce(&mut riauth::config::Config)) -> Fixture {
+    let Fixture { _dir, core, admin } = f;
+    let mut config = core.config.clone();
+    drop(core);
+    edit(&mut config);
+    Fixture {
+        _dir,
+        core: riauth::core::Core::open(config).unwrap(),
+        admin,
+    }
+}
+
+#[cfg(feature = "platform")]
+async fn open_browser_totp_consent(revision: u32) -> OpenConsent {
+    let mut f = Fixture::new();
+    let definition = password_totp_consent(revision);
+    assert_eq!(definition.steps[2].id.as_str(), "totp");
+    f.core.config.workflows.insert(
+        "browser-password-totp-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition,
+        },
+    );
+    f.core.config.browser_consent_workflow = Some("browser-password-totp-consent".into());
+    f.core.config.validate().unwrap();
+    client(&f, "app", true, true, Default::default());
+    let alice = f.user("alice");
+    let enrollment = f.core.mfa_begin(&alice).unwrap();
+    let totp = crypto::totp(enrollment["secret"].as_str().unwrap(), "alice").unwrap();
+    f.core
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
+        .unwrap();
+    let login = f
+        .core
+        .portal_password(
+            None,
+            "alice".into(),
+            PASSWORD.into(),
+            Some(totp.generate(now()).to_string()),
+            false,
+        )
+        .unwrap();
+    let sso = login
+        .cookies
+        .iter()
+        .find_map(|cookie| {
+            cookie
+                .split(';')
+                .next()
+                .unwrap()
+                .strip_prefix("riauth_sso=")
+        })
+        .unwrap()
+        .to_owned();
+    let app = riauth::api::router(f.core.clone());
+    let mut request = f.request("app", &crypto::random_token(""));
+    request.prompt = Some("login consent".into());
+    let interaction = start(&f, &app, &request, Some(&sso)).await;
+    let first = password(&app, &interaction, Some(&sso), "alice", None).await;
+    assert_eq!(first.status, StatusCode::OK, "{}", first.text);
+    assert_eq!(first.body["requirements"]["configured_stage"], "totp");
+    let pending: Value = f
+        .core
+        .store
+        .get("browser_authorizations", &interaction.id)
+        .unwrap()
+        .unwrap();
+    let run_id = text(&pending, "configured_run");
+    assert!(pending["callback"].is_null());
+    let run = stored_run(&f, &run_id);
+    assert!(run["reviewed_failure"].is_null());
+    assert!(run.get("authorization_response").is_none());
+    let account = session(&f, &sid(&f, &sso)).identity.user_id;
+    let index: Value = f
+        .core
+        .store
+        .get("workflow_account_runs", &account)
+        .unwrap()
+        .unwrap();
+    assert!(
+        index["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value.as_str() == Some(run_id.as_str()))
+    );
+    let evidence = sorted_keys(&f, "workflow_evidence");
+    assert!(!evidence.is_empty());
+    let open = OpenConsent {
+        evidence,
+        consents: sorted_keys(&f, "workflow_consents"),
+        step_evidence: step_evidence(&run),
+        codes: f.core.store.list::<Code>("codes").unwrap().len(),
+        identity: serde_json::to_value(session(&f, &sid(&f, &sso)).identity).unwrap(),
+        f,
+        sso,
+        interaction,
+        run_id,
+    };
+    drop(app);
+    open
+}
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn browser_totp_consent_policy_change_reopen_seals_without_a_grant() {
+    let OpenConsent {
+        f,
+        sso,
+        interaction,
+        run_id,
+        evidence,
+        consents,
+        step_evidence: saved_steps,
+        codes,
+        identity,
+    } = open_browser_totp_consent(1).await;
+    let original = f
+        .core
+        .config
+        .workflows
+        .get("browser-password-totp-consent")
+        .unwrap()
+        .definition
+        .clone();
+    let mut open = OpenConsent {
+        f: reopen_config(f, |config| {
+            config
+                .workflows
+                .get_mut("browser-password-totp-consent")
+                .unwrap()
+                .definition
+                .steps[2]
+                .timeout_seconds = 30;
+        }),
+        sso,
+        interaction,
+        run_id,
+        evidence,
+        consents,
+        step_evidence: saved_steps,
+        codes,
+        identity,
+    };
+    let app = riauth::api::router(open.f.core.clone());
+    // A new interaction does not carry the open run id. The session pin still
+    // has to seal that run before this request can start another one.
+    let mut request = open.f.request("app", &crypto::random_token(""));
+    request.prompt = Some("login consent".into());
+    let sibling = start(&open.f, &app, &request, Some(&open.sso)).await;
+    let blocked = password(&app, &sibling, Some(&open.sso), "alice", Some("000000")).await;
+    assert_eq!(blocked.status, StatusCode::CONFLICT, "{}", blocked.text);
+    assert_eq!(blocked.body["error_description"], "Workflow policy changed");
+    assert_stale_run(&open, "policy_changed");
+    let sibling_pending: Value = open
+        .f
+        .core
+        .store
+        .get("browser_authorizations", &sibling.id)
+        .unwrap()
+        .unwrap();
+    assert!(sibling_pending["configured_run"].is_null());
+    assert!(sibling_pending["callback"].is_null());
+    assert_eq!(
+        sorted_keys(&open.f, "workflow_runs"),
+        vec![open.run_id.clone()]
+    );
+
+    let rejected = password(
+        &app,
+        &open.interaction,
+        Some(&open.sso),
+        "alice",
+        Some("000000"),
+    )
+    .await;
+    assert_ne!(rejected.status, StatusCode::OK, "{}", rejected.text);
+    assert_stale_run(&open, "policy_changed");
+    drop(app);
+
+    open.f = reopen_config(open.f, |config| {
+        config
+            .workflows
+            .get_mut("browser-password-totp-consent")
+            .unwrap()
+            .definition = original;
+    });
+    let app = riauth::api::router(open.f.core.clone());
+    let replay = password(
+        &app,
+        &open.interaction,
+        Some(&open.sso),
+        "alice",
+        Some("000000"),
+    )
+    .await;
+    assert_ne!(replay.status, StatusCode::OK, "{}", replay.text);
+    assert_stale_run(&open, "policy_changed");
+    let state = get_state(&app, &open.interaction, Some(&open.sso)).await;
+    let decided = decide(&app, &open.interaction, Some(&open.sso), true, &state.body).await;
+    assert_ne!(decided.status, StatusCode::OK, "{}", decided.text);
+    assert_stale_run(&open, "policy_changed");
+
+    let mut request = open.f.request("app", &crypto::random_token(""));
+    request.prompt = Some("login consent".into());
+    let fresh = start(&open.f, &app, &request, Some(&open.sso)).await;
+    let started = password(&app, &fresh, Some(&open.sso), "alice", None).await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text);
+    assert_eq!(started.body["requirements"]["configured_stage"], "totp");
+    let pending: Value = open
+        .f
+        .core
+        .store
+        .get("browser_authorizations", &fresh.id)
+        .unwrap()
+        .unwrap();
+    assert_ne!(text(&pending, "configured_run"), open.run_id);
+    assert!(pending["callback"].is_null());
+    assert_eq!(
+        stored_run(&open.f, &open.run_id)["reviewed_failure"],
+        "policy_changed"
+    );
+    assert_eq!(
+        step_evidence(&stored_run(&open.f, &open.run_id)),
+        open.step_evidence
+    );
+    assert_eq!(
+        open.f.core.store.list::<Code>("codes").unwrap().len(),
+        open.codes
+    );
+}
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn browser_totp_consent_rollback_reopen_seals_without_a_grant() {
+    let OpenConsent {
+        f,
+        sso,
+        interaction,
+        run_id,
+        evidence,
+        consents,
+        step_evidence: saved_steps,
+        codes,
+        identity,
+    } = open_browser_totp_consent(2).await;
+    let mut rolled = f
+        .core
+        .config
+        .workflows
+        .get("browser-password-totp-consent")
+        .unwrap()
+        .definition
+        .clone();
+    rolled.revision = 1;
+    let mut open = OpenConsent {
+        f: reopen_config(f, |config| {
+            config
+                .workflows
+                .get_mut("browser-password-totp-consent")
+                .unwrap()
+                .definition = rolled;
+        }),
+        sso,
+        interaction,
+        run_id,
+        evidence,
+        consents,
+        step_evidence: saved_steps,
+        codes,
+        identity,
+    };
+    let app = riauth::api::router(open.f.core.clone());
+    let state = get_state(&app, &open.interaction, Some(&open.sso)).await;
+    let rejected = decide(&app, &open.interaction, Some(&open.sso), true, &state.body).await;
+    assert_eq!(rejected.status, StatusCode::CONFLICT, "{}", rejected.text);
+    assert_eq!(
+        rejected.body["error_description"],
+        "Workflow version was rolled back"
+    );
+    assert_stale_run(&open, "rolled_back");
+    drop(app);
+
+    open.f = reopen_config(open.f, |config| {
+        config
+            .workflows
+            .get_mut("browser-password-totp-consent")
+            .unwrap()
+            .definition = password_totp_consent(3);
+    });
+    let app = riauth::api::router(open.f.core.clone());
+    let replay = decide(
+        &app,
+        &open.interaction,
+        Some(&open.sso),
+        true,
+        &get_state(&app, &open.interaction, Some(&open.sso))
+            .await
+            .body,
+    )
+    .await;
+    assert_ne!(replay.status, StatusCode::OK, "{}", replay.text);
+    assert_stale_run(&open, "rolled_back");
+    let mut request = open.f.request("app", &crypto::random_token(""));
+    request.prompt = Some("login consent".into());
+    let fresh = start(&open.f, &app, &request, Some(&open.sso)).await;
+    let started = password(&app, &fresh, Some(&open.sso), "alice", None).await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.text);
+    let pending: Value = open
+        .f
+        .core
+        .store
+        .get("browser_authorizations", &fresh.id)
+        .unwrap()
+        .unwrap();
+    let fresh_id = text(&pending, "configured_run");
+    assert_ne!(fresh_id, open.run_id);
+    assert_eq!(stored_run(&open.f, &fresh_id)["reviewed"]["revision"], 3);
+    assert_eq!(
+        stored_run(&open.f, &open.run_id)["reviewed_failure"],
+        "rolled_back"
+    );
+    assert_eq!(
+        open.f.core.store.list::<Code>("codes").unwrap().len(),
+        open.codes
+    );
+}

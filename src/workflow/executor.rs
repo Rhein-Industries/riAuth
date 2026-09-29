@@ -24,7 +24,7 @@ pub use passkey::PasskeyChallenge;
 pub use source::SourceStart;
 pub use totp::TotpChallenge;
 pub use totp::TotpChallenge as RecoveryChallenge;
-pub(crate) use version::seal_disabled_account;
+pub(crate) use version::{seal_disabled_account, seal_reviewed_run, seal_session_run};
 
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,

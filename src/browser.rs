@@ -428,6 +428,37 @@ impl Core {
             self.status_for(tx, &p, session, sso)
         })
     }
+    /// The grant write rolls back on `Err`, so a stale configured run is sealed
+    /// in an earlier write. Ordinary interactions have no configured consent.
+    #[cfg(feature = "platform")]
+    fn seal_browser_continuations(
+        &self,
+        id: &str,
+        binding: Option<&str>,
+        sso: Option<&str>,
+    ) -> Result<()> {
+        let pending = self.store.read(|tx| interaction(tx, id, binding))?;
+        if pending.configured_run.is_none() && pending.configured_consent.is_none() {
+            return Ok(());
+        }
+        if let Some(run_id) = pending.configured_run.as_deref() {
+            crate::workflow::executor::seal_reviewed_run(self, run_id)?;
+        }
+        let Some(cookie) = sso else {
+            return Ok(());
+        };
+        let Some(session) = self
+            .store
+            .read(|tx| self.browser_session(tx, Some(cookie)))?
+        else {
+            return Ok(());
+        };
+        crate::workflow::executor::seal_session_run(
+            self,
+            &session.id,
+            pending.configured_run.as_deref(),
+        )
+    }
     /// Browser password sign-in for this request. The body is the interaction state.
     pub fn authorize_password(
         &self,
@@ -438,6 +469,8 @@ impl Core {
         password: String,
         otp: Option<String>,
     ) -> Result<BrowserReply> {
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
         let (pending, pin) = self.authorize_open(id, binding, sso)?;
         #[cfg(not(feature = "platform"))]
         let _ = &pending;
@@ -590,6 +623,8 @@ impl Core {
         binding: Option<&str>,
         sso: Option<&str>,
     ) -> Result<Value> {
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
         let (p, pin) = self.authorize_open(id, binding, sso)?;
         #[cfg(feature = "platform")]
         if let (Some(workflow), Some(cookie), Some(_)) =
@@ -650,6 +685,8 @@ impl Core {
         ceremony: &str,
         response: PublicKeyCredential,
     ) -> Result<BrowserReply> {
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
         let (p, pin) = self.authorize_open(id, binding, sso)?;
         #[cfg(feature = "platform")]
         if p.configured_run.is_some() {
@@ -709,6 +746,8 @@ impl Core {
         sso: Option<&str>,
         ceremony: &str,
     ) -> Result<Value> {
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
         #[cfg(not(feature = "platform"))]
         let _ = sso;
         let p = self
@@ -753,6 +792,8 @@ impl Core {
         remember: bool,
         session_ref: Option<String>,
     ) -> Result<Value> {
+        #[cfg(feature = "platform")]
+        self.seal_browser_continuations(id, binding, sso)?;
         self.store.write(|tx| {
             let mut p = undecided(interaction(tx, id, binding)?)?;
             let session = self.browser_session(tx, sso)?;

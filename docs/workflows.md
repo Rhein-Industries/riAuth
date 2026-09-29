@@ -1275,9 +1275,14 @@ the id. The account index is invalidated on restore. Disabling a user seals
 every indexed open pinned run in the same user write.
 
 While a pinned run is still active, the executor seals it before a verifier can
-reserve or complete a step. The seal finishes at the snapshot's denied terminal
-when that terminal exists, and as cancelled otherwise. It writes no evidence
-and issues no grant. The stored failure is `policy_changed`
+reserve or complete a step. Browser OIDC password, TOTP, and passkey consent
+do that in a write that commits before the factor, ceremony, or decision
+write. A grant write that returns an error rolls its own transaction back, so
+the denial has to be committed first. The seal finishes at the snapshot's
+denied terminal when that terminal exists, and as cancelled otherwise. It
+writes no evidence and issues no grant. A browser continuation after that
+seal adds no consent completion and leaves the authorization code unissued.
+The stored failure is `policy_changed`
 (`Workflow policy changed`) when the snapshot disagrees with the pin, the
 configured entry is missing or inactive, the live revision is higher, the live
 fingerprint or policy digest differs, the retained pin is missing or differs,
@@ -1296,7 +1301,8 @@ old policy returns or the account is enabled again.
 Code-owned revisions stay unpinned. That includes the shipped password, passkey,
 source reauthentication, invitation, and password-reset workflows. The pin is
 recorded only for configured start, configured passkey removal, configured
-consent, and configured source-first passkey enrollment. The executor still
+consent, browser OIDC consent starts, and configured source-first passkey
+enrollment. The executor still
 selects active definitions from `config.toml`, not from the persisted
 `workflow_definitions` store.
 

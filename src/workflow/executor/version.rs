@@ -198,6 +198,27 @@ pub(super) fn reject_stale_reviewed(core: &Core, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Commit a denial for one pinned run. A final run is left as it is.
+pub(crate) fn seal_reviewed_run(core: &Core, id: &str) -> Result<()> {
+    reject_stale_reviewed(core, id)
+}
+
+/// Commit a denial for the session's active pinned run, skipping `except` when
+/// that id was already checked. `Store::write` drops its transaction on `Err`,
+/// so this write has to finish before a grant write starts.
+pub(crate) fn seal_session_run(core: &Core, session_id: &str, except: Option<&str>) -> Result<()> {
+    let Some(run_id) = core
+        .store
+        .read(|tx| tx.get::<String>(ACTIVE_SESSIONS, session_id))?
+    else {
+        return Ok(());
+    };
+    if except == Some(run_id.as_str()) {
+        return Ok(());
+    }
+    reject_stale_reviewed(core, &run_id)
+}
+
 pub(super) fn reject_if_stale(core: &Core, tx: &Tx<'_>, run_id: &str) -> Result<()> {
     let Some(run) = tx.get::<RuntimeRun>(RUNS, run_id)? else {
         return Ok(());
