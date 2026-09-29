@@ -806,7 +806,10 @@ This path is the command that exists for a copied redb file, a PostgreSQL
 base backup, a dump restored by the database's tools, PITR, or a promotion
 that may have lost commits. The R05 drills did not run it. Their PostgreSQL
 run imported a v3 archive into an empty database on one temporary loopback
-cluster.
+cluster. A later disposable drill loaded a custom-format dump into a fresh
+database on the same temporary cluster. That observation, and the production
+limit it leaves open, is
+[Loopback PostgreSQL logical dump and restore](#loopback-postgresql-logical-dump-and-restore).
 
 Preflight uses the copied store's config.
 
@@ -837,7 +840,11 @@ object is the per-collection removal count. `recovery status` repeats the id
 in `pending.id`. A logical restore into another cluster, database, or table
 can also apply the policy on open. A physical restore of the same cluster
 keeps the lineage ids, so riAuth does not detect it. Run the invalidate
-command in that case too.
+command in that case too. The disposable dump drill saw that automatic open
+on a fresh database: `recovery status` already reported `serving_allowed`
+false and no pending id, then the first `serve` applied
+`storage_lineage_changed` and exited 5 before the listener. The password
+and signing-key reconcile counts stayed at 1.
 
 Read that pending id from the same config:
 
@@ -942,18 +949,94 @@ Redacted observations are
 - After login the record count was 25. The temporary cluster, certificates,
   connection file, session file, and server process were removed.
 
-PITR, base backup, `pg_dump` / `pg_restore`, promotion, fencing, multi-node
-readiness, a remote PostgreSQL host, a public CA, and client certificates
-remain open. The local password login is a service login on this issuer.
+PITR, base backup, promotion, fencing, multi-node readiness, a remote
+PostgreSQL host, a public CA, and client certificates remain open. The
+disposable logical dump and restore is
+[Loopback PostgreSQL logical dump and restore](#loopback-postgresql-logical-dump-and-restore).
+The local password login is a service login on this issuer.
+
+## Loopback PostgreSQL logical dump and restore
+
+On 2026-09-29 a disposable cluster was created with the Homebrew PostgreSQL
+16.14 `initdb` on PATH and restored with that install's `pg_dump` and
+`pg_restore`. It listened on `127.0.0.1` with `ssl` off and loopback trust.
+The connection files were mode 0600, named host `127.0.0.1` with
+`sslmode=disable` and `local_unencrypted` true, and contained no password.
+The binary was a temp copy of Platform `riauth` SHA-256
+`de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`
+(edition `platform`, build features `essentials` and `platform`, version
+`0.1.1`). The issuer was `http://127.0.0.1:58839`, a port other than D01's
+`9000`. PostgreSQL listened on port `58838`. Custom-format `pg_dump` of
+`riauth_d04_src` wrote 8602 bytes. `pg_restore` with `--exit-on-error`,
+`--no-owner`, and `--no-acl` loaded that dump into the empty database
+`riauth_d04_dst` on the same cluster. Redacted observations are
+[d04-postgres-dump-restore-2026-09-29.json](roadmap/evidence/d04-postgres-dump-restore-2026-09-29.json).
+
+- Source `/readyz` returned 200. Login for `drill-admin` returned `admin`
+  true and saved a mode 0600 session file in the temp directory. `doctor`
+  reported `healthy` true, schema 3, revision 0, `storage` `postgresql`,
+  one user, one enabled administrator, `encrypted_at_rest` false, and `tls`
+  `reverse_proxy`. That `tls` field is the HTTP listener. This config has
+  no `database_key_file` and no `tls_cert_file`. Source `recovery status`
+  reported `serving_allowed` true, no pending gate, and matching lineage
+  (database oid 16384, records oid 16386). `riauth_store.records_v1` held
+  25 rows. The drill stopped if the home session file changed, and the run
+  finished, so that file was unchanged.
+- After restore, and before any riAuth open of `riauth_d04_dst`, the table
+  still held 25 rows. `recovery status` reported `serving_allowed` false
+  and no pending gate. The cluster system identifier matched. The observed
+  database oid was 16403 and the observed records oid was 16405. That
+  status command is a read. The row count stayed 25.
+- `riauth serve` of the restored config exited 5. Its stderr line was the
+  pending-gate conflict text: Restored state requires reconciliation; run
+  `riauth recovery status`. The log had no `riAuth listening` line.
+  `/readyz` and `/livez` were not requested. `serve` opens the store before
+  it binds. That open applies the lineage policy and stamps the new
+  lineage, so the readiness check then sees the pending id and prints the
+  pending-gate text.
+- The open removed one session and one session token. The pending id was
+  `fb7347a2-e262-4e58-a716-b9abf59a346b`, cause `storage_lineage_changed`,
+  policy `riauth.recovery/v1`. Reconcile counts were `enabled_accounts` 1,
+  `passwords` 1, and `signing_keys` 1. One user epoch advanced.
+  `completed_at` stayed null. After the open, recorded and observed lineage
+  both named database oid 16403 and records oid 16405. The pending lineage
+  change still had unequal database and records oids.
+  `serving_allowed` stayed false. The row count was 28.
+- `doctor` with the pre-dump session file, and a new password login, each
+  exited 1. The code was `operation_failed`, the HTTP status was 0, and
+  the message was connection refused to `http://127.0.0.1:58839`. The
+  login handler received no request. The process had exited before it
+  bound the port. The evidence file holds those client messages.
+- `recovery complete` stayed unrun. The command records the operator
+  attestation `--persistent-credentials-reconciled`. It leaves the stored
+  password and signing key in place. The earlier redb completion drill
+  recorded that the archived password and signing key stayed after that
+  attestation. This PostgreSQL open kept both in the reconcile counts.
+  Attesting them here would mark the gate complete while those dumped
+  values remained. The production gate stays open. There is no safe
+  completion path in this drill.
+
+The safe limit is that observation. A custom-format logical restore into a
+fresh database on one temporary loopback cluster preserves the record
+count, `recovery status` reports the lineage mismatch before any open, and
+the first `serve` applies `storage_lineage_changed`, refuses the listener,
+and leaves the password and signing key in the reconcile counts. A
+deployment restore that still holds those credentials waits for
+reconciliation outside this drill. Same-cluster PITR and a physical copy
+keep the lineage ids, so this check leaves them undetected. This drill ran
+neither. Base backup, promotion, fencing, multi-node readiness, escrow, a
+real relying-party login, and the Compose, systemd, and Windows layouts
+stay open. The temporary cluster, connection files, session files, and
+server process were removed.
 
 ## Recorded local drills
 
 These files are observations from 2026-09-29. The lost-backup-key drill, the
 database-key-file drill, the database-key restart drill, the recovery
-complete drill, and the PostgreSQL TLS drill added their own files and left
-the two R05 files as they were. Each drill used a disposable store, generated
-its own keys and accounts, and removed them on exit. None opened a deployment
-store.
+complete drill, the PostgreSQL TLS drill, and the PostgreSQL logical
+dump/restore drill added their own files and left the two R05 files as they
+were. Each drill used a disposable store, generated its own keys and
+accounts, and removed them on exit. None opened a deployment store.
 
 | Evidence | Scope | Result |
 | --- | --- | --- |
@@ -964,6 +1047,7 @@ store.
 | [d04-database-key-restart-redb-2026-09-29.json](roadmap/evidence/d04-database-key-restart-redb-2026-09-29.json) | Disposable loopback encrypted redb. Essentials `riauth` SHA-256 `264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`. | Database key file removed while `/readyz` returned 200. After that process stopped and the listen port accepted a bind, restart with the original config exited 2 in 153 ms: `invalid_request`, HTTP 400, `Encryption key must be a private file of at most 128 bytes`. No listener. Live redb inode, size, mtime, and SHA-256 unchanged. |
 | [d04-recovery-complete-redb-2026-09-29.json](roadmap/evidence/d04-recovery-complete-redb-2026-09-29.json) | Disposable loopback encrypted redb on a port other than `9000`. Temp copy of Essentials `riauth` SHA-256 `264ed196ec6366cd96aac6c2c058fa605af15541efd7160496e05f0a6d115e2f`. | Verified `riauth.backup/v3` stream `gGZx2QyH1chG01K4J7p5Pw`, 3 frames, 20 records, 11180 bytes. Restore under a new database key, recovery id `1d746ed2-45d3-4417-9abb-dd77194bc51d`, `serving_allowed` false. `recovery complete` left `serving_allowed` true. Restored `/readyz` 200. Pre-restore session exit 3, `invalid_token`. Fresh login and `doctor` succeeded, revision 4294967296. |
 | [d04-postgres-tls-2026-09-29.json](roadmap/evidence/d04-postgres-tls-2026-09-29.json) | Disposable loopback PostgreSQL 16.14. Private CA, SAN DNS `localhost`, no IP SAN. Temp copy of Platform `riauth` SHA-256 `de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. Issuer `http://127.0.0.1:56538`. | Init, serve, `/readyz` 200, `drill-admin` login, and `doctor` succeeded. `storage` `postgresql`, `encrypted_at_rest` false, `tls` `reverse_proxy` for the HTTP listener. `pg_stat_ssl` `ssl` true, TLSv1.3, no client certificate. Wrong CA and host `127.0.0.1` each exited 6, `storage_unavailable`, with no published config and no store relation. |
+| [d04-postgres-dump-restore-2026-09-29.json](roadmap/evidence/d04-postgres-dump-restore-2026-09-29.json) | Disposable loopback PostgreSQL 16.14. Custom-format `pg_dump` / `pg_restore` into a fresh database on the same cluster. `local_unencrypted` true. Temp copy of Platform `riauth` SHA-256 `de06f9b46ce3e4a929d4d065681325d664b9aedb6485f649ec098a57c22a6069`. Issuer `http://127.0.0.1:58839`, PostgreSQL port `58838`. | 25 records before and after restore. `recovery status` before open: `serving_allowed` false, no pending gate, system identifier equal, database and records oids unequal. `serve` exit 5, no listener, pending id `fb7347a2-e262-4e58-a716-b9abf59a346b`, cause `storage_lineage_changed`. One session and one session token removed. Reconcile `passwords` 1 and `signing_keys` 1. Pre-dump session and password login were connection refused. `recovery complete` unrun. Production gate stays open. |
 
 The command lines that produced the R05 files, and the gates they leave open,
 are in the [R05 local recovery drill](roadmap/recovery-drill-r05.md).
@@ -1018,8 +1102,18 @@ Still open:
   `riauth.backup/v3` archive, restored it under a new database key, ran
   `recovery complete`, served the restored issuer, and accepted a fresh
   local password login. Escrow retrieval remains open.
-- PostgreSQL PITR, base backup, `pg_dump` / `pg_restore`, asynchronous
-  promotion, fencing, and multi-node readiness.
+- PostgreSQL PITR, base backup, a physical copy of the same cluster,
+  asynchronous promotion, fencing, and multi-node readiness. A disposable
+  custom-format `pg_dump` / `pg_restore` into a fresh database on one
+  temporary loopback cluster is recorded in
+  [Loopback PostgreSQL logical dump and restore](#loopback-postgresql-logical-dump-and-restore).
+  It kept 25 records, reported the lineage barrier before any open, and
+  made `serve` exit 5 before a listener. That open removed one session and
+  one session token and left one password and one signing key in the
+  reconcile counts. `recovery complete` stayed unrun. The production
+  restore gate stays open because those credentials remain until an
+  operator reconciles them, and the attestation command leaves the stored
+  password and signing key in place.
 - PostgreSQL TLS for a remote host, a public CA, or client certificates. The
   R05 disposable cluster used loopback trust authentication. The loopback
   private-CA connection, the wrong-CA refusal, and the `127.0.0.1` hostname
