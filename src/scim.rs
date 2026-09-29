@@ -1012,17 +1012,22 @@ impl Projection {
             Self::Include(fields) | Self::Exclude(fields) => fields,
         };
         let source = value.as_object_mut().expect("SCIM view is an object");
-        source.retain(|key, _| match (kind, key.as_str()) {
-            (_, "schemas" | "id" | "externalId" | "meta" | "displayName") => true,
-            ("Users", "userName" | "active" | "name" | "emails" | "groups") => true,
-            ("Groups", "members") => true,
-            _ => false,
+        source.retain(|key, _| {
+            matches!(
+                (kind, key.as_str()),
+                (_, "schemas" | "id" | "externalId" | "meta" | "displayName")
+                    | (
+                        "Users",
+                        "userName" | "active" | "name" | "emails" | "groups"
+                    )
+                    | ("Groups", "members")
+            )
         });
         for root in ["meta", "name", "emails", "groups", "members"] {
-            if let Some(original) = source.remove(root) {
-                if let Some(safe) = project_complex(original, root, None) {
-                    source.insert(root.to_owned(), safe);
-                }
+            if let Some(original) = source.remove(root)
+                && let Some(safe) = project_complex(original, root, None)
+            {
+                source.insert(root.to_owned(), safe);
             }
         }
         match self {
@@ -1056,18 +1061,16 @@ impl Projection {
                     if matches!(*root, "schemas" | "id") {
                         continue;
                     }
-                    if let Some(original) = source.remove(*root) {
-                        if let FieldSelection::Subfields(excluded) = selection {
-                            let remaining = projection_subfields(root)
-                                .iter()
-                                .copied()
-                                .filter(|field| !excluded.contains(field))
-                                .collect();
-                            if let Some(selected) =
-                                project_complex(original, root, Some(&remaining))
-                            {
-                                source.insert((*root).to_owned(), selected);
-                            }
+                    if let Some(original) = source.remove(*root)
+                        && let FieldSelection::Subfields(excluded) = selection
+                    {
+                        let remaining = projection_subfields(root)
+                            .iter()
+                            .copied()
+                            .filter(|field| !excluded.contains(field))
+                            .collect();
+                        if let Some(selected) = project_complex(original, root, Some(&remaining)) {
+                            source.insert((*root).to_owned(), selected);
                         }
                     }
                 }

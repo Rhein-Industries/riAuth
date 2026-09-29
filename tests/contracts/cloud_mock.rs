@@ -34,6 +34,8 @@ struct State {
 pub struct Mock {
     pub base: String,
     pub token_url: String,
+    // Shared fixture methods are used by only some integration test targets.
+    #[allow(dead_code)]
     state: Arc<State>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -77,10 +79,12 @@ impl Mock {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_mode(&self, mode: Mode) {
         self.state.mode.store(mode as u8, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)]
     pub fn users_hits(&self) -> usize {
         self.state.users_hits.load(Ordering::Relaxed)
     }

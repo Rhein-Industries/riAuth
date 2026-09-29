@@ -670,11 +670,13 @@ fn agent_without_permission_is_forbidden_and_last_admin_is_protected() {
 }
 
 /// Loopback SCIM target recording each request's method and bearer header.
+type PatchRecord = (String, Option<String>, Value);
+
 #[derive(Clone, Default)]
 struct Scim {
     users: Arc<Mutex<Vec<Value>>>,
     requests: Arc<Mutex<Vec<(String, String)>>>,
-    patches: Arc<Mutex<Vec<(String, Option<String>, Value)>>>,
+    patches: Arc<Mutex<Vec<PatchRecord>>>,
     /// Scripted `(status, apply)` replies for the next PATCH requests.
     script: Arc<Mutex<VecDeque<(u16, bool)>>>,
     create: Option<Arc<DelayedCreate>>,

@@ -110,7 +110,7 @@ impl Stats {
             let s = &self.0[job as usize];
             (job.label().into(), json!({"active":s.active.current(),"finished":s.finished.load(Relaxed),"failed":s.failed.load(Relaxed),"deferred":s.deferred.load(Relaxed),"target_deferred":s.target_deferred.load(Relaxed),"timeouts":s.timeouts.load(Relaxed),"retry_after_ms":job.cadence().as_millis(),"lane":LANES[job.lane()].0}))
         }).collect();
-        json!({"deadline_seconds":DEADLINE.as_secs(),"queue_capacity":0,"connector_target_capacity":1,"lanes":LANES.into_iter().map(|(name, capacity)| (name, capacity)).collect::<std::collections::BTreeMap<_,_>>(),"jobs":jobs})
+        json!({"deadline_seconds":DEADLINE.as_secs(),"queue_capacity":0,"connector_target_capacity":1,"lanes":LANES.into_iter().collect::<std::collections::BTreeMap<_,_>>(),"jobs":jobs})
     }
     pub(crate) fn render(&self, output: &mut String) {
         for (metric, kind) in [

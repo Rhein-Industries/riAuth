@@ -176,10 +176,10 @@ impl Provenance {
             if resource == PROVENANCE_SCAN_KEY {
                 continue;
             }
-            if let Some(category) = resource.strip_prefix(PROVENANCE_CATEGORY_PREFIX) {
-                if provenance_category(category) == category {
-                    continue;
-                }
+            if let Some(category) = resource.strip_prefix(PROVENANCE_CATEGORY_PREFIX)
+                && provenance_category(category) == category
+            {
+                continue;
             }
             let count = counts
                 .entry(provenance_category(resource))

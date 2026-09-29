@@ -97,7 +97,7 @@ fn idle_mail_probe_preserves_claims_proofs_and_durable_retry() {
                             continue;
                         }
                         let attempt = hits.fetch_add(1, Ordering::SeqCst);
-                        if attempt % 2 == 0 {
+                        if attempt.is_multiple_of(2) {
                             // Keep the first claim leased until the losing poll
                             // has rechecked it; then request a durable retry.
                             gate.acquire().await.unwrap().forget();

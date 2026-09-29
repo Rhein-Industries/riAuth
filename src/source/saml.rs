@@ -156,6 +156,10 @@ impl Core {
             .ok_or_else(|| Error::bad("Missing SAMLResponse"))?;
         // Commit the retirement. Err would roll back and let this RelayState
         // complete after the previous IdP certificate is restored.
+        #[expect(
+            clippy::large_enum_variant,
+            reason = "Short lived transaction state remains inline"
+        )]
         enum Claim {
             Ready(Source, Login),
             Retired,

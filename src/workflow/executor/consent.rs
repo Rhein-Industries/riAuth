@@ -69,6 +69,10 @@ fn bound_key(tx: &Tx<'_>, pin: &Pin) -> Result<String> {
     Err(Error::forbidden())
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 pub(super) fn bind(
     tx: &Tx<'_>,
     run: &StoredRun,
@@ -455,6 +459,10 @@ fn decide_loaded(
 /// The browser holds an HttpOnly SSO cookie, never a bearer token. Bind the
 /// prepared interaction and live session before either the immediate session
 /// decision or a durable, run-bound passkey verification and later decision.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 fn browser_consent_start_in(
     core: &Core,
     tx: &Tx<'_>,
@@ -606,6 +614,10 @@ fn browser_consent_start_in(
     Ok(run_id)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 pub(crate) fn browser_consent_decide_in(
     core: &Core,
     tx: &Tx<'_>,
@@ -633,6 +645,10 @@ pub(crate) fn browser_consent_decide_in(
     view.authorization_response.ok_or_else(Error::forbidden)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 fn browser_passkey_run(
     core: &Core,
     tx: &Tx<'_>,
@@ -693,6 +709,10 @@ fn browser_passkey_run(
 }
 
 /// The interaction page may inspect only its own live, exact prepared consent run.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 pub(crate) fn browser_passkey_consent_ready_in(
     core: &Core,
     tx: &Tx<'_>,
@@ -717,6 +737,10 @@ pub(crate) fn browser_passkey_consent_ready_in(
         if checked.step(step).is_some_and(|current| matches!(current.action, Action::RequestConsent {}))))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 pub(crate) fn browser_passkey_consent_start_in(
     core: &Core,
     tx: &Tx<'_>,
@@ -769,6 +793,10 @@ pub(crate) fn browser_passkey_consent_start_in(
     ))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 pub(crate) fn browser_passkey_consent_finish_in(
     core: &Core,
     tx: &Tx<'_>,
@@ -802,6 +830,10 @@ pub(crate) fn browser_passkey_consent_finish_in(
     passkey::finish_in(core, tx, &mut run, response)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 pub(crate) fn browser_passkey_consent_cancel_in(
     core: &Core,
     tx: &Tx<'_>,
@@ -826,6 +858,10 @@ pub(crate) fn browser_passkey_consent_cancel_in(
     passkey::cancel_in(core, tx, &mut run, ceremony)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 pub(crate) fn browser_passkey_consent_decide_in(
     core: &Core,
     tx: &Tx<'_>,

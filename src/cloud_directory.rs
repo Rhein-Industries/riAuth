@@ -22,7 +22,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 use url::Url;
@@ -450,8 +450,8 @@ fn read_secret(path: &std::path::Path) -> Result<Zeroizing<String>> {
 
 fn certificate_assertion(
     settings: &Settings,
-    certificate_file: &PathBuf,
-    key_file: &PathBuf,
+    certificate_file: &Path,
+    key_file: &Path,
 ) -> Result<Zeroizing<String>> {
     let unavailable_credential = || unavailable("Entra certificate credential is unavailable");
     let file = std::fs::File::open(certificate_file).map_err(|_| unavailable_credential())?;
@@ -1512,6 +1512,10 @@ pub(crate) fn materialize_completed_draft(
     materialize(tx, settings, draft.snapshot.clone().into_users())
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 fn membership(
     config: &crate::config::Config,
     tx: &Tx<'_>,

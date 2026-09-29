@@ -1915,12 +1915,13 @@ pub(crate) fn write_desired_user(
     let credential_change = password_change || factor_change;
     let mut secret_references = BTreeSet::new();
     if password_change && !spec.password_disabled {
-        if let Some(user) = &existing {
-            if user.password_hash.is_empty() && crate::passkey::passkey_count(tx, &user.id)? > 0 {
-                return Err(Error::conflict(
-                    "Passkey-only account password recovery is an offline operator operation",
-                ));
-            }
+        if let Some(user) = &existing
+            && user.password_hash.is_empty()
+            && crate::passkey::passkey_count(tx, &user.id)? > 0
+        {
+            return Err(Error::conflict(
+                "Passkey-only account password recovery is an offline operator operation",
+            ));
         }
         secret_references.extend(
             spec.password_ref
@@ -2298,9 +2299,12 @@ fn write_client_as(
         credential_change,
         other_change,
     } = check_client_as(tx, config, &authority, existing, next, secret, review)?;
-    if existing.is_some() && !other_change && !credential_change {
+    if let Some(existing) = existing
+        && !other_change
+        && !credential_change
+    {
         return Ok(ClientWrite {
-            client: existing.unwrap().clone(),
+            client: existing.clone(),
             secret: None,
         });
     }

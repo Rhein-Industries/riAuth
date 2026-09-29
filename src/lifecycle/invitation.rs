@@ -115,6 +115,10 @@ pub(crate) struct Verified {
     credential: InitialCredential,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Short lived transaction state remains inline"
+)]
 enum InitialCredential {
     Password {
         plaintext: Zeroizing<String>,

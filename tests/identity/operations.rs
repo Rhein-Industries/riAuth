@@ -2415,7 +2415,8 @@ fn authentik_scope_mappings_convert_exact_claims_or_block() {
         ),
     ]);
     // (client, mappings, scopes, acknowledged mapping IDs, reviewed claim mappings)
-    let clients: Vec<(&str, Vec<&str>, Vec<&str>, Vec<&str>, Value)> = vec![
+    type ClientCase<'a> = (&'a str, Vec<&'a str>, Vec<&'a str>, Vec<&'a str>, Value);
+    let clients: Vec<ClientCase<'_>> = vec![
         (
             "app",
             vec!["m-openid", "m-profile", "m-offline"],

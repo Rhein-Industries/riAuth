@@ -177,9 +177,7 @@ fn verified_session(
                 return Err(Error::forbidden());
             }
             crate::password::require_local(tx, &user)?;
-            if let Err(error) = crate::password::unlocked(tx, &user)? {
-                return Err(error);
-            }
+            crate::password::unlocked(tx, &user)??;
         }
         Mode::FirstTotp => {
             if user.has_passkeys
@@ -190,19 +188,16 @@ fn verified_session(
                 return Err(Error::forbidden());
             }
             crate::password::require_local(tx, &user)?;
-            if let Err(error) = crate::password::unlocked(tx, &user)? {
-                return Err(error);
-            }
+            crate::password::unlocked(tx, &user)??;
         }
-        Mode::FirstSource => {
-            if user.has_passkeys
+        Mode::FirstSource
+            if (user.has_passkeys
                 || crate::passkey::passkey_count(tx, &user.id)? != 0
                 || user.totp_secret.is_some()
                 || user.totp_pending.is_some()
-                || crate::password::Kind::of(tx, &user)? != crate::password::Kind::None
-            {
-                return Err(Error::forbidden());
-            }
+                || crate::password::Kind::of(tx, &user)? != crate::password::Kind::None) =>
+        {
+            return Err(Error::forbidden());
         }
         _ => {}
     }
@@ -341,9 +336,7 @@ impl Verified {
                     return Err(Error::forbidden());
                 }
                 crate::password::require_local(tx, &user)?;
-                if let Err(error) = crate::password::unlocked(tx, &user)? {
-                    return Err(error);
-                }
+                crate::password::unlocked(tx, &user)??;
             }
             Mode::FirstTotp => {
                 if user.has_passkeys
@@ -354,9 +347,7 @@ impl Verified {
                     return Err(Error::forbidden());
                 }
                 crate::password::require_local(tx, &user)?;
-                if let Err(error) = crate::password::unlocked(tx, &user)? {
-                    return Err(error);
-                }
+                crate::password::unlocked(tx, &user)??;
                 let session: Session = tx
                     .get("sessions", &request.session)?
                     .ok_or_else(Error::forbidden)?;

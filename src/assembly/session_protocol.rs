@@ -327,7 +327,7 @@ impl Core {
                             result["frontchannel_urls"]
                                 .as_array()
                                 .is_some_and(|urls| !urls.is_empty())
-                                .then(|| c.session_id.as_deref())
+                                .then_some(c.session_id.as_deref())
                                 .flatten()
                         })
                     } else {

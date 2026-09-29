@@ -178,14 +178,13 @@ impl Remote {
         authenticated: bool,
         version: Option<&str>,
     ) -> Result<Value> {
-        if let Some(version) = version {
-            if version.len() < 3
+        if let Some(version) = version
+            && (version.len() < 3
                 || version.len() > 258
                 || !version.starts_with('"')
-                || !version.ends_with('"')
-            {
-                bail!("--if-version must be the quoted SCIM meta.version value");
-            }
+                || !version.ends_with('"'))
+        {
+            bail!("--if-version must be the quoted SCIM meta.version value");
         }
         self.call_with_review_and_match(method, path, body, authenticated, None, version)
             .await

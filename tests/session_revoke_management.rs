@@ -377,7 +377,7 @@ async fn session_revoke_writer_preserves_authority_and_replay_across_interfaces(
         count_audit(
             &f,
             "session.revoke_all",
-            &page["user"]["id"].as_str().unwrap()
+            page["user"]["id"].as_str().unwrap()
         ),
         1
     );

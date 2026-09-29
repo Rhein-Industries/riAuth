@@ -58,7 +58,6 @@ fn platform_conditional_policy_uses_bound_signals_and_projects_only_allowed_clai
                 },
             },
         ],
-        ..Default::default()
     });
     f.core
         .update_client(

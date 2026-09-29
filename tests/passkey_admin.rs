@@ -460,13 +460,12 @@ async fn browser_creation_requires_fresh_mfa_two_credentials_and_keeps_recovery_
     assert!(core.me(&token).is_err());
     assert!(
         core.passkeys(
-            &core
-                .login(
-                    "backup-admin".into(),
-                    "recovery-password-12345".into(),
-                    None
-                )
-                .unwrap()["session_token"]
+            core.login(
+                "backup-admin".into(),
+                "recovery-password-12345".into(),
+                None
+            )
+            .unwrap()["session_token"]
                 .as_str()
                 .unwrap()
         )

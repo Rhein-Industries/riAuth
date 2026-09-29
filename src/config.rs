@@ -830,13 +830,14 @@ impl Config {
                     .unwrap_or(Path::new("."))
                     .join(&directory.client_secret_file);
             }
-            if let Some(direct) = &mut directory.direct_auth {
-                if !direct.key_file.as_os_str().is_empty() && direct.key_file.is_relative() {
-                    direct.key_file = path
-                        .parent()
-                        .unwrap_or(Path::new("."))
-                        .join(&direct.key_file);
-                }
+            if let Some(direct) = &mut directory.direct_auth
+                && !direct.key_file.as_os_str().is_empty()
+                && direct.key_file.is_relative()
+            {
+                direct.key_file = path
+                    .parent()
+                    .unwrap_or(Path::new("."))
+                    .join(&direct.key_file);
             }
         }
         for directory in value.entra_directories.values_mut() {

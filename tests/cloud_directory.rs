@@ -452,7 +452,7 @@ fn token(state: &State, request: &Incoming) -> (u16, String) {
             .ok()
             .map(|token| token.claims)
         });
-        fields.get("client_secret").is_none()
+        !fields.contains_key("client_secret")
             && fields.get("client_assertion_type").map(String::as_str)
                 == Some(riauth::jose::ASSERTION_TYPE)
             && fields.get("scope").map(String::as_str)
@@ -473,7 +473,7 @@ fn token(state: &State, request: &Incoming) -> (u16, String) {
     } else {
         let secret = state.secret.lock().unwrap().clone();
         fields.get("client_secret").map(String::as_str) == Some(secret.as_str())
-            && fields.get("client_assertion").is_none()
+            && !fields.contains_key("client_assertion")
     };
     if fields.get("grant_type").map(String::as_str) != Some("client_credentials")
         || fields.get("client_id").map(String::as_str) != Some(state.client_id.as_str())
@@ -4109,6 +4109,10 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
     };
     use tower::ServiceExt;
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The test helper models each HTTP input explicitly"
+    )]
     async fn call(
         app: &axum::Router,
         method: &str,
@@ -4147,6 +4151,10 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
         (status, value)
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The test helper models each HTTP input explicitly"
+    )]
     async fn browser_guard_call(
         app: &axum::Router,
         path: &str,
@@ -4772,6 +4780,10 @@ async fn cloud_schedule_controls_share_browser_api_authority_and_receipts() {
     use riauth::reconciliation::{ControllerConfig, Job, Origin, Status};
     use tower::ServiceExt;
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "The test helper models each HTTP input explicitly"
+    )]
     async fn call(
         app: &axum::Router,
         method: &str,

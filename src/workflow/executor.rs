@@ -563,6 +563,10 @@ fn finish_step(
     finish_step_with_mutation(core, tx, checked, run, signal, evidence, at, None)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 fn finish_step_with_mutation(
     core: &Core,
     tx: &Tx<'_>,
@@ -730,13 +734,13 @@ fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
     authorization::abandon(tx, &run.record)?;
     consent::abandon(tx, &run.record)?;
     for step in &run.record.steps {
-        if let Some(reference) = &step.evidence {
-            if let Some(mut receipt) = tx.get::<StoredEvidence>(EVIDENCE, reference)? {
-                if receipt.run == run.record.id && !receipt.consumed {
-                    receipt.consumed = true;
-                    tx.put(EVIDENCE, reference, &receipt)?;
-                }
-            }
+        if let Some(reference) = &step.evidence
+            && let Some(mut receipt) = tx.get::<StoredEvidence>(EVIDENCE, reference)?
+            && receipt.run == run.record.id
+            && !receipt.consumed
+        {
+            receipt.consumed = true;
+            tx.put(EVIDENCE, reference, &receipt)?;
         }
     }
     run.in_flight = None;
@@ -1073,6 +1077,10 @@ fn extension_guest(core: &Core, checked: &Validated) -> Result<Option<extension_
     Ok(Some(guest))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 fn run_extension_guest(
     core: &Core,
     tx: &Tx<'_>,

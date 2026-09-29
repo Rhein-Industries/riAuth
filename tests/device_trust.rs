@@ -800,10 +800,7 @@ mod google {
     }
 
     fn challenge_blob(byte: u8) -> String {
-        b64(&signed_data(
-            &vec![byte; 17],
-            &vec![byte.wrapping_add(1); 16],
-        ))
+        b64(&signed_data(&[byte; 17], &[byte.wrapping_add(1); 16]))
     }
 
     fn answer(challenge_b64: &str, outer_sig_byte: u8) -> String {
@@ -813,7 +810,7 @@ mod google {
         let mut body = proto_bytes(1, &issued);
         body.extend(proto_bytes(2, &[0x9a; 32]));
         body.extend(proto_bytes(3, &[0x5c; 24]));
-        b64(&signed_data(&body, &vec![outer_sig_byte; 32]))
+        b64(&signed_data(&body, &[outer_sig_byte; 32]))
     }
 
     fn http(status: u16, body: impl AsRef<[u8]>) -> VerifiedAccessResponse {

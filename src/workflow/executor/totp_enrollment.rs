@@ -146,9 +146,7 @@ fn verified_session(
     }
     if matches!(mode, Mode::PasswordEnroll | Mode::PasswordTotpReplace) {
         crate::password::require_local(tx, &user)?;
-        if let Err(error) = crate::password::unlocked(tx, &user)? {
-            return Err(error);
-        }
+        crate::password::unlocked(tx, &user)??;
     }
     let mut factor_at = None;
     for (recorded, proof) in run.record.steps.iter().zip(mode.prerequisites()) {
@@ -288,9 +286,7 @@ impl Verified {
         }
         if matches!(self.mode, Mode::PasswordEnroll | Mode::PasswordTotpReplace) {
             crate::password::require_local(tx, &user)?;
-            if let Err(error) = crate::password::unlocked(tx, &user)? {
-                return Err(error);
-            }
+            crate::password::unlocked(tx, &user)??;
         }
         let before = user.epoch;
         match self.mode {

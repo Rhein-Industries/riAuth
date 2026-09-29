@@ -836,7 +836,7 @@ impl Core {
                 ));
             }
             require_settled(tx, &row)?;
-            if row.unlinked_create.is_some() {
+            if let Some(create) = row.unlinked_create.as_ref() {
                 if actor.agent {
                     return Err(Error::forbidden());
                 }
@@ -864,7 +864,6 @@ impl Core {
                     return Err(Error::new(StatusCode::PRECONDITION_REQUIRED,
                         "precondition_required", "Unlinked Create resolution requires an Idempotency-Key"));
                 }
-                let create = row.unlinked_create.as_ref().expect("checked unlinked intent");
                 if let Some(mut source) = tx.get::<Job>("provisioning_jobs", &create.source_job)? {
                     super::retain_create_provenance(&mut source);
                     if source.unlinked_create.as_ref().is_some_and(|retained|

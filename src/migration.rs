@@ -889,10 +889,8 @@ fn subject_safe_dictionary(expression: &str) -> bool {
                 while at < bytes.len() && (bytes[at].is_ascii_alphanumeric() || bytes[at] == b'_') {
                     at += 1;
                 }
-                if &bytes[start..at] == b"return" {
-                    if after_return.replace(at).is_some() {
-                        return false;
-                    }
+                if &bytes[start..at] == b"return" && after_return.replace(at).is_some() {
+                    return false;
                 }
             }
             Some(b'\\') => return false,
@@ -1969,9 +1967,7 @@ fn proven_target(
     p: &mut Preflight,
     state: Option<&Manifest>,
 ) -> Option<crate::state::TargetIdentity> {
-    let Some(state) = state else {
-        return None;
-    };
+    let state = state?;
     match crate::state::target_identity(state) {
         Ok(identity) => Some(identity),
         Err(crate::state::TargetIdentityFault::Ambiguous) => {

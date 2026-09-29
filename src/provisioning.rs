@@ -489,12 +489,11 @@ fn item_readable(tx: &Tx<'_>, viewer: &Principal, target: &str, item: &Item) -> 
 fn retain_create_provenance(job: &mut Job) {
     // Preserve legacy prospective ownership before dropping its snapshot or
     // resolving what Create did. Neither operation proves offboarding delivery.
-    if !job.create_tracked {
-        if let Ok(snapshot) = serde_json::to_value(&*job) {
-            job.unlinked_create =
-                crate::identity::downstream::unlinked_create(&job.plan.id, &snapshot);
-            job.create_tracked = true;
-        }
+    if !job.create_tracked
+        && let Ok(snapshot) = serde_json::to_value(&*job)
+    {
+        job.unlinked_create = crate::identity::downstream::unlinked_create(&job.plan.id, &snapshot);
+        job.create_tracked = true;
     }
 }
 

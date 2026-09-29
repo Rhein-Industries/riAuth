@@ -8,7 +8,6 @@ use riauth::{
     model::NewUser,
     provisioning::Target,
     reconciliation::{ControllerConfig, EventTrigger, Job, Origin, Schedule, Status},
-    recovery::{self, Class},
 };
 #[cfg(not(feature = "platform"))]
 use riauth::{
@@ -54,6 +53,10 @@ impl Fixture {
     }
 }
 
+#[cfg_attr(
+    feature = "platform",
+    expect(dead_code, reason = "Fixture is exercised by the Essentials-only test")
+)]
 fn schedule(scope: &str) -> Schedule {
     Schedule {
         scope: scope.into(),
@@ -68,6 +71,10 @@ fn schedule(scope: &str) -> Schedule {
     }
 }
 
+#[cfg_attr(
+    feature = "platform",
+    expect(dead_code, reason = "Fixture is exercised by the Essentials-only test")
+)]
 fn job(id: &str, scope: &str) -> Job {
     Job {
         id: id.into(),

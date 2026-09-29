@@ -300,15 +300,14 @@ impl Core {
                 "Sign in with a passkey or authenticator code first",
             ));
         }
-        if let Some(pending) = pending {
-            if pending.expires_at <= now()
+        if let Some(pending) = pending
+            && (pending.expires_at <= now()
                 || pending.owner_id != user.id
                 || pending.session_id != session.id
                 || pending.session_epoch != user.epoch
-                || !crypto::constant_eq(&pending.binding_hash, &digest(cookie))
-            {
-                return Err(reauthentication_required());
-            }
+                || !crypto::constant_eq(&pending.binding_hash, &digest(cookie)))
+        {
+            return Err(reauthentication_required());
         }
         Ok((user, session))
     }

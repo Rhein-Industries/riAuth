@@ -48,6 +48,10 @@ impl RecoverDispatch {
         Ok(())
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Reviewed transaction inputs remain explicit"
+    )]
     fn record(
         &self,
         revision: String,

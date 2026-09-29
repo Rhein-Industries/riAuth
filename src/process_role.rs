@@ -155,9 +155,9 @@ mod tests {
         assert!(duties.authentication);
         assert!(duties.background_jobs);
         assert_eq!(duties.protocol_listeners, cfg!(feature = "platform"));
-        assert_eq!(ProcessRole::Gateway.duties().background_jobs, false);
-        assert_eq!(ProcessRole::Worker.duties().authentication, false);
-        assert_eq!(ProcessRole::Worker.duties().protocol_listeners, false);
+        assert!(!ProcessRole::Gateway.duties().background_jobs);
+        assert!(!ProcessRole::Worker.duties().authentication);
+        assert!(!ProcessRole::Worker.duties().protocol_listeners);
         assert!(ProcessRole::Worker.duties().background_jobs);
     }
 

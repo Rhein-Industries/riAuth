@@ -17,6 +17,10 @@ pub(super) struct Completed {
     pub factors_reset: bool,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Short lived transaction state remains inline"
+)]
 pub(super) enum Pending {
     Enrollment(enrollment::Verified),
     TotpEnrollment(totp_enrollment::Verified),

@@ -17,6 +17,8 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+type CloudApplySnapshot = (Option<(String, u64)>, CloudApplyDraft, bool);
+
 impl Core {
     pub(crate) fn cloud_plan_preview(
         &self,
@@ -35,6 +37,10 @@ impl Core {
         })
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Reviewed transaction inputs remain explicit"
+    )]
     pub(crate) fn cloud_plan_commit(
         &self,
         token: &str,
@@ -75,8 +81,8 @@ impl Core {
                 ));
             }
             let plans = tx.list::<Plan>("cloud_directory_plans")?;
-            if supersede {
-                if let Some((_, existing)) = plans.iter().find(|(_, existing)| {
+            if supersede
+                && let Some((_, existing)) = plans.iter().find(|(_, existing)| {
                     existing.actor == actor.id
                         && existing.kind == settings.kind
                         && existing.directory == id
@@ -92,12 +98,12 @@ impl Core {
                                 existing.review.validate(tx, &current_actor, &content)
                             })
                             .is_ok()
-                }) {
-                    if snapshot_prior.1.is_some() {
-                        tx.delete(bucket, &snapshot_prior.0)?;
-                    }
-                    return Ok(json!(existing));
+                })
+            {
+                if snapshot_prior.1.is_some() {
+                    tx.delete(bucket, &snapshot_prior.0)?;
                 }
+                return Ok(json!(existing));
             }
             if plans
                 .iter()
@@ -216,6 +222,10 @@ impl Core {
         })
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Reviewed transaction inputs remain explicit"
+    )]
     pub(crate) fn cloud_apply_commit(
         &self,
         token: &str,
@@ -306,7 +316,7 @@ impl Core {
         plan: &Plan,
         reviewed_plan: Option<&str>,
         key: &str,
-    ) -> Result<(Option<(String, u64)>, CloudApplyDraft, bool)> {
+    ) -> Result<CloudApplySnapshot> {
         self.store.read(|tx| {
             let actor = self.cloud_apply_actor(tx, token, settings, plan, reviewed_plan)?;
             let previous = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, key)?;
@@ -325,6 +335,10 @@ impl Core {
         })
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Reviewed transaction inputs remain explicit"
+    )]
     pub(crate) fn cloud_apply_snapshot_stage(
         &self,
         token: &str,

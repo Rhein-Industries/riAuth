@@ -202,9 +202,7 @@ fn first_passkey_primary(
         return Err(Error::forbidden());
     }
     crate::password::require_local(tx, user)?;
-    if let Err(error) = crate::password::unlocked(tx, user)? {
-        return Err(error);
-    }
+    crate::password::unlocked(tx, user)??;
     let session: Session = tx
         .get("sessions", &request.session)?
         .ok_or_else(Error::forbidden)?;

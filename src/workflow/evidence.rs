@@ -319,6 +319,10 @@ impl Validated {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Reviewed transaction inputs remain explicit"
+)]
 pub(super) fn check_evidence(
     run: &StoredRun,
     recorded: &StoredStep,

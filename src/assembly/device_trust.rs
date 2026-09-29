@@ -289,7 +289,8 @@ impl Core {
             self.verified_access_transport()?.as_ref(),
             &response,
         )?;
-        let committed = self.store.write(|tx| {
+
+        self.store.write(|tx| {
             let (user, session, mut challenge) =
                 self.google_bound_challenge(tx, token, &hash, &response_hash)?;
             let verified_at = now();
@@ -321,8 +322,7 @@ impl Core {
                 "verified_at": verified_at,
                 "expires_at": record.expires_at,
             })))
-        })?;
-        committed
+        })?
     }
 
     fn google_bound_challenge(

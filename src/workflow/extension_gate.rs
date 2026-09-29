@@ -1162,9 +1162,7 @@ pub(crate) mod fixture {
             body.extend(i32_const(0));
             body.extend([0x28, 0x02, 0x00]);
         }
-        for _ in 0..count {
-            body.push(0x1a);
-        }
+        body.extend(std::iter::repeat_n(0x1a, count as usize));
         module(&body, &i32_const(0), &[])
     }
 
@@ -1516,7 +1514,7 @@ mod tests {
             Denial::Permission
         );
         assert_eq!(
-            check(&fixture::document(&vec![0u8; 64], |value| {
+            check(&fixture::document(&[0u8; 64], |value| {
                 value["memory_bytes"] = serde_json::json!(32);
             }))
             .unwrap_err(),

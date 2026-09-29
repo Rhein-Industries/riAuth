@@ -21,16 +21,19 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+#[cfg(feature = "platform")]
+type ListenerStates<T> = Mutex<BTreeMap<String, Vec<(T, Weak<AtomicBool>)>>>;
+
 /// Ephemeral listener state shared by Core clones. The weak entries do not
 /// retain a server after its owner or worker stops.
 #[derive(Default)]
 pub(crate) struct RuntimeStatus {
     #[cfg(feature = "platform")]
-    ldap: Mutex<BTreeMap<String, Vec<(crate::ldap_server::Listener, Weak<AtomicBool>)>>>,
+    ldap: ListenerStates<crate::ldap_server::Listener>,
     #[cfg(feature = "platform")]
-    radius: Mutex<BTreeMap<String, Vec<(crate::radius::Listener, Weak<AtomicBool>)>>>,
+    radius: ListenerStates<crate::radius::Listener>,
     #[cfg(feature = "platform")]
-    proxy: Mutex<BTreeMap<String, Vec<(crate::proxy_server::Listener, Weak<AtomicBool>)>>>,
+    proxy: ListenerStates<crate::proxy_server::Listener>,
 }
 
 #[cfg(feature = "platform")]
@@ -335,10 +338,10 @@ fn validate_ldap_listener_client(
             error.message
         ))
     })?;
-    if let Some(client) = client {
-        if ldap_client_eligible(tx, client)? {
-            return Ok(());
-        }
+    if let Some(client) = client
+        && ldap_client_eligible(tx, client)?
+    {
+        return Ok(());
     }
     Err(Error::bad(format!(
         "LDAP listener {id:?} requires enabled client {:?} with a valid LDAP policy and existing search groups",
@@ -603,13 +606,13 @@ impl Facts {
                     saml.slo_redirect_url.is_some() || saml.slo_post_url.is_some();
                 facts.saml_encryption |= saml.encryption_certificate_pem.is_some();
             }
-            if let Some(radius) = &client.settings.radius {
-                if radius.validate(&client).is_ok() {
-                    facts.radius_clients.insert(client.id.clone());
-                    #[cfg(feature = "platform")]
-                    if radius.eap_tls {
-                        facts.radius_eap_clients.insert(client.id.clone());
-                    }
+            if let Some(radius) = &client.settings.radius
+                && radius.validate(&client).is_ok()
+            {
+                facts.radius_clients.insert(client.id.clone());
+                #[cfg(feature = "platform")]
+                if radius.eap_tls {
+                    facts.radius_eap_clients.insert(client.id.clone());
                 }
             }
             #[cfg(feature = "platform")]

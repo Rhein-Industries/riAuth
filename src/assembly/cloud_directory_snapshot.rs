@@ -13,6 +13,8 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+type CloudSnapshotState = (Option<(String, u64)>, CloudSnapshotDraft, bool, String);
+
 impl Core {
     pub(crate) fn cloud_snapshot_actor(
         &self,
@@ -79,7 +81,7 @@ impl Core {
         key: &str,
         actor: &Principal,
         revision: u64,
-    ) -> Result<(Option<(String, u64)>, CloudSnapshotDraft, bool, String)> {
+    ) -> Result<CloudSnapshotState> {
         self.store.read(|tx| {
             let current = self.management(tx, token, "directory.sync", &settings.resource())?;
             if current.id != actor.id || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
@@ -110,6 +112,10 @@ impl Core {
         })
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Reviewed transaction inputs remain explicit"
+    )]
     pub(crate) fn cloud_snapshot_stage(
         &self,
         token: &str,

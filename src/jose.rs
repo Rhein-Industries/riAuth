@@ -220,6 +220,31 @@ pub(crate) fn fuzz_verify_claims(token: &str) {
     let _ = keys.verify_set(token, "https://q07.example.test", "q07-client");
 }
 
+/// Consume a short-lived assertion inside the same transaction as its result.
+pub fn consume_assertion(tx: &impl AssertionTx, claims: &Value, namespace: &str) -> Result<()> {
+    let at = now();
+    let iat = claims["iat"]
+        .as_u64()
+        .ok_or_else(|| Error::bad("Assertion requires iat"))?;
+    let exp = claims["exp"]
+        .as_u64()
+        .ok_or_else(|| Error::bad("Assertion requires exp"))?;
+    let jti = claims["jti"]
+        .as_str()
+        .filter(|j| !j.is_empty() && j.len() <= 256)
+        .ok_or_else(|| Error::bad("Assertion requires a bounded unique jti"))?;
+    if iat > at + 30 || exp <= at || exp <= iat || exp - iat > 300 || at.saturating_sub(iat) > 300 {
+        return Err(Error::bad(
+            "Assertion lifetime must be at most five minutes",
+        ));
+    }
+    let key = digest(&format!("{namespace}\0{}\0{jti}", claims["iss"]));
+    if tx.assertion_replay_expiry(&key)?.is_some_and(|e| e > at) {
+        return Err(Error::bad("Assertion already used"));
+    }
+    tx.record_assertion_replay(&key, exp)
+}
+
 #[cfg(test)]
 mod signed_claim_tests {
     use super::PublicJwks;
@@ -285,29 +310,4 @@ mod signed_claim_tests {
             .is_ok()
         );
     }
-}
-
-/// Consume a short-lived assertion inside the same transaction as its result.
-pub fn consume_assertion(tx: &impl AssertionTx, claims: &Value, namespace: &str) -> Result<()> {
-    let at = now();
-    let iat = claims["iat"]
-        .as_u64()
-        .ok_or_else(|| Error::bad("Assertion requires iat"))?;
-    let exp = claims["exp"]
-        .as_u64()
-        .ok_or_else(|| Error::bad("Assertion requires exp"))?;
-    let jti = claims["jti"]
-        .as_str()
-        .filter(|j| !j.is_empty() && j.len() <= 256)
-        .ok_or_else(|| Error::bad("Assertion requires a bounded unique jti"))?;
-    if iat > at + 30 || exp <= at || exp <= iat || exp - iat > 300 || at.saturating_sub(iat) > 300 {
-        return Err(Error::bad(
-            "Assertion lifetime must be at most five minutes",
-        ));
-    }
-    let key = digest(&format!("{namespace}\0{}\0{jti}", claims["iss"]));
-    if tx.assertion_replay_expiry(&key)?.is_some_and(|e| e > at) {
-        return Err(Error::bad("Assertion already used"));
-    }
-    tx.record_assertion_replay(&key, exp)
 }

@@ -147,12 +147,14 @@ fn configuration_rejects_unknown_and_unacknowledged_roles() {
 #[cfg(feature = "platform")]
 #[test]
 fn worker_refuses_a_configured_ldap_listener() {
-    let mut worker = Config::default();
-    worker.process = ProcessSelection {
-        role: ProcessRole::Worker,
-        accept_partial_duties: true,
+    let mut worker = Config {
+        process: ProcessSelection {
+            role: ProcessRole::Worker,
+            accept_partial_duties: true,
+        },
+        browser_ui: false,
+        ..Default::default()
     };
-    worker.browser_ui = false;
     worker.ldap_listeners.insert(
         "local".into(),
         riauth::ldap_server::Listener {

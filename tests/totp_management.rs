@@ -183,9 +183,9 @@ fn assert_qr_draws(started: &Value) {
             y.parse().unwrap(),
             length.parse().unwrap(),
         );
-        for x in x..x + length {
-            assert!(!drawn[y][x], "module drawn twice");
-            drawn[y][x] = true;
+        for cell in &mut drawn[y][x..x + length] {
+            assert!(!*cell, "module drawn twice");
+            *cell = true;
         }
     }
     for y in 0..size {

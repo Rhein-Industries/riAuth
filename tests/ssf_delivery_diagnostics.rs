@@ -512,7 +512,7 @@ async fn ssf_delivery_diagnostics_reports_failures_without_secrets() {
         .unwrap();
     assert_eq!(stored_after.attempts, stored.attempts);
     assert_eq!(stored_after.uri, stored.uri);
-    assert_eq!(stored_after.stopped, true);
+    assert!(stored_after.stopped);
     assert_eq!(audit_len(&fixture), after_agents);
     assert_doctor(&fixture);
 
@@ -746,7 +746,7 @@ fn ssf_delivery_diagnostics_pages_exact_counts(backend: Backend) {
         .unwrap();
     assert_eq!(stored_after.attempts, 5);
     assert!(stored_after.uri.contains("SECRET-URI"));
-    assert_eq!(stored_after.stopped, true);
+    assert!(stored_after.stopped);
     assert_doctor(&fixture);
 }
 

@@ -182,9 +182,7 @@ fn verified_session(
     }
     if password_totp {
         crate::password::require_local(tx, &user)?;
-        if let Err(error) = crate::password::unlocked(tx, &user)? {
-            return Err(error);
-        }
+        crate::password::unlocked(tx, &user)??;
     }
     let original_mfa = session.identity.mfa;
     let original_amr = session.identity.amr.clone();
@@ -286,9 +284,7 @@ impl Verified {
         }
         if self.password_totp {
             crate::password::require_local(tx, &user)?;
-            if let Err(error) = crate::password::unlocked(tx, &user)? {
-                return Err(error);
-            }
+            crate::password::unlocked(tx, &user)??;
         }
         let original_mfa = session.identity.mfa;
         let original_amr = session.identity.amr.clone();

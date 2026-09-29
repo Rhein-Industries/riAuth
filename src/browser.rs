@@ -326,10 +326,10 @@ impl Core {
             if let Some(proof) = &pending.authentication {
                 tx.delete("authentication", proof)?;
             }
-            if pending.configured_consent.is_some() {
-                if let Some(transaction) = pending.request.transaction_id.as_deref() {
-                    tx.delete("authentication", &digest(transaction))?;
-                }
+            if pending.configured_consent.is_some()
+                && let Some(transaction) = pending.request.transaction_id.as_deref()
+            {
+                tx.delete("authentication", &digest(transaction))?;
             }
             Ok(BrowserReply {
                 form_post: crate::response::is_form(pending.request.response_mode.as_deref()),
@@ -449,40 +449,38 @@ impl Core {
         #[cfg(feature = "platform")]
         if let (Some(workflow), Some(cookie), Some(_)) =
             (p.configured_consent.as_deref(), sso, pin.as_deref())
-        {
-            if self.config.workflows.get(workflow).is_some_and(|entry| {
+            && self.config.workflows.get(workflow).is_some_and(|entry| {
                 entry.active
                     && crate::workflow::supported_configured_passkey_consent(&entry.definition)
-            }) {
-                return self.store.write(|tx| {
-                    let mut p = undecided(interaction(tx, id, binding)?)?;
-                    let session = self
-                        .browser_session(tx, Some(cookie))?
-                        .ok_or_else(Error::unauthorized)?;
-                    let client = tx
-                        .get::<Client>("clients", &p.request.client_id)?
-                        .ok_or_else(Error::forbidden)?;
-                    if p.configured_client.as_deref() != Some(client_fingerprint(&client)?.as_str())
-                    {
-                        return Err(Error::conflict("Authorization client changed"));
-                    }
-                    let (run_id, challenge) =
-                        crate::workflow::executor::browser_passkey_consent_start_in(
-                            self,
-                            tx,
-                            workflow,
-                            id,
-                            cookie,
-                            &session,
-                            &p.request,
-                            p.expires_at,
-                            p.configured_run.as_deref(),
-                        )?;
-                    p.configured_run = Some(run_id);
-                    tx.put("browser_authorizations", &p.id, &p)?;
-                    Ok(json!(challenge))
-                });
-            }
+            })
+        {
+            return self.store.write(|tx| {
+                let mut p = undecided(interaction(tx, id, binding)?)?;
+                let session = self
+                    .browser_session(tx, Some(cookie))?
+                    .ok_or_else(Error::unauthorized)?;
+                let client = tx
+                    .get::<Client>("clients", &p.request.client_id)?
+                    .ok_or_else(Error::forbidden)?;
+                if p.configured_client.as_deref() != Some(client_fingerprint(&client)?.as_str()) {
+                    return Err(Error::conflict("Authorization client changed"));
+                }
+                let (run_id, challenge) =
+                    crate::workflow::executor::browser_passkey_consent_start_in(
+                        self,
+                        tx,
+                        workflow,
+                        id,
+                        cookie,
+                        &session,
+                        &p.request,
+                        p.expires_at,
+                        p.configured_run.as_deref(),
+                    )?;
+                p.configured_run = Some(run_id);
+                tx.put("browser_authorizations", &p.id, &p)?;
+                Ok(json!(challenge))
+            });
         }
         if p.configured_run.is_some() {
             return Err(Error::forbidden());
@@ -754,8 +752,8 @@ impl Core {
         self.store.read(|tx| {
             let p = undecided(interaction(tx, id, binding)?)?;
             #[cfg(feature = "platform")]
-            if let Some(workflow) = p.configured_consent.as_deref() {
-                if self.config.browser_consent_workflow.as_deref() != Some(workflow)
+            if let Some(workflow) = p.configured_consent.as_deref()
+                && (self.config.browser_consent_workflow.as_deref() != Some(workflow)
                     || self.config.workflows.get(workflow).is_none_or(|entry| {
                         !entry.active
                             || !(crate::workflow::supported_configured_session_consent(
@@ -763,10 +761,9 @@ impl Core {
                             ) || crate::workflow::supported_configured_passkey_consent(
                                 &entry.definition,
                             ))
-                    })
-                {
-                    return Err(Error::conflict("Browser consent workflow changed"));
-                }
+                    }))
+            {
+                return Err(Error::conflict("Browser consent workflow changed"));
             }
             let pin = if p.request.has_prompt("select_account") {
                 None
@@ -1425,10 +1422,10 @@ fn waiting(core: &Core, p: &Pending) -> Value {
 pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     for (id, p) in tx.maintenance_page::<Pending>("browser_authorizations")? {
         if p.expires_at < at {
-            if p.configured_consent.is_some() {
-                if let Some(transaction) = p.request.transaction_id.as_deref() {
-                    tx.delete("authentication", &digest(transaction))?;
-                }
+            if p.configured_consent.is_some()
+                && let Some(transaction) = p.request.transaction_id.as_deref()
+            {
+                tx.delete("authentication", &digest(transaction))?;
             }
             tx.delete(
                 "authorization_codes",

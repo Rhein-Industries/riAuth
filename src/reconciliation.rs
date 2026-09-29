@@ -1253,12 +1253,12 @@ impl Core {
                 }
             }
             tx.put(JOBS, &job.id, &job)?;
-            if let Some(mut schedule) = tx.get::<Schedule>(SCHEDULES, &job.scope)? {
-                if schedule.last_job.as_deref() == Some(id) {
-                    schedule.last_outcome = job.outcome.clone();
-                    schedule.last_error = job.last_error.clone();
-                    tx.put(SCHEDULES, &schedule.scope, &schedule)?;
-                }
+            if let Some(mut schedule) = tx.get::<Schedule>(SCHEDULES, &job.scope)?
+                && schedule.last_job.as_deref() == Some(id)
+            {
+                schedule.last_outcome = job.outcome.clone();
+                schedule.last_error = job.last_error.clone();
+                tx.put(SCHEDULES, &schedule.scope, &schedule)?;
             }
             if matches!(
                 job.status,

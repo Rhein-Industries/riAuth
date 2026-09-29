@@ -185,6 +185,10 @@ impl Core {
         self.directory_plan_internal(token, id, false)
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Reviewed transaction inputs remain explicit"
+    )]
     fn directory_snapshot_actor(
         &self,
         tx: &Tx<'_>,
@@ -368,8 +372,8 @@ impl Core {
                 ));
             }
             let plans = tx.list::<Plan>("directory_plans")?;
-            if supersede {
-                if let Some((_, existing)) = plans.iter().find(|(_, existing)| {
+            if supersede
+                && let Some((_, existing)) = plans.iter().find(|(_, existing)| {
                     existing.actor == actor.id
                         && existing.directory == id
                         && !existing.applied
@@ -384,12 +388,12 @@ impl Core {
                                 existing.review.validate(tx, &current_actor, &content)
                             })
                             .is_ok()
-                }) {
-                    if prior.is_some() {
-                        tx.delete(LDAP_SNAPSHOTS, &key)?;
-                    }
-                    return Ok(json!(existing));
+                })
+            {
+                if prior.is_some() {
+                    tx.delete(LDAP_SNAPSHOTS, &key)?;
                 }
+                return Ok(json!(existing));
             }
             if plans
                 .iter()

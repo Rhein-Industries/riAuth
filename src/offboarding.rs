@@ -507,10 +507,7 @@ fn job_next_action(job: &Job, rollup: Option<&DownstreamRollup>) -> &'static str
         .collect();
     match rollup.state {
         "incomplete" => {
-            if actions
-                .iter()
-                .any(|action| *action == "attest_remote_state")
-            {
+            if actions.contains(&"attest_remote_state") {
                 "attest_remote_state"
             } else if !actions.is_empty()
                 && actions.iter().all(|action| {
@@ -526,20 +523,11 @@ fn job_next_action(job: &Job, rollup: Option<&DownstreamRollup>) -> &'static str
             }
         }
         "pending" => {
-            if actions
-                .iter()
-                .any(|action| *action == "review_provisioning_plan")
-            {
+            if actions.contains(&"review_provisioning_plan") {
                 "review_provisioning_plan"
-            } else if actions
-                .iter()
-                .any(|action| *action == "restore_controller_authority")
-            {
+            } else if actions.contains(&"restore_controller_authority") {
                 "restore_controller_authority"
-            } else if actions
-                .iter()
-                .any(|action| *action == "attest_remote_state")
-            {
+            } else if actions.contains(&"attest_remote_state") {
                 "attest_remote_state"
             } else if actions.iter().any(|action| {
                 matches!(

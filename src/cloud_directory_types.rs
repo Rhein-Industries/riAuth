@@ -1,11 +1,14 @@
 //! Shared cloud-directory configuration shape.
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 fn graph_scope() -> String {
     "https://graph.microsoft.com/.default".into()
 }
-fn empty_path(path: &PathBuf) -> bool {
+fn empty_path(path: &Path) -> bool {
     path.as_os_str().is_empty()
 }
 fn workspace_attributes() -> Attributes {

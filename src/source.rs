@@ -240,6 +240,10 @@ pub(crate) struct UpstreamIdentity {
     expires_at: Option<u64>,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "Short lived transaction state remains inline"
+)]
 pub(crate) enum CallbackClaim {
     Ready(Source, Login, Option<zeroize::Zeroizing<String>>),
     Mismatch,
