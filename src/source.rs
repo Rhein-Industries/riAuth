@@ -445,18 +445,6 @@ impl Core {
             Ok(json!(input.source))
         })
     }
-    pub fn source_list(&self, token: &str) -> Result<Value> {
-        self.store.read(|tx| {
-            let actor = self.principal(tx, token)?;
-            Ok(json!(
-                tx.list::<Source>("sources")?
-                    .into_iter()
-                    .filter(|(_, s)| actor.allows("source.read", &format!("source/{}", s.id)))
-                    .map(|(_, s)| s)
-                    .collect::<Vec<_>>()
-            ))
-        })
-    }
     pub fn source_start(&self, id: &str, input: Start, token: Option<&str>) -> Result<Value> {
         self.store.write(|tx| {
             self.source_start_in(tx, id, &input, token, None)

@@ -389,6 +389,10 @@ def main() -> None:
                 or re.search(r"\bmaintenance_page\s*::\s*<\s*Cloud(?:Snapshot|Apply)Draft\s*>", cleanup)
             ):
                 errors.append("src/cloud_directory.rs: snapshot retention belongs in assembly")
+        if path == SRC / "source.rs" and rust_function_body(
+            masked_rust_source(path.read_text()), "source_list"
+        ) is not None:
+            errors.append("src/source.rs: authorized source catalog read belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
