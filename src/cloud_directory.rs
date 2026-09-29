@@ -6,7 +6,7 @@
 use crate::{
     agent::Principal,
     connector_guard::{
-        ApplyGate, Pagination, ReconciliationMode, ReviewBinding, reconcile_plan,
+        Pagination, ReconciliationMode, ReviewBinding, reconcile_plan,
     },
     config::CloudReconciliationQuota,
     core::{Core, validate_display, validate_email, validate_name},
@@ -2110,76 +2110,16 @@ impl Core {
             Some(prior)
         };
         let observed_review = plan.review.clone();
-        self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
-            let mut plan = tx
-                .get::<Plan>("cloud_directory_plans", id)?
-                .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
-            if plan.kind != settings.kind || plan.directory != settings.id {
-                return Err(Error::missing("Cloud directory plan not found"));
-            }
-            if actor.id != plan.actor {
-                return Err(Error::forbidden());
-            }
-            if plan.review != observed_review {
-                return Err(Error::conflict(
-                    "Cloud directory plan changed during snapshot validation; create a new plan",
-                ));
-            }
-            if initially_applied && !plan.applied {
-                return Err(Error::conflict(
-                    "Cloud directory plan changed during snapshot validation; create a new plan",
-                ));
-            }
-            if plan.applied {
-                return Ok(json!({"id": id, "applied": true, "changes": plan.changes}));
-            }
-            self.cloud_apply_actor(tx, token, &settings, &plan, reviewed_plan)?;
-            let current = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, &key)?;
-            if current
-                .as_ref()
-                .map(|apply| (&apply.draft.id, apply.draft.sequence))
-                != snapshot_prior
-                    .as_ref()
-                    .and_then(|prior| prior.as_ref())
-                    .map(|(id, sequence)| (id, *sequence))
-            {
-                return Err(Error::conflict(
-                    "Cloud apply snapshot advanced concurrently; resume the latest cursor",
-                ));
-            }
-            let impact = removal_impact(tx, &settings, &plan.entries)?;
-            ApplyGate {
-                id,
-                revision: plan.revision,
-                expires_at: plan.expires_at,
-                fingerprint_matches: plan.fingerprint == settings.fingerprint,
-                expected_impact: &plan.removal_impact,
-                observed_impact: &impact,
-                review: &plan.review,
-                reviewed_plan,
-            }
-            .validate(tx, &actor, &plan)?;
-            let changes = reconcile(&self.config, tx, &actor, &settings, &plan.entries)?;
-            if changes != plan.changes {
-                return Err(Error::conflict(
-                    "Cloud directory plan no longer matches local state",
-                ));
-            }
-            plan.applied = true;
-            tx.put("cloud_directory_plans", id, &plan)?;
-            if current.is_some() {
-                tx.delete(CLOUD_APPLY_SNAPSHOTS, &key)?;
-            }
-            crate::delegation::audit_scoped(
-                tx,
-                &actor,
-                "cloud_directory.apply",
-                &settings.resource(),
-                &settings.resource(),
-            )?;
-            Ok(json!({"id": id, "applied": true, "changes": changes}))
-        })
+        self.cloud_apply_commit(
+            token,
+            &settings,
+            id,
+            reviewed_plan,
+            &key,
+            snapshot_prior,
+            initially_applied,
+            observed_review,
+        )
     }
 }
 

@@ -493,6 +493,32 @@ def main() -> None:
                 or not re.search(r"\.\s*store\s*\.\s*write\s*\(", apply_stage)
             ):
                 errors.append("src/cloud_directory.rs: apply snapshot staging write belongs in assembly")
+            apply_commit = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_plan.rs").read_text()),
+                "cloud_apply_commit",
+            )
+            if (
+                apply_confirmed is None
+                or not re.search(
+                    r"\bcloud_budget_reset\s*\([\s\S]*\bcloud_apply_materialize\s*\([\s\S]*"
+                    r"\bif\s+entries\s*!=\s*plan\.entries[\s\S]*\bcloud_apply_commit\s*\(",
+                    apply_confirmed,
+                )
+                or re.search(r"\.\s*mutation\s*\(", apply_confirmed)
+                or apply_commit is None
+                or not re.search(r"\.\s*mutation\s*\(", apply_commit)
+                or not re.search(
+                    r"\bmanagement\s*\([\s\S]*\btx\s*\.\s*get::<Plan>\s*\([\s\S]*"
+                    r"\bif\s+plan\.review\s*!=\s*observed_review[\s\S]*"
+                    r"\bif\s+plan\.applied\s*\{[\s\S]*\bcloud_apply_actor\s*\([\s\S]*"
+                    r"\btx\s*\.\s*get::<CloudApplyDraft>\s*\([\s\S]*\bremoval_impact\s*\([\s\S]*"
+                    r"\bApplyGate\s*\{[\s\S]*\.\s*validate\s*\([\s\S]*"
+                    r"\breconcile\s*\([\s\S]*\btx\.put\s*\([\s\S]*"
+                    r"\btx\.delete\s*\([\s\S]*\baudit_scoped\s*\(",
+                    apply_commit,
+                )
+            ):
+                errors.append("src/cloud_directory.rs: final apply mutation belongs in assembly")
             if rust_function_body(masked_rust_source(path.read_text()), "cloud_directories") is not None:
                 errors.append("src/cloud_directory.rs: scoped catalog read belongs in assembly")
             cleanup = rust_function_body(masked_rust_source(path.read_text()), "cleanup")

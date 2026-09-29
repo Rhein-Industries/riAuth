@@ -7,8 +7,8 @@ use crate::{
         authorize_reconcile, materialize_completed_draft, reconcile, removal_impact,
     },
     connector_guard::{
-        ReconciliationDecision, ReconciliationMode, RemovalImpact, ReviewBinding, plan_content,
-        require_backup_safe_record,
+        ApplyGate, ReconciliationDecision, ReconciliationMode, RemovalImpact, ReviewBinding,
+        plan_content, require_backup_safe_record,
     },
     core::Core,
     crypto::{self, now},
@@ -213,6 +213,89 @@ impl Core {
         self.store.read(|tx| {
             self.cloud_apply_actor(tx, token, settings, plan, reviewed_plan)?;
             materialize_completed_draft(tx, settings, &apply.draft)
+        })
+    }
+
+    pub(crate) fn cloud_apply_commit(
+        &self,
+        token: &str,
+        settings: &Settings,
+        id: &str,
+        reviewed_plan: Option<&str>,
+        key: &str,
+        snapshot_prior: Option<Option<(String, u64)>>,
+        initially_applied: bool,
+        observed_review: ReviewBinding,
+    ) -> Result<Value> {
+        self.mutation(token, |tx| {
+            let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
+            let mut plan = tx
+                .get::<Plan>("cloud_directory_plans", id)?
+                .ok_or_else(|| Error::missing("Cloud directory plan not found"))?;
+            if plan.kind != settings.kind || plan.directory != settings.id {
+                return Err(Error::missing("Cloud directory plan not found"));
+            }
+            if actor.id != plan.actor {
+                return Err(Error::forbidden());
+            }
+            if plan.review != observed_review {
+                return Err(Error::conflict(
+                    "Cloud directory plan changed during snapshot validation; create a new plan",
+                ));
+            }
+            if initially_applied && !plan.applied {
+                return Err(Error::conflict(
+                    "Cloud directory plan changed during snapshot validation; create a new plan",
+                ));
+            }
+            if plan.applied {
+                return Ok(json!({"id": id, "applied": true, "changes": plan.changes}));
+            }
+            self.cloud_apply_actor(tx, token, settings, &plan, reviewed_plan)?;
+            let current = tx.get::<CloudApplyDraft>(CLOUD_APPLY_SNAPSHOTS, key)?;
+            if current
+                .as_ref()
+                .map(|apply| (&apply.draft.id, apply.draft.sequence))
+                != snapshot_prior
+                    .as_ref()
+                    .and_then(|prior| prior.as_ref())
+                    .map(|(id, sequence)| (id, *sequence))
+            {
+                return Err(Error::conflict(
+                    "Cloud apply snapshot advanced concurrently; resume the latest cursor",
+                ));
+            }
+            let impact = removal_impact(tx, settings, &plan.entries)?;
+            ApplyGate {
+                id,
+                revision: plan.revision,
+                expires_at: plan.expires_at,
+                fingerprint_matches: plan.fingerprint == settings.fingerprint,
+                expected_impact: &plan.removal_impact,
+                observed_impact: &impact,
+                review: &plan.review,
+                reviewed_plan,
+            }
+            .validate(tx, &actor, &plan)?;
+            let changes = reconcile(&self.config, tx, &actor, settings, &plan.entries)?;
+            if changes != plan.changes {
+                return Err(Error::conflict(
+                    "Cloud directory plan no longer matches local state",
+                ));
+            }
+            plan.applied = true;
+            tx.put("cloud_directory_plans", id, &plan)?;
+            if current.is_some() {
+                tx.delete(CLOUD_APPLY_SNAPSHOTS, key)?;
+            }
+            crate::delegation::audit_scoped(
+                tx,
+                &actor,
+                "cloud_directory.apply",
+                &settings.resource(),
+                &settings.resource(),
+            )?;
+            Ok(json!({"id": id, "applied": true, "changes": changes}))
         })
     }
 

@@ -2329,6 +2329,59 @@ fn group_wipe_requires_plan_id_header_on_http_apply() {
 }
 
 #[test]
+fn reviewed_cloud_apply_denial_and_replay_audit_once() {
+    for kind in ["workspace", "entra"] {
+        let (directory, fixture) = linked_pair(kind);
+        for person in directory.state.people.lock().unwrap().iter_mut() {
+            person.staff = false;
+        }
+        let plan = fixture
+            .core
+            .cloud_plan(&fixture.admin, kind, "corp")
+            .unwrap();
+        assert_eq!(plan["removal_impact"]["review_required"], true);
+        let id = plan["id"].as_str().unwrap();
+        let apply_audits = || {
+            fixture
+                .core
+                .audit_events(&fixture.admin, 1000)
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == "cloud_directory.apply")
+                .count()
+        };
+        let before = apply_audits();
+        assert_eq!(
+            fixture
+                .core
+                .cloud_apply(&fixture.admin, kind, id)
+                .unwrap_err()
+                .code,
+            "conflict"
+        );
+        assert_eq!(apply_audits(), before);
+        assert_eq!(group_members(&fixture, "staff").len(), 2);
+
+        assert_eq!(
+            fixture
+                .core
+                .cloud_apply_confirmed(&fixture.admin, kind, id, Some(id))
+                .unwrap()["applied"],
+            true
+        );
+        assert_eq!(apply_audits(), before + 1);
+        assert!(group_members(&fixture, "staff").is_empty());
+        assert_eq!(
+            fixture.core.cloud_apply(&fixture.admin, kind, id).unwrap()["applied"],
+            true
+        );
+        assert_eq!(apply_audits(), before + 1);
+    }
+}
+
+#[test]
 fn a_single_missing_group_member_requires_review_even_with_successful_pages() {
     for kind in ["workspace", "entra"] {
         let (directory, fixture) = linked_pair(kind);
