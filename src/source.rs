@@ -437,12 +437,12 @@ enum Linker<'a> {
     Token(Option<&'a str>),
     Browser(&'a User, &'a Session),
 }
-struct StartedLogin {
+pub(crate) struct StartedLogin {
     authorization_url: String,
     state: String,
     nonce: String,
     expires_at: u64,
-    body: Value,
+    pub(crate) body: Value,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct SourceStage {
@@ -463,12 +463,6 @@ struct SourceStage {
 }
 
 impl Core {
-    pub fn source_start(&self, id: &str, input: Start, token: Option<&str>) -> Result<Value> {
-        self.store.write(|tx| {
-            self.source_start_in(tx, id, &input, token, None)
-                .map(|started| started.body)
-        })
-    }
     /// Starts a login for a browser. Its credential belongs in an HttpOnly cookie, never in a
     /// page, and a link targets the session behind the browser's SSO cookie, which has no
     /// bearer token to present.
@@ -489,7 +483,7 @@ impl Core {
         self.source_start_for(tx, id, &input, linker, None, true)
             .map(|started| started.body)
     }
-    fn source_start_in(
+    pub(crate) fn source_start_in(
         &self,
         tx: &Tx<'_>,
         id: &str,

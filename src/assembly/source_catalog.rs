@@ -3,7 +3,7 @@
 use crate::{
     core::Core,
     error::Result,
-    source::{Source, SourceInput},
+    source::{Source, SourceInput, Start},
 };
 use serde_json::{Value, json};
 
@@ -21,6 +21,13 @@ impl Core {
                 },
             )?;
             Ok(json!(input.source))
+        })
+    }
+
+    pub fn source_start(&self, id: &str, input: Start, token: Option<&str>) -> Result<Value> {
+        self.store.write(|tx| {
+            self.source_start_in(tx, id, &input, token, None)
+                .map(|started| started.body)
         })
     }
 

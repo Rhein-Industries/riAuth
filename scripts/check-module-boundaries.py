@@ -827,6 +827,22 @@ def main() -> None:
                 or "&input.source" not in source_put_raw
             ):
                 errors.append("src/source.rs: source configuration mutation belongs in assembly")
+            source_start = rust_function_body(
+                masked_rust_source(source_catalog), "source_start"
+            )
+            if (
+                rust_function_body(source_protocol, "source_start") is not None
+                or source_start is None
+                or not re.search(r"\.\s*store\s*\.\s*write\s*\(", source_start)
+                or not re.search(
+                    r"self\.source_start_in\s*\(\s*tx\s*,\s*id\s*,\s*&input\s*,\s*token\s*,\s*None\s*\)",
+                    source_start,
+                )
+                or not re.search(r"\.map\s*\(\s*\|started\|\s*started\.body\s*\)", source_start)
+                or rust_function_body(source_protocol, "source_start_in") is None
+                or not re.search(r"\bpub\(crate\)\s+fn\s+source_start_in\s*\(", source_protocol)
+            ):
+                errors.append("src/source.rs: source start writer belongs in assembly")
         if path == SRC / "ldap_server.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
