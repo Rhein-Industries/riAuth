@@ -248,6 +248,7 @@ async fn workflow_apply(
         || !input.plan.manifest.sources.is_empty()
         || !input.plan.manifest.source_links.is_empty()
         || !input.plan.manifest.delegated_grants.is_empty()
+        || !input.plan.manifest.ssf_streams.is_empty()
         || !input.secrets.is_empty()
     {
         return Err(Error::bad("Workflow editor applies one workflow only"));

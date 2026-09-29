@@ -1,15 +1,19 @@
 //! SSF stream configuration writers. Both the receiver-managed endpoint and
 //! the administrator/CLI endpoint enter this transaction and receipt boundary.
+//! Desired-state administrator streams use the same insert and subject
+//! replacement on the caller's plan transaction, without a delivery secret.
 //! The browser admin page has no SSF stream editor yet. A future browser
 //! adapter must send a stable Idempotency-Key and its reviewed revision.
 
 use crate::{
+    agent::Principal,
     core::{Core, audit, user_by_name, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
     jose::PublicJwks,
     model::Grant,
     ssf::*,
+    state::SsfStreamSpec,
     store::Tx,
 };
 use axum::http::StatusCode;
@@ -203,7 +207,15 @@ fn require_config_target(tx: &Tx<'_>, actor: &Caller, id: &str) -> Result<()> {
     }
 }
 
-pub(crate) fn create_admin(core: &Core, auth: &SsfAuth, input: StreamInput) -> Result<Value> {
+struct PreparedAdmin {
+    events: BTreeSet<String>,
+    events_requested: BTreeSet<String>,
+    method: String,
+    endpoint: String,
+    authorization: Option<String>,
+}
+
+fn prepare_admin_delivery(core: &Core, input: &StreamInput) -> Result<PreparedAdmin> {
     validate_name(&input.id)?;
     transmitter_issuer(&input.issuer)?;
     audience(&input.audience)?;
@@ -245,6 +257,108 @@ pub(crate) fn create_admin(core: &Core, auth: &SsfAuth, input: StreamInput) -> R
     if input.subjects.len() > 64 {
         return Err(Error::bad("At most 64 subjects may be linked to a stream"));
     }
+    let events_requested = if input.events_requested.is_empty() {
+        input.events.clone()
+    } else {
+        input.events_requested.clone()
+    };
+    Ok(PreparedAdmin {
+        events,
+        events_requested,
+        method,
+        endpoint,
+        authorization,
+    })
+}
+
+fn resolve_subject_ids(
+    tx: &Tx<'_>,
+    issuer: &str,
+    subjects: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>> {
+    if subjects.len() > 64 {
+        return Err(Error::bad("At most 64 subjects may be linked to a stream"));
+    }
+    let mut resolved = BTreeMap::new();
+    for (external, username) in subjects {
+        let subject = binding_subject(external, issuer)?;
+        validate_name(username)?;
+        let user = user_by_name(tx, username)?;
+        if resolved.insert(subject.key(), user.id).is_some() {
+            return Err(Error::bad("Duplicate SSF subject binding"));
+        }
+    }
+    Ok(resolved)
+}
+
+fn canonical_subjects(
+    issuer: &str,
+    subjects: &BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>> {
+    if subjects.len() > 64 {
+        return Err(Error::bad("At most 64 subjects may be linked to a stream"));
+    }
+    let mut canonical = BTreeMap::new();
+    for (external, username) in subjects {
+        let subject = binding_subject(external, issuer)?;
+        validate_name(username)?;
+        if canonical.insert(subject.key(), username.clone()).is_some() {
+            return Err(Error::bad("Duplicate SSF subject binding"));
+        }
+    }
+    Ok(canonical)
+}
+
+fn insert_admin_stream(
+    tx: &Tx<'_>,
+    actor: &Caller,
+    input: &StreamInput,
+    prepared: &PreparedAdmin,
+) -> Result<Stream> {
+    if tx.get::<Stream>("ssf_streams", &input.id)?.is_some() {
+        return Err(Error::conflict("SSF stream already exists"));
+    }
+    if tx.list::<Stream>("ssf_streams")?.len() >= 32 {
+        return Err(Error::bad("At most 32 SSF streams are allowed"));
+    }
+    let stream = Stream {
+        id: input.id.clone(),
+        issuer: input.issuer.clone(),
+        audience: input.audience.clone(),
+        events: prepared.events.clone(),
+        events_requested: prepared.events_requested.clone(),
+        delivery_method: prepared.method.clone(),
+        endpoint_url: prepared.endpoint.clone(),
+        authorization_header: prepared.authorization.clone(),
+        jwks: input.jwks.clone(),
+        subjects: resolve_subject_ids(tx, &input.issuer, &input.subjects)?,
+        owner: owner_of(actor),
+        created_at: now(),
+        description: None,
+        standard: false,
+    };
+    tx.put("ssf_streams", &stream.id, &stream)?;
+    Ok(stream)
+}
+
+/// Replace the stored binding map. Pending deliveries are cancelled only when
+/// the map changes, matching `bind_subjects`. The caller owns the audit.
+fn persist_subject_replacement(
+    tx: &Tx<'_>,
+    stream: &mut Stream,
+    subjects: BTreeMap<String, String>,
+) -> Result<bool> {
+    if stream.subjects == subjects {
+        return Ok(false);
+    }
+    cancel_pending(tx, &stream.id)?;
+    stream.subjects = subjects;
+    tx.put("ssf_streams", &stream.id, stream)?;
+    Ok(true)
+}
+
+pub(crate) fn create_admin(core: &Core, auth: &SsfAuth, input: StreamInput) -> Result<Value> {
+    let prepared = prepare_admin_delivery(core, &input)?;
     let id = input.id.clone();
     write(
         core,
@@ -257,42 +371,7 @@ pub(crate) fn create_admin(core: &Core, auth: &SsfAuth, input: StreamInput) -> R
             Caller::Service(_) => Err(Error::forbidden()),
         },
         |tx, actor| {
-            if tx.get::<Stream>("ssf_streams", &input.id)?.is_some() {
-                return Err(Error::conflict("SSF stream already exists"));
-            }
-            if tx.list::<Stream>("ssf_streams")?.len() >= 32 {
-                return Err(Error::bad("At most 32 SSF streams are allowed"));
-            }
-            let mut subjects = BTreeMap::new();
-            for (external, username) in &input.subjects {
-                let subject = binding_subject(external, &input.issuer)?;
-                validate_name(username)?;
-                let user = user_by_name(tx, username)?;
-                if subjects.insert(subject.key(), user.id).is_some() {
-                    return Err(Error::bad("Duplicate SSF subject binding"));
-                }
-            }
-            let stream = Stream {
-                id: input.id.clone(),
-                issuer: input.issuer.clone(),
-                audience: input.audience.clone(),
-                events,
-                events_requested: if input.events_requested.is_empty() {
-                    input.events.clone()
-                } else {
-                    input.events_requested.clone()
-                },
-                delivery_method: method,
-                endpoint_url: endpoint,
-                authorization_header: authorization,
-                jwks: input.jwks.clone(),
-                subjects,
-                owner: owner_of(actor),
-                created_at: now(),
-                description: None,
-                standard: false,
-            };
-            tx.put("ssf_streams", &stream.id, &stream)?;
+            let stream = insert_admin_stream(tx, actor, &input, &prepared)?;
             audit(tx, &stream.owner, "ssf.stream.create", &stream.id)?;
             Ok(view(&core.config.issuer, &stream))
         },
@@ -453,19 +532,8 @@ pub(crate) fn bind_subjects(
                 .get::<Stream>("ssf_streams", id)?
                 .ok_or_else(|| Error::missing("SSF stream not found"))?;
             admin_allow(actor, &stream)?;
-            let mut subjects = BTreeMap::new();
-            for (external, username) in &input.subjects {
-                let subject = binding_subject(external, &stream.issuer)?;
-                validate_name(username)?;
-                let user = user_by_name(tx, username)?;
-                if subjects.insert(subject.key(), user.id).is_some() {
-                    return Err(Error::bad("Duplicate SSF subject binding"));
-                }
-            }
-            if stream.subjects != subjects {
-                cancel_pending(tx, id)?;
-                stream.subjects = subjects;
-                tx.put("ssf_streams", id, &stream)?;
+            let subjects = resolve_subject_ids(tx, &stream.issuer, &input.subjects)?;
+            if persist_subject_replacement(tx, &mut stream, subjects)? {
                 audit(tx, &owner_of(actor), "ssf.stream.subjects", id)?;
             }
             Ok(view(&core.config.issuer, &stream))
@@ -631,4 +699,150 @@ pub(crate) fn update_receiver(
             Ok(configuration_view(&core.config.issuer, &stream))
         },
     )
+}
+
+pub(crate) struct ManifestStreamEffect {
+    pub action: &'static str,
+    pub before: Value,
+    pub after: Value,
+}
+
+fn stream_input_from_spec(spec: &SsfStreamSpec) -> StreamInput {
+    StreamInput {
+        id: spec.id.clone(),
+        issuer: spec.issuer.clone(),
+        audience: spec.audience.clone(),
+        events_requested: spec.events_requested.clone(),
+        events: BTreeSet::new(),
+        delivery: None,
+        delivery_method: Some(spec.delivery_method.clone()),
+        endpoint_url: Some(spec.endpoint_url.clone()),
+        jwks: spec.jwks.clone(),
+        subjects: spec.subjects.clone(),
+    }
+}
+
+fn manifest_spec(tx: &Tx<'_>, stream: &Stream) -> Result<SsfStreamSpec> {
+    let mut subjects = BTreeMap::new();
+    for (subject, user_id) in &stream.subjects {
+        let user = tx
+            .get::<crate::model::User>("users", user_id)?
+            .ok_or_else(|| {
+                Error::conflict("SSF subject binding has no local user; export refused")
+            })?;
+        subjects.insert(subject.clone(), user.username);
+    }
+    Ok(SsfStreamSpec {
+        id: stream.id.clone(),
+        issuer: stream.issuer.clone(),
+        audience: stream.audience.clone(),
+        events_requested: stream.events.clone(),
+        delivery_method: stream.delivery_method.clone(),
+        endpoint_url: stream.endpoint_url.clone(),
+        jwks: stream.jwks.clone(),
+        subjects,
+    })
+}
+
+fn normalized_spec(spec: &SsfStreamSpec, prepared: &PreparedAdmin) -> Result<SsfStreamSpec> {
+    Ok(SsfStreamSpec {
+        id: spec.id.clone(),
+        issuer: spec.issuer.clone(),
+        audience: spec.audience.clone(),
+        events_requested: prepared.events.clone(),
+        delivery_method: prepared.method.clone(),
+        endpoint_url: prepared.endpoint.clone(),
+        jwks: spec.jwks.clone(),
+        subjects: canonical_subjects(&spec.issuer, &spec.subjects)?,
+    })
+}
+
+fn configuration_matches(stream: &Stream, spec: &SsfStreamSpec, prepared: &PreparedAdmin) -> bool {
+    stream.issuer == spec.issuer
+        && stream.audience == spec.audience
+        && stream.events == prepared.events
+        && stream.delivery_method == prepared.method
+        && stream.endpoint_url == prepared.endpoint
+        && stream.jwks == spec.jwks
+}
+
+/// Administrator streams only. The direct API keeps its receipt, revision, and
+/// `ssf.stream.create` / `ssf.stream.subjects` audits. This path persists with
+/// the same insert and subject replacement and lets desired-state emit one
+/// `ssf.stream.reconcile`. Preview writes nothing. A stored authorization
+/// header is never read into the manifest and is never cleared.
+pub(crate) fn reconcile_manifest_stream(
+    core: &Core,
+    tx: &Tx<'_>,
+    actor: &Principal,
+    spec: &SsfStreamSpec,
+    preview: bool,
+) -> Result<Option<ManifestStreamEffect>> {
+    if actor.delegated {
+        return Err(Error::forbidden());
+    }
+    let input = stream_input_from_spec(spec);
+    let prepared = prepare_admin_delivery(core, &input)?;
+    actor.require("ssf.manage", &format!("ssf/{}", spec.id))?;
+    let normalized = normalized_spec(spec, &prepared)?;
+    let after = serde_json::to_value(&normalized).map_err(Error::internal)?;
+    match tx.get::<Stream>("ssf_streams", &spec.id)? {
+        Some(stream) if stream.standard => Err(Error::conflict(
+            "Receiver-managed SSF streams stay on the SSF configuration API",
+        )),
+        Some(stream) => {
+            if !configuration_matches(&stream, spec, &prepared) {
+                return Err(Error::conflict(
+                    "SSF administrator stream configuration is immutable after create",
+                ));
+            }
+            let resolved = resolve_subject_ids(tx, &stream.issuer, &normalized.subjects)?;
+            if stream.subjects == resolved {
+                return Ok(None);
+            }
+            let before =
+                serde_json::to_value(manifest_spec(tx, &stream)?).map_err(Error::internal)?;
+            if !preview {
+                let mut stream = stream;
+                persist_subject_replacement(tx, &mut stream, resolved)?;
+            }
+            Ok(Some(ManifestStreamEffect {
+                action: "update",
+                before,
+                after,
+            }))
+        }
+        None => {
+            resolve_subject_ids(tx, &spec.issuer, &spec.subjects)?;
+            if tx.list::<Stream>("ssf_streams")?.len() >= 32 {
+                return Err(Error::bad("At most 32 SSF streams are allowed"));
+            }
+            if !preview {
+                insert_admin_stream(tx, &Caller::Principal(actor.clone()), &input, &prepared)?;
+            }
+            Ok(Some(ManifestStreamEffect {
+                action: "create",
+                before: Value::Null,
+                after,
+            }))
+        }
+    }
+}
+
+/// Non-secret administrator streams this actor may manage. Delegated humans
+/// receive none. Standard receiver streams and delivery authorization stay out.
+pub(crate) fn export_admin_streams(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<SsfStreamSpec>> {
+    if actor.delegated {
+        return Ok(Vec::new());
+    }
+    let mut rows = tx.list::<Stream>("ssf_streams")?;
+    rows.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut specs = Vec::new();
+    for (_, stream) in rows {
+        if stream.standard || !actor.allows("ssf.manage", &format!("ssf/{}", stream.id)) {
+            continue;
+        }
+        specs.push(manifest_spec(tx, &stream)?);
+    }
+    Ok(specs)
 }

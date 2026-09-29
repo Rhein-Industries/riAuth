@@ -35,6 +35,11 @@ pub struct Manifest {
     /// High-privilege changes are refused and stay on the reviewed grant workflow.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delegated_grants: Vec<DelegatedGrantSpec>,
+    /// Non-secret administrator SSF streams. Omission leaves every stream, its
+    /// bindings, and its delivery authorization unchanged. Receiver-managed
+    /// streams, authorization headers, private keys, and tokens are not accepted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ssf_streams: Vec<SsfStreamSpec>,
     /// The riAuth issuer this manifest was prepared for. When set, planning and applying fail
     /// unless the instance's issuer is exactly this value; unbound manifests stay portable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -111,6 +116,23 @@ fn yes() -> bool {
 pub struct DelegatedGrantSpec {
     pub username: String,
     pub grants: Vec<crate::delegation::GrantInput>,
+}
+
+/// Non-secret administrator SSF stream. `subjects` is required: an explicit
+/// empty object replaces bindings, and a missing object is rejected. There is
+/// no field for a delivery authorization header, private key, or token.
+#[derive(schemars::JsonSchema, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SsfStreamSpec {
+    pub id: String,
+    pub issuer: String,
+    pub audience: String,
+    #[serde(default)]
+    pub events_requested: BTreeSet<String>,
+    pub delivery_method: String,
+    pub endpoint_url: String,
+    pub jwks: crate::model::jwk::PublicJwks,
+    pub subjects: BTreeMap<String, String>,
 }
 
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
@@ -206,6 +228,7 @@ impl Manifest {
             + self.sources.len()
             + self.workflows.len()
             + self.delegated_grants.len()
+            + self.ssf_streams.len()
             + self.source_links.len()
             > 1000
         {
@@ -258,10 +281,20 @@ impl Manifest {
         if !self.workflows.is_empty() && !cfg!(feature = "platform") {
             return Err(Error::bad("Configured workflows require Platform"));
         }
+        if !self.ssf_streams.is_empty() && !cfg!(feature = "platform") {
+            return Err(Error::bad("SSF streams require Platform"));
+        }
         let mut workflow_ids = BTreeSet::new();
         for definition in &self.workflows {
             if !workflow_ids.insert(definition.id.as_str()) {
                 return Err(Error::bad("Duplicate workflow in manifest"));
+            }
+        }
+        let mut stream_ids = BTreeSet::new();
+        for spec in &self.ssf_streams {
+            validate_name(&spec.id)?;
+            if !stream_ids.insert(spec.id.as_str()) {
+                return Err(Error::bad("Duplicate resource in manifest"));
             }
         }
         let mut grant_subjects = BTreeSet::new();
@@ -730,7 +763,10 @@ fn state_removal_impact(tx: &Tx<'_>, manifest: &Manifest) -> Result<RemovalImpac
 fn state_automation_safe(changes: &[Change]) -> bool {
     changes.iter().all(|change| {
         let kind = change.resource.split('/').next().unwrap_or("");
-        if matches!(kind, "client" | "source" | "source_link" | "workflow") {
+        if matches!(
+            kind,
+            "client" | "source" | "source_link" | "workflow" | "ssf.stream"
+        ) {
             return false;
         }
         if kind == "user" {
@@ -772,11 +808,12 @@ fn require_immediate_grant_actor(actor: &Principal) -> Result<()> {
 const GROUP_DEPENDENCY_VERSION: &str = "riauth/desired-state-groups/v1";
 
 /// Only a manifest that names groups, and no other resource family, may
-/// ignore an unrelated management revision. Delegated grants and a
-/// target-state fingerprint stay on the global counter.
+/// ignore an unrelated management revision. Delegated grants, SSF streams, and
+/// a target-state fingerprint stay on the global counter.
 fn group_only(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
         && manifest.delegated_grants.is_empty()
+        && manifest.ssf_streams.is_empty()
         && !manifest.groups.is_empty()
         && manifest.users.is_empty()
         && manifest.clients.is_empty()
@@ -866,10 +903,12 @@ fn group_dependency_digest(
 const CLIENT_NAME_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-name/v1";
 
 /// One existing client, and no other resource family. Secret rotation,
-/// delegated grants, and a target-state fingerprint stay on the global counter.
+/// delegated grants, SSF streams, and a target-state fingerprint stay on the
+/// global counter.
 fn client_name_shape(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
         && manifest.delegated_grants.is_empty()
+        && manifest.ssf_streams.is_empty()
         && manifest.users.is_empty()
         && manifest.groups.is_empty()
         && manifest.sources.is_empty()
@@ -1108,9 +1147,12 @@ fn client_name_dependencies(
 const CLIENT_DESCRIPTION_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-description/v1";
 
 /// One existing client, and no other resource family. Secret rotation,
-/// delegated grants, and a target-state fingerprint stay on the global counter.
+/// delegated grants, SSF streams, and a target-state fingerprint stay on the
+/// global counter.
 fn client_description_shape(manifest: &Manifest) -> bool {
-    client_name_shape(manifest) && manifest.delegated_grants.is_empty()
+    client_name_shape(manifest)
+        && manifest.delegated_grants.is_empty()
+        && manifest.ssf_streams.is_empty()
 }
 
 fn catalogue_description(spec: &ClientSpec) -> String {
@@ -1167,10 +1209,12 @@ fn client_description_dependencies(
 const USER_DISPLAY_DEPENDENCY_VERSION: &str = "riauth/desired-state-user-display-name/v1";
 
 /// One existing user, and no other resource family. Credential rotation,
-/// delegated grants, and a target-state fingerprint stay on the global counter.
+/// delegated grants, SSF streams, and a target-state fingerprint stay on the
+/// global counter.
 fn user_display_shape(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
         && manifest.delegated_grants.is_empty()
+        && manifest.ssf_streams.is_empty()
         && manifest.users.len() == 1
         && manifest.groups.is_empty()
         && manifest.clients.is_empty()
@@ -1343,6 +1387,9 @@ fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
     for definition in &plan.manifest.workflows {
         actor.require("workflow.write", &format!("workflow/{}", definition.id))?;
     }
+    for spec in &plan.manifest.ssf_streams {
+        actor.require("ssf.manage", &format!("ssf/{}", spec.id))?;
+    }
     if !plan.manifest.delegated_grants.is_empty() {
         require_immediate_grant_actor(actor)?;
     }
@@ -1368,6 +1415,15 @@ fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
             }
             "source" => actor.require("source.write", resource)?,
             "workflow" => actor.require("workflow.write", resource)?,
+            "ssf.stream" => {
+                let id = change
+                    .resource
+                    .rsplit_once('/')
+                    .map(|(_, id)| id)
+                    .filter(|id| !id.is_empty())
+                    .ok_or_else(Error::forbidden)?;
+                actor.require("ssf.manage", &format!("ssf/{id}"))?;
+            }
             "delegation" => require_immediate_grant_actor(actor)?,
             "source_link" => {
                 let source = change.after["source"]
@@ -1821,7 +1877,8 @@ impl Core {
                 }
                 delegated_grants.sort_by(|a, b| a.username.cmp(&b.username));
             }
-            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, delegated_grants, issuer: None, target_state_fingerprint: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
+            let ssf_streams = export_ssf_streams(tx, &actor)?;
+            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, delegated_grants, ssf_streams, issuer: None, target_state_fingerprint: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
         })
     }
     /// Browser list uses the same scoped authority as manifest export.
@@ -1888,6 +1945,16 @@ fn client_spec(c: &Client) -> ClientSpec {
         secret_version: None,
     }
 }
+#[cfg(feature = "platform")]
+fn export_ssf_streams(tx: &Tx<'_>, actor: &Principal) -> Result<Vec<SsfStreamSpec>> {
+    crate::management::ssf_streams::export_admin_streams(tx, actor)
+}
+
+#[cfg(not(feature = "platform"))]
+fn export_ssf_streams(_tx: &Tx<'_>, _actor: &Principal) -> Result<Vec<SsfStreamSpec>> {
+    Ok(Vec::new())
+}
+
 fn value<T: Serialize>(v: &T) -> Result<Value> {
     serde_json::to_value(v).map_err(Error::internal)
 }
@@ -2103,6 +2170,21 @@ fn reconcile(
             credential_change: false,
             secret_references: BTreeSet::new(),
         });
+    }
+    #[cfg(feature = "platform")]
+    for spec in &manifest.ssf_streams {
+        if let Some(effect) = crate::management::ssf_streams::reconcile_manifest_stream(
+            core, tx, actor, spec, preview,
+        )? {
+            changes.push(Change {
+                resource: format!("ssf.stream/{}", spec.id),
+                action: effect.action.into(),
+                before: effect.before,
+                after: effect.after,
+                credential_change: false,
+                secret_references: BTreeSet::new(),
+            });
+        }
     }
     for spec in &manifest.sources {
         let resource = format!("source/{}", spec.source.id);

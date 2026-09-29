@@ -308,7 +308,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET, POST, PATCH, PUT, DELETE | `/api/ssf/streams` | SSF 1.0 receiver configuration; generated stream IDs, `stream_id` query for GET/DELETE, bearer administrator, `ssf.configure` agent, or OAuth service access token with `ssf.configure` scope |
 | GET, POST | `/api/ssf/admin/streams` | List/create pinned inbound trust and subject bindings; administrator or `ssf.manage` agent |
 | DELETE | `/api/ssf/admin/streams/{id}` | Delete an authorized trust registration and cancel its pending deliveries |
-| PUT | `/api/ssf/admin/streams/{id}/subjects` | Replace exact approved local subject bindings for a stream |
+| PUT | `/api/ssf/admin/streams/{id}/subjects` | Replace exact approved local subject bindings for a stream. Desired-state `ssf_streams` uses this writer and the administrator create writer for the non-secret subset only; see [ENT-07](enterprise/ENT-07.md) |
 | GET | `/api/provisioning/targets` | Configured outbound SCIM targets |
 | POST | `/api/provisioning/targets/{id}/plan` | Create an immutable provisioning plan |
 | GET | `/api/provisioning/plans/{id}` | Inspect caller-bound plan |

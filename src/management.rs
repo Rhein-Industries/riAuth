@@ -26,6 +26,9 @@
 //! retained history; no caller, revision or retry receipt exists for a sweep.
 //! Platform SSF receiver and administrator stream writes use live owner/scope
 //! checks, the management revision and keyed receipts in one transaction.
+//! Desired-state administrator streams call that same create and subject-binding
+//! persistence on the plan transaction. They do not open a nested write, store
+//! a delivery authorization, or widen receiver-stream ownership.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
