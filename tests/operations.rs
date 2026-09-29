@@ -352,6 +352,8 @@ fn schema_two_backup_restores_and_rebuilds_queue_and_retention_indexes() {
     f.core
         .store
         .write(|tx| {
+            // This fixture represents a store written before activation records existed.
+            tx.delete("meta", "version_activation")?;
             tx.put("meta", "schema", &2u32)?;
             tx.put("http_rates", "prior", &(100u64, 1u32))?;
             tx.delete("index_counts", "http_rates")
@@ -876,7 +878,11 @@ fn schema_migrated_restore_still_logs_in_the_same_user() {
     let user_id = before["user"]["id"].as_str().unwrap().to_owned();
     f.core
         .store
-        .write(|tx| tx.put("meta", "schema", &2u32))
+        .write(|tx| {
+            // This fixture represents a store written before activation records existed.
+            tx.delete("meta", "version_activation")?;
+            tx.put("meta", "schema", &2u32)
+        })
         .unwrap();
     let key = riauth::crypto::random_token("");
     let backup = f.core.backup(&f.admin, &key).unwrap();

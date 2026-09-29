@@ -3742,7 +3742,16 @@ fn claiming_due_jobs_is_bounded_with_a_large_retained_history() {
     f.core
         .store
         .write(|tx| {
-            tx.delete("meta", "index_version")?;
+            // A coherent previous index moves both markers together. The current
+            // activation beside a missing index marker is the rollback migrate refuses.
+            let mut activation: Value = tx.get("meta", "version_activation")?.unwrap();
+            activation["index_version"] = json!(riauth::store::maintenance::INDEX_VERSION - 1);
+            tx.put("meta", "version_activation", &activation)?;
+            tx.put(
+                "meta",
+                "index_version",
+                &(riauth::store::maintenance::INDEX_VERSION - 1),
+            )?;
             for (key, _) in tx.list::<Value>("index_due_offboard_jobs")? {
                 tx.delete("index_due_offboard_jobs", &key)?;
             }
