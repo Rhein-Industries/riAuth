@@ -361,6 +361,8 @@ def main() -> None:
         ):
             errors.append("src/cloud_directory.rs: retry-budget storage belongs in assembly")
         if path == SRC / "cloud_directory.rs":
+            if rust_function_body(masked_rust_source(path.read_text()), "cloud_snapshot_actor") is not None:
+                errors.append("src/cloud_directory.rs: snapshot authority/revision check belongs in assembly")
             reconcile = rust_function_body(masked_rust_source(path.read_text()), "cloud_reconcile")
             if (
                 reconcile is None

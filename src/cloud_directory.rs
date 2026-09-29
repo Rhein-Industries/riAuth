@@ -356,7 +356,7 @@ pub(crate) struct Settings {
     quota: CloudReconciliationQuota,
 }
 impl Settings {
-    fn resource(&self) -> String {
+    pub(crate) fn resource(&self) -> String {
         format!("{}/{}", self.kind, self.id)
     }
     fn run_key(&self) -> String {
@@ -1826,7 +1826,7 @@ impl Core {
         modes.get(id).copied().unwrap_or_default()
     }
 
-    fn cloud_settings(&self, kind: &str, id: &str) -> Result<Settings> {
+    pub(crate) fn cloud_settings(&self, kind: &str, id: &str) -> Result<Settings> {
         let provider = Provider::parse(kind)?;
         validate_name(id)?;
         let quota = self.config.reconciliation_quotas.cloud;
@@ -1941,37 +1941,6 @@ impl Core {
 
     pub fn cloud_plan(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         self.cloud_plan_internal(token, kind, id, false)
-    }
-
-    pub(crate) fn cloud_snapshot_actor(
-        &self,
-        tx: &Tx<'_>,
-        token: &str,
-        settings: &Settings,
-        actor_id: &str,
-        revision: u64,
-        authority_digest: &str,
-    ) -> Result<Principal> {
-        let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
-        if actor.id != actor_id
-            || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
-            || self
-                .cloud_settings(settings.kind, &settings.id)?
-                .fingerprint
-                != settings.fingerprint
-            || ReviewBinding::new(
-                tx,
-                &actor,
-                &json!([settings.resource(), revision, settings.fingerprint]),
-            )?
-            .authority_digest
-                != authority_digest
-        {
-            return Err(Error::conflict(
-                "Cloud source, authority or local revision changed during snapshot",
-            ));
-        }
-        Ok(actor)
     }
 
     fn cloud_apply_actor(
