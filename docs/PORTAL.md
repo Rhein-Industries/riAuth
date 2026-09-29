@@ -200,8 +200,9 @@ unknown-passkey message, and the password still signs in. Playwright's WebAuthn
 shim supplies the credential in Chromium, Firefox, and WebKit. The shim is not a
 physical security key, a synced passkey, a phone, or a mobile operating system.
 An engine whose page has no WebAuthn is skipped. Hardware authenticators and
-real mobile devices remain manual gates, and this Playwright project is not a
-CI job.
+real mobile devices remain manual gates. The integration job is written to run
+this file headless in Playwright Chromium, Firefox, and WebKit. The credential
+is Playwright's simulated WebAuthn shim, not a physical authenticator.
 `tools/browser/authenticator-recovery.spec.js` is a separate headless journey
 on the same 390×844 CSS viewport. The password-only fixture account enrolls an
 authenticator app from the setup key shown on the page. An empty code and a
@@ -214,8 +215,9 @@ is then rejected; a different code still signs in, and the remaining count
 drops from 10 to 9 and then to 8. The journey reads the setup key from the page
 and computes the six-digit code. This is not a phone authenticator app, a
 physical device, or a mobile operating system, and the viewport is CSS only.
-Hardware authenticators, real mobile devices, and email recovery remain open,
-and this Playwright project is not a CI job.
+Hardware authenticators, real mobile devices, and email recovery remain open.
+The integration job is written to run this file headless in Playwright Chromium,
+Firefox, and WebKit. That run is not a physical authenticator.
 `tools/browser/passkey-rename.spec.js` is a separate headless journey on the
 same 390×844 CSS viewport. The password-only fixture account enrolls one
 passkey through Playwright's WebAuthn shim and signs in with that credential.
@@ -225,15 +227,17 @@ keeps the same passkey id, and leaves the account's other browser session
 signed in. The new name is still there after a reload, and the same virtual
 credential signs in again. The shim is not a physical security key, a synced
 passkey, a phone, or a mobile operating system, and the viewport is CSS only.
-Hardware authenticators, real mobile devices, and email recovery remain open,
-and this Playwright project is not a CI job.
+Hardware authenticators, real mobile devices, and email recovery remain open.
+The integration job is written to run this file headless in Playwright Chromium,
+Firefox, and WebKit. That run is not a physical authenticator.
 `tools/browser/password-reset-replay.spec.js` is a separate headless journey on
 the same 390×844 CSS viewport. The fixture opts in to a local loopback SMTP
 capture and one password account whose email is verified. From the keyboard, an
 empty username moves focus to the error and does not request a link. An unknown
 username and an unverified fixture account get the same Check your email screen,
 and the capture has no reset message for them. The verified account gets that
-same screen. The journey reads the one captured message from the fixture sink,
+same screen. The sink also holds the fixture's invitation messages, and the
+journey reads that account's one reset message from the fixture sink,
 opens its browser link, and sees the note that a reset keeps passkeys and an
 authenticator app. Mismatched passwords and the current password leave the link
 unused. A new password completes the reset, ends the account's other browser
@@ -242,8 +246,9 @@ Submitting the same link again reports that it was already used, and the new
 password still signs in. This account has no passkey or authenticator app
 enrolled, so that kept-factor sentence is the page copy. The capture is the
 fixture's loopback SMTP listener, not an external mailbox. Hardware
-authenticators, real mobile devices, and external email remain open, and this
-Playwright project is not a CI job.
+authenticators, real mobile devices, and external email remain open. The
+integration job is written to run this file headless in Playwright Chromium,
+Firefox, and WebKit. The capture stays the fixture's loopback SMTP listener.
 `tools/browser/multi-authenticator.spec.js` is a separate headless journey
 on the same 390×844 CSS viewport. Two browser contexts each get their own
 Playwright WebAuthn shim before the page loads. The password account enrolls
@@ -260,8 +265,9 @@ holds, so the second passkey has to be a separate authenticator. Neither
 shim is a physical security key, a synced passkey, a phone app, or a mobile
 operating system. The viewport is CSS only, and this is not a screen reader.
 Hardware authenticators, synced passkeys, a phone hybrid, real mobile
-devices, and external email remain open, and this Playwright project is not
-a CI job.
+devices, and external email remain open. The integration job is written to run
+this file headless in Playwright Chromium, Firefox, and WebKit. Each context
+uses Playwright's simulated credential, not a physical authenticator.
 `tools/browser/invitation-passkey.spec.js` is a separate headless journey on
 the same 390×844 CSS viewport. The fixture opts in to its loopback SMTP capture
 and sends three invitations. Chromium installs one CDP virtual authenticator.
@@ -278,8 +284,10 @@ authenticator is not a physical security key, a synced passkey, a phone, or a
 mobile operating system. The capture is the fixture's loopback SMTP listener,
 not an external mailbox. The viewport is CSS only, and this is not a screen
 reader. Hardware authenticators, synced passkeys, a phone hybrid, real mobile
-devices, screen readers, and external email remain open, and this Playwright
-project is not a CI job.
+devices, screen readers, and external email remain open. The integration job
+is written to run this file headless. Firefox and WebKit skip it, because the
+CDP virtual authenticator exists only in Chromium. That authenticator is not a
+physical key.
 `tools/browser/invitation-password.spec.js` is a separate headless journey on
 the same 390×844 CSS viewport. Chromium, Firefox, and WebKit each use the
 fixture's loopback SMTP capture and do not install a virtual authenticator.
@@ -294,8 +302,9 @@ ceremony stays in `tools/browser/invitation-passkey.spec.js`. The
 viewport is CSS only, and this is not a screen reader. The capture is the
 fixture's loopback SMTP listener, not an external mailbox. Hardware
 authenticators, synced passkeys, a phone hybrid, real mobile devices, screen
-readers, and external email remain open, and this Playwright project is not
-a CI job.
+readers, and external email remain open. The integration job is written to run
+this file headless in Playwright Chromium, Firefox, and WebKit, and it does not
+install an authenticator.
 `tools/browser/invitation-passkey-shim.spec.js` is a separate headless journey
 on the same 390×844 CSS viewport. Chromium, Firefox, and WebKit each install
 Playwright's simulated WebAuthn credential before the page loads. The shim
@@ -317,7 +326,9 @@ user-verified bit. Chromium's CDP virtual authenticator stays in
 is the fixture's loopback SMTP listener, not an external mailbox. The viewport
 is CSS only, and this is not a screen reader. Hardware authenticators, synced
 passkeys, a phone hybrid, real mobile devices, screen readers, and external
-email remain open, and this Playwright project is not a CI job.
+email remain open. The integration job is written to run this file headless in
+Playwright Chromium, Firefox, and WebKit with the simulated credential, not a
+physical authenticator.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 
@@ -326,6 +337,31 @@ cargo build --example portal_fixture --locked
 npm ci --ignore-scripts --prefix tools/browser
 npm exec --prefix tools/browser -- playwright install chromium firefox webkit
 npm test --prefix tools/browser
+```
+
+That block runs the whole Playwright project locally. The integration job is
+written to install the pinned Playwright 1.63.0 browsers once for
+`setup.spec.js`, then build `portal_fixture` and run only the allowlist below
+on those browsers. One worker, no retries, and a 25 minute step limit bound
+that step. `invitation-passkey.spec.js` skips Firefox and WebKit. This command
+is not a physical security key, a synced passkey, a phone hybrid, a mobile
+operating system, a screen reader, or an external mailbox:
+
+```sh
+cargo build --locked --example portal_fixture
+cd tools/browser
+./node_modules/.bin/playwright test \
+  --project=chromium --project=firefox --project=webkit \
+  --workers=1 --retries=0 \
+  passkey-revocation.spec.js \
+  authenticator-recovery.spec.js \
+  passkey-rename.spec.js \
+  password-reset-replay.spec.js \
+  multi-authenticator.spec.js \
+  invitation-passkey.spec.js \
+  invitation-password.spec.js \
+  invitation-passkey-shim.spec.js \
+  --reporter=list
 ```
 
 Fixture startup generates signing keys and hashes a password. Its deadline is

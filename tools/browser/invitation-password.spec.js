@@ -9,7 +9,8 @@
 // invitation-passkey.spec.js. Tokens come from the fixture's
 // loopback SMTP capture, not an external mailbox. The viewport is CSS only.
 // This is not a screen reader, a physical key, a synced passkey, a phone, or
-// a mobile operating system. Playwright is not a CI job.
+// a mobile operating system. The integration job is written to run this file headless in
+// Chromium, Firefox, and WebKit and does not install an authenticator.
 import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { fixtureStartupMs, startFixture } from './fixture.js';

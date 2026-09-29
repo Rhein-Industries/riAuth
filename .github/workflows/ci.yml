@@ -154,6 +154,23 @@ jobs:
           cd tools/browser
           ./node_modules/.bin/playwright install --with-deps chromium firefox webkit
           ./node_modules/.bin/playwright test setup.spec.js --reporter=list
+      - name: Headless portal authenticator journeys
+        timeout-minutes: 25
+        run: |
+          cargo build --locked --example portal_fixture
+          cd tools/browser
+          ./node_modules/.bin/playwright test \
+            --project=chromium --project=firefox --project=webkit \
+            --workers=1 --retries=0 \
+            passkey-revocation.spec.js \
+            authenticator-recovery.spec.js \
+            passkey-rename.spec.js \
+            password-reset-replay.spec.js \
+            multi-authenticator.spec.js \
+            invitation-passkey.spec.js \
+            invitation-password.spec.js \
+            invitation-passkey-shim.spec.js \
+            --reporter=list
       - name: PostgreSQL Q05 replay and lease schedules
         run: PG_BIN="$(pg_config --bindir)" RIAUTH_PG_TEST_TARGET=q05_replay_concurrency scripts/test-postgres.sh
       - name: OpenLDAP synchronization and authentication

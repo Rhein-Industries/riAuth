@@ -166,7 +166,11 @@ initializes it and deliberately tries a mismatched encryption configuration.
 Do not point it at an existing deployment. CI also runs the rendered setup
 journey in Chromium, Firefox and WebKit from `tools/browser/setup.spec.js`. It
 covers a private proof claim and ordinary sign-in, denial of a visitor without
-the proof, expiry, and the closed page after a replay. The setup URL carries no
+the proof, expiry, and the closed page after a replay. The same integration job
+is written to build `portal_fixture` and run the headless portal authenticator
+allowlist in [PORTAL.md](PORTAL.md) on the browsers the setup step already
+installed. That allowlist is not this setup journey and does not use a physical
+authenticator. The setup URL carries no
 proof; the private proof must be entered in the form. Run the browser test with
 the built `target/debug/riauth` binary:
 

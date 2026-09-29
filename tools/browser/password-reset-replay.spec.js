@@ -10,8 +10,9 @@
 // This journey opts the fixture into its loopback SMTP capture. An empty username
 // never requests a link. An unknown username and the unverified bob account get the
 // same Check your email screen, and the capture file has no reset message for them.
-// The verified recovery account gets that same screen. The one captured message is
-// the fixture's local sink, not an external mailbox. Opening its browser link does
+// The verified recovery account gets that same screen. Mail capture also stores the
+// fixture's invitation messages, so this journey reads that account's one reset from
+// the local sink. It is not an external mailbox. Opening its browser link does
 // not spend the proof. Mismatched passwords and the current password leave the link
 // unused. A new password signs every session out, rejects the old password, and does
 // not sign the reset page in. Submitting that same link again reports that it was
@@ -252,11 +253,13 @@ test('password reset denies ineligible accounts and rejects a replayed link', as
     expect(posts.request).toBe(3);
     await expect.poll(async () => forAccount(await capturedBodies(), user.username).length, { timeout: 20000 }).toBe(1);
     const bodies = await capturedBodies();
-    expect(bodies).toHaveLength(1);
+    const resets = forAccount(bodies, user.username);
+    expect(resets).toHaveLength(1);
     expect(forAccount(bodies, 'missing-user')).toHaveLength(0);
     expect(forAccount(bodies, fixture.users.bob.username)).toHaveLength(0);
-    expect(messageText(bodies[0]).split('\n')).toContain('Reset your riAuth password');
-    const link = resetLink(bodies[0]);
+    expect(bodies.filter((body) => messageText(body).split('\n').includes('Reset your riAuth password'))).toHaveLength(1);
+    expect(messageText(resets[0]).split('\n')).toContain('Reset your riAuth password');
+    const link = resetLink(resets[0]);
     const prefix = `${fixture.issuer}/account/reset#token=ri_mail_`;
     expect(typeof link, 'loopback capture included a reset link').toBe('string');
     expect(link.startsWith(prefix)).toBe(true);

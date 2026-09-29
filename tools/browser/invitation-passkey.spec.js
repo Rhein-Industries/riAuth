@@ -8,8 +8,8 @@
 // not a physical security key, a synced passkey, a phone, or a mobile
 // operating system. Firefox and WebKit do not run the ceremony. The invitation
 // tokens come from the fixture's loopback SMTP capture, not an external
-// mailbox. The viewport is CSS only. This is not a screen reader, and
-// Playwright is not a CI job.
+// mailbox. The viewport is CSS only. This is not a screen reader. The
+// integration job is written to run this file headless; Firefox and WebKit skip.
 import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { fixtureStartupMs, startFixture } from './fixture.js';

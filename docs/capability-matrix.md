@@ -223,7 +223,7 @@ this page. CI steps are written for the default Platform build.
 | Windows device login | Platform | Enrollment and ticket protocol for a separate device host. | [ENT-13](enterprise/ENT-13.md), [`src/windows_login.rs`](../src/windows_login.rs), [`tests/windows_login.rs`](../tests/windows_login.rs), [`windows/README.md`](../windows/README.md). | The guide states that no Windows interactive login has been tested. [limitations.md](limitations.md) says a packaged credential provider is not included. This page did not build or run Windows. |
 | Workflows | Platform for configured definitions | Seven shipped builtin definitions are the Essentials profile (`essentials-passkey-sign-in`, `essentials-password-sign-in`, `essentials-passkey-enrollment`, `essentials-invitation`, `essentials-password-reset`, `essentials-consent`, `essentials-sensitive-action`). Platform adds `riauth.workflow/v1` authoring and the configured executor paths in [workflows.md](workflows.md). | [`src/workflow/essentials.rs`](../src/workflow/essentials.rs), [`tests/workflow_model.rs`](../tests/workflow_model.rs). | One supported guest runs on Platform: a custom `extension` step with outputs `allow` and `block` and no `network` permission, then a local `password` step, inside Wasmi 0.40. The guest has no imports and one 64 KiB page. Its timeout is fuel only. The engine installs `min(manifest fuel, timeout_seconds × 1,000)` before start, with fuel from 1 to 10,000 and 1,000 fuel per manifest second. Exhaustion is `timeout` only when that timeout budget is strictly smaller than the manifest fuel. Equal budgets report `fuel`. A timeout of 10 seconds or more cannot be tighter than the 10,000 fuel cap, so that exhaustion is `fuel`. Wasmi 0.40.0 `Config` has no epoch or interrupt, and `call_hook` / `call_resumable` pause only around host calls. This guest has no imports, so the budget does not preempt on wall-clock time. Admission rejects more than one function, more than 32 i32 locals, or a data segment before Wasmi compiles the module. The value stack is reserved at 64 `UntypedVal` slots, and a frame that would reach that height is `limit` before the buffer grows. The first call charges 7 fuel per function-body byte and does not translate when that charge exceeds the installed budget. Admission refuses a body whose 7-per-byte charge exceeds `min(manifest fuel, timeout_seconds × 1,000)` before `Module::new`. At the 10,000 fuel cap that is 1,428 body bytes. `check` validates a fitting body once and the first `execute` reuses that module. A later `execute` parses the bytes again so each call pays the translation charge. Validation of a fitting body is not fuel-metered and is not wall-clock preempted. `route.call` holds `&mut Store` until return, so another thread cannot drain its fuel. A detached guest would keep running after the caller continued, and stopping that thread requires `unsafe`, which this crate forbids. The host reads at most 32 guest bytes, the maximum `Label` length, and only when that length equals a declared label. A longer return is `output` and is not read. Other custom graphs, and several verifier and browser paths, remain later work. The editor does not author new conditions, custom stages, or source references. |
 | Browser administration | Both, with Platform sections | `/admin` for applications, people, and groups, calling the same management service as the API and `riauthctl`. Platform adds workflow authoring, connectors, temporary access, and the event map. | [PORTAL.md](PORTAL.md). In-tree tests [`tests/admin_ui.rs`](../tests/admin_ui.rs), [`tests/policy_simulation.rs`](../tests/policy_simulation.rs). | Help-desk page controls are not tailored to delegated roles; the server still enforces the exact permission. |
-| Passkeys in the browser | Both | WebAuthn enrollment and sign-in on the portal. | [passkeys.md](passkeys.md), [PORTAL.md](PORTAL.md). Specs under [`tools/browser`](../tools/browser) use a Chromium virtual authenticator. | Those specs are not the CI Playwright command. Physical keys, synced passkeys, phone hybrid, iOS, Android, and screen readers are manual gates in the [Essentials](essentials-guide.md) and [Platform](platform-guide.md) guides. |
+| Passkeys in the browser | Both | WebAuthn enrollment and sign-in on the portal. | [passkeys.md](passkeys.md), [PORTAL.md](PORTAL.md). Specs under [`tools/browser`](../tools/browser) use Playwright's simulated credential, or Chromium's CDP virtual authenticator in `invitation-passkey.spec.js`. | The integration job is written to run the bounded headless allowlist in [PORTAL.md](PORTAL.md) after `setup.spec.js`. Firefox and WebKit skip the CDP ceremony. Physical keys, synced passkeys, phone hybrid, iOS, Android, screen readers, and external mail remain manual gates in the [Essentials](essentials-guide.md) and [Platform](platform-guide.md) guides. |
 | Terminal USB | `riauthctl` optional feature | CTAP2 USB on the client. The server binary rejects the old commands with `Terminal USB passkeys moved to riauthctl; install/build riauthctl with --features terminal-usb`. The base client rejects them with `USB passkeys are unavailable in this build; rebuild riauthctl with --features terminal-usb`. | [`src/cli/usb.rs`](../src/cli/usb.rs), [`crates/riauthctl/src/usb.rs`](../crates/riauthctl/src/usb.rs). CI builds the Essentials server, checks the Essentials and Platform dependency trees for USB crates, tests base `riauthctl`, and `cargo check`s `terminal-usb`. | No hardware authenticator run. USB needs interactive touch or PIN. |
 | redb and backup | Both | One owning process for redb. `riauth backup` writes encrypted v3 streams (default 4 GiB). Legacy JSON backup is v2 and capped at 64 MiB. Restore invalidates sessions and grants. | [limitations.md](limitations.md), [recovery.md](recovery.md). Recorded drill [r05-local-2026-09-29.json](roadmap/evidence/r05-local-2026-09-29.json) (Platform binary, localhost redb, 16 checks passed). | The JSON does not name a commit, so it is not a pass record for this revision. Keys and referenced secret files are outside the archive. The drill's own `external_gates` still include a real relying party and Vault. |
 | PostgreSQL | Both | Multiple service processes may share one database. Replication, election, and fencing stay with the deployment. | [availability.md](availability.md). CI steps [`scripts/test-postgres.sh`](../scripts/test-postgres.sh) and [`scripts/test-contracts-postgres.sh`](../scripts/test-contracts-postgres.sh) use the distro `postgresql` package, version not pinned. Recorded drill [r05-postgres-local-2026-09-29.json](roadmap/evidence/r05-postgres-local-2026-09-29.json) quotes `pg_ctl (PostgreSQL) 16.14 (Homebrew)` on a loopback cluster. | That drill is not the CI replication script, does not name a commit, and leaves PITR, multi-node failover, and TLS to PostgreSQL in `external_gates`. |
@@ -247,11 +247,18 @@ integration job on `ubuntu-24.04` is written to run the test. This page did
 not run it. Package versions for `postgresql`, `slapd`, `nginx`, `xmlsec1`,
 and Google Chrome are whatever that runner installs. Chrome is the unpinned
 `google-chrome-stable_current_amd64.deb`. Playwright is
-`@playwright/test` 1.63.0; CI installs Chromium, Firefox, and WebKit and runs
-only [`tools/browser/setup.spec.js`](../tools/browser/setup.spec.js) on all
-three projects. That spec is first-administrator cookie setup. It is not a
-passkey journey. The WebKit project uses Playwright's Desktop Safari device
-profile, which is not Apple Safari.
+`@playwright/test` 1.63.0. CI installs Chromium, Firefox, and WebKit once.
+The setup step runs [`tools/browser/setup.spec.js`](../tools/browser/setup.spec.js)
+on all three projects. That spec is first-administrator cookie setup. It is not a
+passkey journey. The next step builds `portal_fixture` and is written to run eight
+headless files on those same browsers, with one worker, no retries, and a 25 minute
+limit: passkey revocation, authenticator-app recovery, passkey rename, password-reset
+replay, two simulated passkeys, the Chromium CDP invitation ceremony, password
+invitation acceptance, and the simulated invitation passkey. `invitation-passkey.spec.js`
+skips Firefox and WebKit. The simulated credential and the CDP authenticator are not
+physical keys, synced passkeys, a phone hybrid, a mobile operating system, a screen
+reader, or an external mailbox. The WebKit project uses Playwright's Desktop Safari
+device profile, which is not Apple Safari.
 
 | Peer | What is exercised | Status |
 | --- | --- | --- |
@@ -263,16 +270,18 @@ profile, which is not Apple Safari.
 | xmlsec1 | Independent sign, verify, and decrypt for the [Platform SAML IdP recipe](recipes/platform-saml-idp.md). The [SAML source recipe](recipes/platform-saml-source.md) signs responses and verifies SP metadata in the upstream-source filter. Logout is a separate filter | CI step. Not an IdP or SP |
 | GNU Lasso 2.9.0 | Loopback SP helper [`scripts/lasso-saml-sp.c`](../scripts/lasso-saml-sp.c) via [`scripts/test-saml-sp.sh`](../scripts/test-saml-sp.sh): signed redirect AuthnRequest, HTTP-POST response, NameID tamper, metadata-certificate rejection, re-signed Conditions lifetime rejection, and a helper Recipient rejection | Local ignored test. Bottle 2.9.0_4, linked to xmlsec1 1.3.12. Fixture entity `https://sp.example.test/metadata`. Outside CI |
 | Google Chrome | Headless user agent for the [OIDC relying-party fixture](recipes/oidc-relying-party.md), plus portal layout and nginx SSO when `RIAUTH_TEST_BROWSER` is set | CI step. Deb is not checksummed |
-| Playwright Chromium, Firefox, WebKit | `setup.spec.js` only | CI step |
+| Playwright Chromium, Firefox, WebKit | `setup.spec.js`, then the headless portal authenticator allowlist | CI step |
 | Authentik | Offline API-export conversion | Fixture in [`tests/identity/operations.rs`](../tests/identity/operations.rs). No Authentik process |
 | Keycloak, Okta, Active Directory | Names in migration-inventory fixtures that stay blocked | Fixture only. No server |
 | Workspace, Entra, Vault | Loopback mocks | Fixture only. No tenant and no Vault server |
 | RADIUS NAS | FreeRADIUS radclient 3.2.10 loopback PAP via `scripts/test-radius.sh`, plus the in-process client and OpenSSL EAP-TLS | Hardware NAS remains a deployment check |
 
 Other Playwright specs (`signin`, `portal`, `admin`, `accessibility-journeys`,
-`workflow-editor`) are in the tree and are not in the CI command. The
-coverage inventory's older note that Playwright never starts is stale against
-current `ci.yml`; that command still does not run those files.
+`workflow-editor`, and the client, grant, and membership review specs) are in
+the tree and are not in the CI command. The coverage inventory's older note
+that Playwright never starts, and its Q06 gap for CI wiring, record base
+`96e23e2`. Current `ci.yml` is written to run `setup.spec.js` and the portal
+authenticator allowlist. It still does not run those other files.
 
 ## Release, Linux, and Windows
 

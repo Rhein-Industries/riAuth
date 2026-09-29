@@ -14,8 +14,9 @@
 // invitation-passkey.spec.js and is not used here. The shim is not a physical
 // key, a synced passkey, a phone, or a mobile operating system. Tokens come
 // from the fixture's loopback SMTP capture, not an external mailbox. The
-// viewport is 390×844 CSS pixels. This is not a screen reader, and Playwright
-// is not a CI job.
+// viewport is 390×844 CSS pixels. This is not a screen reader. The integration
+// job is written to run this file headless in Chromium, Firefox, and WebKit with this
+// simulated credential, not a physical authenticator.
 import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { fixtureStartupMs, startFixture } from './fixture.js';
