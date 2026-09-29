@@ -932,6 +932,28 @@ def main() -> None:
                 errors.append("src/source.rs: source start writer belongs in assembly")
             source_start_for = rust_function_body(path.read_text(), "source_start_for")
             source_start_for_compact = re.sub(r"\s+", "", source_start_for or "")
+            start_authentication = rust_function_body(
+                source_catalog, "validate_source_start_authentication"
+            )
+            auth_compact = re.sub(r"\s+", "", start_authentication or "")
+            if (
+                source_start_for is None
+                or not (0 <= source_start_for_compact.find("letsource=enabled(tx,id)?")
+                        < source_start_for_compact.find("ifsource.oauth_profile.is_some()&&input.authentication_transaction.is_some()")
+                        < source_start_for_compact.find("lettarget=ifinput.link")
+                        < source_start_for_compact.find("ifletSome(challenge)=&input.authentication_transaction")
+                        < source_start_for_compact.find("crate::assembly::validate_source_start_authentication(tx,challenge)?")
+                        < source_start_for_compact.find("letstate=crypto::random_token"))
+                or re.search(r'\btx\s*\.\s*(?:get|list|query|scan|count|find)\s*::\s*<', path.read_text())
+                or start_authentication is None
+                or not (0 <= auth_compact.find('tx.get::<AuthenticationTransaction>("authentication",&digest(challenge))?')
+                        < auth_compact.find("record.expires_at>now()&&record.authenticated_session.is_none()")
+                        < auth_compact.find('Error::bad("Authenticationtransactionexpiredorused")')
+                        < auth_compact.find("crate::oidc::reject_embedded_stage(&record)"))
+                or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", start_authentication)
+                or not re.search(r"\bpub\(crate\)\s+use\s+source_catalog::\{[^}]*validate_source_start_authentication", (SRC / "assembly.rs").read_text(), re.S)
+            ):
+                errors.append("src/source.rs: request-bound authentication read belongs in assembly")
             persist_start = rust_function_body(source_catalog, "persist_source_start")
             persist_start_compact = re.sub(r"\s+", "", persist_start or "")
             start_call = "self.persist_source_start(tx,&state,&pending)?"

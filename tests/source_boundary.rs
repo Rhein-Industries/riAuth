@@ -8,7 +8,7 @@ use riauth::{
     context::{RequestContext, scope},
     crypto::{digest, now},
     jose::ClientAuthMethod,
-    model::{Identity, Session},
+    model::{AuthenticationTransaction, Identity, Session},
     source::{Finish, OAuthProfile, Source, SourceIdentity, SourceInput, Start},
     state::Manifest,
 };
@@ -667,6 +667,104 @@ fn source_enabled_lookup_keeps_missing_disabled_and_request_error_order() {
         .unwrap();
     assert_eq!(pending["source"], "corp");
     assert_eq!(pending["fingerprint"], source.fingerprint().unwrap());
+}
+
+#[test]
+fn source_start_authentication_read_keeps_expiry_use_and_stage_error_order() {
+    let fixture = Fixture::new();
+    let mut source = oauth_source();
+    source.oauth_profile = None;
+    source.scopes = BTreeSet::from(["openid".into()]);
+    source.jwks = serde_json::from_value(fixture.core.jwks().unwrap()).unwrap();
+    fixture
+        .core
+        .source_put(
+            &fixture.admin,
+            SourceInput {
+                source,
+                client_secret: Some(SECRET.into()),
+            },
+        )
+        .unwrap();
+    let challenge = "bound-authentication-request";
+    let start = |id: &str| {
+        fixture.core.source_start(
+            id,
+            Start {
+                link: false,
+                authentication_transaction: Some(challenge.into()),
+            },
+            None,
+        )
+    };
+    let denied = |message: &str| {
+        let before = fixture.snapshot().unwrap();
+        let error = start("corp").unwrap_err();
+        assert_eq!(error.code, "invalid_request");
+        assert_eq!(error.message, message);
+        fixture.assert_snapshot(&before);
+    };
+
+    let before = fixture.snapshot().unwrap();
+    assert_eq!(
+        start("missing").unwrap_err().message,
+        "Enabled source not found"
+    );
+    fixture.assert_snapshot(&before);
+    denied("Authentication transaction expired or used");
+
+    let mut record = AuthenticationTransaction {
+        request_hash: "request-hash".into(),
+        user_id: None,
+        authenticated_session: None,
+        expires_at: now() - 1,
+        source_stage: None,
+    };
+    let store_record = |record: &AuthenticationTransaction| {
+        fixture
+            .core
+            .store
+            .write(|tx| tx.put("authentication", &digest(challenge), record))
+            .unwrap();
+    };
+    store_record(&record);
+    denied("Authentication transaction expired or used");
+
+    record.expires_at = now() + 600;
+    record.authenticated_session = Some("already-used".into());
+    record.source_stage = Some("embedded-stage".into());
+    store_record(&record);
+    denied("Authentication transaction expired or used");
+
+    record.authenticated_session = None;
+    store_record(&record);
+    denied("This authentication transaction belongs to an embedded source stage");
+
+    record.source_stage = None;
+    store_record(&record);
+    let started = start("corp").unwrap();
+    let state = url::Url::parse(started["authorization_url"].as_str().unwrap())
+        .unwrap()
+        .query_pairs()
+        .find(|(key, _)| key == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    let pending: Value = fixture
+        .core
+        .store
+        .get("source_logins", &digest(&state))
+        .unwrap()
+        .unwrap();
+    assert_eq!(pending["authentication"], challenge);
+    assert!(
+        fixture
+            .core
+            .store
+            .get::<AuthenticationTransaction>("authentication", &digest(challenge))
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[test]

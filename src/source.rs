@@ -503,11 +503,7 @@ impl Core {
             None
         };
         if let Some(challenge) = &input.authentication_transaction {
-            let record = tx
-                .get::<AuthenticationTransaction>("authentication", &digest(challenge))?
-                .filter(|c| c.expires_at > now() && c.authenticated_session.is_none())
-                .ok_or_else(|| Error::bad("Authentication transaction expired or used"))?;
-            crate::oidc::reject_embedded_stage(&record)?;
+            crate::assembly::validate_source_start_authentication(tx, challenge)?;
         }
         let state = crypto::random_token("");
         let credential = crypto::random_token("ri_source_");

@@ -85,7 +85,7 @@ mod source_catalog;
 pub(crate) use source_catalog::{
     enabled_source as source_enabled, export_all_links as source_export_all_links,
     export_links as source_export_links, require_source_group, source_has_links,
-    source_write_prior,
+    source_write_prior, validate_source_start_authentication,
 };
 mod source_finish;
 pub(crate) use source_finish::clear_browser_return;

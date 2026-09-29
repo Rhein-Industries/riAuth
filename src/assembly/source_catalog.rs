@@ -3,9 +3,9 @@
 use crate::{
     agent::Principal,
     core::Core,
-    crypto::digest,
+    crypto::{digest, now},
     error::{Error, Result},
-    model::{Group, User},
+    model::{AuthenticationTransaction, Group, User},
     source::{Link, LinkSpec, Login, Source, SourceInput, Start},
     store::Tx,
 };
@@ -48,6 +48,14 @@ pub(crate) fn source_has_links(tx: &Tx<'_>, source_id: &str) -> Result<bool> {
         .list::<Link>("source_links")?
         .iter()
         .any(|(_, link)| link.source == source_id))
+}
+
+pub(crate) fn validate_source_start_authentication(tx: &Tx<'_>, challenge: &str) -> Result<()> {
+    let record = tx
+        .get::<AuthenticationTransaction>("authentication", &digest(challenge))?
+        .filter(|record| record.expires_at > now() && record.authenticated_session.is_none())
+        .ok_or_else(|| Error::bad("Authentication transaction expired or used"))?;
+    crate::oidc::reject_embedded_stage(&record)
 }
 
 /// The upstream accounts linked to a user, in storage iteration order.
