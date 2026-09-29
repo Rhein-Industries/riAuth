@@ -269,7 +269,8 @@ impl SnapshotDraft {
     }
 
     fn insert(&mut self, resource: Resource) -> Result<()> {
-        self.resources.insert(resource_key(&resource.kind, &resource.local_id), resource);
+        self.resources
+            .insert(resource_key(&resource.kind, &resource.local_id), resource);
         if self.resources.len() > MAX_PLAN_RESOURCES {
             return Err(Error::bad("SCIM plan exceeds the total resource limit"));
         }
@@ -721,7 +722,9 @@ impl Core {
             None => self.provisioning_plan(token, target_id)?,
         };
         if plan["decision"] == "snapshot_in_progress" {
-            return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan,"prior_delivery_settling":settling}));
+            return Ok(
+                json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan,"prior_delivery_settling":settling}),
+            );
         }
         let impact: RemovalImpact =
             serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
@@ -1005,7 +1008,8 @@ impl Core {
                     "SCIM managed snapshot changed; create a new plan",
                 ));
             }
-            let impact = provisioning_impact(tx, &plan.target, &plan.resources, &plan.managed_links)?;
+            let impact =
+                provisioning_impact(tx, &plan.target, &plan.resources, &plan.managed_links)?;
             ApplyGate {
                 id,
                 revision: plan.revision,
@@ -1729,7 +1733,12 @@ fn provisioning_impact(
     }
     let desired: BTreeMap<_, _> = resources
         .iter()
-        .map(|resource| ((resource.kind.as_str(), resource.local_id.as_str()), resource))
+        .map(|resource| {
+            (
+                (resource.kind.as_str(), resource.local_id.as_str()),
+                resource,
+            )
+        })
         .collect();
     let mut impact = RemovalImpact::default();
     let mut active = 0;
@@ -1751,7 +1760,9 @@ fn provisioning_impact(
             }
             // Keep the first matching link in storage-key order, matching the
             // prior group-impact lookup even if historical data has duplicates.
-            user_remote_ids.entry(link.local_id).or_insert(link.remote_id);
+            user_remote_ids
+                .entry(link.local_id)
+                .or_insert(link.remote_id);
         } else if link.kind == "Groups" {
             group_keys.push(key);
         }

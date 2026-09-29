@@ -97,8 +97,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     let first_totp = supported_configured_password_totp_enrollment(checked.definition());
     let first_passkey = supported_configured_password_passkey_enrollment(checked.definition());
     let replace_totp = supported_configured_password_totp_replacement(checked.definition());
-    let remove_with_totp =
-        supported_configured_password_totp_passkey_removal(checked.definition());
+    let remove_with_totp = supported_configured_password_totp_passkey_removal(checked.definition());
     let consent_totp = supported_configured_password_totp_consent(checked.definition());
     let extension = supported_configured_extension_password(checked.definition());
     let mfa = match checked.definition().id.as_str() {

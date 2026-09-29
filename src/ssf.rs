@@ -525,7 +525,12 @@ fn another_admin(tx: &impl SsfTx, user: &User) -> Result<bool> {
         .any(|(_, other)| other.id != user.id && other.admin && other.enabled))
 }
 
-pub(crate) fn apply_event(tx: &impl SsfTx, stream: &Stream, user_id: &str, event: &str) -> Result<bool> {
+pub(crate) fn apply_event(
+    tx: &impl SsfTx,
+    stream: &Stream,
+    user_id: &str,
+    event: &str,
+) -> Result<bool> {
     let mut user = tx
         .user(user_id)?
         .ok_or_else(|| Error::bad("Linked user is missing"))?;
@@ -611,9 +616,7 @@ pub(crate) fn claim_deliveries(
         if delivery.delivered_at.is_some() || delivery.stopped || delivery.next_attempt > now() {
             continue;
         }
-        if delivery.attempts >= MAX_ATTEMPTS
-            || delivery.created_at.saturating_add(86_400) < now()
-        {
+        if delivery.attempts >= MAX_ATTEMPTS || delivery.created_at.saturating_add(86_400) < now() {
             delivery.stopped = true;
             delivery.last_failed = true;
             tx.put_delivery(&id, &delivery)?;

@@ -213,12 +213,17 @@ fn offline_access_requires_refresh_grant_for_issuance_and_discovery() {
         .unwrap();
 
     let metadata = f.core.provider_discovery("limited").unwrap();
-    assert_eq!(metadata["grant_types_supported"], json!(["authorization_code"]));
+    assert_eq!(
+        metadata["grant_types_supported"],
+        json!(["authorization_code"])
+    );
     assert_eq!(metadata["response_types_supported"], json!(["code"]));
-    assert!(!metadata["scopes_supported"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("offline_access")));
+    assert!(
+        !metadata["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("offline_access"))
+    );
     assert!(metadata.get("device_authorization_endpoint").is_none());
     assert_eq!(
         f.core
@@ -710,9 +715,16 @@ fn empty_optional_parameters_and_native_callback_ports() {
         ..Default::default()
     };
     f.core.update_client(&f.admin, "app", patch).unwrap();
-    crate::common::client_endpoint::set(&f.core, &f.admin, "app", Some(vec![
-        "http://127.0.0.1:12345/callback".into(), "com.example.app:/callback".into(),
-    ]), None);
+    crate::common::client_endpoint::set(
+        &f.core,
+        &f.admin,
+        "app",
+        Some(vec![
+            "http://127.0.0.1:12345/callback".into(),
+            "com.example.app:/callback".into(),
+        ]),
+        None,
+    );
     let verifier = crypto::random_token("");
     let mut request = f.request("app", &verifier);
     request.redirect_uri = "http://127.0.0.1:54321/callback".into();
@@ -966,7 +978,10 @@ fn consent_creation_follows_only_issued_browser_and_terminal_approvals() {
         .find_map(|cookie| cookie.split(';').next()?.strip_prefix("riauth_return="))
         .unwrap()
         .to_owned();
-    let state = f.core.authorize_state(&id, Some(&binding), Some(&sso)).unwrap();
+    let state = f
+        .core
+        .authorize_state(&id, Some(&binding), Some(&sso))
+        .unwrap();
     assert_eq!(state["status"], "consent");
     assert_eq!(
         f.core
@@ -982,7 +997,14 @@ fn consent_creation_follows_only_issued_browser_and_terminal_approvals() {
             .code,
         "account_changed"
     );
-    assert!(f.core.consents(&alice).unwrap().as_array().unwrap().is_empty());
+    assert!(
+        f.core
+            .consents(&alice)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
         f.core
             .authorize_decision(
@@ -996,25 +1018,34 @@ fn consent_creation_follows_only_issued_browser_and_terminal_approvals() {
             .unwrap()["status"],
         "complete"
     );
-    assert_eq!(f.core.consents(&alice).unwrap().as_array().unwrap().len(), 1);
-    assert!(f
-        .core
-        .authorize_decision(
-            &id,
-            Some(&binding),
-            Some(&sso),
-            true,
-            true,
-            Some(text(&state, "session_ref")),
-        )
-        .is_err());
-    assert!(f
-        .core
-        .browser_resume_with(&id, Some(&binding), Some(&sso))
-        .unwrap()
-        .location
-        .is_some());
-    assert!(f.core.browser_resume_with(&id, Some(&binding), Some(&sso)).is_err());
+    assert_eq!(
+        f.core.consents(&alice).unwrap().as_array().unwrap().len(),
+        1
+    );
+    assert!(
+        f.core
+            .authorize_decision(
+                &id,
+                Some(&binding),
+                Some(&sso),
+                true,
+                true,
+                Some(text(&state, "session_ref")),
+            )
+            .is_err()
+    );
+    assert!(
+        f.core
+            .browser_resume_with(&id, Some(&binding), Some(&sso))
+            .unwrap()
+            .location
+            .is_some()
+    );
+    assert!(
+        f.core
+            .browser_resume_with(&id, Some(&binding), Some(&sso))
+            .is_err()
+    );
 
     let terminal = f
         .core
@@ -1027,7 +1058,10 @@ fn consent_creation_follows_only_issued_browser_and_terminal_approvals() {
         transaction_id: None,
         remember: true,
     };
-    assert_eq!(f.core.browser_decide(&bob, decision()).unwrap()["remembered"], true);
+    assert_eq!(
+        f.core.browser_decide(&bob, decision()).unwrap()["remembered"],
+        true
+    );
     assert!(f.core.browser_decide(&bob, decision()).is_err());
     assert_eq!(f.core.consents(&bob).unwrap().as_array().unwrap().len(), 1);
 
@@ -1035,10 +1069,14 @@ fn consent_creation_follows_only_issued_browser_and_terminal_approvals() {
     for token in [&alice, &bob] {
         let user_id = text(&f.core.me(token).unwrap()["user"], "id");
         assert_eq!(
-            events.as_array().unwrap().iter().filter(|event|
-                event["actor"] == user_id.as_str() && event["action"] == "authorization.approved"
-                    && event["target"] == "app"
-            ).count(),
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["actor"] == user_id.as_str()
+                    && event["action"] == "authorization.approved"
+                    && event["target"] == "app")
+                .count(),
             1
         );
     }
@@ -1648,10 +1686,12 @@ fn metadata_server_discovery_tracks_enabled_client_scopes_and_claims() {
             "{field} disagrees with {feature}"
         );
     }
-    assert!(!baseline["scopes_supported"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("api.read")));
+    assert!(
+        !baseline["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
 
     f.core
         .create_client(
@@ -1685,31 +1725,77 @@ fn metadata_server_discovery_tracks_enabled_client_scopes_and_claims() {
         )
         .unwrap();
     let server = f.core.discovery().unwrap();
-    assert!(server["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
-    assert!(server["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
-    assert!(!server["claims_supported"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("unusable_offline_claim")));
+    assert!(
+        server["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+    assert!(
+        server["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tenant"))
+    );
+    assert!(
+        !server["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("unusable_offline_claim"))
+    );
     let custom = f.core.provider_discovery("custom").unwrap();
-    assert!(custom["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
-    assert!(custom["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
-    assert!(!custom["scopes_supported"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("offline_access")));
-    assert!(!custom["claims_supported"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("unusable_offline_claim")));
+    assert!(
+        custom["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+    assert!(
+        custom["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tenant"))
+    );
+    assert!(
+        !custom["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("offline_access"))
+    );
+    assert!(
+        !custom["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("unusable_offline_claim"))
+    );
     let other = f.core.provider_discovery("other").unwrap();
-    assert!(!other["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
-    assert!(!other["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
+    assert!(
+        !other["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+    assert!(
+        !other["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tenant"))
+    );
 
     crate::common::client_status::set(&f.core, &f.admin, "custom", false);
     let disabled = f.core.discovery().unwrap();
-    assert!(!disabled["scopes_supported"].as_array().unwrap().contains(&json!("api.read")));
-    assert!(!disabled["claims_supported"].as_array().unwrap().contains(&json!("tenant")));
+    assert!(
+        !disabled["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("api.read"))
+    );
+    assert!(
+        !disabled["claims_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("tenant"))
+    );
 }
 
 #[test]
@@ -1751,7 +1837,10 @@ fn metadata_registration_response_types_match_grants() {
             .code,
         "invalid_client_metadata"
     );
-    assert_eq!(f.core.registration_templates(&f.admin).unwrap()[0]["used"], 0);
+    assert_eq!(
+        f.core.registration_templates(&f.admin).unwrap()[0]["used"],
+        0
+    );
 
     request.response_types = None;
     let registered = f.core.dynamic_register(&credential, request).unwrap();
@@ -1780,9 +1869,18 @@ fn metadata_registration_response_types_match_grants() {
     assert_eq!(metadata["request_uri_parameter_supported"], false);
     assert_eq!(metadata["require_pushed_authorization_requests"], false);
     assert_eq!(metadata["claims_parameter_supported"], false);
-    assert_eq!(metadata["authorization_response_iss_parameter_supported"], false);
-    assert_eq!(metadata["token_endpoint_auth_methods_supported"], json!(["none"]));
-    assert_eq!(metadata["revocation_endpoint_auth_methods_supported"], json!(["none"]));
+    assert_eq!(
+        metadata["authorization_response_iss_parameter_supported"],
+        false
+    );
+    assert_eq!(
+        metadata["token_endpoint_auth_methods_supported"],
+        json!(["none"])
+    );
+    assert_eq!(
+        metadata["revocation_endpoint_auth_methods_supported"],
+        json!(["none"])
+    );
     assert!(metadata.get("device_authorization_endpoint").is_some());
     assert_eq!(
         f.core
@@ -1799,7 +1897,10 @@ fn metadata_registration_response_types_match_grants() {
                 vec![
                     ("client_id".into(), client_id.clone()),
                     ("response_type".into(), "code".into()),
-                    ("redirect_uri".into(), "https://app.example.test/callback".into()),
+                    (
+                        "redirect_uri".into(),
+                        "https://app.example.test/callback".into()
+                    ),
                     ("scope".into(), "openid".into()),
                     ("code_challenge".into(), digest(&crypto::random_token(""))),
                     ("code_challenge_method".into(), "S256".into()),
@@ -1850,30 +1951,62 @@ fn metadata_authorization_code_clients_advertise_usable_requests_and_authenticat
         .unwrap();
     let server = f.core.discovery().unwrap();
     let metadata = f.core.provider_discovery("code").unwrap();
-    assert_eq!(metadata["grant_types_supported"], json!(["authorization_code"]));
+    assert_eq!(
+        metadata["grant_types_supported"],
+        json!(["authorization_code"])
+    );
     assert_eq!(metadata["response_types_supported"], json!(["code"]));
-    assert_eq!(metadata["response_modes_supported"], server["response_modes_supported"]);
-    assert!(!metadata["response_modes_supported"].as_array().unwrap().is_empty());
+    assert_eq!(
+        metadata["response_modes_supported"],
+        server["response_modes_supported"]
+    );
+    assert!(
+        !metadata["response_modes_supported"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     for field in [
         "authorization_endpoint",
         "code_challenge_methods_supported",
         "pushed_authorization_request_endpoint",
     ] {
-        assert_eq!(metadata[field], server[field], "{field} must remain available");
+        assert_eq!(
+            metadata[field], server[field],
+            "{field} must remain available"
+        );
     }
     assert_eq!(metadata["request_parameter_supported"], true);
     assert_eq!(metadata["request_uri_parameter_supported"], true);
     assert_eq!(metadata["require_pushed_authorization_requests"], true);
-    assert_eq!(metadata["request_object_signing_alg_values_supported"], json!(["RS256"]));
-    assert_eq!(metadata["token_endpoint_auth_methods_supported"], json!(["client_secret_basic"]));
-    assert_eq!(metadata["revocation_endpoint_auth_methods_supported"], json!(["client_secret_basic"]));
-    assert_eq!(metadata["introspection_endpoint_auth_methods_supported"], json!(["client_secret_basic"]));
-    assert!(metadata.get("token_endpoint_auth_signing_alg_values_supported").is_none());
+    assert_eq!(
+        metadata["request_object_signing_alg_values_supported"],
+        json!(["RS256"])
+    );
+    assert_eq!(
+        metadata["token_endpoint_auth_methods_supported"],
+        json!(["client_secret_basic"])
+    );
+    assert_eq!(
+        metadata["revocation_endpoint_auth_methods_supported"],
+        json!(["client_secret_basic"])
+    );
+    assert_eq!(
+        metadata["introspection_endpoint_auth_methods_supported"],
+        json!(["client_secret_basic"])
+    );
+    assert!(
+        metadata
+            .get("token_endpoint_auth_signing_alg_values_supported")
+            .is_none()
+    );
     assert!(metadata.get("device_authorization_endpoint").is_none());
-    assert!(!metadata["scopes_supported"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("offline_access")));
+    assert!(
+        !metadata["scopes_supported"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("offline_access"))
+    );
 
     f.client("plain-code", false);
     f.core
@@ -1894,8 +2027,15 @@ fn metadata_authorization_code_clients_advertise_usable_requests_and_authenticat
     assert!(plain.get("pushed_authorization_request_endpoint").is_some());
     assert_eq!(plain["request_uri_parameter_supported"], true);
     assert_eq!(plain["request_parameter_supported"], false);
-    assert!(plain.get("request_object_signing_alg_values_supported").is_none());
-    assert_eq!(plain["token_endpoint_auth_methods_supported"], json!(["none"]));
+    assert!(
+        plain
+            .get("request_object_signing_alg_values_supported")
+            .is_none()
+    );
+    assert_eq!(
+        plain["token_endpoint_auth_methods_supported"],
+        json!(["none"])
+    );
 }
 
 #[test]
@@ -1994,7 +2134,10 @@ fn dynamic_registration_constrains_metadata_uses_and_revocation() {
     ] {
         assert_eq!(metadata[field], json!(["private_key_jwt"]), "{field}");
     }
-    assert_eq!(metadata["token_endpoint_auth_signing_alg_values_supported"], json!(["RS256"]));
+    assert_eq!(
+        metadata["token_endpoint_auth_signing_alg_values_supported"],
+        json!(["RS256"])
+    );
     let c: Client = f
         .core
         .store
@@ -2074,7 +2217,10 @@ fn offline_access_requires_refresh_grant_at_registration() {
             .code,
         "invalid_client_metadata"
     );
-    assert_eq!(f.core.registration_templates(&f.admin).unwrap()[0]["used"], 0);
+    assert_eq!(
+        f.core.registration_templates(&f.admin).unwrap()[0]["used"],
+        0
+    );
     request.scope = Some("openid".into());
     let registered = f.core.dynamic_register(&credential, request).unwrap();
     assert_eq!(registered["scope"], "openid");
@@ -2811,11 +2957,15 @@ fn resource_indicators_bind_consent_code_refresh_audience_and_online_policy() {
 #[test]
 fn logout_confirmation_session_checks_and_frontchannel_are_account_bound() {
     let f = Fixture::new();
-    f.client_with_settings("app", false, ProviderSettings {
-        frontchannel_logout_uri: Some("https://app.example.test/front-logout".into()),
-        post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
-        ..Default::default()
-    });
+    f.client_with_settings(
+        "app",
+        false,
+        ProviderSettings {
+            frontchannel_logout_uri: Some("https://app.example.test/front-logout".into()),
+            post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
+            ..Default::default()
+        },
+    );
     let alice = f.user("alice");
     let bob = f.user("bob");
     let sid: String = f
@@ -2931,10 +3081,14 @@ fn logout_confirmation_session_checks_and_frontchannel_are_account_bound() {
 
 const SIGNED_OUT: &str = "https://app.example.test/signed-out";
 fn logout_app(f: &Fixture) {
-    f.client_with_settings("app", false, ProviderSettings {
-        post_logout_redirect_uris: vec![SIGNED_OUT.into()],
-        ..Default::default()
-    });
+    f.client_with_settings(
+        "app",
+        false,
+        ProviderSettings {
+            post_logout_redirect_uris: vec![SIGNED_OUT.into()],
+            ..Default::default()
+        },
+    );
 }
 fn rp_logout(hint: Option<&Value>) -> riauth::logout::LogoutRequest {
     riauth::logout::LogoutRequest {

@@ -148,12 +148,17 @@ async fn call(
         request = request.header("if-match", format!("\"{rev}\""));
     }
     // Keep these authority probes distinct under the direct write receipt contract.
-    if (method == "POST" && matches!(uri, "/api/keys" | "/api/keys/rotate" | "/api/account/invitations")) || (method == "PATCH" && (
-        uri.starts_with("/api/users/")
-            || uri.starts_with("/api/admin/users/")
-            || uri.starts_with("/api/clients/")
-            || uri.starts_with("/api/admin/clients/")
-    )) {
+    if (method == "POST"
+        && matches!(
+            uri,
+            "/api/keys" | "/api/keys/rotate" | "/api/account/invitations"
+        ))
+        || (method == "PATCH"
+            && (uri.starts_with("/api/users/")
+                || uri.starts_with("/api/admin/users/")
+                || uri.starts_with("/api/clients/")
+                || uri.starts_with("/api/admin/clients/")))
+    {
         request = request.header("idempotency-key", uuid::Uuid::new_v4().to_string());
     }
     let payload = if let Some(body) = body {
@@ -1079,13 +1084,11 @@ async fn agent_known_credentials_cannot_cross_human_privilege_boundary() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    let planted_session = f
-        .core
-        .login("alice".into(), planted.into(), None)
-        .unwrap()["session_token"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let planted_session =
+        f.core.login("alice".into(), planted.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
     let (status, _) = call(
         &app,
         "PATCH",
@@ -1097,14 +1100,15 @@ async fn agent_known_credentials_cannot_cross_human_privilege_boundary() {
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert!(f
-        .core
-        .set_human_grants(
-            &f.admin,
-            "alice",
-            vec![grant(HumanRole::Auditor, "audit/events")],
-        )
-        .is_err());
+    assert!(
+        f.core
+            .set_human_grants(
+                &f.admin,
+                "alice",
+                vec![grant(HumanRole::Auditor, "audit/events")],
+            )
+            .is_err()
+    );
     let exposure: Value = f
         .core
         .store
@@ -1113,32 +1117,36 @@ async fn agent_known_credentials_cannot_cross_human_privilege_boundary() {
         .unwrap();
     assert_eq!(exposure["verified_email"], "alice@example.test");
     assert_eq!(exposure["actor_id"], "agent:alice-writer");
-    assert!(f
-        .core
-        .store
-        .get::<User>("users", &alice_id)
-        .unwrap()
-        .unwrap()
-        .totp_secret
-        .is_none());
-    assert!(f
-        .core
-        .store
-        .list::<Value>("audit")
-        .unwrap()
-        .into_iter()
-        .any(|(_, event)| {
-            event["action"] == "agent.credential_exposure"
-                && event["actor"] == "agent:alice-writer"
-                && event["target"] == alice_id
-                && event["details"]["scope"] == "user/alice"
-        }));
+    assert!(
+        f.core
+            .store
+            .get::<User>("users", &alice_id)
+            .unwrap()
+            .unwrap()
+            .totp_secret
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("audit")
+            .unwrap()
+            .into_iter()
+            .any(|(_, event)| {
+                event["action"] == "agent.credential_exposure"
+                    && event["actor"] == "agent:alice-writer"
+                    && event["target"] == alice_id
+                    && event["details"]["scope"] == "user/alice"
+            })
+    );
 
     f.core.account_reset_request("alice").unwrap();
     let deliveries = f.core.store.list::<Value>("mail_deliveries").unwrap();
-    assert!(!deliveries
-        .iter()
-        .any(|(_, delivery)| delivery["recipient"] == "agent@example.test"));
+    assert!(
+        !deliveries
+            .iter()
+            .any(|(_, delivery)| delivery["recipient"] == "agent@example.test")
+    );
     let owner_mail = deliveries
         .into_iter()
         .map(|(_, delivery)| delivery)
@@ -1158,21 +1166,23 @@ async fn agent_known_credentials_cannot_cross_human_privilege_boundary() {
             .unwrap()["factors_reset"],
         true
     );
-    assert!(f
-        .core
-        .account_complete(code, Purpose::Reset, Some("replay-password".into()))
-        .is_err());
+    assert!(
+        f.core
+            .account_complete(code, Purpose::Reset, Some("replay-password".into()))
+            .is_err()
+    );
     assert!(f.core.me(&planted_session).is_err());
     assert!(f.core.login("alice".into(), planted.into(), None).is_err());
     let recovered: User = f.core.store.get("users", &alice_id).unwrap().unwrap();
     assert_eq!(recovered.email.as_deref(), Some("alice@example.test"));
     assert!(recovered.email_verified);
-    assert!(f
-        .core
-        .store
-        .get::<Value>("support_credential_exposure", &alice_id)
-        .unwrap()
-        .is_none());
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &alice_id)
+            .unwrap()
+            .is_none()
+    );
     f.core
         .set_human_grants(
             &f.admin,
@@ -1212,10 +1222,7 @@ async fn agent_known_credentials_cannot_cross_human_privilege_boundary() {
             },
         )
         .unwrap();
-    let owner_session = f
-        .core
-        .login("alice".into(), fresh.into(), None)
-        .unwrap()["session_token"]
+    let owner_session = f.core.login("alice".into(), fresh.into(), None).unwrap()["session_token"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -1233,25 +1240,27 @@ async fn agent_known_credentials_cannot_cross_human_privilege_boundary() {
             },
         )
         .unwrap();
-    assert!(f
-        .core
-        .update_user(
-            &f.admin,
-            "newbie",
-            UserPatch {
-                admin: Some(true),
-                ..Default::default()
-            },
-        )
-        .is_err());
-    assert!(f
-        .core
-        .set_human_grants(
-            &f.admin,
-            "newbie",
-            vec![grant(HumanRole::Auditor, "audit/events")],
-        )
-        .is_err());
+    assert!(
+        f.core
+            .update_user(
+                &f.admin,
+                "newbie",
+                UserPatch {
+                    admin: Some(true),
+                    ..Default::default()
+                },
+            )
+            .is_err()
+    );
+    assert!(
+        f.core
+            .set_human_grants(
+                &f.admin,
+                "newbie",
+                vec![grant(HumanRole::Auditor, "audit/events")],
+            )
+            .is_err()
+    );
     let newbie_id: String = f.core.store.get("usernames", "newbie").unwrap().unwrap();
     let exposure: Value = f
         .core
@@ -1319,18 +1328,19 @@ async fn agent_selected_invitation_mailbox_cannot_cross_human_privilege_boundary
         .unwrap();
     assert_eq!(exposure["actor_id"], "agent:invite-writer");
     assert!(exposure["verified_email"].is_null());
-    assert!(f
-        .core
-        .store
-        .list::<Value>("audit")
-        .unwrap()
-        .into_iter()
-        .any(|(_, event)| {
-            event["action"] == "agent.credential_exposure"
-                && event["actor"] == "agent:invite-writer"
-                && event["target"] == invited_id
-                && event["details"]["scope"] == "user/invited"
-        }));
+    assert!(
+        f.core
+            .store
+            .list::<Value>("audit")
+            .unwrap()
+            .into_iter()
+            .any(|(_, event)| {
+                event["action"] == "agent.credential_exposure"
+                    && event["actor"] == "agent:invite-writer"
+                    && event["target"] == invited_id
+                    && event["details"]["scope"] == "user/invited"
+            })
+    );
     let mail = f
         .core
         .store
@@ -1359,14 +1369,15 @@ async fn agent_selected_invitation_mailbox_cannot_cross_human_privilege_boundary
             tx.put("users", invited_id, &pending)
         })
         .unwrap();
-    assert!(f
-        .core
-        .account_complete(
-            code.clone(),
-            Purpose::Invite,
-            Some("agent-known-invite-password".into()),
-        )
-        .is_err());
+    assert!(
+        f.core
+            .account_complete(
+                code.clone(),
+                Purpose::Invite,
+                Some("agent-known-invite-password".into()),
+            )
+            .is_err()
+    );
     f.core
         .store
         .write(|tx| {
@@ -1376,7 +1387,11 @@ async fn agent_selected_invitation_mailbox_cannot_cross_human_privilege_boundary
         })
         .unwrap();
     f.core
-        .account_complete(code, Purpose::Invite, Some("agent-known-invite-password".into()))
+        .account_complete(
+            code,
+            Purpose::Invite,
+            Some("agent-known-invite-password".into()),
+        )
         .unwrap();
     let exposure: Value = f
         .core
@@ -1440,12 +1455,13 @@ async fn agent_selected_invitation_mailbox_cannot_cross_human_privilege_boundary
         )
         .unwrap();
     let reissued_id: String = f.core.store.get("usernames", "reissued").unwrap().unwrap();
-    assert!(f
-        .core
-        .store
-        .get::<Value>("support_credential_exposure", &reissued_id)
-        .unwrap()
-        .is_none());
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &reissued_id)
+            .unwrap()
+            .is_none()
+    );
     let (status, _) = call(
         &app,
         "POST",
@@ -1486,7 +1502,11 @@ async fn agent_selected_invitation_mailbox_cannot_cross_human_privilege_boundary
         .unwrap()
         .to_owned();
     f.core
-        .account_complete(code, Purpose::Invite, Some("agent-known-reissue-password".into()))
+        .account_complete(
+            code,
+            Purpose::Invite,
+            Some("agent-known-reissue-password".into()),
+        )
         .unwrap();
     assert_eq!(
         f.core
@@ -1553,29 +1573,34 @@ fn legacy_unmarked_password_certificate_and_invitation_require_offline_recovery(
             tx.put("users", &legacy_id, &user)?;
             tx.put("mtls_users", &legacy_id, &binding_id)?;
             tx.put("mtls_fingerprints", fingerprint, &binding_id)?;
-            tx.put("mtls_bindings", binding_id, &json!({
-                "id": binding_id,
-                "username": "legacy",
-                "user_id": legacy_id,
-                "fingerprint": fingerprint,
-                "san_uri": null,
-                "san_email": null,
-                "not_after": null,
-                "created_at": 1
-            }))?;
+            tx.put(
+                "mtls_bindings",
+                binding_id,
+                &json!({
+                    "id": binding_id,
+                    "username": "legacy",
+                    "user_id": legacy_id,
+                    "fingerprint": fingerprint,
+                    "san_uri": null,
+                    "san_email": null,
+                    "not_after": null,
+                    "created_at": 1
+                }),
+            )?;
             tx.delete("elevation_provenance", &legacy_id)?;
             tx.delete("support_credential_exposure", &legacy_id)
         })
         .unwrap();
-    let planted_session = f
-        .core
-        .login("legacy".into(), planted.into(), None)
-        .unwrap()["session_token"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let planted_session =
+        f.core.login("legacy".into(), planted.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
     assert!(f.core.audit_events(&planted_session, 1).is_err());
-    assert!(f.core.me(&f.admin).is_ok(), "existing administrators stay usable");
+    assert!(
+        f.core.me(&f.admin).is_ok(),
+        "existing administrators stay usable"
+    );
     assert_eq!(
         f.core
             .update_user(
@@ -1614,33 +1639,35 @@ fn legacy_unmarked_password_certificate_and_invitation_require_offline_recovery(
     assert!(f.core.login("legacy".into(), planted.into(), None).is_err());
     let recovered: User = f.core.store.get("users", &legacy_id).unwrap().unwrap();
     assert!(recovered.admin);
-    assert!(f
-        .core
-        .human_grants(&f.admin, "legacy")
-        .unwrap()["grants"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        f.core.human_grants(&f.admin, "legacy").unwrap()["grants"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     assert!(recovered.email.is_none());
     assert!(!recovered.email_verified);
-    assert!(f
-        .core
-        .store
-        .get::<Value>("mtls_bindings", binding_id)
-        .unwrap()
-        .is_none());
-    assert!(f
-        .core
-        .store
-        .get::<String>("mtls_fingerprints", fingerprint)
-        .unwrap()
-        .is_none());
-    assert!(f
-        .core
-        .store
-        .get::<String>("mtls_users", &legacy_id)
-        .unwrap()
-        .is_none());
+    assert!(
+        f.core
+            .store
+            .get::<Value>("mtls_bindings", binding_id)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<String>("mtls_fingerprints", fingerprint)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<String>("mtls_users", &legacy_id)
+            .unwrap()
+            .is_none()
+    );
     let recovered_session = f
         .core
         .login("legacy".into(), "owner-offline-password".into(), None)
@@ -1648,16 +1675,20 @@ fn legacy_unmarked_password_certificate_and_invitation_require_offline_recovery(
         .as_str()
         .unwrap()
         .to_owned();
-    assert_eq!(f.core.me(&recovered_session).unwrap()["user"]["admin"], true);
-    assert!(f
-        .core
-        .store
-        .list::<Value>("audit")
-        .unwrap()
-        .into_iter()
-        .any(|(_, event)| event["actor"] == "local-recovery"
-            && event["action"] == "admin.recover.factors_reset"
-            && event["target"] == legacy_id));
+    assert_eq!(
+        f.core.me(&recovered_session).unwrap()["user"]["admin"],
+        true
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("audit")
+            .unwrap()
+            .into_iter()
+            .any(|(_, event)| event["actor"] == "local-recovery"
+                && event["action"] == "admin.recover.factors_reset"
+                && event["target"] == legacy_id)
+    );
 
     let agent = f
         .core
@@ -1705,12 +1736,13 @@ fn legacy_unmarked_password_certificate_and_invitation_require_offline_recovery(
             },
         )
         .unwrap();
-    assert!(f
-        .core
-        .store
-        .get::<Value>("elevation_provenance", &invited_id)
-        .unwrap()
-        .is_none());
+    assert!(
+        f.core
+            .store
+            .get::<Value>("elevation_provenance", &invited_id)
+            .unwrap()
+            .is_none()
+    );
     let latest_mail = f
         .core
         .store
@@ -1729,12 +1761,13 @@ fn legacy_unmarked_password_certificate_and_invitation_require_offline_recovery(
     f.core
         .account_complete(code.into(), Purpose::Invite, Some("invite-planted".into()))
         .unwrap();
-    assert!(f
-        .core
-        .store
-        .get::<Value>("support_credential_exposure", &invited_id)
-        .unwrap()
-        .is_none());
+    assert!(
+        f.core
+            .store
+            .get::<Value>("support_credential_exposure", &invited_id)
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(
         f.core
             .update_user(

@@ -7,8 +7,9 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     sync::{
-        Arc, Mutex, mpsc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicU16, AtomicUsize, Ordering},
+        mpsc,
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -2699,10 +2700,16 @@ fn workspace_plan_snapshot_restarts_for_a_different_authorized_actor() {
         vec![permission("directory.sync", "workspace/corp")],
     );
 
-    let first = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+    let first = fixture
+        .core
+        .cloud_plan(&fixture.admin, "workspace", "corp")
+        .unwrap();
     assert_eq!(first["decision"], "snapshot_in_progress");
     assert_eq!(first["pages"], 5);
-    let second = fixture.core.cloud_plan(&other, "workspace", "corp").unwrap();
+    let second = fixture
+        .core
+        .cloud_plan(&other, "workspace", "corp")
+        .unwrap();
     assert_eq!(second["decision"], "snapshot_in_progress");
     assert_eq!(second["restart"], true);
     assert_eq!(second["pages"], 5);
@@ -2712,55 +2719,139 @@ fn workspace_plan_snapshot_restarts_for_a_different_authorized_actor() {
 #[test]
 fn workspace_quotas_bind_plan_continuation_and_apply() {
     let (directory, mut fixture) = linked_pair("workspace");
-    let old = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
-    fixture.core.config.reconciliation_quotas.cloud.pages_per_call = 6;
+    let old = fixture
+        .core
+        .cloud_plan(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    fixture
+        .core
+        .config
+        .reconciliation_quotas
+        .cloud
+        .pages_per_call = 6;
     assert!(fixture.core.config.validate().is_err());
-    fixture.core.config.reconciliation_quotas.cloud.pages_per_call = 1;
-    fixture.core.config.reconciliation_quotas.cloud.max_pages_per_collection = 1;
+    fixture
+        .core
+        .config
+        .reconciliation_quotas
+        .cloud
+        .pages_per_call = 1;
+    fixture
+        .core
+        .config
+        .reconciliation_quotas
+        .cloud
+        .max_pages_per_collection = 1;
     fixture.core.config.reconciliation_quotas.cloud.max_objects = 3;
-    fixture.core.config.reconciliation_quotas.cloud.max_snapshot_bytes = 65536;
-    fixture.core.config.reconciliation_quotas.cloud.max_page_bytes = 65537;
+    fixture
+        .core
+        .config
+        .reconciliation_quotas
+        .cloud
+        .max_snapshot_bytes = 65536;
+    fixture
+        .core
+        .config
+        .reconciliation_quotas
+        .cloud
+        .max_page_bytes = 65537;
     assert!(fixture.core.config.validate().is_err());
-    fixture.core.config.reconciliation_quotas.cloud.max_page_bytes = 4096;
+    fixture
+        .core
+        .config
+        .reconciliation_quotas
+        .cloud
+        .max_page_bytes = 4096;
     fixture.core.config.validate().unwrap();
     *directory.state.mode.lock().unwrap() = Mode::WorkspacePaged;
 
-    let progress = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+    let progress = fixture
+        .core
+        .cloud_plan(&fixture.admin, "workspace", "corp")
+        .unwrap();
     assert_eq!(progress["decision"], "snapshot_in_progress");
     assert_eq!(progress["pages"], 1);
-    assert_eq!(fixture.core.cloud_plan(&fixture.admin, "workspace", "corp")
-        .unwrap_err().code, "connector_incomplete_snapshot");
-    assert_eq!(fixture.core.cloud_apply(&fixture.admin, "workspace", old["id"].as_str().unwrap())
-        .unwrap_err().code, "conflict");
+    assert_eq!(
+        fixture
+            .core
+            .cloud_plan(&fixture.admin, "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "connector_incomplete_snapshot"
+    );
+    assert_eq!(
+        fixture
+            .core
+            .cloud_apply(&fixture.admin, "workspace", old["id"].as_str().unwrap())
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
 
-    fixture.core.config.reconciliation_quotas.cloud.max_pages_per_collection = 20;
-    let mut plan = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+    fixture
+        .core
+        .config
+        .reconciliation_quotas
+        .cloud
+        .max_pages_per_collection = 20;
+    let mut plan = fixture
+        .core
+        .cloud_plan(&fixture.admin, "workspace", "corp")
+        .unwrap();
     assert_eq!(plan["restart"], true);
     for _ in 0..8 {
-        if plan["decision"] != "snapshot_in_progress" { break; }
-        plan = fixture.core.cloud_plan(&fixture.admin, "workspace", "corp").unwrap();
+        if plan["decision"] != "snapshot_in_progress" {
+            break;
+        }
+        plan = fixture
+            .core
+            .cloud_plan(&fixture.admin, "workspace", "corp")
+            .unwrap();
     }
     let id = plan["id"].as_str().unwrap();
     let users_before = users_of(&fixture);
-    let apply = fixture.core.cloud_apply(&fixture.admin, "workspace", id).unwrap();
+    let apply = fixture
+        .core
+        .cloud_apply(&fixture.admin, "workspace", id)
+        .unwrap();
     assert_eq!(apply["decision"], "snapshot_in_progress");
     assert_eq!(apply["pages"], 1);
     assert_eq!(users_of(&fixture), users_before);
 
     fixture.core.config.reconciliation_quotas.cloud.max_objects = 1;
     fixture.core.config.validate().unwrap();
-    assert_eq!(fixture.core.cloud_apply(&fixture.admin, "workspace", id)
-        .unwrap_err().code, "conflict");
+    assert_eq!(
+        fixture
+            .core
+            .cloud_apply(&fixture.admin, "workspace", id)
+            .unwrap_err()
+            .code,
+        "conflict"
+    );
     assert_eq!(users_of(&fixture), users_before);
     fixture.core.config.reconciliation_quotas.cloud.max_objects = 3;
-    let mut applied = fixture.core.cloud_apply(&fixture.admin, "workspace", id).unwrap();
+    let mut applied = fixture
+        .core
+        .cloud_apply(&fixture.admin, "workspace", id)
+        .unwrap();
     for _ in 0..8 {
-        if applied["decision"] != "snapshot_in_progress" { break; }
-        applied = fixture.core.cloud_apply(&fixture.admin, "workspace", id).unwrap();
+        if applied["decision"] != "snapshot_in_progress" {
+            break;
+        }
+        applied = fixture
+            .core
+            .cloud_apply(&fixture.admin, "workspace", id)
+            .unwrap();
     }
     assert_eq!(applied["applied"], true);
-    assert!(fixture.core.store.list::<Value>("cloud_directory_apply_snapshots")
-        .unwrap().is_empty());
+    assert!(
+        fixture
+            .core
+            .store
+            .list::<Value>("cloud_directory_apply_snapshots")
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[test]
@@ -3360,7 +3451,10 @@ fn cloud_operations_group_mapping_read_keeps_scope_and_local_state() {
         .cloud_operations(&fixture.admin, "workspace", "corp")
         .unwrap();
     assert_eq!(missing["validation"]["valid"], false);
-    assert_eq!(missing["validation"]["missing_local_groups"], json!(["staff"]));
+    assert_eq!(
+        missing["validation"]["missing_local_groups"],
+        json!(["staff"])
+    );
 
     fixture.core.create_group(&fixture.admin, "staff").unwrap();
     let ready = fixture
@@ -3460,7 +3554,11 @@ fn cloud_operations_controller_check_is_scoped_to_current_fingerprint() {
         .unwrap();
     assert_eq!(current["controller"]["last_check"], check);
     assert!(!current.to_string().contains(&controller_token));
-    assert!(!current.to_string().contains(&credential_file.display().to_string()));
+    assert!(
+        !current
+            .to_string()
+            .contains(&credential_file.display().to_string())
+    );
 
     fixture
         .core
@@ -3849,7 +3947,12 @@ fn cloud_credential_preflight_replays_before_revision_and_provider_access() {
         "other_verifier",
         vec![permission("directory.sync", "workspace/other")],
     );
-    let revision = fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap();
+    let revision = fixture
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
     let verify = |token: &str, key: &str, fingerprint: &str, expected_revision| {
         scope(
             Some(RequestContext {
@@ -3858,7 +3961,11 @@ fn cloud_credential_preflight_replays_before_revision_and_provider_access() {
                 revision: expected_revision,
                 ..Default::default()
             }),
-            || fixture.core.cloud_verify_credential(token, "workspace", "corp"),
+            || {
+                fixture
+                    .core
+                    .cloud_verify_credential(token, "workspace", "corp")
+            },
         )
     };
 
@@ -3955,7 +4062,12 @@ fn cloud_credential_write_rechecks_revision_after_provider_access() {
         "credential-midflight-revision",
         vec![permission("directory.sync", "workspace/corp")],
     );
-    let revision = fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap();
+    let revision = fixture
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
     let (entered_tx, entered_rx) = mpsc::channel();
     let (release_tx, release_rx) = mpsc::channel();
     *directory.state.token_pause.lock().unwrap() = Some((entered_tx, release_rx));
@@ -4023,12 +4135,15 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
                 .header("if-match", format!("\"{revision}\""))
                 .header("idempotency-key", key);
         }
-        let response = app.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         let status = response.status();
-        let value = serde_json::from_slice(
-            &to_bytes(response.into_body(), 64 * 1024).await.unwrap(),
-        )
-        .unwrap();
+        let value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
         (status, value)
     }
 
@@ -4057,30 +4172,79 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
         if let Some(fetch_site) = fetch_site {
             request = request.header("sec-fetch-site", fetch_site);
         }
-        let response = app.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
         let status = response.status();
-        let value = serde_json::from_slice(
-            &to_bytes(response.into_body(), 64 * 1024).await.unwrap(),
-        )
-        .unwrap();
+        let value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
         (status, value)
     }
 
-    let workspace = serve("workspace", vec![person("ws-1", "alice@example.test", "Alice", true)], SECRET);
-    let entra = serve("entra", vec![person("en-1", "bob@example.test", "Bob", false)], SECRET);
+    let workspace = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let entra = serve(
+        "entra",
+        vec![person("en-1", "bob@example.test", "Bob", false)],
+        SECRET,
+    );
     let mut fixture = Fixture::new();
     configure(&mut fixture, "workspace", "corp", &workspace, "");
     configure(&mut fixture, "entra", "tenant", &entra, "");
-    let other = agent_token(&fixture, "entra_only", vec![permission("directory.sync", "entra/tenant")]);
-    let workspace_agent = agent_token(&fixture, "workspace_verifier", vec![permission("directory.sync", "workspace/corp")]);
+    let other = agent_token(
+        &fixture,
+        "entra_only",
+        vec![permission("directory.sync", "entra/tenant")],
+    );
+    let workspace_agent = agent_token(
+        &fixture,
+        "workspace_verifier",
+        vec![permission("directory.sync", "workspace/corp")],
+    );
     let sign_in = fixture.core.portal_sign_in().unwrap();
-    fixture.core.portal_decide(&fixture.admin, sign_in.body["code"].as_str().unwrap(), true).unwrap();
-    let binding = sign_in.cookies[0].split(';').next().unwrap().split_once('=').unwrap().1;
-    let poll = fixture.core.portal_poll(sign_in.body["id"].as_str().unwrap(), Some(binding)).unwrap();
-    let cookie = poll.cookies.iter().find(|value| value.starts_with("riauth_sso="))
-        .unwrap().split(';').next().unwrap().split_once('=').unwrap().1.to_owned();
-    let origin = Url::parse(&fixture.core.config.issuer).unwrap().origin().ascii_serialization();
-    let revision = fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap();
+    fixture
+        .core
+        .portal_decide(&fixture.admin, sign_in.body["code"].as_str().unwrap(), true)
+        .unwrap();
+    let binding = sign_in.cookies[0]
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1;
+    let poll = fixture
+        .core
+        .portal_poll(sign_in.body["id"].as_str().unwrap(), Some(binding))
+        .unwrap();
+    let cookie = poll
+        .cookies
+        .iter()
+        .find(|value| value.starts_with("riauth_sso="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1
+        .to_owned();
+    let origin = Url::parse(&fixture.core.config.issuer)
+        .unwrap()
+        .origin()
+        .ascii_serialization();
+    let revision = fixture
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
     let app = riauth::api::router(fixture.core.clone());
     let workspace_api = "/api/cloud-directories/workspace/corp/verify-credential";
     let workspace_browser = "/api/admin/cloud-directories/workspace/corp/verify-credential";
@@ -4091,104 +4255,298 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
         (Some(origin.as_str()), true, Some("cross-site")),
     ] {
         let (status, rejected) = browser_guard_call(
-            &app, workspace_browser, &cookie, origin_header, portal_header,
-            fetch_site, revision, "csrf-attempt",
-        ).await;
+            &app,
+            workspace_browser,
+            &cookie,
+            origin_header,
+            portal_header,
+            fetch_site,
+            revision,
+            "csrf-attempt",
+        )
+        .await;
         assert_eq!(status, StatusCode::FORBIDDEN, "{rejected}");
     }
     assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 0);
-    let (status, denied) = call(&app, "POST", workspace_api, &other, false, &origin, revision, "wrong-scope").await;
+    let (status, denied) = call(
+        &app,
+        "POST",
+        workspace_api,
+        &other,
+        false,
+        &origin,
+        revision,
+        "wrong-scope",
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{denied}");
     assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 0);
-    let (status, stale) = call(&app, "POST", workspace_api, &fixture.admin, false, &origin, revision - 1, "stale-revision").await;
+    let (status, stale) = call(
+        &app,
+        "POST",
+        workspace_api,
+        &fixture.admin,
+        false,
+        &origin,
+        revision - 1,
+        "stale-revision",
+    )
+    .await;
     assert_eq!(status, StatusCode::CONFLICT, "{stale}");
     assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 0);
 
-    let (status, first) = call(&app, "POST", workspace_browser, &cookie, true, &origin, revision, "rotate-workspace").await;
+    let (status, first) = call(
+        &app,
+        "POST",
+        workspace_browser,
+        &cookie,
+        true,
+        &origin,
+        revision,
+        "rotate-workspace",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{first}");
     assert_eq!(first["connected"], true);
     assert_redacted(&first);
-    let (status, replay) = call(&app, "POST", workspace_browser, &cookie, true, &origin, revision, "rotate-workspace").await;
+    let (status, replay) = call(
+        &app,
+        "POST",
+        workspace_browser,
+        &cookie,
+        true,
+        &origin,
+        revision,
+        "rotate-workspace",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{replay}");
     assert_eq!(replay, first);
     assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 1);
     let (status, rejected_replay) = browser_guard_call(
-        &app, workspace_browser, &cookie, Some("https://other.example.test"),
-        true, Some("cross-site"), revision, "rotate-workspace",
-    ).await;
+        &app,
+        workspace_browser,
+        &cookie,
+        Some("https://other.example.test"),
+        true,
+        Some("cross-site"),
+        revision,
+        "rotate-workspace",
+    )
+    .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{rejected_replay}");
     assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 1);
-    let (_, operations) = call(&app, "GET", "/api/cloud-directories/workspace/corp/operations", &fixture.admin, false, &origin, revision, "").await;
+    let (_, operations) = call(
+        &app,
+        "GET",
+        "/api/cloud-directories/workspace/corp/operations",
+        &fixture.admin,
+        false,
+        &origin,
+        revision,
+        "",
+    )
+    .await;
     assert_eq!(operations["last_connection_check"], first);
     assert_eq!(operations["credential"]["provider_verified"], false);
     assert_redacted(&operations);
 
     let rotated_secret = "rotated-cloud-client-secret";
     *workspace.state.secret.lock().unwrap() = rotated_secret.into();
-    write_private(&secret_path(&fixture, "workspace", "corp"), rotated_secret.as_bytes(), true).unwrap();
-    let (status, rotated) = call(&app, "POST", workspace_api, &fixture.admin, false, &origin, revision, "rotated-workspace").await;
+    write_private(
+        &secret_path(&fixture, "workspace", "corp"),
+        rotated_secret.as_bytes(),
+        true,
+    )
+    .unwrap();
+    let (status, rotated) = call(
+        &app,
+        "POST",
+        workspace_api,
+        &fixture.admin,
+        false,
+        &origin,
+        revision,
+        "rotated-workspace",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{rotated}");
     assert_eq!(rotated["connected"], true);
     assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), 2);
-    assert_eq!(workspace.state.seen_secrets.lock().unwrap().last().unwrap(), rotated_secret);
+    assert_eq!(
+        workspace.state.seen_secrets.lock().unwrap().last().unwrap(),
+        rotated_secret
+    );
     assert_redacted(&rotated);
 
     entra.state.token_status.store(503, Ordering::Relaxed);
-    let (status, failed) = call(&app, "POST", "/api/cloud-directories/entra/tenant/verify-credential", &fixture.admin, false, &origin, revision, "rotate-entra").await;
+    let (status, failed) = call(
+        &app,
+        "POST",
+        "/api/cloud-directories/entra/tenant/verify-credential",
+        &fixture.admin,
+        false,
+        &origin,
+        revision,
+        "rotate-entra",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{failed}");
     assert_eq!(failed["connected"], false);
     assert_eq!(failed["error"], "connection_failed");
     assert_redacted(&failed);
-    let (_, entra_operations) = call(&app, "GET", "/api/cloud-directories/entra/tenant/operations", &fixture.admin, false, &origin, revision, "").await;
+    let (_, entra_operations) = call(
+        &app,
+        "GET",
+        "/api/cloud-directories/entra/tenant/operations",
+        &fixture.admin,
+        false,
+        &origin,
+        revision,
+        "",
+    )
+    .await;
     assert_eq!(entra_operations["last_connection_check"], failed);
     assert_eq!(entra.state.token_hits.load(Ordering::Relaxed), 1);
     std::fs::remove_file(secret_path(&fixture, "entra", "tenant")).unwrap();
-    let (status, missing_entra_secret) = call(&app, "POST", "/api/cloud-directories/entra/tenant/verify-credential", &fixture.admin, false, &origin, revision, "missing-entra-secret").await;
+    let (status, missing_entra_secret) = call(
+        &app,
+        "POST",
+        "/api/cloud-directories/entra/tenant/verify-credential",
+        &fixture.admin,
+        false,
+        &origin,
+        revision,
+        "missing-entra-secret",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{missing_entra_secret}");
     assert_eq!(missing_entra_secret["connected"], false);
     assert_eq!(missing_entra_secret["error"], "connection_failed");
     assert_eq!(entra.state.token_hits.load(Ordering::Relaxed), 1);
     assert_redacted(&missing_entra_secret);
-    let (status, agent_check) = call(&app, "POST", workspace_api, &workspace_agent, false, &origin, revision, "agent-check").await;
+    let (status, agent_check) = call(
+        &app,
+        "POST",
+        workspace_api,
+        &workspace_agent,
+        false,
+        &origin,
+        revision,
+        "agent-check",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{agent_check}");
     assert_eq!(agent_check["connected"], true);
     let hits_before_revoke = workspace.state.token_hits.load(Ordering::Relaxed);
-    fixture.core.revoke_agent(&fixture.admin, "workspace_verifier").unwrap();
-    let current_revision = fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap();
-    for (key, request_revision) in [("agent-check", revision), ("revoked-agent-new-key", current_revision)] {
-        let (status, revoked) = call(&app, "POST", workspace_api, &workspace_agent, false, &origin, request_revision, key).await;
+    fixture
+        .core
+        .revoke_agent(&fixture.admin, "workspace_verifier")
+        .unwrap();
+    let current_revision = fixture
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    for (key, request_revision) in [
+        ("agent-check", revision),
+        ("revoked-agent-new-key", current_revision),
+    ] {
+        let (status, revoked) = call(
+            &app,
+            "POST",
+            workspace_api,
+            &workspace_agent,
+            false,
+            &origin,
+            request_revision,
+            key,
+        )
+        .await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "{revoked}");
     }
-    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
+    assert_eq!(
+        workspace.state.token_hits.load(Ordering::Relaxed),
+        hits_before_revoke
+    );
 
     let private_path = secret_path(&fixture, "workspace", "corp");
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&private_path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        let (status, unsafe_file) = call(&app, "POST", workspace_api, &fixture.admin, false, &origin, current_revision, "unsafe-private-file").await;
+        let (status, unsafe_file) = call(
+            &app,
+            "POST",
+            workspace_api,
+            &fixture.admin,
+            false,
+            &origin,
+            current_revision,
+            "unsafe-private-file",
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{unsafe_file}");
         assert_eq!(unsafe_file["connected"], false);
         assert_eq!(unsafe_file["error"], "connection_failed");
         assert_redacted(&unsafe_file);
-        assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
+        assert_eq!(
+            workspace.state.token_hits.load(Ordering::Relaxed),
+            hits_before_revoke
+        );
     }
     std::fs::remove_file(&private_path).unwrap();
-    let (status, missing_file) = call(&app, "POST", workspace_api, &fixture.admin, false, &origin, current_revision, "missing-private-file").await;
+    let (status, missing_file) = call(
+        &app,
+        "POST",
+        workspace_api,
+        &fixture.admin,
+        false,
+        &origin,
+        current_revision,
+        "missing-private-file",
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{missing_file}");
     assert_eq!(missing_file["connected"], false);
     assert_eq!(missing_file["error"], "connection_failed");
     assert_redacted(&missing_file);
-    assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
-    let (_, unavailable) = call(&app, "GET", "/api/cloud-directories/workspace/corp/operations", &fixture.admin, false, &origin, current_revision, "").await;
+    assert_eq!(
+        workspace.state.token_hits.load(Ordering::Relaxed),
+        hits_before_revoke
+    );
+    let (_, unavailable) = call(
+        &app,
+        "GET",
+        "/api/cloud-directories/workspace/corp/operations",
+        &fixture.admin,
+        false,
+        &origin,
+        current_revision,
+        "",
+    )
+    .await;
     assert_eq!(unavailable["credential"]["state"], "file_unavailable");
     assert_eq!(unavailable["last_connection_check"], missing_file);
-    assert!(!unavailable.to_string().contains(&private_path.display().to_string()));
+    assert!(
+        !unavailable
+            .to_string()
+            .contains(&private_path.display().to_string())
+    );
     assert_redacted(&unavailable);
     #[cfg(feature = "test-support")]
     {
-        let direct_key_file = fixture._dir.path().join("missing-direct-service-account.json");
-        let config = fixture.core.config.workspace_directories.get_mut("corp").unwrap();
+        let direct_key_file = fixture
+            ._dir
+            .path()
+            .join("missing-direct-service-account.json");
+        let config = fixture
+            .core
+            .config
+            .workspace_directories
+            .get_mut("corp")
+            .unwrap();
         config.client_id.clear();
         config.client_secret_file.clear();
         config.direct_auth = Some(WorkspaceDirectAuth {
@@ -4197,29 +4555,78 @@ async fn cloud_credential_verification_is_scoped_audited_and_replayable() {
         });
         assert!(config.validate().is_ok());
         let direct_app = riauth::api::router(fixture.core.clone());
-        let (status, missing_direct_key) = call(&direct_app, "POST", workspace_browser, &cookie, true, &origin, current_revision, "missing-direct-key").await;
+        let (status, missing_direct_key) = call(
+            &direct_app,
+            "POST",
+            workspace_browser,
+            &cookie,
+            true,
+            &origin,
+            current_revision,
+            "missing-direct-key",
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{missing_direct_key}");
         assert_eq!(missing_direct_key["connected"], false);
         assert_eq!(missing_direct_key["error"], "connection_failed");
-        assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
+        assert_eq!(
+            workspace.state.token_hits.load(Ordering::Relaxed),
+            hits_before_revoke
+        );
         assert_redacted(&missing_direct_key);
 
         write_private(&direct_key_file, b"{invalid-service-account-key", true).unwrap();
-        let (status, invalid_direct_key) = call(&direct_app, "POST", workspace_browser, &cookie, true, &origin, current_revision, "invalid-direct-key").await;
+        let (status, invalid_direct_key) = call(
+            &direct_app,
+            "POST",
+            workspace_browser,
+            &cookie,
+            true,
+            &origin,
+            current_revision,
+            "invalid-direct-key",
+        )
+        .await;
         assert_eq!(status, StatusCode::OK, "{invalid_direct_key}");
         assert_eq!(invalid_direct_key["connected"], false);
         assert_eq!(invalid_direct_key["error"], "connection_failed");
-        assert_eq!(workspace.state.token_hits.load(Ordering::Relaxed), hits_before_revoke);
-        let (_, direct_operations) = call(&direct_app, "GET", "/api/admin/cloud-directories/workspace/corp/operations", &cookie, true, &origin, current_revision, "").await;
+        assert_eq!(
+            workspace.state.token_hits.load(Ordering::Relaxed),
+            hits_before_revoke
+        );
+        let (_, direct_operations) = call(
+            &direct_app,
+            "GET",
+            "/api/admin/cloud-directories/workspace/corp/operations",
+            &cookie,
+            true,
+            &origin,
+            current_revision,
+            "",
+        )
+        .await;
         assert_eq!(direct_operations["credential"]["state"], "file_readable");
-        assert_eq!(direct_operations["last_connection_check"], invalid_direct_key);
-        assert!(!direct_operations.to_string().contains(&direct_key_file.display().to_string()));
+        assert_eq!(
+            direct_operations["last_connection_check"],
+            invalid_direct_key
+        );
+        assert!(
+            !direct_operations
+                .to_string()
+                .contains(&direct_key_file.display().to_string())
+        );
         assert_redacted(&direct_operations);
     }
     let audit = fixture.core.audit_events(&fixture.admin, 100).unwrap();
-    assert_eq!(audit.as_array().unwrap().iter()
-        .filter(|event| event["action"] == "cloud_directory.credential_verify").count(),
-        6 + if cfg!(unix) { 1 } else { 0 } + if cfg!(feature = "test-support") { 2 } else { 0 });
+    assert_eq!(
+        audit
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == "cloud_directory.credential_verify")
+            .count(),
+        6 + if cfg!(unix) { 1 } else { 0 } + if cfg!(feature = "test-support") { 2 } else { 0 }
+    );
     assert_redacted(&audit);
 }
 

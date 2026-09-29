@@ -872,7 +872,17 @@ async fn configured_creation_review_binds_content_authority_dependencies_and_iss
         &binary,
         &server_url,
         &f.admin,
-        &["--if-revision", &at, "--idempotency-key", "direct-create-denied", "client", "create", "direct-cli", "--scope", "openid"],
+        &[
+            "--if-revision",
+            &at,
+            "--idempotency-key",
+            "direct-create-denied",
+            "client",
+            "create",
+            "direct-cli",
+            "--scope",
+            "openid",
+        ],
     )
     .await;
     assert_eq!(denied.0, 5);

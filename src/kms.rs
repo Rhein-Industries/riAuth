@@ -1,4 +1,5 @@
 //! Vault Transit signing with version-pinned public keys and verification of every result.
+pub use crate::kms_types::{RemoteKey, VaultSigner};
 use crate::{
     core::Core,
     crypto::{SigningKey, now},
@@ -10,7 +11,6 @@ use base64::{
 };
 use serde_json::{Value, json};
 use std::{io::Read, time::Duration};
-pub use crate::kms_types::{RemoteKey, VaultSigner};
 
 impl VaultSigner {
     pub fn validate(&self) -> Result<()> {

@@ -676,11 +676,7 @@ fn accounts(f: &Fixture) -> (usize, usize, usize) {
             .list::<riauth::model::Session>("sessions")
             .unwrap()
             .len(),
-        f.core
-            .store
-            .list::<Value>("source_links")
-            .unwrap()
-            .len(),
+        f.core.store.list::<Value>("source_links").unwrap().len(),
     )
 }
 
@@ -727,10 +723,7 @@ struct StartedBrowser {
 }
 
 fn browser_begin(f: &Fixture, source: &Source) -> StartedBrowser {
-    let started = f
-        .core
-        .portal_source_start(None, &source.id, None)
-        .unwrap();
+    let started = f.core.portal_source_start(None, &source.id, None).unwrap();
     let cookie = cookie_value(&started.cookies, "riauth_source");
     let (relay, request) = decode_redirect(
         source,
@@ -817,10 +810,9 @@ async fn get_return(core: &riauth::core::Core, id: &str, cookie: Option<&str>) -
         .body(Body::empty())
         .unwrap();
     if let Some(cookie) = cookie {
-        request.headers_mut().insert(
-            "cookie",
-            axum::http::HeaderValue::from_str(cookie).unwrap(),
-        );
+        request
+            .headers_mut()
+            .insert("cookie", axum::http::HeaderValue::from_str(cookie).unwrap());
     }
     read_reply(
         riauth::api::router(core.clone())
@@ -850,11 +842,13 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     let acs = f.core.saml_source_callback_url(&source.id);
     let before = accounts(&f);
     let listed = f.core.portal_source_list().unwrap();
-    assert!(listed["sources"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|source| source["id"] == "enterprise"));
+    assert!(
+        listed["sources"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|source| source["id"] == "enterprise")
+    );
 
     // CLI: the ACS body has no return token, and a return call does not end the login.
     let (relay, request, credential) = begin(&f, &source, None);
@@ -891,7 +885,13 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     assert_eq!(junk.status.as_u16(), 400);
     hides(&junk, &[&credential, &relay]);
     assert_eq!(finish(&f, &credential, false).unwrap()["status"], "review");
-    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<String>("source_returns")
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(accounts(&f), before);
 
     // A rejected assertion stores no return token and does not redirect.
@@ -932,7 +932,8 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     )
     .await;
     assert_eq!(missing_acs.status, 303);
-    let (return_name, missing_token) = cookie_assignment(missing_acs.set_cookie.as_deref().unwrap());
+    let (return_name, missing_token) =
+        cookie_assignment(missing_acs.set_cookie.as_deref().unwrap());
     assert_eq!(return_name, "riauth_source_return");
     assert!(!missing_acs.body.contains(&missing_token));
     assert!(!missing_acs.location.contains(&missing_token));
@@ -947,7 +948,13 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     assert_eq!(missing_row["failed"], true);
     assert!(missing_row["result"].is_null());
     assert!(missing_row["browser_return"].is_null());
-    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<String>("source_returns")
+            .unwrap()
+            .is_empty()
+    );
     let too_late = f
         .core
         .saml_source_browser_return(&source.id, Some(&missing.cookie), Some(&missing_token))
@@ -955,7 +962,10 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     assert_eq!(too_late.status.as_u16(), 400);
     assert_ne!(too_late.code, "source_browser_mismatch");
     assert!(too_late.to_string().contains("already used"));
-    hides(&too_late, &[&missing.cookie, &missing_token, &missing.relay]);
+    hides(
+        &too_late,
+        &[&missing.cookie, &missing_token, &missing.relay],
+    );
     assert!(finish(&f, &missing.credential, true).is_err());
     assert_eq!(
         f.core
@@ -982,7 +992,10 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     let (_, first_token) = cookie_assignment(first_acs.set_cookie.as_deref().unwrap());
     assert!(finish(&f, &first.credential, false).is_err());
     assert_eq!(login_row(&f, &first.relay)["failed"], false);
-    assert_eq!(login_row(&f, &first.relay)["result"]["subject"], "opaque-subject");
+    assert_eq!(
+        login_row(&f, &first.relay)["result"]["subject"],
+        "opaque-subject"
+    );
     let foreign = f
         .core
         .saml_source_browser_return(&source.id, Some(&second.cookie), Some(&first_token))
@@ -991,7 +1004,13 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     assert_eq!(foreign.code, "source_browser_mismatch");
     hides(
         &foreign,
-        &[&first.cookie, &second.cookie, &first_token, &first.relay, &second.relay],
+        &[
+            &first.cookie,
+            &second.cookie,
+            &first_token,
+            &first.relay,
+            &second.relay,
+        ],
     );
     let foreign_row = login_row(&f, &first.relay);
     assert_eq!(foreign_row["failed"], true);
@@ -1055,12 +1074,18 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     assert_eq!(oversized.status.as_u16(), 400);
     hides(&oversized, &[&started.cookie, &token]);
     assert_eq!(login_row(&f, &started.relay)["failed"], false);
-    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], false);
+    assert_eq!(
+        login_row(&f, &started.relay)["browser_return_confirmed"],
+        false
+    );
     let prefetch = get_return(&f.core, &source.id, None).await;
     assert_eq!(prefetch.status, 303);
     assert!(prefetch.set_cookie.is_none());
     assert!(prefetch.location.ends_with("/account/sources/continue"));
-    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], false);
+    assert_eq!(
+        login_row(&f, &started.relay)["browser_return_confirmed"],
+        false
+    );
     assert_eq!(login_row(&f, &started.relay)["failed"], false);
     let both = format!(
         "riauth_source={}; riauth_source_return={token}",
@@ -1069,7 +1094,10 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     let wrong_provider = get_return(&f.core, "other", Some(&both)).await;
     assert_eq!(wrong_provider.status, 303);
     assert!(wrong_provider.set_cookie.is_none());
-    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], false);
+    assert_eq!(
+        login_row(&f, &started.relay)["browser_return_confirmed"],
+        false
+    );
     assert_eq!(
         f.core.store.list::<String>("source_returns").unwrap().len(),
         1
@@ -1087,7 +1115,13 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     assert!(open["browser_return"].is_null());
     assert_eq!(open["failed"], false);
     assert_eq!(open["result"]["subject"], "opaque-subject");
-    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<String>("source_returns")
+            .unwrap()
+            .is_empty()
+    );
     let replay_return = f
         .core
         .saml_source_browser_return(&source.id, Some(&started.cookie), Some(&token))
@@ -1096,14 +1130,26 @@ async fn saml_browser_acs_handoff_checks_success_foreign_browser_missing_cookie_
     assert_eq!(replay_return.code, "invalid_request");
     assert!(replay_return.to_string().contains("already used"));
     hides(&replay_return, &[&started.cookie, &token, &started.relay]);
-    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], true);
-    assert_eq!(login_row(&f, &started.relay)["result"]["subject"], "opaque-subject");
+    assert_eq!(
+        login_row(&f, &started.relay)["browser_return_confirmed"],
+        true
+    );
+    assert_eq!(
+        login_row(&f, &started.relay)["result"]["subject"],
+        "opaque-subject"
+    );
     let replay_acs = post_acs(&f.core, &source.id, &started.relay, &signed).await;
     assert_ne!(replay_acs.status, 303);
     assert!(replay_acs.set_cookie.is_none());
     assert_eq!(login_row(&f, &started.relay)["failed"], false);
-    assert_eq!(login_row(&f, &started.relay)["browser_return_confirmed"], true);
-    assert_eq!(login_row(&f, &started.relay)["result"]["subject"], "opaque-subject");
+    assert_eq!(
+        login_row(&f, &started.relay)["browser_return_confirmed"],
+        true
+    );
+    assert_eq!(
+        login_row(&f, &started.relay)["result"]["subject"],
+        "opaque-subject"
+    );
     let review = f
         .core
         .portal_source_review(Some(&started.credential))
@@ -1135,12 +1181,7 @@ fn put_saml(f: &Fixture, source: &Source) {
         .unwrap();
 }
 
-fn post(
-    f: &Fixture,
-    source: &Source,
-    relay: &str,
-    response: &str,
-) -> riauth::error::Result<Value> {
+fn post(f: &Fixture, source: &Source, relay: &str, response: &str) -> riauth::error::Result<Value> {
     f.core.saml_source_callback(
         &source.id,
         vec![
@@ -1188,11 +1229,8 @@ fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and
     let (mut source, old) = install_saml(&f);
     let new_idp = replacement_idp("Replacement IdP");
     let acs = f.core.saml_source_callback_url(&source.id);
-    source
-        .saml
-        .as_mut()
-        .unwrap()
-        .idp_certificates_pem = vec![old.cert.clone(), new_idp.cert.clone()];
+    source.saml.as_mut().unwrap().idp_certificates_pem =
+        vec![old.cert.clone(), new_idp.cert.clone()];
     put_saml(&f, &source);
 
     let (relay, request, credential) = begin(&f, &source, None);
@@ -1254,7 +1292,10 @@ fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and
         )
         .unwrap_err();
     assert_eq!(rejected.code, "conflict");
-    hides(&rejected, &[&old.cert, &new_idp.cert, "urn:example:other-idp"]);
+    hides(
+        &rejected,
+        &[&old.cert, &new_idp.cert, "urn:example:other-idp"],
+    );
     assert_eq!(saml_links(&f)[0]["issuer"], source.issuer);
     assert!(f.core.me(&session_old).is_ok());
     assert!(f.core.me(&f.admin).is_ok());
@@ -1268,11 +1309,8 @@ fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and
     assert!(f.core.me(&session_old).is_err());
     assert!(f.core.me(&session_new).is_err());
     assert!(f.core.me(&f.admin).is_ok());
-    source
-        .saml
-        .as_mut()
-        .unwrap()
-        .idp_certificates_pem = vec![old.cert.clone(), new_idp.cert.clone()];
+    source.saml.as_mut().unwrap().idp_certificates_pem =
+        vec![old.cert.clone(), new_idp.cert.clone()];
     put_saml(&f, &source);
     assert_eq!(
         post(&f, &source, &parked, &parked_response).unwrap()["completed"],
@@ -1291,7 +1329,10 @@ fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and
     let fresh = {
         let (relay, request, credential) = begin(&f, &source, None);
         let response = new_idp.response(&source, &acs, &request, None, false);
-        assert_eq!(post(&f, &source, &relay, &response).unwrap()["completed"], true);
+        assert_eq!(
+            post(&f, &source, &relay, &response).unwrap()["completed"],
+            true
+        );
         finish(&f, &credential, true).unwrap()
     };
     assert_eq!(text(&fresh["user"], "id"), user_id);
@@ -1327,7 +1368,10 @@ fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and
     let restored = {
         let (relay, request, credential) = begin(&f, &source, None);
         let response = old.response(&source, &acs, &request, None, false);
-        assert_eq!(post(&f, &source, &relay, &response).unwrap()["completed"], true);
+        assert_eq!(
+            post(&f, &source, &relay, &response).unwrap()["completed"],
+            true
+        );
         finish(&f, &credential, true).unwrap()
     };
     assert_eq!(text(&restored["user"], "id"), user_id);
@@ -1366,7 +1410,10 @@ fn saml_source_certificate_rollover_checks_old_and_new_keys_stale_assertions_and
     assert_eq!(saml_links(&f).len(), 1);
     let (relay, request, credential) = begin(&f, &source, None);
     let response = old.response(&source, &acs, &request, None, false);
-    assert_eq!(post(&f, &source, &relay, &response).unwrap()["completed"], true);
+    assert_eq!(
+        post(&f, &source, &relay, &response).unwrap()["completed"],
+        true
+    );
     assert_eq!(
         text(&finish(&f, &credential, true).unwrap()["user"], "id"),
         user_id
@@ -1398,7 +1445,10 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
     source.saml.as_mut().unwrap().idp_certificates_pem = vec![replacement.cert.clone()];
     put_saml(&f, &source);
     assert_eq!(login_row(&f, &parked.relay)["failed"], false);
-    assert_eq!(login_row(&f, &parked.relay)["browser_return_confirmed"], false);
+    assert_eq!(
+        login_row(&f, &parked.relay)["browser_return_confirmed"],
+        false
+    );
     assert_eq!(
         f.core.store.list::<String>("source_returns").unwrap().len(),
         1
@@ -1420,7 +1470,13 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
     assert_eq!(saml_links(&f)[0]["issuer"], source.issuer);
     assert_eq!(saml_links(&f)[0]["subject"], "opaque-subject");
     assert_eq!(saml_links(&f)[0]["user_id"], user_id);
-    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<String>("source_returns")
+            .unwrap()
+            .is_empty()
+    );
 
     // Presented during the change: missing and unknown tokens do not end it.
     let started = browser_begin(&f, &source);
@@ -1430,8 +1486,14 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
     let token = text(&body, "browser_return");
     assert_eq!(login_row(&f, &started.relay)["claimed"], true);
     assert_eq!(login_row(&f, &started.relay)["failed"], false);
-    assert_eq!(login_row(&f, &started.relay)["result"]["subject"], "opaque-subject");
-    assert_eq!(login_row(&f, &started.relay)["browser_return"], digest(&token));
+    assert_eq!(
+        login_row(&f, &started.relay)["result"]["subject"],
+        "opaque-subject"
+    );
+    assert_eq!(
+        login_row(&f, &started.relay)["browser_return"],
+        digest(&token)
+    );
     source.saml.as_mut().unwrap().idp_certificates_pem = vec![replacement.cert.clone()];
     put_saml(&f, &source);
     assert!(f.core.me(&session).is_err());
@@ -1443,7 +1505,10 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
         .unwrap_err();
     assert_eq!(missing.code, "invalid_request");
     assert!(missing.to_string().contains("already used"));
-    hides(&missing, &[&started.cookie, &token, &old.cert, &replacement.cert]);
+    hides(
+        &missing,
+        &[&started.cookie, &token, &old.cert, &replacement.cert],
+    );
     let unknown = f
         .core
         .saml_source_browser_return(&source.id, Some(&started.cookie), Some("not-a-return"))
@@ -1451,7 +1516,10 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
     assert_eq!(unknown.code, "invalid_request");
     hides(&unknown, &[&started.cookie, &token, &started.relay]);
     assert_eq!(login_row(&f, &started.relay)["failed"], false);
-    assert_eq!(login_row(&f, &started.relay)["result"]["subject"], "opaque-subject");
+    assert_eq!(
+        login_row(&f, &started.relay)["result"]["subject"],
+        "opaque-subject"
+    );
     assert_eq!(
         f.core.store.list::<String>("source_returns").unwrap().len(),
         1
@@ -1483,7 +1551,13 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
     assert!(row["result"].is_null());
     assert!(row["browser_return"].is_null());
     assert_eq!(row["browser_return_confirmed"], false);
-    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<String>("source_returns")
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(failed_audits(&f), audits + 1);
     assert_eq!(replay_entries(&f), replays);
     assert_eq!(accounts(&f), settled);
@@ -1493,7 +1567,10 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
         .unwrap_err();
     assert_eq!(replay.code, "invalid_request");
     assert!(replay.to_string().contains("already used"));
-    hides(&replay, &[&started.cookie, &token, &started.relay, &old.cert, &xml]);
+    hides(
+        &replay,
+        &[&started.cookie, &token, &started.relay, &old.cert, &xml],
+    );
     assert_eq!(login_row(&f, &started.relay)["failed"], true);
 
     source.saml.as_mut().unwrap().idp_certificates_pem = vec![old.cert.clone()];
@@ -1507,7 +1584,14 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
     assert!(restored.to_string().contains("already used"));
     hides(
         &restored,
-        &[&old.cert, &replacement.cert, &token, &started.cookie, &started.relay, &xml],
+        &[
+            &old.cert,
+            &replacement.cert,
+            &token,
+            &started.cookie,
+            &started.relay,
+            &xml,
+        ],
     );
     assert!(finish(&f, &started.credential, true).is_err());
     assert_eq!(
@@ -1527,7 +1611,10 @@ fn saml_browser_return_ends_when_pinned_source_changes_and_restore_cannot_confir
 
     let (relay, request, credential) = begin(&f, &source, None);
     let response = old.response(&source, &acs, &request, None, false);
-    assert_eq!(post(&f, &source, &relay, &response).unwrap()["completed"], true);
+    assert_eq!(
+        post(&f, &source, &relay, &response).unwrap()["completed"],
+        true
+    );
     let again = finish(&f, &credential, true).unwrap();
     assert_eq!(text(&again["user"], "id"), user_id);
     assert!(f.core.me(&text(&again, "session_token")).is_ok());
@@ -1590,10 +1677,7 @@ fn saml_login_presented_while_source_disabled_cannot_continue_after_reenable() {
     let retired_error = post(&f, &source, &retired, &retired_response).unwrap_err();
     assert_eq!(retired_error.code, "invalid_request");
     assert!(retired_error.to_string().contains("SAML source changed"));
-    hides(
-        &retired_error,
-        &[&old.cert, &retired, &retired_response],
-    );
+    hides(&retired_error, &[&old.cert, &retired, &retired_response]);
     let retired_row = login_row(&f, &retired);
     assert_eq!(retired_row["failed"], true);
     assert_eq!(retired_row["claimed"], true);
@@ -1657,7 +1741,13 @@ fn saml_login_presented_while_source_disabled_cannot_continue_after_reenable() {
     assert!(returned_row["result"].is_null());
     assert!(returned_row["browser_return"].is_null());
     assert_eq!(returned_row["browser_return_confirmed"], false);
-    assert!(f.core.store.list::<String>("source_returns").unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<String>("source_returns")
+            .unwrap()
+            .is_empty()
+    );
     source.enabled = true;
     put_saml(&f, &source);
     let returned_again = f

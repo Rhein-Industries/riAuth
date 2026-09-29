@@ -9,12 +9,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use rustls::pki_types::{CertificateDer, CertificateRevocationListDer, UnixTime, pem::PemObject};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{
-    io::Read,
-    net::IpAddr,
-    path::Path,
-    sync::Arc,
-};
+use std::{io::Read, net::IpAddr, path::Path, sync::Arc};
 
 pub use crate::mtls_config::{ClientCertAuth, ClientCertMode, TlsClientCerts};
 
@@ -287,7 +282,10 @@ fn check_chain(certs: &[CertificateDer<'static>]) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn verify_chain(profile: &ClientCertAuth, chain: &[CertificateDer<'static>]) -> Result<Leaf> {
+pub(crate) fn verify_chain(
+    profile: &ClientCertAuth,
+    chain: &[CertificateDer<'static>],
+) -> Result<Leaf> {
     let material = profile.material()?;
     let verifier = profile.verifier(&material)?;
     verifier

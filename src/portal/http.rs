@@ -22,8 +22,14 @@ pub fn routes() -> Router<App> {
         .route("/api/portal", get(catalogue))
         .route("/api/portal/account/accept", post(account_accept))
         .route("/api/portal/account/verify", post(account_verify))
-        .route("/api/portal/account/verify-request", post(account_verify_request))
-        .route("/api/portal/account/reset-request", post(account_reset_request))
+        .route(
+            "/api/portal/account/verify-request",
+            post(account_verify_request),
+        )
+        .route(
+            "/api/portal/account/reset-request",
+            post(account_reset_request),
+        )
         .route("/api/portal/account/reset", post(account_reset))
         .route("/api/portal/password", post(password_change))
         .route("/api/portal/sign-in", post(start))
@@ -33,12 +39,27 @@ pub fn routes() -> Router<App> {
         .route("/api/portal/requests/{code}", get(details).post(decide))
         .route("/api/portal/login/password", post(password_login))
         .route("/api/portal/login/passkey/start", post(passkey_login_start))
-        .route("/api/portal/login/passkey/finish", post(passkey_login_finish))
-        .route("/api/portal/login/passkey/cancel", post(passkey_login_cancel))
+        .route(
+            "/api/portal/login/passkey/finish",
+            post(passkey_login_finish),
+        )
+        .route(
+            "/api/portal/login/passkey/cancel",
+            post(passkey_login_cancel),
+        )
         .route("/api/portal/passkeys", get(passkeys))
-        .route("/api/portal/passkeys/registration/start", post(passkey_register_start))
-        .route("/api/portal/passkeys/registration/finish", post(passkey_register_finish))
-        .route("/api/portal/passkeys/registration/cancel", post(passkey_register_cancel))
+        .route(
+            "/api/portal/passkeys/registration/start",
+            post(passkey_register_start),
+        )
+        .route(
+            "/api/portal/passkeys/registration/finish",
+            post(passkey_register_finish),
+        )
+        .route(
+            "/api/portal/passkeys/registration/cancel",
+            post(passkey_register_cancel),
+        )
         .route("/api/portal/passkeys/{id}/rename", post(passkey_rename))
         .route("/api/portal/passkeys/{id}/remove", post(passkey_remove))
         .merge(super::mfa::routes())
@@ -208,10 +229,11 @@ fn event_map_routes() -> Router<App> {
 }
 
 pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
-    let mut response = if app.core.config.browser_ui && headers
-        .get("accept")
-        .and_then(|h| h.to_str().ok())
-        .is_some_and(|h| h.contains("text/html"))
+    let mut response = if app.core.config.browser_ui
+        && headers
+            .get("accept")
+            .and_then(|h| h.to_str().ok())
+            .is_some_and(|h| h.contains("text/html"))
     {
         page(State(app), headers.clone()).await
     } else {

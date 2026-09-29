@@ -1252,9 +1252,15 @@ async fn oidc_source_jwks_rotation_checks_old_and_new_keys_stale_assertions_and_
     let (fresh, _, _) =
         signed_callback(&f, &upstream, &started, &new_key, subject, json!({})).await;
     assert_eq!(fresh.unwrap()["completed"], true);
-    let session_cutover = text(&upstream.finish(&f, &started, true).unwrap(), "session_token");
+    let session_cutover = text(
+        &upstream.finish(&f, &started, true).unwrap(),
+        "session_token",
+    );
     assert!(f.core.me(&session_cutover).is_ok());
-    assert_eq!(text(&f.core.me(&session_cutover).unwrap()["user"], "id"), user_id);
+    assert_eq!(
+        text(&f.core.me(&session_cutover).unwrap()["user"], "id"),
+        user_id
+    );
 
     let sessions_before_stale = session_count(&f);
     let started = upstream.start(&f, None);
@@ -1292,10 +1298,12 @@ async fn oidc_source_jwks_rotation_checks_old_and_new_keys_stale_assertions_and_
     assert_eq!(source_links(&f).len(), 1);
 
     let started = upstream.start(&f, None);
-    let (restored, _, _) =
-        signed_callback(&f, &upstream, &started, &old, subject, json!({})).await;
+    let (restored, _, _) = signed_callback(&f, &upstream, &started, &old, subject, json!({})).await;
     assert_eq!(restored.unwrap()["completed"], true);
-    let session_restored = text(&upstream.finish(&f, &started, true).unwrap(), "session_token");
+    let session_restored = text(
+        &upstream.finish(&f, &started, true).unwrap(),
+        "session_token",
+    );
     assert!(f.core.me(&session_restored).is_ok());
 
     let parked = upstream.start(&f, None);
@@ -1374,7 +1382,10 @@ async fn oidc_source_jwks_rotation_checks_old_and_new_keys_stale_assertions_and_
     let (final_login, _, _) =
         signed_callback(&f, &upstream, &started, &old, subject, json!({})).await;
     assert_eq!(final_login.unwrap()["completed"], true);
-    let session_final = text(&upstream.finish(&f, &started, true).unwrap(), "session_token");
+    let session_final = text(
+        &upstream.finish(&f, &started, true).unwrap(),
+        "session_token",
+    );
     f.core
         .source_put(
             &f.admin,

@@ -71,20 +71,37 @@ async fn peer() -> Peer {
                             vec![],
                         ),
                         LdapOp::SearchRequest(search) => {
-                            let cookie=request.ctrl.iter().find_map(|c|match c {
-                                LdapControl::SimplePagedResults{cookie,..}=>Some(cookie.as_slice()),
-                                _=>None,
-                            }).unwrap_or(&[]);
-                            let second=!cookie.is_empty();
-                            let page_index=if matches!(mode,Mode::PagedRemoval) {
-                                std::str::from_utf8(cookie).ok().and_then(|s|s.parse::<usize>().ok()).unwrap_or(0)
-                            } else {usize::from(second)};
+                            let cookie = request
+                                .ctrl
+                                .iter()
+                                .find_map(|c| match c {
+                                    LdapControl::SimplePagedResults { cookie, .. } => {
+                                        Some(cookie.as_slice())
+                                    }
+                                    _ => None,
+                                })
+                                .unwrap_or(&[]);
+                            let second = !cookie.is_empty();
+                            let page_index = if matches!(mode, Mode::PagedRemoval) {
+                                std::str::from_utf8(cookie)
+                                    .ok()
+                                    .and_then(|s| s.parse::<usize>().ok())
+                                    .unwrap_or(0)
+                            } else {
+                                usize::from(second)
+                            };
                             let members = matches!(search.filter, LdapFilter::And(_));
                             let empty = matches!(mode, Mode::Empty | Mode::Error | Mode::EmptyMore)
-                                || members && matches!(mode, Mode::EmptyMembers | Mode::PagedRemoval);
+                                || members
+                                    && matches!(mode, Mode::EmptyMembers | Mode::PagedRemoval);
                             if !empty && !(second && matches!(mode, Mode::PartialError)) {
-                                let n = if matches!(mode, Mode::PagedRemoval) {page_index}
-                                    else if second && !matches!(mode, Mode::Repeat) {1} else {0};
+                                let n = if matches!(mode, Mode::PagedRemoval) {
+                                    page_index
+                                } else if second && !matches!(mode, Mode::Repeat) {
+                                    1
+                                } else {
+                                    0
+                                };
                                 let username = if n == 0 && matches!(mode, Mode::Renamed) {
                                     "renamed0".to_owned()
                                 } else {
@@ -123,7 +140,7 @@ async fn peer() -> Peer {
                             } else {
                                 LdapResultCode::Success
                             };
-                            let more = if matches!(mode,Mode::PagedRemoval) {
+                            let more = if matches!(mode, Mode::PagedRemoval) {
                                 !members && page_index < 4
                             } else {
                                 !second && !empty || matches!(mode, Mode::Repeat | Mode::EmptyMore)
@@ -137,9 +154,13 @@ async fn peer() -> Peer {
                                 }],
                                 _ => vec![LdapControl::SimplePagedResults {
                                     size: 0,
-                                    cookie: if more && matches!(mode,Mode::PagedRemoval) {
-                                        (page_index+1).to_string().into_bytes()
-                                    } else if more { b"next".to_vec() } else { vec![] },
+                                    cookie: if more && matches!(mode, Mode::PagedRemoval) {
+                                        (page_index + 1).to_string().into_bytes()
+                                    } else if more {
+                                        b"next".to_vec()
+                                    } else {
+                                        vec![]
+                                    },
                                 }],
                             };
                             (LdapOp::SearchResultDone(result(code)), controls)
@@ -206,22 +227,52 @@ async fn ldap_membership_removal_waits_for_durable_plan_and_apply_crawls() {
         configure(&mut f, url);
         for group in ["blue", "green"] {
             f.core.create_group(&f.admin, group).unwrap();
-            f.core.config.directories.get_mut("staff").unwrap()
-                .group_user_filters.insert(group.into(), "(cn=*)".into());
+            f.core
+                .config
+                .directories
+                .get_mut("staff")
+                .unwrap()
+                .group_user_filters
+                .insert(group.into(), "(cn=*)".into());
         }
         // Two user pages and two pages for each of three group filters.
         let first = f.core.directory_plan(&f.admin, "staff").unwrap();
         assert_eq!(first["decision"], "snapshot_in_progress");
         let imported = f.core.directory_plan(&f.admin, "staff").unwrap();
         assert_eq!(imported["entries"].as_array().unwrap().len(), 2);
-        assert_eq!(f.core.directory_apply(&f.admin, &text(&imported, "id"))
-            .unwrap()["decision"], "snapshot_in_progress");
-        f.core.directory_apply(&f.admin, &text(&imported, "id")).unwrap();
-        let ids: BTreeMap<_, _> = ["person0", "person1"].into_iter().map(|name| {
-            (name.to_owned(), f.core.store.get::<String>("usernames", name).unwrap().unwrap())
-        }).collect();
+        assert_eq!(
+            f.core
+                .directory_apply(&f.admin, &text(&imported, "id"))
+                .unwrap()["decision"],
+            "snapshot_in_progress"
+        );
+        f.core
+            .directory_apply(&f.admin, &text(&imported, "id"))
+            .unwrap();
+        let ids: BTreeMap<_, _> = ["person0", "person1"]
+            .into_iter()
+            .map(|name| {
+                (
+                    name.to_owned(),
+                    f.core
+                        .store
+                        .get::<String>("usernames", name)
+                        .unwrap()
+                        .unwrap(),
+                )
+            })
+            .collect();
         for group in ["blue", "green", "staff"] {
-            assert_eq!(f.core.store.get::<Group>("groups", group).unwrap().unwrap().members.len(), 2);
+            assert_eq!(
+                f.core
+                    .store
+                    .get::<Group>("groups", group)
+                    .unwrap()
+                    .unwrap()
+                    .members
+                    .len(),
+                2
+            );
         }
 
         // Five user pages resume from an opaque cookie after the process is
@@ -244,7 +295,13 @@ async fn ldap_membership_removal_waits_for_durable_plan_and_apply_crawls() {
         assert_eq!(plan["entries"].as_array().unwrap().len(), 5);
         assert_eq!(plan["removal_impact"]["removed_memberships"], 6);
         assert_eq!(plan["removal_impact"]["review_required"], true);
-        assert!(f.core.store.list::<Value>("directory_snapshots").unwrap().is_empty());
+        assert!(
+            f.core
+                .store
+                .list::<Value>("directory_snapshots")
+                .unwrap()
+                .is_empty()
+        );
         assert!(!progress_id.is_empty());
         let id = text(&plan, "id");
         let pending_progress = f.core.directory_reconcile(&f.admin, "staff").unwrap();
@@ -254,37 +311,85 @@ async fn ldap_membership_removal_waits_for_durable_plan_and_apply_crawls() {
         assert_eq!(pending["plan"]["id"], id);
         assert!(f.core.directory_apply(&f.admin, &id).is_err());
         let before_apply = canonical(&f);
-        let progress = f.core.directory_apply_confirmed(&f.admin, &id, Some(&id)).unwrap();
+        let progress = f
+            .core
+            .directory_apply_confirmed(&f.admin, &id, Some(&id))
+            .unwrap();
         assert_eq!(progress["decision"], "snapshot_in_progress");
         assert_eq!(progress["operation"], "apply_validation");
         assert_eq!(progress["plan_id"], id);
         assert_eq!(progress["phase"], "users");
         assert_eq!(progress["users"], 4);
         assert_eq!(canonical(&f), before_apply);
-        let staged = f.core.store.list::<Value>("directory_apply_snapshots").unwrap();
+        let staged = f
+            .core
+            .store
+            .list::<Value>("directory_apply_snapshots")
+            .unwrap();
         assert_eq!(staged.len(), 1);
         assert_eq!(staged[0].1["draft"]["cookie"], json!([b'4']));
 
         *mode.lock().unwrap() = Mode::PartialError;
-        assert_eq!(f.core.directory_apply_confirmed(&f.admin, &id, Some(&id))
-            .unwrap_err().code, "directory_unavailable");
+        assert_eq!(
+            f.core
+                .directory_apply_confirmed(&f.admin, &id, Some(&id))
+                .unwrap_err()
+                .code,
+            "directory_unavailable"
+        );
         assert_eq!(canonical(&f), before_apply);
-        assert_eq!(f.core.store.list::<Value>("directory_apply_snapshots").unwrap()[0]
-            .1["draft"]["cookie"], json!([b'4']));
+        assert_eq!(
+            f.core
+                .store
+                .list::<Value>("directory_apply_snapshots")
+                .unwrap()[0]
+                .1["draft"]["cookie"],
+            json!([b'4'])
+        );
 
         let f = f.reopen_with(|_| {});
         *mode.lock().unwrap() = Mode::PagedRemoval;
-        assert_eq!(f.core.directory_apply_confirmed(&f.admin, &id, Some(&id))
-            .unwrap()["applied"], true);
-        assert!(f.core.store.list::<Value>("directory_apply_snapshots").unwrap().is_empty());
+        assert_eq!(
+            f.core
+                .directory_apply_confirmed(&f.admin, &id, Some(&id))
+                .unwrap()["applied"],
+            true
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("directory_apply_snapshots")
+                .unwrap()
+                .is_empty()
+        );
         for (name, user_id) in ids {
-            assert_eq!(f.core.store.get::<String>("usernames", &name).unwrap(), Some(user_id.clone()));
-            assert!(f.core.store.get::<User>("users", &user_id).unwrap().unwrap().enabled);
+            assert_eq!(
+                f.core.store.get::<String>("usernames", &name).unwrap(),
+                Some(user_id.clone())
+            );
+            assert!(
+                f.core
+                    .store
+                    .get::<User>("users", &user_id)
+                    .unwrap()
+                    .unwrap()
+                    .enabled
+            );
         }
         for group in ["blue", "green", "staff"] {
-            assert!(f.core.store.get::<Group>("groups", group).unwrap().unwrap().members.is_empty());
+            assert!(
+                f.core
+                    .store
+                    .get::<Group>("groups", group)
+                    .unwrap()
+                    .unwrap()
+                    .members
+                    .is_empty()
+            );
         }
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -293,8 +398,10 @@ async fn ldap_reconciliation_quotas_bind_plan_continuation_and_apply() {
         toml::from_str("[ldap]\npages_per_call = 1\n").unwrap();
     assert_eq!(parsed.ldap.pages_per_call, 1);
     assert_eq!(parsed.cloud.pages_per_call, 5);
-    assert!(toml::from_str::<riauth::config::ReconciliationQuotas>(
-        "[cloud]\nunknown_limit = 1\n").is_err());
+    assert!(
+        toml::from_str::<riauth::config::ReconciliationQuotas>("[cloud]\nunknown_limit = 1\n")
+            .is_err()
+    );
     let peer = peer().await;
     let url = peer.url.clone();
     tokio::task::spawn_blocking(move || {
@@ -303,21 +410,39 @@ async fn ldap_reconciliation_quotas_bind_plan_continuation_and_apply() {
         f.core.config.reconciliation_quotas.ldap.pages_per_call = 5;
         assert!(f.core.config.validate().is_err());
         f.core.config.reconciliation_quotas.ldap.pages_per_call = 1;
-        f.core.config.reconciliation_quotas.ldap.max_pages_per_search = 1;
+        f.core
+            .config
+            .reconciliation_quotas
+            .ldap
+            .max_pages_per_search = 1;
         f.core.config.validate().unwrap();
 
         let progress = f.core.directory_plan(&f.admin, "staff").unwrap();
         assert_eq!(progress["decision"], "snapshot_in_progress");
         assert_eq!(progress["pages"], 1);
-        assert_eq!(f.core.directory_plan(&f.admin, "staff").unwrap_err().code,
-            "connector_incomplete_snapshot");
-        assert!(f.core.store.list::<Value>("directory_plans").unwrap().is_empty());
+        assert_eq!(
+            f.core.directory_plan(&f.admin, "staff").unwrap_err().code,
+            "connector_incomplete_snapshot"
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("directory_plans")
+                .unwrap()
+                .is_empty()
+        );
 
-        f.core.config.reconciliation_quotas.ldap.max_pages_per_search = 20;
+        f.core
+            .config
+            .reconciliation_quotas
+            .ldap
+            .max_pages_per_search = 20;
         let mut plan = f.core.directory_plan(&f.admin, "staff").unwrap();
         assert_eq!(plan["restart"], true);
         for _ in 0..8 {
-            if plan["decision"] != "snapshot_in_progress" { break; }
+            if plan["decision"] != "snapshot_in_progress" {
+                break;
+            }
             plan = f.core.directory_plan(&f.admin, "staff").unwrap();
         }
         let id = text(&plan, "id");
@@ -330,17 +455,30 @@ async fn ldap_reconciliation_quotas_bind_plan_continuation_and_apply() {
 
         f.core.config.reconciliation_quotas.ldap.max_users = 1;
         f.core.config.validate().unwrap();
-        assert_eq!(f.core.directory_apply(&f.admin, &id).unwrap_err().code, "conflict");
+        assert_eq!(
+            f.core.directory_apply(&f.admin, &id).unwrap_err().code,
+            "conflict"
+        );
         assert_eq!(canonical(&f), before);
         f.core.config.reconciliation_quotas.ldap.max_users = 2_000;
         let mut applied = f.core.directory_apply(&f.admin, &id).unwrap();
         for _ in 0..8 {
-            if applied["decision"] != "snapshot_in_progress" { break; }
+            if applied["decision"] != "snapshot_in_progress" {
+                break;
+            }
             applied = f.core.directory_apply(&f.admin, &id).unwrap();
         }
         assert_eq!(applied["applied"], true);
-        assert!(f.core.store.list::<Value>("directory_apply_snapshots").unwrap().is_empty());
-    }).await.unwrap();
+        assert!(
+            f.core
+                .store
+                .list::<Value>("directory_apply_snapshots")
+                .unwrap()
+                .is_empty()
+        );
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

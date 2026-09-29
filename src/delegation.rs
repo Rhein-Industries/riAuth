@@ -75,10 +75,10 @@ pub(crate) fn proven_for_elevation(tx: &impl IdentityTx, user: &User) -> Result<
 }
 
 pub(crate) fn ready_for_elevation(tx: &impl IdentityTx, user: &User) -> Result<bool> {
-    Ok(proven_for_elevation(tx, user)?
-        && tx
-            .get::<Value>(CREDENTIAL_EXPOSURE, &user.id)?
-            .is_none())
+    Ok(
+        proven_for_elevation(tx, user)?
+            && tx.get::<Value>(CREDENTIAL_EXPOSURE, &user.id)?.is_none(),
+    )
 }
 
 pub(crate) fn require_elevation_ready(tx: &impl IdentityTx, user: &User) -> Result<()> {
@@ -87,10 +87,7 @@ pub(crate) fn require_elevation_ready(tx: &impl IdentityTx, user: &User) -> Resu
             "This account needs independent offline credential recovery with factor reset before privilege elevation",
         ));
     }
-    if tx
-        .get::<Value>(CREDENTIAL_EXPOSURE, &user.id)?
-        .is_some()
-    {
+    if tx.get::<Value>(CREDENTIAL_EXPOSURE, &user.id)?.is_some() {
         return Err(Error::conflict(
             "This account needs independent credential recovery before privilege elevation",
         ));
@@ -146,7 +143,10 @@ impl CredentialExposure {
     }
 }
 
-pub(crate) fn credential_exposure(tx: &Tx<'_>, user_id: &str) -> Result<Option<CredentialExposure>> {
+pub(crate) fn credential_exposure(
+    tx: &Tx<'_>,
+    user_id: &str,
+) -> Result<Option<CredentialExposure>> {
     tx.get(CREDENTIAL_EXPOSURE, user_id)
 }
 

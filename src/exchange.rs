@@ -40,7 +40,9 @@ pub(crate) fn validate_grant_chain(
         }
         crate::provider::grant_allowed(&requester, TOKEN_EXCHANGE)?;
         let policy = requester.settings.exchange.as_ref().ok_or_else(invalid)?;
-        let subject = tx.access_grant(&exchange.subject_hash)?.ok_or_else(invalid)?;
+        let subject = tx
+            .access_grant(&exchange.subject_hash)?
+            .ok_or_else(invalid)?;
         validate_grant_chain(tx, &subject, depth + 1)?;
         check_policy(
             &requester,

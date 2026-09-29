@@ -1192,12 +1192,29 @@ fn saml_consent_creation_waits_for_bound_one_use_resume() {
     let alice = f.user("alice");
     let (code, id, binding) = waiting(f.core.saml_initiate("saml-app", None).unwrap());
     approve(&f, &alice, &code, None, true);
-    assert!(f.core.store.list::<Value>("saml_consents").unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<Value>("saml_consents")
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
-        f.core.saml_resume(&id, Some("wrong-browser")).err().unwrap().status.as_u16(),
+        f.core
+            .saml_resume(&id, Some("wrong-browser"))
+            .err()
+            .unwrap()
+            .status
+            .as_u16(),
         401
     );
-    assert!(f.core.store.list::<Value>("saml_consents").unwrap().is_empty());
+    assert!(
+        f.core
+            .store
+            .list::<Value>("saml_consents")
+            .unwrap()
+            .is_empty()
+    );
     let (xml, _) = body(f.core.saml_resume(&id, Some(&binding)).unwrap());
     assert!(xml.contains(":status:Success\""));
     let rows = f.core.store.list::<Value>("saml_consents").unwrap();
@@ -1205,14 +1222,20 @@ fn saml_consent_creation_waits_for_bound_one_use_resume() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].0, digest(&format!("{alice_id}\0saml-app")));
     assert!(f.core.saml_resume(&id, Some(&binding)).is_err());
-    assert_eq!(f.core.store.list::<Value>("saml_consents").unwrap().len(), 1);
+    assert_eq!(
+        f.core.store.list::<Value>("saml_consents").unwrap().len(),
+        1
+    );
     let events = f.core.audit_events(&f.admin, 100).unwrap();
     assert_eq!(
-        events.as_array().unwrap().iter().filter(|event|
-            event["actor"] == alice_id.as_str()
+        events
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["actor"] == alice_id.as_str()
                 && event["action"] == "saml.approve"
-                && event["target"] == "saml-app"
-        ).count(),
+                && event["target"] == "saml-app")
+            .count(),
         1
     );
 }

@@ -1200,7 +1200,9 @@ impl Core {
         });
         if decision == "snapshot_in_progress" {
             if result["snapshot"]["snapshot_id"].as_str().is_none() {
-                return Err(Error::internal("Controller snapshot progress has no durable ID"));
+                return Err(Error::internal(
+                    "Controller snapshot progress has no durable ID",
+                ));
             }
             outcome["snapshot"] = result["snapshot"].clone();
         }

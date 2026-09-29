@@ -501,7 +501,9 @@ impl Core {
                             break;
                         };
                         if !tx.user_has_group_index(&id, name)? {
-                            return Err(Error::internal("LDAP Group member index is not reciprocal"));
+                            return Err(Error::internal(
+                                "LDAP Group member index is not reciprocal",
+                            ));
                         }
                         if users.contains_key(&id) {
                             continue;
@@ -537,7 +539,9 @@ impl Core {
                             let member = tx.group_has_member_index(name, &id)?;
                             let reciprocal = tx.user_has_group_index(&id, name)?;
                             if member != reciprocal {
-                                return Err(Error::internal("LDAP Group member index is not reciprocal"));
+                                return Err(Error::internal(
+                                    "LDAP Group member index is not reciprocal",
+                                ));
                             }
                             if member && !users.contains_key(&id) {
                                 retain_selected(&mut users, &id, user)?;
@@ -1089,8 +1093,15 @@ mod tests {
         let large_bytes = scans.bytes(ReadContext::Read) - before_large_bytes;
         assert_eq!(large_rows.len(), self_rows.len());
         assert_eq!(large_rows[0].dn, self_rows[0].dn);
-        assert_eq!(large_rows[0].attributes.len(), self_rows[0].attributes.len());
-        for (before, after) in self_rows[0].attributes.iter().zip(&large_rows[0].attributes) {
+        assert_eq!(
+            large_rows[0].attributes.len(),
+            self_rows[0].attributes.len()
+        );
+        for (before, after) in self_rows[0]
+            .attributes
+            .iter()
+            .zip(&large_rows[0].attributes)
+        {
             assert_eq!(before.atype, after.atype);
             assert_eq!(before.vals, after.vals);
         }
@@ -1104,7 +1115,10 @@ mod tests {
             .unwrap();
         let large_agent_bytes = scans.bytes(ReadContext::Read) - before_large_agent_bytes;
         assert_eq!(
-            large_agent_rows.iter().map(|row| &row.dn).collect::<Vec<_>>(),
+            large_agent_rows
+                .iter()
+                .map(|row| &row.dn)
+                .collect::<Vec<_>>(),
             agent_rows.iter().map(|row| &row.dn).collect::<Vec<_>>()
         );
         for (before, after) in agent_rows.iter().zip(&large_agent_rows) {
@@ -1145,7 +1159,11 @@ mod tests {
                 .count(),
             1
         );
-        assert!(with_long_member.windows(2).all(|rows| rows[0].dn < rows[1].dn));
+        assert!(
+            with_long_member
+                .windows(2)
+                .all(|rows| rows[0].dn < rows[1].dn)
+        );
 
         query.base = "cn=a000,ou=groups,dc=riauth,dc=test".into();
         query.scope = LdapSearchScope::Base;
@@ -1436,9 +1454,7 @@ mod tests {
             })
             .unwrap();
         assert!(
-            core.store
-                .read(|tx| group_binding(tx, "orphan"))
-                .is_err(),
+            core.store.read(|tx| group_binding(tx, "orphan")).is_err(),
             "a projected name alone must not establish a source Group"
         );
         core.store
@@ -1589,8 +1605,7 @@ mod tests {
         );
         let user_rows = if disabled_members { 259 } else { 133 };
         assert!(
-            after.0 - before.0
-                <= (2 * MAX_MEMBER_POINT_READS + 2 * user_rows + 64) as u64,
+            after.0 - before.0 <= (2 * MAX_MEMBER_POINT_READS + 2 * user_rows + 64) as u64,
             "User lookups and reciprocal index checks must stay bounded"
         );
         assert_eq!(after.1, before.1, "no unbounded bucket read");
@@ -2011,9 +2026,10 @@ mod tests {
                 }
                 assert!(tx.group_dn_fold_page("team", None)?.is_empty());
                 assert!(tx.group_dn_fold_page("directory", None)?.is_empty());
-                assert!(tx
-                    .get::<serde_json::Value>("index_group_bindings", "team")?
-                    .is_none());
+                assert!(
+                    tx.get::<serde_json::Value>("index_group_bindings", "team")?
+                        .is_none()
+                );
                 Ok(())
             })
             .unwrap();
@@ -2036,8 +2052,16 @@ mod tests {
             crate::store::maintenance::INDEX_VERSION
         );
         for name in ["TEAM", "team", "directory"] {
-            let binding: serde_json::Value = core.store.get("index_group_bindings", name).unwrap().unwrap();
-            let digest: String = core.store.get("index_group_source_digests", name).unwrap().unwrap();
+            let binding: serde_json::Value = core
+                .store
+                .get("index_group_bindings", name)
+                .unwrap()
+                .unwrap();
+            let digest: String = core
+                .store
+                .get("index_group_source_digests", name)
+                .unwrap()
+                .unwrap();
             assert_eq!(binding["name"], name);
             assert_eq!(binding["source_digest"], digest);
         }
@@ -2102,8 +2126,16 @@ mod tests {
             Some(crate::store::maintenance::INDEX_VERSION)
         );
         for name in ["TEAM", "team", "directory"] {
-            let binding: serde_json::Value = core.store.get("index_group_bindings", name).unwrap().unwrap();
-            let digest: String = core.store.get("index_group_source_digests", name).unwrap().unwrap();
+            let binding: serde_json::Value = core
+                .store
+                .get("index_group_bindings", name)
+                .unwrap()
+                .unwrap();
+            let digest: String = core
+                .store
+                .get("index_group_source_digests", name)
+                .unwrap()
+                .unwrap();
             assert_eq!(binding["name"], name);
             assert_eq!(binding["source_digest"], digest);
         }

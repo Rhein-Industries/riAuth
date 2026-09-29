@@ -214,8 +214,14 @@ async fn worker_not_served() -> Response {
     )
         .into_response();
     let headers = response.headers_mut();
-    headers.insert(axum::http::header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    headers.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
+    headers.insert(
+        axum::http::header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store"),
+    );
+    headers.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     response
 }
@@ -238,7 +244,9 @@ fn worker_router(core: Core) -> Router {
     if prefix.is_empty() {
         probes
     } else {
-        Router::new().nest(&prefix, probes).fallback(worker_not_served)
+        Router::new()
+            .nest(&prefix, probes)
+            .fallback(worker_not_served)
     }
 }
 
@@ -422,25 +430,76 @@ pub fn router(core: Core) -> Router {
         )
         .route("/api/clients", get(clients).post(create_client))
         .route("/api/client-creation-changes", post(stage_client_creation))
-        .route("/api/client-creation-changes/{id}", get(client_creation_change))
-        .route("/api/client-creation-changes/{id}/approve", post(approve_client_creation_change))
-        .route("/api/client-creation-changes/{id}/execute", post(execute_client_creation_change))
-        .route("/api/client-creation-changes/{id}/cancel", post(cancel_client_creation_change))
-        .route("/api/clients/{id}/endpoint-changes", post(stage_client_endpoint))
-        .route("/api/client-endpoint-changes/{id}", get(client_endpoint_change))
-        .route("/api/client-endpoint-changes/{id}/approve", post(approve_client_endpoint_change))
-        .route("/api/client-endpoint-changes/{id}/execute", post(execute_client_endpoint_change))
-        .route("/api/client-endpoint-changes/{id}/cancel", post(cancel_client_endpoint_change))
-        .route("/api/clients/{id}/status-changes", post(stage_client_status))
+        .route(
+            "/api/client-creation-changes/{id}",
+            get(client_creation_change),
+        )
+        .route(
+            "/api/client-creation-changes/{id}/approve",
+            post(approve_client_creation_change),
+        )
+        .route(
+            "/api/client-creation-changes/{id}/execute",
+            post(execute_client_creation_change),
+        )
+        .route(
+            "/api/client-creation-changes/{id}/cancel",
+            post(cancel_client_creation_change),
+        )
+        .route(
+            "/api/clients/{id}/endpoint-changes",
+            post(stage_client_endpoint),
+        )
+        .route(
+            "/api/client-endpoint-changes/{id}",
+            get(client_endpoint_change),
+        )
+        .route(
+            "/api/client-endpoint-changes/{id}/approve",
+            post(approve_client_endpoint_change),
+        )
+        .route(
+            "/api/client-endpoint-changes/{id}/execute",
+            post(execute_client_endpoint_change),
+        )
+        .route(
+            "/api/client-endpoint-changes/{id}/cancel",
+            post(cancel_client_endpoint_change),
+        )
+        .route(
+            "/api/clients/{id}/status-changes",
+            post(stage_client_status),
+        )
         .route("/api/client-status-changes/{id}", get(client_status_change))
-        .route("/api/client-status-changes/{id}/approve", post(approve_client_status_change))
-        .route("/api/client-status-changes/{id}/execute", post(execute_client_status_change))
-        .route("/api/client-status-changes/{id}/cancel", post(cancel_client_status_change))
-        .route("/api/clients/{id}/policy-changes", post(stage_client_policy))
+        .route(
+            "/api/client-status-changes/{id}/approve",
+            post(approve_client_status_change),
+        )
+        .route(
+            "/api/client-status-changes/{id}/execute",
+            post(execute_client_status_change),
+        )
+        .route(
+            "/api/client-status-changes/{id}/cancel",
+            post(cancel_client_status_change),
+        )
+        .route(
+            "/api/clients/{id}/policy-changes",
+            post(stage_client_policy),
+        )
         .route("/api/client-policy-changes/{id}", get(client_policy_change))
-        .route("/api/client-policy-changes/{id}/approve", post(approve_client_policy_change))
-        .route("/api/client-policy-changes/{id}/execute", post(execute_client_policy_change))
-        .route("/api/client-policy-changes/{id}/cancel", post(cancel_client_policy_change))
+        .route(
+            "/api/client-policy-changes/{id}/approve",
+            post(approve_client_policy_change),
+        )
+        .route(
+            "/api/client-policy-changes/{id}/execute",
+            post(execute_client_policy_change),
+        )
+        .route(
+            "/api/client-policy-changes/{id}/cancel",
+            post(cancel_client_policy_change),
+        )
         .route("/api/clients/{id}", axum::routing::patch(update_client))
         .route(
             "/api/clients/{id}/rotate-secret",
@@ -485,10 +544,7 @@ pub fn router(core: Core) -> Router {
         .route("/api/reports/audit.csv", get(audit_csv))
         .route("/api/keys/rotate", post(rotate_key))
         .route("/api/keys", get(key_domains).post(configure_key))
-        .route(
-            "/api/capabilities",
-            get(capabilities),
-        )
+        .route("/api/capabilities", get(capabilities))
         .route("/api/agents", get(list_agents).post(create_agent))
         .route("/api/agents/{id}", axum::routing::delete(revoke_agent))
         .route("/api/agents/{id}/rotate", post(rotate_agent))
@@ -525,7 +581,8 @@ pub fn router(core: Core) -> Router {
         .merge(platform_routes())
         .merge(crate::portal::access_review::routes());
     let routes = if browser_ui {
-        routes.merge(crate::portal::http::browser_routes())
+        routes
+            .merge(crate::portal::http::browser_routes())
             .merge(crate::portal::admin::browser_routes())
             .merge(interaction::browser_routes())
     } else {
@@ -814,7 +871,9 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
                 && v.len() <= 258
                 && v.starts_with('"')
                 && v.ends_with('"')
-                && v[1..v.len() - 1].bytes().all(|b| b.is_ascii_graphic() && b != b'"')
+                && v[1..v.len() - 1]
+                    .bytes()
+                    .all(|b| b.is_ascii_graphic() && b != b'"')
         });
         if parsed.is_none() || req.headers().get_all("if-match").iter().count() != 1 {
             return Error::bad("If-Match must be one quoted resource version").into_response();
@@ -1143,12 +1202,16 @@ async fn scim_search(
         value.as_object_mut().unwrap().remove("schemas");
         for field in ["attributes", "excludedAttributes"] {
             if let Some(selection) = value.get_mut(field) {
-                let items = selection.as_array()
+                let items = selection
+                    .as_array()
                     .filter(|items| items.len() <= 32)
-                    .ok_or_else(|| Error::bad("SCIM search projection must be an attribute array"))?;
+                    .ok_or_else(|| {
+                        Error::bad("SCIM search projection must be an attribute array")
+                    })?;
                 let mut names = Vec::with_capacity(items.len());
                 for item in items {
-                    let name = item.as_str()
+                    let name = item
+                        .as_str()
                         .filter(|name| !name.contains(','))
                         .ok_or_else(|| Error::bad("Invalid SCIM search projection attribute"))?;
                     names.push(name);
@@ -1173,7 +1236,8 @@ async fn scim_get(
 ) -> Response {
     let result = async {
         let token = bearer(&headers)?;
-        app.run(move |core| core.scim_get_projected(&token, &kind, &id, query)).await
+        app.run(move |core| core.scim_get_projected(&token, &kind, &id, query))
+            .await
     }
     .await;
     match result {
@@ -2139,7 +2203,8 @@ async fn stage_client_creation(
     Json(input): Json<NewClient>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.stage_client_creation(&token, input).map(Json)).await
+    app.run(move |core| core.stage_client_creation(&token, input).map(Json))
+        .await
 }
 async fn client_creation_change(
     State(app): State<App>,
@@ -2147,7 +2212,8 @@ async fn client_creation_change(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.client_creation_change(&token, &id).map(Json)).await
+    app.run(move |core| core.client_creation_change(&token, &id).map(Json))
+        .await
 }
 grant_change_handler!(approve_client_creation_change);
 grant_change_handler!(execute_client_creation_change);
@@ -2328,7 +2394,7 @@ async fn apply_state(
         core.apply_state_confirmed(&token, input, reviewed_plan.as_deref())
             .map(Json)
     })
-        .await
+    .await
 }
 async fn plan_status(
     State(app): State<App>,
@@ -2776,9 +2842,10 @@ async fn outpost_traefik(
     headers: HeaderMap,
 ) -> Result<Response> {
     use crate::outpost::Forward;
-    let document = app.core.config.browser_ui && headers
-        .get("sec-fetch-dest")
-        .is_some_and(|dest| dest == "document");
+    let document = app.core.config.browser_ui
+        && headers
+            .get("sec-fetch-dest")
+            .is_some_and(|dest| dest == "document");
     match app
         .run_forward(move |core| core.outpost_forward(&id, peer.ip(), &headers))
         .await
@@ -3845,10 +3912,7 @@ async fn saml_source_acs(
             &app.core.cookie_path(),
             600,
         );
-        let path = format!(
-            "{}saml/sources/{source_id}/return",
-            app.core.cookie_path()
-        );
+        let path = format!("{}saml/sources/{source_id}/return", app.core.cookie_path());
         return see_other(&app, &path, vec![cookie]);
     }
     source_stage_redirect(&app.core, value)

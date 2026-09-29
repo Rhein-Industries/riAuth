@@ -366,8 +366,11 @@ async fn totp_enroll(
     Json(input): Json<TotpEnrollmentCode>,
 ) -> Result<Json<View>> {
     let token = bearer(&headers)?;
-    app.run(move |core| core.workflow_totp_enroll(&token, &id, &input.code).map(Json))
-        .await
+    app.run(move |core| {
+        core.workflow_totp_enroll(&token, &id, &input.code)
+            .map(Json)
+    })
+    .await
 }
 
 async fn totp_replace(

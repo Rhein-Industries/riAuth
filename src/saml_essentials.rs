@@ -166,7 +166,12 @@ pub mod logout {
         Ok(json!({"redirect_uri": original.map(|target| target.rendered_uri)}))
     }
 
-    pub(crate) fn is_continuation(_core: &Core, _tx: &Tx<'_>, _sid: &str, _uri: &str) -> Result<bool> {
+    pub(crate) fn is_continuation(
+        _core: &Core,
+        _tx: &Tx<'_>,
+        _sid: &str,
+        _uri: &str,
+    ) -> Result<bool> {
         Ok(false)
     }
 }

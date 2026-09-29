@@ -167,7 +167,8 @@ impl Remote {
         authenticated: bool,
         reviewed_plan: Option<&str>,
     ) -> Result<Value> {
-        self.call_with_review_and_match(method, path, body, authenticated, reviewed_plan, None).await
+        self.call_with_review_and_match(method, path, body, authenticated, reviewed_plan, None)
+            .await
     }
     pub(super) async fn call_with_if_match(
         &self,
@@ -178,11 +179,16 @@ impl Remote {
         version: Option<&str>,
     ) -> Result<Value> {
         if let Some(version) = version {
-            if version.len() < 3 || version.len() > 258 || !version.starts_with('"') || !version.ends_with('"') {
+            if version.len() < 3
+                || version.len() > 258
+                || !version.starts_with('"')
+                || !version.ends_with('"')
+            {
                 bail!("--if-version must be the quoted SCIM meta.version value");
             }
         }
-        self.call_with_review_and_match(method, path, body, authenticated, None, version).await
+        self.call_with_review_and_match(method, path, body, authenticated, None, version)
+            .await
     }
     async fn call_with_review_and_match(
         &self,

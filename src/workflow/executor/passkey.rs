@@ -91,30 +91,58 @@ impl Core {
     }
 }
 
-pub(super) fn challenge_in(core: &Core, tx: &Tx<'_>, run: &mut RuntimeRun) -> Result<Option<PasskeyChallenge>> {
+pub(super) fn challenge_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &mut RuntimeRun,
+) -> Result<Option<PasskeyChallenge>> {
     let checked = run.validated()?;
     settle_time(core, tx, &checked, run, now())?;
-    let RunState::Active { step, attempt } = &run.record.state else { return Ok(None) };
-    let current = checked.step(step).ok_or_else(|| Error::internal("Workflow step is unavailable"))?;
+    let RunState::Active { step, attempt } = &run.record.state else {
+        return Ok(None);
+    };
+    let current = checked
+        .step(step)
+        .ok_or_else(|| Error::internal("Workflow step is unavailable"))?;
     if !matches!(current.action, Action::VerifyPasskey {})
         || run.in_flight.is_some()
         || run.executions >= checked.definition().limits.max_executions
-    { return Ok(None) }
+    {
+        return Ok(None);
+    }
     let (_, request) = authority(core, tx, &run.record, now())?;
-    if request.source.is_some() { return Err(Error::forbidden()) }
+    if request.source.is_some() {
+        return Err(Error::forbidden());
+    }
     let mut reservation = InFlight {
-        nonce: crypto::id(), step: step.clone(), attempt: *attempt,
-        step_started_at: run.step_started_at, source: None, passkey: None,
-        totp: None, recovery_code: None, enrollment: None, totp_enrollment: None,
+        nonce: crypto::id(),
+        step: step.clone(),
+        attempt: *attempt,
+        step_started_at: run.step_started_at,
+        source: None,
+        passkey: None,
+        totp: None,
+        recovery_code: None,
+        enrollment: None,
+        totp_enrollment: None,
     };
     let binding = binding(run, &reservation)?;
     let expires_at = request.expires_at.min(
-        run.step_started_at.saturating_add(u64::from(current.timeout_seconds)));
+        run.step_started_at
+            .saturating_add(u64::from(current.timeout_seconds)),
+    );
     let started = core.browser_passkey_start_in(
-        tx, Some(&run.record.account), &interaction(run), &digest(&binding),
-        run.record.session.clone(), expires_at)?;
-    let ceremony = started["ceremony"].as_str()
-        .ok_or_else(|| Error::internal("Passkey verifier returned no ceremony"))?.to_owned();
+        tx,
+        Some(&run.record.account),
+        &interaction(run),
+        &digest(&binding),
+        run.record.session.clone(),
+        expires_at,
+    )?;
+    let ceremony = started["ceremony"]
+        .as_str()
+        .ok_or_else(|| Error::internal("Passkey verifier returned no ceremony"))?
+        .to_owned();
     reservation.passkey = Some(ceremony.clone());
     run.in_flight = Some(reservation);
     run.executions += 1;
@@ -125,69 +153,134 @@ pub(super) fn challenge_in(core: &Core, tx: &Tx<'_>, run: &mut RuntimeRun) -> Re
     }))
 }
 
-pub(super) fn finish_in(core: &Core, tx: &Tx<'_>, run: &mut RuntimeRun, response: PublicKeyCredential) -> Result<View> {
+pub(super) fn finish_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &mut RuntimeRun,
+    response: PublicKeyCredential,
+) -> Result<View> {
     let checked = run.validated()?;
-    if run.record.state.is_final() { return Err(Error::conflict("Workflow run is already final")) }
-    let reservation = run.in_flight.clone()
+    if run.record.state.is_final() {
+        return Err(Error::conflict("Workflow run is already final"));
+    }
+    let reservation = run
+        .in_flight
+        .clone()
         .ok_or_else(|| Error::conflict("No passkey ceremony is pending"))?;
-    let ceremony = reservation.passkey.as_deref().ok_or_else(Error::forbidden)?;
+    let ceremony = reservation
+        .passkey
+        .as_deref()
+        .ok_or_else(Error::forbidden)?;
     settle_time(core, tx, &checked, run, now())?;
     // A timeout consumes the old ceremony and commits the retry/final state.
-    if run.in_flight.as_ref() != Some(&reservation) { return run.view(&checked) }
-    let RunState::Active { step, attempt } = &run.record.state else { return run.view(&checked) };
-    if reservation.step != *step || reservation.attempt != *attempt
+    if run.in_flight.as_ref() != Some(&reservation) {
+        return run.view(&checked);
+    }
+    let RunState::Active { step, attempt } = &run.record.state else {
+        return run.view(&checked);
+    };
+    if reservation.step != *step
+        || reservation.attempt != *attempt
         || reservation.step_started_at != run.step_started_at
-        || reservation.source.is_some() || reservation.totp.is_some()
-        || reservation.recovery_code.is_some() || reservation.enrollment.is_some()
+        || reservation.source.is_some()
+        || reservation.totp.is_some()
+        || reservation.recovery_code.is_some()
+        || reservation.enrollment.is_some()
         || reservation.totp_enrollment.is_some()
-        || !matches!(checked.step(step).map(|s| &s.action), Some(Action::VerifyPasskey {}))
-    { return Err(Error::forbidden()) }
+        || !matches!(
+            checked.step(step).map(|s| &s.action),
+            Some(Action::VerifyPasskey {})
+        )
+    {
+        return Err(Error::forbidden());
+    }
     let (user, request) = authority(core, tx, &run.record, now())?;
-    if request.source.is_some() { return Err(Error::forbidden()) }
+    if request.source.is_some() {
+        return Err(Error::forbidden());
+    }
     let binding = binding(run, &reservation)?;
     let verified = core.browser_passkey_finish_in(
-        tx, ceremony, response,
+        tx,
+        ceremony,
+        response,
         BrowserPasskeyContext {
-            interaction: &interaction(run), binding: Some(&binding),
-            pinned_user: Some(&run.record.account), session_id: run.record.session.as_deref(),
-        })?;
+            interaction: &interaction(run),
+            binding: Some(&binding),
+            pinned_user: Some(&run.record.account),
+            session_id: run.record.session.as_deref(),
+        },
+    )?;
     let staged_id = match verified {
         Ok(staged) => staged,
         Err(_) => {
             fail_attempt(core, tx, &checked, run, AttemptResult::Failed, now())?;
-            return run.view(&checked)
+            return run.view(&checked);
         }
     };
-    let staged = tx.get::<StagedLogin>("browser_logins", &staged_id)?
+    let staged = tx
+        .get::<StagedLogin>("browser_logins", &staged_id)?
         .ok_or_else(|| Error::internal("Passkey verifier returned no staged login"))?;
     discard_staged(tx, &staged_id)?;
     let at = now();
-    if staged.method != "passkey" || staged.identity.user_id != user.id
-        || staged.identity.epoch != user.epoch || !staged.identity.mfa
+    if staged.method != "passkey"
+        || staged.identity.user_id != user.id
+        || staged.identity.epoch != user.epoch
+        || !staged.identity.mfa
         || staged.identity.amr != ["webauthn", "mfa"]
-        || staged.identity.source.is_some() || !staged.identity.session_id.is_empty()
+        || staged.identity.source.is_some()
+        || !staged.identity.session_id.is_empty()
         || staged.identity.auth_time < run.step_started_at
-        || staged.identity.auth_time > at || staged.expires_at <= at
-    { return Err(Error::forbidden()) }
+        || staged.identity.auth_time > at
+        || staged.expires_at <= at
+    {
+        return Err(Error::forbidden());
+    }
     let receipt = StoredEvidence {
-        id: crypto::id(), proof: Proof::Passkey, step: step.clone(), attempt: *attempt,
-        action: Action::VerifyPasskey {}, account: user.id, account_epoch: user.epoch,
-        session: run.record.session.clone(), request: request.id,
-        run: run.record.id.clone(), binding: run.record.binding.clone(),
+        id: crypto::id(),
+        proof: Proof::Passkey,
+        step: step.clone(),
+        attempt: *attempt,
+        action: Action::VerifyPasskey {},
+        account: user.id,
+        account_epoch: user.epoch,
+        session: run.record.session.clone(),
+        request: request.id,
+        run: run.record.id.clone(),
+        binding: run.record.binding.clone(),
         verified_at: staged.identity.auth_time,
-        expires_at: staged.expires_at.min(request.expires_at).min(at.saturating_add(RECEIPT_SECONDS)),
-        consumed: false, source: None,
+        expires_at: staged
+            .expires_at
+            .min(request.expires_at)
+            .min(at.saturating_add(RECEIPT_SECONDS)),
+        consumed: false,
+        source: None,
     };
     run.attempts.push(Attempt {
-        step: step.clone(), ordinal: *attempt, started_at: run.step_started_at,
-        finished_at: at, result: AttemptResult::Verified,
+        step: step.clone(),
+        ordinal: *attempt,
+        started_at: run.step_started_at,
+        finished_at: at,
+        result: AttemptResult::Verified,
     });
     run.in_flight = None;
-    finish_step(core, tx, &checked, run, Label::fixed("verified"), Some(receipt), at)?;
+    finish_step(
+        core,
+        tx,
+        &checked,
+        run,
+        Label::fixed("verified"),
+        Some(receipt),
+        at,
+    )?;
     run.view(&checked)
 }
 
-pub(super) fn cancel_in(core: &Core, tx: &Tx<'_>, run: &mut RuntimeRun, ceremony: &str) -> Result<View> {
+pub(super) fn cancel_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &mut RuntimeRun,
+    ceremony: &str,
+) -> Result<View> {
     let checked = run.validated()?;
     settle_time(core, tx, &checked, run, now())?;
     if run.in_flight.as_ref().and_then(|r| r.passkey.as_deref()) != Some(ceremony) {

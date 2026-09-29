@@ -428,14 +428,14 @@ impl Tx<'_> {
             Some(Some(member)) if member == user_id => Ok(true),
             Some(Some(_)) => Err(Error::internal("LDAP Group member index binding mismatch")),
             Some(None) => {
-                let member = self.get::<String>(
-                    &format!("{GROUP_MEMBER_OVERFLOW}/{group}"),
-                    &key,
-                )?;
+                let member =
+                    self.get::<String>(&format!("{GROUP_MEMBER_OVERFLOW}/{group}"), &key)?;
                 if user_id.len() > INLINE_GROUP_MEMBER_BYTES && member.as_deref() == Some(user_id) {
                     Ok(true)
                 } else {
-                    Err(Error::internal("LDAP Group member overflow binding mismatch"))
+                    Err(Error::internal(
+                        "LDAP Group member overflow binding mismatch",
+                    ))
                 }
             }
         }
@@ -614,11 +614,8 @@ impl Tx<'_> {
         let mut exhausted;
         let mut last;
         loop {
-            let entries = self.scan::<String>(
-                &format!("index_due_{bucket}"),
-                after.as_deref(),
-                LIMIT,
-            )?;
+            let entries =
+                self.scan::<String>(&format!("index_due_{bucket}"), after.as_deref(), LIMIT)?;
             exhausted = entries.len() < LIMIT;
             last = None;
             for (key, id) in entries {

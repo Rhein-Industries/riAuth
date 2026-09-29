@@ -396,7 +396,9 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
         for resource in page["Resources"].as_array().unwrap() {
             assert_eq!(
                 *resource,
-                f.core.scim_get(&owner, "Users", &text(resource, "id")).unwrap()
+                f.core
+                    .scim_get(&owner, "Users", &text(resource, "id"))
+                    .unwrap()
             );
         }
     }
@@ -404,7 +406,8 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
     assert_eq!(descending["totalResults"], 130);
     let mut descending_expected = sorted_expected.clone();
     descending_expected.sort_by(|left, right| {
-        right.2
+        right
+            .2
             .to_lowercase()
             .cmp(&left.2.to_lowercase())
             .then_with(|| left.0.cmp(&right.0))
@@ -417,26 +420,41 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
             .map(|row| row.0.clone())
             .collect::<Vec<_>>()
     );
-    let reverse_ids = f.core.scim_list(&owner, "Users", Query {
-        sort_by: Some("id".into()),
-        sort_order: Some("descending".into()),
-        start_index: Some(128),
-        count: Some(3),
-        ..Default::default()
-    }).unwrap();
+    let reverse_ids = f
+        .core
+        .scim_list(
+            &owner,
+            "Users",
+            Query {
+                sort_by: Some("id".into()),
+                sort_order: Some("descending".into()),
+                start_index: Some(128),
+                count: Some(3),
+                ..Default::default()
+            },
+        )
+        .unwrap();
     assert_eq!(reverse_ids["totalResults"], 130);
     assert_eq!(
         ids(&reverse_ids),
         expected.iter().rev().skip(127).cloned().collect::<Vec<_>>()
     );
-    let filtered_sorted = f.core.scim_list(&owner, "Users", Query {
-        filter: Some(boundary_filter),
-        sort_by: Some("displayName".into()),
-        count: Some(1),
-        ..Default::default()
-    }).unwrap();
+    let filtered_sorted = f
+        .core
+        .scim_list(
+            &owner,
+            "Users",
+            Query {
+                filter: Some(boundary_filter),
+                sort_by: Some("displayName".into()),
+                count: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
     assert_eq!(filtered_sorted["totalResults"], 2);
-    let filtered_first = sorted_ids.iter()
+    let filtered_first = sorted_ids
+        .iter()
         .find(|id| **id == expected[127] || **id == expected[128])
         .unwrap();
     assert_eq!(ids(&filtered_sorted), vec![filtered_first.clone()]);
@@ -456,9 +474,18 @@ fn scim_user_pages_cross_store_scan_boundary(backend: Backend) {
         group_page["Resources"][0],
         f.core.scim_get(&owner, "Groups", &group_id).unwrap()
     );
-    assert_eq!(scans.scans(ReadContext::Read, false).count(), before_unbounded);
-    assert_eq!(scans.scans(ReadContext::Read, true).count() - before_count, 2);
-    assert_eq!(scans.scans(ReadContext::Read, true).sum() - before_rows, 130);
+    assert_eq!(
+        scans.scans(ReadContext::Read, false).count(),
+        before_unbounded
+    );
+    assert_eq!(
+        scans.scans(ReadContext::Read, true).count() - before_count,
+        2
+    );
+    assert_eq!(
+        scans.scans(ReadContext::Read, true).sum() - before_rows,
+        130
+    );
 }
 
 #[test]
@@ -470,33 +497,46 @@ fn redb_scim_user_pages_cross_store_scan_boundary() {
 fn redb_scim_user_get_pages_related_groups() {
     let f = Backend::Redb.fixture();
     let owner = agent(&f, "get-paged-relations-owner");
-    let user = f.core.scim_write(
-        &owner,
-        "Users",
-        None,
-        json!({"schemas":[scim::USER],"userName":"get-paged-relations-user"}),
-        false,
-    ).unwrap();
+    let user = f
+        .core
+        .scim_write(
+            &owner,
+            "Users",
+            None,
+            json!({"schemas":[scim::USER],"userName":"get-paged-relations-user"}),
+            false,
+        )
+        .unwrap();
     let user_id = text(&user, "id");
     let mut groups = Vec::new();
     for index in 0..130 {
         let name = format!("get-paged-group-{index:03}");
-        let group = f.core.scim_write(
-            &owner,
-            "Groups",
-            None,
-            json!({"schemas":[scim::GROUP],"displayName":name}),
-            false,
-        ).unwrap();
+        let group = f
+            .core
+            .scim_write(
+                &owner,
+                "Groups",
+                None,
+                json!({"schemas":[scim::GROUP],"displayName":name}),
+                false,
+            )
+            .unwrap();
         groups.push((text(&group, "id"), name));
     }
     groups.sort_by(|left, right| left.0.cmp(&right.0));
     for index in [0, 128] {
-        f.core.group_member(&f.admin, &groups[index].1, "get-paged-relations-user", true).unwrap();
+        f.core
+            .group_member(&f.admin, &groups[index].1, "get-paged-relations-user", true)
+            .unwrap();
     }
     let listed = list(&f, &owner, "Users", 1, 1)["Resources"][0].clone();
     assert_eq!(
-        listed["groups"].as_array().unwrap().iter().map(|group| text(group, "value")).collect::<Vec<_>>(),
+        listed["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|group| text(group, "value"))
+            .collect::<Vec<_>>(),
         vec![groups[0].0.clone(), groups[128].0.clone()]
     );
 
@@ -506,25 +546,41 @@ fn redb_scim_user_get_pages_related_groups() {
     let (before_count, before_rows) = (before_bounded.count(), before_bounded.sum());
     let fetched = f.core.scim_get(&owner, "Users", &user_id).unwrap();
     assert_eq!(fetched, listed);
-    assert_eq!(scans.scans(ReadContext::Read, false).count(), before_unbounded);
+    assert_eq!(
+        scans.scans(ReadContext::Read, false).count(),
+        before_unbounded
+    );
     // One two-row durable-membership index page plus two SCIM Group pages.
-    assert_eq!(scans.scans(ReadContext::Read, true).count() - before_count, 3);
-    assert_eq!(scans.scans(ReadContext::Read, true).sum() - before_rows, 132);
+    assert_eq!(
+        scans.scans(ReadContext::Read, true).count() - before_count,
+        3
+    );
+    assert_eq!(
+        scans.scans(ReadContext::Read, true).sum() - before_rows,
+        132
+    );
 
     let before_bounded = scans.scans(ReadContext::Read, true);
     let (before_count, before_rows) = (before_bounded.count(), before_bounded.sum());
-    let (projected, version, location) = f.core.scim_get_projected(
-        &owner,
-        "Users",
-        &user_id,
-        scim::ProjectionQuery::default(),
-    ).unwrap();
+    let (projected, version, location) = f
+        .core
+        .scim_get_projected(&owner, "Users", &user_id, scim::ProjectionQuery::default())
+        .unwrap();
     assert_eq!(projected, listed);
     assert_eq!(version, text(&listed["meta"], "version"));
     assert_eq!(location, text(&listed["meta"], "location"));
-    assert_eq!(scans.scans(ReadContext::Read, false).count(), before_unbounded);
-    assert_eq!(scans.scans(ReadContext::Read, true).count() - before_count, 3);
-    assert_eq!(scans.scans(ReadContext::Read, true).sum() - before_rows, 132);
+    assert_eq!(
+        scans.scans(ReadContext::Read, false).count(),
+        before_unbounded
+    );
+    assert_eq!(
+        scans.scans(ReadContext::Read, true).count() - before_count,
+        3
+    );
+    assert_eq!(
+        scans.scans(ReadContext::Read, true).sum() - before_rows,
+        132
+    );
 }
 
 fn patch_user(
@@ -1017,10 +1073,12 @@ fn scim_one_group_publication_spans_owners_and_pages(backend: Backend) {
     assert_eq!(version("Groups", &group_id), group_before);
     assert_eq!(other_version("Users", &other_user_id), other_user_before);
     assert_eq!(other_version("Groups", &other_group_id), other_group_before);
-    assert!(f.core.scim_get(&owner, "Groups", &group_id).unwrap()["members"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        f.core.scim_get(&owner, "Groups", &group_id).unwrap()["members"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 
     let (bounded_scans_before, page_scans_before, bounded_rows_before) = writer_bounded_scans(&f);
     let unbounded_before = scans.scans(ReadContext::Writer, false).count();
@@ -1033,8 +1091,14 @@ fn scim_one_group_publication_spans_owners_and_pages(backend: Backend) {
         scans.scans(ReadContext::Writer, false).count(),
         unbounded_before
     );
-    assert!(owned_scans >= 4, "owned membership write used only {owned_scans} scans");
-    assert!(owned_rows >= 260, "owned membership write read only {owned_rows} rows");
+    assert!(
+        owned_scans >= 4,
+        "owned membership write used only {owned_scans} scans"
+    );
+    assert!(
+        owned_rows >= 260,
+        "owned membership write read only {owned_rows} rows"
+    );
     assert!(
         owned_rows <= owned_scans * 128,
         "owned membership write retained {owned_rows} rows in {owned_scans} scans"
@@ -1068,13 +1132,12 @@ fn scim_one_group_publication_spans_owners_and_pages(backend: Backend) {
     );
     assert_eq!(other_version("Users", &other_user_id), other_user_before);
     assert_eq!(other_version("Groups", &other_group_id), other_group_before);
-    assert!(f
-        .core
-        .scim_get(&other, "Users", &other_user_id)
-        .unwrap()["groups"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        f.core.scim_get(&other, "Users", &other_user_id).unwrap()["groups"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 
     f.core
         .store
@@ -1121,7 +1184,10 @@ fn scim_one_group_publication_spans_owners_and_pages(backend: Backend) {
     assert_eq!(version("Users", &user_id), user_published);
     assert_eq!(version("Groups", &group_id), group_published);
     assert_eq!(other_version("Users", &other_user_id), other_user_published);
-    assert_eq!(other_version("Groups", &other_group_id), other_group_published);
+    assert_eq!(
+        other_version("Groups", &other_group_id),
+        other_group_published
+    );
     assert_eq!(
         f.core.scim_get(&owner, "Groups", &group_id).unwrap()["members"],
         published_group["members"]
@@ -1189,10 +1255,30 @@ fn scim_group_member_replace_pages_owned_users(backend: Backend) {
         )
         .unwrap();
     let foreign_id = text(&foreign, "id");
-    let foreign_local: String = f.core.store.get("usernames", "scope-foreign").unwrap().unwrap();
-    let first_local: String = f.core.store.get("usernames", "scope-user-000").unwrap().unwrap();
-    let last_local: String = f.core.store.get("usernames", "scope-user-129").unwrap().unwrap();
-    let kept_local: String = f.core.store.get("usernames", "scope-user-001").unwrap().unwrap();
+    let foreign_local: String = f
+        .core
+        .store
+        .get("usernames", "scope-foreign")
+        .unwrap()
+        .unwrap();
+    let first_local: String = f
+        .core
+        .store
+        .get("usernames", "scope-user-000")
+        .unwrap()
+        .unwrap();
+    let last_local: String = f
+        .core
+        .store
+        .get("usernames", "scope-user-129")
+        .unwrap()
+        .unwrap();
+    let kept_local: String = f
+        .core
+        .store
+        .get("usernames", "scope-user-001")
+        .unwrap()
+        .unwrap();
     f.core
         .group_member(&f.admin, "scope-group", "scope-foreign", true)
         .unwrap();
@@ -1200,7 +1286,10 @@ fn scim_group_member_replace_pages_owned_users(backend: Backend) {
         .group_member(&f.admin, "scope-group", "scope-user-000", true)
         .unwrap();
     let version = |token: &str, id: &str| -> String {
-        text(&f.core.scim_get(token, "Users", id).unwrap()["meta"], "version")
+        text(
+            &f.core.scim_get(token, "Users", id).unwrap()["meta"],
+            "version",
+        )
     };
     let group = f
         .core
@@ -1308,7 +1397,10 @@ fn scim_group_member_replace_pages_owned_users(backend: Backend) {
     );
     assert_eq!(version(&owner, &kept_id), kept_before);
     assert_eq!(version(&other, &foreign_id), foreign_before);
-    assert_eq!(replaced, f.core.scim_get(&owner, "Groups", &group_id).unwrap());
+    assert_eq!(
+        replaced,
+        f.core.scim_get(&owner, "Groups", &group_id).unwrap()
+    );
 }
 
 #[test]

@@ -262,7 +262,11 @@ fn newer_activation_evidence_blocks_rollback_without_mutating_identity_state() {
                     activation["at_revision"] = serde_json::json!(revision + 1);
                     tx.put("meta", "version_activation", &activation)?;
                 } else {
-                    tx.put("meta", "index_version", &(riauth::store::maintenance::INDEX_VERSION + 1))?;
+                    tx.put(
+                        "meta",
+                        "index_version",
+                        &(riauth::store::maintenance::INDEX_VERSION + 1),
+                    )?;
                 }
                 Ok(())
             })
@@ -280,7 +284,10 @@ fn newer_activation_evidence_blocks_rollback_without_mutating_identity_state() {
         assert!(error.message.contains(expected), "{future}: {error}");
         let store = riauth::store::Store::from_config(&config).unwrap();
         let after = store.read(|tx| tx.snapshot()).unwrap();
-        assert!(before == after, "failed {future} activation mutated stored records");
+        assert!(
+            before == after,
+            "failed {future} activation mutated stored records"
+        );
     }
 }
 
@@ -540,7 +547,10 @@ impl GrantFixture {
             .get("meta/user_listing_cursor_epoch")
             .and_then(serde_json::Value::as_str)
             .filter(|value| !value.is_empty());
-        assert!(epoch.is_some(), "restore must stamp a user-listing cursor epoch");
+        assert!(
+            epoch.is_some(),
+            "restore must stamp a user-listing cursor epoch"
+        );
         if let Some(previous) = before.get("meta/user_listing_cursor_epoch") {
             assert_ne!(
                 after.get("meta/user_listing_cursor_epoch"),

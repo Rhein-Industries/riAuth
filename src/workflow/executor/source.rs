@@ -22,11 +22,7 @@ fn bind_registration(checked: Validated, pin: &upstream::Pin) -> Result<Validate
         .map_err(invalid_error)
 }
 
-pub(super) fn session_matches(
-    session: &Session,
-    pin: &upstream::Pin,
-    link: Option<&str>,
-) -> bool {
+pub(super) fn session_matches(session: &Session, pin: &upstream::Pin, link: Option<&str>) -> bool {
     session.identity.source.as_ref().is_some_and(|source| {
         source.id == pin.source.as_str()
             && source.fingerprint == pin.fingerprint
@@ -171,7 +167,8 @@ impl Core {
             .ok_or_else(|| Error::conflict("Configured workflow is unavailable"))?;
         let mut environment = Environment::platform();
         environment.sources.insert(source.clone());
-        let checked = validate(configured.definition.clone(), &environment).map_err(invalid_error)?;
+        let checked =
+            validate(configured.definition.clone(), &environment).map_err(invalid_error)?;
         if checked.definition().id.as_str() != workflow {
             return Err(Error::conflict("Configured workflow is unavailable"));
         }
@@ -198,7 +195,9 @@ impl Core {
                     let pinned = active.validated()?;
                     settle_time(self, tx, &pinned, &mut active, at)?;
                     if !active.record.state.is_final() {
-                        return Err(Error::conflict("A workflow is already active for this session"));
+                        return Err(Error::conflict(
+                            "A workflow is already active for this session",
+                        ));
                     }
                 }
                 tx.delete(ACTIVE_SESSIONS, &session.id)?;
@@ -275,12 +274,8 @@ impl Core {
                 enrollment: None,
                 totp_enrollment: None,
             };
-            let (attempt, authorization_url) = self.begin_workflow_source(
-                tx,
-                &pin,
-                binding(&run, &reservation)?,
-                expires_at,
-            )?;
+            let (attempt, authorization_url) =
+                self.begin_workflow_source(tx, &pin, binding(&run, &reservation)?, expires_at)?;
             reservation.source = Some(attempt);
             run.in_flight = Some(reservation);
             run.executions += 1;

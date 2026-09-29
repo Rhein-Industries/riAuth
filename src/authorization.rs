@@ -57,7 +57,11 @@ pub(crate) fn unique(pairs: Vec<(String, String)>) -> Result<BTreeMap<String, St
     map.retain(|_, v| !v.is_empty());
     Ok(map)
 }
-pub fn validate_reference(tx: &impl AuthorizationTx, client: &Client, request: &Authorization) -> Result<()> {
+pub fn validate_reference(
+    tx: &impl AuthorizationTx,
+    client: &Client,
+    request: &Authorization,
+) -> Result<()> {
     if client.settings.require_pushed_authorization_requests && request.request_uri.is_none() {
         return Err(Error::bad("This client requires PAR"));
     }
@@ -98,17 +102,16 @@ pub fn validate_reference(tx: &impl AuthorizationTx, client: &Client, request: &
     Ok(())
 }
 /// When the pushed request or signed request object behind `request` stops being usable.
-pub(crate) fn reference_expiry(tx: &impl AuthorizationTx, request: &Authorization) -> Result<Option<u64>> {
+pub(crate) fn reference_expiry(
+    tx: &impl AuthorizationTx,
+    request: &Authorization,
+) -> Result<Option<u64>> {
     let pushed = match &request.request_uri {
-        Some(uri) => tx
-            .pushed(&digest(uri))?
-            .map(|p| p.expires_at),
+        Some(uri) => tx.pushed(&digest(uri))?.map(|p| p.expires_at),
         None => None,
     };
     let signed = match &request.request_object_hash {
-        Some(id) => tx
-            .signed(id)?
-            .map(|s| s.expires_at),
+        Some(id) => tx.signed(id)?.map(|s| s.expires_at),
         None => None,
     };
     Ok(pushed.into_iter().chain(signed).min())

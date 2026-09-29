@@ -46,9 +46,15 @@ pub(super) fn routes() -> Router<App> {
 }
 
 pub(super) fn browser_routes() -> Router<App> {
-    Router::new().route("/portal/assets/signin.js", get(|| async {
-        ([("content-type", "text/javascript; charset=utf-8")], include_str!("../portal/signin.js"))
-    }))
+    Router::new().route(
+        "/portal/assets/signin.js",
+        get(|| async {
+            (
+                [("content-type", "text/javascript; charset=utf-8")],
+                include_str!("../portal/signin.js"),
+            )
+        }),
+    )
 }
 
 #[cfg(feature = "platform")]
@@ -77,10 +83,14 @@ fn saml_routes() -> Router<App> {
 /// `sso`: the browser presented an SSO cookie; without one it gets a placeholder.
 pub(super) fn interaction_page(app: &App, code: &str, command: &str, sso: bool) -> Response {
     if !app.core.config.browser_ui {
-        return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({
-            "error": "interaction_required",
-            "error_description": "This instance does not serve browser interaction pages"
-        }))).into_response();
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "interaction_required",
+                "error_description": "This instance does not serve browser interaction pages"
+            })),
+        )
+            .into_response();
     }
     let html = include_str!("../portal/signin.html")
         .replace("__CODE__", &escape(code))
@@ -222,9 +232,11 @@ async fn passkey_cancel<const SAML: bool>(
     app.run(move |core| {
         let binding = binding(core, &headers, SAML, &id);
         if SAML {
-            core.browser_passkey_cancel(&input.ceremony, &format!("saml:{id}"), binding).map(Json)
+            core.browser_passkey_cancel(&input.ceremony, &format!("saml:{id}"), binding)
+                .map(Json)
         } else {
-            core.authorize_passkey_cancel(&id, binding, sso.as_deref(), &input.ceremony).map(Json)
+            core.authorize_passkey_cancel(&id, binding, sso.as_deref(), &input.ceremony)
+                .map(Json)
         }
     })
     .await

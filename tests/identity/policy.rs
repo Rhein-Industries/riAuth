@@ -220,11 +220,15 @@ fn disable_then_enable_never_resurrects_user_or_client_tokens() {
 #[test]
 fn terminal_browser_handoff_silent_consent_and_rp_logout_are_bound_to_sessions() {
     let f = Fixture::new();
-    f.client_with_settings("app", false, riauth::model::ProviderSettings {
-        post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
-        backchannel_logout_uri: Some("https://app.example.test/backchannel".into()),
-        ..Default::default()
-    });
+    f.client_with_settings(
+        "app",
+        false,
+        riauth::model::ProviderSettings {
+            post_logout_redirect_uris: vec!["https://app.example.test/signed-out".into()],
+            backchannel_logout_uri: Some("https://app.example.test/backchannel".into()),
+            ..Default::default()
+        },
+    );
     let verifier = crypto::random_token("");
     let start = f
         .core

@@ -113,14 +113,19 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
             .workflow_passkey_enrollment_challenge(&alice, &cancelled.id, "Too early".into())
             .is_err()
     );
-    let passkey = f.core.workflow_passkey_challenge(&alice, &cancelled.id).unwrap();
+    let passkey = f
+        .core
+        .workflow_passkey_challenge(&alice, &cancelled.id)
+        .unwrap();
     let verified = existing
         .do_authentication(
             "http://localhost:9000".parse().unwrap(),
             serde_json::from_value(passkey.public_key).unwrap(),
         )
         .unwrap();
-    f.core.workflow_passkey(&alice, &cancelled.id, verified).unwrap();
+    f.core
+        .workflow_passkey(&alice, &cancelled.id, verified)
+        .unwrap();
     let registration = f
         .core
         .workflow_passkey_enrollment_challenge(&alice, &cancelled.id, "Cancelled".into())
@@ -203,12 +208,24 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
     ));
     assert_eq!(finished.credential_epoch, Some(before.epoch + 1));
     assert_eq!(f.core.store.list::<Value>("passkeys").unwrap().len(), 2);
-    assert_eq!(f.core.store.list::<Session>("sessions").unwrap().len(), sessions);
     assert_eq!(
-        f.core.store.get::<User>("users", &user_id).unwrap().unwrap().epoch,
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .unwrap()
+            .epoch,
         before.epoch + 1
     );
-    assert!(f.core.workflow_passkey_enroll(&alice, &run.id, response).is_err());
+    assert!(
+        f.core
+            .workflow_passkey_enroll(&alice, &run.id, response)
+            .is_err()
+    );
     assert!(f.core.workflow_resume(&alice, &run.id).is_err());
     assert!(f.core.me(&second).is_err());
     assert!(f.core.me(&bob).is_ok());

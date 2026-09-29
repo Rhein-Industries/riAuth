@@ -21,7 +21,10 @@ async fn email_capabilities_require_local_smtp_credential_before_serving() {
     ] {
         assert_eq!(states["feature_states"][name]["compiled"], true);
         assert_eq!(states["feature_states"][name]["enabled"], true);
-        assert_eq!(states["feature_states"][name]["configured"], false, "{name}");
+        assert_eq!(
+            states["feature_states"][name]["configured"], false,
+            "{name}"
+        );
         assert_eq!(states["feature_states"][name]["usable"], false);
     }
     let error = riauth::api::serve(f.core.clone()).await.unwrap_err();
@@ -5149,7 +5152,12 @@ async fn external_vault_signing_keeps_private_keys_out_of_storage_pins_version_a
             namespace: Some("test-team".into()),
         };
         f.core.config.signers.insert(algorithm.clone(), config);
-        let revision = f.core.store.get::<u64>("meta", "revision").unwrap().unwrap_or(0);
+        let revision = f
+            .core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0);
         let mut bound = None;
         for retry in [false, true] {
             let core = f.core.clone();

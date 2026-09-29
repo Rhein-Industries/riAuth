@@ -6,10 +6,10 @@ use crate::{
     error::{Error, Result},
     model::{AuthenticationTransaction, Identity, Session, User},
     passkey::{
-        AdminEnrollment, AdminRegistration, Authentication, BrowserPasskeyContext, Credential, NewPasskeyAdmin,
-        PasskeyMaintenance, PasskeyTx, Registration, VerifiedRegistration, credential_id, credential_key, handle,
-        passkey_list_in, public_request, require_fresh_factor, unknown_passkey, user_keys, view,
-        webauthn_for_issuer,
+        AdminEnrollment, AdminRegistration, Authentication, BrowserPasskeyContext, Credential,
+        NewPasskeyAdmin, PasskeyMaintenance, PasskeyTx, Registration, VerifiedRegistration,
+        credential_id, credential_key, handle, passkey_list_in, public_request,
+        require_fresh_factor, unknown_passkey, user_keys, view, webauthn_for_issuer,
     },
     signin::{invalid_credentials, reauthentication_required},
     store::Tx,
@@ -78,7 +78,9 @@ impl VerifiedRegistration {
         tx.put("users", &user.id, &user)?;
         crate::logout::queue_user(tx, &user.id)?;
         audit(tx, &user.id, "passkey.enroll", &credential.id)?;
-        Ok(json!({"passkey":view(&credential),"sessions_revoked":true,"instruction":"Log in with the new passkey"}))
+        Ok(
+            json!({"passkey":view(&credential),"sessions_revoked":true,"instruction":"Log in with the new passkey"}),
+        )
     }
 
     #[cfg(feature = "platform")]
@@ -283,7 +285,11 @@ impl Core {
     ) -> Result<(User, Session)> {
         let actor = self.management(tx, token, "user.write", &format!("user/{username}"))?;
         let (user, session) = self.browser_user(tx, cookie)?;
-        if actor.agent || actor.delegated || actor.id != user.id || crate::signin::bearer_backed(tx, &session)? {
+        if actor.agent
+            || actor.delegated
+            || actor.id != user.id
+            || crate::signin::bearer_backed(tx, &session)?
+        {
             return Err(reauthentication_required());
         }
         require_fresh_factor(&user, &session)?;

@@ -16,7 +16,10 @@ pub struct Config {
     #[serde(default = "default_browser_ui")]
     pub browser_ui: bool,
     /// Duties for this process. Omitted means the integrated one-process server.
-    #[serde(default, skip_serializing_if = "crate::process_role::ProcessSelection::is_default")]
+    #[serde(
+        default,
+        skip_serializing_if = "crate::process_role::ProcessSelection::is_default"
+    )]
     pub process: crate::process_role::ProcessSelection,
     /// Explicit runtime activation overrides for supported optional capabilities.
     #[serde(default, skip_serializing_if = "CapabilityActivation::is_default")]
@@ -333,7 +336,9 @@ impl LdapReconciliationQuota {
             || !(64 * 1024..=4 * 1024 * 1024).contains(&self.max_snapshot_bytes)
             || !(30..=300).contains(&self.draft_ttl_seconds)
         {
-            bail!("LDAP reconciliation quotas must be pages_per_call 1..4, max_pages_per_search 1..20, max_users 1..2000, max_snapshot_bytes 65536..4194304, and draft_ttl_seconds 30..300");
+            bail!(
+                "LDAP reconciliation quotas must be pages_per_call 1..4, max_pages_per_search 1..20, max_users 1..2000, max_snapshot_bytes 65536..4194304, and draft_ttl_seconds 30..300"
+            );
         }
         Ok(())
     }
@@ -373,7 +378,9 @@ impl CloudReconciliationQuota {
             || self.max_page_bytes > self.max_snapshot_bytes
             || !(30..=300).contains(&self.draft_ttl_seconds)
         {
-            bail!("Cloud reconciliation quotas must be pages_per_call 1..5, max_pages_per_collection 1..20, max_objects 1..2000, max_page_bytes 4096..1048576, max_snapshot_bytes 65536..4194304 (at least max_page_bytes), and draft_ttl_seconds 30..300");
+            bail!(
+                "Cloud reconciliation quotas must be pages_per_call 1..5, max_pages_per_collection 1..20, max_objects 1..2000, max_page_bytes 4096..1048576, max_snapshot_bytes 65536..4194304 (at least max_page_bytes), and draft_ttl_seconds 30..300"
+            );
         }
         Ok(())
     }
@@ -468,7 +475,11 @@ impl Config {
         crate::process_role::validate(
             &self.process,
             self.browser_ui,
-            crate::process_role::ListenerNames { ldap: &ldap, radius: &radius, proxy: &proxy },
+            crate::process_role::ListenerNames {
+                ldap: &ldap,
+                radius: &radius,
+                proxy: &proxy,
+            },
         )?;
         if self.proxy_listeners.len() > 16 {
             bail!("Configure at most 16 proxy listeners");
@@ -551,10 +562,11 @@ impl Config {
         if self.workflow_extensions.len() > 16 {
             bail!("Configure at most 16 workflow extensions");
         }
-        let extensions = crate::workflow::extension_gate::stage_registration(&self.workflow_extensions)
-            .map_err(|denial| {
-                anyhow::anyhow!("Workflow extension was rejected ({})", denial.as_str())
-            })?;
+        let extensions =
+            crate::workflow::extension_gate::stage_registration(&self.workflow_extensions)
+                .map_err(|denial| {
+                    anyhow::anyhow!("Workflow extension was rejected ({})", denial.as_str())
+                })?;
         for (name, configured) in &self.workflows {
             let id = crate::workflow::Id::new(name.clone())
                 .map_err(|_| anyhow::anyhow!("Invalid workflow configuration key"))?;
@@ -564,8 +576,7 @@ impl Config {
             if configured.definition.canonical_json().len() > crate::workflow::MAX_DOCUMENT_BYTES {
                 bail!("Workflow definition exceeds 64 KiB");
             }
-            let mut environment =
-                crate::workflow::configured_environment(&configured.definition);
+            let mut environment = crate::workflow::configured_environment(&configured.definition);
             for (stage, guest) in &extensions {
                 environment
                     .stages
@@ -573,11 +584,11 @@ impl Config {
             }
             let checked = crate::workflow::validate(configured.definition.clone(), &environment)
                 .map_err(|error| anyhow::anyhow!("Invalid configured workflow {name}: {error}"))?;
-            let extension_ok = crate::workflow::supported_configured_extension_password(
-                checked.definition(),
-            ) && extensions
-                .values()
-                .any(|guest| crate::workflow::extension_gate::covers(guest, checked.definition()));
+            let extension_ok =
+                crate::workflow::supported_configured_extension_password(checked.definition())
+                    && extensions.values().any(|guest| {
+                        crate::workflow::extension_gate::covers(guest, checked.definition())
+                    });
             if (crate::workflow::configured_password_path(checked.definition()).is_none()
                 && !crate::workflow::supported_configured_passkey(checked.definition())
                 && !crate::workflow::supported_configured_passkey_enrollment(checked.definition())

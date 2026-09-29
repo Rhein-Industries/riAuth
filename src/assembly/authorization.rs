@@ -1,7 +1,7 @@
 //! Concrete authorization request persistence and Core entry points.
 
 use crate::{
-    authorization::{AuthorizationTx, Pushed, Signed, PAR_PREFIX, signed_content_hash, unique},
+    authorization::{AuthorizationTx, PAR_PREFIX, Pushed, Signed, signed_content_hash, unique},
     core::Core,
     crypto::{self, digest, now},
     error::{Error, Result},

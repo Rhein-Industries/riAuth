@@ -989,7 +989,10 @@ async fn client_policy_review_binds_exact_content_authority_dependencies_and_blo
         &server_url,
         &f.admin,
         &[
-            "--if-revision", &at, "--idempotency-key", "direct-policy-cli-denied",
+            "--if-revision",
+            &at,
+            "--idempotency-key",
+            "direct-policy-cli-denied",
             "client",
             "update",
             "app",

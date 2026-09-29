@@ -341,10 +341,7 @@ fn totp_code(secret: &str, name: &str, at: u64) -> String {
     crypto::totp(secret, name).unwrap().generate(at).to_string()
 }
 
-fn password_totp_account(
-    f: &Fixture,
-    name: &str,
-) -> (String, String, String, String, String) {
+fn password_totp_account(f: &Fixture, name: &str) -> (String, String, String, String, String) {
     let initial = f.user(name);
     let secret = text(&f.core.mfa_begin(&initial).unwrap(), "secret");
     f.core
@@ -421,14 +418,14 @@ fn password_and_current_totp_can_remove_only_the_pinned_passkey_once_after_resta
         .find(|session| session.token_hash == digest(&alice))
         .unwrap();
     let bearer_identity = serde_json::to_value(&bearer.identity).unwrap();
-    assert!(f.core.workflow_configured_start(&alice, PASSWORD_TOTP_WORKFLOW).is_err());
     assert!(
         f.core
-            .workflow_configured_passkey_removal_start(
-                &alice,
-                PASSWORD_TOTP_WORKFLOW,
-                &bob_target,
-            )
+            .workflow_configured_start(&alice, PASSWORD_TOTP_WORKFLOW)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .workflow_configured_passkey_removal_start(&alice, PASSWORD_TOTP_WORKFLOW, &bob_target,)
             .is_err()
     );
 
@@ -436,7 +433,11 @@ fn password_and_current_totp_can_remove_only_the_pinned_passkey_once_after_resta
         .core
         .workflow_configured_passkey_removal_start(&alice, PASSWORD_TOTP_WORKFLOW, &target)
         .unwrap();
-    assert!(f.core.workflow_passkey_remove(&alice, &cancelled.id).is_err());
+    assert!(
+        f.core
+            .workflow_passkey_remove(&alice, &cancelled.id)
+            .is_err()
+    );
     assert!(matches!(
         f.core
             .workflow_password(&alice, &cancelled.id, PASSWORD.into())
@@ -444,12 +445,20 @@ fn password_and_current_totp_can_remove_only_the_pinned_passkey_once_after_resta
             .state,
         RunState::Active { ref step, .. } if step.as_str() == "totp"
     ));
-    assert!(f.core.workflow_passkey_remove(&alice, &cancelled.id).is_err());
+    assert!(
+        f.core
+            .workflow_passkey_remove(&alice, &cancelled.id)
+            .is_err()
+    );
     assert!(matches!(
         f.core.workflow_cancel(&alice, &cancelled.id).unwrap().state,
         RunState::Cancelled {}
     ));
-    assert!(f.core.workflow_passkey_remove(&alice, &cancelled.id).is_err());
+    assert!(
+        f.core
+            .workflow_passkey_remove(&alice, &cancelled.id)
+            .is_err()
+    );
 
     let run = f
         .core
@@ -459,7 +468,11 @@ fn password_and_current_totp_can_remove_only_the_pinned_passkey_once_after_resta
     f.core
         .workflow_password(&alice, &run.id, PASSWORD.into())
         .unwrap();
-    let challenge = f.core.workflow_totp_challenge(&alice, &run.id).unwrap().challenge;
+    let challenge = f
+        .core
+        .workflow_totp_challenge(&alice, &run.id)
+        .unwrap()
+        .challenge;
     let current = totp_code(&secret, name, now() + 30);
     assert!(
         f.core
@@ -478,11 +491,27 @@ fn password_and_current_totp_can_remove_only_the_pinned_passkey_once_after_resta
             .state,
         RunState::Active { ref step, .. } if step.as_str() == "remove"
     ));
-    assert!(f.core.workflow_totp(&alice, &run.id, &challenge, current).is_err());
-    assert!(f.core.store.get::<Value>("passkeys", &target).unwrap().is_some());
-    assert_eq!(f.core.store.list::<Session>("sessions").unwrap().len(), sessions);
+    assert!(
+        f.core
+            .workflow_totp(&alice, &run.id, &challenge, current)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("passkeys", &target)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
     let unchanged: Session = f.core.store.get("sessions", &bearer.id).unwrap().unwrap();
-    assert_eq!(serde_json::to_value(&unchanged.identity).unwrap(), bearer_identity);
+    assert_eq!(
+        serde_json::to_value(&unchanged.identity).unwrap(),
+        bearer_identity
+    );
 
     let f = f.reopen_with(|config| assert!(config.workflows[PASSWORD_TOTP_WORKFLOW].active));
     assert!(f.core.workflow_passkey_remove(&second, &run.id).is_err());
@@ -499,8 +528,17 @@ fn password_and_current_totp_can_remove_only_the_pinned_passkey_once_after_resta
         }
     ));
     assert_eq!(finished.credential_epoch, Some(before.epoch + 1));
-    assert!(f.core.store.get::<Value>("passkeys", &target).unwrap().is_none());
-    assert_eq!(f.core.store.list::<Session>("sessions").unwrap().len(), sessions);
+    assert!(
+        f.core
+            .store
+            .get::<Value>("passkeys", &target)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.core.store.list::<Session>("sessions").unwrap().len(),
+        sessions
+    );
     let stored: Value = f.core.store.get("workflow_runs", &run.id).unwrap().unwrap();
     assert_eq!(stored["record"]["steps"].as_array().unwrap().len(), 4);
     for step in stored["record"]["steps"].as_array().unwrap() {
@@ -513,9 +551,13 @@ fn password_and_current_totp_can_remove_only_the_pinned_passkey_once_after_resta
         assert_eq!(receipt["consumed"], true);
     }
     assert_eq!(
-        f.core.store.list::<Audit>("audit").unwrap().iter().filter(|(_, event)| {
-            event.action == "passkey.remove" && event.target == target
-        }).count(),
+        f.core
+            .store
+            .list::<Audit>("audit")
+            .unwrap()
+            .iter()
+            .filter(|(_, event)| { event.action == "passkey.remove" && event.target == target })
+            .count(),
         1
     );
     assert!(f.core.workflow_passkey_remove(&alice, &run.id).is_err());
@@ -539,8 +581,14 @@ fn disabled_account_cannot_finalize_password_totp_passkey_removal() {
         .core
         .workflow_configured_passkey_removal_start(&alice, PASSWORD_TOTP_WORKFLOW, &target)
         .unwrap();
-    f.core.workflow_password(&alice, &run.id, PASSWORD.into()).unwrap();
-    let challenge = f.core.workflow_totp_challenge(&alice, &run.id).unwrap().challenge;
+    f.core
+        .workflow_password(&alice, &run.id, PASSWORD.into())
+        .unwrap();
+    let challenge = f
+        .core
+        .workflow_totp_challenge(&alice, &run.id)
+        .unwrap()
+        .challenge;
     f.core
         .workflow_totp(
             &alice,
@@ -559,11 +607,21 @@ fn disabled_account_cannot_finalize_password_totp_passkey_removal() {
         .unwrap();
     assert!(f.core.workflow_passkey_remove(&alice, &run.id).is_err());
     assert!(f.core.workflow_resume(&alice, &run.id).is_err());
-    assert!(f.core.store.get::<Value>("passkeys", &target).unwrap().is_some());
+    assert!(
+        f.core
+            .store
+            .get::<Value>("passkeys", &target)
+            .unwrap()
+            .is_some()
+    );
     assert_eq!(
-        f.core.store.list::<Audit>("audit").unwrap().iter().filter(|(_, event)| {
-            event.action == "passkey.remove" && event.target == target
-        }).count(),
+        f.core
+            .store
+            .list::<Audit>("audit")
+            .unwrap()
+            .iter()
+            .filter(|(_, event)| { event.action == "passkey.remove" && event.target == target })
+            .count(),
         0
     );
 }

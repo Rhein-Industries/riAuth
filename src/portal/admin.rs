@@ -34,8 +34,14 @@ pub fn routes() -> Router<App> {
         .route("/api/admin/users", get(users).post(create_user))
         .route("/api/admin/users/passkey/start", post(passkey_admin_start))
         .route("/api/admin/users/passkey/first", post(passkey_admin_first))
-        .route("/api/admin/users/passkey/finish", post(passkey_admin_finish))
-        .route("/api/admin/users/passkey/cancel", post(passkey_admin_cancel))
+        .route(
+            "/api/admin/users/passkey/finish",
+            post(passkey_admin_finish),
+        )
+        .route(
+            "/api/admin/users/passkey/cancel",
+            post(passkey_admin_cancel),
+        )
         .route("/api/admin/users/{username}", patch(update_user))
         .route(
             "/api/admin/users/{username}/delegated-grants",
@@ -87,28 +93,91 @@ pub fn routes() -> Router<App> {
             post(cancel_group_membership_change),
         )
         .route("/api/admin/groups", get(groups).post(create_group))
-        .route("/api/admin/groups/{name}/members/{username}", put(add_member).delete(remove_member))
+        .route(
+            "/api/admin/groups/{name}/members/{username}",
+            put(add_member).delete(remove_member),
+        )
         .route("/api/admin/clients", get(clients).post(create_client))
-        .route("/api/admin/client-creation-changes", post(stage_client_creation))
-        .route("/api/admin/client-creation-changes/{id}", get(client_creation_change))
-        .route("/api/admin/client-creation-changes/{id}/approve", post(approve_client_creation_change))
-        .route("/api/admin/client-creation-changes/{id}/execute", post(execute_client_creation_change))
-        .route("/api/admin/client-creation-changes/{id}/cancel", post(cancel_client_creation_change))
-        .route("/api/admin/clients/{id}/endpoint-changes", post(stage_client_endpoint))
-        .route("/api/admin/client-endpoint-changes/{id}", get(client_endpoint_change))
-        .route("/api/admin/client-endpoint-changes/{id}/approve", post(approve_client_endpoint_change))
-        .route("/api/admin/client-endpoint-changes/{id}/execute", post(execute_client_endpoint_change))
-        .route("/api/admin/client-endpoint-changes/{id}/cancel", post(cancel_client_endpoint_change))
-        .route("/api/admin/clients/{id}/status-changes", post(stage_client_status))
-        .route("/api/admin/client-status-changes/{id}", get(client_status_change))
-        .route("/api/admin/client-status-changes/{id}/approve", post(approve_client_status_change))
-        .route("/api/admin/client-status-changes/{id}/execute", post(execute_client_status_change))
-        .route("/api/admin/client-status-changes/{id}/cancel", post(cancel_client_status_change))
-        .route("/api/admin/clients/{id}/policy-changes", post(stage_client_policy))
-        .route("/api/admin/client-policy-changes/{id}", get(client_policy_change))
-        .route("/api/admin/client-policy-changes/{id}/approve", post(approve_client_policy_change))
-        .route("/api/admin/client-policy-changes/{id}/execute", post(execute_client_policy_change))
-        .route("/api/admin/client-policy-changes/{id}/cancel", post(cancel_client_policy_change))
+        .route(
+            "/api/admin/client-creation-changes",
+            post(stage_client_creation),
+        )
+        .route(
+            "/api/admin/client-creation-changes/{id}",
+            get(client_creation_change),
+        )
+        .route(
+            "/api/admin/client-creation-changes/{id}/approve",
+            post(approve_client_creation_change),
+        )
+        .route(
+            "/api/admin/client-creation-changes/{id}/execute",
+            post(execute_client_creation_change),
+        )
+        .route(
+            "/api/admin/client-creation-changes/{id}/cancel",
+            post(cancel_client_creation_change),
+        )
+        .route(
+            "/api/admin/clients/{id}/endpoint-changes",
+            post(stage_client_endpoint),
+        )
+        .route(
+            "/api/admin/client-endpoint-changes/{id}",
+            get(client_endpoint_change),
+        )
+        .route(
+            "/api/admin/client-endpoint-changes/{id}/approve",
+            post(approve_client_endpoint_change),
+        )
+        .route(
+            "/api/admin/client-endpoint-changes/{id}/execute",
+            post(execute_client_endpoint_change),
+        )
+        .route(
+            "/api/admin/client-endpoint-changes/{id}/cancel",
+            post(cancel_client_endpoint_change),
+        )
+        .route(
+            "/api/admin/clients/{id}/status-changes",
+            post(stage_client_status),
+        )
+        .route(
+            "/api/admin/client-status-changes/{id}",
+            get(client_status_change),
+        )
+        .route(
+            "/api/admin/client-status-changes/{id}/approve",
+            post(approve_client_status_change),
+        )
+        .route(
+            "/api/admin/client-status-changes/{id}/execute",
+            post(execute_client_status_change),
+        )
+        .route(
+            "/api/admin/client-status-changes/{id}/cancel",
+            post(cancel_client_status_change),
+        )
+        .route(
+            "/api/admin/clients/{id}/policy-changes",
+            post(stage_client_policy),
+        )
+        .route(
+            "/api/admin/client-policy-changes/{id}",
+            get(client_policy_change),
+        )
+        .route(
+            "/api/admin/client-policy-changes/{id}/approve",
+            post(approve_client_policy_change),
+        )
+        .route(
+            "/api/admin/client-policy-changes/{id}/execute",
+            post(execute_client_policy_change),
+        )
+        .route(
+            "/api/admin/client-policy-changes/{id}/cancel",
+            post(cancel_client_policy_change),
+        )
         .route("/api/admin/clients/{id}", patch(update_client))
         .route("/api/admin/clients/{id}/rotate-secret", post(rotate_secret))
         .route("/api/admin/clients/{id}/diagnostics", get(diagnostics))
@@ -156,8 +225,11 @@ async fn workflow_plan(
         workflows: vec![definition],
         ..Default::default()
     };
-    app.run(move |core| core.plan_state(&token, manifest).map(|plan| Json(json!(plan))))
-        .await
+    app.run(move |core| {
+        core.plan_state(&token, manifest)
+            .map(|plan| Json(json!(plan)))
+    })
+    .await
 }
 
 #[cfg(feature = "platform")]
@@ -573,7 +645,8 @@ async fn stage_client_creation(
     Json(input): Json<NewClient>,
 ) -> Result<Json<Value>> {
     let token = writer(&app, &headers)?;
-    app.run(move |core| core.stage_client_creation(&token, input).map(Json)).await
+    app.run(move |core| core.stage_client_creation(&token, input).map(Json))
+        .await
 }
 async fn client_creation_change(
     State(app): State<App>,
@@ -581,7 +654,8 @@ async fn client_creation_change(
     Path(id): Path<String>,
 ) -> Result<Json<Value>> {
     let token = reader(&app, &headers)?;
-    app.run(move |core| core.client_creation_change(&token, &id).map(Json)).await
+    app.run(move |core| core.client_creation_change(&token, &id).map(Json))
+        .await
 }
 grant_change_handler!(approve_client_creation_change);
 grant_change_handler!(execute_client_creation_change);

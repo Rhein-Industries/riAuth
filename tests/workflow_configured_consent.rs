@@ -284,16 +284,26 @@ fn configured_passkey_consent_reauthenticates_exact_preparation_once() {
             serde_json::from_value(challenge.public_key).unwrap(),
         )
         .unwrap();
-    f.core.workflow_passkey(&alice, &denial_run.id, proof).unwrap();
+    f.core
+        .workflow_passkey(&alice, &denial_run.id, proof)
+        .unwrap();
     let denied = f
         .core
         .workflow_consent_decide(&alice, &denial_run.id, false)
         .unwrap();
     assert!(matches!(
         denied.state,
-        RunState::Finished { outcome: Outcome::Denied, .. }
+        RunState::Finished {
+            outcome: Outcome::Denied,
+            ..
+        }
     ));
-    assert!(denied.authorization_response.unwrap().contains("access_denied"));
+    assert!(
+        denied
+            .authorization_response
+            .unwrap()
+            .contains("access_denied")
+    );
     let mut denied_replay = consent_denial;
     denied_replay.decision = Some("approve".into());
     assert!(f.core.authorize(&alice, denied_replay).is_err());
@@ -387,14 +397,24 @@ fn configured_consent_requires_prepared_explicit_one_use_decision() {
         .core
         .workflow_configured_consent_start(&bob, "local-consent", tamper_request)
         .unwrap();
-    let mut changed_run: Value = f.core.store.get("workflow_runs", &tampered.id).unwrap().unwrap();
+    let mut changed_run: Value = f
+        .core
+        .store
+        .get("workflow_runs", &tampered.id)
+        .unwrap()
+        .unwrap();
     changed_run["definition"]["steps"][1]["max_attempts"] = json!(2);
     f.core
         .store
         .write(|tx| tx.put("workflow_runs", &tampered.id, &changed_run))
         .unwrap();
     assert!(f.core.workflow_resume(&bob, &tampered.id).is_err());
-    let sealed: Value = f.core.store.get("workflow_runs", &tampered.id).unwrap().unwrap();
+    let sealed: Value = f
+        .core
+        .store
+        .get("workflow_runs", &tampered.id)
+        .unwrap()
+        .unwrap();
     assert_eq!(sealed["record"]["state"]["state"], "finished");
     let session_reference = stored["record"]["steps"][0]["evidence"].as_str().unwrap();
     let session_receipt: Value = f
@@ -880,9 +900,7 @@ fn anonymous_preparation_saturation_cannot_block_direct_account_decisions() {
             .contains("code=")
     );
     let bob_prepared = text(
-        &f.core
-            .authorization_prepare(Some(&bob), request)
-            .unwrap(),
+        &f.core.authorization_prepare(Some(&bob), request).unwrap(),
         "transaction_id",
     );
     assert!(
@@ -1012,7 +1030,9 @@ fn saturated_anonymous_admission_retires_only_unclaimed_preparations() {
     assert_eq!(
         f.core
             .store
-            .write(|tx| f.core.authorization_denied(tx, &retired_decision, "anonymous"))
+            .write(|tx| f
+                .core
+                .authorization_denied(tx, &retired_decision, "anonymous"))
             .unwrap_err()
             .code,
         "invalid_request"
@@ -1047,7 +1067,12 @@ fn saturated_anonymous_admission_retires_only_unclaimed_preparations() {
 
     let mut direct = request.clone();
     direct.decision = Some("approve".into());
-    assert!(f.core.authorize(&bob, direct.clone()).unwrap().contains("code="));
+    assert!(
+        f.core
+            .authorize(&bob, direct.clone())
+            .unwrap()
+            .contains("code=")
+    );
     let f = f.reopen_with(|_| {});
     direct.transaction_id = Some(claimed);
     assert!(

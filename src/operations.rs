@@ -731,7 +731,10 @@ fn migrate_postgres_checkpointed(
     }
     // The published file must reopen the same target that was verified, even
     // when a caller supplied paths relative to its current directory.
-    target.connection_file = target.connection_file.canonicalize().map_err(Error::internal)?;
+    target.connection_file = target
+        .connection_file
+        .canonicalize()
+        .map_err(Error::internal)?;
     target.ca_file = target
         .ca_file
         .map(|file| file.canonicalize().map_err(Error::internal))
@@ -890,11 +893,15 @@ fn compare_migration_records(
     let mut count = 0u64;
     while let Some((target_name, target_value)) = destination.next()? {
         let Some((source_name, source_value)) = source.next()? else {
-            return Err(Error::conflict("Target database does not match this migration"));
+            return Err(Error::conflict(
+                "Target database does not match this migration",
+            ));
         };
         split_record_key(&source_name)?;
         if target_name != source_name || target_value != source_value {
-            return Err(Error::conflict("Target database does not match this migration"));
+            return Err(Error::conflict(
+                "Target database does not match this migration",
+            ));
         }
         last = Some(source_name);
         count += 1;
@@ -1094,7 +1101,11 @@ mod migration_tests {
         )
         .unwrap();
         let token = source
-            .login("admin".into(), "migration-interruption-password".into(), None)
+            .login(
+                "admin".into(),
+                "migration-interruption-password".into(),
+                None,
+            )
             .unwrap()["session_token"]
             .as_str()
             .unwrap()
@@ -1103,7 +1114,11 @@ mod migration_tests {
             .store
             .write(|tx| {
                 for index in 0..300 {
-                    tx.put("audit", &format!("migration-{index:04}"), &json!({"index":index}))?;
+                    tx.put(
+                        "audit",
+                        &format!("migration-{index:04}"),
+                        &json!({"index":index}),
+                    )?;
                 }
                 Ok(())
             })
@@ -1112,10 +1127,13 @@ mod migration_tests {
         drop(source);
 
         let output = local.path().join("postgres.toml");
-        let error = migrate_postgres_checkpointed(config.clone(), postgres.clone(), &output, |_| {
-            Err(Error::conflict("simulated interruption after a committed page"))
-        })
-        .unwrap_err();
+        let error =
+            migrate_postgres_checkpointed(config.clone(), postgres.clone(), &output, |_| {
+                Err(Error::conflict(
+                    "simulated interruption after a committed page",
+                ))
+            })
+            .unwrap_err();
         assert!(error.message.contains("simulated interruption"));
         assert!(!output.exists());
         let source = Core::open(config.clone()).unwrap();
@@ -1147,7 +1165,10 @@ mod migration_tests {
         assert_eq!(value, b"null");
         raw.execute(
             "UPDATE riauth_store.records_v1 SET value=$2 WHERE key=$1",
-            &[&first.as_bytes(), &serde_json::to_vec(&before[first]).unwrap()],
+            &[
+                &first.as_bytes(),
+                &serde_json::to_vec(&before[first]).unwrap(),
+            ],
         )
         .unwrap();
 

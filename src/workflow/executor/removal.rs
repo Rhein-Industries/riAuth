@@ -142,9 +142,7 @@ fn verified_session(
         || run.credential_mutation.is_some()
         || run.record.steps.len() != prerequisites.len()
         || (password_totp
-            && (!request.requires_mfa
-                || user.totp_secret.is_none()
-                || user.totp_pending.is_some()))
+            && (!request.requires_mfa || user.totp_secret.is_none() || user.totp_pending.is_some()))
         || checked.step(step).map(|value| &value.action) != Some(&Action::RemovePasskey {})
     {
         return Err(Error::forbidden());
@@ -299,7 +297,11 @@ impl Verified {
             epoch: user.epoch,
             session_id: session.id.clone(),
             auth_time: self.factor_at,
-            mfa: if self.password_totp { original_mfa } else { true },
+            mfa: if self.password_totp {
+                original_mfa
+            } else {
+                true
+            },
             amr: if self.password_totp {
                 original_amr
             } else {

@@ -873,11 +873,16 @@ fn client_name_shape(manifest: &Manifest) -> bool {
 }
 
 fn listener_binds_client(config: &crate::config::Config, id: &str) -> bool {
-    config.ldap_listeners.values().any(|listener| listener.client_id == id)
-        || config
-            .proxy_listeners
-            .values()
-            .any(|listener| listener.routes.values().any(|target| target.client_id == id))
+    config
+        .ldap_listeners
+        .values()
+        .any(|listener| listener.client_id == id)
+        || config.proxy_listeners.values().any(|listener| {
+            listener
+                .routes
+                .values()
+                .any(|target| target.client_id == id)
+        })
         || config
             .radius_listeners
             .values()
@@ -963,7 +968,12 @@ fn client_policy_refs(client: &Client) -> (BTreeSet<String>, BTreeSet<String>, B
             .access
             .iter()
             .chain(conditional.scopes.values().flatten())
-            .chain(conditional.claim_mappings.iter().map(|mapping| &mapping.when))
+            .chain(
+                conditional
+                    .claim_mappings
+                    .iter()
+                    .map(|mapping| &mapping.when),
+            )
         {
             predicate_refs(predicate, &mut groups, &mut sources);
         }
@@ -1297,7 +1307,9 @@ impl Core {
     pub fn plan_status(&self, token: &str, id: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
-            if actor.delegated { return Err(Error::forbidden()); }
+            if actor.delegated {
+                return Err(Error::forbidden());
+            }
             let plan = tx
                 .get::<StoredPlan>("plans", id)?
                 .ok_or_else(|| Error::missing("Plan not found"))?;
@@ -1316,7 +1328,9 @@ impl Core {
         let desired = serde_json::to_value(&manifest).map_err(Error::internal)?;
         let pending = self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
-            if actor.delegated { return Err(Error::forbidden()); }
+            if actor.delegated {
+                return Err(Error::forbidden());
+            }
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             let impact = state_removal_impact(tx, &manifest)?;
             for (_, stored) in tx.list::<StoredPlan>("plans")? {
@@ -1770,14 +1784,9 @@ fn reconcile(
 ) -> Result<Vec<Change>> {
     let mut changes = Vec::new();
     for spec in &manifest.users {
-        if let Some(change) = crate::management::write_desired_user(
-            &core.config,
-            tx,
-            actor,
-            spec,
-            secrets,
-            preview,
-        )? {
+        if let Some(change) =
+            crate::management::write_desired_user(&core.config, tx, actor, spec, secrets, preview)?
+        {
             changes.push(change);
         }
     }
@@ -2043,14 +2052,32 @@ fn reconcile(
             if existing.as_ref() == Some(definition) {
                 continue;
             }
-            if existing.as_ref().is_some_and(|old| definition.revision <= old.revision) {
-                return Err(Error::conflict("Workflow revision must increase when the definition changes"));
+            if existing
+                .as_ref()
+                .is_some_and(|old| definition.revision <= old.revision)
+            {
+                return Err(Error::conflict(
+                    "Workflow revision must increase when the definition changes",
+                ));
             }
-            tx.put("workflow_definitions", definition.id.as_str(), validated.definition())?;
+            tx.put(
+                "workflow_definitions",
+                definition.id.as_str(),
+                validated.definition(),
+            )?;
             changes.push(Change {
                 resource,
-                action: if existing.is_some() { "update" } else { "create" }.into(),
-                before: existing.as_ref().map(value).transpose()?.unwrap_or(Value::Null),
+                action: if existing.is_some() {
+                    "update"
+                } else {
+                    "create"
+                }
+                .into(),
+                before: existing
+                    .as_ref()
+                    .map(value)
+                    .transpose()?
+                    .unwrap_or(Value::Null),
                 after: value(definition)?,
                 credential_change: false,
                 secret_references: BTreeSet::new(),

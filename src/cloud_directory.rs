@@ -5,10 +5,8 @@
 //! leaves the configured host is not a completed sync and must not disable accounts.
 use crate::{
     agent::Principal,
-    connector_guard::{
-        Pagination, ReconciliationMode, ReviewBinding, reconcile_plan,
-    },
     config::CloudReconciliationQuota,
+    connector_guard::{Pagination, ReconciliationMode, ReviewBinding, reconcile_plan},
     core::{Core, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -876,7 +874,10 @@ impl CloudSnapshot {
         Self {
             phase: 0,
             cursor: None,
-            pagination: Pagination::new(settings.quota.max_pages_per_collection, settings.quota.max_objects),
+            pagination: Pagination::new(
+                settings.quota.max_pages_per_collection,
+                settings.quota.max_objects,
+            ),
             phase_ids: BTreeSet::new(),
             users: BTreeMap::new(),
             selected: BTreeMap::new(),
@@ -897,7 +898,10 @@ impl CloudSnapshot {
     fn next_phase(&mut self, settings: &Settings) {
         self.phase += 1;
         self.cursor = None;
-        self.pagination = Pagination::new(settings.quota.max_pages_per_collection, settings.quota.max_objects);
+        self.pagination = Pagination::new(
+            settings.quota.max_pages_per_collection,
+            settings.quota.max_objects,
+        );
         self.phase_ids.clear();
     }
 
@@ -992,7 +996,8 @@ impl CloudSnapshot {
             || self.users.len() > settings.quota.max_objects
             || self.selected.len() > 32
             || self.chosen.len() > 32
-            || serde_json::to_vec(self).map_err(Error::internal)?.len() > settings.quota.max_snapshot_bytes
+            || serde_json::to_vec(self).map_err(Error::internal)?.len()
+                > settings.quota.max_snapshot_bytes
         {
             return Err(unavailable(
                 "Cloud directory snapshot staging quota exceeded",
@@ -1041,8 +1046,8 @@ impl CloudSnapshot {
                     url.query_pairs_mut().append_pair("pageToken", cursor);
                 }
             }
-            let (body, page_bytes) = get_json_sized(&http, &token, &url, graph,
-                settings.quota.max_page_bytes)?;
+            let (body, page_bytes) =
+                get_json_sized(&http, &token, &url, graph, settings.quota.max_page_bytes)?;
             if started.elapsed() > SYNC_BUDGET {
                 return Err(unavailable("Cloud directory sync exceeded its time limit"));
             }
@@ -1292,7 +1297,9 @@ impl CloudSnapshotDraft {
         self.snapshot.bounded(settings)?;
         // A 4 MiB serialized draft leaves ample room below the 8 MiB backup
         // frame ceiling for its stored key and frame wrapper.
-        if serde_json::to_vec(self).map_err(Error::internal)?.len() > settings.quota.max_snapshot_bytes {
+        if serde_json::to_vec(self).map_err(Error::internal)?.len()
+            > settings.quota.max_snapshot_bytes
+        {
             return Err(unavailable(
                 "Cloud directory snapshot staging quota exceeded",
             ));
@@ -1346,7 +1353,9 @@ impl CloudApplyDraft {
 
     pub(crate) fn bounded(&self, settings: &Settings) -> Result<()> {
         self.draft.bounded(settings)?;
-        if serde_json::to_vec(self).map_err(Error::internal)?.len() > settings.quota.max_snapshot_bytes {
+        if serde_json::to_vec(self).map_err(Error::internal)?.len()
+            > settings.quota.max_snapshot_bytes
+        {
             return Err(unavailable(
                 "Cloud directory snapshot staging quota exceeded",
             ));
@@ -1858,7 +1867,9 @@ impl Core {
         let provider = Provider::parse(kind)?;
         validate_name(id)?;
         let quota = self.config.reconciliation_quotas.cloud;
-        quota.validate().map_err(|error| Error::bad(error.to_string()))?;
+        quota
+            .validate()
+            .map_err(|error| Error::bad(error.to_string()))?;
         match provider {
             Provider::Workspace => {
                 let directory = self
@@ -1890,7 +1901,9 @@ impl Core {
                     fingerprint: self
                         .cloud_mode(provider, id)
                         .fingerprint(&quota_fingerprint(
-                            fingerprint_of(provider.as_str(), directory)?, quota)?)?,
+                            fingerprint_of(provider.as_str(), directory)?,
+                            quota,
+                        )?)?,
                     identity_fingerprint: digest(&format!(
                         "workspace\0{}\0{}\0{}",
                         directory.customer_id,
@@ -1929,7 +1942,9 @@ impl Core {
                     fingerprint: self
                         .cloud_mode(provider, id)
                         .fingerprint(&quota_fingerprint(
-                            fingerprint_of(provider.as_str(), directory)?, quota)?)?,
+                            fingerprint_of(provider.as_str(), directory)?,
+                            quota,
+                        )?)?,
                     identity_fingerprint: digest(&format!(
                         "entra\0{}\0{}\0{}",
                         directory.tenant_id,
@@ -1983,11 +1998,13 @@ impl Core {
         let (actor, revision) = self.cloud_snapshot_actor_revision(token, &settings.resource())?;
         let (entries, snapshot_prior) = {
             let key = digest(&settings.resource());
-            let (prior, mut draft, restarted, authority_digest) = self.cloud_snapshot_prepare(
-                token, &settings, bucket, &key, &actor, revision,
-            )?;
+            let (prior, mut draft, restarted, authority_digest) =
+                self.cloud_snapshot_prepare(token, &settings, bucket, &key, &actor, revision)?;
             self.cloud_budget_ensure(&settings.run_key())?;
-            if let Err(error) = draft.snapshot.advance(&settings, settings.quota.pages_per_call) {
+            if let Err(error) = draft
+                .snapshot
+                .advance(&settings, settings.quota.pages_per_call)
+            {
                 if error.status == StatusCode::SERVICE_UNAVAILABLE {
                     self.cloud_budget_record_failure(&settings.run_key())?;
                 }
@@ -2066,13 +2083,8 @@ impl Core {
             self.cloud_applied_plan_sync_authorized(token, &settings.resource(), &plan.actor)?;
             None
         } else {
-            let (prior, mut apply, restarted) = self.cloud_apply_snapshot_prepare(
-                token,
-                &settings,
-                &plan,
-                reviewed_plan,
-                &key,
-            )?;
+            let (prior, mut apply, restarted) =
+                self.cloud_apply_snapshot_prepare(token, &settings, &plan, reviewed_plan, &key)?;
             self.cloud_budget_ensure(&settings.run_key())?;
             if let Err(error) = apply
                 .draft

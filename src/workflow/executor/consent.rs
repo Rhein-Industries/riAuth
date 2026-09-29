@@ -381,7 +381,10 @@ fn decide_loaded(
         && ((super::super::supported_configured_passkey_consent(checked.definition())
             && current == Some(&Action::VerifyPasskey {}))
             || (super::super::supported_configured_password_totp_consent(checked.definition())
-                && matches!(current, Some(Action::VerifyPassword {} | Action::VerifyTotp {}))));
+                && matches!(
+                    current,
+                    Some(Action::VerifyPassword {} | Action::VerifyTotp {})
+                )));
     if !supported_configured_consent(checked.definition())
         || (!early_denial && current != Some(&Action::RequestConsent {}))
         || (!early_denial && run.in_flight.is_some())
@@ -422,7 +425,11 @@ fn decide_loaded(
         ordinal: *attempt,
         started_at: run.step_started_at,
         finished_at: at,
-        result: if approve { AttemptResult::Verified } else { AttemptResult::Failed },
+        result: if approve {
+            AttemptResult::Verified
+        } else {
+            AttemptResult::Failed
+        },
     });
     if !early_denial || !had_reservation {
         run.executions += 1;
@@ -432,7 +439,13 @@ fn decide_loaded(
         tx,
         checked,
         run,
-        Label::fixed(if approve { "granted" } else if early_denial { "failed" } else { "denied" }),
+        Label::fixed(if approve {
+            "granted"
+        } else if early_denial {
+            "failed"
+        } else {
+            "denied"
+        }),
         evidence,
         at,
     )?;
@@ -460,11 +473,14 @@ fn browser_consent_start_in(
     {
         return Err(Error::forbidden());
     }
-    let configured = core.config.workflows.get(workflow)
+    let configured = core
+        .config
+        .workflows
+        .get(workflow)
         .filter(|entry| entry.active)
         .ok_or_else(|| Error::conflict("Browser consent workflow changed"))?;
-    let checked = validate(configured.definition.clone(), &Environment::platform())
-        .map_err(invalid_error)?;
+    let checked =
+        validate(configured.definition.clone(), &Environment::platform()).map_err(invalid_error)?;
     if checked.definition().id.as_str() != workflow
         || if reauthentication {
             !super::super::supported_configured_passkey_consent(checked.definition())
@@ -476,13 +492,20 @@ fn browser_consent_start_in(
     }
     let at = now();
     let user = core.identity_user(tx, &session.identity)?;
-    let live = core.browser_session(tx, Some(browser_cookie))?
+    let live = core
+        .browser_session(tx, Some(browser_cookie))?
         .ok_or_else(Error::unauthorized)?;
     if live.id != session.id || live.token_hash != session.token_hash {
         return Err(Error::unauthorized());
     }
-    let authentication = digest(authorization.transaction_id.as_deref().ok_or_else(Error::forbidden)?);
-    let mut prepared: AuthenticationTransaction = tx.get("authentication", &authentication)?
+    let authentication = digest(
+        authorization
+            .transaction_id
+            .as_deref()
+            .ok_or_else(Error::forbidden)?,
+    );
+    let mut prepared: AuthenticationTransaction = tx
+        .get("authentication", &authentication)?
         .ok_or_else(Error::forbidden)?;
     if prepared.request_hash != authorization.request_hash()?
         || prepared.expires_at <= at
@@ -498,14 +521,17 @@ fn browser_consent_start_in(
         tx.put("authentication", &authentication, &prepared)?;
     }
     if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
-        let mut active = tx.get::<RuntimeRun>(RUNS, &active_id)?
+        let mut active = tx
+            .get::<RuntimeRun>(RUNS, &active_id)?
             .ok_or_else(|| Error::conflict("Active workflow binding changed"))?;
         if !active.record.state.is_final() {
             let active_checked = active.validated()?;
             settle_time(core, tx, &active_checked, &mut active, at)?;
         }
         if !active.record.state.is_final() {
-            return Err(Error::conflict("An authorization workflow is already active"));
+            return Err(Error::conflict(
+                "An authorization workflow is already active",
+            ));
         }
         tx.delete(ACTIVE_SESSIONS, &session.id)?;
     }
@@ -516,7 +542,9 @@ fn browser_consent_start_in(
         .min(browser_expires_at);
     let run_id = crypto::id();
     let request_id = crypto::id();
-    let entry = checked.entry().ok_or_else(|| Error::internal("Missing workflow entry"))?;
+    let entry = checked
+        .entry()
+        .ok_or_else(|| Error::internal("Missing workflow entry"))?;
     let record = StoredRun {
         id: run_id.clone(),
         account: user.id.clone(),
@@ -525,7 +553,10 @@ fn browser_consent_start_in(
         request: request_id.clone(),
         binding: checked.binding(),
         started_at: at,
-        state: RunState::Active { step: entry.id.clone(), attempt: 1 },
+        state: RunState::Active {
+            step: entry.id.clone(),
+            attempt: 1,
+        },
         steps: vec![],
     };
     let mut run = RuntimeRun {
@@ -557,7 +588,16 @@ fn browser_consent_start_in(
         invitation: None,
         removal: None,
     };
-    bind(tx, &run.record, &mut request, session, authorization, reauthentication, Some(interaction), at)?;
+    bind(
+        tx,
+        &run.record,
+        &mut request,
+        session,
+        authorization,
+        reauthentication,
+        Some(interaction),
+        at,
+    )?;
     tx.put(REQUESTS, &request_id, &request)?;
     tx.put(RUNS, &run_id, &run)?;
     tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
@@ -567,12 +607,26 @@ fn browser_consent_start_in(
 }
 
 pub(crate) fn browser_consent_decide_in(
-    core: &Core, tx: &Tx<'_>, workflow: &str, interaction: &str,
-    browser_cookie: &str, session: &Session, authorization: &Authorization,
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
     browser_expires_at: u64,
 ) -> Result<String> {
-    let run_id = browser_consent_start_in(core, tx, workflow, interaction, browser_cookie,
-        session, authorization, browser_expires_at, false)?;
+    let run_id = browser_consent_start_in(
+        core,
+        tx,
+        workflow,
+        interaction,
+        browser_cookie,
+        session,
+        authorization,
+        browser_expires_at,
+        false,
+    )?;
     let mut run = load_runtime(tx, &run_id)?;
     let checked = run.validated()?;
     let view = decide_loaded(core, tx, &checked, &mut run, true)?;
@@ -580,101 +634,219 @@ pub(crate) fn browser_consent_decide_in(
 }
 
 fn browser_passkey_run(
-    core: &Core, tx: &Tx<'_>, workflow: &str, interaction: &str,
-    browser_cookie: &str, session: &Session, authorization: &Authorization,
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
     run_id: &str,
 ) -> Result<(RuntimeRun, Validated)> {
     if core.config.browser_consent_workflow.as_deref() != Some(workflow)
         || authorization.request_binding.as_deref() != Some(interaction)
         || authorization.decision.is_some()
-    { return Err(Error::forbidden()) }
+    {
+        return Err(Error::forbidden());
+    }
     let run = load_runtime(tx, run_id)?;
     let checked = run.validated()?;
     let at = now();
-    if at >= run.record.started_at.saturating_add(u64::from(checked.definition().limits.max_duration_seconds))
-    { return Err(Error::forbidden()) }
+    if at
+        >= run
+            .record
+            .started_at
+            .saturating_add(u64::from(checked.definition().limits.max_duration_seconds))
+    {
+        return Err(Error::forbidden());
+    }
     if !super::super::supported_configured_passkey_consent(checked.definition())
         || checked.definition().id.as_str() != workflow
-        || core.config.workflows.get(workflow).is_none_or(|entry| !entry.active)
+        || core
+            .config
+            .workflows
+            .get(workflow)
+            .is_none_or(|entry| !entry.active)
         || run.record.session.as_deref() != Some(session.id.as_str())
         || run.record.account != session.identity.user_id
         || run.record.account_epoch != session.identity.epoch
-    { return Err(Error::forbidden()) }
-    let request: RequestAuthority = tx.get(REQUESTS, &run.record.request)?
+    {
+        return Err(Error::forbidden());
+    }
+    let request: RequestAuthority = tx
+        .get(REQUESTS, &run.record.request)?
         .ok_or_else(Error::forbidden)?;
-    let transaction = authorization.transaction_id.as_deref().ok_or_else(Error::forbidden)?;
+    let transaction = authorization
+        .transaction_id
+        .as_deref()
+        .ok_or_else(Error::forbidden)?;
     let request_hash = authorization.request_hash()?;
     if request.browser_hash.as_deref() != Some(digest(browser_cookie).as_str())
         || request.consent.as_ref().is_none_or(|pin| {
             pin.authentication != digest(transaction) || pin.request_hash != request_hash
         })
-    { return Err(Error::forbidden()) }
+    {
+        return Err(Error::forbidden());
+    }
     authority(core, tx, &run.record, at)?;
     Ok((run, checked))
 }
 
 /// The interaction page may inspect only its own live, exact prepared consent run.
 pub(crate) fn browser_passkey_consent_ready_in(
-    core: &Core, tx: &Tx<'_>, workflow: &str, interaction: &str,
-    browser_cookie: &str, session: &Session, authorization: &Authorization, run_id: &str,
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
+    run_id: &str,
 ) -> Result<bool> {
-    let (run, checked) = browser_passkey_run(core, tx, workflow, interaction,
-        browser_cookie, session, authorization, run_id)?;
+    let (run, checked) = browser_passkey_run(
+        core,
+        tx,
+        workflow,
+        interaction,
+        browser_cookie,
+        session,
+        authorization,
+        run_id,
+    )?;
     Ok(matches!(&run.record.state, RunState::Active { step, .. }
         if checked.step(step).is_some_and(|current| matches!(current.action, Action::RequestConsent {}))))
 }
 
 pub(crate) fn browser_passkey_consent_start_in(
-    core: &Core, tx: &Tx<'_>, workflow: &str, interaction: &str,
-    browser_cookie: &str, session: &Session, authorization: &Authorization,
-    browser_expires_at: u64, existing: Option<&str>,
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
+    browser_expires_at: u64,
+    existing: Option<&str>,
 ) -> Result<(String, serde_json::Value)> {
-    let run_id = if let Some(id) = existing { id.to_owned() } else {
-        browser_consent_start_in(core, tx, workflow, interaction, browser_cookie,
-            session, authorization, browser_expires_at, true)?
+    let run_id = if let Some(id) = existing {
+        id.to_owned()
+    } else {
+        browser_consent_start_in(
+            core,
+            tx,
+            workflow,
+            interaction,
+            browser_cookie,
+            session,
+            authorization,
+            browser_expires_at,
+            true,
+        )?
     };
-    let (mut run, _) = browser_passkey_run(core, tx, workflow, interaction,
-        browser_cookie, session, authorization, &run_id)?;
+    let (mut run, _) = browser_passkey_run(
+        core,
+        tx,
+        workflow,
+        interaction,
+        browser_cookie,
+        session,
+        authorization,
+        &run_id,
+    )?;
     let challenge = passkey::challenge_in(core, tx, &mut run)?
         .ok_or_else(|| Error::conflict("Consent passkey step is unavailable"))?;
-    let ceremony = run.in_flight.as_ref().and_then(|attempt| attempt.passkey.as_deref())
+    let ceremony = run
+        .in_flight
+        .as_ref()
+        .and_then(|attempt| attempt.passkey.as_deref())
         .ok_or_else(Error::forbidden)?;
-    Ok((run_id, serde_json::json!({
-        "workflow": challenge.workflow, "ceremony": ceremony,
-        "public_key": challenge.public_key,
-    })))
+    Ok((
+        run_id,
+        serde_json::json!({
+            "workflow": challenge.workflow, "ceremony": ceremony,
+            "public_key": challenge.public_key,
+        }),
+    ))
 }
 
 pub(crate) fn browser_passkey_consent_finish_in(
-    core: &Core, tx: &Tx<'_>, workflow: &str, interaction: &str,
-    browser_cookie: &str, session: &Session, authorization: &Authorization,
-    run_id: &str, ceremony: &str, response: webauthn_rs::prelude::PublicKeyCredential,
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
+    run_id: &str,
+    ceremony: &str,
+    response: webauthn_rs::prelude::PublicKeyCredential,
 ) -> Result<View> {
-    let (mut run, _) = browser_passkey_run(core, tx, workflow, interaction,
-        browser_cookie, session, authorization, run_id)?;
-    if run.in_flight.as_ref().and_then(|attempt| attempt.passkey.as_deref()) != Some(ceremony) {
+    let (mut run, _) = browser_passkey_run(
+        core,
+        tx,
+        workflow,
+        interaction,
+        browser_cookie,
+        session,
+        authorization,
+        run_id,
+    )?;
+    if run
+        .in_flight
+        .as_ref()
+        .and_then(|attempt| attempt.passkey.as_deref())
+        != Some(ceremony)
+    {
         return Err(Error::forbidden());
     }
     passkey::finish_in(core, tx, &mut run, response)
 }
 
 pub(crate) fn browser_passkey_consent_cancel_in(
-    core: &Core, tx: &Tx<'_>, workflow: &str, interaction: &str,
-    browser_cookie: &str, session: &Session, authorization: &Authorization,
-    run_id: &str, ceremony: &str,
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
+    run_id: &str,
+    ceremony: &str,
 ) -> Result<View> {
-    let (mut run, _) = browser_passkey_run(core, tx, workflow, interaction,
-        browser_cookie, session, authorization, run_id)?;
+    let (mut run, _) = browser_passkey_run(
+        core,
+        tx,
+        workflow,
+        interaction,
+        browser_cookie,
+        session,
+        authorization,
+        run_id,
+    )?;
     passkey::cancel_in(core, tx, &mut run, ceremony)
 }
 
 pub(crate) fn browser_passkey_consent_decide_in(
-    core: &Core, tx: &Tx<'_>, workflow: &str, interaction: &str,
-    browser_cookie: &str, session: &Session, authorization: &Authorization,
-    run_id: &str, approve: bool,
+    core: &Core,
+    tx: &Tx<'_>,
+    workflow: &str,
+    interaction: &str,
+    browser_cookie: &str,
+    session: &Session,
+    authorization: &Authorization,
+    run_id: &str,
+    approve: bool,
 ) -> Result<String> {
-    let (mut run, checked) = browser_passkey_run(core, tx, workflow, interaction,
-        browser_cookie, session, authorization, run_id)?;
+    let (mut run, checked) = browser_passkey_run(
+        core,
+        tx,
+        workflow,
+        interaction,
+        browser_cookie,
+        session,
+        authorization,
+        run_id,
+    )?;
     let view = decide_loaded(core, tx, &checked, &mut run, approve)?;
     view.authorization_response.ok_or_else(Error::forbidden)
 }

@@ -4343,7 +4343,12 @@ fn retained_due_cursor_wraps_once_to_a_redue_earlier_deactivation() {
     f.core.update_user(&f.admin, "carol", disable()).unwrap();
     let alice_id = text(&delivery(&f.core, "payroll", &alice), "id");
     let carol_id = text(&delivery(&f.core, "payroll", &carol), "id");
-    assert!(delivery(&f.core, "payroll", &alice)["next_attempt"].as_u64().unwrap() > 3);
+    assert!(
+        delivery(&f.core, "payroll", &alice)["next_attempt"]
+            .as_u64()
+            .unwrap()
+            > 3
+    );
     assert_eq!(delivery(&f.core, "payroll", &alice)["attempts"], 0);
     assert_eq!(delivery(&f.core, "payroll", &carol)["attempts"], 0);
     // `~` sorts after every digest, so this cursor sits after due time 1 and
@@ -4456,7 +4461,10 @@ fn retained_due_cursor_wraps_once_to_a_redue_earlier_deactivation() {
             .unwrap()
             .is_none()
     );
-    assert_eq!(targets(&f.core, "provisioner.deactivate").len(), deactivations);
+    assert_eq!(
+        targets(&f.core, "provisioner.deactivate").len(),
+        deactivations
+    );
     // The next pass uses a fresh cutoff. It can hold the row that was past the
     // frozen cutoff, and it does not dispatch or revisit the held row.
     assert!(!f.core.deactivation_step().unwrap());
@@ -4479,5 +4487,8 @@ fn retained_due_cursor_wraps_once_to_a_redue_earlier_deactivation() {
             .unwrap(),
         leased_before
     );
-    assert_eq!(targets(&f.core, "provisioner.deactivate").len(), deactivations);
+    assert_eq!(
+        targets(&f.core, "provisioner.deactivate").len(),
+        deactivations
+    );
 }

@@ -384,10 +384,22 @@ fn supported_configured_passkey_change(definition: &Definition, factor_proof: Pr
             })
     };
     let (factor_name, factor_action, factor_timeout) = match factor_proof {
-        Proof::Passkey => ("passkey", matches!(factor.action, Action::VerifyPasskey {}), 300),
-        Proof::Password => ("password", matches!(factor.action, Action::VerifyPassword {}), 300),
+        Proof::Passkey => (
+            "passkey",
+            matches!(factor.action, Action::VerifyPasskey {}),
+            300,
+        ),
+        Proof::Password => (
+            "password",
+            matches!(factor.action, Action::VerifyPassword {}),
+            300,
+        ),
         Proof::Totp => ("totp", matches!(factor.action, Action::VerifyTotp {}), 120),
-        Proof::Source => ("source", matches!(factor.action, Action::VerifySource { .. }), 300),
+        Proof::Source => (
+            "source",
+            matches!(factor.action, Action::VerifySource { .. }),
+            300,
+        ),
         _ => return false,
     };
     session.id.as_str() == "session"
@@ -555,7 +567,10 @@ fn supported_configured_totp_change(
     };
     let routes = |step: &Step, verified: &'static str, target: &Id| {
         step.transitions.len() == 2
-            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step
+                .transitions
+                .iter()
+                .all(|transition| transition.when.is_none())
             && step.transitions.iter().any(|transition| {
                 transition.on == Label::fixed(verified) && &transition.to == target
             })
@@ -646,7 +661,10 @@ fn supported_configured_passkey_removal_uv(definition: &Definition) -> bool {
     };
     let routes = |step: &Step, verified: &'static str, target: &Id| {
         step.transitions.len() == 2
-            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step
+                .transitions
+                .iter()
+                .all(|transition| transition.when.is_none())
             && step.transitions.iter().any(|transition| {
                 transition.on == Label::fixed(verified) && &transition.to == target
             })
@@ -684,9 +702,7 @@ fn supported_configured_passkey_removal_uv(definition: &Definition) -> bool {
 
 /// An MFA session may remove its exact pinned passkey after a fresh local
 /// password and current TOTP code. Recovery codes are not a substitute.
-pub(crate) fn supported_configured_password_totp_passkey_removal(
-    definition: &Definition,
-) -> bool {
+pub(crate) fn supported_configured_password_totp_passkey_removal(definition: &Definition) -> bool {
     if definition.origin != Origin::Configured
         || definition.category != Category::SensitiveAction
         || definition.steps.len() != 4
@@ -713,7 +729,10 @@ pub(crate) fn supported_configured_password_totp_passkey_removal(
     };
     let routes = |step: &Step, verified: &'static str, target: &Id| {
         step.transitions.len() == 2
-            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step
+                .transitions
+                .iter()
+                .all(|transition| transition.when.is_none())
             && step.transitions.iter().any(|transition| {
                 transition.on == Label::fixed(verified) && &transition.to == target
             })
@@ -746,9 +765,14 @@ pub(crate) fn supported_configured_password_totp_passkey_removal(
         && success.max_proof_age_seconds.is_some_and(|age| age <= 120)
         && success.requires.len() == 1
         && success.requires[0].len() == 4
-        && [Proof::Session, Proof::Password, Proof::Totp, Proof::PasskeyRemoved]
-            .into_iter()
-            .all(|proof| success.requires[0].contains(&proof))
+        && [
+            Proof::Session,
+            Proof::Password,
+            Proof::Totp,
+            Proof::PasskeyRemoved,
+        ]
+        .into_iter()
+        .all(|proof| success.requires[0].contains(&proof))
         && routes(session, "verified", &password.id)
         && routes(password, "verified", &totp.id)
         && routes(totp, "verified", &remove.id)
@@ -988,7 +1012,10 @@ pub(crate) fn supported_configured_password_totp_consent(definition: &Definition
     };
     let routes = |step: &Step, granted: &'static str, target: &Id, refused: &'static str| {
         step.transitions.len() == 2
-            && step.transitions.iter().all(|transition| transition.when.is_none())
+            && step
+                .transitions
+                .iter()
+                .all(|transition| transition.when.is_none())
             && step.transitions.iter().any(|transition| {
                 transition.on == Label::fixed(granted) && &transition.to == target
             })
@@ -1246,7 +1273,10 @@ impl Proof {
             account: true,
             request: true,
             run: true,
-            session: matches!(self, Proof::Session | Proof::Consent | Proof::PasskeyRemoved),
+            session: matches!(
+                self,
+                Proof::Session | Proof::Consent | Proof::PasskeyRemoved
+            ),
         }
     }
 }

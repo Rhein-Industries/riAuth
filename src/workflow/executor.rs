@@ -14,16 +14,16 @@ mod source;
 mod totp;
 mod totp_enrollment;
 mod version;
-pub use passkey::PasskeyChallenge;
-pub use source::SourceStart;
-pub use totp::TotpChallenge;
-pub use totp::TotpChallenge as RecoveryChallenge;
-pub(crate) use version::seal_disabled_account;
 pub(crate) use consent::{
     browser_consent_decide_in, browser_passkey_consent_cancel_in,
     browser_passkey_consent_decide_in, browser_passkey_consent_finish_in,
     browser_passkey_consent_ready_in, browser_passkey_consent_start_in,
 };
+pub use passkey::PasskeyChallenge;
+pub use source::SourceStart;
+pub use totp::TotpChallenge;
+pub use totp::TotpChallenge as RecoveryChallenge;
+pub(crate) use version::seal_disabled_account;
 
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
@@ -32,10 +32,9 @@ use super::{
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     extension_gate, supported_configured_consent, supported_configured_extension_password,
     supported_configured_passkey, supported_configured_passkey_consent,
-    supported_configured_passkey_enrollment,
-    supported_configured_passkey_removal, supported_configured_password_passkey_enrollment,
-    supported_configured_password_totp_consent,
-    supported_configured_password_reset, supported_configured_password_totp_enrollment,
+    supported_configured_passkey_enrollment, supported_configured_passkey_removal,
+    supported_configured_password_passkey_enrollment, supported_configured_password_reset,
+    supported_configured_password_totp_consent, supported_configured_password_totp_enrollment,
     supported_configured_password_totp_passkey_removal,
     supported_configured_password_totp_replacement, supported_configured_totp_enrollment,
     supported_configured_totp_first_passkey_enrollment, supported_configured_totp_replacement,
@@ -190,9 +189,7 @@ impl RuntimeRun {
         let mut checked = if extension {
             let mut environment = Environment::platform();
             if let Some(Action::Custom {
-                stage,
-                permissions,
-                ..
+                stage, permissions, ..
             }) = self.definition.steps.first().map(|step| &step.action)
             {
                 environment
@@ -491,9 +488,16 @@ fn evidence_authority(
             if matches!(
                 (receipt.proof, &receipt.action),
                 (Proof::Session, Action::ResumeSession {})
-                    | (Proof::Enrolled, Action::EnrollCredential { credential: Credential::Passkey })
-            ) && configured_source_first_passkey_enrollment(&load_runtime(tx, &run.id)?.definition)
-                .is_some() =>
+                    | (
+                        Proof::Enrolled,
+                        Action::EnrollCredential {
+                            credential: Credential::Passkey
+                        }
+                    )
+            ) && configured_source_first_passkey_enrollment(
+                &load_runtime(tx, &run.id)?.definition,
+            )
+            .is_some() =>
         {
             Ok(())
         }
@@ -955,9 +959,16 @@ impl CompletionStore for TxCompletion<'_, '_> {
             terminal.outcome,
             super::Outcome::ConsentGranted | super::Outcome::Denied
         ) {
-            current.authorization_response =
-                consent::complete(self.core, self.tx, &checked, run, terminal.outcome, evidence, at)
-                    .map_err(storage_invalid)?;
+            current.authorization_response = consent::complete(
+                self.core,
+                self.tx,
+                &checked,
+                run,
+                terminal.outcome,
+                evidence,
+                at,
+            )
+            .map_err(storage_invalid)?;
         }
         if terminal.outcome == super::Outcome::Denied {
             authorization::abandon(self.tx, run).map_err(storage_invalid)?;
@@ -1046,7 +1057,8 @@ fn extension_guest(core: &Core, checked: &Validated) -> Result<Option<extension_
     if !supported_configured_extension_password(checked.definition()) {
         return Ok(None);
     }
-    let Some(Action::Custom { stage, .. }) = checked.definition().steps.first().map(|step| &step.action)
+    let Some(Action::Custom { stage, .. }) =
+        checked.definition().steps.first().map(|step| &step.action)
     else {
         return Err(Error::conflict("Configured workflow is unavailable"));
     };
@@ -1142,7 +1154,8 @@ impl Core {
                 .stages
                 .insert(stage.clone(), guest.permissions().clone());
         }
-        let checked = validate(configured.definition.clone(), &environment).map_err(invalid_error)?;
+        let checked =
+            validate(configured.definition.clone(), &environment).map_err(invalid_error)?;
         let extension_ok = supported_configured_extension_password(checked.definition())
             && registered
                 .values()
@@ -1277,8 +1290,7 @@ impl Core {
                 supported_configured_password_totp_replacement(checked.definition());
             let configured_removal_totp =
                 supported_configured_password_totp_passkey_removal(checked.definition());
-            let extension_password =
-                supported_configured_extension_password(checked.definition());
+            let extension_password = supported_configured_extension_password(checked.definition());
             if matches!(
                 checked.definition().id.as_str(),
                 PASSWORD_WORKFLOW | password::TOTP_WORKFLOW
@@ -1326,7 +1338,9 @@ impl Core {
             if configured_totp_enrollment
                 && (user.totp_secret.is_some() || user.totp_pending.is_some())
             {
-                return Err(Error::conflict("TOTP enrollment is unavailable for this account"));
+                return Err(Error::conflict(
+                    "TOTP enrollment is unavailable for this account",
+                ));
             }
             if configured_password_totp_enrollment
                 && (user.has_passkeys || user.totp_secret.is_some() || user.totp_pending.is_some())
@@ -1402,10 +1416,7 @@ impl Core {
                     }
                     owned(self, tx, token, &active.record)?;
                     let stale = pinned.binding() != checked.binding()
-                        || matches!(
-                            extension_currency(self, &active),
-                            ExtensionCurrency::Stale
-                        );
+                        || matches!(extension_currency(self, &active), ExtensionCurrency::Stale);
                     if stale {
                         seal_stale_extension(self, tx, &pinned, &mut active, at)?;
                     } else {
@@ -1789,11 +1800,13 @@ mod tests {
 
     #[test]
     fn configured_extension_routes_to_password_and_cannot_prove_itself() {
-        let (_dir, core, token) =
-            extension_core(&extension_gate::fixture::account_kind());
+        let (_dir, core, token) = extension_core(&extension_gate::fixture::account_kind());
         let blocked = extension_core(&extension_gate::fixture::block());
-        let denied_view = blocked.1.workflow_configured_start(&blocked.2, "risk-route").unwrap();
-        assert!(denied( &denied_view.state), "{denied_view:?}");
+        let denied_view = blocked
+            .1
+            .workflow_configured_start(&blocked.2, "risk-route")
+            .unwrap();
+        assert!(denied(&denied_view.state), "{denied_view:?}");
         let denied_run = load(&blocked.1, &denied_view.id);
         assert_eq!(denied_run.record.steps[0].signal.as_str(), "block");
         assert!(denied_run.record.steps[0].evidence.is_none());
@@ -1804,7 +1817,9 @@ mod tests {
                 .is_err()
         );
 
-        let started = core.workflow_configured_start(&token, "risk-route").unwrap();
+        let started = core
+            .workflow_configured_start(&token, "risk-route")
+            .unwrap();
         match &started.state {
             RunState::Active { step, .. } => assert_eq!(step.as_str(), "password"),
             other => panic!("guest allow did not reach password: {other:?}"),
@@ -1858,7 +1873,10 @@ mod tests {
             assert!(denied(&view.state), "{view:?}");
             let run = load(&core, &view.id);
             assert!(
-                run.record.steps.iter().all(|step| step.signal.as_str() == "failed"),
+                run.record
+                    .steps
+                    .iter()
+                    .all(|step| step.signal.as_str() == "failed"),
                 "{:?}",
                 run.record.steps
             );
@@ -1869,27 +1887,41 @@ mod tests {
             "risk-check".into(),
             manifest(&extension_gate::fixture::with_import()),
         );
-        assert!(core.workflow_configured_start(&token, "risk-route").is_err());
+        assert!(
+            core.workflow_configured_start(&token, "risk-route")
+                .is_err()
+        );
 
         core.config.workflow_extensions.insert(
             "risk-check".into(),
             manifest(&extension_gate::fixture::account_kind()),
         );
-        let open = core.workflow_configured_start(&token, "risk-route").unwrap();
+        let open = core
+            .workflow_configured_start(&token, "risk-route")
+            .unwrap();
         assert!(matches!(open.state, RunState::Active { .. }));
         let pinned = open.binding.extension_sha256.clone();
-        core.config
-            .workflow_extensions
-            .insert("risk-check".into(), manifest(&extension_gate::fixture::block()));
+        core.config.workflow_extensions.insert(
+            "risk-check".into(),
+            manifest(&extension_gate::fixture::block()),
+        );
         let sealed = core.workflow_resume(&token, &open.id).unwrap();
         assert!(denied(&sealed.state), "{sealed:?}");
         let sealed_run = load(&core, &open.id);
         assert_eq!(sealed_run.record.binding.extension_sha256, pinned);
         assert_eq!(sealed_run.record.steps[0].signal.as_str(), "allow");
         assert_eq!(sealed_run.record.steps[1].signal.as_str(), "failed");
-        assert!(sealed_run.record.steps.iter().all(|step| step.evidence.is_none()));
+        assert!(
+            sealed_run
+                .record
+                .steps
+                .iter()
+                .all(|step| step.evidence.is_none())
+        );
 
-        let replacement = core.workflow_configured_start(&token, "risk-route").unwrap();
+        let replacement = core
+            .workflow_configured_start(&token, "risk-route")
+            .unwrap();
         assert!(denied(&replacement.state), "{replacement:?}");
         let replacement_run = load(&core, &replacement.id);
         assert_eq!(replacement_run.record.steps[0].signal.as_str(), "block");
@@ -1899,11 +1931,14 @@ mod tests {
             "risk-check".into(),
             manifest(&extension_gate::fixture::account_kind()),
         );
-        let password_step = core.workflow_configured_start(&token, "risk-route").unwrap();
+        let password_step = core
+            .workflow_configured_start(&token, "risk-route")
+            .unwrap();
         assert!(matches!(password_step.state, RunState::Active { .. }));
-        core.config
-            .workflow_extensions
-            .insert("risk-check".into(), manifest(&extension_gate::fixture::block()));
+        core.config.workflow_extensions.insert(
+            "risk-check".into(),
+            manifest(&extension_gate::fixture::block()),
+        );
         let error = core
             .workflow_password(&token, &password_step.id, "fixture-password".into())
             .unwrap_err();

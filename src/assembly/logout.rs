@@ -5,7 +5,10 @@ use crate::{
     crypto::{digest, now},
     error::{Error, Result},
     identity::signals,
-    logout::{Delivery, LogoutDeliveryWorker, LogoutHintTx, LogoutRequest, RpSession, queue_session, verify_hint},
+    logout::{
+        Delivery, LogoutDeliveryWorker, LogoutHintTx, LogoutRequest, RpSession, queue_session,
+        verify_hint,
+    },
     model::Client,
     session_protocol::PostLogoutReturn,
     store::Tx,

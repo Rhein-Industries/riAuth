@@ -1,7 +1,7 @@
 //! Browser application catalogue. The same live policies protect listing and launching.
-pub mod admin;
 #[cfg(feature = "platform")]
 pub mod access_review;
+pub mod admin;
 pub mod http;
 mod mfa;
 pub mod self_service;
@@ -202,9 +202,7 @@ impl Core {
     }
 
     pub fn portal_sign_in(&self) -> Result<BrowserReply> {
-        let started = self
-            .store
-            .write(crate::management::start_portal_sign_in)?;
+        let started = self.store.write(crate::management::start_portal_sign_in)?;
         Ok(BrowserReply {
             form_post: false,
             location: None,
@@ -232,9 +230,8 @@ impl Core {
     }
 
     pub fn portal_decide(&self, token: &str, code: &str, approve: bool) -> Result<Value> {
-        self.store.write(|tx| {
-            crate::management::decide_portal_sign_in(self, tx, token, code, approve)
-        })
+        self.store
+            .write(|tx| crate::management::decide_portal_sign_in(self, tx, token, code, approve))
     }
 
     pub fn portal_poll(&self, id: &str, binding: Option<&str>) -> Result<BrowserReply> {
@@ -249,19 +246,29 @@ impl Core {
         binding: Option<&str>,
         sso: Option<&str>,
     ) -> Result<BrowserReply> {
-        let outcome = self.store.write(|tx| {
-            crate::management::poll_portal_sign_in(self, tx, id, binding, sso)
-        })?;
+        let outcome = self
+            .store
+            .write(|tx| crate::management::poll_portal_sign_in(self, tx, id, binding, sso))?;
         let mut cookies = vec![];
         let status = match outcome {
             crate::management::PortalPollOutcome::Pending => "pending",
             crate::management::PortalPollOutcome::Approved(sso_cookies) => {
-                cookies.push(self.browser_cookie("riauth_portal", "", &self.portal_poll_path(id), 0));
+                cookies.push(self.browser_cookie(
+                    "riauth_portal",
+                    "",
+                    &self.portal_poll_path(id),
+                    0,
+                ));
                 cookies.extend(sso_cookies);
                 "approved"
             }
             crate::management::PortalPollOutcome::Denied => {
-                cookies.push(self.browser_cookie("riauth_portal", "", &self.portal_poll_path(id), 0));
+                cookies.push(self.browser_cookie(
+                    "riauth_portal",
+                    "",
+                    &self.portal_poll_path(id),
+                    0,
+                ));
                 "denied"
             }
         };

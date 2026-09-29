@@ -1,12 +1,10 @@
 //! Bounded LDAP import plans and online LDAP password authentication.
 use crate::{
-    connector_guard::{
-        Pagination, RemovalImpact, ReviewBinding,
-    },
     config::LdapReconciliationQuota,
-    validation::{validate_display, validate_email, validate_name},
+    connector_guard::{Pagination, RemovalImpact, ReviewBinding},
     crypto::{self, digest, now},
     error::{Error, Result},
+    validation::{validate_display, validate_email, validate_name},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ldap3::controls::{MakeCritical, PagedResults};
@@ -219,7 +217,11 @@ impl Directory {
     }
     /// Advance a bounded number of LDAP pages on one service connection. The
     /// opaque cookie and converted rows can be persisted between calls.
-    pub(crate) fn advance_snapshot(&self, draft: &mut SnapshotDraft, quota: &LdapReconciliationQuota) -> Result<()> {
+    pub(crate) fn advance_snapshot(
+        &self,
+        draft: &mut SnapshotDraft,
+        quota: &LdapReconciliationQuota,
+    ) -> Result<()> {
         let started = Instant::now();
         let mut conn = self.service(Budget::Step)?;
         for _ in 0..quota.pages_per_call {
@@ -241,7 +243,10 @@ impl Directory {
                     .collect(),
                 )
             } else {
-                let (_, group_filter) = self.group_user_filters.iter().nth(phase - 1)
+                let (_, group_filter) = self
+                    .group_user_filters
+                    .iter()
+                    .nth(phase - 1)
                     .ok_or_else(unavailable)?;
                 (
                     format!("(&{}{group_filter})", self.user_filter),
@@ -266,7 +271,9 @@ impl Directory {
                 draft.record(self, quota, phase, row)?;
             }
             draft.cookie = next;
-            draft.sequence = draft.sequence.checked_add(1)
+            draft.sequence = draft
+                .sequence
+                .checked_add(1)
                 .ok_or_else(|| Error::internal("LDAP snapshot cursor exhausted"))?;
             if draft.cookie.is_empty() {
                 draft.next_phase(quota);
@@ -309,7 +316,10 @@ fn search_page(
         .streaming_search(base, Scope::Subtree, filter, attrs)
         .map_err(|_| unavailable())?;
     while let Some(entry) = stream.next().map_err(|_| unavailable())? {
-        if entry.is_ref() || started.elapsed() > Duration::from_secs(30) || rows.len() >= LDAP_PAGE_SIZE {
+        if entry.is_ref()
+            || started.elapsed() > Duration::from_secs(30)
+            || rows.len() >= LDAP_PAGE_SIZE
+        {
             return Err(unavailable());
         }
         rows.push(SearchEntry::construct(entry));
@@ -448,12 +458,29 @@ pub(crate) struct SnapshotDraft {
     pub(crate) attributes_bytes: usize,
 }
 impl SnapshotDraft {
-    pub(crate) fn new(directory: String, actor: String, revision: u64, fingerprint: String, authority_digest: String, quota: &LdapReconciliationQuota) -> Self {
+    pub(crate) fn new(
+        directory: String,
+        actor: String,
+        revision: u64,
+        fingerprint: String,
+        authority_digest: String,
+        quota: &LdapReconciliationQuota,
+    ) -> Self {
         Self {
-            id: crypto::id(), directory, actor, revision, fingerprint, authority_digest,
-            expires_at: now().saturating_add(quota.draft_ttl_seconds), sequence: 0, phase: 0,
-            cookie: Vec::new(), pagination: Pagination::new(quota.max_pages_per_search, quota.max_users),
-            phase_dns: BTreeSet::new(), names: BTreeSet::new(), users: BTreeMap::new(),
+            id: crypto::id(),
+            directory,
+            actor,
+            revision,
+            fingerprint,
+            authority_digest,
+            expires_at: now().saturating_add(quota.draft_ttl_seconds),
+            sequence: 0,
+            phase: 0,
+            cookie: Vec::new(),
+            pagination: Pagination::new(quota.max_pages_per_search, quota.max_users),
+            phase_dns: BTreeSet::new(),
+            names: BTreeSet::new(),
+            users: BTreeMap::new(),
             attributes_bytes: 0,
         }
     }
@@ -479,7 +506,10 @@ impl SnapshotDraft {
         let phase = if self.phase == 0 {
             "users".to_owned()
         } else {
-            directory.group_user_filters.keys().nth(self.phase - 1)
+            directory
+                .group_user_filters
+                .keys()
+                .nth(self.phase - 1)
                 .map(|name| format!("group:{name}"))
                 .unwrap_or_else(|| "complete".into())
         };
@@ -487,41 +517,90 @@ impl SnapshotDraft {
             "users":self.users.len(),"pages":self.sequence,"expires_at":self.expires_at,"restart":restarted})
     }
     pub(crate) fn into_snapshot(self) -> Snapshot {
-        Snapshot { users: self.users.into_values().collect() }
+        Snapshot {
+            users: self.users.into_values().collect(),
+        }
     }
-    fn record(&mut self, directory: &Directory, quota: &LdapReconciliationQuota, phase: usize, entry: SearchEntry) -> Result<()> {
-        let bytes = entry.dn.len()
-            .saturating_add(entry.attrs.iter().map(|(key, values)|
-                key.len().saturating_add(values.iter().map(String::len).sum::<usize>())).sum::<usize>())
-            .saturating_add(entry.bin_attrs.iter().map(|(key, values)|
-                key.len().saturating_add(values.iter().map(Vec::len).sum::<usize>())).sum::<usize>());
+    fn record(
+        &mut self,
+        directory: &Directory,
+        quota: &LdapReconciliationQuota,
+        phase: usize,
+        entry: SearchEntry,
+    ) -> Result<()> {
+        let bytes = entry
+            .dn
+            .len()
+            .saturating_add(
+                entry
+                    .attrs
+                    .iter()
+                    .map(|(key, values)| {
+                        key.len()
+                            .saturating_add(values.iter().map(String::len).sum::<usize>())
+                    })
+                    .sum::<usize>(),
+            )
+            .saturating_add(
+                entry
+                    .bin_attrs
+                    .iter()
+                    .map(|(key, values)| {
+                        key.len()
+                            .saturating_add(values.iter().map(Vec::len).sum::<usize>())
+                    })
+                    .sum::<usize>(),
+            );
         self.attributes_bytes = self.attributes_bytes.saturating_add(bytes);
         if self.attributes_bytes > quota.max_snapshot_bytes
-            || entry.dn.is_empty() || entry.dn.len() > 2048
+            || entry.dn.is_empty()
+            || entry.dn.len() > 2048
             || !self.phase_dns.insert(entry.dn.clone())
         {
             return Err(unavailable());
         }
         let external_id = stable_id(&entry, &directory.id_attribute)?;
         if phase == 0 {
-            let username = format!("{}{}", directory.username_prefix,
-                required_text(&entry, &directory.username_attribute)?);
+            let username = format!(
+                "{}{}",
+                directory.username_prefix,
+                required_text(&entry, &directory.username_attribute)?
+            );
             let display_name = required_text(&entry, &directory.display_attribute)?;
-            let email = directory.email_attribute.as_ref()
-                .map(|name| optional_text(&entry, name)).transpose()?.flatten();
+            let email = directory
+                .email_attribute
+                .as_ref()
+                .map(|name| optional_text(&entry, name))
+                .transpose()?
+                .flatten();
             validate_name(&username)?;
             validate_display(&display_name)?;
-            if let Some(email) = &email { validate_email(email)?; }
-            if !self.names.insert(username.clone()) {
-                return Err(Error::conflict("LDAP snapshot contains duplicate usernames or DNs"));
+            if let Some(email) = &email {
+                validate_email(email)?;
             }
-            let row = Entry { external_id: external_id.clone(), dn: entry.dn,
-                username, display_name, email, groups: BTreeSet::new() };
+            if !self.names.insert(username.clone()) {
+                return Err(Error::conflict(
+                    "LDAP snapshot contains duplicate usernames or DNs",
+                ));
+            }
+            let row = Entry {
+                external_id: external_id.clone(),
+                dn: entry.dn,
+                username,
+                display_name,
+                email,
+                groups: BTreeSet::new(),
+            };
             if self.users.insert(external_id, row).is_some() {
-                return Err(Error::conflict("LDAP stable identity attribute is not unique"));
+                return Err(Error::conflict(
+                    "LDAP stable identity attribute is not unique",
+                ));
             }
         } else {
-            let (group, _) = directory.group_user_filters.iter().nth(phase - 1)
+            let (group, _) = directory
+                .group_user_filters
+                .iter()
+                .nth(phase - 1)
                 .ok_or_else(unavailable)?;
             let row = self.users.get_mut(&external_id).ok_or_else(|| {
                 Error::conflict("LDAP membership changed during snapshot; retry the plan")

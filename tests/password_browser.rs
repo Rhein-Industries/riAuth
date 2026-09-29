@@ -716,7 +716,8 @@ async fn workflow_password_reset_is_account_bound_atomic_and_one_use() {
     f.core.recovery_codes(&assisted_mfa).unwrap();
     enroll_passkey(&f, &assisted_mfa);
     let assisted_before = user(&f, "reset-assisted");
-    let mut exposure = json!({"verified_email":assisted_before.email,"actor_id":"support-fixture","at":now()});
+    let mut exposure =
+        json!({"verified_email":assisted_before.email,"actor_id":"support-fixture","at":now()});
     f.core
         .store
         .write(|tx| {

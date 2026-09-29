@@ -8,10 +8,7 @@ use axum::{
 };
 use common::{Fixture, text};
 use http_body_util::BodyExt;
-use riauth::{
-    logout::Delivery,
-    model::ProviderSettings,
-};
+use riauth::{logout::Delivery, model::ProviderSettings};
 use serde_json::Value;
 use std::{
     sync::{

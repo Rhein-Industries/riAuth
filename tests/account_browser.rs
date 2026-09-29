@@ -181,21 +181,42 @@ async fn invitation_writes_require_retry_binding_across_browser_and_bearer() {
     let outsider = f.user("outsider");
     let cookie = browser_cookie(&f, "admin", SIGN_IN_PASSWORD);
     let app = api::router(f.core.clone());
-    let revision = || f.core.store.get::<u64>("meta", "revision").unwrap().unwrap_or(0);
-    let audit_count = |action: &str| {
-        f.core.audit_events(&f.admin, 100).unwrap().as_array().unwrap()
-            .iter().filter(|event| event["action"] == action).count()
+    let revision = || {
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
     };
-    let write = |method: &str, path: &str, browser: bool, actor: &str,
-                 key: Option<&str>, expected: Option<u64>, body: Option<Value>| {
+    let audit_count = |action: &str| {
+        f.core
+            .audit_events(&f.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action)
+            .count()
+    };
+    let write = |method: &str,
+                 path: &str,
+                 browser: bool,
+                 actor: &str,
+                 key: Option<&str>,
+                 expected: Option<u64>,
+                 body: Option<Value>| {
         let mut request = Request::builder().method(method).uri(path);
         if browser {
-            request = request.header("cookie", format!("riauth_sso={cookie}"))
-                .header("x-riauth-portal", "1").header("origin", ORIGIN);
+            request = request
+                .header("cookie", format!("riauth_sso={cookie}"))
+                .header("x-riauth-portal", "1")
+                .header("origin", ORIGIN);
         } else {
             request = request.header("authorization", format!("Bearer {actor}"));
         }
-        if let Some(key) = key { request = request.header("idempotency-key", key); }
+        if let Some(key) = key {
+            request = request.header("idempotency-key", key);
+        }
         if let Some(expected) = expected {
             request = request.header("if-match", format!("\"{expected}\""));
         }
@@ -203,7 +224,7 @@ async fn invitation_writes_require_retry_binding_across_browser_and_bearer() {
             Some(body) => {
                 request = request.header("content-type", "application/json");
                 Body::from(body.to_string())
-            },
+            }
             None => Body::empty(),
         };
         request.body(body).unwrap()
@@ -213,20 +234,82 @@ async fn invitation_writes_require_retry_binding_across_browser_and_bearer() {
     let before = f.snapshot().unwrap();
     for (key, expected) in [(None, None), (Some("key-only"), None), (None, Some(at))] {
         for browser in [true, false] {
-            let create_path = if browser { "/api/admin/invitations" } else { "/api/account/invitations" };
-            let revoke_path = if browser { "/api/admin/invitations/invited" } else { "/api/account/invitations/invited" };
-            assert_eq!(call(&app, write("POST", create_path, browser, &f.admin, key, expected, Some(new_person()))).await.status,
-                StatusCode::PRECONDITION_REQUIRED);
-            assert_eq!(call(&app, write("DELETE", revoke_path, browser, &f.admin, key, expected, None)).await.status,
-                StatusCode::PRECONDITION_REQUIRED);
+            let create_path = if browser {
+                "/api/admin/invitations"
+            } else {
+                "/api/account/invitations"
+            };
+            let revoke_path = if browser {
+                "/api/admin/invitations/invited"
+            } else {
+                "/api/account/invitations/invited"
+            };
+            assert_eq!(
+                call(
+                    &app,
+                    write(
+                        "POST",
+                        create_path,
+                        browser,
+                        &f.admin,
+                        key,
+                        expected,
+                        Some(new_person())
+                    )
+                )
+                .await
+                .status,
+                StatusCode::PRECONDITION_REQUIRED
+            );
+            assert_eq!(
+                call(
+                    &app,
+                    write(
+                        "DELETE",
+                        revoke_path,
+                        browser,
+                        &f.admin,
+                        key,
+                        expected,
+                        None
+                    )
+                )
+                .await
+                .status,
+                StatusCode::PRECONDITION_REQUIRED
+            );
         }
     }
-    assert_eq!(call(&app, write("POST", "/api/account/invitations", false, &outsider,
-        Some("outsider-invite"), Some(at), Some(new_person()))).await.status, StatusCode::FORBIDDEN);
+    assert_eq!(
+        call(
+            &app,
+            write(
+                "POST",
+                "/api/account/invitations",
+                false,
+                &outsider,
+                Some("outsider-invite"),
+                Some(at),
+                Some(new_person())
+            )
+        )
+        .await
+        .status,
+        StatusCode::FORBIDDEN
+    );
     f.assert_http_mutation_snapshot(&before);
 
-    let browser_create = || write("POST", "/api/admin/invitations", true, &f.admin,
-        Some("browser-invite"), Some(at), Some(new_person()));
+    let browser_create = || {
+        write(
+            "POST",
+            "/api/admin/invitations",
+            true,
+            &f.admin,
+            Some("browser-invite"),
+            Some(at),
+            Some(new_person()),
+        )
+    };
     let first = call(&app, browser_create()).await;
     assert_eq!(first.status, StatusCode::OK, "{}", first.text);
     let first_code = mail(&f, "invited").1;
@@ -238,15 +321,54 @@ async fn invitation_writes_require_retry_binding_across_browser_and_bearer() {
     assert_eq!(revision(), at + 1);
     let mut changed = new_person();
     changed["email"] = json!("changed@example.test");
-    assert_eq!(call(&app, write("POST", "/api/admin/invitations", true, &f.admin,
-        Some("browser-invite"), Some(at), Some(changed))).await.status, StatusCode::CONFLICT);
-    assert_eq!(call(&app, write("POST", "/api/account/invitations", false, &f.admin,
-        Some("stale-invite"), Some(at), Some(new_person()))).await.status, StatusCode::CONFLICT);
+    assert_eq!(
+        call(
+            &app,
+            write(
+                "POST",
+                "/api/admin/invitations",
+                true,
+                &f.admin,
+                Some("browser-invite"),
+                Some(at),
+                Some(changed)
+            )
+        )
+        .await
+        .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(
+            &app,
+            write(
+                "POST",
+                "/api/account/invitations",
+                false,
+                &f.admin,
+                Some("stale-invite"),
+                Some(at),
+                Some(new_person())
+            )
+        )
+        .await
+        .status,
+        StatusCode::CONFLICT
+    );
     f.assert_http_mutation_snapshot(&committed);
 
     let reissue_at = revision();
-    let bearer_reissue = || write("POST", "/api/account/invitations", false, &f.admin,
-        Some("bearer-reissue"), Some(reissue_at), Some(new_person()));
+    let bearer_reissue = || {
+        write(
+            "POST",
+            "/api/account/invitations",
+            false,
+            &f.admin,
+            Some("bearer-reissue"),
+            Some(reissue_at),
+            Some(new_person()),
+        )
+    };
     let reissued = call(&app, bearer_reissue()).await;
     assert_eq!(reissued.status, StatusCode::OK, "{}", reissued.text);
     let committed = f.snapshot().unwrap();
@@ -257,8 +379,17 @@ async fn invitation_writes_require_retry_binding_across_browser_and_bearer() {
     assert!(proof(&f, &first_code).is_none());
 
     let revoke_at = revision();
-    let browser_revoke = || write("DELETE", "/api/admin/invitations/invited", true, &f.admin,
-        Some("browser-revoke"), Some(revoke_at), None);
+    let browser_revoke = || {
+        write(
+            "DELETE",
+            "/api/admin/invitations/invited",
+            true,
+            &f.admin,
+            Some("browser-revoke"),
+            Some(revoke_at),
+            None,
+        )
+    };
     let revoked = call(&app, browser_revoke()).await;
     assert_eq!(revoked.status, StatusCode::OK, "{}", revoked.text);
     let committed = f.snapshot().unwrap();
@@ -266,16 +397,54 @@ async fn invitation_writes_require_retry_binding_across_browser_and_bearer() {
     f.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("user.invitation.revoke"), 1);
     assert_eq!(revision(), revoke_at + 1);
-    assert_eq!(call(&app, write("DELETE", "/api/account/invitations/invited", false, &f.admin,
-        Some("stale-revoke"), Some(revoke_at), None)).await.status, StatusCode::CONFLICT);
-    assert_eq!(call(&app, write("DELETE", "/api/account/invitations/other", false, &f.admin,
-        Some("browser-revoke"), Some(revoke_at), None)).await.status, StatusCode::CONFLICT);
+    assert_eq!(
+        call(
+            &app,
+            write(
+                "DELETE",
+                "/api/account/invitations/invited",
+                false,
+                &f.admin,
+                Some("stale-revoke"),
+                Some(revoke_at),
+                None
+            )
+        )
+        .await
+        .status,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(
+            &app,
+            write(
+                "DELETE",
+                "/api/account/invitations/other",
+                false,
+                &f.admin,
+                Some("browser-revoke"),
+                Some(revoke_at),
+                None
+            )
+        )
+        .await
+        .status,
+        StatusCode::CONFLICT
+    );
     f.assert_http_mutation_snapshot(&committed);
 
     let script = call(&app, page("GET", "/portal/assets/admin.js")).await;
     assert_eq!(script.status, StatusCode::OK);
-    assert!(script.text.contains("`admin/invitations/${seg(username)}`, undefined, { revision: data.revision, key }"));
-    assert_eq!(script.text.matches("\"admin/invitations\", body, { revision: data.revision, key }").count(), 2);
+    assert!(script.text.contains(
+        "`admin/invitations/${seg(username)}`, undefined, { revision: data.revision, key }"
+    ));
+    assert_eq!(
+        script
+            .text
+            .matches("\"admin/invitations\", body, { revision: data.revision, key }")
+            .count(),
+        2
+    );
 }
 
 #[tokio::test]
@@ -954,25 +1123,38 @@ fn restored_pending_invitation_keeps_provenance_for_authorized_reissue() {
     riauth::config::write_private(&key_file, key.as_bytes(), false).unwrap();
 
     let result = riauth::operations::restore(&archive, &key_file, &output, None).unwrap();
-    assert!(result["recovery"]["unclassified"].as_array().unwrap().is_empty());
+    assert!(
+        result["recovery"]["unclassified"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     let restored = riauth::core::Core::open(
         riauth::config::Config::load(&output.join("riauth.toml")).unwrap(),
     )
     .unwrap();
-    let after_id: String = restored.store.get("usernames", "restored_pending").unwrap().unwrap();
+    let after_id: String = restored
+        .store
+        .get("usernames", "restored_pending")
+        .unwrap()
+        .unwrap();
     let after: User = restored.store.get("users", &after_id).unwrap().unwrap();
     assert_eq!(after.id, before.id);
     assert_eq!(after.epoch, before.epoch + riauth::recovery::STRIDE);
-    assert!(restored
-        .store
-        .get::<Value>("account_proofs", &digest(&old_code))
-        .unwrap()
-        .is_none());
-    assert!(restored
-        .store
-        .get::<Value>("account_proof_outcomes", &digest(&old_code))
-        .unwrap()
-        .is_some());
+    assert!(
+        restored
+            .store
+            .get::<Value>("account_proofs", &digest(&old_code))
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        restored
+            .store
+            .get::<Value>("account_proof_outcomes", &digest(&old_code))
+            .unwrap()
+            .is_some()
+    );
 
     let admin = restored
         .login("admin".into(), SIGN_IN_PASSWORD.into(), None)

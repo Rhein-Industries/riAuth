@@ -631,7 +631,10 @@ async fn endpoints_bind_exact_content_block_all_writers_and_preserve_credentials
         &url,
         &f.admin,
         &[
-            "--if-revision", &at, "--idempotency-key", "direct-redirect-denied",
+            "--if-revision",
+            &at,
+            "--idempotency-key",
+            "direct-redirect-denied",
             "client",
             "update",
             "app",
@@ -660,7 +663,10 @@ async fn endpoints_bind_exact_content_block_all_writers_and_preserve_credentials
             &url,
             &f.admin,
             &[
-                "--if-revision", &at, "--idempotency-key", "direct-logout-denied",
+                "--if-revision",
+                &at,
+                "--idempotency-key",
+                "direct-logout-denied",
                 "client",
                 "update",
                 "app",

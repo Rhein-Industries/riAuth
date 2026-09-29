@@ -1,7 +1,7 @@
 pub mod assurance;
+pub mod claims;
 pub mod client_config;
 pub mod client_settings;
-pub mod claims;
 pub mod credential;
 pub mod exchange;
 pub mod federation;

@@ -81,7 +81,10 @@ pub(crate) fn reject_reserved(tx: &Tx<'_>, request: &Authorization) -> Result<()
 }
 
 fn bound_key(tx: &Tx<'_>, pin: &Pin) -> Result<String> {
-    if tx.get::<Bound>(AUTHORIZATIONS, &pin.authentication)?.is_some() {
+    if tx
+        .get::<Bound>(AUTHORIZATIONS, &pin.authentication)?
+        .is_some()
+    {
         return Ok(pin.authentication.clone());
     }
     if tx

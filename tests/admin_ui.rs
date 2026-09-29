@@ -395,30 +395,56 @@ async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
         assert!(page.contains("/portal/assets/capabilities.js"), "{path}");
     }
     let (_, _, account_script) = send(&browser, "/portal/assets/account.js", Call::default()).await;
-    assert!(account_script.as_str().unwrap().contains("RiAuthCapabilities.usable(feature)"));
+    assert!(
+        account_script
+            .as_str()
+            .unwrap()
+            .contains("RiAuthCapabilities.usable(feature)")
+    );
     let mut core = fixture.core.clone();
     core.config.browser_ui = false;
     let app = riauth::api::router(core);
     async fn get(app: &axum::Router, path: &str) -> (StatusCode, Value) {
-        let response = app.clone().oneshot(Request::get(path)
-            .header("host", "localhost:9000")
-            .body(Body::empty()).unwrap()).await.unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::get(path)
+                    .header("host", "localhost:9000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         let status = response.status();
         let bytes = response.into_body().collect().await.unwrap().to_bytes();
         let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
         (status, value)
     }
     for path in [
-        "/apps", "/admin", "/account/security", "/account/sources/continue", "/device", "/setup",
-        "/account/accept", "/account/verify", "/account/reset",
-        "/portal/assets/app.js", "/portal/assets/admin.js",
-        "/portal/assets/account.js", "/portal/assets/device.js",
-        "/portal/assets/capabilities.js", "/portal/assets/signin.js",
+        "/apps",
+        "/admin",
+        "/account/security",
+        "/account/sources/continue",
+        "/device",
+        "/setup",
+        "/account/accept",
+        "/account/verify",
+        "/account/reset",
+        "/portal/assets/app.js",
+        "/portal/assets/admin.js",
+        "/portal/assets/account.js",
+        "/portal/assets/device.js",
+        "/portal/assets/capabilities.js",
+        "/portal/assets/signin.js",
     ] {
         let (status, _) = get(&app, path).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
     }
-    for path in ["/api/capabilities", "/api/portal/sources", "/.well-known/openid-configuration"] {
+    for path in [
+        "/api/capabilities",
+        "/api/portal/sources",
+        "/.well-known/openid-configuration",
+    ] {
         let (status, _) = get(&app, path).await;
         assert_eq!(status, StatusCode::OK, "{path}");
     }
@@ -427,8 +453,10 @@ async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
     let (status, _) = get(&app, "/api/admin/session").await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     for path in [
-        "/api/portal/account/accept", "/api/portal/account/verify",
-        "/api/portal/account/reset", "/api/portal/account/reset-request",
+        "/api/portal/account/accept",
+        "/api/portal/account/verify",
+        "/api/portal/account/reset",
+        "/api/portal/account/reset-request",
         "/api/device/browser/decision",
     ] {
         let (status, _) = get(&app, path).await;
@@ -1170,16 +1198,17 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
         revision: version,
         body: Some(json!({"name": name})),
     };
-    let membership = |browser: bool, method: &'static str, key: Option<&'static str>, version, body| Call {
-        method,
-        cookie: browser.then_some(cookie.as_str()),
-        bearer: (!browser).then_some(fixture.admin.as_str()),
-        portal: browser,
-        origin: browser.then_some(origin.as_str()),
-        key,
-        revision: version,
-        body,
-    };
+    let membership =
+        |browser: bool, method: &'static str, key: Option<&'static str>, version, body| Call {
+            method,
+            cookie: browser.then_some(cookie.as_str()),
+            bearer: (!browser).then_some(fixture.admin.as_str()),
+            portal: browser,
+            origin: browser.then_some(origin.as_str()),
+            key,
+            revision: version,
+            body,
+        };
     let browser_groups = "/api/admin/groups";
     let bearer_groups = "/api/groups";
     let browser_member = "/api/admin/groups/engineering/members/member";
@@ -1187,7 +1216,11 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     let (status, _, script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
     assert_eq!(status, StatusCode::OK);
     let script = script.as_str().unwrap();
-    assert!(script.contains("api(\"POST\", \"admin/groups\", { name }, { revision: data.revision, key })"));
+    assert!(
+        script.contains(
+            "api(\"POST\", \"admin/groups\", { name }, { revision: data.revision, key })"
+        )
+    );
     assert!(script.contains("memberRetries.get(button)"));
     assert!(script.contains("{ revision: retry.revision, key: retry.key }"));
 
@@ -1195,15 +1228,23 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     let before = fixture.snapshot().unwrap();
     for (key, version) in [(None, None), (Some("key-only"), None), (None, Some(at))] {
         assert_eq!(
-            send(&app, browser_groups, create(true, key, version, "engineering"))
-                .await
-                .0,
+            send(
+                &app,
+                browser_groups,
+                create(true, key, version, "engineering")
+            )
+            .await
+            .0,
             StatusCode::PRECONDITION_REQUIRED
         );
         assert_eq!(
-            send(&app, bearer_groups, create(false, key, version, "engineering"))
-                .await
-                .0,
+            send(
+                &app,
+                bearer_groups,
+                create(false, key, version, "engineering")
+            )
+            .await
+            .0,
             StatusCode::PRECONDITION_REQUIRED
         );
         assert_eq!(
@@ -1288,7 +1329,12 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     let second = send(
         &app,
         bearer_groups,
-        create(false, Some("bearer-group-create"), Some(current), "research"),
+        create(
+            false,
+            Some("bearer-group-create"),
+            Some(current),
+            "research",
+        ),
     )
     .await;
     assert_eq!(second.0, StatusCode::OK);
@@ -1297,7 +1343,12 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     let replay = send(
         &app,
         bearer_groups,
-        create(false, Some("bearer-group-create"), Some(current), "research"),
+        create(
+            false,
+            Some("bearer-group-create"),
+            Some(current),
+            "research",
+        ),
     )
     .await;
     assert_eq!(replay.0, StatusCode::OK);
@@ -1314,7 +1365,12 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     )
     .await;
     assert_eq!(added.0, StatusCode::OK);
-    assert!(added.2["members"].as_array().unwrap().contains(&json!(member_id)));
+    assert!(
+        added.2["members"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(member_id))
+    );
     let committed = fixture.snapshot().unwrap();
     let replay = send(
         &app,
@@ -1347,7 +1403,13 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
         send(
             &app,
             bearer_member,
-            membership(false, "DELETE", Some("stale-member-remove"), Some(current), None)
+            membership(
+                false,
+                "DELETE",
+                Some("stale-member-remove"),
+                Some(current),
+                None
+            )
         )
         .await
         .0,
@@ -1359,7 +1421,13 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     let removed = send(
         &app,
         bearer_member,
-        membership(false, "DELETE", Some("bearer-member-remove"), Some(current), None),
+        membership(
+            false,
+            "DELETE",
+            Some("bearer-member-remove"),
+            Some(current),
+            None,
+        ),
     )
     .await;
     assert_eq!(removed.0, StatusCode::OK);
@@ -1368,7 +1436,13 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     let replay = send(
         &app,
         bearer_member,
-        membership(false, "DELETE", Some("bearer-member-remove"), Some(current), None),
+        membership(
+            false,
+            "DELETE",
+            Some("bearer-member-remove"),
+            Some(current),
+            None,
+        ),
     )
     .await;
     assert_eq!(replay.0, StatusCode::OK);
@@ -1401,7 +1475,10 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     assert_eq!(created.0, StatusCode::OK);
     assert_eq!(created.2["name"], "scoped");
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(send(&app, bearer_groups, scoped_create()).await.2, created.2);
+    assert_eq!(
+        send(&app, bearer_groups, scoped_create()).await.2,
+        created.2
+    );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(revision(), scoped_at + 1);
     let member_at = revision();
@@ -1412,7 +1489,13 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
             bearer_member,
             Call {
                 bearer: Some(&scoped),
-                ..membership(false, "PUT", Some("scoped-wrong-member"), Some(member_at), None)
+                ..membership(
+                    false,
+                    "PUT",
+                    Some("scoped-wrong-member"),
+                    Some(member_at),
+                    None
+                )
             }
         )
         .await
@@ -1423,7 +1506,13 @@ async fn group_writes_require_retry_binding_across_browser_and_bearer() {
     let scoped_member = "/api/groups/scoped/members/member";
     let scoped_add = || Call {
         bearer: Some(&scoped),
-        ..membership(false, "PUT", Some("scoped-member-add"), Some(member_at), None)
+        ..membership(
+            false,
+            "PUT",
+            Some("scoped-member-add"),
+            Some(member_at),
+            None,
+        )
     };
     let added = send(&app, scoped_member, scoped_add()).await;
     assert_eq!(added.0, StatusCode::OK);
@@ -1485,10 +1574,9 @@ async fn user_update_requires_receipt_and_revision_across_browser_and_bearer() {
     let (status, _, script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
-        script
-            .as_str()
-            .unwrap()
-            .contains("`admin/users/${seg(user.username)}`, patch, { revision: data.revision, key }")
+        script.as_str().unwrap().contains(
+            "`admin/users/${seg(user.username)}`, patch, { revision: data.revision, key }"
+        )
     );
     let at = revision();
     let before = fixture.snapshot().unwrap();
@@ -1616,7 +1704,14 @@ async fn application_presentation_keeps_the_other_settings() {
         cookie: Some(&admin),
         portal: true,
         origin: Some(&origin),
-        revision: Some(fixture.core.store.get("meta", "revision").unwrap().unwrap_or(0)),
+        revision: Some(
+            fixture
+                .core
+                .store
+                .get("meta", "revision")
+                .unwrap()
+                .unwrap_or(0),
+        ),
         key: Some("application-presentation-update"),
         body: Some(json!({"settings": settings})),
         ..Default::default()
@@ -1662,32 +1757,64 @@ async fn client_create_and_update_require_retry_binding_across_browser_and_beare
 
     let fixture = Fixture::new();
     let outsider = fixture.user("outsider");
-    let scoped = fixture.core.create_agent(&fixture.admin, NewAgent {
-        id: "client-name-writer".into(),
-        ttl: 600,
-        parent: None,
-        permissions: [Permission { action: "client.write".into(), resource: "client/browser-app".into() }].into(),
-    }).unwrap()["credential"]["token"].as_str().unwrap().to_owned();
+    let scoped = fixture
+        .core
+        .create_agent(
+            &fixture.admin,
+            NewAgent {
+                id: "client-name-writer".into(),
+                ttl: 600,
+                parent: None,
+                permissions: [Permission {
+                    action: "client.write".into(),
+                    resource: "client/browser-app".into(),
+                }]
+                .into(),
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let cookie = sso_cookie(&fixture.core, &fixture.admin);
     let origin = origin(&fixture.core);
     let app = riauth::api::router(fixture.core.clone());
-    let revision = || fixture.core.store.get::<u64>("meta", "revision").unwrap().unwrap_or(0);
-    let audit_count = |action: &str| fixture.core.audit_events(&fixture.admin, 100).unwrap()
-        .as_array().unwrap().iter().filter(|event| event["action"] == action).count();
-    let create_body = |id: &str, name: &str, confidential| json!({
-        "client_id": id, "name": name, "confidential": confidential,
-        "redirect_uris": ["https://app.example.test/callback"], "scopes": ["openid"],
-    });
-    let write = |browser: bool, method: &'static str, key: Option<&'static str>, version, body| Call {
-        method,
-        cookie: browser.then_some(cookie.as_str()),
-        bearer: (!browser).then_some(fixture.admin.as_str()),
-        portal: browser,
-        origin: browser.then_some(origin.as_str()),
-        revision: version,
-        key,
-        body: Some(body),
+    let revision = || {
+        fixture
+            .core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
     };
+    let audit_count = |action: &str| {
+        fixture
+            .core
+            .audit_events(&fixture.admin, 100)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["action"] == action)
+            .count()
+    };
+    let create_body = |id: &str, name: &str, confidential| {
+        json!({
+            "client_id": id, "name": name, "confidential": confidential,
+            "redirect_uris": ["https://app.example.test/callback"], "scopes": ["openid"],
+        })
+    };
+    let write =
+        |browser: bool, method: &'static str, key: Option<&'static str>, version, body| Call {
+            method,
+            cookie: browser.then_some(cookie.as_str()),
+            bearer: (!browser).then_some(fixture.admin.as_str()),
+            portal: browser,
+            origin: browser.then_some(origin.as_str()),
+            revision: version,
+            key,
+            body: Some(body),
+        };
     let browser_collection = "/api/admin/clients";
     let bearer_collection = "/api/clients";
     let browser_client = "/api/admin/clients/browser-app";
@@ -1695,97 +1822,260 @@ async fn client_create_and_update_require_retry_binding_across_browser_and_beare
     let (status, _, script) = send(&app, "/portal/assets/admin.js", Call::default()).await;
     assert_eq!(status, StatusCode::OK);
     let script = script.as_str().unwrap();
-    assert!(script.contains("api(\"POST\", \"admin/clients\", body, { revision: data.revision, key })"));
+    assert!(
+        script.contains("api(\"POST\", \"admin/clients\", body, { revision: data.revision, key })")
+    );
     assert!(script.contains("patch, { revision: data.revision, key }"));
 
     let at = revision();
     let before = fixture.snapshot().unwrap();
     for (key, version) in [(None, None), (Some("key-only"), None), (None, Some(at))] {
         for (browser, path) in [(true, browser_collection), (false, bearer_collection)] {
-            assert_eq!(send(&app, path, write(browser, "POST", key, version,
-                create_body("missing-app", "Missing", false))).await.0,
-                StatusCode::PRECONDITION_REQUIRED);
+            assert_eq!(
+                send(
+                    &app,
+                    path,
+                    write(
+                        browser,
+                        "POST",
+                        key,
+                        version,
+                        create_body("missing-app", "Missing", false)
+                    )
+                )
+                .await
+                .0,
+                StatusCode::PRECONDITION_REQUIRED
+            );
         }
         for (browser, path) in [(true, browser_client), (false, "/api/clients/browser-app")] {
-            assert_eq!(send(&app, path, write(browser, "PATCH", key, version,
-                json!({"name":"Missing"}))).await.0,
-                StatusCode::PRECONDITION_REQUIRED);
+            assert_eq!(
+                send(
+                    &app,
+                    path,
+                    write(browser, "PATCH", key, version, json!({"name":"Missing"}))
+                )
+                .await
+                .0,
+                StatusCode::PRECONDITION_REQUIRED
+            );
         }
     }
-    assert_eq!(send(&app, bearer_collection, Call {
-        bearer: Some(&outsider),
-        ..write(false, "POST", Some("outsider-create"), Some(at),
-            create_body("forbidden-app", "Forbidden", false))
-    }).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(
+        send(
+            &app,
+            bearer_collection,
+            Call {
+                bearer: Some(&outsider),
+                ..write(
+                    false,
+                    "POST",
+                    Some("outsider-create"),
+                    Some(at),
+                    create_body("forbidden-app", "Forbidden", false)
+                )
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
     fixture.assert_http_mutation_snapshot(&before);
 
-    let browser_create = || write(true, "POST", Some("browser-client-create"), Some(at),
-        create_body("browser-app", "Browser app", true));
+    let browser_create = || {
+        write(
+            true,
+            "POST",
+            Some("browser-client-create"),
+            Some(at),
+            create_body("browser-app", "Browser app", true),
+        )
+    };
     let first = send(&app, browser_collection, browser_create()).await;
     assert_eq!(first.0, StatusCode::OK, "{}", first.2);
     assert_eq!(first.2["client"]["client_id"], "browser-app");
-    assert!(first.2["client_secret"].as_str().unwrap().starts_with("ri_client_"));
+    assert!(
+        first.2["client_secret"]
+            .as_str()
+            .unwrap()
+            .starts_with("ri_client_")
+    );
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(send(&app, browser_collection, browser_create()).await.2, first.2);
+    assert_eq!(
+        send(&app, browser_collection, browser_create()).await.2,
+        first.2
+    );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("client.create"), 1);
     assert_eq!(revision(), at + 1);
-    assert_eq!(send(&app, browser_collection,
-        write(true, "POST", Some("browser-client-create"), Some(at),
-            create_body("changed-app", "Changed", true))).await.0, StatusCode::CONFLICT);
-    assert_eq!(send(&app, bearer_collection,
-        write(false, "POST", Some("stale-client-create"), Some(at),
-            create_body("stale-app", "Stale", false))).await.0, StatusCode::CONFLICT);
+    assert_eq!(
+        send(
+            &app,
+            browser_collection,
+            write(
+                true,
+                "POST",
+                Some("browser-client-create"),
+                Some(at),
+                create_body("changed-app", "Changed", true)
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            &app,
+            bearer_collection,
+            write(
+                false,
+                "POST",
+                Some("stale-client-create"),
+                Some(at),
+                create_body("stale-app", "Stale", false)
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
     fixture.assert_http_mutation_snapshot(&committed);
 
     let current = revision();
-    let bearer_create = || write(false, "POST", Some("bearer-client-create"), Some(current),
-        create_body("bearer-app", "Bearer app", false));
+    let bearer_create = || {
+        write(
+            false,
+            "POST",
+            Some("bearer-client-create"),
+            Some(current),
+            create_body("bearer-app", "Bearer app", false),
+        )
+    };
     let second = send(&app, bearer_collection, bearer_create()).await;
     assert_eq!(second.0, StatusCode::OK, "{}", second.2);
     assert!(second.2["client_secret"].is_null());
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(send(&app, bearer_collection, bearer_create()).await.2, second.2);
+    assert_eq!(
+        send(&app, bearer_collection, bearer_create()).await.2,
+        second.2
+    );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("client.create"), 2);
     assert_eq!(revision(), current + 1);
 
     let at = revision();
     let before = fixture.snapshot().unwrap();
-    assert_eq!(send(&app, "/api/clients/browser-app", Call {
-        bearer: Some(&outsider),
-        ..write(false, "PATCH", Some("outsider-update"), Some(at), json!({"name":"Denied"}))
-    }).await.0, StatusCode::FORBIDDEN);
-    assert_eq!(send(&app, bearer_client, Call {
-        bearer: Some(&scoped),
-        ..write(false, "PATCH", Some("scoped-wrong-client"), Some(at), json!({"name":"Denied"}))
-    }).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(
+        send(
+            &app,
+            "/api/clients/browser-app",
+            Call {
+                bearer: Some(&outsider),
+                ..write(
+                    false,
+                    "PATCH",
+                    Some("outsider-update"),
+                    Some(at),
+                    json!({"name":"Denied"})
+                )
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(
+            &app,
+            bearer_client,
+            Call {
+                bearer: Some(&scoped),
+                ..write(
+                    false,
+                    "PATCH",
+                    Some("scoped-wrong-client"),
+                    Some(at),
+                    json!({"name":"Denied"})
+                )
+            }
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
     fixture.assert_http_mutation_snapshot(&before);
-    let browser_update = || write(true, "PATCH", Some("browser-client-update"), Some(at),
-        json!({"name":"Browser renamed"}));
+    let browser_update = || {
+        write(
+            true,
+            "PATCH",
+            Some("browser-client-update"),
+            Some(at),
+            json!({"name":"Browser renamed"}),
+        )
+    };
     let updated = send(&app, browser_client, browser_update()).await;
     assert_eq!(updated.0, StatusCode::OK, "{}", updated.2);
     assert_eq!(updated.2["name"], "Browser renamed");
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(send(&app, browser_client, browser_update()).await.2, updated.2);
+    assert_eq!(
+        send(&app, browser_client, browser_update()).await.2,
+        updated.2
+    );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("client.update"), 1);
     assert_eq!(revision(), at + 1);
-    assert_eq!(send(&app, browser_client,
-        write(true, "PATCH", Some("browser-client-update"), Some(at),
-            json!({"name":"Changed again"}))).await.0, StatusCode::CONFLICT);
-    assert_eq!(send(&app, bearer_client,
-        write(false, "PATCH", Some("stale-client-update"), Some(at),
-            json!({"name":"Stale"}))).await.0, StatusCode::CONFLICT);
+    assert_eq!(
+        send(
+            &app,
+            browser_client,
+            write(
+                true,
+                "PATCH",
+                Some("browser-client-update"),
+                Some(at),
+                json!({"name":"Changed again"})
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        send(
+            &app,
+            bearer_client,
+            write(
+                false,
+                "PATCH",
+                Some("stale-client-update"),
+                Some(at),
+                json!({"name":"Stale"})
+            )
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
     fixture.assert_http_mutation_snapshot(&committed);
 
     let current = revision();
-    let bearer_update = || write(false, "PATCH", Some("bearer-client-update"), Some(current),
-        json!({"name":"Bearer renamed"}));
+    let bearer_update = || {
+        write(
+            false,
+            "PATCH",
+            Some("bearer-client-update"),
+            Some(current),
+            json!({"name":"Bearer renamed"}),
+        )
+    };
     let updated = send(&app, bearer_client, bearer_update()).await;
     assert_eq!(updated.0, StatusCode::OK, "{}", updated.2);
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(send(&app, bearer_client, bearer_update()).await.2, updated.2);
+    assert_eq!(
+        send(&app, bearer_client, bearer_update()).await.2,
+        updated.2
+    );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("client.update"), 2);
     assert_eq!(revision(), current + 1);
@@ -1793,13 +2083,23 @@ async fn client_create_and_update_require_retry_binding_across_browser_and_beare
     let scoped_at = revision();
     let scoped_update = || Call {
         bearer: Some(&scoped),
-        ..write(false, "PATCH", Some("scoped-client-update"), Some(scoped_at),
-            json!({"name":"Scoped rename"}))
+        ..write(
+            false,
+            "PATCH",
+            Some("scoped-client-update"),
+            Some(scoped_at),
+            json!({"name":"Scoped rename"}),
+        )
     };
     let updated = send(&app, "/api/clients/browser-app", scoped_update()).await;
     assert_eq!(updated.0, StatusCode::OK, "{}", updated.2);
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(send(&app, "/api/clients/browser-app", scoped_update()).await.2, updated.2);
+    assert_eq!(
+        send(&app, "/api/clients/browser-app", scoped_update())
+            .await
+            .2,
+        updated.2
+    );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("client.update"), 3);
     assert_eq!(revision(), scoped_at + 1);
@@ -1907,7 +2207,10 @@ async fn client_secret_rotation_requires_retry_binding_across_browser_and_bearer
     )
     .await;
     assert_eq!(replay.0, StatusCode::OK);
-    assert!(replay.2 == first.2, "Exact browser retry changed the response");
+    assert!(
+        replay.2 == first.2,
+        "Exact browser retry changed the response"
+    );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count(), 1);
     assert_eq!(revision(), at + 1);
@@ -1935,7 +2238,10 @@ async fn client_secret_rotation_requires_retry_binding_across_browser_and_bearer
     )
     .await;
     assert_eq!(replay.0, StatusCode::OK);
-    assert!(replay.2 == second.2, "Exact bearer retry changed the response");
+    assert!(
+        replay.2 == second.2,
+        "Exact bearer retry changed the response"
+    );
     assert_eq!(audit_count(), 2);
     assert_eq!(revision(), current + 1);
 }
@@ -2155,11 +2461,16 @@ async fn setup_wizard_checks_a_draft_with_the_create_path_without_writing() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
 
     // The checked draft creates as checked; a confidential web app gets its secret once.
-    let (status, _, created) = send(&app, "/api/admin/clients", Call {
-        revision: Some(revision(app.clone()).await),
-        key: Some("wizard-create-dashboard"),
-        ..post(&admin, spa)
-    }).await;
+    let (status, _, created) = send(
+        &app,
+        "/api/admin/clients",
+        Call {
+            revision: Some(revision(app.clone()).await),
+            key: Some("wizard-create-dashboard"),
+            ..post(&admin, spa)
+        },
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{created}");
     assert!(created["client_secret"].is_null());
     let web = json!({
@@ -2176,11 +2487,16 @@ async fn setup_wizard_checks_a_draft_with_the_create_path_without_writing() {
         json!(["client_secret_basic"])
     );
     assert!(checks_named(&report, "origins").is_empty(), "{report}");
-    let (status, _, created) = send(&app, "/api/admin/clients", Call {
-        revision: Some(revision(app.clone()).await),
-        key: Some("wizard-create-portal-web"),
-        ..post(&admin, web)
-    }).await;
+    let (status, _, created) = send(
+        &app,
+        "/api/admin/clients",
+        Call {
+            revision: Some(revision(app.clone()).await),
+            key: Some("wizard-create-portal-web"),
+            ..post(&admin, web)
+        },
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{created}");
     assert!(
         created["client_secret"]

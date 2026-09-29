@@ -1,5 +1,6 @@
 //! Platform SAML browser SSO Core entry points and concrete storage port.
 
+use crate::signin::{insufficient_error, stale};
 use crate::{
     browser::{BrowserDecision, BrowserReply},
     core::{Core, audit},
@@ -12,7 +13,6 @@ use crate::{
     signin::{self, FRESH_SECONDS, TERMINAL_WARN_SECONDS},
     store::Tx,
 };
-use crate::signin::{insufficient_error, stale};
 use axum::http::StatusCode;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};

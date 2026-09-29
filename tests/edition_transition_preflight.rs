@@ -43,7 +43,10 @@ fn clean_platform_activation_blocks_essentials_preflight_without_mutation() {
     let allowed = riauth::edition::preflight(&config, riauth::edition::Target::Platform).unwrap();
     assert_eq!(allowed["ready"], true, "{}", allowed["blockers"]);
     let after = Store::inspect(&config, |_, tx| tx.unwrap().snapshot()).unwrap();
-    assert!(before == after, "read-only preflight mutated stored records");
+    assert!(
+        before == after,
+        "read-only preflight mutated stored records"
+    );
 }
 
 #[test]

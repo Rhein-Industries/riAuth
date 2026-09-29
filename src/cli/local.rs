@@ -330,13 +330,7 @@ pub(crate) async fn dispatch(options: LocalOptions<'_>, command: LocalCommand) -
                 .map(crate::operations::RestoreTarget::Postgres)
                 .unwrap_or(crate::operations::RestoreTarget::Redb);
             let value = tokio::task::spawn_blocking(move || {
-                crate::operations::restore_into(
-                    &backup,
-                    &key_file,
-                    &out,
-                    database_key_file,
-                    target,
-                )
+                crate::operations::restore_into(&backup, &key_file, &out, database_key_file, target)
             })
             .await??;
             emit_local(&options, &value)?;

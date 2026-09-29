@@ -915,7 +915,9 @@ impl Core {
             self.management(tx, token, "key.rotate", "key/signing")
                 .map(|_| ())
         })?;
-        self.mutation(token, |tx| crate::management::rotate_signing_key(self, tx, token))
+        self.mutation(token, |tx| {
+            crate::management::rotate_signing_key(self, tx, token)
+        })
     }
     pub fn cleanup(&self) -> Result<()> {
         let _timer = self.store.telemetry().cleanup.timer();
@@ -935,7 +937,8 @@ impl Core {
         self.store.write(|tx| crate::state::cleanup(tx, at))?;
         self.store
             .write(|tx| crate::authorization::cleanup(tx, at))?;
-        self.store.write(|tx| crate::assembly::cleanup_prepared(tx, at))?;
+        self.store
+            .write(|tx| crate::assembly::cleanup_prepared(tx, at))?;
         self.store
             .write(|tx| crate::session_protocol::cleanup(tx, at))?;
         self.store.write(|tx| crate::source::cleanup(tx, at))?;

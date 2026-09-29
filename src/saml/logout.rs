@@ -227,7 +227,10 @@ pub(crate) fn is_continuation(
     sid: &str,
     uri: &str,
 ) -> Result<bool> {
-    let prefix = format!("{}/saml/logout/", super::endpoint_base(core.logout_issuer()));
+    let prefix = format!(
+        "{}/saml/logout/",
+        super::endpoint_base(core.logout_issuer())
+    );
     let Some(ticket) = uri.strip_prefix(&prefix) else {
         return Ok(false);
     };

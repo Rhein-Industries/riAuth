@@ -138,7 +138,11 @@ pub async fn serve(core: Core) -> anyhow::Result<()> {
     let config = core.config.clone();
     let authentication = config.process.role.duties().authentication;
     let _runtime = start_role(core.clone()).await?;
-    let routes = if authentication { router(core) } else { super::worker_router(core) };
+    let routes = if authentication {
+        router(core)
+    } else {
+        super::worker_router(core)
+    };
     serve_http(config, routes).await
 }
 

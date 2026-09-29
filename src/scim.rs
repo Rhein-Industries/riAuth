@@ -126,7 +126,8 @@ fn scope(kind: &str) -> &'static str {
     if kind == "Users" { "user" } else { "group" }
 }
 fn owned(tx: &Tx<'_>, actor: &Principal, kind: &str, id: &str) -> Result<Record> {
-    let record = tx.get::<Record>(bucket(kind)?, id)?
+    let record = tx
+        .get::<Record>(bucket(kind)?, id)?
         .filter(|r| !r.deleted && r.owner == actor.id)
         .ok_or_else(|| Error::missing("SCIM resource not found"))?;
     record_binding(kind, &record)?;
@@ -135,10 +136,11 @@ fn owned(tx: &Tx<'_>, actor: &Principal, kind: &str, id: &str) -> Result<Record>
 
 fn record_binding(kind: &str, record: &Record) -> Result<()> {
     if record.kind != kind
-        || kind == "Groups"
-            && (record.local_id.is_empty() || record.local_id != name(record))
+        || kind == "Groups" && (record.local_id.is_empty() || record.local_id != name(record))
     {
-        return Err(Error::conflict("SCIM resource identity does not match its local record"));
+        return Err(Error::conflict(
+            "SCIM resource identity does not match its local record",
+        ));
     }
     Ok(())
 }
@@ -982,15 +984,15 @@ fn project_complex(value: Value, root: &str, selected: Option<&BTreeSet<&str>>) 
             let projected: Vec<_> = items
                 .into_iter()
                 .filter_map(|item| match item {
-                Value::Object(source) => {
-                    let projected = project_object(source);
+                    Value::Object(source) => {
+                        let projected = project_object(source);
                         if projected.is_empty() {
                             None
                         } else {
                             Some(Value::Object(projected))
                         }
-                }
-                _ => None,
+                    }
+                    _ => None,
                 })
                 .collect();
             if projected.is_empty() && selected.is_some() {
@@ -1439,290 +1441,292 @@ impl Core {
             token,
             |tx, actor, context| self.scim_precondition(tx, actor, context, kind, id),
             |tx| {
-            let actor = self.principal(tx, token)?;
-            let existing = id.map(|id| owned(tx, &actor, kind, id)).transpose()?;
+                let actor = self.principal(tx, token)?;
+                let existing = id.map(|id| owned(tx, &actor, kind, id)).transpose()?;
                 let before_version = existing
                     .as_ref()
                     .map(|record| {
-                self.scim_view(tx, id.unwrap(), record)
-                    .map(|value| value["meta"]["version"].clone())
+                        self.scim_view(tx, id.unwrap(), record)
+                            .map(|value| value["meta"]["version"].clone())
                     })
                     .transpose()?;
-            let member_patch = kind == "Groups" && patch && patches_members(&input);
-            let mut data = if patch {
-                let record = existing
-                    .as_ref()
-                    .ok_or_else(|| Error::bad("Patch requires a resource"))?;
-                let mut base = record.data.clone();
-                if member_patch {
-                    // A PATCH starts from live SCIM-visible membership. Stored
-                    // metadata may lag direct or directory group changes.
-                    base["members"] = self.scim_view(tx, id.unwrap(), record)?["members"].clone();
-                }
-                if kind == "Users" {
-                    // A PATCH starts from the projected user. Stored SCIM fields
-                    // lag management changes to active, display name, and email.
-                    let user = tx
-                        .get::<User>("users", &record.local_id)?
-                        .ok_or_else(|| Error::missing("User missing"))?;
-                    base["active"] = json!(user.enabled);
-                    base["displayName"] = json!(user.display_name);
-                    let stored_email = read_email(&base)?;
-                    if stored_email != user.email {
-                        base["emails"] = json!(
-                            user.email
-                                .iter()
-                                .map(|email| json!({"value": email, "primary": true}))
-                                .collect::<Vec<_>>()
-                        );
+                let member_patch = kind == "Groups" && patch && patches_members(&input);
+                let mut data = if patch {
+                    let record = existing
+                        .as_ref()
+                        .ok_or_else(|| Error::bad("Patch requires a resource"))?;
+                    let mut base = record.data.clone();
+                    if member_patch {
+                        // A PATCH starts from live SCIM-visible membership. Stored
+                        // metadata may lag direct or directory group changes.
+                        base["members"] =
+                            self.scim_view(tx, id.unwrap(), record)?["members"].clone();
                     }
-                }
-                patch_resource(&base, input)?
-            } else {
-                normalize(input)?
-            };
-            let schema = if kind == "Users" { USER } else { GROUP };
-            if !data["schemas"]
-                .as_array()
-                .is_some_and(|a| a.len() == 1 && a[0] == schema)
-            {
-                return Err(Error::bad("Unsupported or missing SCIM resource schema"));
-            }
-            let name_field = if kind == "Users" {
-                "userName"
-            } else {
-                "displayName"
-            };
-            let label = data[name_field]
-                .as_str()
-                .ok_or_else(|| Error::bad("Required SCIM name missing"))?
-                .to_owned();
-            validate_name(&label)?;
-            let resource = format!("{}/{}", scope(kind), label);
-            actor.require(&format!("{}.write", scope(kind)), &resource)?;
-            if existing.as_ref().is_some_and(|r| name(r) != label) {
-                return Err(Error::oauth(
-                    "mutability",
-                    "Resource names are immutable; create another identity",
-                ));
-            }
-            let external_id = data
-                .get("externalId")
-                .map(|v| {
-                    v.as_str()
-                        .filter(|s| !s.is_empty() && s.len() <= 256)
-                        .map(String::from)
-                        .ok_or_else(|| Error::bad("Invalid externalId"))
-                })
-                .transpose()?;
-            if let Some(external) = &external_id
-                && tx.list::<Record>(bucket(kind)?)?.iter().any(|(other, r)| {
-                    !r.deleted
-                        && r.owner == actor.id
-                        && r.external_id.as_ref() == Some(external)
-                        && Some(other.as_str()) != id
-                })
-            {
-                return Err(Error::conflict(
-                    "externalId already belongs to another resource",
-                ));
-            }
-            let id = id.map(String::from).unwrap_or_else(crypto::id);
-            let mut group_members = None;
-            let local_id = if kind == "Users" {
-                if data.get("members").is_some() {
-                    return Err(Error::bad("Users cannot supply group members"));
-                }
-                let mut user = if let Some(old) = &existing {
-                    tx.get::<User>("users", &old.local_id)?
-                        .ok_or_else(|| Error::missing("User missing"))?
+                    if kind == "Users" {
+                        // A PATCH starts from the projected user. Stored SCIM fields
+                        // lag management changes to active, display name, and email.
+                        let user = tx
+                            .get::<User>("users", &record.local_id)?
+                            .ok_or_else(|| Error::missing("User missing"))?;
+                        base["active"] = json!(user.enabled);
+                        base["displayName"] = json!(user.display_name);
+                        let stored_email = read_email(&base)?;
+                        if stored_email != user.email {
+                            base["emails"] = json!(
+                                user.email
+                                    .iter()
+                                    .map(|email| json!({"value": email, "primary": true}))
+                                    .collect::<Vec<_>>()
+                            );
+                        }
+                    }
+                    patch_resource(&base, input)?
                 } else {
-                    if tx.get::<String>("usernames", &label)?.is_some()
-                        || tx
-                            .list::<User>("users")?
-                            .iter()
-                            .any(|(_, u)| u.username.eq_ignore_ascii_case(&label))
-                    {
-                        return Err(Error::conflict(
-                            "Username already exists; provisioning cannot take ownership",
-                        ));
-                    }
-                    let mut u = make_user(NewUser {
-                        username: label.clone(),
-                        password: crypto::random_token(""),
-                        email: None,
-                        display_name: label.clone(),
-                        admin: false,
-                    })?;
-                    u.password_hash.clear();
-                    u
+                    normalize(input)?
                 };
-                if user.admin {
-                    return Err(Error::forbidden());
+                let schema = if kind == "Users" { USER } else { GROUP };
+                if !data["schemas"]
+                    .as_array()
+                    .is_some_and(|a| a.len() == 1 && a[0] == schema)
+                {
+                    return Err(Error::bad("Unsupported or missing SCIM resource schema"));
                 }
-                let exposure_baseline = user.clone();
-                let enabled = data
-                    .get("active")
-                    .map(|v| {
-                        v.as_bool()
-                            .ok_or_else(|| Error::bad("active must be a boolean"))
-                    })
-                    .transpose()?
-                    .unwrap_or(true);
-                let display = data["displayName"]
+                let name_field = if kind == "Users" {
+                    "userName"
+                } else {
+                    "displayName"
+                };
+                let label = data[name_field]
                     .as_str()
-                    .or(data["name"]["formatted"].as_str())
-                    .unwrap_or(&label)
+                    .ok_or_else(|| Error::bad("Required SCIM name missing"))?
                     .to_owned();
-                validate_display(&display)?;
-                // PATCH validates changed email entries in patch_resource. Full
-                // creates and replacements must enforce the same typed schema.
-                if !patch {
-                    normalize_email_entries(&mut data)?;
-                    validate_email_entries(&data)?;
-                }
-                let email = read_email(&data)?;
-                let email_changed = user.email != email;
-                if email_changed {
-                    user.email_verified = false;
-                }
-                user.email = email;
-                user.display_name = display;
-                let password = data.as_object_mut().unwrap().remove("password");
-                // A new passwordless SCIM identity has no verified recovery
-                // address or operator-known local credential to carry forward.
-                let credential_change = password.is_some() || existing.is_some() && email_changed;
-                let revoke = user.enabled != enabled || password.is_some();
-                user.enabled = enabled;
-                if let Some(password) = password {
-                    let plaintext = password
-                        .as_str()
-                        .ok_or_else(|| Error::bad("password must be a string"))?;
-                    let hashed = crypto::password_hash(plaintext)?;
-                    crate::identity::password_history::accept(
-                        tx,
-                        self.config.password_history,
-                        &user.id,
-                        &user.password_hash,
-                        plaintext,
-                        &hashed,
-                    )?;
-                    user.password_hash = hashed;
-                    tx.delete("credential_versions", &format!("user/{label}"))?;
-                }
-                if actor.agent && credential_change {
-                    crate::delegation::mark_credential_exposure(
-                        &self.config,
-                        tx,
-                        &actor,
-                        &exposure_baseline,
-                    )?;
-                }
-                if revoke {
-                    user.epoch += 1;
-                    crate::logout::queue_user(tx, &user.id)?;
-                }
-                crate::management::write_scim_user(
-                    tx,
-                    &actor,
-                    existing.as_ref().map(|record| record.local_id.as_str()),
-                    &user,
-                )?;
-                if existing.is_none() && !actor.agent && !actor.delegated {
-                    crate::delegation::record_elevation_provenance(
-                        tx,
-                        &user,
-                        crate::delegation::ProvenanceBasis::HumanScim,
-                    )?;
-                }
-                data.as_object_mut().unwrap().remove("groups");
-                user.id
-            } else {
-                if data.as_object().unwrap().keys().any(|k| {
-                    ![
-                        "schemas",
-                        "id",
-                        "meta",
-                        "externalId",
-                        "displayName",
-                        "members",
-                    ]
-                    .contains(&k.as_str())
-                }) {
-                    return Err(Error::bad("Unsupported group attribute"));
-                }
-                actor.require("group.members", &resource)?;
-                if existing.is_none() && tx.get::<Group>("groups", &label)?.is_some() {
-                    return Err(Error::conflict(
-                        "Group already exists; provisioning cannot take ownership",
+                validate_name(&label)?;
+                let resource = format!("{}/{}", scope(kind), label);
+                actor.require(&format!("{}.write", scope(kind)), &resource)?;
+                if existing.as_ref().is_some_and(|r| name(r) != label) {
+                    return Err(Error::oauth(
+                        "mutability",
+                        "Resource names are immutable; create another identity",
                     ));
                 }
-                if !patch || member_patch {
-                    let mut members = BTreeSet::new();
-                    let mut public = Vec::new();
-                    let array = data
-                        .get("members")
-                        .map(|v| {
-                            v.as_array()
-                                .ok_or_else(|| Error::bad("members must be an array"))
-                        })
-                        .transpose()?;
-                    for member in array.into_iter().flatten() {
-                        let id = member["value"]
-                            .as_str()
-                            .ok_or_else(|| Error::bad("Member ID required"))?;
-                        let member = owned(tx, &actor, "Users", id)?;
-                        if !members.insert(member.local_id.clone()) {
-                            return Err(Error::bad("Duplicate group member"));
-                        }
-                        public.push(json!({"value":id,"display":name(&member)}));
-                    }
-                    if existing.is_some() {
-                        members = owner_scoped_group_members(tx, &actor, &label, members)?;
-                    }
-                    if members.len() > 1000 {
-                        return Err(Error::bad("Too many group members"));
-                    }
-                    data["members"] = json!(public);
-                    group_members = Some(members);
+                let external_id = data
+                    .get("externalId")
+                    .map(|v| {
+                        v.as_str()
+                            .filter(|s| !s.is_empty() && s.len() <= 256)
+                            .map(String::from)
+                            .ok_or_else(|| Error::bad("Invalid externalId"))
+                    })
+                    .transpose()?;
+                if let Some(external) = &external_id
+                    && tx.list::<Record>(bucket(kind)?)?.iter().any(|(other, r)| {
+                        !r.deleted
+                            && r.owner == actor.id
+                            && r.external_id.as_ref() == Some(external)
+                            && Some(other.as_str()) != id
+                    })
+                {
+                    return Err(Error::conflict(
+                        "externalId already belongs to another resource",
+                    ));
                 }
-                label.clone()
-            };
-            data.as_object_mut().unwrap().remove("meta");
-            data.as_object_mut().unwrap().remove("id");
-            let mut record = Record {
-                owner: actor.id.clone(),
-                kind: kind.into(),
-                local_id,
-                external_id,
-                data,
-                deleted: false,
+                let id = id.map(String::from).unwrap_or_else(crypto::id);
+                let mut group_members = None;
+                let local_id = if kind == "Users" {
+                    if data.get("members").is_some() {
+                        return Err(Error::bad("Users cannot supply group members"));
+                    }
+                    let mut user = if let Some(old) = &existing {
+                        tx.get::<User>("users", &old.local_id)?
+                            .ok_or_else(|| Error::missing("User missing"))?
+                    } else {
+                        if tx.get::<String>("usernames", &label)?.is_some()
+                            || tx
+                                .list::<User>("users")?
+                                .iter()
+                                .any(|(_, u)| u.username.eq_ignore_ascii_case(&label))
+                        {
+                            return Err(Error::conflict(
+                                "Username already exists; provisioning cannot take ownership",
+                            ));
+                        }
+                        let mut u = make_user(NewUser {
+                            username: label.clone(),
+                            password: crypto::random_token(""),
+                            email: None,
+                            display_name: label.clone(),
+                            admin: false,
+                        })?;
+                        u.password_hash.clear();
+                        u
+                    };
+                    if user.admin {
+                        return Err(Error::forbidden());
+                    }
+                    let exposure_baseline = user.clone();
+                    let enabled = data
+                        .get("active")
+                        .map(|v| {
+                            v.as_bool()
+                                .ok_or_else(|| Error::bad("active must be a boolean"))
+                        })
+                        .transpose()?
+                        .unwrap_or(true);
+                    let display = data["displayName"]
+                        .as_str()
+                        .or(data["name"]["formatted"].as_str())
+                        .unwrap_or(&label)
+                        .to_owned();
+                    validate_display(&display)?;
+                    // PATCH validates changed email entries in patch_resource. Full
+                    // creates and replacements must enforce the same typed schema.
+                    if !patch {
+                        normalize_email_entries(&mut data)?;
+                        validate_email_entries(&data)?;
+                    }
+                    let email = read_email(&data)?;
+                    let email_changed = user.email != email;
+                    if email_changed {
+                        user.email_verified = false;
+                    }
+                    user.email = email;
+                    user.display_name = display;
+                    let password = data.as_object_mut().unwrap().remove("password");
+                    // A new passwordless SCIM identity has no verified recovery
+                    // address or operator-known local credential to carry forward.
+                    let credential_change =
+                        password.is_some() || existing.is_some() && email_changed;
+                    let revoke = user.enabled != enabled || password.is_some();
+                    user.enabled = enabled;
+                    if let Some(password) = password {
+                        let plaintext = password
+                            .as_str()
+                            .ok_or_else(|| Error::bad("password must be a string"))?;
+                        let hashed = crypto::password_hash(plaintext)?;
+                        crate::identity::password_history::accept(
+                            tx,
+                            self.config.password_history,
+                            &user.id,
+                            &user.password_hash,
+                            plaintext,
+                            &hashed,
+                        )?;
+                        user.password_hash = hashed;
+                        tx.delete("credential_versions", &format!("user/{label}"))?;
+                    }
+                    if actor.agent && credential_change {
+                        crate::delegation::mark_credential_exposure(
+                            &self.config,
+                            tx,
+                            &actor,
+                            &exposure_baseline,
+                        )?;
+                    }
+                    if revoke {
+                        user.epoch += 1;
+                        crate::logout::queue_user(tx, &user.id)?;
+                    }
+                    crate::management::write_scim_user(
+                        tx,
+                        &actor,
+                        existing.as_ref().map(|record| record.local_id.as_str()),
+                        &user,
+                    )?;
+                    if existing.is_none() && !actor.agent && !actor.delegated {
+                        crate::delegation::record_elevation_provenance(
+                            tx,
+                            &user,
+                            crate::delegation::ProvenanceBasis::HumanScim,
+                        )?;
+                    }
+                    data.as_object_mut().unwrap().remove("groups");
+                    user.id
+                } else {
+                    if data.as_object().unwrap().keys().any(|k| {
+                        ![
+                            "schemas",
+                            "id",
+                            "meta",
+                            "externalId",
+                            "displayName",
+                            "members",
+                        ]
+                        .contains(&k.as_str())
+                    }) {
+                        return Err(Error::bad("Unsupported group attribute"));
+                    }
+                    actor.require("group.members", &resource)?;
+                    if existing.is_none() && tx.get::<Group>("groups", &label)?.is_some() {
+                        return Err(Error::conflict(
+                            "Group already exists; provisioning cannot take ownership",
+                        ));
+                    }
+                    if !patch || member_patch {
+                        let mut members = BTreeSet::new();
+                        let mut public = Vec::new();
+                        let array = data
+                            .get("members")
+                            .map(|v| {
+                                v.as_array()
+                                    .ok_or_else(|| Error::bad("members must be an array"))
+                            })
+                            .transpose()?;
+                        for member in array.into_iter().flatten() {
+                            let id = member["value"]
+                                .as_str()
+                                .ok_or_else(|| Error::bad("Member ID required"))?;
+                            let member = owned(tx, &actor, "Users", id)?;
+                            if !members.insert(member.local_id.clone()) {
+                                return Err(Error::bad("Duplicate group member"));
+                            }
+                            public.push(json!({"value":id,"display":name(&member)}));
+                        }
+                        if existing.is_some() {
+                            members = owner_scoped_group_members(tx, &actor, &label, members)?;
+                        }
+                        if members.len() > 1000 {
+                            return Err(Error::bad("Too many group members"));
+                        }
+                        data["members"] = json!(public);
+                        group_members = Some(members);
+                    }
+                    label.clone()
+                };
+                data.as_object_mut().unwrap().remove("meta");
+                data.as_object_mut().unwrap().remove("id");
+                let mut record = Record {
+                    owner: actor.id.clone(),
+                    kind: kind.into(),
+                    local_id,
+                    external_id,
+                    data,
+                    deleted: false,
                     version: existing
                         .as_ref()
                         .map_or_else(crypto::id, |record| record.version.clone()),
-            };
-            let record_changed = existing.as_ref() != Some(&record);
-            if kind == "Groups" {
-                let intent = if existing.is_none() {
-                    crate::management::ScimGroupIntent::Create(group_members.as_ref().unwrap())
-                } else {
-                    crate::management::ScimGroupIntent::Update {
-                        members: group_members.as_ref(),
-                        metadata_changed: record_changed,
-                    }
                 };
-                crate::management::write_scim_group(&self.config, tx, &actor, &label, intent)?;
-            }
-            if kind == "Users" || record_changed {
-                tx.put(bucket(kind)?, &id, &record)?;
-            }
-            let mut view = self.scim_view(tx, &id, &record)?;
-            if before_version.is_some_and(|before| before != view["meta"]["version"]) {
-                record.version = crypto::id();
-                tx.put(bucket(kind)?, &id, &record)?;
-                view = self.scim_view(tx, &id, &record)?;
-            }
-            Ok(view)
+                let record_changed = existing.as_ref() != Some(&record);
+                if kind == "Groups" {
+                    let intent = if existing.is_none() {
+                        crate::management::ScimGroupIntent::Create(group_members.as_ref().unwrap())
+                    } else {
+                        crate::management::ScimGroupIntent::Update {
+                            members: group_members.as_ref(),
+                            metadata_changed: record_changed,
+                        }
+                    };
+                    crate::management::write_scim_group(&self.config, tx, &actor, &label, intent)?;
+                }
+                if kind == "Users" || record_changed {
+                    tx.put(bucket(kind)?, &id, &record)?;
+                }
+                let mut view = self.scim_view(tx, &id, &record)?;
+                if before_version.is_some_and(|before| before != view["meta"]["version"]) {
+                    record.version = crypto::id();
+                    tx.put(bucket(kind)?, &id, &record)?;
+                    view = self.scim_view(tx, &id, &record)?;
+                }
+                Ok(view)
             },
         )
     }
@@ -1731,64 +1735,68 @@ impl Core {
             token,
             |tx, actor, context| self.scim_precondition(tx, actor, context, kind, Some(id)),
             |tx| {
-            let actor = self.principal(tx, token)?;
-            let mut record = owned(tx, &actor, kind, id)?;
-            require(&actor, &record, "write")?;
-            if kind == "Users" {
-                let user = crate::management::disable_scim_user(
-                    tx,
-                    &actor,
-                    name(&record),
-                    &record.local_id,
-                )?;
-                for (group_id, mut group) in tx.list::<Record>("scim_groups")? {
-                    if !group.deleted && group.owner == actor.id {
-                        if let Some(members) = group.data["members"].as_array_mut() {
-                            members.retain(|m| m["value"] != id);
+                let actor = self.principal(tx, token)?;
+                let mut record = owned(tx, &actor, kind, id)?;
+                require(&actor, &record, "write")?;
+                if kind == "Users" {
+                    let user = crate::management::disable_scim_user(
+                        tx,
+                        &actor,
+                        name(&record),
+                        &record.local_id,
+                    )?;
+                    for (group_id, mut group) in tx.list::<Record>("scim_groups")? {
+                        if !group.deleted && group.owner == actor.id {
+                            if let Some(members) = group.data["members"].as_array_mut() {
+                                members.retain(|m| m["value"] != id);
+                            }
+                            tx.put("scim_groups", &group_id, &group)?;
                         }
-                        tx.put("scim_groups", &group_id, &group)?;
                     }
-                }
-                for (key, group) in tx.list::<Group>("groups")? {
-                    if group.members.contains(&user.id) {
-                        crate::management::write_group(
-                            &self.config,
-                            tx,
-                            &actor,
-                            &key,
-                            crate::management::GroupIntent::OffboardMember {
-                                user_id: &user.id,
-                                username: &user.username,
-                            },
-                            crate::management::GroupAudit::Deferred,
-                        )?;
+                    for (key, group) in tx.list::<Group>("groups")? {
+                        if group.members.contains(&user.id) {
+                            crate::management::write_group(
+                                &self.config,
+                                tx,
+                                &actor,
+                                &key,
+                                crate::management::GroupIntent::OffboardMember {
+                                    user_id: &user.id,
+                                    username: &user.username,
+                                },
+                                crate::management::GroupAudit::Deferred,
+                            )?;
+                        }
                     }
+                } else {
+                    require(&actor, &record, "members")?;
+                    let members =
+                        owner_scoped_group_members(tx, &actor, &record.local_id, BTreeSet::new())?;
+                    crate::management::write_scim_group(
+                        &self.config,
+                        tx,
+                        &actor,
+                        &record.local_id,
+                        crate::management::ScimGroupIntent::Delete(&members),
+                    )?;
                 }
-            } else {
-                require(&actor, &record, "members")?;
-                let members =
-                    owner_scoped_group_members(tx, &actor, &record.local_id, BTreeSet::new())?;
-                crate::management::write_scim_group(
-                    &self.config,
-                    tx,
-                    &actor,
-                    &record.local_id,
-                    crate::management::ScimGroupIntent::Delete(&members),
-                )?;
-            }
-            record.deleted = true;
-            tx.put(bucket(kind)?, id, &record)?;
-            Ok(json!({}))
+                record.deleted = true;
+                tx.put(bucket(kind)?, id, &record)?;
+                Ok(json!({}))
             },
         )
     }
 }
 fn normalize_email_entries(data: &mut Value) -> Result<()> {
-    let Some(emails) = data.get_mut("emails") else { return Ok(()); };
-    let emails = emails.as_array_mut()
+    let Some(emails) = data.get_mut("emails") else {
+        return Ok(());
+    };
+    let emails = emails
+        .as_array_mut()
         .ok_or_else(|| Error::bad("emails must be an array of at most eight values"))?;
     for email in emails {
-        let fields = email.as_object_mut()
+        let fields = email
+            .as_object_mut()
             .ok_or_else(|| Error::bad("Email entry must be an object"))?;
         let mut normalized = Map::new();
         for (key, value) in std::mem::take(fields) {
@@ -1834,21 +1842,34 @@ fn read_email(data: &Value) -> Result<Option<String>> {
     Ok(primary.or(first))
 }
 fn validate_email_entries(data: &Value) -> Result<()> {
-    let Some(emails) = data.get("emails") else { return Ok(()); };
-    let emails = emails.as_array().filter(|v| v.len() <= 8)
+    let Some(emails) = data.get("emails") else {
+        return Ok(());
+    };
+    let emails = emails
+        .as_array()
+        .filter(|v| v.len() <= 8)
         .ok_or_else(|| Error::bad("emails must be an array of at most eight values"))?;
     let mut seen = BTreeSet::new();
     for email in emails {
-        let value = email["value"].as_str().ok_or_else(|| Error::bad("Email value missing"))?;
+        let value = email["value"]
+            .as_str()
+            .ok_or_else(|| Error::bad("Email value missing"))?;
         validate_email(value)?;
-        if !seen.insert(value.to_ascii_lowercase()) { return Err(Error::bad("Duplicate email value")); }
+        if !seen.insert(value.to_ascii_lowercase()) {
+            return Err(Error::bad("Duplicate email value"));
+        }
         if let Some(kind) = email.get("type") {
-            let kind = kind.as_str().ok_or_else(|| Error::bad("Email type must be a string"))?;
+            let kind = kind
+                .as_str()
+                .ok_or_else(|| Error::bad("Email type must be a string"))?;
             if kind.is_empty() || kind.len() > 64 || kind.chars().any(char::is_control) {
                 return Err(Error::bad("Invalid email type"));
             }
         }
-        if email.get("primary").is_some_and(|primary| !primary.is_boolean()) {
+        if email
+            .get("primary")
+            .is_some_and(|primary| !primary.is_boolean())
+        {
             return Err(Error::bad("Email primary must be a boolean"));
         }
     }
@@ -1954,11 +1975,15 @@ fn patch_entry(field: &str, value: &Value) -> Result<Value> {
         if field == "emails" {
             match canonical {
                 "value" => {
-                    let value = value.as_str().ok_or_else(|| Error::bad("Email value must be a string"))?;
+                    let value = value
+                        .as_str()
+                        .ok_or_else(|| Error::bad("Email value must be a string"))?;
                     validate_email(value)?;
                 }
                 "type" => {
-                    let kind = value.as_str().ok_or_else(|| Error::bad("Email type must be a string"))?;
+                    let kind = value
+                        .as_str()
+                        .ok_or_else(|| Error::bad("Email type must be a string"))?;
                     if kind.is_empty() || kind.len() > 64 || kind.chars().any(char::is_control) {
                         return Err(Error::bad("Invalid email type"));
                     }
@@ -1977,8 +2002,7 @@ fn patch_entry(field: &str, value: &Value) -> Result<Value> {
         // A member object is valid PATCH input. It still needs the required
         // value; an empty object must not become a stored member.
         match result.get("value").and_then(Value::as_str) {
-            Some(id) if !id.is_empty() && id.len() <= 256 && !id.chars().any(char::is_control) => {
-            }
+            Some(id) if !id.is_empty() && id.len() <= 256 && !id.chars().any(char::is_control) => {}
             Some(_) => return Err(Error::bad("Invalid member ID")),
             None => return Err(Error::bad("Member ID required")),
         }
@@ -2142,7 +2166,10 @@ enum NamePath {
 
 fn name_path(kind: &str, path: &str) -> Result<Option<NamePath>> {
     let prefix = format!("{USER}:");
-    let path = if path.get(..prefix.len()).is_some_and(|head| head.eq_ignore_ascii_case(&prefix)) {
+    let path = if path
+        .get(..prefix.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(&prefix))
+    {
         &path[prefix.len()..]
     } else if path.contains(':') {
         return Err(Error::oauth("invalidPath", "Unsupported PATCH schema path"));
@@ -2157,7 +2184,12 @@ fn name_path(kind: &str, path: &str) -> Result<Option<NamePath>> {
                 "formatted" => "formatted",
                 "givenname" => "givenName",
                 "familyname" => "familyName",
-                _ => return Err(Error::oauth("invalidPath", "Unsupported name sub-attribute")),
+                _ => {
+                    return Err(Error::oauth(
+                        "invalidPath",
+                        "Unsupported name sub-attribute",
+                    ));
+                }
             };
             Some(NamePath::Sub(sub))
         } else {
@@ -2173,15 +2205,21 @@ fn name_path(kind: &str, path: &str) -> Result<Option<NamePath>> {
 }
 
 fn name_text(value: &Value) -> Result<()> {
-    let text = value.as_str().ok_or_else(|| Error::bad("Name sub-attribute must be a string"))?;
+    let text = value
+        .as_str()
+        .ok_or_else(|| Error::bad("Name sub-attribute must be a string"))?;
     if text.is_empty() || text.len() > 200 || text.chars().any(char::is_control) {
-        return Err(Error::bad("Name sub-attribute must be 1–200 bytes without control characters"));
+        return Err(Error::bad(
+            "Name sub-attribute must be 1–200 bytes without control characters",
+        ));
     }
     Ok(())
 }
 
 fn name_fields(value: &Value) -> Result<Map<String, Value>> {
-    let source = value.as_object().ok_or_else(|| Error::bad("name must be a complex object"))?;
+    let source = value
+        .as_object()
+        .ok_or_else(|| Error::bad("name must be a complex object"))?;
     let mut fields = Map::new();
     for (key, value) in source {
         let canonical = match key.to_ascii_lowercase().as_str() {
@@ -2199,12 +2237,21 @@ fn name_fields(value: &Value) -> Result<Map<String, Value>> {
 }
 
 fn stored_name_fields(value: &Value) -> Result<Map<String, Value>> {
-    value.as_object().cloned().ok_or_else(|| Error::bad("name must be a complex object"))
+    value
+        .as_object()
+        .cloned()
+        .ok_or_else(|| Error::bad("name must be a complex object"))
 }
 
 fn remove_name_key(fields: &mut Map<String, Value>, sub: &str) -> bool {
-    let keys: Vec<_> = fields.keys().filter(|key| key.eq_ignore_ascii_case(sub)).cloned().collect();
-    for key in &keys { fields.remove(key); }
+    let keys: Vec<_> = fields
+        .keys()
+        .filter(|key| key.eq_ignore_ascii_case(sub))
+        .cloned()
+        .collect();
+    for key in &keys {
+        fields.remove(key);
+    }
     !keys.is_empty()
 }
 
@@ -2218,8 +2265,11 @@ fn patch_name(data: &mut Value, path: NamePath, operation: &str, value: &Value) 
                 data.as_object_mut().unwrap().remove("name");
             }
             NamePath::Sub(sub) => {
-                let mut fields = data.get("name").filter(|value| !value.is_null())
-                    .map(stored_name_fields).transpose()?
+                let mut fields = data
+                    .get("name")
+                    .filter(|value| !value.is_null())
+                    .map(stored_name_fields)
+                    .transpose()?
                     .ok_or_else(|| Error::oauth("noTarget", "Name path is not assigned"))?;
                 if !remove_name_key(&mut fields, sub) {
                     return Err(Error::oauth("noTarget", "Name path is not assigned"));
@@ -2236,7 +2286,9 @@ fn patch_name(data: &mut Value, path: NamePath, operation: &str, value: &Value) 
     let updates = match path {
         NamePath::Whole => {
             let fields = name_fields(value)?;
-            if fields.is_empty() { return Err(Error::bad("name PATCH value needs a sub-attribute")); }
+            if fields.is_empty() {
+                return Err(Error::bad("name PATCH value needs a sub-attribute"));
+            }
             fields
         }
         NamePath::Sub(sub) => {
@@ -2244,8 +2296,12 @@ fn patch_name(data: &mut Value, path: NamePath, operation: &str, value: &Value) 
             Map::from_iter([(sub.to_owned(), value.clone())])
         }
     };
-    let mut fields = data.get("name").filter(|value| !value.is_null())
-        .map(stored_name_fields).transpose()?.unwrap_or_default();
+    let mut fields = data
+        .get("name")
+        .filter(|value| !value.is_null())
+        .map(stored_name_fields)
+        .transpose()?
+        .unwrap_or_default();
     for (key, value) in updates {
         remove_name_key(&mut fields, &key);
         fields.insert(key, value);
@@ -2318,20 +2374,29 @@ fn patch_resource(old: &Value, input: Value) -> Result<Value> {
             patch_multi_selected(&mut data, field, &filter, sub, &operation, &op["value"])?;
             continue;
         }
-        let kind = if old["schemas"] == json!([USER]) { "Users" } else { "Groups" };
+        let kind = if old["schemas"] == json!([USER]) {
+            "Users"
+        } else {
+            "Groups"
+        };
         if let Some(name_path) = name_path(kind, path)? {
             patch_name(&mut data, name_path, &operation, &op["value"])?;
             continue;
         }
         if path.contains('.') {
-            return Err(Error::oauth("invalidPath", "Unsupported PATCH complex path"));
+            return Err(Error::oauth(
+                "invalidPath",
+                "Unsupported PATCH complex path",
+            ));
         }
         let canonical = normalize(json!({path:op["value"]}))?;
         let (path, value) = canonical.as_object().unwrap().iter().next().unwrap();
         if ["id", "meta", "schemas", "groups", "userName"].contains(&path.as_str()) {
             return Err(Error::oauth("mutability", "Cannot patch this attribute"));
         }
-        if path == "emails" { email_changed = true; }
+        if path == "emails" {
+            email_changed = true;
+        }
         if operation == "remove" {
             data.as_object_mut().unwrap().remove(path);
         } else if ["members", "emails"].contains(&path.as_str()) {
@@ -2384,7 +2449,8 @@ mod patch_tests {
 
     #[test]
     fn members_add_rejects_invalid_intermediate_shapes() {
-        let old = json!({"schemas":[GROUP],"displayName":"test-group","members":[{"value":"kept"}]});
+        let old =
+            json!({"schemas":[GROUP],"displayName":"test-group","members":[{"value":"kept"}]});
         let before = old.clone();
         // Scalars are neither a member object nor an array. The later add must
         // not run, and a single object remains valid input.
@@ -2432,10 +2498,7 @@ mod patch_tests {
             patch(json!([{"op":"add","path":"members","value":{"value":"solo"}}])),
         )
         .unwrap();
-        assert_eq!(
-            added["members"],
-            json!([{"value":"kept"},{"value":"solo"}])
-        );
+        assert_eq!(added["members"], json!([{"value":"kept"},{"value":"solo"}]));
         let replaced = patch_resource(
             &old,
             patch(json!([{"op":"replace","path":"members","value":{"value":"solo"}}])),

@@ -366,7 +366,13 @@ async fn discovery_certificate_acr_follows_usable_trust_material() {
     use http_body_util::BodyExt;
     use tower::ServiceExt;
     let dir = tempfile::tempdir().unwrap();
-    let (root, _) = issue("discovery root", 1, None, Kind::Ca { pathlen: 1 }, When::Valid);
+    let (root, _) = issue(
+        "discovery root",
+        1,
+        None,
+        Kind::Ca { pathlen: 1 },
+        When::Valid,
+    );
     let trust = dir.path().join("trust.pem");
     let root_pem = root.to_pem().unwrap();
     std::fs::write(&trust, &root_pem).unwrap();

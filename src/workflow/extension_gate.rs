@@ -1592,11 +1592,20 @@ mod tests {
             Denial::Limit
         );
         assert_eq!(
-            check(&fixture::document(&fixture::with_locals(MAX_GUEST_LOCALS + 1), |_| {}))
-                .unwrap_err(),
+            check(&fixture::document(
+                &fixture::with_locals(MAX_GUEST_LOCALS + 1),
+                |_| {}
+            ))
+            .unwrap_err(),
             Denial::Limit
         );
-        assert!(check(&fixture::document(&fixture::with_locals(MAX_GUEST_LOCALS), |_| {})).is_ok());
+        assert!(
+            check(&fixture::document(
+                &fixture::with_locals(MAX_GUEST_LOCALS),
+                |_| {}
+            ))
+            .is_ok()
+        );
         assert_eq!(
             check(&fixture::document(&fixture::with_data_segment(), |_| {})).unwrap_err(),
             Denial::Limit

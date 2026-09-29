@@ -559,8 +559,14 @@ async fn concurrent_selected_revocation_commits_once_and_receipt_survives_restar
     let app = riauth::api::router(f.core.clone());
 
     let (left, right) = tokio::join!(
-        send(&app, bearer(Method::DELETE, &path, &alice, "concurrent-left")),
-        send(&app, bearer(Method::DELETE, &path, &alice, "concurrent-right")),
+        send(
+            &app,
+            bearer(Method::DELETE, &path, &alice, "concurrent-left")
+        ),
+        send(
+            &app,
+            bearer(Method::DELETE, &path, &alice, "concurrent-right")
+        ),
     );
     let (winning_key, committed) = if left.0 == StatusCode::OK {
         assert_eq!(right.0, StatusCode::NOT_FOUND);
@@ -572,7 +578,14 @@ async fn concurrent_selected_revocation_commits_once_and_receipt_survives_restar
     };
     assert_eq!(count_audit(&f, "session.revoke", &target_id), 1);
     #[cfg(feature = "platform")]
-    assert_eq!(f.core.store.list::<riauth::ssf::Delivery>("ssf_deliveries").unwrap().len(), 1);
+    assert_eq!(
+        f.core
+            .store
+            .list::<riauth::ssf::Delivery>("ssf_deliveries")
+            .unwrap()
+            .len(),
+        1
+    );
 
     drop(app);
     let f = f.reopen_with(|_| {});
@@ -592,5 +605,12 @@ async fn concurrent_selected_revocation_commits_once_and_receipt_survives_restar
     f.assert_http_mutation_snapshot(&state);
     assert_eq!(count_audit(&f, "session.revoke", &target_id), 1);
     #[cfg(feature = "platform")]
-    assert_eq!(f.core.store.list::<riauth::ssf::Delivery>("ssf_deliveries").unwrap().len(), 1);
+    assert_eq!(
+        f.core
+            .store
+            .list::<riauth::ssf::Delivery>("ssf_deliveries")
+            .unwrap()
+            .len(),
+        1
+    );
 }

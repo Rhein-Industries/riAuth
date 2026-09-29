@@ -7,10 +7,10 @@ use crate::{
     management::{DeviceDecisionAuthority, decide_device, device_approval_policy},
     model::*,
     oidc::{
-        Authorization, OidcTx, TokenRequest, DEVICE_GRANT, authenticate_client,
-        device_authentication_stale, device_claim_names, get_client, invalid_grant,
-        lookup_device, needs_reauthentication, reject_proxy_client, required,
-        scope_request, token_manager, validate_authorization,
+        Authorization, DEVICE_GRANT, OidcTx, TokenRequest, authenticate_client,
+        device_authentication_stale, device_claim_names, get_client, invalid_grant, lookup_device,
+        needs_reauthentication, reject_proxy_client, required, scope_request, token_manager,
+        validate_authorization,
     },
     store::Tx,
 };
@@ -37,13 +37,17 @@ pub(crate) fn prepare_authentication_in(
     let transaction = crypto::random_token("ri_auth_");
     let request_hash = request.request_hash()?;
     let key = digest(&transaction);
-    tx.put("authentication", &key, &AuthenticationTransaction {
-        request_hash: request_hash.clone(),
-        user_id,
-        authenticated_session: None,
-        expires_at,
-        source_stage: None,
-    })?;
+    tx.put(
+        "authentication",
+        &key,
+        &AuthenticationTransaction {
+            request_hash: request_hash.clone(),
+            user_id,
+            authenticated_session: None,
+            expires_at,
+            source_stage: None,
+        },
+    )?;
     register_preparation(tx, &request_hash, &key, expires_at)?;
     Ok(transaction)
 }
@@ -76,7 +80,10 @@ fn prepared_actor_key(request_hash: &str, account: &str) -> String {
 }
 
 fn live_ordinary_preparation(
-    tx: &Tx<'_>, key: &str, request_hash: &str, at: u64,
+    tx: &Tx<'_>,
+    key: &str,
+    request_hash: &str,
+    at: u64,
 ) -> Result<Option<AuthenticationTransaction>> {
     Ok(tx
         .get::<AuthenticationTransaction>("authentication", key)?
@@ -129,7 +136,9 @@ fn mark_direct_decision(tx: &Tx<'_>, request_hash: &str, account: &str, at: u64)
         return Ok(());
     }
     let marker_key = prepared_actor_key(request_hash, account);
-    if let Some(previous) = tx.get::<PreparedActorDecisions>(PREPARED_ACTOR_DECISIONS, &marker_key)? {
+    if let Some(previous) =
+        tx.get::<PreparedActorDecisions>(PREPARED_ACTOR_DECISIONS, &marker_key)?
+    {
         if previous.request_hash != request_hash
             || previous.account != account
             || previous.attempts.len() > MAX_PREPARED_PER_REQUEST
@@ -161,12 +170,17 @@ fn mark_direct_decision(tx: &Tx<'_>, request_hash: &str, account: &str, at: u64)
 }
 
 fn reject_direct_decision_replay(
-    tx: &Tx<'_>, request_hash: &str, account: &str, key: &str, at: u64,
+    tx: &Tx<'_>,
+    request_hash: &str,
+    account: &str,
+    key: &str,
+    at: u64,
 ) -> Result<()> {
     let Some(marker) = tx.get::<PreparedActorDecisions>(
         PREPARED_ACTOR_DECISIONS,
         &prepared_actor_key(request_hash, account),
-    )? else {
+    )?
+    else {
         return Ok(());
     };
     if marker.request_hash != request_hash
@@ -175,7 +189,11 @@ fn reject_direct_decision_replay(
     {
         return Err(Error::forbidden());
     }
-    if marker.attempts.get(key).is_some_and(|expires_at| *expires_at > at) {
+    if marker
+        .attempts
+        .get(key)
+        .is_some_and(|expires_at| *expires_at > at)
+    {
         return Err(Error::conflict(
             "Prepared request already decided for this account",
         ));
@@ -188,11 +206,20 @@ fn reject_direct_decision_replay(
 /// prepared token and account, or the same preparation could issue twice.
 #[cfg(feature = "platform")]
 pub(crate) fn reject_preparation_actor_replay(
-    tx: &Tx<'_>, request: &Authorization, account: &str,
+    tx: &Tx<'_>,
+    request: &Authorization,
+    account: &str,
 ) -> Result<()> {
-    let transaction = request.transaction_id.as_deref().ok_or_else(Error::forbidden)?;
+    let transaction = request
+        .transaction_id
+        .as_deref()
+        .ok_or_else(Error::forbidden)?;
     reject_direct_decision_replay(
-        tx, &request.request_hash()?, account, &digest(transaction), now(),
+        tx,
+        &request.request_hash()?,
+        account,
+        &digest(transaction),
+        now(),
     )
 }
 
@@ -264,9 +291,11 @@ fn register_preparation(tx: &Tx<'_>, request_hash: &str, key: &str, expires_at: 
                 // still-unclaimed anonymous row may yield an admission slot.
                 if attempt.user_id.is_none()
                     && attempt.authenticated_session.is_none()
-                    && replaceable.as_ref().is_none_or(|(candidate, candidate_expiry)| {
-                        (expiry, old_key.as_str()) < (*candidate_expiry, candidate.as_str())
-                    })
+                    && replaceable
+                        .as_ref()
+                        .is_none_or(|(candidate, candidate_expiry)| {
+                            (expiry, old_key.as_str()) < (*candidate_expiry, candidate.as_str())
+                        })
                 {
                     replaceable = Some((old_key.clone(), expiry));
                 }
@@ -277,9 +306,8 @@ fn register_preparation(tx: &Tx<'_>, request_hash: &str, key: &str, expires_at: 
     if attempts.len() >= MAX_PREPARED_PER_REQUEST {
         // Replace exactly one indexed row; any legacy overflow stays marked
         // and keeps no-ID decisions conservative until its rows are gone.
-        let (replaced, _) = replaceable.ok_or_else(|| {
-            Error::conflict("Too many pending preparations for this request")
-        })?;
+        let (replaced, _) = replaceable
+            .ok_or_else(|| Error::conflict("Too many pending preparations for this request"))?;
         tx.delete("authentication", &replaced)?;
         attempts.remove(&replaced);
     }
@@ -369,7 +397,9 @@ impl OidcTx for Tx<'_> {
     }
 
     fn validate_authorization_reference(
-        &self, client: &Client, request: &Authorization,
+        &self,
+        client: &Client,
+        request: &Authorization,
     ) -> Result<()> {
         crate::authorization::validate_reference(self, client, request)
     }
@@ -445,7 +475,9 @@ impl Core {
                         .settings
                         .claim_mappings
                         .iter()
-                        .filter(|mapping| mapping.scope != "offline_access" || offline_access_usable)
+                        .filter(|mapping| {
+                            mapping.scope != "offline_access" || offline_access_usable
+                        })
                         .map(|mapping| mapping.claim.clone()),
                 );
                 if let Some(policy) = client.settings.policy.conditional() {
@@ -542,7 +574,10 @@ impl Core {
             ("id_token_encryption_enc_values_supported", jwe),
             ("userinfo_encryption_alg_values_supported", jwe),
             ("userinfo_encryption_enc_values_supported", jwe),
-            ("token_endpoint_auth_signing_alg_values_supported", private_key_jwt),
+            (
+                "token_endpoint_auth_signing_alg_values_supported",
+                private_key_jwt,
+            ),
             ("registration_endpoint", usable("oidc.dynamic_registration")),
             ("code_challenge_methods_supported", code),
             ("dpop_signing_alg_values_supported", usable("oidc.dpop")),
@@ -781,8 +816,7 @@ impl Core {
                         && c.authenticated_session
                             .as_ref()
                             .is_none_or(|id| id == &session.id)
-                        && (!needs_proof
-                            || c.authenticated_session.as_deref() == Some(&session.id))
+                        && (!needs_proof || c.authenticated_session.as_deref() == Some(&session.id))
                 })
                 .ok_or_else(|| {
                     Error::oauth("login_required", "Complete request-bound reauthentication")
@@ -1015,12 +1049,12 @@ impl Core {
             let client = get_client(tx, &device.client_id)?;
             let user = self.identity_user(tx, &session.identity)?;
             let stale = device_authentication_stale(&session);
-            let approval_allowed = match device_approval_policy(self, tx, &client, &device, &session)
-            {
-                Ok(()) => !stale,
-                Err(error) if error.status.is_server_error() => return Err(error),
-                Err(_) => false,
-            };
+            let approval_allowed =
+                match device_approval_policy(self, tx, &client, &device, &session) {
+                    Ok(()) => !stale,
+                    Err(error) if error.status.is_server_error() => return Err(error),
+                    Err(_) => false,
+                };
             let normalized = crypto::normalize_code(user_code)?;
             let shown_code = format!("{}-{}", &normalized[..5], &normalized[5..]);
             Ok(json!({

@@ -202,7 +202,10 @@ fn controller_resumes_more_than_four_scim_snapshot_pages_without_spending_retrie
     }).unwrap();
 
     assert!(fixture.core.reconciliation_process().unwrap());
-    let schedule = fixture.core.reconciliation_schedules(&fixture.admin).unwrap();
+    let schedule = fixture
+        .core
+        .reconciliation_schedules(&fixture.admin)
+        .unwrap();
     let job_id = schedule[0]["last_job"].as_str().unwrap().to_owned();
     let first = fixture.core.reconciliation_jobs(&fixture.admin).unwrap();
     assert_eq!(first[0]["id"], job_id);
@@ -212,7 +215,14 @@ fn controller_resumes_more_than_four_scim_snapshot_pages_without_spending_retrie
     assert_eq!(first[0]["outcome"]["delivery"], "none");
     assert_eq!(first[0]["outcome"]["snapshot"]["scanned_links"], 128);
     assert!(first[0]["outcome"]["plan_id"].is_null());
-    assert!(fixture.core.store.list::<Value>("provisioning_plans").unwrap().is_empty());
+    assert!(
+        fixture
+            .core
+            .store
+            .list::<Value>("provisioning_plans")
+            .unwrap()
+            .is_empty()
+    );
 
     let fixture = fixture.reopen_with(|config| config.validate().unwrap());
     for page in 2..=4 {
@@ -223,7 +233,14 @@ fn controller_resumes_more_than_four_scim_snapshot_pages_without_spending_retrie
         assert_eq!(jobs[0]["attempts"], 0);
         assert!(jobs[0]["last_error"].is_null());
         assert_eq!(jobs[0]["outcome"]["snapshot"]["scanned_links"], page * 128);
-        assert!(fixture.core.store.list::<Value>("provisioning_plans").unwrap().is_empty());
+        assert!(
+            fixture
+                .core
+                .store
+                .list::<Value>("provisioning_plans")
+                .unwrap()
+                .is_empty()
+        );
     }
 
     assert!(fixture.core.reconciliation_process().unwrap());
@@ -234,9 +251,21 @@ fn controller_resumes_more_than_four_scim_snapshot_pages_without_spending_retrie
     assert_eq!(jobs[0]["outcome"]["decision"], "awaiting_review");
     assert_eq!(jobs[0]["outcome"]["delivery"], "none");
     assert!(jobs[0]["outcome"]["plan_id"].is_string());
-    let plans = fixture.core.store.list::<Value>("provisioning_plans").unwrap();
+    let plans = fixture
+        .core
+        .store
+        .list::<Value>("provisioning_plans")
+        .unwrap();
     assert_eq!(plans.len(), 1);
     assert_eq!(plans[0].1["removal_impact"]["disabled_users"], 513);
     assert_eq!(plans[0].1["removal_impact"]["review_required"], true);
-    assert!(fixture.core.provisioning_jobs(&fixture.admin).unwrap().as_array().unwrap().is_empty());
+    assert!(
+        fixture
+            .core
+            .provisioning_jobs(&fixture.admin)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 }

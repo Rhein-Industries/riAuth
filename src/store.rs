@@ -861,9 +861,9 @@ impl Tx<'_> {
         })
     }
     pub fn put<T: Serialize>(&self, bucket: &str, key: &str, value: &T) -> Result<()> {
-        let transitions = self.transitions.ok_or_else(|| {
-            Error::internal("Mutation attempted inside a read transaction")
-        })?;
+        let transitions = self
+            .transitions
+            .ok_or_else(|| Error::internal("Mutation attempted inside a read transaction"))?;
         let mut public = serde_json::to_value(value).map_err(Error::internal)?;
         let before = if matches!(bucket, "users" | "groups" | "passkeys") {
             self.get::<Value>(bucket, key)?
@@ -872,7 +872,13 @@ impl Tx<'_> {
         };
         transitions.prepare_record(bucket, before.as_ref(), &mut public);
         self.update_indexes(bucket, key, before.as_ref(), Some(&public))?;
-        self.record_change(bucket, key, before.as_ref(), Some(public.clone()), transitions)?;
+        self.record_change(
+            bucket,
+            key,
+            before.as_ref(),
+            Some(public.clone()),
+            transitions,
+        )?;
         self.import_record(bucket, key, &public)?;
         transitions.record_transition(self, bucket, key, before.as_ref(), Some(&public))
     }
@@ -901,9 +907,9 @@ impl Tx<'_> {
         Ok(())
     }
     pub fn delete(&self, bucket: &str, key: &str) -> Result<()> {
-        let transitions = self.transitions.ok_or_else(|| {
-            Error::internal("Mutation attempted inside a read transaction")
-        })?;
+        let transitions = self
+            .transitions
+            .ok_or_else(|| Error::internal("Mutation attempted inside a read transaction"))?;
         let before = if matches!(bucket, "users" | "groups" | "passkeys") {
             self.get::<Value>(bucket, key)?
         } else {
@@ -1230,7 +1236,9 @@ impl Tx<'_> {
         max_raw_bytes: usize,
     ) -> Result<Vec<(String, Value)>> {
         if !matches!(self.transaction, Transaction::Postgres(_, true)) {
-            return Err(Error::internal("Locked snapshot requires a PostgreSQL writer"));
+            return Err(Error::internal(
+                "Locked snapshot requires a PostgreSQL writer",
+            ));
         }
         self.snapshot_page_bounded_inner(after, limit, max_raw_bytes, true)
     }

@@ -455,44 +455,44 @@ pub(crate) fn router_with_signal(
         );
     let routes = if app.setup.config.browser_ui {
         routes
-        .route(&format!("{base}/setup"), get(page))
-        .route(&format!("{base}/setup/"), get(page))
-        .route(
-            &format!("{base}/portal/assets/setup.js"),
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("portal/setup.js"),
-                )
-            }),
-        )
-        .route(
-            &format!("{base}/portal/assets/auth.js"),
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("portal/auth.js"),
-                )
-            }),
-        )
-        .route(
-            &format!("{base}/portal/assets/app.css"),
-            get(|| async {
-                (
-                    [("content-type", "text/css; charset=utf-8")],
-                    include_str!("portal/app.css"),
-                )
-            }),
-        )
-        .route(
-            &format!("{base}/portal/assets/riauth-mark.svg"),
-            get(|| async {
-                (
-                    [("content-type", "image/svg+xml; charset=utf-8")],
-                    include_str!("../assets/riauth-mark.svg"),
-                )
-            }),
-        )
+            .route(&format!("{base}/setup"), get(page))
+            .route(&format!("{base}/setup/"), get(page))
+            .route(
+                &format!("{base}/portal/assets/setup.js"),
+                get(|| async {
+                    (
+                        [("content-type", "text/javascript; charset=utf-8")],
+                        include_str!("portal/setup.js"),
+                    )
+                }),
+            )
+            .route(
+                &format!("{base}/portal/assets/auth.js"),
+                get(|| async {
+                    (
+                        [("content-type", "text/javascript; charset=utf-8")],
+                        include_str!("portal/auth.js"),
+                    )
+                }),
+            )
+            .route(
+                &format!("{base}/portal/assets/app.css"),
+                get(|| async {
+                    (
+                        [("content-type", "text/css; charset=utf-8")],
+                        include_str!("portal/app.css"),
+                    )
+                }),
+            )
+            .route(
+                &format!("{base}/portal/assets/riauth-mark.svg"),
+                get(|| async {
+                    (
+                        [("content-type", "image/svg+xml; charset=utf-8")],
+                        include_str!("../assets/riauth-mark.svg"),
+                    )
+                }),
+            )
     } else {
         routes
     };
@@ -719,7 +719,8 @@ async fn dispatch(State(app): State<SetupApp>, req: Request) -> Response {
         .path()
         .trim_end_matches('/')
         .to_owned();
-    if app.setup.config.browser_ui && req.method() == axum::http::Method::GET
+    if app.setup.config.browser_ui
+        && req.method() == axum::http::Method::GET
         && [base.as_str(), &format!("{base}/"), &format!("{base}/apps")].contains(&req.uri().path())
     {
         Redirect::temporary(&format!("{base}/setup")).into_response()
@@ -737,7 +738,9 @@ pub(crate) fn closed_routes(browser_ui: bool) -> Router<crate::api::App> {
         .route("/api/setup", post(|| async { closed() }))
         .route("/api/setup/passkey/{action}", post(|| async { closed() }));
     if browser_ui {
-        routes.route("/setup", get(closed_page)).route("/setup/", get(closed_page))
+        routes
+            .route("/setup", get(closed_page))
+            .route("/setup/", get(closed_page))
     } else {
         routes
     }

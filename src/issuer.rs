@@ -60,15 +60,15 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect();
-    let configured_auth_methods: &[&str] =
-        match client.settings.token_endpoint_auth_method.as_ref() {
-            Some(ClientAuthMethod::None) => &["none"],
-            Some(ClientAuthMethod::ClientSecretBasic) => &["client_secret_basic"],
-            Some(ClientAuthMethod::ClientSecretPost) => &["client_secret_post"],
-            Some(ClientAuthMethod::PrivateKeyJwt) => &["private_key_jwt"],
-            None if client.secret_hash.is_some() => &["client_secret_basic", "client_secret_post"],
-            None => &["none"],
-        };
+    let configured_auth_methods: &[&str] = match client.settings.token_endpoint_auth_method.as_ref()
+    {
+        Some(ClientAuthMethod::None) => &["none"],
+        Some(ClientAuthMethod::ClientSecretBasic) => &["client_secret_basic"],
+        Some(ClientAuthMethod::ClientSecretPost) => &["client_secret_post"],
+        Some(ClientAuthMethod::PrivateKeyJwt) => &["private_key_jwt"],
+        None if client.secret_hash.is_some() => &["client_secret_basic", "client_secret_post"],
+        None => &["none"],
+    };
     let supported_auth_methods = |field: &str| {
         document[field]
             .as_array()
@@ -106,18 +106,16 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             .map(str::to_owned)
             .collect::<Vec<_>>()
     };
-    let request_object_algs =
-        supported_pinned_algs("request_object_signing_alg_values_supported");
+    let request_object_algs = supported_pinned_algs("request_object_signing_alg_values_supported");
     let token_auth_algs = supported_pinned_algs("token_endpoint_auth_signing_alg_values_supported");
     let private_key_jwt_configured = matches!(
         client.settings.token_endpoint_auth_method.as_ref(),
         Some(ClientAuthMethod::PrivateKeyJwt)
     );
-    let client_auth_usable = !private_key_jwt_configured
-        || (private_key_jwt_available && !token_auth_algs.is_empty());
-    let token_usable = client_auth_usable
-        && !token_methods.is_empty()
-        && document.get("token_endpoint").is_some();
+    let client_auth_usable =
+        !private_key_jwt_configured || (private_key_jwt_available && !token_auth_algs.is_empty());
+    let token_usable =
+        client_auth_usable && !token_methods.is_empty() && document.get("token_endpoint").is_some();
     let revocation_usable = client_auth_usable
         && !revocation_methods.is_empty()
         && document.get("revocation_endpoint").is_some();
@@ -132,7 +130,9 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             .as_array()
             .is_some_and(|methods| methods.contains(&json!("S256")));
     let device_supported = document.get("device_authorization_endpoint").is_some();
-    let par_supported = document.get("pushed_authorization_request_endpoint").is_some()
+    let par_supported = document
+        .get("pushed_authorization_request_endpoint")
+        .is_some()
         && document["request_uri_parameter_supported"] == true;
     let jar_supported =
         document["request_parameter_supported"] == true && !request_object_algs.is_empty();
@@ -156,9 +156,7 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             crate::exchange::TOKEN_EXCHANGE => {
                 client.confidential() && client.settings.exchange.is_some()
             }
-            crate::jose::JWT_GRANT => {
-                client.service && !client.settings.machine_trust.is_empty()
-            }
+            crate::jose::JWT_GRANT => client.service && !client.settings.machine_trust.is_empty(),
             _ => false,
         }
     };
@@ -177,7 +175,9 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             policy
                 .claim_mappings
                 .iter()
-                .filter(|mapping| mapping.mapping.scope != "offline_access" || offline_access_usable)
+                .filter(|mapping| {
+                    mapping.mapping.scope != "offline_access" || offline_access_usable
+                })
                 .map(|mapping| mapping.mapping.claim.as_str()),
         );
     }
@@ -210,8 +210,8 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             document.as_object_mut().unwrap().remove(field);
         }
     }
-    document["authorization_response_iss_parameter_supported"] = json!(code_available
-        && document["authorization_response_iss_parameter_supported"] == true);
+    document["authorization_response_iss_parameter_supported"] =
+        json!(code_available && document["authorization_response_iss_parameter_supported"] == true);
     document["claims_parameter_supported"] =
         json!(code_available && document["claims_parameter_supported"] == true);
     document["request_parameter_supported"] = json!(jar_available);
@@ -225,7 +225,10 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             .remove("request_object_signing_alg_values_supported");
     }
     if !par_available {
-        document.as_object_mut().unwrap().remove("pushed_authorization_request_endpoint");
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("pushed_authorization_request_endpoint");
     }
     if token_usable {
         document["token_endpoint_auth_methods_supported"] = json!(token_methods);
@@ -237,7 +240,10 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             .remove("token_endpoint_auth_methods_supported");
     }
     if !revocation_usable {
-        document.as_object_mut().unwrap().remove("revocation_endpoint");
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("revocation_endpoint");
         document
             .as_object_mut()
             .unwrap()
@@ -246,7 +252,10 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
         document["revocation_endpoint_auth_methods_supported"] = json!(revocation_methods);
     }
     if !introspection_usable {
-        document.as_object_mut().unwrap().remove("introspection_endpoint");
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("introspection_endpoint");
         document
             .as_object_mut()
             .unwrap()
@@ -262,21 +271,28 @@ pub(crate) fn discovery(mut document: Value, default: &str, client: &Client) -> 
             .unwrap()
             .remove("token_endpoint_auth_signing_alg_values_supported");
     }
-    document["scopes_supported"] = json!(client
-        .scopes
-        .iter()
-        .filter(|scope| server_scopes.contains(*scope))
-        .filter(|scope| scope.as_str() != "offline_access" || grant_available("refresh_token"))
-        .collect::<Vec<_>>());
-    document["claims_supported"] = json!(document["claims_supported"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .filter(|claim| client_claims.contains(*claim))
-        .collect::<Vec<_>>());
+    document["scopes_supported"] = json!(
+        client
+            .scopes
+            .iter()
+            .filter(|scope| server_scopes.contains(*scope))
+            .filter(|scope| scope.as_str() != "offline_access" || grant_available("refresh_token"))
+            .collect::<Vec<_>>()
+    );
+    document["claims_supported"] = json!(
+        document["claims_supported"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|claim| client_claims.contains(*claim))
+            .collect::<Vec<_>>()
+    );
     if !grant_available(crate::oidc::DEVICE_GRANT) {
-        document.as_object_mut().unwrap().remove("device_authorization_endpoint");
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("device_authorization_endpoint");
     }
     document["subject_types_supported"] = if client.settings.pairwise_sector.is_some()
         && document["subject_types_supported"]

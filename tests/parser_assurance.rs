@@ -429,6 +429,9 @@ async fn scim_member_shape_change_must_reject_without_panicking() {
     );
     let error = outcome.unwrap().unwrap_err();
     assert_eq!(error.status, StatusCode::BAD_REQUEST);
-    assert_eq!(error.message, "Complex PATCH value must be an object or array");
+    assert_eq!(
+        error.message,
+        "Complex PATCH value must be an object or array"
+    );
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

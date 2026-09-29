@@ -13,8 +13,20 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub const DEVICE_GRANT: &str = "urn:ietf:params:oauth:grant-type:device_code";
 pub(crate) const STANDARD_CLAIMS: &[&str] = &[
-    "iss", "sub", "aud", "exp", "iat", "auth_time", "nonce", "amr", "at_hash", "name",
-    "preferred_username", "email", "email_verified", "groups",
+    "iss",
+    "sub",
+    "aud",
+    "exp",
+    "iat",
+    "auth_time",
+    "nonce",
+    "amr",
+    "at_hash",
+    "name",
+    "preferred_username",
+    "email",
+    "email_verified",
+    "groups",
 ];
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize)]
@@ -272,8 +284,7 @@ pub fn scope_request(scope: &str, client: &Client) -> Result<BTreeSet<String>> {
             "Requested scopes are not allowed for this client",
         ));
     }
-    if scopes.contains("offline_access")
-        && !crate::provider::grant_enabled(client, "refresh_token")
+    if scopes.contains("offline_access") && !crate::provider::grant_enabled(client, "refresh_token")
     {
         return Err(Error::oauth(
             "invalid_scope",

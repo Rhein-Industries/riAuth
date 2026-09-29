@@ -41,10 +41,10 @@ mod mtls;
 #[cfg(feature = "platform")]
 pub(crate) use mtls::clear_user_binding;
 mod oidc;
-pub(crate) use oidc::{backfill_prepared_index, cleanup_prepared, stamp_prepared_index};
 pub(crate) use oidc::prepare_authentication_in;
 #[cfg(feature = "platform")]
 pub(crate) use oidc::reject_preparation_actor_replay;
+pub(crate) use oidc::{backfill_prepared_index, cleanup_prepared, stamp_prepared_index};
 #[cfg(feature = "platform")]
 mod outpost;
 #[cfg(feature = "platform")]

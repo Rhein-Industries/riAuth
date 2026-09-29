@@ -29,13 +29,13 @@
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
 
+mod client_creation;
+mod client_endpoint;
+mod client_policy;
+mod client_status;
 mod consents;
 mod devices;
 pub(crate) mod grants;
-mod client_creation;
-mod client_policy;
-mod client_status;
-mod client_endpoint;
 mod memberships;
 #[cfg(feature = "platform")]
 mod pam;
@@ -412,7 +412,9 @@ pub(crate) fn configure_signing_key(
         &input.id,
         &format!("key/{}", input.id),
     )?;
-    Ok(json!({"id":input.id,"active":keys.active.jwk()?,"retained_verification_keys":keys.retired.len()}))
+    Ok(
+        json!({"id":input.id,"active":keys.active.jwk()?,"retained_verification_keys":keys.retired.len()}),
+    )
 }
 
 /// Authorize the current actor and rotate the signing key with its retirement
@@ -2262,8 +2264,15 @@ pub(crate) fn check_client(
 ) -> Result<Client> {
     let authority = Authority::Management(actor, Record::Direct("client.check"));
     Ok(check_client_as(
-        tx, config, &authority, existing, next, secret, ClientReview::Immediate,
-    )?.client)
+        tx,
+        config,
+        &authority,
+        existing,
+        next,
+        secret,
+        ClientReview::Immediate,
+    )?
+    .client)
 }
 
 /// An authorized, validated record that `write_client_as` persists.
@@ -2455,12 +2464,15 @@ fn check_client_as(
             "Client enabled changes require a reviewed client status change",
         ));
     }
-    if review != ClientReview::Endpoints && existing.is_some_and(|c| {
-        c.redirect_uris != next.redirect_uris || c.settings.origins != next.settings.origins
-            || c.settings.post_logout_redirect_uris != next.settings.post_logout_redirect_uris
-            || c.settings.frontchannel_logout_uri != next.settings.frontchannel_logout_uri
-            || c.settings.backchannel_logout_uri != next.settings.backchannel_logout_uri
-    }) {
+    if review != ClientReview::Endpoints
+        && existing.is_some_and(|c| {
+            c.redirect_uris != next.redirect_uris
+                || c.settings.origins != next.settings.origins
+                || c.settings.post_logout_redirect_uris != next.settings.post_logout_redirect_uris
+                || c.settings.frontchannel_logout_uri != next.settings.frontchannel_logout_uri
+                || c.settings.backchannel_logout_uri != next.settings.backchannel_logout_uri
+        })
+    {
         return Err(Error::conflict(
             "Client callbacks, browser origins or logout endpoints require a reviewed client endpoint change",
         ));
@@ -2610,9 +2622,9 @@ pub(crate) fn write_source(
     let changed = previous.as_ref() != Some(source);
     // Mark only rows this certificate-pin write revokes. An earlier revocation
     // stays unmarked, so a later trust change cannot spend a signed logout on it.
-    let pin_changed = previous.as_ref().is_none_or(|stored| {
-        idp_certificate_pin(stored) != idp_certificate_pin(source)
-    });
+    let pin_changed = previous
+        .as_ref()
+        .is_none_or(|stored| idp_certificate_pin(stored) != idp_certificate_pin(source));
     tx.put("sources", &source.id, source)?;
     if changed {
         for (_, mut session) in tx.list::<crate::model::Session>("sessions")? {
@@ -2624,9 +2636,7 @@ pub(crate) fn write_source(
                 && !session.revoked
             {
                 session.revoked = true;
-                if pin_changed
-                    && let Some(linked) = session.identity.source.as_mut()
-                {
+                if pin_changed && let Some(linked) = session.identity.source.as_mut() {
                     linked.pin_retired = true;
                 }
                 tx.put("sessions", &session.id, &session)?;

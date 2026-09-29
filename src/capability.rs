@@ -2,6 +2,8 @@
 //! running instance; a local binary without a configuration reports only its
 //! compiled catalog. Neither form grants an actor permission.
 
+#[cfg(feature = "platform")]
+use crate::model::Group;
 use crate::{
     agent,
     config::Config,
@@ -13,8 +15,6 @@ use crate::{
 };
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-#[cfg(feature = "platform")]
-use crate::model::Group;
 #[cfg(feature = "platform")]
 use std::sync::{
     Arc, Mutex, Weak,
@@ -115,7 +115,10 @@ impl RuntimeStatus {
         listener: &crate::radius::Listener,
     ) -> ListenerLease {
         let live = Arc::new(AtomicBool::new(false));
-        let mut listeners = self.radius.lock().unwrap_or_else(|error| error.into_inner());
+        let mut listeners = self
+            .radius
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let entries = listeners.entry(id.to_owned()).or_default();
         entries.retain(|(_, entry)| entry.strong_count() > 0);
         entries.push((listener.clone(), Arc::downgrade(&live)));
@@ -327,7 +330,10 @@ fn validate_ldap_listener_client(
     client: Option<&Client>,
 ) -> Result<()> {
     listener.validate().map_err(|error| {
-        Error::bad(format!("LDAP listener {id:?} is invalid: {}", error.message))
+        Error::bad(format!(
+            "LDAP listener {id:?} is invalid: {}",
+            error.message
+        ))
     })?;
     if let Some(client) = client {
         if ldap_client_eligible(tx, client)? {
@@ -909,13 +915,13 @@ mod tests {
     use super::*;
     use crate::{
         config::CapabilityActivation,
+        ldap_server::{Listener as LdapListener, Settings as LdapSettings},
         model::{
             ClientPatch, NewClient, NewUser, ProviderSettings,
             claims::{
                 ClaimMapping, ClaimSource, ConditionalClaimMapping, ConditionalPolicy, Predicate,
             },
         },
-        ldap_server::{Listener as LdapListener, Settings as LdapSettings},
         outpost::{Domain as ProxyDomain, Settings as ProxySettings},
         proxy_server::{Listener as ProxyListener, Target as ProxyTarget},
     };
@@ -988,7 +994,10 @@ mod tests {
         let servers = crate::ldap_server::start(core.clone()).await.unwrap();
         assert_eq!(servers.addresses.len(), 1);
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            while !core.runtime.ldap_running("local", &core.config.ldap_listeners["local"]) {
+            while !core
+                .runtime
+                .ldap_running("local", &core.config.ldap_listeners["local"])
+            {
                 tokio::task::yield_now().await;
             }
         })
@@ -999,8 +1008,12 @@ mod tests {
         assert_eq!(state["usable"], true);
         assert_eq!(state["reason"], Value::Null);
         let mut reconfigured = core.clone();
-        reconfigured.config.ldap_listeners.get_mut("local").unwrap().listen =
-            "127.0.0.1:38901".parse().unwrap();
+        reconfigured
+            .config
+            .ldap_listeners
+            .get_mut("local")
+            .unwrap()
+            .listen = "127.0.0.1:38901".parse().unwrap();
         let state = &runtime(&reconfigured).unwrap()["feature_states"]["directory.ldap_provider"];
         assert_eq!(state["configured"], true);
         assert_eq!(state["runtime_ready"], false);
@@ -1025,12 +1038,21 @@ mod tests {
         );
 
         let mut missing = core.clone();
-        missing.config.ldap_listeners.get_mut("local").unwrap().client_id = "missing".into();
+        missing
+            .config
+            .ldap_listeners
+            .get_mut("local")
+            .unwrap()
+            .client_id = "missing".into();
         let state = &runtime(&missing).unwrap()["feature_states"]["directory.ldap_provider"];
         assert_eq!(state["configured"], true);
         assert_eq!(state["usable"], false);
-        assert!(validate_store(&missing.config, &missing.store)
-            .unwrap_err().message.contains("LDAP listener"));
+        assert!(
+            validate_store(&missing.config, &missing.store)
+                .unwrap_err()
+                .message
+                .contains("LDAP listener")
+        );
 
         drop(servers);
         let state = &runtime(&core).unwrap()["feature_states"]["directory.ldap_provider"];
@@ -1515,22 +1537,14 @@ mod tests {
             String::from_utf8(fixture::document(&fixture::allow(), |_| {})).unwrap(),
         );
         manifest_only.validate().unwrap();
-        assert!(!configured(
-            CAPABILITY,
-            &manifest_only,
-            &Facts::default()
-        ));
+        assert!(!configured(CAPABILITY, &manifest_only, &Facts::default()));
 
         let mut mismatched_key = active.clone();
         let stored = mismatched_key.workflows.remove("risk-route").unwrap();
         mismatched_key
             .workflows
             .insert("other-route".into(), stored);
-        assert!(!configured(
-            CAPABILITY,
-            &mismatched_key,
-            &Facts::default()
-        ));
+        assert!(!configured(CAPABILITY, &mismatched_key, &Facts::default()));
 
         let mut rejected = active.clone();
         rejected.workflow_extensions.insert(
@@ -1681,10 +1695,7 @@ fn supported_extension_config(active: bool) -> Config {
     let mut config = Config::default();
     config.workflows.insert(
         definition.id.as_str().to_owned(),
-        crate::workflow::ConfiguredWorkflow {
-            active,
-            definition,
-        },
+        crate::workflow::ConfiguredWorkflow { active, definition },
     );
     config.workflow_extensions.insert(
         "risk-check".into(),
@@ -1750,9 +1761,7 @@ mod essentials_controlled_extensions {
         ));
         let populated = supported_extension_config(true);
         assert!(!configured(CAPABILITY, &populated, &Facts::default()));
-        assert!(
-            !(compiled(CAPABILITY) && configured(CAPABILITY, &populated, &Facts::default()))
-        );
+        assert!(!(compiled(CAPABILITY) && configured(CAPABILITY, &populated, &Facts::default())));
 
         let dir = tempfile::tempdir().unwrap();
         let core = Core::initialize(

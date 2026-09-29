@@ -676,7 +676,14 @@ impl Core {
                     if let Some(recipient) = recipient {
                         let mut recovery_user = user;
                         recovery_user.email = Some(recipient);
-                        enqueue(self, tx, &recovery_user, Purpose::Reset, BTreeSet::new(), None)?;
+                        enqueue(
+                            self,
+                            tx,
+                            &recovery_user,
+                            Purpose::Reset,
+                            BTreeSet::new(),
+                            None,
+                        )?;
                     }
                 }
             }

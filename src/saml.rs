@@ -123,7 +123,6 @@ impl Settings {
         }
         Ok(scopes)
     }
-
 }
 fn claim_scope<'a>(client: &'a Client, claim: &str) -> Result<&'a str> {
     match claim {
@@ -276,7 +275,12 @@ pub enum Reply {
     },
     Redirect(String),
 }
-pub(crate) fn post(target: String, xml: String, relay: Option<String>, cookies: Vec<String>) -> Reply {
+pub(crate) fn post(
+    target: String,
+    xml: String,
+    relay: Option<String>,
+    cookies: Vec<String>,
+) -> Reply {
     let mut fields = vec![("SAMLResponse".into(), STANDARD.encode(xml))];
     if let Some(state) = relay {
         fields.push(("RelayState".into(), state));
@@ -415,10 +419,7 @@ pub fn import_sp_metadata(
 
 pub(crate) fn consent(tx: &impl SamlTx, user_id: &str, client: &Client) -> Result<Option<Value>> {
     let key = digest(&format!("{user_id}\0{}", client.id));
-    let Some(consent) = tx
-        .consent_record(&key)?
-        .filter(|c| c.expires_at > now())
-    else {
+    let Some(consent) = tx.consent_record(&key)?.filter(|c| c.expires_at > now()) else {
         return Ok(None);
     };
     let Some(settings) = &client.settings.saml else {

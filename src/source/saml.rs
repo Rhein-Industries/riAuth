@@ -1,4 +1,6 @@
 //! SAML source: signed SP requests, pinned responses, explicit links and terminal completion.
+pub use super::saml_types::Settings;
+pub(crate) use super::saml_types::UpstreamSession;
 use super::{Login, Source, UpstreamIdentity};
 use crate::{
     core::{Core, audit, validate_display, validate_email, validate_name},
@@ -16,8 +18,6 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use roxmltree::{Document, Node};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
-pub use super::saml_types::Settings;
-pub(crate) use super::saml_types::UpstreamSession;
 impl Settings {
     pub fn validate(&self, source: &Source) -> Result<()> {
         crate::saml::entity_id(&source.issuer)?;
@@ -178,8 +178,8 @@ impl Core {
                 audit(tx, "upstream", "source.login_failed", id)?;
                 return Ok(Claim::Retired);
             }
-            let source = source
-                .ok_or_else(|| Error::bad("SAML source request expired or already used"))?;
+            let source =
+                source.ok_or_else(|| Error::bad("SAML source request expired or already used"))?;
             let settings = source
                 .saml
                 .as_ref()
@@ -290,9 +290,9 @@ impl Core {
             .filter(|value| value.len() <= 256)
             .map(str::to_owned);
         let returned_digest = digest(returned);
-        let outcome = self.store.write(|tx| {
-            take_browser_return(tx, id, started.as_deref(), &returned_digest)
-        })?;
+        let outcome = self
+            .store
+            .write(|tx| take_browser_return(tx, id, started.as_deref(), &returned_digest))?;
         match outcome {
             BrowserReturn::Confirmed => Ok(()),
             BrowserReturn::Burned => Err(super::browser_mismatch()),
@@ -354,8 +354,7 @@ fn take_browser_return(
         audit(tx, "upstream", "source.login_failed", id)?;
         return Ok(BrowserReturn::Retired);
     }
-    if !super::browser_binding_matches(pending.browser_binding.as_deref().unwrap_or(""), started)
-    {
+    if !super::browser_binding_matches(pending.browser_binding.as_deref().unwrap_or(""), started) {
         pending.failed = true;
         pending.result = None;
         super::clear_browser_return(tx, &pending)?;

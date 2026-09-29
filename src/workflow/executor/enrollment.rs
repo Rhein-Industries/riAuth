@@ -208,12 +208,7 @@ fn verified_session(
     }
     let mut auth_time = None;
     let mut source_link = None;
-    for (recorded, proof) in run
-        .record
-        .steps
-        .iter()
-        .zip([Proof::Session, mode.proof()])
-    {
+    for (recorded, proof) in run.record.steps.iter().zip([Proof::Session, mode.proof()]) {
         let step = checked.step(&recorded.step).ok_or_else(Error::forbidden)?;
         if recorded.signal != Label::fixed("verified")
             || step.action.proof(&recorded.signal) != Some(proof)
