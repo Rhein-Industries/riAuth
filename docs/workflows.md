@@ -1175,9 +1175,11 @@ when that terminal exists, and as cancelled otherwise. It writes no evidence
 and issues no grant. The stored failure is `policy_changed`
 (`Workflow policy changed`) when the snapshot disagrees with the pin, the
 configured entry is missing or inactive, the live revision is higher, the live
-fingerprint or policy digest differs, the retained pin differs, the request row
-is missing, or a bound authorization or consent client fingerprint no longer
-matches. It is `rolled_back` (`Workflow version was rolled back`) when the live
+fingerprint or policy digest differs, the retained pin is missing or differs,
+the request row is missing, or a bound authorization or consent client
+fingerprint no longer matches. Reopening the store keeps the retained pin, and
+a denial recorded before the reopen is still denied. It is `rolled_back`
+(`Workflow version was rolled back`) when the live
 revision is below the pin or below the retained pin. It is `user_disabled`
 (`Workflow account is disabled`) when the user row is missing or disabled.
 A disabled account fails the old bearer before a later resume, so the seal is

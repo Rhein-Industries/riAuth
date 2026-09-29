@@ -125,12 +125,10 @@ pub(super) fn reviewed_failure(
         return Ok(Some(ReviewedFailure::PolicyChanged));
     }
     let live_fingerprint = entry.definition.fingerprint();
-    let stored = tx.get::<ReviewedPin>(REVIEWED, id)?;
-    if entry.definition.revision < pin.revision
-        || stored
-            .as_ref()
-            .is_some_and(|stored| entry.definition.revision < stored.revision)
-    {
+    let Some(stored) = tx.get::<ReviewedPin>(REVIEWED, id)? else {
+        return Ok(Some(ReviewedFailure::PolicyChanged));
+    };
+    if entry.definition.revision < pin.revision || entry.definition.revision < stored.revision {
         return Ok(Some(ReviewedFailure::RolledBack));
     }
     let live_policy = policy_digest(
@@ -142,7 +140,7 @@ pub(super) fn reviewed_failure(
     if entry.definition.revision > pin.revision
         || live_fingerprint != pin.fingerprint
         || live_policy != pin.policy
-        || stored.as_ref().is_some_and(|stored| stored != pin)
+        || &stored != pin
     {
         return Ok(Some(ReviewedFailure::PolicyChanged));
     }
@@ -392,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_policy_change_seals_and_rejects_replay_and_restart() {
+    fn configured_policy_change_seals_and_rejects_replay_and_a_new_start() {
         let (_dir, mut core, token) = start_core(1);
         let started = core
             .workflow_configured_start(&token, "local-password")
@@ -724,5 +722,107 @@ mod tests {
             1
         );
         assert_denied(&saved(&core, &started.id), "user_disabled");
+    }
+
+    #[test]
+    fn missing_retained_pin_seals_the_open_run() {
+        let (_dir, core, token) = start_core(1);
+        let started = core
+            .workflow_configured_start(&token, "local-password")
+            .unwrap();
+        assert!(matches!(
+            saved(&core, &started.id).record.state,
+            RunState::Active { .. }
+        ));
+        core.store
+            .write(|tx| tx.delete(REVIEWED, "local-password"))
+            .unwrap();
+        assert!(
+            core.store
+                .get::<ReviewedPin>(REVIEWED, "local-password")
+                .unwrap()
+                .is_none()
+        );
+        let rejected = core
+            .workflow_password(&token, &started.id, PASSWORD.into())
+            .unwrap_err();
+        assert_eq!(rejected.message, "Workflow policy changed");
+        assert_denied(&saved(&core, &started.id), "policy_changed");
+        let resumed = core.workflow_resume(&token, &started.id).unwrap();
+        assert_eq!(resumed.reviewed_failure.as_deref(), Some("policy_changed"));
+        assert!(
+            core.workflow_password(&token, &started.id, PASSWORD.into())
+                .is_err()
+        );
+        assert_denied(&saved(&core, &started.id), "policy_changed");
+    }
+
+    #[test]
+    fn reviewed_pin_and_denial_survive_core_reopen() {
+        let (dir, core, token) = start_core(1);
+        let started = core
+            .workflow_configured_start(&token, "local-password")
+            .unwrap();
+        let original_policy = started.reviewed_policy.clone().unwrap();
+        let original_fingerprint = started.binding.fingerprint.clone();
+        let mut config = core.config.clone();
+        config
+            .workflows
+            .get_mut("local-password")
+            .unwrap()
+            .definition
+            .steps[0]
+            .timeout_seconds = 30;
+        drop(core);
+        assert!(dir.path().join("riauth.redb").is_file());
+
+        let core = Core::open(config.clone()).unwrap();
+        let stored = core
+            .store
+            .get::<ReviewedPin>(REVIEWED, "local-password")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.revision, 1);
+        assert_eq!(stored.fingerprint, original_fingerprint);
+        assert_eq!(stored.policy, original_policy);
+        assert!(matches!(
+            saved(&core, &started.id).record.state,
+            RunState::Active { .. }
+        ));
+        let rejected = core
+            .workflow_password(&token, &started.id, PASSWORD.into())
+            .unwrap_err();
+        assert_eq!(rejected.message, "Workflow policy changed");
+        assert_denied(&saved(&core, &started.id), "policy_changed");
+        drop(core);
+
+        let core = Core::open(config).unwrap();
+        let stored = core
+            .store
+            .get::<ReviewedPin>(REVIEWED, "local-password")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.revision, 1);
+        assert_eq!(stored.fingerprint, original_fingerprint);
+        assert_eq!(stored.policy, original_policy);
+        let resumed = core.workflow_resume(&token, &started.id).unwrap();
+        assert_eq!(resumed.reviewed_failure.as_deref(), Some("policy_changed"));
+        assert!(
+            core.workflow_password(&token, &started.id, PASSWORD.into())
+                .is_err()
+        );
+        assert_denied(&saved(&core, &started.id), "policy_changed");
+        let blocked = core
+            .workflow_configured_start(&token, "local-password")
+            .unwrap_err();
+        assert_eq!(blocked.message, "Workflow policy changed");
+        let stored = core
+            .store
+            .get::<ReviewedPin>(REVIEWED, "local-password")
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.revision, 1);
+        assert_eq!(stored.fingerprint, original_fingerprint);
+        assert_eq!(stored.policy, original_policy);
     }
 }
