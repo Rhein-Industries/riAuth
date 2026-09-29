@@ -49,12 +49,12 @@ pub use crate::cloud_directory_types::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Provider {
+pub(crate) enum Provider {
     Workspace,
     Entra,
 }
 impl Provider {
-    fn parse(value: &str) -> Result<Self> {
+    pub(crate) fn parse(value: &str) -> Result<Self> {
         match value {
             "workspace" => Ok(Self::Workspace),
             "entra" => Ok(Self::Entra),
@@ -1818,7 +1818,7 @@ impl Core {
         Ok(())
     }
 
-    fn cloud_mode(&self, provider: Provider, id: &str) -> ReconciliationMode {
+    pub(crate) fn cloud_mode(&self, provider: Provider, id: &str) -> ReconciliationMode {
         let modes = match provider {
             Provider::Workspace => &self.config.workspace_reconciliation_modes,
             Provider::Entra => &self.config.entra_reconciliation_modes,
@@ -1912,48 +1912,6 @@ impl Core {
                 })
             }
         }
-    }
-    pub fn cloud_directories(&self, token: &str, kind: &str) -> Result<Value> {
-        let provider = Provider::parse(kind)?;
-        self.store.read(|tx| {
-            let actor = self.principal(tx, token)?;
-            let rows = match provider {
-                Provider::Workspace => self
-                    .config
-                    .workspace_directories
-                    .iter()
-                    .filter(|(id, _)| actor.allows("directory.read", &format!("workspace/{id}")))
-                    .map(|(id, directory)| {
-                        json!({
-                            "id": id,
-                            "kind": "workspace",
-                            "customer_id": directory.customer_id,
-                            "domain": directory.domain,
-                            "directory_url": directory.directory_url,
-                            "groups": directory.groups.keys().collect::<Vec<_>>(),
-                            "reconciliation_mode": self.cloud_mode(provider, id),
-                        })
-                    })
-                    .collect::<Vec<_>>(),
-                Provider::Entra => self
-                    .config
-                    .entra_directories
-                    .iter()
-                    .filter(|(id, _)| actor.allows("directory.read", &format!("entra/{id}")))
-                    .map(|(id, directory)| {
-                        json!({
-                            "id": id,
-                            "kind": "entra",
-                            "tenant_id": directory.tenant_id,
-                            "graph_url": directory.graph_url,
-                            "groups": directory.groups.keys().collect::<Vec<_>>(),
-                            "reconciliation_mode": self.cloud_mode(provider, id),
-                        })
-                    })
-                    .collect::<Vec<_>>(),
-            };
-            Ok(json!(rows))
-        })
     }
     pub fn cloud_plan_get(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
