@@ -3,7 +3,6 @@ use crate::{
     core::{Core, audit, validate_name},
     crypto::{digest, now},
     error::{Error, Result},
-    model::Group,
     reconciliation::{CloudControllerCheck, controller_fingerprint},
 };
 use axum::http::StatusCode;
@@ -128,18 +127,8 @@ impl Core {
             }
             _ => unreachable!(),
         };
-        let missing_local_groups = self.store.read(|tx| {
-            self.management(tx, token, "directory.read", &scope)?;
-            let mut missing = Vec::new();
-            if let Some(groups) = configuration["groups"].as_object() {
-                for name in groups.keys() {
-                    if tx.get::<Group>("groups", name)?.is_none() {
-                        missing.push(name.clone());
-                    }
-                }
-            }
-            Ok(missing)
-        })?;
+        let missing_local_groups =
+            self.cloud_operation_missing_groups(token, &scope, &configuration)?;
         // Existing reconciliation APIs already filter by the caller's sync authority.
         let can_sync = self
             .store

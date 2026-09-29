@@ -1,9 +1,29 @@
 //! Scoped cloud-directory catalog read over concrete storage.
 
-use crate::{cloud_directory::Provider, core::Core, error::Result};
+use crate::{cloud_directory::Provider, core::Core, error::Result, model::Group};
 use serde_json::{Value, json};
 
 impl Core {
+    pub(crate) fn cloud_operation_missing_groups(
+        &self,
+        token: &str,
+        scope: &str,
+        configuration: &Value,
+    ) -> Result<Vec<String>> {
+        self.store.read(|tx| {
+            self.management(tx, token, "directory.read", scope)?;
+            let mut missing = Vec::new();
+            if let Some(groups) = configuration["groups"].as_object() {
+                for name in groups.keys() {
+                    if tx.get::<Group>("groups", name)?.is_none() {
+                        missing.push(name.clone());
+                    }
+                }
+            }
+            Ok(missing)
+        })
+    }
+
     pub fn cloud_directories(&self, token: &str, kind: &str) -> Result<Value> {
         let provider = Provider::parse(kind)?;
         self.store.read(|tx| {

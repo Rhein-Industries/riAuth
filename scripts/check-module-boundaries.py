@@ -530,6 +530,24 @@ def main() -> None:
                 or re.search(r"\bmaintenance_page\s*::\s*<\s*Cloud(?:Snapshot|Apply)Draft\s*>", cleanup)
             ):
                 errors.append("src/cloud_directory.rs: snapshot retention belongs in assembly")
+        if path == SRC / "cloud_operations.rs":
+            operations = rust_function_body(masked_rust_source(path.read_text()), "cloud_operations")
+            missing_groups = rust_function_body(
+                masked_rust_source((SRC / "assembly/cloud_directory_catalog.rs").read_text()),
+                "cloud_operation_missing_groups",
+            )
+            if (
+                operations is None
+                or not re.search(r"\bcloud_operation_missing_groups\s*\(", operations)
+                or re.search(r"\btx\s*\.\s*get\s*::<\s*Group\s*>", operations)
+                or missing_groups is None
+                or not re.search(r"\.\s*store\s*\.\s*read\s*\(", missing_groups)
+                or not re.search(
+                    r"\bmanagement\s*\([\s\S]*\btx\s*\.\s*get\s*::<\s*Group\s*>",
+                    missing_groups,
+                )
+            ):
+                errors.append("src/cloud_operations.rs: authorized local-group lookup belongs in assembly")
         if path == SRC / "source.rs" and rust_function_body(
             masked_rust_source(path.read_text()), "source_list"
         ) is not None:

@@ -3326,6 +3326,44 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
     fixture.assert_http_mutation_snapshot(&before);
 }
 
+#[test]
+fn cloud_operations_group_mapping_read_keeps_scope_and_local_state() {
+    let directory = serve(
+        "workspace",
+        vec![person("ws-1", "alice@example.test", "Alice", true)],
+        SECRET,
+    );
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "workspace", "corp", &directory, "");
+    let outside = agent_token(
+        &fixture,
+        "outside-cloud-read",
+        vec![permission("directory.read", "workspace/other")],
+    );
+    assert_eq!(
+        fixture
+            .core
+            .cloud_operations(&outside, "workspace", "corp")
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+    let missing = fixture
+        .core
+        .cloud_operations(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(missing["validation"]["valid"], false);
+    assert_eq!(missing["validation"]["missing_local_groups"], json!(["staff"]));
+
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
+    let ready = fixture
+        .core
+        .cloud_operations(&fixture.admin, "workspace", "corp")
+        .unwrap();
+    assert_eq!(ready["validation"]["valid"], true);
+    assert_eq!(ready["validation"]["missing_local_groups"], json!([]));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn browser_cloud_operations_report_mapping_and_rotation_without_secrets() {
     use axum::{
