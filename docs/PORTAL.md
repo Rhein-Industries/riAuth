@@ -262,6 +262,24 @@ operating system. The viewport is CSS only, and this is not a screen reader.
 Hardware authenticators, synced passkeys, a phone hybrid, real mobile
 devices, and external email remain open, and this Playwright project is not
 a CI job.
+`tools/browser/invitation-passkey.spec.js` is a separate headless journey on
+the same 390×844 CSS viewport. The fixture opts in to its loopback SMTP capture
+and sends three invitations. Chromium installs one CDP virtual authenticator.
+A whitespace-only passkey name leaves the invitation unused. An expired
+invitation reports that it has expired, hides the form, and does not create a
+credential. Accepting with a named passkey returns `completed` and
+`login_required`, sets no session cookie, and leaves `GET /api/portal`
+unauthorized. Opening that same link again reports that it was already used
+and does not create a second passkey. A second invitation still accepts a
+password, sets no session cookie, and rejects a replay. The password and the
+new passkey each sign in afterwards. Firefox and WebKit skip this journey
+because the CDP virtual authenticator exists only in Chromium. The
+authenticator is not a physical security key, a synced passkey, a phone, or a
+mobile operating system. The capture is the fixture's loopback SMTP listener,
+not an external mailbox. The viewport is CSS only, and this is not a screen
+reader. Hardware authenticators, synced passkeys, a phone hybrid, real mobile
+devices, screen readers, and external email remain open, and this Playwright
+project is not a CI job.
 `CARGO_TARGET_DIR` selects the fixture binary, so the example can be built in a
 private target directory:
 

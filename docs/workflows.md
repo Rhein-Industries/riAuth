@@ -884,8 +884,9 @@ the registration ceremony, with no authenticated session. Receipt consumption an
 produce one success and one used-link error; replay cannot create a second
 credential or run. Essentials enforces the same credential transaction without
 workflow records. Success returns `{"completed":true,"login_required":true}`;
-the recipient signs in separately. The existing browser invitation page still
-offers password acceptance; the passkey endpoints are for authenticator clients.
+the recipient signs in separately. The browser invitation page still accepts a
+password, and when WebAuthn is available it also offers this passkey enrollment
+through the same three endpoints. That choice creates no session.
 
 ## Source reauthentication
 

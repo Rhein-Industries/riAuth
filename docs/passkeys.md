@@ -59,9 +59,15 @@ bound invitation and enrollment receipts through its W03 completion boundary.
 Success returns `{"completed":true,"login_required":true}`. The recipient then
 signs in with the new passkey; enrollment creates no session. Agent-origin or
 help-desk credential exposure is retained, and invitation acceptance does not
-establish independent authority for human privilege elevation. The current
-browser invitation page still offers password acceptance; these split passkey
-endpoints are for authenticator clients.
+establish independent authority for human privilege elevation. The browser
+invitation page still accepts a password through
+`POST /api/portal/account/accept`. When that browser can create a passkey, the
+same page also posts the invitation token and a passkey name to
+`/api/account/accept/passkey/start`, then the authenticator response to
+`/finish`, or `/cancel` if the attempt stops. The page does not choose the
+account, mint a session, or rewrite the WebAuthn origin. An expired, used,
+revoked, or replaced invitation hides the form. Authenticator clients keep
+calling these endpoints directly.
 
 ## Passkeys from the terminal
 

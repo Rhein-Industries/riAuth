@@ -9,8 +9,12 @@
 //!
 //! `RIAUTH_FIXTURE_MAIL_CAPTURE=1` binds a loopback SMTP sink, enables email
 //! recovery for that process, verifies the `recovery` user, and appends each
-//! captured message as one JSON line. Other suites leave the variable unset, so
-//! mail stays off. The sink is not an external mailbox and it is not a product API.
+//! captured message as one JSON line. It also invites `invite-passkey`,
+//! `invite-password`, and `invite-expired`. After those messages are captured,
+//! `invite-expired`'s proof is moved to the past so a browser can open it
+//! without waiting seven days. Startup JSON does not include invitation tokens.
+//! Other suites leave the variable unset, so mail stays off. The sink is not an
+//! external mailbox and it is not a product API.
 use riauth::{config::Config, core::Core, crypto, model::*, portal::Settings};
 use serde_json::{Map, Value, json};
 use std::{
@@ -215,6 +219,142 @@ fn pump_mail(core: Core) {
     });
 }
 
+fn invite(core: &Core, admin: &str, username: &str, display_name: &str) -> anyhow::Result<()> {
+    let invited = core.account_invite(
+        admin,
+        riauth::lifecycle::Invitation {
+            username: username.into(),
+            email: format!("{username}@example.test"),
+            display_name: display_name.into(),
+            groups: Default::default(),
+        },
+    )?;
+    anyhow::ensure!(
+        invited["delivery_queued"] == Value::Bool(true),
+        "invitation mail was not queued"
+    );
+    Ok(())
+}
+
+fn decode_quoted_printable(body: &str) -> String {
+    let bytes = body.as_bytes();
+    let mut out = String::with_capacity(body.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'=' {
+            if bytes.get(index + 1) == Some(&b'\n') {
+                index += 2;
+                continue;
+            }
+            if bytes.get(index + 1) == Some(&b'\r') && bytes.get(index + 2) == Some(&b'\n') {
+                index += 3;
+                continue;
+            }
+            if let Some(hex) = bytes.get(index + 1..index + 3)
+                && hex.iter().all(u8::is_ascii_hexdigit)
+                && let Ok(text) = std::str::from_utf8(hex)
+                && let Ok(value) = u8::from_str_radix(text, 16)
+            {
+                out.push(char::from(value));
+                index += 3;
+                continue;
+            }
+        }
+        out.push(char::from(bytes[index]));
+        index += 1;
+    }
+    out
+}
+
+fn message_text(raw: &str) -> String {
+    let normalized = raw.replace("\r\n", "\n");
+    let Some((headers, body)) = normalized.split_once("\n\n") else {
+        return normalized;
+    };
+    if headers
+        .to_ascii_lowercase()
+        .contains("content-transfer-encoding: quoted-printable")
+    {
+        decode_quoted_printable(body)
+    } else {
+        body.to_owned()
+    }
+}
+
+fn captured_messages(path: &Path) -> anyhow::Result<Vec<String>> {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let mut messages = Vec::new();
+    for line in text.lines().filter(|line| !line.is_empty()) {
+        let value: Value = serde_json::from_str(line)?;
+        let body = value["body"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("mail capture record has no body"))?;
+        messages.push(message_text(body));
+    }
+    Ok(messages)
+}
+
+fn invitation_token(messages: &[String], username: &str) -> Option<String> {
+    let account = format!("Account: {username}");
+    messages.iter().find_map(|message| {
+        let lines: Vec<&str> = message.lines().map(str::trim).collect();
+        if !lines.iter().any(|line| *line == account) {
+            return None;
+        }
+        let index = lines
+            .iter()
+            .position(|line| *line == "Paste this one-use code when asked:")?;
+        let token = lines.get(index + 1)?.trim();
+        if token.starts_with("ri_mail_")
+            && token.len() <= 128
+            && token
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        {
+            Some(token.to_owned())
+        } else {
+            None
+        }
+    })
+}
+
+async fn capture_invitations(core: &Core, path: &Path) -> anyhow::Result<Vec<String>> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    loop {
+        riauth::lifecycle::deliver(core.clone()).await?;
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let messages = captured_messages(path)?;
+        let invitations = messages
+            .into_iter()
+            .filter(|message| message.contains("Your riAuth account invitation"))
+            .collect::<Vec<_>>();
+        if invitations.len() >= 3 {
+            return Ok(invitations);
+        }
+        if std::time::Instant::now() >= deadline {
+            anyhow::bail!("fixture invitation mail was not captured");
+        }
+    }
+}
+
+/// The invitation lifetime is seven days. Move one captured proof into the past
+/// instead of waiting, and do not print the token.
+fn expire_invitation(core: &Core, token: &str) -> anyhow::Result<()> {
+    let hash = riauth::crypto::digest(token);
+    let expired = core.store.write(|tx| {
+        let Some(mut proof) = tx.get::<Value>("account_proofs", &hash)? else {
+            return Ok(false);
+        };
+        proof["expires_at"] = json!(1u64);
+        tx.put("account_proofs", &hash, &proof)?;
+        Ok(tx
+            .get::<Value>("account_proofs", &hash)?
+            .is_some_and(|value| value["expires_at"].as_u64() == Some(1)))
+    })?;
+    anyhow::ensure!(expired, "invitation proof could not be expired");
+    Ok(())
+}
+
 fn client(core: &Core, admin: &str, redirect_uri: &str, c: Client<'_>) -> anyhow::Result<()> {
     core.create_client(
         admin,
@@ -355,11 +495,33 @@ async fn main() -> anyhow::Result<()> {
             "recovery email was not verified"
         );
         users.insert("recovery".into(), account);
+        for (username, display_name) in [
+            ("invite-passkey", "Ivy Invite"),
+            ("invite-password", "Ida Password"),
+            ("invite-expired", "Eve Expired"),
+        ] {
+            invite(&core, &token, username, display_name)?;
+        }
     }
-    let mail_capture_path = mail_capture.map(|capture| {
+    let mail_capture_path = if let Some(capture) = mail_capture {
+        let messages = capture_invitations(&core, &capture.path).await?;
+        let expired = invitation_token(&messages, "invite-expired")
+            .ok_or_else(|| anyhow::anyhow!("expired invitation was not captured"))?;
+        let passkey = invitation_token(&messages, "invite-passkey")
+            .ok_or_else(|| anyhow::anyhow!("passkey invitation was not captured"))?;
+        let password = invitation_token(&messages, "invite-password")
+            .ok_or_else(|| anyhow::anyhow!("password invitation was not captured"))?;
+        anyhow::ensure!(
+            expired != passkey && expired != password && passkey != password,
+            "invitation tokens were not distinct"
+        );
+        expire_invitation(&core, &expired)?;
+        drop((expired, passkey, password));
         pump_mail(core.clone());
-        capture.path.to_string_lossy().into_owned()
-    });
+        Some(capture.path.to_string_lossy().into_owned())
+    } else {
+        None
+    };
     // Review-specific suites opt in after ordinary fixture clients are populated.
     core.config.reviewed_client_creation =
         std::env::var("RIAUTH_FIXTURE_REVIEWED_CLIENT_CREATION").as_deref() == Ok("1");

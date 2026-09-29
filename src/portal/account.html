@@ -27,6 +27,12 @@
       <p id="account-note" class="field-hint" hidden></p>
       <button id="account-submit" class="button primary" type="submit">Continue</button>
     </form>
+    <form id="account-passkey-form" data-capability="identity.passkeys" hidden aria-labelledby="account-passkey-title">
+      <h2 id="account-passkey-title">Add a passkey</h2>
+      <p id="account-passkey-hint" class="field-hint">Name this passkey. You sign in with it afterwards. This page does not sign you in.</p>
+      <div class="field"><label for="account-passkey-name">Passkey name</label><input id="account-passkey-name" autocomplete="off" maxlength="200" spellcheck="false" aria-describedby="account-passkey-hint"></div>
+      <button id="account-passkey-submit" class="button secondary" type="submit">Accept with a passkey</button>
+    </form>
     <section id="account-complete" hidden aria-live="polite" tabindex="-1">
       <h2 id="account-complete-title"></h2>
       <p id="account-complete-text"></p>

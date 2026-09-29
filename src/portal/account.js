@@ -11,6 +11,10 @@
   const confirm = $("account-confirm");
   const username = $("account-username");
   const error = $("account-error");
+  const passkeyForm = $("account-passkey-form");
+  const passkeyName = $("account-passkey-name");
+  const passkeyButton = $("account-passkey-submit");
+  let passkey = null;
   let token = new URLSearchParams(location.hash.slice(1)).get("token");
   // Remove the proof from the address bar and browser history before showing actions.
   if (location.hash) history.replaceState(history.state, "", `${location.pathname}${location.search}`);
@@ -27,7 +31,10 @@
     if (terminal) {
       token = null;
       form.hidden = true;
+      passkeyForm.hidden = true;
       $("account-fallback").hidden = false;
+      void passkey?.flow.cancel();
+      passkey = null;
     }
     error.focus();
   }
@@ -119,10 +126,18 @@
     } else if (mode !== "request" && state && feature && !RiAuthCapabilities.compiled(feature) && !form.hidden) {
       fail("This account action isn't available on this server. Contact your administrator.", true);
     }
+    showPasskeyChoice();
   }
   void refreshCapabilities();
 
-  window.addEventListener("pagehide", () => { token = null; clearSecrets(); });
+  window.addEventListener("pagehide", () => {
+    token = null;
+    clearSecrets();
+    passkeyName.value = "";
+    passkeyName.removeAttribute("aria-invalid");
+    void passkey?.flow.cancel();
+    passkey = null;
+  });
   // A newer email link opened in this tab changes only the fragment; start over with it.
   window.addEventListener("hashchange", () => {
     if (new URLSearchParams(location.hash.slice(1)).has("token")) location.reload();
@@ -136,8 +151,24 @@
     }
   });
 
+  function showPasskeyChoice() {
+    const offer = mode === "accept" && !form.hidden && !!token && RiAuth.passkeysAvailable() && RiAuthCapabilities.usable("identity.passkeys");
+    passkeyForm.hidden = !offer;
+    if (offer) $("account-description").textContent = "Set a password, or add a passkey, to activate your account. You will sign in after accepting the invitation.";
+  }
+  function passkeyProblem(failure) {
+    if (failure?.name === "NotAllowedError" || failure?.name === "AbortError") return ["Adding the passkey was cancelled or timed out. The invitation is still available. Select the button to try again.", false];
+    if (failure?.name === "InvalidStateError") return ["This authenticator already has a passkey for this account. Choose another authenticator. The invitation is still available.", false];
+    if (failure?.code === "invalid_request" && failure.description === "Passkey registration verification failed") return ["The passkey could not be verified. The invitation is still available. Try again.", false];
+    if (failure?.code === "conflict") return [failure.description || "This passkey is already enrolled. The invitation is still available.", false];
+    if (failure?.code || failure?.status === 0 || failure?.status) return proofIssue(failure);
+    return ["Could not add the passkey. The invitation is still available. Try again.", false];
+  }
   function complete(title, heading, text, link) {
     form.hidden = true;
+    passkeyForm.hidden = true;
+    void passkey?.flow.cancel();
+    passkey = null;
     error.hidden = true;
     $("account-description").hidden = true;
     $("account-title").textContent = title;
@@ -193,6 +224,48 @@
       } finally {
         input.token = "";
         if (input.password) input.password = "";
+      }
+    });
+  });
+
+  // Password acceptance posts only {token, password}. This choice uses the
+  // invitation passkey API and shows success only when sign-in is still required.
+  passkeyForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (mode !== "accept" || !token || passkeyForm.hidden) return;
+    const name = passkeyName.value.trim();
+    if (!name) {
+      passkeyName.setAttribute("aria-invalid", "true");
+      passkeyName.setAttribute("aria-describedby", "account-passkey-hint account-error");
+      fail("Passkey name must not be blank.");
+      return;
+    }
+    passkeyName.removeAttribute("aria-invalid");
+    passkeyName.setAttribute("aria-describedby", "account-passkey-hint");
+    RiAuth.inFlight(passkeyButton, async () => {
+      error.hidden = true;
+      const proof = token;
+      try {
+        if (!passkey || passkey.name !== name) {
+          await passkey?.flow.cancel();
+          const flow = RiAuth.passkeyFlow(
+            () => RiAuth.post("api/account/accept/passkey/start", { token: proof, name }),
+            (credential, started) => RiAuth.post("api/account/accept/passkey/finish", { token: proof, ceremony: started.ceremony, response: credential }),
+            true,
+            (started) => RiAuth.post("api/account/accept/passkey/cancel", { token: proof, ceremony: started.ceremony })
+          );
+          passkey = { name, flow };
+        }
+        const result = await passkey.flow();
+        token = null;
+        passkey = null;
+        if (result?.completed !== true || result?.login_required !== true) {
+          fail("The invitation response was incomplete. Try signing in. If that fails, ask your administrator for a new invitation.", true);
+          return;
+        }
+        complete("Invitation accepted", "Your account is ready", "Sign in with your new passkey to open your applications. This page did not sign you in.", "Continue to sign in");
+      } catch (failure) {
+        fail(...passkeyProblem(failure));
       }
     });
   });
