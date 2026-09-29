@@ -75,6 +75,7 @@ use crate::{
     directory::{Binding as DirectoryBinding, binding_key as directory_binding_key},
     error::{Error, Result},
     jose::ClientAuthMethod,
+    keyring::KeyInput,
     lifecycle::{Invitation, InvitationReservation, Purpose},
     model::{Client, Group, NewUser, ProviderSettings, Session, User, UserPatch, UserView},
     registration::{
@@ -318,6 +319,96 @@ pub(crate) fn revoke_agent(core: &Core, tx: &Tx<'_>, token: &str, id: &str) -> R
     tx.delete("agent_tokens", &agent.token_hash)?;
     audit(tx, &actor.id, "agent.revoke", id)?;
     Ok(agent.view())
+}
+
+/// Authorize a direct key-domain create or replacement and commit its public
+/// response, active key, retired verification keys and audit in one mutation.
+/// The caller's receipt lookup precedes signer proof and local key generation.
+pub(crate) fn configure_signing_key(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    input: KeyInput,
+) -> Result<Value> {
+    let actor = core.management(tx, token, "key.write", &format!("key/{}", input.id))?;
+    let replacement = if let Some(name) = &input.remote_signer {
+        if input.private_key_pem.is_some() || input.kid.is_some() {
+            return Err(Error::bad(
+                "External keys use the pinned public key and kid from server configuration",
+            ));
+        }
+        let key = core.external_signing_key(name)?;
+        if key.algorithm != input.algorithm {
+            return Err(Error::bad(
+                "External signer algorithm differs from requested algorithm",
+            ));
+        }
+        key
+    } else {
+        match input.private_key_pem {
+            Some(pem) => SigningKey::import(&input.algorithm, &pem, input.kid)?,
+            None => {
+                if input.kid.is_some() {
+                    return Err(Error::bad(
+                        "Explicit kid is supported when importing a private key",
+                    ));
+                }
+                SigningKey::generate_algorithm(&input.algorithm)?
+            }
+        }
+    };
+
+    if crate::keyring::public_keys(tx)?
+        .iter()
+        .any(|key| key["kid"] == replacement.kid)
+    {
+        return Err(Error::conflict("Signing key id is already in use"));
+    }
+    let existing: Option<crate::crypto::Keys> = if input.id == "signing" {
+        Some(keys(tx)?)
+    } else {
+        tx.get("key_domains", &input.id)?
+    };
+    let mut retired = existing
+        .as_ref()
+        .map(|keys| keys.retired.clone())
+        .unwrap_or_default();
+    retired.retain(|key| key.expires_at > now());
+    if retired.len() >= 32 {
+        return Err(Error::conflict(
+            "Too many retained keys; wait for their retention windows",
+        ));
+    }
+    if let Some(previous) = existing {
+        let expiry = tx
+            .list::<crate::logout::RpSession>("rp_sessions")?
+            .iter()
+            .map(|(_, session)| session.expires_at.saturating_add(3600))
+            .max()
+            .unwrap_or(0)
+            .max(now() + 3720);
+        retired.push(RetiredKey {
+            jwk: previous.active.jwk()?,
+            expires_at: expiry,
+        });
+    }
+    let keys = crate::crypto::Keys {
+        active: replacement,
+        retired,
+    };
+    if input.id == "signing" {
+        tx.put("meta", "keys", &keys)?;
+    } else {
+        tx.put("key_domains", &input.id, &keys)?;
+    }
+    crate::delegation::audit_scoped(
+        tx,
+        &actor,
+        "signing_key.configure",
+        &input.id,
+        &format!("key/{}", input.id),
+    )?;
+    Ok(json!({"id":input.id,"active":keys.active.jwk()?,"retained_verification_keys":keys.retired.len()}))
 }
 
 /// Authorize the current actor and rotate the signing key with its retirement

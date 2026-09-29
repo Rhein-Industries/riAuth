@@ -1198,6 +1198,39 @@ fn cli_invitation_writes_require_retry_binding() {
     assert_eq!(error["http_status"], 503);
 }
 
+#[test]
+fn cli_signing_key_configuration_requires_retry_binding_and_replays_once() {
+    let dir = TempDir::new().unwrap();
+    let (config, session, _server) = serve_with_admin(dir.path());
+    let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
+    let revision = || success(cli(&["revision"]))["revision"].as_u64().unwrap().to_string();
+    let at = revision();
+    for args in [
+        vec!["--if-revision", &at, "keys", "generate", "cli-signing", "--algorithm", "EdDSA"],
+        vec!["--idempotency-key", "key-only", "keys", "generate", "cli-signing", "--algorithm", "EdDSA"],
+    ] {
+        let (_, error) = failure(cli(&args));
+        assert!(error["message"].as_str().unwrap().contains("Signing-key configuration requires"));
+    }
+    let create = ["--if-revision", &at, "--idempotency-key", "cli-key-create",
+        "keys", "generate", "cli-signing", "--algorithm", "EdDSA"];
+    let first = success(cli(&create));
+    assert_eq!(first["id"], "cli-signing");
+    assert!(first["active"]["kid"].as_str().is_some());
+    assert!(!first.to_string().contains("PRIVATE KEY"));
+    assert_eq!(success(cli(&create)), first);
+    assert_eq!(revision().parse::<u64>().unwrap(), at.parse::<u64>().unwrap() + 1);
+    let (_, changed) = failure(cli(&["--if-revision", &at, "--idempotency-key", "cli-key-create",
+        "keys", "generate", "other-key", "--algorithm", "EdDSA"]));
+    assert_eq!(changed["http_status"], 409);
+    let (_, stale) = failure(cli(&["--if-revision", &at, "--idempotency-key", "cli-key-stale",
+        "keys", "generate", "other-key", "--algorithm", "EdDSA"]));
+    assert_eq!(stale["http_status"], 409);
+    let events = success(cli(&["audit", "--limit", "100"]));
+    assert_eq!(events.as_array().unwrap().iter().filter(|event|
+        event["action"] == "signing_key.configure" && event["target"] == "cli-signing").count(), 1);
+}
+
 /// M03: the CLI's direct and desired-state application writes reach the same
 /// management seam as the HTTP API, with the same type, retry and stale rules.
 #[test]

@@ -5149,6 +5149,7 @@ async fn external_vault_signing_keeps_private_keys_out_of_storage_pins_version_a
             namespace: Some("test-team".into()),
         };
         f.core.config.signers.insert(algorithm.clone(), config);
+        let revision = f.core.store.get::<u64>("meta", "revision").unwrap().unwrap_or(0);
         let mut bound = None;
         for retry in [false, true] {
             let core = f.core.clone();
@@ -5162,6 +5163,7 @@ async fn external_vault_signing_keeps_private_keys_out_of_storage_pins_version_a
                     request_id: format!("vault-{algorithm}"),
                     idempotency_key: Some(format!("vault-bind-{algorithm}")),
                     fingerprint: format!("bind-signing-{algorithm}"),
+                    revision: Some(revision),
                     ..Default::default()
                 };
                 riauth::context::scope(Some(context), || {

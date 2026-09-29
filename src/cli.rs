@@ -1844,11 +1844,18 @@ pub async fn run(cli: Cli) -> Result<()> {
             }
             LogoutRequestCommand::Deny { code } => remote.call(Method::POST,&format!("/api/logout-requests/{}/decision",segment(&code)?),Some(json!({"approve":false})),true).await?,
         },
-        Command::Keys { command } => match command {
-            KeysCommand::List => remote.call(Method::GET,"/api/keys",None,true).await?,
-            KeysCommand::Bind {id,signer,algorithm} => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm,"remote_signer":signer})),true).await?,
-            KeysCommand::Generate { id, algorithm } => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm})),true).await?,
-            KeysCommand::Import { id, file, algorithm, kid } => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm,"private_key_pem":crate::config::read_private_secret(&file,16384)?.as_str(),"kid":kid})),true).await?,
+        Command::Keys { command } => {
+            if !matches!(&command, KeysCommand::List)
+                && (remote.idempotency_key.is_none() || remote.if_revision.is_none())
+            {
+                bail!("Signing-key configuration requires --idempotency-key and --if-revision (from `riauth revision`)");
+            }
+            match command {
+                KeysCommand::List => remote.call(Method::GET,"/api/keys",None,true).await?,
+                KeysCommand::Bind {id,signer,algorithm} => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm,"remote_signer":signer})),true).await?,
+                KeysCommand::Generate { id, algorithm } => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm})),true).await?,
+                KeysCommand::Import { id, file, algorithm, kid } => remote.call(Method::POST,"/api/keys",Some(json!({"id":id,"algorithm":algorithm,"private_key_pem":crate::config::read_private_secret(&file,16384)?.as_str(),"kid":kid})),true).await?,
+            }
         },
         Command::Registration { command } => match command {
             RegistrationCommand::Create { file, out } => {
