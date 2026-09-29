@@ -3016,7 +3016,7 @@ fn directory_urls_reject_non_loopback_http() {
     assert!(loopback.validate().is_ok());
     let entra = EntraDirectory {
         tenant_id: "11111111-2222-3333-4444-555555555555".into(),
-        token_url: "https://login.microsoftonline.com/tenant/oauth2/v2.0/token".into(),
+        token_url: "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/oauth2/v2.0/token".into(),
         client_id: CLIENT_ID.into(),
         client_secret_file: std::path::PathBuf::from("secret"),
         certificate_file: None,
@@ -3035,6 +3035,7 @@ fn directory_urls_reject_non_loopback_http() {
     certificate.client_secret_file = std::path::PathBuf::new();
     certificate.certificate_file = Some("cert.pem".into());
     certificate.private_key_file = Some("key.pem".into());
+    certificate.token_url = "https://login.microsoftonline.com/tenant/oauth2/v2.0/token".into();
     assert!(certificate.validate().is_err());
     certificate.token_url = format!(
         "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
@@ -3057,7 +3058,7 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
         body::{Body, to_bytes},
         http::{Request, StatusCode},
     };
-    use riauth::reconciliation::{Job, Origin, Schedule, Status};
+    use riauth::reconciliation::{ControllerConfig, Job, Origin, Schedule, Status};
     use tower::ServiceExt;
 
     async fn call(app: &axum::Router, method: &str, uri: &str, token: &str) -> (StatusCode, Value) {
@@ -3094,6 +3095,14 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
     configure(&mut fixture, "workspace", "corp", &workspace, "");
     configure(&mut fixture, "entra", "tenant", &entra, "");
     fixture.core.create_group(&fixture.admin, "staff").unwrap();
+    fixture.core.config.reconciliation_controllers.insert(
+        "workspace/corp".into(),
+        ControllerConfig {
+            agent_id: "syncer".into(),
+            credential_file: fixture._dir.path().join("controller-token"),
+            interval_seconds: 300,
+        },
+    );
     fixture
         .core
         .store
@@ -3173,7 +3182,7 @@ async fn cloud_operational_api_validates_probes_and_redacts() {
         let path = format!("/api/cloud-directories/{kind}/{id}/test-connection");
         let (status, probe) = call(&app, "POST", &path, &fixture.admin).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(probe["connected"], true);
+        assert_eq!(probe["connected"], true, "{probe}");
         assert_redacted(&probe);
         assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 1);
     }

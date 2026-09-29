@@ -1795,7 +1795,7 @@ impl Core {
             endpoint(
                 &settings.base_url,
                 &["v1.0", "users"],
-                &[("$select", "id"), ("$top", "1")],
+                &[("$select", "id"), ("$top", "1"), ("$count", "true")],
             )?
         };
         let body = get_json(&http, &token, &users, kind == "entra")?;
