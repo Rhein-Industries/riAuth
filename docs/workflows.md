@@ -1140,7 +1140,8 @@ execution uses the hashed image, and its `Debug` output does not print them.
 The guest exports `memory` and `route () -> i32` and has no imports. There is
 no WASI, filesystem, socket, clock, randomness, or host callback. The engine
 disables floats, multi-memory, bulk memory, reference types, tail calls, and
-saturating float-to-int, ignores custom sections, and compiles eagerly. The
+saturating float-to-int, and ignores custom sections. Translation is lazy:
+`Module::new` validates the body, and the first call builds Wasmi IR. The
 structural check rejects a non-empty import section, a start section, any
 table, global, or element, and any memory other than one page with minimum and
 maximum both 1. It also rejects more than one function, any type other than
@@ -1176,11 +1177,18 @@ Wasm calls a host function. `call_resumable` pauses only when a host function
 returns an error. This guest has no imports, so a loop in `route` does not
 return to the host until the call traps or finishes. Fuel's base cost is 1.
 Before the instance starts, the host installs
-`min(manifest fuel, timeout_seconds × 1,000)`. When the timeout budget is
-strictly smaller, exhaustion is `timeout`. When the two budgets are equal, or
-fuel is smaller, exhaustion is `fuel`. The call occupies the caller for that
-whole instruction budget. A timeout of 10 seconds or more cannot be tighter
-than the 10,000 fuel cap, so that exhaustion is `fuel`.
+`min(manifest fuel, timeout_seconds × 1,000)`. On the first call Wasmi 0.40.0
+charges 7 fuel for each byte of the function body and subtracts that charge
+before it builds IR. A charge greater than the fuel still available returns
+out-of-fuel and does not translate. The host classifies that trap with the
+same rule as execution: `timeout` when the timeout budget is strictly smaller
+than the manifest fuel, and `fuel` otherwise. A charge that fits is translated
+entirely on the caller, then `route` runs until it returns or spends the fuel
+that remains. `Module::new` still validates the body before this charge, and
+that validation is not fuel-metered. None of these steps preempts the caller
+at a wall-clock deadline. When the two budgets are equal, or fuel is smaller,
+execution exhaustion is `fuel`. A timeout of 10 seconds or more cannot be
+tighter than the 10,000 fuel cap, so that execution exhaustion is `fuel`.
 
 `route` writes its label at offset 0 and returns the length. A negative length,
 or a length above the tighter of the step and manifest output caps, is

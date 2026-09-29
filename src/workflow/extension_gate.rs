@@ -10,16 +10,19 @@
 //! `Config` has no epoch or interrupt control. `Store::call_hook` runs only
 //! when the host calls Wasm or Wasm calls a host function, and `call_resumable`
 //! pauses only when a host function returns an error. This guest has no
-//! imports, so `route` runs on the caller until it returns or spends its fuel.
-//! Fuel is the instruction budget `timeout_seconds * FUEL_PER_SECOND`. The
-//! engine installs `min(manifest fuel, that budget)` before the instance
-//! starts. When those two budgets are equal, fuel exhaustion is reported as
-//! `fuel`.
+//! imports, so a translated `route` runs on the caller until it returns or
+//! spends its fuel. Fuel is the instruction budget
+//! `timeout_seconds * FUEL_PER_SECOND`. The engine installs
+//! `min(manifest fuel, that budget)` before the instance starts. When those
+//! two budgets are equal, fuel exhaustion is reported as `fuel`.
 //!
 //! Admission applies a separate resource cap before `Module::new`: one
 //! `() -> i32` function, two exports, at most [`MAX_GUEST_LOCALS`] i32 locals,
-//! and no data segment. That bounds compiler work. It does not preempt the one
-//! accepted body.
+//! and no data segment. `Module::new` validates that body and does not build
+//! Wasmi IR. The first call charges 7 fuel for each byte of the function body
+//! and does not translate when the charge exceeds the fuel still in the store.
+//! A charge that fits is translated as a whole on the caller. Validation in
+//! `Module::new` is not fuel-metered, and neither step is a wall-clock interrupt.
 //!
 //! The interpreter value stack is allocated when `route` is called.
 //! `ResourceLimiter` does not account for it. This guest sets the Wasmi
@@ -490,17 +493,7 @@ fn execute_guest(
     let manifest_fuel = u64::from(checked.fuel);
     let timeout_tighter = timeout_fuel < manifest_fuel;
     let fuel = timeout_fuel.min(manifest_fuel);
-    let mut config = wasmi::Config::default();
-    config.consume_fuel(true);
-    config.ignore_custom_sections(true);
-    config.compilation_mode(wasmi::CompilationMode::Eager);
-    config.floats(false);
-    config.wasm_multi_memory(false);
-    config.wasm_bulk_memory(false);
-    config.wasm_reference_types(false);
-    config.wasm_tail_call(false);
-    config.wasm_saturating_float_to_int(false);
-    config.enforced_limits(wasmi::EnforcedLimits::strict());
+    let mut config = guest_config();
     config.set_stack_limits(
         wasmi::StackLimits::new(
             GUEST_VALUE_STACK_SLOTS,
@@ -579,12 +572,13 @@ fn classify(error: &wasmi::Error, timeout_tighter: bool) -> Denial {
 }
 
 #[cfg(feature = "platform")]
-fn admit(wasm: &[u8]) -> Result<(), Denial> {
-    admit_sections(wasm)?;
+fn guest_config() -> wasmi::Config {
     let mut config = wasmi::Config::default();
     config.consume_fuel(true);
     config.ignore_custom_sections(true);
-    config.compilation_mode(wasmi::CompilationMode::Eager);
+    // Validate at `Module::new`. Wasmi translates on the first call and charges
+    // 7 fuel per function-body byte before that translation starts.
+    config.compilation_mode(wasmi::CompilationMode::LazyTranslation);
     config.floats(false);
     config.wasm_multi_memory(false);
     config.wasm_bulk_memory(false);
@@ -592,6 +586,13 @@ fn admit(wasm: &[u8]) -> Result<(), Denial> {
     config.wasm_tail_call(false);
     config.wasm_saturating_float_to_int(false);
     config.enforced_limits(wasmi::EnforcedLimits::strict());
+    config
+}
+
+#[cfg(feature = "platform")]
+fn admit(wasm: &[u8]) -> Result<(), Denial> {
+    admit_sections(wasm)?;
+    let config = guest_config();
     let engine = wasmi::Engine::new(&config);
     let module = wasmi::Module::new(&engine, wasm).map_err(|_| Denial::Malformed)?;
     if module.imports().next().is_some() {
@@ -833,6 +834,17 @@ fn read_leb(bytes: &[u8]) -> Result<(u32, usize), Denial> {
 pub(crate) mod fixture {
     pub fn allow() -> Vec<u8> {
         module(&store_label(*b"allo", Some(b'w')), &i32_const(5), &[])
+    }
+
+    /// `allow`, then `return`, then `nops` bytes that execution never reaches.
+    ///
+    /// Wasmi counts those bytes in the translation charge.
+    pub fn allow_with_unreachable_tail(nops: usize) -> Vec<u8> {
+        let mut body = store_label(*b"allo", Some(b'w'));
+        body.extend(i32_const(5));
+        body.push(0x0f);
+        body.extend(vec![0x01; nops]);
+        module(&body, &[], &[])
     }
 
     pub fn block() -> Vec<u8> {
@@ -1553,6 +1565,41 @@ mod tests {
             )
             .unwrap_err(),
             Denial::UndeclaredOutput
+        );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn translation_fuel_skips_unreachable_bytes_that_would_still_allow() {
+        // Wasmi 0.40.0 charges 7 fuel per function-body byte and does not
+        // translate when that charge exceeds the store. Twelve thousand
+        // unreachable nops sit above the 10,000 fuel cap even at one fuel
+        // per byte. The same prefix with an empty tail returns `allow`.
+        let bare = fixture::allow_with_unreachable_tail(0);
+        assert_eq!(
+            run(
+                &bare,
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap()
+            .as_str(),
+            "allow"
+        );
+        let padded = fixture::allow_with_unreachable_tail(12_000);
+        assert!(check(&fixture::document(&padded, |_| {})).is_ok());
+        assert_eq!(
+            run(
+                &padded,
+                |_| {},
+                GuestFacts::default(),
+                &BTreeSet::new(),
+                bounds()
+            )
+            .unwrap_err(),
+            Denial::Fuel
         );
     }
 
