@@ -508,3 +508,6 @@ version-specific compatibility and acceptance boundaries. A checkout-only
 reading of the workflow and of the vulnerability intake text is the
 [Q11 release-evidence check](roadmap/q11-release-evidence.md). It does not
 download artifacts or replace checksum verification of a bundle you deploy.
+That procedure also describes [scripts/spdx_sbom.py](../scripts/spdx_sbom.py),
+which hashes named files against a locked Cargo graph. This output is not a
+release SBOM.

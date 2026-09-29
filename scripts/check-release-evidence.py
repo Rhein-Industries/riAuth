@@ -2,7 +2,8 @@
 """Audit source-backed vulnerability intake and release-evidence boundaries.
 
 Reads a checkout. Does not build, sign, publish, download assets, or decide
-that a release succeeded. --dist lists filenames only.
+that a release succeeded. --dist lists filenames only. scripts/spdx_sbom.py
+is a source producer; a successful audit still reports no release SBOM.
 """
 
 import argparse
@@ -24,6 +25,14 @@ AUDITED = (
     "scripts/package-release.sh",
     "scripts/check-release-bundle.py",
     "scripts/generate-third-party-notices.py",
+    "scripts/spdx_sbom.py",
+)
+SOURCE_PRODUCER = "scripts/spdx_sbom.py"
+PRODUCER_HONESTY = (
+    "This output is not a release SBOM.",
+    "This document is not a build attestation.",
+    "Crate archives were not fetched.",
+    "created is 1970-01-01T00:00:00Z because the document is a pure function of its inputs, not a build time.",
 )
 INTAKE_SENTENCES = (
     "Security fixes are considered for the latest v0.1.x release.",
@@ -164,12 +173,16 @@ def audit(root, dist=None):
 
     producers = []
     for relative in RELEASE_PATHS:
+        lowered = texts[relative].lower()
         for pattern in PRODUCER_PATTERNS:
             if pattern.search(texts[relative]):
                 producers.append(f"{relative}: {pattern.pattern}")
         for marker in OUTPUT_MARKERS:
-            if marker in texts[relative].lower():
+            if marker in lowered:
                 producers.append(f"{relative}: output marker {marker}")
+        for token in ("spdx_sbom.py", "spdx-sbom"):
+            if token in lowered:
+                producers.append(f"{relative}: {token}")
     require(not producers, "release path names a signing or SBOM producer: " + ", ".join(producers))
 
     for token in (
@@ -211,6 +224,22 @@ def audit(root, dist=None):
     require("scripts/check-release-evidence.py" in procedure, "procedure does not name the verify-only checker")
     require("SECURITY.md" in procedure, "procedure does not cite SECURITY.md")
     require("Exit 0 is not a release result." in procedure, "procedure no longer says exit 0 is not a release result")
+    require(SOURCE_PRODUCER in procedure, "procedure does not name the source SPDX producer")
+    require(
+        "This output is not a release SBOM." in procedure,
+        "procedure no longer says this output is not a release SBOM",
+    )
+    require(
+        "No release SBOM was produced in this slice." in procedure,
+        "procedure no longer says no release SBOM was produced",
+    )
+    require("This output is a release SBOM." not in procedure, "procedure claims a release SBOM")
+    producer_text = texts[SOURCE_PRODUCER]
+    for sentence in PRODUCER_HONESTY:
+        require(sentence in producer_text, f"source producer is missing honesty text: {sentence}")
+    require("--locked" in producer_text, "source producer does not pass --locked")
+    require("--offline" in producer_text, "source producer does not pass --offline")
+    require("This output is a release SBOM." not in producer_text, "source producer claims a release SBOM")
 
     policy_contacts = contacts(security)
     invented = [item for item in contacts(procedure) if item not in policy_contacts]
@@ -241,6 +270,9 @@ def audit(root, dist=None):
             "third_party_notices": "THIRD_PARTY_NOTICES.md",
             "notices_include_spdx_license_expressions": True,
             "notices_are_an_sbom": False,
+            "source_producer": SOURCE_PRODUCER,
+            "source_producer_in_release_workflow": False,
+            "release_sbom_produced": False,
         },
         "independent_review_record": False,
         "provenance": {

@@ -97,6 +97,7 @@ jobs:
           python3 -m unittest discover -s tests -p 'test_run_conformance.py'
           python3 scripts/check-release-evidence.py
           python3 -m unittest discover -s tests -p 'test_release_evidence.py'
+          python3 -m unittest discover -s tests -p 'test_spdx_sbom.py'
           bash -n scripts/*.sh
       - run: cargo build --release --locked
 

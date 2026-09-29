@@ -38,4 +38,6 @@ The SSF follow-up runs with `cargo test --locked --features test-support --test 
 
 ## Release evidence
 
-`python3 scripts/check-release-evidence.py` reads the vulnerability intake text, release workflow, packager, bundle checker, and third-party notice generator. Exit 0 means that source still matches the written boundary. It does not build or download a release. The procedure and the open Q11 gaps are in [the release-evidence check](roadmap/q11-release-evidence.md). Its fixtures run with `python3 -m unittest discover -s tests -p 'test_release_evidence.py'`.
+`python3 scripts/check-release-evidence.py` reads the vulnerability intake text, release workflow, packager, bundle checker, third-party notice generator, and source SPDX producer. Exit 0 means that source still matches the written boundary. It does not build or download a release. The procedure and the open Q11 gaps are in [the release-evidence check](roadmap/q11-release-evidence.md). Its fixtures run with `python3 -m unittest discover -s tests -p 'test_release_evidence.py'`.
+
+`python3 scripts/spdx_sbom.py produce` writes SPDX JSON from a locked Cargo graph and the exact files named with `--file`. `python3 scripts/spdx_sbom.py verify` rebuilds that document and compares the bytes. The document says that this output is not a release SBOM. Its fixtures run with `python3 -m unittest discover -s tests -p 'test_spdx_sbom.py'`.
