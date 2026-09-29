@@ -1995,7 +1995,7 @@
       ],
       "label": "verify",
       "journey": "complete-local",
-      "current_state": "SAML is checked against independent xmlsec1 (CI integration). LDAP sync runs against a real OpenLDAP (`scripts/test-ldap.sh`). RADIUS EAP-TLS is checked against the OpenSSL client. The LDAP provider and RADIUS RadSec use local fixtures. Loopback PAP was exercised with FreeRADIUS radclient 3.2.10 (`scripts/test-radius.sh`): a correct password returned Access-Accept and radclient exited 0, a wrong password returned Access-Reject and radclient exited 1, and an identical datagram returned the cached Access-Accept without another `radius.accept`. Loopback STARTTLS was exercised with OpenLDAP ldapsearch 2.7.1 (`scripts/test-ldap-provider.sh`): the service bind and page size 1 returned the two in-scope users on separate pages and ldapsearch exited 0, a disabled member was omitted, and a wrong token and a revoked agent each exited 49 with invalid credentials. The same ignored test bound a separate LDAPS listener at 127.0.0.1:60248 and STARTTLS at 127.0.0.1:60249. OpenLDAP ldapsearch 2.7.1 used `ldaps://127.0.0.1:60248` without `-ZZ` and `LDAPTLS_REQCERT=hard` against the fixture CA: page size 1 returned the two in-scope users and exited 0, a disabled member was omitted, a wrong token and a revoked agent each exited 49, and an unrelated CA exited 1 with `certificate verify failed (unable to get local issuer certificate)`. `ldaps://` on the STARTTLS port exited 1 with `Connect error (-11)`, and `ldap://` with `-ZZ` on the LDAPS port exited 1 with `ldap_start_tls: Can't contact LDAP server (-1)`. Named SP and supplicant peers remain unused.",
+      "current_state": "SAML is checked against independent xmlsec1 (CI integration). LDAP sync runs against a real OpenLDAP (`scripts/test-ldap.sh`). RADIUS EAP-TLS is checked against the OpenSSL client. The LDAP provider and RADIUS RadSec use local fixtures. Loopback PAP was exercised with FreeRADIUS radclient 3.2.10 (`scripts/test-radius.sh`): a correct password returned Access-Accept and radclient exited 0, a wrong password returned Access-Reject and radclient exited 1, and an identical datagram returned the cached Access-Accept without another `radius.accept`. Loopback STARTTLS was exercised with OpenLDAP ldapsearch 2.7.1 (`scripts/test-ldap-provider.sh`): the service bind and page size 1 returned the two in-scope users on separate pages and ldapsearch exited 0, a disabled member was omitted, and a wrong token and a revoked agent each exited 49 with invalid credentials. The same ignored test bound a separate LDAPS listener at 127.0.0.1:60248 and STARTTLS at 127.0.0.1:60249. OpenLDAP ldapsearch 2.7.1 used `ldaps://127.0.0.1:60248` without `-ZZ` and `LDAPTLS_REQCERT=hard` against the fixture CA: page size 1 returned the two in-scope users and exited 0, a disabled member was omitted, a wrong token and a revoked agent each exited 49, and an unrelated CA exited 1 with `certificate verify failed (unable to get local issuer certificate)`. `ldaps://` on the STARTTLS port exited 1 with `Connect error (-11)`, and `ldap://` with `-ZZ` on the LDAPS port exited 1 with `ldap_start_tls: Can't contact LDAP server (-1)`. A loopback GNU Lasso 2.9.0 helper (Homebrew bottle 2.9.0_4; `pkg-config --modversion lasso` printed `2.9.0`; `liblasso.3.dylib` links xmlsec1 1.3.12) is `scripts/lasso-saml-sp.c`, run by ignored `tests/saml_sp_peer.rs::lasso_signed_redirect_request_post_response_signature_and_metadata_key` through `scripts/test-saml-sp.sh`. The helper signed an HTTP-Redirect AuthnRequest with `SigAlg` `http://www.w3.org/2001/04/xmldsig-more#rsa-sha256`, then accepted riAuth's HTTP-POST response and printed a persistent NameID with exit 0. Changing one NameID hex digit, and replacing every IdP metadata `X509Certificate`, each exited 1 with `Failed to verify signature. (-111)` and printed no NameID. `lasso_set_min_signature_method` is not exported, so the library minimum stays RSA-SHA1; verification stayed forced and the request still used RSA-SHA256. The SP entity is the fixture `https://sp.example.test/metadata`. Named production service providers and supplicant peers remain unused.",
       "implementation": [
         "src/saml.rs",
         "src/saml/wire.rs",
@@ -2006,7 +2006,9 @@
         "src/radius/eap.rs",
         "scripts/test-ldap.sh",
         "scripts/test-radius.sh",
-        "scripts/test-ldap-provider.sh"
+        "scripts/test-ldap-provider.sh",
+        "scripts/lasso-saml-sp.c",
+        "scripts/test-saml-sp.sh"
       ],
       "tests_existing": [
         {
@@ -2046,6 +2048,11 @@
         },
         {
           "ref": "tests/ldap_provider_peer.rs::ldapsearch_starttls_bind_scoped_paging_disable_and_revoke",
+          "kind": "rust",
+          "ci": "not in CI"
+        },
+        {
+          "ref": "tests/saml_sp_peer.rs::lasso_signed_redirect_request_post_response_signature_and_metadata_key",
           "kind": "rust",
           "ci": "not in CI"
         }
@@ -3501,7 +3508,7 @@
       ],
       "label": "verify",
       "journey": "partial",
-      "current_state": "Real peers in CI integration are PostgreSQL (replicated), OpenLDAP, nginx, Traefik v3.7.13, xmlsec1, and Chrome. There are no cloud tenants, SAML SPs, network devices, managed devices, or Windows.",
+      "current_state": "Real peers in CI integration are PostgreSQL (replicated), OpenLDAP, nginx, Traefik v3.7.13, xmlsec1, and Chrome. There are no cloud tenants, network devices, managed devices, or Windows. A local ignored GNU Lasso 2.9.0 helper (`scripts/test-saml-sp.sh`) is not a CI peer, and named production SAML service providers remain unverified.",
       "implementation": [
         ".github/workflows/ci.yml",
         "scripts/test-ldap.sh",

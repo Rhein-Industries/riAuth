@@ -96,6 +96,8 @@ RIAUTH_TEST_XMLSEC=/path/to/xmlsec1 cargo test --locked --test identity \
 
 The [Platform SAML IdP recipe](recipes/platform-saml-idp.md) records the client that the ignored test creates, the xmlsec1 arguments it passes, the results `exercise` requires, and the distance from xmlsec1 to a named service provider. The test was not run for the recipe.
 
+A separate ignored helper is GNU Lasso 2.9.0, Homebrew bottle 2.9.0_4. `pkg-config --modversion lasso` printed `2.9.0`, and `liblasso.3.dylib` links xmlsec1 1.3.12. `scripts/test-saml-sp.sh` compiles `scripts/lasso-saml-sp.c` and runs `tests/saml_sp_peer.rs`. That helper is not a CI peer. Its redirect AuthnRequest used `SigAlg` `http://www.w3.org/2001/04/xmldsig-more#rsa-sha256`. It accepted riAuth's HTTP-POST `SAMLResponse`, required RelayState `lasso-relay`, and printed a persistent NameID. A one-byte NameID change and an IdP metadata document whose every `X509Certificate` was replaced each exited 1 with `Failed to verify signature. (-111)` and printed no NameID. `lasso_set_min_signature_method` is declared but not exported, so this build cannot raise the library minimum above RSA-SHA1. The fixture entity is `https://sp.example.test/metadata`. Named production service providers remain unconnected. The helper does not record audience, recipient, or lifetime rejection.
+
 References: [OASIS SAML bindings](https://docs.oasis-open.org/security/saml/v2.0/saml-bindings-2.0-os.pdf), [SAML profiles](https://docs.oasis-open.org/security/saml/v2.0/saml-profiles-2.0-os.pdf), [Authentik SAML](https://docs.goauthentik.io/add-secure-apps/providers/saml/), [risaml](https://github.com/Rhein-Industries/risaml) (Rhein Industries' fork of [saml-rs](https://github.com/salasebas/opensaml-rs)).
 
 
