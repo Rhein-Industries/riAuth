@@ -1,0 +1,373 @@
+{
+  "architecture": "linux/aarch64",
+  "artifacts": {
+    "client": {
+      "riauthctl": {
+        "bytes": 8101312,
+        "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/artifacts/client/riauthctl",
+        "sha256": "573de0718e3301f2553145eb3d8fd01ce82bc69525a2176f075abc612c02a1e1"
+      }
+    },
+    "essentials": {
+      "riauth": {
+        "bytes": 36390184,
+        "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/artifacts/essentials/riauth",
+        "sha256": "86a799d3060e5e602c7e458a9c409ffc8c06f881e2d426a1e6d9be226337445d"
+      },
+      "riauth-maintenance": {
+        "bytes": 13310224,
+        "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/artifacts/essentials/riauth-maintenance",
+        "sha256": "c8164dfaa1a21c2bc8ac485eee02789d1aa6c8b2739904021485474cbd4350c2"
+      }
+    },
+    "platform": {
+      "riauth": {
+        "bytes": 49302784,
+        "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/artifacts/platform/riauth",
+        "sha256": "78209c1766eb53be741de0946a0e4ce4bc3f2217deda84a6e4f4bda85fc42b62"
+      },
+      "riauth-maintenance": {
+        "bytes": 16783720,
+        "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/artifacts/platform/riauth-maintenance",
+        "sha256": "91f850d63a36290afe6f7b49c1943bea496b0754f50dcaa6b716af4790e8543e"
+      }
+    }
+  },
+  "binary_source_commit": "f3aba63ac3b824843a40b99623f1619ef8edc19f",
+  "build_base": "rust:1.98.1-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546",
+  "builder_image_id": "sha256:09ca0afee35d39cadc6e33ce89abc4b530bccadaf7ecace2bd586544ffdfed42",
+  "cargo_incremental": false,
+  "cargo_lock": {
+    "bytes": 109243,
+    "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/Cargo.lock",
+    "sha256": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426"
+  },
+  "client_lock": {
+    "bytes": 70613,
+    "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/crates/riauthctl/Cargo.lock",
+    "sha256": "6f546c966c70505b8ef204cea811f7300b1b359de63f01a8389caadc3164b964"
+  },
+  "container_scripts": {
+    "Dockerfile.build": {
+      "bytes": 314,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/Dockerfile.build",
+      "sha256": "79235e7a2180a02c51e5457978d42947b55066d62bd10de96d5ed79bc6b150e8"
+    },
+    "Dockerfile.local-edition": {
+      "bytes": 909,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/Dockerfile.local-edition",
+      "sha256": "b07cc9d7a2c463f48203948114c9144adec6706e0380ec661db64fdcb2416082"
+    },
+    "Dockerfile.pg-runtime": {
+      "bytes": 336,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/Dockerfile.pg-runtime",
+      "sha256": "4462126000f4419d279da5235d734c3a75f40076a86bf6a9b1baa00ed516e429"
+    },
+    "Dockerfile.runtime": {
+      "bytes": 315,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/Dockerfile.runtime",
+      "sha256": "d10fbb6248dd4922a1591cd426e9f8511e8f5f7c63535e4b59c62148797ec542"
+    },
+    "assemble-local-archives.sh": {
+      "bytes": 683,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/assemble-local-archives.sh",
+      "sha256": "a85881a7fae480399cfb275ecda989115a38bf5c38a6aa0251e062f3b2352c19"
+    },
+    "build.sh": {
+      "bytes": 2286,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/build.sh",
+      "sha256": "94566e57afffe14e759b2d5ceca71fcb8ce7993bb3175815e5edab4b0344d6b6"
+    },
+    "check-closures.py": {
+      "bytes": 2493,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/check-closures.py",
+      "sha256": "dc3a7c08a4a8d346ad5fb5fad51d8a1a809ea33c1b24c904628922ad49d5f2ca"
+    },
+    "local-edition-matrix.py": {
+      "bytes": 3821,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/local-edition-matrix.py",
+      "sha256": "5645723387ae4ec0d1a3a61794370507a32bada42bca6270ddabcc66402f560c"
+    },
+    "local-image-smoke.py": {
+      "bytes": 2630,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/local-image-smoke.py",
+      "sha256": "1d6c987ce0caa43bc1f718ac46ddfb99f84dbc0951144881c01d81665c682515"
+    },
+    "local-installed-smoke.py": {
+      "bytes": 2390,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/local-installed-smoke.py",
+      "sha256": "56008507d869bf8f0022e8c34607fc958c6c55d3171b3efcbfee4822db85f87e"
+    },
+    "same-edition-recovery.py": {
+      "bytes": 5302,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/same-edition-recovery.py",
+      "sha256": "e9d989e3e6d26e85500cdb1a36b223786bf78db39a5c36a81b58a27fbacca956"
+    },
+    "verify-local-archives.py": {
+      "bytes": 2583,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/verify-local-archives.py",
+      "sha256": "2ebc3caba46e0bad0d382dedcc7b1ffac7d111ab7f0bd759e6af0cbc403d9d9f"
+    },
+    "write-evidence-manifest-v2.py": {
+      "bytes": 6685,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/write-evidence-manifest-v2.py",
+      "sha256": "0edb2ff2a04c39e4c8c1cb5659bc89309df336d3a7760fd50c110901d2600da1"
+    },
+    "write-evidence-manifest.py": {
+      "bytes": 6451,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/container/write-evidence-manifest.py",
+      "sha256": "37a28d71e61c8f787515da7d6f72f2326d02e9a731b598b2c6616e500dc72770"
+    }
+  },
+  "free_gib_at_manifest": 32.82,
+  "local_archives": {
+    "local-riauth-essentials-aarch64.tar.gz": {
+      "bytes": 13808105,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-archives/local-riauth-essentials-aarch64.tar.gz",
+      "sha256": "b330e3e8a66f697df297b962042220dbdb0234aeb251f17a4293c35d2f3835ef"
+    },
+    "local-riauth-maintenance-essentials-aarch64.tar.gz": {
+      "bytes": 5798360,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-archives/local-riauth-maintenance-essentials-aarch64.tar.gz",
+      "sha256": "58f144ac3f9470e4011e65e65333d876d4f9afce726743409c8f0755a590a83a"
+    },
+    "local-riauth-maintenance-platform-aarch64.tar.gz": {
+      "bytes": 7020925,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-archives/local-riauth-maintenance-platform-aarch64.tar.gz",
+      "sha256": "df6d7e61b4648cc666b1421024cbf3357e17342ac4d1db02b458cc25bffb8292"
+    },
+    "local-riauth-platform-aarch64.tar.gz": {
+      "bytes": 18303603,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-archives/local-riauth-platform-aarch64.tar.gz",
+      "sha256": "441e6ef7bf9a99c439441c1c440ec10045bc877182f925109555dd08d0eac0f5"
+    },
+    "local-riauthctl-aarch64.tar.gz": {
+      "bytes": 3236511,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-archives/local-riauthctl-aarch64.tar.gz",
+      "sha256": "562bf354e97b0f119785d40d54d479eb139a367ba12312424619d505a445ca8b"
+    }
+  },
+  "local_image_archives": {
+    "local-riauth-essentials-aarch64.docker.tar.gz": {
+      "bytes": 45405218,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-images/local-riauth-essentials-aarch64.docker.tar.gz",
+      "sha256": "5f4347c9748a6b9b92bdf3f426282a082ab9aacf694514de43abdb2759b8ca15"
+    },
+    "local-riauth-platform-aarch64.docker.tar.gz": {
+      "bytes": 50092521,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-images/local-riauth-platform-aarch64.docker.tar.gz",
+      "sha256": "8ef3774017201248cd2cc1aa0d69b992d6e6990e8dc6f0981caa4de8d03a7604"
+    }
+  },
+  "local_images": {
+    "essentials": {
+      "edition": "essentials",
+      "image_id": "sha256:ae84172a41d2dbe607a581d48fcde79cd1d293e00244994e257a757fd6def842",
+      "name": "riauth-q08-essentials:f3aba63-aarch64-local",
+      "platform": "linux/arm64",
+      "revision": "f3aba63ac3b824843a40b99623f1619ef8edc19f"
+    },
+    "platform": {
+      "edition": "platform",
+      "image_id": "sha256:a78109a5fb3bcab3e37c4a25580e5be53af6e485807abddff737cd248d7e7d6d",
+      "name": "riauth-q08-platform:f3aba63-aarch64-local",
+      "platform": "linux/arm64",
+      "revision": "f3aba63ac3b824843a40b99623f1619ef8edc19f"
+    }
+  },
+  "logs": {
+    "archive-integrity.log": {
+      "bytes": 202,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/archive-integrity.log",
+      "sha256": "00989aac6777b7ef389f17f89f6284f9678f177dffb9be9dc5c0bbd477cd7ee4"
+    },
+    "archive-smoke-attempt1-provenance-order.log": {
+      "bytes": 1286,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/archive-smoke-attempt1-provenance-order.log",
+      "sha256": "edc4ed273018a26b2c904ec3a54596c293112933cb9e708d3f2cfb99b21c0462"
+    },
+    "archive-smoke.log": {
+      "bytes": 76,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/archive-smoke.log",
+      "sha256": "d0b3f6ce4435ad1d80cdbdaff55477e24ce2942ac26d512761a27b598d49ef48"
+    },
+    "assemble-local-archives.log": {
+      "bytes": 662,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/assemble-local-archives.log",
+      "sha256": "015ad6394fdbb07af8cff9f34d5d79500fd3c556d4cb3679c2a9910035260c3f"
+    },
+    "build.log": {
+      "bytes": 5168,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/build.log",
+      "sha256": "560a810fecbab674909d37106e2560774fffc265a77f56bfeacbead1ba3e7e0c"
+    },
+    "dependency-closure.log": {
+      "bytes": 617,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/dependency-closure.log",
+      "sha256": "205ed345b9bbcb336d86273f0465696d83d2d062975a27ed66206afb68a85005"
+    },
+    "essentials-image.log": {
+      "bytes": 2250,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/essentials-image.log",
+      "sha256": "b0bbc80b796c5acb3a81f204ac474d417c3f8b289df136a9246917c177b23feb"
+    },
+    "image-archive-integrity.log": {
+      "bytes": 675,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/image-archive-integrity.log",
+      "sha256": "52d5e3588d19384b5e6c6e0516a41fff4b883d4cd13eae41c753a81db26666a7"
+    },
+    "installed-essentials-first.log": {
+      "bytes": 1328,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/installed-essentials-first.log",
+      "sha256": "aca6a0678ae393522ec6b52eea37ea634c73747da78a48ab384a8d96fa7d0cd6"
+    },
+    "installed-essentials-return.log": {
+      "bytes": 526,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/installed-essentials-return.log",
+      "sha256": "dd4747e93463345b9e93d84e5e10ed458474b99a88c6f5c0259436a1097e1999"
+    },
+    "installed-platform.log": {
+      "bytes": 523,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/installed-platform.log",
+      "sha256": "2ce1aed0854089d1db5490e1440946f16b27282dfbbb7f313f59829a9a8648cc"
+    },
+    "installed-restored.log": {
+      "bytes": 520,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/installed-restored.log",
+      "sha256": "13e88c939c213fd3fe445eda7d0a85c11e46cb9716a77bed638792e5a94c5cfb"
+    },
+    "local-edition-matrix.log": {
+      "bytes": 127,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/local-edition-matrix.log",
+      "sha256": "04f220e75c875872e5f1bc91dc716cbca771a34fe1a2b2dabe167f000df05a4a"
+    },
+    "local-image-smoke-attempt1-maintenance-boundary.log": {
+      "bytes": 1248,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/local-image-smoke-attempt1-maintenance-boundary.log",
+      "sha256": "00751b6d7280c04f8f5b3b6ad2cb7bfbd47b684e00f4029cc8e7330631e9d169"
+    },
+    "local-image-smoke.log": {
+      "bytes": 237,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/local-image-smoke.log",
+      "sha256": "ad61c83525717f90a6f222dc3de919d9d368b5f6e0e4d74e310b9177aed141aa"
+    },
+    "local-installed-smoke.log": {
+      "bytes": 459,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/local-installed-smoke.log",
+      "sha256": "5d10c3025a99adc51aad097bf6557c87ec8f6a405dc2ddd768883d576e23e6c1"
+    },
+    "platform-image.log": {
+      "bytes": 2194,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/platform-image.log",
+      "sha256": "bcbf0e86a6c54878f401c74021456ea1e179a10775a85ee9f9869dd706981605"
+    },
+    "postgres-transition-attempt1-client-drain.log": {
+      "bytes": 1414,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/postgres-transition-attempt1-client-drain.log",
+      "sha256": "e79e7b132e340b292f77f879e5afab774b541ec96e85ffa8e4a4a4c2a446e457"
+    },
+    "postgres-transition-v2.log": {
+      "bytes": 114,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/postgres-transition-v2.log",
+      "sha256": "e4e9acd697cf0c0ca109248a3d87826348772dcfb015e6f18cd03674266ab6ca"
+    },
+    "postgres-transition.log": {
+      "bytes": 111,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/postgres-transition.log",
+      "sha256": "4ed83fe52d6915c27f3afd7c414e79939be7f775acd436579aab1dd74db74498"
+    },
+    "same-edition-recovery.log": {
+      "bytes": 113,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/logs/same-edition-recovery.log",
+      "sha256": "3bc31cfda0a394f94e3b0e0c112cc90fbbda08bde047492adb15d14cd0134f11"
+    }
+  },
+  "native_build_jobs": 4,
+  "native_proof": {
+    "file": "ELF ARM aarch64 GNU/Linux",
+    "readelf_class": "ELF64",
+    "readelf_machine": "AArch64",
+    "uname": "aarch64"
+  },
+  "official_gates_open": [
+    "real GitHub run identity and exact x86_64/aarch64 release asset sets",
+    "official package-release and installed-release entrypoints",
+    "CI provenance, signatures, attestations, publication and deployment",
+    "previous-version binary migration and rollback",
+    "PostgreSQL backup restore and deployed recovery"
+  ],
+  "post_build_changed_files": [
+    "scripts/check-edition-artifacts.py",
+    "scripts/check-local-edition-transition-postgres.py"
+  ],
+  "release_gate_result": false,
+  "reports": {
+    "archive-integrity.json": {
+      "bytes": 3517,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/archive-integrity.json",
+      "sha256": "da689f2553a5ba051f7b5033dfdf90e106df37c76b1905fc34743e30fee0f3f0"
+    },
+    "dependency-closure.json": {
+      "bytes": 705,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/dependency-closure.json",
+      "sha256": "32673bee355b5840e330bf8cd3148729c5529dc4cfecd797a6fd2f84f98035fa"
+    },
+    "local-edition-matrix.json": {
+      "bytes": 7143,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-edition-matrix.json",
+      "sha256": "af7fde5cab4583848960cbe2bf6d993dc0ad95aa6bdaed944361c98a7c8fdc76"
+    },
+    "local-installed-smoke.json": {
+      "bytes": 1962,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-installed-smoke.json",
+      "sha256": "e94fbe7a2cf84e230b914cc38b1369644a1da9fe2141a9107a87624d4ce46349"
+    },
+    "local-postgres-transition-v2.json": {
+      "bytes": 1151,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-postgres-transition-v2.json",
+      "sha256": "f49a9462d27e952074df79624ec978264501ba9409322bee559d8ba9a99958dd"
+    },
+    "local-postgres-transition.json": {
+      "bytes": 1012,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/local-postgres-transition.json",
+      "sha256": "f5243a8180795c710b58ceb00bf5e3f968838eb78441cbe88e6b8bebda6b0b8c"
+    },
+    "same-edition-recovery.json": {
+      "bytes": 2021,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/same-edition-recovery.json",
+      "sha256": "8b4efdfd636cc9dca662e4c1e9a6b64032caec6d1301acda683434307bfeb20f"
+    }
+  },
+  "runbook": {
+    "bytes": 11975,
+    "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/RUN.md",
+    "sha256": "dd6a3be1226b7c0d464b6639f40baa2150797e98ada4b9929a199705c105aa28"
+  },
+  "runtime_base": "debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a",
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "schema": "riauth.local-native-transition-evidence/v1",
+  "supersedes_manifest": {
+    "bytes": 20526,
+    "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/target/a08-native-linux-arm64-f3aba63-20260929/native-arm64-evidence.json",
+    "sha256": "d401a88c15a5cda1a3fe568c5f65be47f948e5b909ec593e69506e5c6a727926"
+  },
+  "target_triple": "aarch64-unknown-linux-gnu",
+  "validator_scripts": {
+    "check-edition-artifacts.py": {
+      "bytes": 13118,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/scripts/check-edition-artifacts.py",
+      "sha256": "2f477665ed584bc148fb230c0658f6d0cc66aceaa5af631c4dc467872fa9ecce"
+    },
+    "check-installed-release-gate.py": {
+      "bytes": 22321,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/scripts/check-installed-release-gate.py",
+      "sha256": "cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5"
+    },
+    "check-local-edition-transition-postgres.py": {
+      "bytes": 13127,
+      "path": "/Users/dominik/orca/projects/riAuth-public-preview-roadmap-q08-exact-bundles-wave16/scripts/check-local-edition-transition-postgres.py",
+      "sha256": "d6b0d023164756b2fcabe1a89794400d5ee70b43b6b4874abed3fd2f6a2cce7d"
+    }
+  },
+  "validator_tip": "730d373078c4b128373d7afa5f3e278f63b065fd"
+}

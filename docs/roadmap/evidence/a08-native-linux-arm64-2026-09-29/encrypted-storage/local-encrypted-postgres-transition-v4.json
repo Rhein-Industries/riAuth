@@ -1,0 +1,49 @@
+{
+  "architecture": "linux/aarch64",
+  "backend": "postgresql",
+  "binary_sha256": {
+    "essentials": {
+      "riauth": "86a799d3060e5e602c7e458a9c409ffc8c06f881e2d426a1e6d9be226337445d",
+      "riauth-maintenance": "c8164dfaa1a21c2bc8ac485eee02789d1aa6c8b2739904021485474cbd4350c2"
+    },
+    "platform": {
+      "riauth": "78209c1766eb53be741de0946a0e4ce4bc3f2217deda84a6e4f4bda85fc42b62",
+      "riauth-maintenance": "91f850d63a36290afe6f7b49c1943bea496b0754f50dcaa6b716af4790e8543e"
+    }
+  },
+  "checks": [
+    "missing_and_wrong_database_key_refused",
+    "missing_old_new_and_shared_drift_agreement_refused",
+    "stale_full_store_plan_refused",
+    "compatible_config_token_refused",
+    "authentication_policy_config_drift_refused",
+    "wrong_build_direct_open_refused",
+    "target_metadata_atomic",
+    "issuer_auth_policy_preserved",
+    "logical_identity_credential_grant_revocation_preserved",
+    "live_user_credential_auditor_grant_and_logout",
+    "postgres_raw_ciphertext_preserved",
+    "postgres_other_client_refused"
+  ],
+  "editions": [
+    "essentials",
+    "platform",
+    "essentials"
+  ],
+  "fixture_counts": {
+    "credentials": 3,
+    "grants": 2,
+    "identities": 2,
+    "revocations": 2
+  },
+  "logical_preserved_rows_downgrade": 39,
+  "logical_preserved_rows_upgrade": 36,
+  "postgres_ciphertext_preserved_rows": 36,
+  "probe_sha256": "58b1aac1fa628a8f038e7029aedb406357d8e85dce95e0580f4d895e6a03b3f4",
+  "release_gate_result": false,
+  "result": "passed",
+  "schema": "riauth.local-encrypted-edition-transition/v1",
+  "source_revision": "f3aba63ac3b824843a40b99623f1619ef8edc19f",
+  "storage_encoding": "aes256gcm-v1",
+  "validator_sha256": "09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e"
+}
