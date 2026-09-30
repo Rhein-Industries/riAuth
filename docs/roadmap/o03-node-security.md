@@ -469,10 +469,10 @@ for the previous attempt leaves the new attempt in place. A failed attempt
 clears the lease and uses the same backoff as before.
 
 The SMTP transport timeout stays 10 seconds per command, and the delivery
-wrapper stays 30 seconds. A dialogue already inside that send can still
-complete after another worker claims the delivery if the first process was
-suspended for the whole 60-second lease. After the pin is stored, that
-attempt sends on the open dialogue. A 250 accepted reply is at least once:
+wrapper stays 30 seconds. A process suspended after the pin commits but
+before opening SMTP can still start a send after a later claim; an already
+open dialogue can also finish later. Admission and the network operation
+are separate, so these timeouts do not fence a suspended process. A 250 accepted reply is at least once:
 a later attempt can also be accepted. Finishing the old attempt leaves the
 later owner in place. Recipient checks stay the mailbox parse at send and
 the address check at enqueue. A message that cannot be built after a
