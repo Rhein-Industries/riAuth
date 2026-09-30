@@ -157,18 +157,12 @@ impl Core {
         token: &str,
         workflow: &str,
     ) -> Result<SourceStart> {
-        let configured = self
-            .config
-            .workflows
-            .get(workflow)
-            .filter(|entry| entry.active)
-            .ok_or_else(|| Error::missing("Configured workflow is unavailable"))?;
-        let source = configured_source_first_passkey_enrollment(&configured.definition)
+        let definition = self.configured_definition(workflow)?;
+        let source = configured_source_first_passkey_enrollment(&definition)
             .ok_or_else(|| Error::conflict("Configured workflow is unavailable"))?;
         let mut environment = Environment::platform();
         environment.sources.insert(source.clone());
-        let checked =
-            validate(configured.definition.clone(), &environment).map_err(invalid_error)?;
+        let checked = validate(definition, &environment).map_err(invalid_error)?;
         if checked.definition().id.as_str() != workflow {
             return Err(Error::conflict("Configured workflow is unavailable"));
         }

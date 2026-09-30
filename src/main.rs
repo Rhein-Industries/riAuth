@@ -1,7 +1,15 @@
 use clap::Parser;
 
+fn main() {
+    #[cfg(feature = "platform")]
+    if std::env::args().nth(1).as_deref() == Some(riauth::workflow::extension_gate::GUEST_ARGV) {
+        std::process::exit(riauth::workflow::extension_gate::run_isolated_guest());
+    }
+    server_main();
+}
+
 #[tokio::main]
-async fn main() {
+async fn server_main() {
     let json = std::env::args().any(|a| a == "--json");
     let cli = match riauth::cli::Cli::try_parse() {
         Ok(cli) => cli,

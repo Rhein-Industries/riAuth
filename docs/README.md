@@ -46,7 +46,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Q08 native ARM64 local run](roadmap/q08-native-arm64-local-6ca4779.md) | Exact-source native Linux ARM64 binaries and local images, smoke results, and open release gates |
 | [Q09 benchmark slice](roadmap/q09-benchmark-slice.md) | One local session-read measurement protocol, its fixture check, and the open benchmark gate |
 | [Q10 installed release gate](roadmap/q10-installed-release-gate.md) | Native packaged-binary transition and recovery gate, local preflight evidence, and remaining external checks |
-| [Q11 release evidence](roadmap/q11-release-evidence.md) | Source intake text, a verify-only checker, and a source SPDX producer called from the Linux packager source; a release SBOM, signatures, a review record, and Linux ARM64 execution stay open |
+| [Q11 release evidence](roadmap/q11-release-evidence.md) | Source intake, a verify-only checker, a Linux packager SPDX producer, and a pinned public-good attestation request; no bundle, release SBOM, review record, or Linux ARM64 release execution is recorded |
 | [Q03 independent OIDF pilot](roadmap/q03-conformance-pilot.md) | Pinned runner preflight, missing private pilot inputs, and the open independent run gate |
 | [D05 acceptance evidence](roadmap/d05-acceptance-evidence.md) | Evidence classes for the ten category targets; every category and D05 stay unpassed |
 | [Release limitations](limitations.md) | Unsupported profiles and deployment responsibilities |

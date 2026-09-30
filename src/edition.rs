@@ -354,6 +354,11 @@ const PLATFORM_BUCKETS: &[&str] = &[
     "workflow_evidence",
     "workflow_active_sessions",
     "workflow_reviewed",
+    "workflow_reviews",
+    "workflow_approvals",
+    "workflow_approval_plans",
+    "workflow_activation",
+    "workflow_revocations",
     "workflow_account_runs",
 ];
 

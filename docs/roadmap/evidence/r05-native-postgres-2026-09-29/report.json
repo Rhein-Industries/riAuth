@@ -1,0 +1,196 @@
+{
+  "checks": [
+    {
+      "id": "issued_fixture",
+      "observed": {
+        "authorization_code": true,
+        "bearer": true,
+        "one_use_proof": true,
+        "refresh": true,
+        "session": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "source_representative_login",
+      "observed": {
+        "readiness": 200,
+        "username": "admin"
+      },
+      "result": "passed"
+    },
+    {
+      "id": "live_writer_fence_refusal",
+      "observed": {
+        "writer_running": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "occupied_target_refusal",
+      "observed": {
+        "exit_code": 1,
+        "marker_preserved": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "physical_base_backup",
+      "observed": {
+        "lineage": {
+          "database_oid": "16384",
+          "records_oid": "16387",
+          "system_identifier": "7691049866347831010"
+        },
+        "snapshot_records": 58,
+        "verified": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "lost_timeline_mutations",
+      "observed": {
+        "late_user_created": true,
+        "password_rotated": true,
+        "post_records": 68,
+        "signing_key_rotated": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "source_stopped_and_fenced",
+      "observed": {
+        "port_closed": true,
+        "source_postmaster_stopped": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "same_lineage_blind_spot",
+      "observed": {
+        "lineage_equal": true,
+        "listener_started": false,
+        "restored_records": 58,
+        "status_says_serving_allowed": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "wrong_database_key_refusal",
+      "observed": {
+        "error_code": "invalid_request",
+        "exit_code": 2
+      },
+      "result": "passed"
+    },
+    {
+      "id": "empty_schema_refusal",
+      "observed": {
+        "initialized": false,
+        "serving_allowed": false
+      },
+      "result": "passed"
+    },
+    {
+      "id": "current_writer_refusal",
+      "observed": {
+        "error_code": "conflict",
+        "exit_code": 5,
+        "gate_unchanged": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "offline_invalidation",
+      "observed": {
+        "invalidated": {
+          "access": 1,
+          "account_latest": 1,
+          "account_proofs": 1,
+          "codes": 2,
+          "families": 1,
+          "mail_deliveries": 1,
+          "refresh": 1,
+          "rp_sessions": 1,
+          "session_retention": 1,
+          "session_tokens": 3,
+          "sessions": 3
+        },
+        "pending_id": "40e30c9c-e8cf-43e1-a921-cf2e6fcde54b",
+        "reconcile": {
+          "clients": 1,
+          "enabled_accounts": 2,
+          "passwords": 2,
+          "signing_keys": 1
+        },
+        "serving_allowed": false
+      },
+      "result": "passed"
+    },
+    {
+      "id": "restored_artifact_refusals",
+      "observed": {
+        "bearer_refusal": "invalid_token",
+        "code_refusal": "invalid_grant",
+        "epoch_advanced": true,
+        "identity_preserved": true,
+        "late_user_absent": true,
+        "one_use_proof_refusal": "account_code_invalid",
+        "one_use_proof_removed": true,
+        "reconciliation_complete": false,
+        "refresh_refusal": "invalid_grant",
+        "session_refusal": "invalid_token",
+        "stale_password": true,
+        "stale_signing_key": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "unreconciled_serve_refusal",
+      "observed": {
+        "listener_closed": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "completion_gates",
+      "observed": {
+        "gate_closed": true,
+        "listener_closed": true,
+        "missing_attestation_exit": 2,
+        "wrong_id": {
+          "error_code": "conflict",
+          "exit_code": 5
+        }
+      },
+      "result": "passed"
+    },
+    {
+      "id": "report_redaction",
+      "observed": {
+        "generated_credentials_and_keys_absent": true
+      },
+      "result": "passed"
+    }
+  ],
+  "cleanup": {
+    "postgres_stopped": true,
+    "private_workspace_removed": true,
+    "service_stopped": true
+  },
+  "open_gates": [
+    "Post-snapshot password and signing-key changes cannot be reconstructed from this base backup; no recovery completion attestation was made.",
+    "External credential/secret escrow, real host and relying-party login, and deployed HA/outage behavior require separate authorized setup and evidence."
+  ],
+  "outcome": "passed_gate_closed",
+  "scope": {
+    "binary_sha256": "a5c01650917d16c9384b1d87fba373d02e97d5e85eb8a2e625d7c9a8cbcd68ea",
+    "date_utc": "2026-09-29T20:01:30.448167+00:00",
+    "escrow_or_relying_party_proof": false,
+    "external_host": false,
+    "fixture_sha256": "bd34a8a4b4438c1ccb348fd20d9b867a3ad46a988a672adb0733400b96d1890b",
+    "isolated_loopback": true,
+    "operation": "physical_base_backup",
+    "postgres": "16.14"
+  }
+}

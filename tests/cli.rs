@@ -469,23 +469,38 @@ fn binary_initializes_serves_and_manages_oidc_over_real_http() {
         .to_string();
     let first_secret = dir.path().join("rotated1.json");
     let second_secret = dir.path().join("rotated2.json");
-    for destination in [&first_secret, &second_secret] {
-        let output = success(agent_call(&[
-            "--if-revision",
-            &revision,
-            "--idempotency-key",
-            "rotation-1",
-            "--output-file",
-            destination.to_str().unwrap(),
-            "client",
-            "rotate-secret",
-            "agent-app",
-        ]));
-        assert!(output.get("client_secret").is_none());
-    }
-    assert_eq!(
-        std::fs::read(first_secret).unwrap(),
-        std::fs::read(second_secret).unwrap()
+    let rotation = [
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "rotation-1",
+        "--output-file",
+        first_secret.to_str().unwrap(),
+        "client",
+        "rotate-secret",
+        "agent-app",
+    ];
+    let output = success(agent_call(&rotation));
+    assert!(output.get("client_secret").is_none());
+    let secret = std::fs::read(&first_secret).unwrap();
+    let (code, replay) = failure(agent_call(&[
+        "--if-revision",
+        &revision,
+        "--idempotency-key",
+        "rotation-1",
+        "--output-file",
+        second_secret.to_str().unwrap(),
+        "client",
+        "rotate-secret",
+        "agent-app",
+    ]));
+    assert_eq!(code, 5);
+    assert_eq!(replay["code"], "credential_already_issued");
+    assert!(!second_secret.exists());
+    assert!(
+        !replay
+            .to_string()
+            .contains(&String::from_utf8_lossy(&secret).to_string())
     );
     let forbidden = agent_call(&[
         "--if-revision",

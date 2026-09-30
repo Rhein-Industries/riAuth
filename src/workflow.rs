@@ -6,12 +6,14 @@
 //! reauthentication for live bearer sessions, plus configured local verifier and
 //! request-bound consent paths. The held W07 host in [`extension`] is an
 //! in-process contract and is not called. [`extension_gate`] runs one configured
-//! custom stage in Wasmi on Platform. See `docs/workflows.md`.
+//! custom stage in a killable Wasmi child process on Platform. See `docs/workflows.md`.
 
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, fmt};
 
+#[cfg(feature = "platform")]
+pub(crate) mod approval;
 mod essentials;
 #[cfg(feature = "platform")]
 pub(crate) mod evidence;

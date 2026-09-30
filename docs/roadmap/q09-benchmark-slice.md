@@ -26,9 +26,35 @@ index page. The script reads the administrator, the user list, and the group
 list before the timed passes and stops if they disagree with the directory it
 created.
 
-Database encryption is off. The listener is loopback HTTP without TLS.
-PostgreSQL, when selected, is a disposable loopback cluster with trust
-authentication, `sslmode=disable`, `local_unencrypted`, and pool size 8.
+By default the listener is loopback HTTP without TLS and database encryption
+is off. PostgreSQL, when selected in that default mode, is a disposable
+loopback cluster with trust authentication, `sslmode=disable`,
+`local_unencrypted`, and pool size 8.
+
+`--secure` is the other bounded mode. It keeps the same dataset, pace, and
+general-request estimate. It generates a fresh private CA, a server
+certificate whose SAN is `DNS:localhost` and `IP:127.0.0.1`, and a fresh
+`database_key_file` of 32 bytes in base64url without padding. The issuer is
+`https://127.0.0.1` on the same ephemeral port as the listener. The client
+trusts that CA, checks the hostname, and requires the handshake to fail for
+an unrelated CA and for the system trust store. Init receives
+`--database-key-file`. The TLS file paths are written into the private config
+before serve. The store format for that run is `aes256gcm-v1`.
+
+A secure PostgreSQL run listens with TLS and uses `scram-sha-256` on
+`hostssl` lines only. `local_unencrypted` is false. libpq preflight connects
+with `sslmode=verify-full`, `host=localhost`, `hostaddr=127.0.0.1`, and the
+private CA, and it must see server SSL on. The same preflight must fail for
+an unrelated CA and for `sslmode=disable`. The connection file riAuth reads
+uses `sslmode=require` with that host and hostaddr. This binary's parser
+accepts `disable`, `prefer`, and `require`, then the client sets
+`SslMode::Require`. rustls checks the hostname against the webpki roots and
+`ca_file`. Putting `sslmode=verify-full` in the file riAuth reads is rejected
+before connect. Product init with the unrelated CA must exit 6 with
+`storage_unavailable` and must not publish the config. Bootstrap sets the
+database credential with `initdb --pwfile` and a unix-socket `scram-sha-256`
+line, then reloads `pg_hba.conf` to the `hostssl` lines before either libpq
+preflight or riAuth init.
 
 A quiet pass sends the session read from one client. An interference pass
 repeats it while a second client sends `POST /api/groups` for empty groups,
@@ -101,7 +127,10 @@ supplied. The script still hashes the measured file and does not infer the
 compiler from it.
 
 Repeat with `--features platform` and, separately, `--backend postgresql` when
-`initdb`, `pg_ctl`, and `createdb` are installed. Keep the JSON from each run.
+`initdb`, `pg_ctl`, and `createdb` are installed. Add `--secure` for the
+private-CA HTTPS and `database_key_file` mode above. `--self-check` rejects
+that flag. A secure run needs `openssl` on `PATH`. A secure PostgreSQL run
+also needs `psql`. Keep the JSON from each run.
 Compare runs only when the commit, security settings, dataset, and hardware
 notes say they are the same measurement.
 
@@ -775,15 +804,19 @@ the essentials server in 3m 07s and the platform server in 3m 20s, both as
 the `release` profile. The build container uname was `Linux 08ba64ae7e60
 7.0.12-linuxkit #1 SMP PREEMPT Fri Aug 14 16:27:59 UTC 2026 aarch64`.
 
-From `6ca4779` to this checkout, `git diff -- src` names `src/assembly.rs`,
-`src/assembly/source_saml_record.rs`, and `src/source/saml.rs`. `Cargo.toml`,
-`Cargo.lock`, `rust-toolchain.toml`, and `scripts/q09_benchmark_slice.py`
-are the same blobs. These Linux binaries were compiled before that SAML
-record move. Essentials capabilities report `identity.saml_sources` compiled
-false. Platform capabilities report it compiled true. Both report version
-`0.1.1` and target `linux` / `aarch64`. The macOS rows above used
-dev-profile binaries on Darwin. The macOS Essentials fingerprint also named
-`test-support`. These four rows stand on their own measurements.
+From `6ca4779` to `cc186af`, `git diff -- src` names `src/assembly.rs`,
+`src/assembly/source_saml_record.rs`, and `src/source/saml.rs`. At `cc186af`,
+`Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, and
+`scripts/q09_benchmark_slice.py` are the same blobs as `6ca4779`. These
+Linux binaries were compiled before that SAML record move. Essentials
+capabilities report `identity.saml_sources` compiled false. Platform
+capabilities report it compiled true. Both report version `0.1.1` and target
+`linux` / `aarch64`. The macOS rows above used dev-profile binaries on
+Darwin. The macOS Essentials fingerprint also named `test-support`. These
+four rows stand on their own measurements. The secure-mode section below
+uses a later script blob. `git diff 6ca4779 -- src` at that later checkout
+still names only those three SAML files, and the Cargo inputs above stay the
+same blobs.
 
 `file` and `readelf` in the Q08 build log, and `file` again in the
 measurement container, describe both `riauth` servers as ELF 64-bit LSB pie
@@ -1062,6 +1095,318 @@ release profile of the `6ca4779` binaries, trust authentication with
 averages above, and the pace inside the throughput. They assign no load,
 recovery, or capacity target.
 
+### Paced `q09-2u-2g` Linux ARM64 secure mode in Docker's VM
+
+These four observations repeat that paced shape with `--secure`, in the same
+order: Essentials redb, Essentials PostgreSQL, Platform redb, then Platform
+PostgreSQL. Each report has `source.commit`
+`4ab934a44a80062dda0dba5d8640d396631a3ef0`, empty `dirty_paths`,
+`product_run: true`, `observations_only: true`, and `performance_claim:
+false`. Schema is `riauth.benchmark-slice/v1`. The script SHA-256 is
+`399bd242519bdae15483f2d450ef9c1bf7b8b397a25bfff1179abefcaf9c7e49`.
+`source.binary_compiler` is `unrecorded`. `source.checkout_rust_toolchain`
+is `1.98.1`. That commit is the harness checkout where the script ran. The
+plaintext rows above store script SHA-256
+`ecd4ce799087ed095c6604a92a18c2af4f02af33adfa7ac36907184bf4d5c510` at
+checkout `cc186af`.
+
+The measured files are the same private copies named above, still mode
+`-r-xr-xr-x`. Essentials SHA-256
+`5feac36b7ad5d292cafb192b673f4353f8fa424e90a35d667d8fa7f41cac74eb`, 36324648
+bytes. Platform SHA-256
+`606a2ce5d72de16fe8749efdb3504fd81471c88118008180667a013ccffea79d`, 49302784
+bytes. Both were compiled from
+`6ca4779b68cf41e29af490d2aca6ea3d59e1f2bd`. Report `build` tokens are
+`features` `essentials` or `platform`, `profile` `release`, and `toolchain`
+`1.98.1`. Capabilities `build_features` are `essentials` on the first binary
+and `essentials`, `platform` on the second. Both report version `0.1.1` and
+target `linux` / `aarch64`. `artifact.path` is `/evidence/bin/essentials/riauth`
+or `/evidence/bin/platform/riauth`. `Cargo.toml`, `Cargo.lock`, and
+`rust-toolchain.toml` match `6ca4779`. The SAML record move named above is
+still the only `src` difference from that commit, so these binaries predate
+it. These rows are a separate observation from the plaintext Linux rows: a
+later harness, private-CA HTTPS, and `aes256gcm-v1` storage.
+
+The image is the same local tag `q09-linux-arm64-runtime:cc186af`, id
+`sha256:a04d38b65247359a288a139686b942190737eca25ef1ccf504b93c7a532fb4fd`,
+linux/arm64. The container name was `q09-linux-secure-arm64`, label
+`q09=linux-secure-arm64`, user `10000:10000`. It set `safe.directory=*` and
+mounted the worktree read-only, the binaries read-only, and the report
+directory writable. Process uname was `Linux 273a73bfc263 7.0.12-linuxkit #1
+SMP PREEMPT Fri Aug 14 16:27:59 UTC 2026 aarch64`. Python was 3.13.5 and
+`cpu_count` was 16. MemTotal and cgroup `memory.max` are unrecorded for this
+container. The Mac host in the launcher log is Darwin `dgsPro` 25.2.0 arm64
+and `hw.memsize` 68719476736. The linuxkit kernel is Docker Desktop's Linux
+VM. The report limitations record no external signer and no published release
+identity.
+
+Every run used a new directory and `--iterations 12 --warmup 1
+--interference-cap 4 --directory-users 2 --directory-groups 2 --pace-ms 6500
+--secure`. The verified dataset is `q09-2u-2g`: administrator `admin`, extra
+users `q09-user-0001` and `q09-user-0002`, groups `q09-dir-0001` and
+`q09-dir-0002`, three members in each group, and six memberships. The
+estimated general-request budget is 65. Settings record `tls: true`,
+`database_encryption: true`, issuer `loopback https base`, and listen
+`127.0.0.1 ephemeral`. `postgres_local_unencrypted` is false. PostgreSQL
+pool size is 8. The redb reports leave the pool null.
+
+Each run generated a fresh private CA, a server certificate, and a fresh
+`database_key_file`. The certificate SAN is `DNS:localhost` and
+`IP:127.0.0.1`, and the issuer host is `127.0.0.1` on the listener port. The
+client checks the hostname against that private CA. The harness records
+`matching_ca_readyz` true only after `/readyz` returned HTTP 200 to that CA.
+An unrelated CA and the system trust store were refused before an HTTP
+status. `operations.native_tls` and `operations.encrypted_storage` are
+usable. The key file is mode `0600`, base64url without padding, 32 decoded
+bytes. Storage format is `aes256gcm-v1`. `credential_bytes_in_store` is
+false.
+
+The connection file this binary reads accepts `sslmode` values `disable`,
+`prefer`, and `require`, and the client then sets `SslMode::Require`. rustls
+checks the hostname against the webpki roots and `ca_file`.
+`sslmode=verify-full` in that file is rejected before connect, so the harness
+keeps `sslmode=require` there, with `host=localhost` and
+`hostaddr=127.0.0.1`. libpq preflight is the path that uses
+`sslmode=verify-full` and the private CA. That limit was in the harness
+before this sequence, and both PostgreSQL reports record it. Each PostgreSQL
+report has `operations.postgresql` usable, `server_ssl` true, auth
+`scram-sha-256`, `pg_hba` `hostssl 127.0.0.1/32` and `::1/128`,
+`local_unencrypted` false, `libpq_sslmode_verify_full` true,
+`libpq_unrelated_ca_refused` true, and `libpq_sslmode_disable_refused` true.
+Product init against the unrelated CA exited 6 with `storage_unavailable`,
+HTTP 503, and `config_published` false. The redb reports have no `postgres`
+object and say this run uses the redb backend.
+
+The 6500 ms pace sits between measured reads, inside the pass wall clock and
+outside each latency sample. For 12 attempts, nearest-rank `ceil(n*q)`
+selects the maximum for both p95 and p99. Every pass had 12 attempts, 12
+successes, 0 session-read errors, empty error statuses and codes, maintenance
+`finished` delta 1, `failed` 0, and `maintenance_cadence_overlap` true.
+Elapsed time is 71.574398 to 71.657009 seconds. The writer on every run
+recorded 4 posts, 2 successes, 2 HTTP 409 conflicts, 0 other errors, 2
+revision refreshes, and overlap true. Quiet `requests_total` is 13 and
+interference `requests_total` is 20. Interference `responses_error_total` is
+2. `rate_limited_total` and `worker_rejections_total` are 0. `cleanup_count`
+is 1 and `cleanup_errors` is 0. Reconciliation `finished` is 14.
+`manual_connector` finished is 0. Logout/SSF `finished` is 35 on each quiet
+pass and 36 on each interference pass. Mail `finished` is 13 on the
+Essentials redb, Essentials PostgreSQL, and Platform redb quiet passes, and
+14 on the Platform PostgreSQL quiet pass and on every interference pass.
+Every background `failed` delta is 0. On every pass, RSS at the start equals
+the minimum and RSS at the end equals the maximum. Sampler read errors are 0.
+procps in this image prints CPU time in whole seconds, so the samples are 0.0
+or 1.0. Platform PostgreSQL quiet CPU is 1.0 and its interference CPU is 0.0.
+The other three runs record quiet CPU 0.0 and interference CPU 1.0. The
+one-minute load average values in these four reports span 0.18115234375 to
+1.3203125.
+
+The inner log is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-secure/reports/run.log`,
+SHA-256
+`655c333863c30ed0173c611d88425e818f67477ba0afed728f4b8be99bc87945`.
+It ends `RUN_OK`. The host launcher log is
+`/Users/dominik/.grok/long-running-background-tasks/q09-linux-secure-run.log`,
+SHA-256
+`ceb7aa3e276e611d13925490db02ae984cf80d4da57aff83db15fc46b88bef36`.
+It records `DOCKER_STATUS 0` and `RUN_OK`.
+
+#### Essentials redb
+
+The redb command started at 2026-09-29T19:45:51Z and exited 0 at
+2026-09-29T19:48:15Z. Standard error recorded
+`completion=0 product_run=true backend=redb edition=essentials dataset=q09-2u-2g directory_users=2 directory_groups=2 verified=true pace_ms=6500 secure=true quiet_maintenance_overlap=true interference_maintenance_overlap=true`.
+Runtime `storage_backend` is `redb`. The report hardware load average, taken
+before the measured passes, was 1.3203125, 1.1396484375, 1.00732421875.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 4491 | 11331 | 11331 | 2339 | 71.591694 | 0.167617 | 49940 | 50408 | 0.0 | 1288 |
+| Interference | 4205 | 9416 | 9416 | 2325 | 71.578967 | 0.167647 | 50504 | 50540 | 1.0 | 1292 |
+
+Quiet host load went from 1.29443359375, 1.13720703125, 1.0068359375 to
+0.85009765625, 1.0439453125, 0.9833984375. Interference host load went from
+0.85009765625, 1.0439453125, 0.9833984375 to 0.55419921875, 0.92529296875,
+0.947265625. The interference-minus-quiet latency summary, in microseconds,
+is min -14, p50 -286, p95 -1915, p99 -1915, and max -1915.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 1 | 0 |
+| logout_ssf finished | 35 | 36 |
+| mail finished | 13 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 287 | 286 |
+| deactivation finished | 287 | 286 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 336 | 339 |
+| write_wait_count | 336 | 339 |
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-secure/reports/essentials-redb-secure.json`,
+SHA-256 `cc8c417c1e965e0caee60e8b9b9aa42b25186c5816d6f2644d2d09abba8ef3f2`.
+The sibling `.stdout.json` is byte-identical. A text search found no
+password, no session token, and no PEM private-key banner.
+
+#### Essentials PostgreSQL
+
+The PostgreSQL command started at 2026-09-29T19:48:15Z and exited 0 at
+2026-09-29T19:50:41Z. Standard error recorded the same completion line with
+`backend=postgresql edition=essentials secure=true` and both maintenance
+overlaps true. Runtime `storage_backend` is `postgresql`. The report hardware
+load average, taken before the measured passes, was 0.55419921875,
+0.92529296875, 0.947265625.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 9683 | 14087 | 14087 | 3445 | 71.633726 | 0.167519 | 50752 | 51164 | 0.0 | 1284 |
+| Interference | 9125 | 11152 | 11152 | 5106 | 71.626331 | 0.167536 | 51272 | 51452 | 1.0 | 1279 |
+
+Quiet host load went from 0.59033203125, 0.9267578125, 0.94775390625 to
+0.18115234375, 0.73046875, 0.87548828125. Interference host load went from
+0.18115234375, 0.73046875, 0.87548828125 to 0.57080078125, 0.71484375,
+0.857421875. The interference-minus-quiet latency summary, in microseconds,
+is min 1661, p50 -558, p95 -2935, p99 -2935, and max -2935.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 1 | 0 |
+| logout_ssf finished | 35 | 36 |
+| mail finished | 13 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 287 | 286 |
+| deactivation finished | 287 | 286 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 349 | 359 |
+| write_wait_count | 349 | 359 |
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-secure/reports/essentials-postgresql-secure.json`,
+SHA-256 `f6fd102c82108288299b655932dbaff8d9d80b6db26a148ac01433468a3157dd`.
+The sibling `.stdout.json` is byte-identical. A text search found no
+password, no session token, and no PEM private-key banner.
+
+#### Platform redb
+
+The redb command started at 2026-09-29T19:50:41Z and exited 0 at
+2026-09-29T19:53:05Z. Standard error recorded the same completion line with
+`backend=redb edition=platform secure=true` and both maintenance overlaps
+true. Runtime `storage_backend` is `redb` and edition is `platform`. The
+report hardware load average, taken before the measured passes, was
+0.57080078125, 0.71484375, 0.857421875.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 5965 | 10922 | 10922 | 1912 | 71.598955 | 0.1676 | 53968 | 54516 | 0.0 | 1275 |
+| Interference | 3746 | 6696 | 6696 | 2021 | 71.574398 | 0.167658 | 54700 | 54716 | 1.0 | 1285 |
+
+Quiet host load went from 0.765625, 0.7529296875, 0.869140625 to
+0.30517578125, 0.62109375, 0.8125. Interference host load went from
+0.30517578125, 0.62109375, 0.8125 to 0.529296875, 0.61181640625,
+0.79541015625. The interference-minus-quiet latency summary, in
+microseconds, is min 109, p50 -2219, p95 -4226, p99 -4226, and max -4226.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 1 | 0 |
+| logout_ssf finished | 35 | 36 |
+| mail finished | 13 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 286 | 286 |
+| deactivation finished | 286 | 286 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 340 | 344 |
+| write_wait_count | 340 | 344 |
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-secure/reports/platform-redb-secure.json`,
+SHA-256 `e88bba86b5a11a5c68bd6235b833461198d52f474de7092fda3c2bc55351be6a`.
+The sibling `.stdout.json` is byte-identical. A text search found no
+password, no session token, and no PEM private-key banner.
+
+#### Platform PostgreSQL
+
+The PostgreSQL command started at 2026-09-29T19:53:05Z and exited 0 at
+2026-09-29T19:55:31Z. Standard error recorded the same completion line with
+`backend=postgresql edition=platform secure=true` and both maintenance
+overlaps true. Runtime `storage_backend` is `postgresql` and edition is
+`platform`. The report hardware load average, taken before the measured
+passes, was 0.529296875, 0.61181640625, 0.79541015625.
+
+| Pass | p50 µs | p95 µs | p99 µs | min µs | elapsed s | success/s | RSS KiB min | RSS KiB max | CPU s | samples |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Quiet | 10462 | 19071 | 19071 | 3773 | 71.657009 | 0.167464 | 55260 | 55680 | 1.0 | 1273 |
+| Interference | 9996 | 11876 | 11876 | 5059 | 71.640703 | 0.167503 | 55808 | 55992 | 0.0 | 1283 |
+
+Quiet host load went from 0.7275390625, 0.65185546875, 0.8076171875 to
+0.28662109375, 0.529296875, 0.751953125. Interference host load went from
+0.28662109375, 0.529296875, 0.751953125 to 0.36669921875, 0.49365234375,
+0.72216796875. The interference-minus-quiet latency summary, in
+microseconds, is min 1286, p50 -466, p95 -7195, p99 -7195, and max -7195.
+
+| Counter | Quiet | Interference |
+| --- | ---: | ---: |
+| maintenance finished | 1 | 1 |
+| alerts finished | 0 | 1 |
+| logout_ssf finished | 35 | 36 |
+| mail finished | 14 | 14 |
+| reconciliation finished | 14 | 14 |
+| provisioning finished | 287 | 287 |
+| deactivation finished | 287 | 287 |
+| manual_connector finished | 0 | 0 |
+| requests_total | 13 | 20 |
+| responses_error_total | 0 | 2 |
+| rate_limited_total | 0 | 0 |
+| worker_rejections_total | 0 | 0 |
+| cleanup_count | 1 | 1 |
+| cleanup_errors | 0 | 0 |
+| write_hold_count | 354 | 365 |
+| write_wait_count | 354 | 365 |
+
+The JSON file is
+`/Users/dominik/.cache/riauth-cargo/q09-linux-arm64-secure/reports/platform-postgresql-secure.json`,
+SHA-256 `b8946dec02ebb45aa06a9e7dd7b60c770117621a3c614d2f5d62fa1acfada961`.
+The sibling `.stdout.json` is byte-identical. A text search found no
+password, no session token, and no PEM private-key banner.
+
+Available space on `/System/Volumes/Data` was 43990744 KiB at
+2026-09-29T19:45:50Z and 33787468 KiB when the container exited at
+2026-09-29T19:55:31Z. Both readings are above 8388608 KiB. The named container
+`q09-linux-secure-arm64` was removed. No `riauth-q09-` directory remained.
+The plaintext JSON files named above still hash to the SHA-256 values in that
+section. The private binary copies still hash to the values above. This
+session did not run Cargo, did not edit the Q08 tree, and did not edit the
+accepted worktree or main.
+
+The limits of these observations are Docker's linuxkit VM, the release
+profile of the `6ca4779` binaries, loopback HTTPS with one fresh private CA,
+`aes256gcm-v1` from a fresh `database_key_file`, PostgreSQL `scram-sha-256`
+on `hostssl` with the product file at `sslmode=require` and libpq preflight
+at `sslmode=verify-full`, whole-second procps CPU samples, the load averages
+above, and the pace inside the throughput. They assign no load, recovery, or
+capacity target. They record no external signer and no published release
+identity.
+
 ## Relationship to the earlier harnesses
 
 [S01 contention characterization](../../scripts/characterize-contention.sh)
@@ -1096,11 +1441,17 @@ dev-profile binary. The paced Linux ARM64 rows record that overlap for both
 editions and both backends inside Docker Desktop's linuxkit VM. Their
 `source.commit` is harness checkout `cc186af`. The measured files are the
 release-profile `aarch64-unknown-linux-gnu` copies Q08 built from `6ca4779`.
+The `--secure` Linux ARM64 rows record the same overlap on those copies with
+private-CA HTTPS and `aes256gcm-v1` storage. Their `source.commit` is harness
+checkout `4ab934a`. The PostgreSQL rows in that set record libpq
+`sslmode=verify-full`, and the connection file the binary reads uses
+`sslmode=require`.
+
 Full publication still requires:
 
 - a Linux x86-64 packaged artifact when a release build is the claimed artifact, and a published Linux ARM64 package identity for that release; the ARM64 rows on this page are the local VM copies above
-- TLS, database encryption, and external signing included when the claimed deployment uses them
-- a repeat on a host whose load is the condition being studied, or on a quiet host when that is the condition; the Linux ARM64 container passes recorded a one-minute load average from 0.13330078125 to 0.6689453125 beside MemTotal 8021540 kB, the paced Essentials macOS passes recorded 10.814453125 to 16.57177734375, the paced Platform PostgreSQL passes recorded 6.0830078125 to 12.5654296875, the paced Platform redb passes recorded 6.84033203125 to 7.99267578125, and the `q09-8u-8g` runs recorded 10.4560546875 to 11.3759765625, on 16 cores
+- an external signer when the claimed deployment uses one; these `--secure` rows record a fresh loopback private CA and a fresh `database_key_file`, and they record no external signer and no published release identity
+- a repeat on a host whose load is the condition being studied, or on a quiet host when that is the condition; the plaintext Linux ARM64 container passes recorded a one-minute load average from 0.13330078125 to 0.6689453125 beside MemTotal 8021540 kB, the secure Linux ARM64 passes recorded a one-minute load average from 0.18115234375 to 1.3203125, the paced Essentials macOS passes recorded 10.814453125 to 16.57177734375, the paced Platform PostgreSQL passes recorded 6.0830078125 to 12.5654296875, the paced Platform redb passes recorded 6.84033203125 to 7.99267578125, and the `q09-8u-8g` runs recorded 10.4560546875 to 11.3759765625, on 16 cores
 - no numeric load, RPO, or RTO target until a named operator workload exists
 
 The coverage inventory row for Q09 still says the benchmark gap is open. This

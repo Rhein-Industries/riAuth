@@ -1,10 +1,12 @@
 //! Reviewed cloud-directory plan reads over concrete storage.
 
+use super::cloud_directory_reconcile::{
+    authorize_reconcile, materialize_completed_draft, reconcile, removal_impact,
+};
 use crate::{
     agent::Principal,
     cloud_directory::{
         CLOUD_APPLY_SNAPSHOTS, Change, CloudApplyDraft, CloudSnapshotDraft, Entry, Plan, Settings,
-        authorize_reconcile, materialize_completed_draft, reconcile, removal_impact,
     },
     connector_guard::{
         ApplyGate, ReconciliationDecision, ReconciliationMode, RemovalImpact, ReviewBinding,

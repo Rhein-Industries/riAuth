@@ -1,0 +1,168 @@
+{
+  "binary_sha256": "86a799d3060e5e602c7e458a9c409ffc8c06f881e2d426a1e6d9be226337445d",
+  "checks": [
+    {
+      "id": "local_tooling",
+      "observed": {
+        "edition": "essentials",
+        "postgres_version": "pg_ctl (PostgreSQL) 17.11 (Debian 17.11-0+deb13u1)"
+      },
+      "result": "passed"
+    },
+    {
+      "id": "isolated_cluster_ready",
+      "observed": {
+        "loopback_only": true,
+        "source_database": true,
+        "target_database_empty": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "source_ready",
+      "observed": {
+        "doctor_healthy": true,
+        "ready_http_status": 200,
+        "storage": "encrypted_postgresql"
+      },
+      "result": "passed"
+    },
+    {
+      "id": "representative_source_login",
+      "observed": {
+        "username": "drill-user"
+      },
+      "result": "passed"
+    },
+    {
+      "id": "postgres_backup",
+      "observed": {
+        "bytes": 15681,
+        "format": "riauth.backup/v3",
+        "verified": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "database_outage_fail_closed",
+      "observed": {
+        "live_http_status": 200,
+        "login": {
+          "error_code": "storage_unavailable",
+          "exit_code": 6
+        },
+        "ready_http_status": 503
+      },
+      "result": "passed"
+    },
+    {
+      "id": "database_restarted",
+      "observed": {
+        "source_store_present": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "wrong_key_restore_rejected",
+      "observed": {
+        "error_code": "invalid_request",
+        "exit_code": 2,
+        "output_absent": true,
+        "target_empty": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "occupied_database_restore_rejected",
+      "observed": {
+        "error_code": "conflict",
+        "exit_code": 5,
+        "output_absent": true,
+        "source_serving_allowed": true,
+        "source_store_preserved": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "postgres_restore_verified_and_gated",
+      "observed": {
+        "encrypted_at_rest": true,
+        "invalidated_sessions": 2,
+        "recovery_id": "43ea9469-79ff-4b7d-827c-5e1c79faee58",
+        "serving_allowed": false,
+        "storage": "postgresql",
+        "verified": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "gated_serve_denied",
+      "observed": {
+        "exit_code": 5,
+        "listener_closed": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "wrong_recovery_id_denied",
+      "observed": {
+        "error_code": "conflict",
+        "exit_code": 5,
+        "gate_preserved": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "missing_attestation_denied",
+      "observed": {
+        "error_code": "invalid_request",
+        "exit_code": 2,
+        "gate_preserved": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "recovery_completed",
+      "observed": {
+        "serving_allowed": true,
+        "synthetic_credentials_reviewed": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "restored_session_rejected",
+      "observed": {
+        "error_code": "invalid_token",
+        "exit_code": 3
+      },
+      "result": "passed"
+    },
+    {
+      "id": "restored_login_and_health",
+      "observed": {
+        "discovery_http_status": 200,
+        "doctor_encrypted_at_rest": true,
+        "doctor_healthy": true,
+        "jwks_http_status": 200,
+        "jwks_key_count": 1,
+        "ready_http_status": 200,
+        "username": "drill-user"
+      },
+      "result": "passed"
+    }
+  ],
+  "external_gates": [
+    "lost backup or database key escrow",
+    "referenced secret-file recovery",
+    "PostgreSQL PITR and multi-node failover",
+    "TLS PostgreSQL connection",
+    "external signers, mail, directories and provisioning",
+    "real OIDC or SAML relying party"
+  ],
+  "finished_at": "2026-09-29T20:14:50.702011+00:00",
+  "maintenance_binary_sha256": "c8164dfaa1a21c2bc8ac485eee02789d1aa6c8b2739904021485474cbd4350c2",
+  "result": "passed",
+  "schema_version": "riauth.postgres-recovery-drill/v1",
+  "scope": "disposable loopback PostgreSQL cluster, real CLI and HTTP service",
+  "started_at": "2026-09-29T20:14:47.426564+00:00"
+}

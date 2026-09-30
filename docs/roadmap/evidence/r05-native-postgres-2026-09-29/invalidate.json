@@ -1,0 +1,33 @@
+{
+  "invalidated": {
+    "cause": "database_restore",
+    "completed_at": null,
+    "epoch_advanced_users": 3,
+    "id": "40e30c9c-e8cf-43e1-a921-cf2e6fcde54b",
+    "invalidated": {
+      "access": 1,
+      "account_latest": 1,
+      "account_proofs": 1,
+      "codes": 2,
+      "families": 1,
+      "mail_deliveries": 1,
+      "refresh": 1,
+      "rp_sessions": 1,
+      "session_retention": 1,
+      "session_tokens": 3,
+      "sessions": 3
+    },
+    "invalidated_at": 1790712099,
+    "lineage": null,
+    "policy": "riauth.recovery/v1",
+    "reconcile": {
+      "clients": 1,
+      "enabled_accounts": 2,
+      "passwords": 2,
+      "signing_keys": 1
+    },
+    "snapshot_created_at": null,
+    "unclassified": []
+  },
+  "serving_allowed": false
+}

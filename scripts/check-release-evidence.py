@@ -30,6 +30,7 @@ AUDITED = (
     "scripts/check-installed-release-gate.py",
     "scripts/generate-third-party-notices.py",
     "scripts/spdx_sbom.py",
+    "scripts/check-release-attestation.py",
 )
 SOURCE_PRODUCER = "scripts/spdx_sbom.py"
 PACKAGE_CALL = "\n".join((
@@ -163,6 +164,8 @@ def release_denylist(relative, text):
 def require_source_wiring(texts):
     hits = []
     for relative in RELEASE_PATHS:
+        if relative == ".github/workflows/release.yml":
+            continue
         hits.extend(release_denylist(relative, texts[relative]))
     require(not hits, "release path names a signing or SBOM producer: " + ", ".join(hits))
     workflow = texts[".github/workflows/release.yml"]
@@ -308,6 +311,13 @@ def audit(root, dist=None):
         require(token in workflow, f"release workflow is missing declared target text: {token}")
 
     require_source_wiring(texts)
+    attestation = load_audited_module(
+        root, "scripts/check-release-attestation.py", "audited_release_attestation",
+    )
+    try:
+        attestation.require_release_workflow(workflow)
+    except attestation.AttestationError as error:
+        raise AuditError(str(error)) from error
 
     for token in (
         "'schema': 'riauth.build/v4'",
@@ -372,12 +382,44 @@ def audit(root, dist=None):
     )
     require("packager_source_calls_producer" in procedure, "procedure omits the packager source field")
     require("asset_checks_require_package_spdx" in procedure, "procedure omits the asset-check field")
+    require(
+        "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6" in procedure,
+        "procedure does not name the pinned attest action",
+    )
+    require(
+        "https://token.actions.githubusercontent.com" in procedure,
+        "procedure does not name the Actions OIDC issuer",
+    )
+    require("Sigstore Public Good" in procedure, "procedure does not name the public-good instance")
+    require(
+        "python3 scripts/check-release-attestation.py" in procedure,
+        "procedure does not name the attestation checker",
+    )
+    require(
+        "No attestation bundle was produced in this slice." in procedure,
+        "procedure claims an attestation bundle",
+    )
+    require("gh attestation trusted-root" in procedure, "procedure does not name the offline trust root command")
+    require("gh attestation verify" in procedure, "procedure does not name the offline verify command")
+    require("36342719277" in procedure, "procedure does not record the observed public CI run")
+    require(
+        "not a current accepted complete release" in procedure,
+        "procedure does not keep the old draft out of the accepted release",
+    )
     producer_text = texts[SOURCE_PRODUCER]
     for sentence in PRODUCER_HONESTY:
         require(sentence in producer_text, f"source producer is missing honesty text: {sentence}")
     require("--locked" in producer_text, "source producer does not pass --locked")
     require("--offline" in producer_text, "source producer does not pass --offline")
     require("This output is a release SBOM." not in producer_text, "source producer claims a release SBOM")
+    require(
+        "This document is a local unsigned inventory of the named file bytes." in producer_text,
+        "source producer is missing the local unsigned label",
+    )
+    require(
+        "It is not an official attestation." in producer_text,
+        "source producer is missing the official-attestation boundary",
+    )
     require_package_contract(root)
 
     policy_contacts = contacts(security)
@@ -403,7 +445,17 @@ def audit(root, dist=None):
             "response_deadline": "none promised for this initial release",
             "reports_received_by_this_check": False,
         },
-        "signing": {"present_in_release_path": False, "signed_artifact": False},
+        "signing": {
+            "mechanism": "github-artifact-attestations",
+            "sigstore_instance": "public-good",
+            "repository": "Rhein-Industries/riAuth",
+            "workflow": ".github/workflows/release.yml",
+            "action": "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
+            "oidc_issuer": "https://token.actions.githubusercontent.com",
+            "present_in_release_path": True,
+            "signed_artifact": False,
+            "bundle_produced": False,
+        },
         "sbom": {
             "spdx_or_cyclonedx_document": False,
             "third_party_notices": "THIRD_PARTY_NOTICES.md",

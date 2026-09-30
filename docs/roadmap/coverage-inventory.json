@@ -35,8 +35,8 @@
     },
     "items_by_journey": {
       "complete-local": 7,
-      "module": 38,
-      "none": 25,
+      "module": 39,
+      "none": 24,
       "partial": 23,
       "process": 1
     },
@@ -1390,15 +1390,163 @@
         "W04"
       ],
       "label": "build",
-      "journey": "none",
-      "current_state": "No workflow versioning.",
-      "implementation": [],
-      "tests_existing": [],
-      "tests_run_in_this_task": [],
-      "documentation": [],
+      "journey": "module",
+      "current_state": "Configured runs pin revision, fingerprint, and policy. An exact-content approval can select one workflow-only desired-state definition through a distinct author, reviewer, and executor, with live authority, in one store write that commits the catalog row and an immutable approval. config.toml stays unchanged. Open runs seal on stale, revoked, or refused content, and the next run is new. This does not establish RI-WF-002.",
+      "implementation": [
+        "src/workflow/approval.rs",
+        "src/workflow/executor/version.rs",
+        "src/portal/admin.rs"
+      ],
+      "tests_existing": [
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::redb",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::redb",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::redb",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)"
+        }
+      ],
+      "tests_run_in_this_task": [
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::redb",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::redb",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::redb",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::redb_encrypted",
+          "kind": "rust",
+          "ci": "ci-check",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_http::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_negative::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::postgres",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        },
+        {
+          "ref": "tests/workflow_approval.rs::approval_concurrent::postgres_encrypted",
+          "kind": "rust",
+          "ci": "not-in-ci (#[ignore], disposable PostgreSQL cluster)",
+          "result": "passed"
+        }
+      ],
+      "documentation": [
+        "docs/workflows.md",
+        "docs/security/invariants.md"
+      ],
       "released_artifact_evidence": "No released artifact applies.",
       "gaps": [
-        "All"
+        "Unapproved config.workflows still starts",
+        "No file rewrite or other-client disconnect",
+        "Code-owned workflows stay unpinned",
+        "Browser selector reads config.workflows",
+        "Dependency digest omits the rest of the environment",
+        "Sealed runs are not continued",
+        "No generic reviewer roles",
+        "RI-WF-002 remains open"
       ],
       "unverified": []
     },
@@ -2803,7 +2951,7 @@
       ],
       "label": "extend",
       "journey": "module",
-      "current_state": "Initialization stores the issuer and the compiled-and-enabled capability set in meta.node_security. A later process with a different issuer, active set, token lifetime, or password_history exits 2 before it binds. A format 1 agreement is refused by serve and left unchanged until riauth-maintenance security-agreement-record writes one format 2 row. A connected riauth session or a different policy leaves that row in place. tests/node_security_postgres.rs starts one gateway and mismatched serve processes on one disposable PostgreSQL database; capability, issuer, access-token lifetime 600, and password_history 0 each exit 2, accept no TCP connection, and leave riauth_store.records_v1 unchanged. The matching gateway uses another data directory. The gateway uses another listen address and browser_ui false, and /readyz stays successful with duties.background_jobs false. A logout claim stores a 60-second lease and begin_logout_dispatch pins it before the POST. tests/job_lease_postgres.rs starts two worker processes on one disposable PostgreSQL database and records one POST for one delivery. An SSF claim stores that same 60-second lease and deliver_once pins it before the SET POST. tests/ssf_lease.rs covers redb and encrypted redb. tests/ssf_lease_postgres.rs starts two workers on one disposable PostgreSQL database, holds one POST, and checks a stale finish and a moved stream. One of those databases uses database_key_file with sslmode=disable. Mail's finish-only lease, maintenance, alerts, connector target permits, the in-memory forward_auth rate limit, and cache freshness remain per process. An SSF POST already inside the five-second client timeout can still finish after a later claim if that process was suspended across the lease.",
+      "current_state": "Initialization stores the issuer and the compiled-and-enabled capability set in meta.node_security. A later process with a different issuer, active set, token lifetime, or password_history exits 2 before it binds. A format 1 agreement is refused by serve and left unchanged until riauth-maintenance security-agreement-record writes one format 2 row. A connected riauth session or a different policy leaves that row in place. tests/node_security_postgres.rs starts one gateway and mismatched serve processes on one disposable PostgreSQL database; capability, issuer, access-token lifetime 600, and password_history 0 each exit 2, accept no TCP connection, and leave riauth_store.records_v1 unchanged. The matching gateway uses another data directory. The gateway uses another listen address and browser_ui false, and /readyz stays successful with duties.background_jobs false. A logout claim stores a 60-second lease and begin_logout_dispatch pins it before the POST. tests/job_lease_postgres.rs starts two worker processes on one disposable PostgreSQL database and records one POST for one delivery. An SSF claim stores that same 60-second lease and deliver_once pins it before the SET POST. tests/ssf_lease.rs covers redb and encrypted redb. tests/ssf_lease_postgres.rs starts two workers on one disposable PostgreSQL database, holds one POST, and checks a stale finish and a moved stream. One of those databases uses database_key_file with sslmode=disable. A mail claim stores that same 60-second lease and deliver pins it before SMTP. tests/mail_lease.rs covers redb and encrypted redb. tests/mail_lease_postgres.rs starts two workers on one disposable PostgreSQL database, holds one SMTP dialogue, and checks a stale finish and a revoked proof. One of those databases uses database_key_file with sslmode=disable. A 250 accepted reply is at least once. An SMTP dialogue already inside the 30-second delivery timeout can still finish after a later claim if that process was suspended across the lease. Maintenance, alerts, connector target permits, the in-memory forward_auth rate limit, and cache freshness remain per process. An SSF POST already inside the five-second client timeout can still finish after a later claim if that process was suspended across the lease.",
       "implementation": [
         "src/node_security.rs",
         "src/core.rs",
@@ -2813,7 +2961,8 @@
         "src/identity/logout_queue.rs",
         "src/ssf.rs",
         "src/assembly/ssf.rs",
-        "src/identity/signals.rs"
+        "src/identity/signals.rs",
+        "src/lifecycle.rs"
       ],
       "tests_existing": [
         {
@@ -2885,6 +3034,26 @@
           "ref": "tests/rate_limits.rs::a_full_shared_rate_table_evicts_its_oldest_window",
           "kind": "rust",
           "ci": "ci-check"
+        },
+        {
+          "ref": "tests/mail_lease.rs::mail_lease_pins_one_attempt_until_expiry",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/mail_lease.rs::mail_lease_pins_one_attempt_on_encrypted_redb",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/mail_lease_postgres.rs::two_workers_pin_one_mail_delivery",
+          "kind": "rust",
+          "ci": "not-in-ci"
+        },
+        {
+          "ref": "tests/mail_lease_postgres.rs::two_workers_pin_one_mail_delivery_with_database_key",
+          "kind": "rust",
+          "ci": "not-in-ci"
         }
       ],
       "tests_run_in_this_task": [
@@ -2907,7 +3076,14 @@
         "ssf_idle_probe_preserves_claim_receipt_and_retry",
         "delivery_workers_attribute_writes_and_skip_idle_queues",
         "two_workers_pin_one_ssf_delivery",
-        "two_workers_pin_one_ssf_delivery_with_database_key"
+        "two_workers_pin_one_ssf_delivery_with_database_key",
+        "mail_lease_pins_one_attempt_until_expiry",
+        "mail_lease_pins_one_attempt_on_encrypted_redb",
+        "idle_mail_probe_preserves_claims_proofs_and_durable_retry",
+        "factors_tests::account_verification_is_delivered_through_smtp_and_bound_to_purpose_email_and_epoch",
+        "factors_tests::email_password_reset_preserves_factors_revokes_grants_and_retries_delivery_without_exposing_tokens",
+        "two_workers_pin_one_mail_delivery",
+        "two_workers_pin_one_mail_delivery_with_database_key"
       ],
       "documentation": [
         "docs/availability.md",
@@ -2916,12 +3092,17 @@
         "docs/ssf-delivery.md",
         "docs/enterprise/ENT-07.md",
         "docs/roadmap/o03-node-security.md",
-        "docs/roadmap/o06-ssf-delivery-diagnostics.md"
+        "docs/roadmap/o06-ssf-delivery-diagnostics.md",
+        "docs/lifecycle.md",
+        "docs/roadmap/o06-offboarding-diagnostics.md",
+        "docs/roadmap/o06-deactivation-diagnostics.md",
+        "docs/roadmap/o06-provisioning-job-diagnostics.md",
+        "docs/roadmap/o06-reconciliation-diagnostics.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
         "Maintenance and alerts have no shared dispatch lease",
-        "Mail compares its lease on finish and does not pin before sending",
+        "An SMTP dialogue already inside the 30-second delivery timeout can finish after a later claim if that process was suspended across the 60-second lease. A 250 accepted reply is at least once",
         "A logout or SSF POST already inside the five-second client timeout can finish after a later claim if that process was suspended across the 60-second lease",
         "Connector target permits stay in the worker process",
         "Per-node forward_auth rate limit",
@@ -2930,8 +3111,8 @@
         "Format 1 stays unchanged until security-agreement-record; serve does not infer the missing lifetimes, and the command cannot see another node's unpublished configuration",
         "After security-agreement-record commits, the previous release refuses the store; rollback is the pre-command backup",
         "Legacy stores adopt the first successful opener",
-        "PostgreSQL runs used loopback HTTP without native TLS and did not promote the standby. The SSF database-key run keeps sslmode=disable",
-        "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres, job_lease_postgres, or ssf_lease_postgres"
+        "PostgreSQL runs used loopback HTTP without native TLS and did not promote the standby. The SSF and mail database-key runs keep sslmode=disable",
+        "Public CI does not select RIAUTH_PG_TEST_TARGET=node_security_postgres, job_lease_postgres, ssf_lease_postgres, or mail_lease_postgres"
       ],
       "unverified": []
     },

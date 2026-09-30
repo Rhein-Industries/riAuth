@@ -24,6 +24,8 @@ import tomllib
 HONESTY = "This output is not a release SBOM."
 NOT_ATTESTATION = "This document is not a build attestation."
 NOT_FETCHED = "Crate archives were not fetched."
+LOCAL_UNSIGNED = "This document is a local unsigned inventory of the named file bytes."
+NOT_OFFICIAL = "It is not an official attestation."
 CREATED = "1970-01-01T00:00:00Z"
 CREATED_REASON = "created is 1970-01-01T00:00:00Z because the document is a pure function of its inputs, not a build time."
 DOCUMENT_LICENSE = "dataLicense CC0-1.0 applies to this SPDX document only, not to the named packages."
@@ -376,13 +378,16 @@ def digest_payload(root, crates, files, target, features, no_default_features, l
     }
 
 
-def creation_comment(target, features, no_default_features, lock_sha256):
+def creation_comment(target, features, no_default_features, lock_sha256, local_unsigned=False):
     feature_text = ",".join(features) if features else "none"
-    return (
+    comment = (
         f"{HONESTY} {NOT_ATTESTATION} {NOT_FETCHED} {DOCUMENT_LICENSE} {CREATED_REASON} "
         f"target={target}; features={feature_text}; no_default_features={str(no_default_features).lower()}; "
         f"lock_sha256={lock_sha256}."
     )
+    if local_unsigned:
+        comment += f" {LOCAL_UNSIGNED} {NOT_OFFICIAL}"
+    return comment
 
 
 def download_location(source, name, version):
@@ -391,7 +396,8 @@ def download_location(source, name, version):
     return "NOASSERTION"
 
 
-def build_document(metadata, lock_bytes, lock_index, target, features, no_default_features, files):
+def build_document(metadata, lock_bytes, lock_index, target, features, no_default_features, files,
+                   local_unsigned=False):
     if TARGET_RE.fullmatch(target) is None:
         raise SpdxError(f"invalid target: {target}")
     if not files:
@@ -495,7 +501,9 @@ def build_document(metadata, lock_bytes, lock_index, target, features, no_defaul
         "creationInfo": {
             "created": CREATED,
             "creators": [TOOL],
-            "comment": creation_comment(target, features, no_default_features, lock_sha256),
+            "comment": creation_comment(
+                target, features, no_default_features, lock_sha256, local_unsigned,
+            ),
         },
         "documentDescribes": described,
         "packages": packages,
@@ -573,11 +581,13 @@ def write_bytes(path, payload):
             discard_regular_temporary(temporary_name)
 
 
-def assemble(metadata, lock_path, target, features, no_default_features, named_paths, expectations):
+def assemble(metadata, lock_path, target, features, no_default_features, named_paths, expectations,
+             local_unsigned=False):
     lock_bytes, lock_index = load_lock(lock_path)
     files = collect_files(named_paths, expectations)
     return build_document(
         metadata, lock_bytes, lock_index, target, tuple(features), no_default_features, files,
+        local_unsigned,
     )
 
 
@@ -821,9 +831,19 @@ def main(argv=None):
     produce = commands.add_parser("produce")
     command_args(produce)
     produce.add_argument("--out", required=True)
+    produce.add_argument(
+        "--local-unsigned",
+        action="store_true",
+        help="Label the document as a local unsigned inventory. " + NOT_OFFICIAL,
+    )
     verify = commands.add_parser("verify")
     command_args(verify)
     verify.add_argument("--document", required=True)
+    verify.add_argument(
+        "--local-unsigned",
+        action="store_true",
+        help="Require the local unsigned inventory label. " + NOT_OFFICIAL,
+    )
     package = commands.add_parser(
         "package-linux",
         help="Write Essentials, Platform, and riauthctl documents for one architecture. " + HONESTY,
@@ -852,6 +872,7 @@ def main(argv=None):
         metadata = metadata_from_args(args)
         document = assemble(
             metadata, args.lock, args.target, features, args.no_default_features, named_paths, expectations,
+            local_unsigned=getattr(args, "local_unsigned", False),
         )
         payload = canonical_bytes(document)
         if args.command == "verify":

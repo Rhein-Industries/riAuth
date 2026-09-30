@@ -81,13 +81,7 @@ impl Core {
                 .as_ref()
                 .and_then(|c| c.idempotency_key.as_ref())
                 .map(|k| digest(&format!("{}\0{k}", actor.id)));
-            // Keep the established agent/admin receipt representation stable.
-            // A delegated human's current grants form a separate replay scope.
-            let permissions = if actor.delegated {
-                json!({"human_grants": actor.grants, "generation": tx.get::<u64>("human_grant_generations", &actor.id)?.unwrap_or(0)})
-            } else {
-                serde_json::to_value(&actor.permissions).map_err(Error::internal)?
-            };
+            let permissions = crate::context::management_permissions(tx, &actor)?;
             if let Some(key) = &receipt_key
                 && let Some(result) = crate::context::replay_receipt(
                     tx,
@@ -222,18 +216,18 @@ impl Core {
                 "Configured issuer does not match the initialized instance",
             ));
         }
+        // Edition compatibility is read-only and must run before either migration
+        // or restored-lineage reconciliation mutates shared state.
+        crate::edition::validate_store(&store)?;
         // An existing agreement is compared before any startup write. A missing
         // row is recorded only after the read-only edition and capability gates,
         // so a refused build does not become canonical.
         crate::node_security::enforce(&config, &store)?;
-        // Edition compatibility is read-only and must run before either migration
-        // or restored-lineage reconciliation mutates shared state.
-        crate::edition::validate_store(&store)?;
         crate::capability::validate_store(&config, &store)?;
         crate::node_security::adopt_if_absent(&config, &store)?;
         crate::upgrade::migrate(&store)?;
         crate::recovery::verify_lineage(&store)?;
-        crate::context::scrub_legacy_agent_receipts_on_open(&store)?;
+        crate::context::scrub_legacy_issuance_receipts_on_open(&store)?;
         store.write(crate::assembly::backfill_prepared_index)?;
         let dummy = store
             .get::<String>("meta", "dummy_hash")?
@@ -628,6 +622,13 @@ impl Core {
     }
     pub fn create_client(&self, token: &str, input: NewClient) -> Result<Value> {
         Self::require_client_retry_binding()?;
+        if crate::management::issues_direct_client_secret(&input) {
+            // The shared writer still owns authority, validation and audit;
+            // this transaction stores only a redacted issuance receipt.
+            return self
+                .store
+                .write(|tx| crate::management::create_client_issuing(self, tx, token, input));
+        }
         self.mutation(token, |tx| {
             let actor = self.management(
                 tx,
@@ -737,25 +738,8 @@ impl Core {
                 "Client secret rotation requires Idempotency-Key and If-Match",
             ));
         }
-        self.mutation(token, |tx| {
-            let actor = self.management(tx, token, "client.rotate", &format!("client/{cid}"))?;
-            let existing = tx
-                .get::<Client>("clients", cid)?
-                .ok_or_else(|| Error::missing("Client not found"))?;
-            if existing.secret_hash.is_none() {
-                return Err(Error::bad("Public clients do not have a secret"));
-            }
-            let written = crate::management::write_client(
-                tx,
-                &self.config,
-                &actor,
-                Some(&existing),
-                existing.clone(),
-                crate::management::Secret::Issue,
-                crate::management::Record::Direct("client.secret.rotate"),
-            )?;
-            Ok(json!({"client_id": cid, "client_secret": written.secret}))
-        })
+        self.store
+            .write(|tx| crate::management::rotate_client_secret_issuing(self, tx, token, cid))
     }
     /// Starts TOTP enrollment for this session (`authenticator::totp_start_in`).
     pub fn mfa_begin(&self, token: &str) -> Result<Value> {

@@ -43,7 +43,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - The shared deactivation aggregate is [provisioning deactivation diagnostics](o06-provisioning-deactivation-diagnostics.md). It uses `provisioner.read` and `user.read`, withholds a missing account, and omits the target name. The Platform read on [deactivation diagnostics](o06-deactivation-diagnostics.md) still uses `user.offboard` and can show a missing account's target name to a full administrator.
-- Mail delivery status, which stays on `GET /api/operations/mail` and the `mail_deliveries` queue gauges. No SMTP error string is stored.
+- Mail delivery status, which stays on `GET /api/operations/mail` and the `mail_deliveries` queue gauges. That read omits the recipient, subject, body, proof, lease, and `dispatch_started`. No SMTP error string is stored. The owner lease and pre-send pin stay outside that response.
 - Logout delivery state, which stays on `GET /api/operations/logout`.
 - `doctor`, `/readyz`, `/livez`, Prometheus, and Grafana. This slice adds no series and no dashboard JSON.
 - `riauthctl`, and any new `riauth` diagnostics subcommand.

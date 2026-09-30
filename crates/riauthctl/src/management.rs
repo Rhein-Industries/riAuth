@@ -62,6 +62,46 @@ pub(crate) async fn plan(
     }))
 }
 
+pub(crate) async fn export(remote: &Remote, out: &Path, run_id: Option<&str>) -> Result<Value> {
+    if out.exists() {
+        bail!("Export destination already exists");
+    }
+    let verified = remote.verify_issuer().await?;
+    let credential = remote.credential(&verified)?;
+    let result = remote
+        .request_api(
+            &verified,
+            Method::GET,
+            "/api/state/export",
+            None::<&Value>,
+            Some(credential.token()),
+            run_id,
+        )
+        .await?;
+    if result.get("secrets_included") != Some(&Value::Bool(false)) {
+        bail!("Export reported included secrets");
+    }
+    let manifest = result
+        .get("manifest")
+        .context("Export is missing its manifest")?;
+    let serialized = serde_json::to_vec_pretty(manifest)?;
+    if serialized.len() as u64 > MAX_MANIFEST_BYTES {
+        bail!("Export exceeds its file size limit");
+    }
+    if serde_json::to_string(manifest)
+        .unwrap_or_default()
+        .contains("authorization_header")
+    {
+        bail!("Export manifest contains a delivery authorization field");
+    }
+    session::write_private(out, &serialized, false, false)?;
+    Ok(json!({
+        "manifest_file": out,
+        "revision": result["revision"],
+        "secrets_included": false,
+    }))
+}
+
 pub(crate) async fn apply(remote: &Remote, file: &Path, run_id: Option<&str>) -> Result<Value> {
     let plan = read_private_json(file, MAX_PLAN_BYTES)?;
     let verified = remote.verify_issuer().await?;

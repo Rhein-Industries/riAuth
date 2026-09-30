@@ -2564,10 +2564,10 @@ pub fn http_mutation_receipts_and_audit(backend: Backend) {
     assert_eq!(status, StatusCode::OK);
     let secret = text(&first, "client_secret");
     let committed = f.snapshot().unwrap();
-    assert_eq!(
-        call(&token, "create", Some(revision), &body),
-        (StatusCode::OK, first)
-    );
+    let (retry_status, retry) = call(&token, "create", Some(revision), &body);
+    assert_eq!(retry_status, StatusCode::CONFLICT);
+    assert_eq!(retry["error"], "credential_already_issued");
+    assert!(!retry.to_string().contains(&secret));
     f.assert_http_mutation_snapshot(&committed);
     let mut modified = body.clone();
     modified["name"] = json!("changed");
@@ -2597,6 +2597,10 @@ pub fn http_mutation_receipts_and_audit(backend: Backend) {
     let other_secret = text(&other_result, "client_secret");
     assert_ne!(secret, other_secret);
     assert_eq!(f.core.store.list::<Value>("receipts").unwrap().len(), 2);
+    for (_, receipt) in f.core.store.list::<Value>("receipts").unwrap() {
+        assert_eq!(receipt["result"]["credential_issued"], true);
+        assert!(!receipt.to_string().contains("ri_client_"));
+    }
     let events = audit(&f);
     let created: Vec<_> = events
         .iter()
@@ -2646,6 +2650,729 @@ pub fn http_mutation_receipts_and_audit(backend: Backend) {
     let revoked = f.snapshot().unwrap();
     assert!(!call(&token, "create", Some(revision), &body).0.is_success());
     f.assert_http_mutation_snapshot(&revoked);
+}
+
+fn client_issuance_http(
+    app: &axum::Router,
+    runtime: &tokio::runtime::Runtime,
+    method: &str,
+    path: &str,
+    headers: &[(&str, String)],
+    body: Option<&Value>,
+) -> (StatusCode, Value) {
+    let mut request = Request::builder().method(method).uri(path);
+    for (name, value) in headers {
+        request = request.header(*name, value);
+    }
+    let payload = if let Some(body) = body {
+        request = request.header("content-type", "application/json");
+        Body::from(body.to_string())
+    } else {
+        Body::empty()
+    };
+    runtime.block_on(async {
+        let response = app
+            .clone()
+            .oneshot(request.body(payload).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        (status, value)
+    })
+}
+
+struct ContractHttpServer {
+    origin: String,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl ContractHttpServer {
+    fn start(core: Core) -> Self {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        listener.set_nonblocking(true).unwrap();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let thread = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    axum::serve(listener, riauth::api::router(core))
+                        .with_graceful_shutdown(async {
+                            let _ = stopped.await;
+                        })
+                        .await
+                        .unwrap();
+                });
+        });
+        Self {
+            origin,
+            stop: Some(stop),
+            thread: Some(thread),
+        }
+    }
+}
+
+impl Drop for ContractHttpServer {
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(thread) = self.thread.take() {
+            thread.join().unwrap();
+        }
+    }
+}
+
+/// All three adapters reach the same secret-issuing writer. A retry reports a
+/// committed issue without another audit, a second secret, or plaintext in a
+/// receipt. This runs unchanged over redb and disposable PostgreSQL.
+pub fn client_secret_issuance_adapter_parity(backend: Backend) {
+    let f = backend.fixture();
+    let ordinary = f.user("ordinary");
+    let sign_in = f.core.portal_sign_in().unwrap();
+    f.core
+        .portal_decide(&f.admin, sign_in.body["code"].as_str().unwrap(), true)
+        .unwrap();
+    let binding = sign_in.cookies[0]
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1;
+    let delivered = f
+        .core
+        .portal_poll(sign_in.body["id"].as_str().unwrap(), Some(binding))
+        .unwrap();
+    let cookie = delivered
+        .cookies
+        .iter()
+        .find(|c| c.starts_with("riauth_sso="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let app = riauth::api::router(f.core.clone());
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let revision = || {
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let body = |id: &str| {
+        json!({
+            "client_id": id, "name": "Same application", "confidential": true,
+            "redirect_uris": [], "scopes": ["openid"], "allowed_groups": [],
+            "require_mfa": false, "service": false
+        })
+    };
+    let bearer = |token: &str, key: Option<&str>, at: Option<u64>| {
+        let mut headers = vec![("authorization", format!("Bearer {token}"))];
+        if let Some(key) = key {
+            headers.push(("idempotency-key", key.into()));
+        }
+        if let Some(at) = at {
+            headers.push(("if-match", format!("\"{at}\"")));
+        }
+        headers
+    };
+    let browser = |key: Option<&str>, at: Option<u64>| {
+        let mut headers = vec![
+            ("cookie", cookie.clone()),
+            ("x-riauth-portal", "1".into()),
+            ("origin", f.core.config.issuer.clone()),
+            ("sec-fetch-site", "same-origin".into()),
+        ];
+        if let Some(key) = key {
+            headers.push(("idempotency-key", key.into()));
+        }
+        if let Some(at) = at {
+            headers.push(("if-match", format!("\"{at}\"")));
+        }
+        headers
+    };
+    let at = revision();
+    let first_revision = at;
+    let input = body("bearer-app");
+    let before = f.snapshot().unwrap();
+    for headers in [
+        bearer(&f.admin, None, Some(at)),
+        bearer(&f.admin, Some("missing-revision"), None),
+    ] {
+        assert_eq!(
+            client_issuance_http(
+                &app,
+                &runtime,
+                "POST",
+                "/api/clients",
+                &headers,
+                Some(&input)
+            )
+            .0,
+            StatusCode::PRECONDITION_REQUIRED
+        );
+    }
+    assert_eq!(
+        client_issuance_http(
+            &app,
+            &runtime,
+            "POST",
+            "/api/clients",
+            &bearer(&ordinary, Some("denied"), Some(at)),
+            Some(&input)
+        )
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        client_issuance_http(
+            &app,
+            &runtime,
+            "POST",
+            "/api/clients",
+            &bearer(&f.admin, Some("stale"), Some(at + 1)),
+            Some(&input)
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&before);
+    let (status, first) = client_issuance_http(
+        &app,
+        &runtime,
+        "POST",
+        "/api/clients",
+        &bearer(&f.admin, Some("bearer-create"), Some(at)),
+        Some(&input),
+    );
+    assert_eq!(status, StatusCode::OK);
+    let first_secret = text(&first, "client_secret");
+    assert_eq!(
+        f.core
+            .store
+            .get::<Client>("clients", "bearer-app")
+            .unwrap()
+            .unwrap()
+            .secret_hash
+            .as_deref(),
+        Some(digest(&first_secret).as_str())
+    );
+    let committed = f.snapshot().unwrap();
+    let (status, replay) = client_issuance_http(
+        &app,
+        &runtime,
+        "POST",
+        "/api/clients",
+        &bearer(&f.admin, Some("bearer-create"), Some(at)),
+        Some(&input),
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&first_secret));
+    let mut changed = input.clone();
+    changed["name"] = json!("Different");
+    assert_eq!(
+        client_issuance_http(
+            &app,
+            &runtime,
+            "POST",
+            "/api/clients",
+            &bearer(&f.admin, Some("bearer-create"), Some(at)),
+            Some(&changed)
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&committed);
+    assert_eq!(audit_count(&f, "client.create"), 1);
+
+    let at = revision();
+    let browser_input = body("browser-app");
+    assert_eq!(
+        client_issuance_http(
+            &app,
+            &runtime,
+            "POST",
+            "/api/admin/clients",
+            &browser(None, Some(at)),
+            Some(&browser_input)
+        )
+        .0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    let (status, shown) = client_issuance_http(
+        &app,
+        &runtime,
+        "POST",
+        "/api/admin/clients",
+        &browser(Some("browser-create"), Some(at)),
+        Some(&browser_input),
+    );
+    assert_eq!(status, StatusCode::OK);
+    let browser_secret = text(&shown, "client_secret");
+    assert_eq!(
+        shown["client"]["confidential"],
+        first["client"]["confidential"]
+    );
+    let (status, retry) = client_issuance_http(
+        &app,
+        &runtime,
+        "POST",
+        "/api/admin/clients",
+        &browser(Some("browser-create"), Some(at)),
+        Some(&browser_input),
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(retry["error"], "credential_already_issued");
+    assert!(!retry.to_string().contains(&browser_secret));
+
+    let at = revision();
+    let rotate_path = "/api/admin/clients/bearer-app/rotate-secret";
+    let before_rotation = f.snapshot().unwrap();
+    assert_eq!(
+        client_issuance_http(
+            &app,
+            &runtime,
+            "POST",
+            rotate_path,
+            &browser(None, Some(at)),
+            None
+        )
+        .0,
+        StatusCode::PRECONDITION_REQUIRED
+    );
+    assert_eq!(
+        client_issuance_http(
+            &app,
+            &runtime,
+            "POST",
+            rotate_path,
+            &browser(Some("browser-stale"), Some(at + 1)),
+            None
+        )
+        .0,
+        StatusCode::CONFLICT
+    );
+    f.assert_http_mutation_snapshot(&before_rotation);
+    let (status, rotated) = client_issuance_http(
+        &app,
+        &runtime,
+        "POST",
+        rotate_path,
+        &browser(Some("browser-rotate"), Some(at)),
+        None,
+    );
+    assert_eq!(status, StatusCode::OK);
+    let browser_rotated_secret = text(&rotated, "client_secret");
+    assert_ne!(browser_rotated_secret, first_secret);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Client>("clients", "bearer-app")
+            .unwrap()
+            .unwrap()
+            .secret_hash
+            .as_deref(),
+        Some(digest(&browser_rotated_secret).as_str())
+    );
+    let committed = f.snapshot().unwrap();
+    let (status, replay) = client_issuance_http(
+        &app,
+        &runtime,
+        "POST",
+        rotate_path,
+        &browser(Some("browser-rotate"), Some(at)),
+        None,
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&browser_rotated_secret));
+    f.assert_http_mutation_snapshot(&committed);
+
+    let server = ContractHttpServer::start(f.core.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    riauth::config::write_private(
+        &session,
+        serde_json::to_vec(
+            &json!({"issuer":server.origin,"token":f.admin,"expires_at":now()+3600}),
+        )
+        .unwrap()
+        .as_slice(),
+        false,
+    )
+    .unwrap();
+    let cli = |args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_riauth"))
+            .args([
+                "--server",
+                &server.origin,
+                "--session-file",
+                session.to_str().unwrap(),
+                "--json",
+                "--non-interactive",
+            ])
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let at = revision().to_string();
+    let cli_file = dir.path().join("cli-create.json");
+    let retry_file = dir.path().join("cli-retry.json");
+    let created = cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-create",
+        "--output-file",
+        cli_file.to_str().unwrap(),
+        "client",
+        "create",
+        "cli-app",
+        "--name",
+        "Same application",
+        "--confidential",
+        "--scope",
+        "openid",
+    ]);
+    assert!(
+        created.status.success(),
+        "{}",
+        String::from_utf8_lossy(&created.stderr)
+    );
+    let cli_secret = text(
+        &serde_json::from_slice::<Value>(&std::fs::read(&cli_file).unwrap()).unwrap(),
+        "client_secret",
+    );
+    let cli_client = f
+        .core
+        .store
+        .get::<Client>("clients", "cli-app")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        cli_client.secret_hash.as_deref(),
+        Some(digest(&cli_secret).as_str())
+    );
+    let without_id = |mut view: Value| {
+        view.as_object_mut().unwrap().remove("client_id");
+        view
+    };
+    assert_eq!(
+        without_id(first["client"].clone()),
+        without_id(shown["client"].clone())
+    );
+    assert_eq!(
+        without_id(first["client"].clone()),
+        without_id(cli_client.view())
+    );
+    let repeated = cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-create",
+        "--output-file",
+        retry_file.to_str().unwrap(),
+        "client",
+        "create",
+        "cli-app",
+        "--name",
+        "Same application",
+        "--confidential",
+        "--scope",
+        "openid",
+    ]);
+    assert!(!repeated.status.success());
+    let retry: Value = serde_json::from_slice(&repeated.stdout).unwrap();
+    assert_eq!(retry["error"]["code"], "credential_already_issued");
+    assert!(!retry_file.exists());
+    assert!(!retry.to_string().contains(&cli_secret));
+    let at = revision().to_string();
+    let rotated_file = dir.path().join("cli-rotated.json");
+    let rotated = cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-rotate",
+        "--output-file",
+        rotated_file.to_str().unwrap(),
+        "client",
+        "rotate-secret",
+        "cli-app",
+    ]);
+    assert!(
+        rotated.status.success(),
+        "{}",
+        String::from_utf8_lossy(&rotated.stderr)
+    );
+    let new_secret = text(
+        &serde_json::from_slice::<Value>(&std::fs::read(&rotated_file).unwrap()).unwrap(),
+        "client_secret",
+    );
+    assert_ne!(new_secret, cli_secret);
+    assert_eq!(
+        f.core
+            .store
+            .get::<Client>("clients", "cli-app")
+            .unwrap()
+            .unwrap()
+            .secret_hash
+            .as_deref(),
+        Some(digest(&new_secret).as_str())
+    );
+    let after_rotation = f.snapshot().unwrap();
+    let repeated = cli(&[
+        "--if-revision",
+        &at,
+        "--idempotency-key",
+        "cli-rotate",
+        "--output-file",
+        retry_file.to_str().unwrap(),
+        "client",
+        "rotate-secret",
+        "cli-app",
+    ]);
+    assert!(!repeated.status.success());
+    let retry: Value = serde_json::from_slice(&repeated.stdout).unwrap();
+    assert_eq!(retry["error"]["code"], "credential_already_issued");
+    assert!(!retry_file.exists());
+    f.assert_http_mutation_snapshot(&after_rotation);
+    // Secret-free public creation retains ordinary exact-result replay.
+    let at = revision();
+    let mut public = body("public-app");
+    public["confidential"] = json!(false);
+    let headers = bearer(&f.admin, Some("public-create"), Some(at));
+    let first_public = client_issuance_http(
+        &app,
+        &runtime,
+        "POST",
+        "/api/clients",
+        &headers,
+        Some(&public),
+    );
+    assert_eq!(first_public.0, StatusCode::OK);
+    assert!(first_public.1["client_secret"].is_null());
+    assert_eq!(
+        client_issuance_http(
+            &app,
+            &runtime,
+            "POST",
+            "/api/clients",
+            &headers,
+            Some(&public)
+        ),
+        first_public
+    );
+    assert_eq!(audit_count(&f, "client.create"), 4);
+    assert_eq!(audit_count(&f, "client.secret.rotate"), 2);
+    for (_, receipt) in f.core.store.list::<Value>("receipts").unwrap() {
+        let result = &receipt["result"];
+        assert!(
+            result["credential_issued"] == true
+                || (result["client"]["client_id"] == "public-app"
+                    && result["client_secret"].is_null())
+        );
+        for secret in [
+            &first_secret,
+            &browser_secret,
+            &browser_rotated_secret,
+            &cli_secret,
+            &new_secret,
+        ] {
+            assert!(!receipt.to_string().contains(secret));
+        }
+    }
+    drop(server);
+    drop(app);
+    let f = f.reopen_with(|_| {});
+    let stored = f.snapshot().unwrap();
+    assert_eq!(stored["meta/revision"], json!(first_revision + 6));
+    let serialized = serde_json::to_string(&stored).unwrap();
+    for secret in [
+        &first_secret,
+        &browser_secret,
+        &browser_rotated_secret,
+        &cli_secret,
+        &new_secret,
+    ] {
+        assert!(!serialized.contains(secret));
+    }
+    let app = riauth::api::router(f.core.clone());
+    let (status, retry) = client_issuance_http(
+        &app,
+        &runtime,
+        "POST",
+        "/api/clients",
+        &bearer(&f.admin, Some("bearer-create"), Some(first_revision)),
+        Some(&input),
+    );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(retry["error"], "credential_already_issued");
+}
+
+/// Freeze both pre-redaction response shapes, reopen, then prove the durable
+/// actor/key/fingerprint/scope tombstone still denies issuance.
+pub fn legacy_client_receipts_scrub_on_open(backend: Backend) {
+    let f = backend.fixture();
+    let admin_id = user(&f, "admin").id;
+    let created_at = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap_or(0);
+    let input: riauth::model::NewClient = serde_json::from_value(json!({
+        "client_id":"legacy-client", "name":"legacy-client", "confidential":true,
+        "redirect_uris":[], "scopes":["openid"], "allowed_groups":[],
+        "require_mfa":false, "service":false
+    }))
+    .unwrap();
+    let created = f.core.create_client(&f.admin, input.clone()).unwrap();
+    let old = text(&created, "client_secret");
+    let rotated_at = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let rotated = f
+        .core
+        .rotate_client_secret(&f.admin, "legacy-client")
+        .unwrap();
+    let new = text(&rotated, "client_secret");
+    let audit_before = (
+        audit_count(&f, "client.create"),
+        audit_count(&f, "client.secret.rotate"),
+    );
+    let revision = f
+        .core
+        .store
+        .get::<u64>("meta", "revision")
+        .unwrap()
+        .unwrap();
+    let expiry = now() + 3600;
+    let create_key = digest(&format!("{admin_id}\0legacy-client-create"));
+    let rotate_key = digest(&format!("{admin_id}\0legacy-client-rotate"));
+    let generic = |fingerprint: &str, result: Value| json!({"fingerprint":fingerprint,"permissions":[],"result":result,"expires_at":expiry});
+    let unrelated = generic(
+        "dcr",
+        json!({"client_id":"registration","registration_access_token":"dcr-token"}),
+    );
+    let unrelated_client = generic("other", json!({"client_secret":"ri_client_unrelated"}));
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "receipts",
+                &create_key,
+                &generic("create-fingerprint", created.clone()),
+            )?;
+            tx.put(
+                "receipts",
+                &rotate_key,
+                &generic("rotate-fingerprint", rotated.clone()),
+            )?;
+            tx.put("receipts", "unrelated-dcr", &unrelated)?;
+            tx.put("receipts", "unrelated-client", &unrelated_client)?;
+            tx.put("meta", "agent_issuance_receipts_redacted_v1", &true)
+        })
+        .unwrap();
+    let seeded = f.snapshot().unwrap();
+    assert!(
+        seeded[&format!("receipts/{create_key}")]
+            .to_string()
+            .contains(&old)
+    );
+    assert!(
+        seeded[&format!("receipts/{rotate_key}")]
+            .to_string()
+            .contains(&new)
+    );
+    let f = f.reopen_with(|_| {});
+    let stored = f.snapshot().unwrap();
+    for key in [&create_key, &rotate_key] {
+        let original = &seeded[&format!("receipts/{key}")];
+        let scrubbed = &stored[&format!("receipts/{key}")];
+        assert_eq!(
+            scrubbed["result"],
+            json!({"client_id":"legacy-client","credential_issued":true})
+        );
+        for field in ["fingerprint", "permissions", "expires_at"] {
+            assert_eq!(scrubbed[field], original[field]);
+        }
+    }
+    assert_eq!(stored["receipts/unrelated-dcr"], unrelated);
+    assert_eq!(stored["receipts/unrelated-client"], unrelated_client);
+    assert!(!serde_json::to_string(&stored).unwrap().contains(&old));
+    assert!(!serde_json::to_string(&stored).unwrap().contains(&new));
+    let context = |key: &str, fingerprint: &str, at| riauth::context::RequestContext {
+        idempotency_key: Some(key.into()),
+        fingerprint: fingerprint.into(),
+        revision: Some(at),
+        ..Default::default()
+    };
+    let denied = riauth::context::scope(
+        Some(context(
+            "legacy-client-create",
+            "create-fingerprint",
+            created_at,
+        )),
+        || f.core.create_client(&f.admin, input.clone()),
+    )
+    .unwrap_err();
+    assert_eq!(denied.code, "credential_already_issued");
+    let denied = riauth::context::scope(
+        Some(context(
+            "legacy-client-rotate",
+            "rotate-fingerprint",
+            rotated_at,
+        )),
+        || f.core.rotate_client_secret(&f.admin, "legacy-client"),
+    )
+    .unwrap_err();
+    assert_eq!(denied.code, "credential_already_issued");
+    let denied = riauth::context::scope(
+        Some(context(
+            "legacy-client-rotate",
+            "changed-fingerprint",
+            rotated_at,
+        )),
+        || f.core.rotate_client_secret(&f.admin, "legacy-client"),
+    )
+    .unwrap_err();
+    assert_eq!(denied.code, "conflict");
+    f.assert_snapshot(&stored);
+    assert_eq!(
+        f.core.store.get::<u64>("meta", "revision").unwrap(),
+        Some(revision)
+    );
+    assert_eq!(
+        (
+            audit_count(&f, "client.create"),
+            audit_count(&f, "client.secret.rotate")
+        ),
+        audit_before
+    );
+    assert_eq!(
+        f.core
+            .store
+            .get::<Client>("clients", "legacy-client")
+            .unwrap()
+            .unwrap()
+            .secret_hash
+            .as_deref(),
+        Some(digest(&new).as_str())
+    );
 }
 
 // RI-MGT-002/004, RI-STORE-001/002, Q02-C04/C08/C09. Exact plan fields and
@@ -3038,8 +3765,8 @@ pub fn application_writers_share_management_seam(backend: Backend) {
         f.assert_http_mutation_snapshot(&before);
     }
 
-    // Authorized rotation: direct retry replays the one returned secret; a
-    // stale revision is rejected before any effect.
+    // Authorized rotation: an exact retry confirms committed issuance without
+    // returning the secret; a stale revision is rejected before any effect.
     let (status, rotated) = send(
         "POST",
         "/api/clients/shared/rotate-secret",
@@ -3050,15 +3777,15 @@ pub fn application_writers_share_management_seam(backend: Backend) {
     let first = text(&rotated, "client_secret");
     assert_eq!(revision(), at + 1);
     let committed = f.snapshot().unwrap();
-    assert_eq!(
-        send(
-            "POST",
-            "/api/clients/shared/rotate-secret",
-            direct(&token, "rotate-shared", at),
-            None
-        ),
-        (StatusCode::OK, rotated)
+    let (status, replay) = send(
+        "POST",
+        "/api/clients/shared/rotate-secret",
+        direct(&token, "rotate-shared", at),
+        None,
     );
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&first));
     let (status, _) = send(
         "POST",
         "/api/clients/shared/rotate-secret",

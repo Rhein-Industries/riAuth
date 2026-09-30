@@ -1,0 +1,14 @@
+{
+  "bearer_refusal": "invalid_token",
+  "code_refusal": "invalid_grant",
+  "epoch_advanced": true,
+  "identity_preserved": true,
+  "late_user_absent": true,
+  "one_use_proof_refusal": "account_code_invalid",
+  "one_use_proof_removed": true,
+  "reconciliation_complete": false,
+  "refresh_refusal": "invalid_grant",
+  "session_refusal": "invalid_token",
+  "stale_password": true,
+  "stale_signing_key": true
+}

@@ -1,0 +1,31 @@
+{
+  "active_capabilities_switched": true,
+  "architecture": "linux/aarch64",
+  "backend": "postgresql",
+  "baseline_rows": 22,
+  "binary_sha256": {
+    "essentials": {
+      "riauth": "86a799d3060e5e602c7e458a9c409ffc8c06f881e2d426a1e6d9be226337445d",
+      "riauth-maintenance": "c8164dfaa1a21c2bc8ac485eee02789d1aa6c8b2739904021485474cbd4350c2"
+    },
+    "platform": {
+      "riauth": "78209c1766eb53be741de0946a0e4ce4bc3f2217deda84a6e4f4bda85fc42b62",
+      "riauth-maintenance": "91f850d63a36290afe6f7b49c1943bea496b0754f50dcaa6b716af4790e8543e"
+    }
+  },
+  "downgrade_preserved_rows": 25,
+  "edition_and_version_metadata_coordinated": true,
+  "editions": [
+    "essentials",
+    "platform",
+    "essentials"
+  ],
+  "issuer_and_authentication_preserved": true,
+  "other_client_refused": true,
+  "postgres_version": "psql (PostgreSQL) 17.11 (Debian 17.11-0+deb13u1)",
+  "release_gate_result": false,
+  "schema": "riauth.local-native-postgres-transition/v1",
+  "source_revision": "f3aba63ac3b824843a40b99623f1619ef8edc19f",
+  "upgrade_preserved_rows": 22,
+  "validator_sha256": "d6b0d023164756b2fcabe1a89794400d5ee70b43b6b4874abed3fd2f6a2cce7d"
+}

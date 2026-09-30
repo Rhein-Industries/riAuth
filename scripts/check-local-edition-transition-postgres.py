@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Exercise local native PostgreSQL edition handoffs; never certify release assets.
+
+Run as an unprivileged Linux user with initdb, pg_ctl, createdb and psql on PATH.
+The artifact directory contains essentials/ and platform/ server and maintenance
+binaries. The disposable cluster, connection file and sessions stay in a private
+temporary directory. Only hashes and redacted results leave that directory.
+"""
+
+import argparse
+import hashlib
+import importlib.util
+import json
+import os
+import pathlib
+import platform
+import re
+import subprocess
+import tempfile
+import time
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+ROOT = pathlib.Path(__file__).resolve().parent
+matrix = load("exact_matrix", ROOT / "check-exact-edition-matrix.py")
+gate = load("installed_gate", ROOT / "check-installed-release-gate.py")
+EXCLUDED = {
+    "meta/revision", "meta/version_activation", "meta/edition_provenance",
+    "meta/node_security",
+}
+TRANSITION_METADATA = {
+    "meta/issuer", "meta/node_security", "meta/version_activation",
+    "meta/edition_provenance",
+}
+
+
+def rows(programs, port, database):
+    output = subprocess.check_output([
+        programs["psql"], "-h", "127.0.0.1", "-p", str(port),
+        "-U", "riauth_test", "-d", database, "-At", "-F", "|", "-c",
+        "SELECT encode(key,'hex'),encode(value,'hex') FROM riauth_store.records_v1 ORDER BY key",
+    ], text=True)
+    result = {}
+    for line in output.splitlines():
+        key_hex, value_hex = line.split("|", 1)
+        name = bytes.fromhex(key_hex).decode()
+        if name not in EXCLUDED and not name.startswith("meta/edition_transition_history/"):
+            result[name] = hashlib.sha256(bytes.fromhex(value_hex)).hexdigest()
+    return result
+
+
+def transition_metadata(programs, port, database):
+    output = subprocess.check_output([
+        programs["psql"], "-h", "127.0.0.1", "-p", str(port),
+        "-U", "riauth_test", "-d", database, "-At", "-F", "|", "-c",
+        "SELECT encode(key,'hex'),encode(value,'hex') FROM riauth_store.records_v1 ORDER BY key",
+    ], text=True)
+    result = {}
+    for line in output.splitlines():
+        key_hex, value_hex = line.split("|", 1)
+        name = bytes.fromhex(key_hex).decode()
+        if name in TRANSITION_METADATA:
+            result[name] = json.loads(bytes.fromhex(value_hex))
+    matrix.require(set(result) == TRANSITION_METADATA, "transition metadata is incomplete")
+    matrix.require(result["meta/node_security"]["format"] == 2,
+                   "transition requires a current security agreement")
+    return result
+
+
+def require_target_metadata(before, after, target):
+    matrix.require(after["meta/issuer"] == before["meta/issuer"],
+                   "transition changed the issuer")
+    for field in ("issuer", "authentication"):
+        matrix.require(after["meta/node_security"][field] == before["meta/node_security"][field],
+                       f"transition changed security agreement {field}")
+    matrix.require(after["meta/node_security"]["active_capabilities"] !=
+                   before["meta/node_security"]["active_capabilities"],
+                   "target active capabilities were not switched")
+    matrix.require(after["meta/version_activation"]["edition"] == target and
+                   after["meta/edition_provenance"]["last_activated_edition"] == target,
+                   "target edition metadata was not coordinated")
+
+
+def require_preserved(before, after, direction):
+    changed = sorted(key for key, value in before.items() if after.get(key) != value)
+    matrix.require(not changed, f"{direction} changed or removed stored rows: {changed}")
+
+
+def main():
+    os.umask(0o077)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--artifacts", type=pathlib.Path, required=True)
+    parser.add_argument("--evidence", type=pathlib.Path, required=True)
+    parser.add_argument("--source-revision", required=True)
+    args = parser.parse_args()
+    matrix.require(re.fullmatch(r"[0-9a-f]{40}", args.source_revision) is not None,
+                   "source revision must be a full Git commit")
+    matrix.require(platform.system() == "Linux" and platform.machine() == "aarch64",
+                   "native Linux aarch64 required")
+    programs = {name: matrix.shutil.which(name) for name in ("initdb", "pg_ctl", "createdb", "psql")}
+    matrix.require(all(programs.values()), f"PostgreSQL tools missing: {programs}")
+    artifacts = args.artifacts.resolve()
+    essentials = artifacts / "essentials"
+    platform_bins = artifacts / "platform"
+    binaries = {edition: {name: artifacts / edition / name
+                          for name in ("riauth", "riauth-maintenance")}
+                for edition in ("essentials", "platform")}
+    for edition, pair in binaries.items():
+        matrix.require(all(path.is_file() for path in pair.values()),
+                       f"{edition} installed binary missing")
+    args.evidence.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="local-a08-postgres-", dir=args.evidence.parent) as temporary:
+        scratch = pathlib.Path(temporary)
+        cluster, reason = matrix.postgres_cluster(scratch)
+        matrix.require(cluster is not None, reason or "PostgreSQL cluster unavailable")
+        cluster_programs, data_dir, port = cluster
+        programs.update(cluster_programs)
+        database = "riauth_transition"
+        try:
+            matrix.successful([programs["createdb"], "-h", "127.0.0.1", "-p", str(port),
+                               "-U", "riauth_test", database])
+            root = scratch / "instance"
+            root.mkdir()
+            connection = root / "connection"
+            connection.write_text(f"host=127.0.0.1 port={port} dbname={database} user=riauth_test sslmode=disable\n")
+            connection.chmod(0o600)
+            pg_config = root / "postgres.json"
+            pg_config.write_text(json.dumps({"connection_file": str(connection),
+                                             "ca_file": None, "local_unencrypted": True}))
+            config, base = matrix.init_instance(essentials / "riauth-maintenance",
+                                                root / "config", pg_config)
+            first = matrix.serve(essentials / "riauth", config, base)
+            before = rows(programs, port, database)
+            before_metadata = transition_metadata(programs, port, database)
+            matrix.require(any(key.startswith("users/") for key in before), "no identities stored")
+            refused = gate.cli(platform_bins / "riauth", "--config", config, "serve", expected=None)
+            matrix.require("active capabilities" in refused["error"]["message"],
+                           "direct Platform open did not reject source agreement")
+            plan = gate.cli(platform_bins / "riauth-maintenance", "--config", config,
+                            "transition-plan", "--target", "platform")
+            matrix.require(plan["ready"] and plan["transition_token"], "upgrade plan unavailable")
+            connected = subprocess.Popen([
+                programs["psql"], "-h", "127.0.0.1", "-p", str(port), "-U", "riauth_test",
+                "-d", database, "-c", "SELECT pg_sleep(15)",
+            ], env={**os.environ, "PGAPPNAME": "riauth"}, stdout=subprocess.DEVNULL,
+               stderr=subprocess.DEVNULL)
+            try:
+                for _ in range(50):
+                    count = subprocess.check_output([
+                        programs["psql"], "-h", "127.0.0.1", "-p", str(port), "-U", "riauth_test",
+                        "-d", database, "-At", "-c", "SELECT count(*) FROM pg_stat_activity WHERE application_name='riauth'",
+                    ], text=True).strip()
+                    if int(count) > 0:
+                        break
+                    time.sleep(0.1)
+                else:
+                    raise AssertionError("other riAuth PostgreSQL client did not connect")
+                blocked = gate.cli(platform_bins / "riauth-maintenance", "--config", config,
+                                   "transition-activate", "--target", "platform",
+                                   "--token", plan["transition_token"], expected=5)
+                matrix.require("Stop every riAuth process" in blocked["error"]["message"],
+                               "connected client did not block activation")
+            finally:
+                connected.terminate()
+                connected.wait(timeout=5)
+            for _ in range(200):
+                remaining = subprocess.check_output([
+                    programs["psql"], "-h", "127.0.0.1", "-p", str(port), "-U", "riauth_test",
+                    "-d", database, "-At", "-c", "SELECT count(*) FROM pg_stat_activity WHERE application_name='riauth'",
+                ], text=True).strip()
+                if int(remaining) == 0:
+                    break
+                time.sleep(0.1)
+            else:
+                raise AssertionError("other riAuth PostgreSQL client remained connected")
+            upgrade = gate.cli(platform_bins / "riauth-maintenance", "--config", config,
+                               "transition-activate", "--target", "platform",
+                               "--token", plan["transition_token"])
+            matrix.require(upgrade["activated_edition"] == "platform", "upgrade failed")
+            upgraded_rows = rows(programs, port, database)
+            require_preserved(before, upgraded_rows, "upgrade")
+            upgraded_metadata = transition_metadata(programs, port, database)
+            require_target_metadata(before_metadata, upgraded_metadata, "platform")
+            second = matrix.serve(platform_bins / "riauth", config, base)
+            refused = gate.cli(essentials / "riauth", "--config", config, "serve", expected=None)
+            matrix.require("Platform" in refused["error"]["message"] or
+                           "compiled capability" in refused["error"]["message"],
+                           "direct Essentials downgrade did not reject Platform activation")
+            before_down = rows(programs, port, database)
+            plan = gate.cli(platform_bins / "riauth-maintenance", "--config", config,
+                            "transition-plan", "--target", "essentials")
+            matrix.require(plan["ready"] and plan["transition_token"], "downgrade plan unavailable")
+            downgrade = gate.cli(platform_bins / "riauth-maintenance", "--config", config,
+                                 "transition-activate", "--target", "essentials",
+                                 "--token", plan["transition_token"])
+            matrix.require(downgrade["activated_edition"] == "essentials", "downgrade failed")
+            require_preserved(before_down, rows(programs, port, database), "downgrade")
+            returned_metadata = transition_metadata(programs, port, database)
+            require_target_metadata(upgraded_metadata, returned_metadata, "essentials")
+            matrix.require(returned_metadata["meta/node_security"]["active_capabilities"] ==
+                           before_metadata["meta/node_security"]["active_capabilities"],
+                           "Essentials active capabilities were not restored")
+            third = matrix.serve(essentials / "riauth", config, base)
+            report = {"schema": "riauth.local-native-postgres-transition/v1",
+                      "release_gate_result": False, "architecture": "linux/aarch64",
+                      "backend": "postgresql", "postgres_version": subprocess.check_output(
+                          [programs["psql"], "--version"], text=True).strip(),
+                      "binary_sha256": {edition: {name: gate.digest(path) for name, path in pair.items()}
+                                        for edition, pair in binaries.items()},
+                      "validator_sha256": gate.digest(pathlib.Path(__file__)),
+                      "source_revision": args.source_revision,
+                      "baseline_rows": len(before), "upgrade_preserved_rows": len(before),
+                      "downgrade_preserved_rows": len(before_down),
+                      "other_client_refused": True,
+                      "issuer_and_authentication_preserved": True,
+                      "active_capabilities_switched": True,
+                      "edition_and_version_metadata_coordinated": True,
+                      "editions": [first["edition"], second["edition"], third["edition"]]}
+            with args.evidence.open("x") as destination:
+                json.dump(report, destination, indent=2, sort_keys=True)
+                destination.write("\n")
+            print(json.dumps({"result": "passed", "evidence": str(args.evidence),
+                              "editions": report["editions"]}, sort_keys=True))
+        finally:
+            matrix.successful([programs["pg_ctl"], "-D", str(data_dir),
+                               "stop", "-m", "immediate", "-w"])
+
+
+if __name__ == "__main__":
+    main()

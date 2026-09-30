@@ -15,6 +15,7 @@
 use crate::{
     capability,
     config::Config,
+    edition::Target,
     error::{Error, Result},
     store::{Store, Tx},
 };
@@ -70,13 +71,76 @@ struct Agreement {
 
 impl Agreement {
     fn from_config(config: &Config) -> Self {
+        Self::for_target(config, crate::edition::CURRENT)
+    }
+
+    fn for_target(config: &Config, target: Target) -> Self {
         Self {
             format: FORMAT,
             issuer: config.issuer.clone(),
-            active_capabilities: capability::active_compiled(config),
+            active_capabilities: capability::active_compiled_for(config, target),
             authentication: Authentication::from_config(config),
         }
     }
+}
+
+/// An offline handoff requires a complete, current agreement from the marked
+/// source edition. The candidate may change edition-only active capabilities;
+/// it may not change issuer, authentication policy, or shared capabilities.
+/// A source-only disablable capability can have been disabled in the source
+/// config, which is intentionally not inferred from the target config.
+pub(crate) fn preflight_transition(
+    config: &Config,
+    source: Target,
+    target: Target,
+    tx: &Tx<'_>,
+) -> Result<()> {
+    let value = tx
+        .get::<Value>("meta", KEY)?
+        .ok_or_else(|| Error::bad("Stored security agreement is absent; record it with the source edition before transition"))?;
+    let stored = parse(value)?;
+    let issuer = tx.get::<String>("meta", "issuer")?;
+    if issuer.as_deref() != Some(config.issuer.as_str()) {
+        return Err(Error::bad(ISSUER_MISMATCH));
+    }
+    if stored.issuer != config.issuer {
+        return Err(Error::bad(STORED_ISSUER_MISMATCH));
+    }
+    if stored.authentication != Authentication::from_config(config) {
+        return Err(Error::bad(POLICY_MISMATCH));
+    }
+    let expected = capability::active_compiled_for(config, source);
+    if stored
+        .active_capabilities
+        .symmetric_difference(&expected)
+        .any(|name| !capability::optional_source_only_capability(name, source, target))
+    {
+        return Err(Error::bad(CAPABILITY_MISMATCH));
+    }
+    Ok(())
+}
+
+/// Called inside the same locked store transaction as the provenance and
+/// version activation stamps. Never creates or adopts a missing agreement.
+pub(crate) fn stamp_transition_target(
+    config: &Config,
+    source: Target,
+    target: Target,
+    tx: &Tx<'_>,
+) -> Result<()> {
+    preflight_transition(config, source, target, tx)?;
+    tx.put("meta", KEY, &Agreement::for_target(config, target))
+}
+
+pub(crate) fn preflight_for(config: &Config, target: Target, tx: &Tx<'_>) -> Result<()> {
+    let value = tx
+        .get::<Value>("meta", KEY)?
+        .ok_or_else(|| Error::bad("Stored security agreement is absent"))?;
+    decide(
+        &Agreement::for_target(config, target),
+        value,
+        tx.get("meta", "issuer")?,
+    )
 }
 
 impl Authentication {

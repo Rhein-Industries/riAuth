@@ -37,8 +37,15 @@ class ReleaseEvidenceAudit(unittest.TestCase):
             "none promised for this initial release",
         )
         self.assertFalse(report["vulnerability_intake"]["reports_received_by_this_check"])
-        self.assertFalse(report["signing"]["present_in_release_path"])
+        self.assertEqual(report["signing"]["mechanism"], "github-artifact-attestations")
+        self.assertEqual(report["signing"]["sigstore_instance"], "public-good")
+        self.assertEqual(
+            report["signing"]["action"],
+            "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
+        )
+        self.assertTrue(report["signing"]["present_in_release_path"])
         self.assertFalse(report["signing"]["signed_artifact"])
+        self.assertFalse(report["signing"]["bundle_produced"])
         self.assertFalse(report["sbom"]["spdx_or_cyclonedx_document"])
         self.assertTrue(report["sbom"]["notices_include_spdx_license_expressions"])
         self.assertFalse(report["sbom"]["notices_are_an_sbom"])

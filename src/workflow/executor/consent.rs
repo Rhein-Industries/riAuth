@@ -511,14 +511,18 @@ fn browser_consent_start_in(
     {
         return Err(Error::forbidden());
     }
-    let configured = core
-        .config
-        .workflows
-        .get(workflow)
-        .filter(|entry| entry.active)
-        .ok_or_else(|| Error::conflict("Browser consent workflow changed"))?;
-    let checked =
-        validate(configured.definition.clone(), &Environment::platform()).map_err(invalid_error)?;
+    let definition = if crate::workflow::approval::approval_selected(tx, workflow)? {
+        crate::workflow::approval::configured_definition_in(core, tx, workflow)?
+    } else {
+        core.config
+            .workflows
+            .get(workflow)
+            .filter(|entry| entry.active)
+            .ok_or_else(|| Error::conflict("Browser consent workflow changed"))?
+            .definition
+            .clone()
+    };
+    let checked = validate(definition, &Environment::platform()).map_err(invalid_error)?;
     if checked.definition().id.as_str() != workflow || !graph.supported(checked.definition()) {
         return Err(Error::conflict("Browser consent workflow changed"));
     }

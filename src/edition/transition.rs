@@ -14,9 +14,8 @@ pub fn preflight(config: &Config, target: Target) -> Result<Value> {
     inspect(config, target, Inspection::DirectOpen)
 }
 
-/// Read-only plan for a marked Platform store whose current and historical
-/// authority can be enforced by Essentials. The token binds every stored row
-/// and the full candidate configuration to the later maintenance write.
+/// Read-only plan for a marked source edition. The token binds every stored
+/// row and the full candidate configuration to the later maintenance write.
 pub fn plan(config: &Config, target: Target) -> Result<Value> {
     inspect(config, target, Inspection::ExplicitTransition)
 }
@@ -25,11 +24,6 @@ fn inspect(config: &Config, target: Target, mode: Inspection) -> Result<Value> {
     if !cfg!(feature = "platform") {
         return Err(Error::bad(
             "Transition preflight requires a Platform maintenance build to inspect both editions",
-        ));
-    }
-    if mode == Inspection::ExplicitTransition && target != Target::Essentials {
-        return Err(Error::bad(
-            "Explicit edition transition currently supports Platform to Essentials only",
         ));
     }
     Store::inspect(config, |backend, tx| {
@@ -73,21 +67,30 @@ fn assess(
         last_activated_edition = provenance
             .as_ref()
             .map(|record| record.last_activated_edition);
+        let source = if target == Target::Essentials {
+            Target::Platform
+        } else {
+            Target::Essentials
+        };
         let marked_compatible_source = provenance.as_ref().is_some_and(|record| {
-            record.last_activated_edition == Target::Platform
-                && record.platform_dependencies.is_empty()
+            record.last_activated_edition == source
+                && (target == Target::Platform || record.platform_dependencies.is_empty())
         });
-        if mode == Inspection::ExplicitTransition
-            && let Some(record) = &provenance
-            && record.last_activated_edition != Target::Platform
-        {
-            issues.push(blocker(
-                "meta/edition_provenance",
-                format!(
-                    "Last activated edition is {}; explicit Platform to Essentials transition requires a marked Platform source",
-                    record.last_activated_edition.name()
-                ),
-            ));
+        if mode == Inspection::ExplicitTransition {
+            match &provenance {
+                Some(record) if record.last_activated_edition == source => {}
+                Some(record) => issues.push(blocker(
+                    "meta/edition_provenance",
+                    format!(
+                        "Last activated edition is {}; explicit transition to {} requires a marked {} source",
+                        record.last_activated_edition.name(), target.name(), source.name()
+                    ),
+                )),
+                None => issues.push(blocker(
+                    "meta/edition_provenance",
+                    "Source edition is unknown; explicit transition requires valid edition provenance",
+                )),
+            }
         }
         match schema {
             Some(version) if version == crate::upgrade::SCHEMA => {}
@@ -136,7 +139,7 @@ fn assess(
         }
         if schema.is_some() {
             let activation = if mode == Inspection::ExplicitTransition {
-                crate::upgrade::preflight_transition_source(tx)
+                crate::upgrade::preflight_transition_source(tx, source)
             } else {
                 crate::upgrade::preflight_activation_for(tx, target)
             };
@@ -158,6 +161,14 @@ fn assess(
         if let Err(error) = crate::capability::validate_store_tx_for(config, target, tx) {
             issues.push(blocker("capability/identity.device_trust", error.message));
         }
+        let security = if mode == Inspection::ExplicitTransition {
+            crate::node_security::preflight_transition(config, source, target, tx)
+        } else {
+            crate::node_security::preflight_for(config, target, tx)
+        };
+        if let Err(error) = security {
+            issues.push(blocker("meta/node_security", error.message));
+        }
         if mode == Inspection::ExplicitTransition && issues.is_empty() {
             transition_token = Some(snapshot_token(config, target, tx)?);
         }
@@ -165,7 +176,7 @@ fn assess(
         issues.push(blocker("store", "Configured store does not exist"));
     }
     Ok(json!({
-        "schema_version": if mode == Inspection::ExplicitTransition { "riauth.edition-transition-plan/v1" } else { "riauth.edition-transition/v1" },
+        "schema_version": if mode == Inspection::ExplicitTransition { "riauth.edition-transition-plan/v2" } else { "riauth.edition-transition/v1" },
         "target_edition": target,
         "inspecting_build": NAME,
         "backend": backend,
@@ -184,7 +195,7 @@ fn assess(
 fn snapshot_token(config: &Config, target: Target, tx: &Tx<'_>) -> Result<String> {
     let config_json = serde_json::to_string(config).map_err(Error::internal)?;
     Ok(crate::crypto::digest(&format!(
-        "riauth.edition-transition-plan/v1\0{}\0{config_json}\0{}",
+        "riauth.edition-transition-plan/v2\0{}\0{config_json}\0{}",
         target.name(),
         tx.snapshot_digest()?
     )))
@@ -194,9 +205,9 @@ fn snapshot_token(config: &Config, target: Target, tx: &Tx<'_>) -> Result<String
 /// neither identities nor credentials, grants, sessions or revocations are
 /// converted or deleted. Every writer must be stopped before this operation.
 pub fn activate(config: &Config, target: Target, expected_token: &str) -> Result<Value> {
-    if !cfg!(feature = "platform") || target != Target::Essentials {
+    if !cfg!(feature = "platform") {
         return Err(Error::bad(
-            "Explicit Platform to Essentials transition requires a Platform maintenance build",
+            "Explicit edition transition requires a Platform maintenance build",
         ));
     }
     let initial = plan(config, target)?;
@@ -238,25 +249,45 @@ pub fn activate(config: &Config, target: Target, expected_token: &str) -> Result
             .get("meta", "version_activation")?
             .ok_or_else(|| Error::bad("Version activation disappeared during transition"))?;
         let mut provenance = parse_provenance(previous_provenance.clone())?;
-        if provenance.last_activated_edition != Target::Platform
-            || !provenance.platform_dependencies.is_empty()
+        let source = if target == Target::Essentials {
+            Target::Platform
+        } else {
+            Target::Essentials
+        };
+        if provenance.last_activated_edition != source
+            || (target == Target::Essentials && !provenance.platform_dependencies.is_empty())
         {
             return Err(Error::conflict(
-                "Platform dependency or source edition changed during transition",
+                "Dependency or source edition changed during transition",
             ));
         }
-        provenance.last_activated_edition = Target::Essentials;
+        provenance.last_activated_edition = target;
+        if target == Target::Platform {
+            let observed =
+                current_store_blockers(tx, Target::Essentials, PROVENANCE_OBSERVATION_LIMIT)?;
+            if observed.len() == PROVENANCE_OBSERVATION_LIMIT {
+                provenance.mark_scan_truncated();
+            }
+            for issue in config_blockers(config, Target::Essentials)
+                .into_iter()
+                .chain(observed)
+            {
+                provenance.observe(issue.resource, issue.reason);
+            }
+        }
+        provenance.validate_bounds()?;
         let history_key = format!("edition_transition_history/{}", crate::crypto::id());
         tx.put("meta", "revision", &next_revision)?;
-        crate::upgrade::stamp_transition_target(tx, next_revision)?;
+        crate::upgrade::stamp_transition_target(tx, source, target, next_revision)?;
+        crate::node_security::stamp_transition_target(config, source, target, tx)?;
         tx.put("meta", PROVENANCE_KEY, &provenance)?;
         tx.put(
             "meta",
             &history_key,
             &json!({
                 "schema_version": "riauth.edition-transition-history/v1",
-                "from": "platform",
-                "to": "essentials",
+                "from": source,
+                "to": target,
                 "source_provenance": previous_provenance,
                 "source_activation": previous_activation,
                 "source_revision": revision,
@@ -266,8 +297,8 @@ pub fn activate(config: &Config, target: Target, expected_token: &str) -> Result
             }),
         )?;
         Ok(json!({
-            "schema_version": "riauth.edition-transition-activation/v1",
-            "activated_edition": "essentials",
+            "schema_version": "riauth.edition-transition-activation/v2",
+            "activated_edition": target,
             "source_revision": revision,
             "target_revision": next_revision,
             "history_record": format!("meta/{history_key}"),

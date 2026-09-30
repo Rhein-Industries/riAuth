@@ -42,7 +42,7 @@ The value can therefore be the completion time of an earlier `last_job`. It does
 - Node mismatch, which remains [O03](coverage-inventory.md).
 - Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.
-- Mail delivery status, which remains `GET /api/operations/mail` and the `mail_deliveries` queue gauges. No SMTP error string is stored. Outbound Shared Signals delivery failures are [SSF delivery diagnostics](o06-ssf-delivery-diagnostics.md).
+- Mail delivery status, which remains `GET /api/operations/mail` and the `mail_deliveries` queue gauges. That read omits the recipient, subject, body, proof, lease, and `dispatch_started`. No SMTP error string is stored. The owner lease and pre-send pin stay outside that response. Outbound Shared Signals delivery failures are [SSF delivery diagnostics](o06-ssf-delivery-diagnostics.md).
 - Deactivation delivery. Incomplete and failed rows, including rows no offboarding job records, are [deactivation diagnostics](o06-deactivation-diagnostics.md). That read pages the deactivation bucket and does not load offboarding jobs.
 - The separate Platform offboarding job aggregate. This reconciliation read does not extend it.
 - `doctor`, `/readyz`, `/livez`, Prometheus, and Grafana. Controller failures do not change those answers, and this slice adds no series and no dashboard JSON.

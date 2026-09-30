@@ -1,6 +1,6 @@
 # Workflow definition model
 
-Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, a fail-closed reviewed pin for configured runs, W06 Platform authoring, and a held W07 extension contract.**
+Status: **W01 model, W03 proof provenance, bounded W02 verifier paths, a fail-closed reviewed pin for configured runs, exact-content approval of one configured definition, W06 Platform authoring, and a held W07 extension contract.**
 The Platform server persists bounded runs, attempts, requests and evidence, and exposes
 password, passkey and OIDC/SAML source reauthentication, plus request-bound
 configured OIDC consent, for a live bearer session.
@@ -1138,24 +1138,30 @@ stores a password receipt.
 | `memory_bytes` | Exactly 65,536, one WebAssembly page |
 | `max_input_bytes` | 1–4,096 projected identifier bytes |
 | `max_output_bytes` | 1–4,096. The host copies at most 32 bytes, the maximum label length |
-| `timeout_seconds` | 1–30, as an instruction budget, not a wall-clock preemption |
+| `timeout_seconds` | 1–30. The same number is thousands of fuel units and the parent's monotonic deadline in seconds, from just before spawn through observation and reap. It is not an exact kernel schedule |
 | `module_base64` | Standard base64, 1 byte through 65,536 |
 | `module_sha256` | 64 lowercase hex characters of the decoded module |
 
 The hash is compared before the module is admitted. A mismatch is `integrity`.
-Uppercase hex is `malformed`. Platform then parses the bytes with Wasmi and
-rejects any other shape. Essentials stops after the hash and the numeric
-bounds, so it does not parse the module. `Checked` keeps the admitted bytes so
+Uppercase hex is `malformed`. Platform then applies the structural caps. Wasmi
+parses a fitting body in the helper and rejects any other shape. Essentials
+stops after the hash and the numeric bounds, so it does not parse the module
+and does not spawn. `Checked` keeps the admitted bytes so
 execution uses the hashed image, and its `Debug` output does not print them.
 `execute` admits that image again before it runs.
 
 The guest exports `memory` and `route () -> i32` and has no imports. There is
 no WASI, filesystem, socket, clock, randomness, or host callback. The engine
 disables floats, multi-memory, bulk memory, reference types, tail calls, and
-saturating float-to-int, and ignores custom sections. Translation is lazy:
-`Module::new` validates a body that fits the translation budget, and the first
-call builds Wasmi IR. The first `execute` reuses the module from `check`. A
-later `execute` parses the bytes again. The structural check rejects a
+saturating float-to-int, and ignores custom sections. Translation is lazy.
+Configuration `check` runs `Module::new` for a body that fits the translation
+budget in the helper under the manifest timeout, and does not keep that image.
+A validation observed at or after that deadline is `elapsed` and is not
+admitted. Structural caps and the translation-budget arithmetic still run on
+the caller, before that spawn. A request binds the same bytes without compiling
+them. Each `execute` re-executes the server binary, and that child calls
+`Module::new` and builds Wasmi IR inside the wall-clock deadline, so every call
+pays the translation charge. The structural check rejects a
 non-empty import section, a start section, any
 table, global, or element, and any memory other than one page with minimum and
 maximum both 1. It also rejects more than one function, any type other than
@@ -1182,36 +1188,63 @@ trap as `limit`. On an empty stack a compiled frame of 64 registers is refused
 and a frame of 63 is accepted. In this pinned Wasmi 0.40.0, 32 i32 locals and
 a constant result need 34 slots, so that module still runs. Sixty-three live
 `i32.load` results need 65 slots and are refused before the buffer grows. A
-frame that fits still runs on the caller until it returns or spends its fuel.
-The same `StackLimits` value keeps the call depth at 16 frames.
+frame that fits runs in the child until it returns, spends its fuel, or the
+parent kills the process. The same `StackLimits` value keeps the call depth at
+16 frames.
 
-Wasmi 0.40.0 cannot preempt that one function. Its `Config` has no epoch or
-interrupt setting. `Store::call_hook` runs only when the host calls Wasm or
-Wasm calls a host function. `call_resumable` pauses only when a host function
-returns an error. This guest has no imports, so a loop in `route` does not
-return to the host until the call traps or finishes. Fuel's base cost is 1.
-Before the instance starts, the host installs
+Wasmi 0.40.0 cannot preempt that one function from inside the engine. Its
+`Config` has no epoch or interrupt setting. `Store::call_hook` runs only when
+the host calls Wasm or Wasm calls a host function. `call_resumable` pauses only
+when a host function returns an error. This guest has no imports, so a loop in
+`route` does not return to the host until the call traps or finishes. Fuel's
+base cost is 1. Before the instance starts, the child installs
 `min(manifest fuel, timeout_seconds × 1,000)`. Wasmi 0.40.0 charges 7 fuel
 for each byte of the function body and subtracts that charge before it builds
 IR. Admission applies that charge to
 `min(manifest fuel, manifest timeout × 1,000)` and refuses a larger body
-before `Module::new`. At the 10,000 fuel cap that limit is 1,428 body bytes.
-The refusal is `timeout` when the timeout budget is strictly smaller than the
-manifest fuel, and `fuel` otherwise. `check` validates a body that fits, once.
-The first `execute` reuses that module. A later `execute` parses the bytes
-again, so each call pays the translation charge. A tighter step timeout can
-still exhaust on the first call and skips translation when the charge exceeds
-the fuel in the store. A charge that fits is translated entirely on the
-caller, then `route` runs until it returns or spends the fuel that remains.
-Validation of a body that fits is not fuel-metered. None of these steps
-preempts the caller at a wall-clock deadline. `route.call` holds `&mut Store`
-until it returns, so another thread cannot drain that store's fuel. Validation
-and translation run on the same caller. A detached guest thread would still be
-running after the caller continued, and stopping it requires `unsafe`, which
-this crate forbids. When the two budgets are equal,
-or fuel is smaller,
-execution exhaustion is `fuel`. A timeout of 10 seconds or more cannot be
-tighter than the 10,000 fuel cap, so that execution exhaustion is `fuel`.
+before `Module::new` and before a process starts. At the 10,000 fuel cap that
+limit is 1,428 body bytes. The refusal is `timeout` when the timeout budget is
+strictly smaller than the manifest fuel, and `fuel` otherwise. A tighter step
+timeout can still exhaust on the first call and skips translation when the
+charge exceeds the fuel in the store. A charge that fits is translated in the
+child, then `route` runs until it returns, spends the fuel that remains, or
+the parent kills the process. Validation of a body that fits is not
+fuel-metered. `route.call` holds `&mut Store` until it returns, so another
+thread inside the child cannot drain that store's fuel. The parent does not
+detach the child. When the parent's monotonic clock reaches the deadline,
+including a child that has already exited, the parent kills a child that is
+still running, reaps the process, discards its stdout, and reports `elapsed`.
+A label already written is discarded and is not accepted. That interval
+includes spawn, observation, and reap. It is not an exact kernel scheduling
+guarantee. A short timeout can elapse during process startup even when the
+guest would have returned a label. Stopping a thread would require
+`unsafe`, which this crate forbids. Fuel exhaustion is not `elapsed`. When the
+two budgets are equal, or fuel is smaller, execution exhaustion is `fuel`. A
+timeout of 10 seconds or more cannot be tighter than the 10,000 fuel cap, so
+that execution exhaustion is `fuel`.
+
+The helper is the platform `riauth` binary. `execute` resolves `current_exe`
+and passes only the internal argv token `riauth.extension-guest/v1`. The server
+recognizes that token before clap and does not list it in `--help`. An
+installed image at `/usr/local/bin/riauth`, or a renamed copy of that binary,
+re-executes its own path. The lookup does not read an environment override and
+does not assume a Cargo target directory. The child environment is cleared.
+The helper refuses to run when any variable remains, except the macOS
+CoreFoundation variable `__CF_USER_TEXT_ENCODING` after exec, and only when
+its value is three short `0x` hexadecimal fields. The parent does not pass
+that variable. Any other variable is `failed`, not a label. Its working
+directory is a private empty directory
+removed after reap, and stderr is discarded. The request is the module, the
+projected identifier frame, the
+declared labels, and the caps. It does not include a bearer token, password,
+configuration path, or database URL. File descriptors already open in the
+server can still be inherited, because closing them would require `unsafe`.
+There is no seccomp or network namespace. A missing executable or a spawn
+failure is `failed`. The executor stores every guest denial as the `failed`
+signal with no evidence and no proof. Stdout is read into a 64-byte buffer by
+one joined thread. A larger write is `output` and is not accepted as a label.
+The maintenance binary and `riauthctl` do not host this entry. The Essentials
+server binary does not compile it, and Essentials `execute` does not spawn.
 
 `route` writes its label at offset 0 and returns the length. A workflow label
 is at most 32 bytes. The host reads guest memory only when that length equals
@@ -1236,8 +1269,10 @@ must fit `max_input_bytes` and the window. A missing required fact is
 `input_limit`, and the guest does not run. A withheld permission is absent, not
 an empty placeholder.
 
-A gate denial becomes the built-in `failed` signal and routes to `denied`. It
-does not become an attacker-chosen label. The run binding stores
+A gate denial, including `elapsed`, becomes the built-in `failed` signal and
+routes to `denied`. A completion observed at or after the deadline is
+`elapsed`, and its stdout is discarded, so it does not become an
+attacker-chosen label. The run binding stores
 `extension_sha256`, the lowercase hex of the module that started the run, with
 the definition id, revision, and fingerprint. Resume, cancel, and password
 verification compare the live manifest with that hash. A different module seals
@@ -1258,7 +1293,8 @@ definition is that entry, stores a reviewed pin beside `RunBinding`. The pin
 holds the definition revision, the definition fingerprint, and a policy digest.
 The digest is the SHA-256 hex of `riauth.workflow-reviewed/v1`, the active flag
 (`true` or `false`), the workflow id, the revision, and the fingerprint, each
-on its own line. `RunBinding` equality remains the definition id, revision,
+on its own line. An unapproved pin omits the approval id and dependency digest.
+`RunBinding` equality remains the definition id, revision,
 fingerprint, optional source registration, and optional `extension_sha256`.
 
 `workflow_reviewed` keeps the highest adopted pin for that workflow id and is
@@ -1291,7 +1327,7 @@ authorization code, or consent. A mismatched interaction binding is rejected
 without sealing. A stale pin is sealed first and keeps `Workflow policy changed`,
 `Workflow version was rolled back`, or `Workflow account is disabled`. Reading
 interaction state does not seal the run.
-The stored failure is `policy_changed`
+For an unapproved pin, the stored failure is `policy_changed`
 (`Workflow policy changed`) when the snapshot disagrees with the pin, the
 configured entry is missing or inactive, the live revision is higher, the live
 fingerprint or policy digest differs, the retained pin is missing or differs,
@@ -1311,9 +1347,9 @@ Code-owned revisions stay unpinned. That includes the shipped password, passkey,
 source reauthentication, invitation, and password-reset workflows. The pin is
 recorded only for configured start, configured passkey removal, configured
 consent, browser OIDC consent starts, and configured source-first passkey
-enrollment. The executor still
-selects active definitions from `config.toml`, not from the persisted
-`workflow_definitions` store.
+enrollment. With no activation pointer, the executor selects the active
+definition from `config.toml`. The `workflow_definitions` catalog stays unused
+for that selection.
 
 This executor matches `roadmap/w02-configured-executor-wave15` at
 `06b9793a943d2d0ab15c8990a009449f346adc33`: `RuntimeRun` and
@@ -1342,6 +1378,97 @@ runtime-executor tree, `close` untracks the account index if this slice is
 ported, and `workflow_password`, `workflow_resume`, and `workflow_cancel` use
 the same guards. Client fingerprints remain that tree's client-policy pins;
 this slice also seals when those fingerprints change.
+
+## Exact-content approval
+
+An activation pointer selects the definition embedded in its immutable approval
+for configured start, configured passkey removal, configured consent, configured
+source-first passkey enrollment, and browser consent start. The operator file
+stays unchanged. When `config.workflows` still names that id, the entry has to
+be active and byte-equal to the approved definition; any other entry refuses
+review, activation, and start with `Workflow configuration diverges from the
+approved definition`. A catalog row that differs at the same revision refuses
+activation with `Workflow store diverges from the approved definition` and
+rolls that write back. Once an approval is current, a catalog row that no
+longer matches makes a later verifier seal the open run as `policy_changed`. Omitting the id from `config.workflows`
+leaves the stored approval as the selection, including after `Core::open`.
+
+The author records a desired-state plan with exactly one workflow and empty
+users, groups, clients, sources, source links, and delegated grants. A second
+enabled administrator approves or refuses that stored plan. A third enabled
+administrator activates an approval. The three parties are distinct, non-agent,
+and non-delegated. Each authority digest is the live review binding of that
+administrator. A disabled party, a party who is no longer an administrator, or
+a changed digest refuses with `Workflow approval authority changed` before the
+plan base revision is compared. An agent caller is forbidden. The portal routes
+are `POST /api/admin/workflows/review` (`plan_id`, `decision`),
+`POST /api/admin/workflows/activate` (`plan_id`), and
+`POST /api/admin/workflows/revoke` (`workflow_id`), under the same same-origin
+writer guard as plan and apply. Configured execution stays
+`POST /api/workflows/configured/{workflow}`.
+
+Review and activation require the plan hash to match its content digest. A
+mutated plan returns `Plan was modified; create a new plan` and writes no
+review. Approve writes an immutable `workflow_reviews` row and leaves
+`meta.revision` unchanged. Refuse writes that same immutable review. When the
+catalog row equals the refused proposal and is not the current live approval,
+refuse restores the plan's previous catalog value in that write and then bumps
+`meta.revision`. Activating a refused plan returns `Workflow review was refused`.
+
+Activation writes `workflow_definitions`, `workflow_approvals`,
+`workflow_approval_plans`, and `workflow_activation` in one `store.write`.
+Those buckets, plus `workflow_reviews` and `workflow_revocations`, are retained
+across restore. The approval row stays immutable. Repeating activate for the
+same executor, while the pointer still names that approval, returns the stored
+approval and leaves `meta.revision` unchanged. A revoked or replaced pointer
+stays retired: the same plan returns `Workflow approval already exists`. The
+response selection is `approved-definition` and `configuration_file` is
+`unchanged`. The writer lock is the existing redb lock or PostgreSQL advisory
+lock. Other clients stay connected, and `config.toml` stays unchanged.
+
+The approved policy digest appends the approval id and the dependency digest
+to the five unapproved lines, with the active flag forced to `true`. The
+dependency digest is the SHA-256 hex of `riauth.workflow-approval-dependencies/v1`,
+`profile=platform`, the supported adapter label, then `sources=none` or one
+sorted line per referenced source (`source={id}` plus the SHA-256 of that
+source record), then `extension=none` or one line per custom stage
+(`extension={stage}`, the guest module hash, and its permissions). A disabled
+or missing referenced source, or a missing extension stage, refuses. Sources
+and extensions the graph does not use stay outside the digest. The digest
+covers the platform profile, the adapter, those source records, and those
+extension modules.
+
+A higher approved revision replaces the high-water and seals open pinned runs
+for that id as `policy_changed`. The same revision and fingerprint may be
+approved again. The new approval id replaces the high-water, and the open run
+still seals because its stored approval id differs. A revision below the
+retained pin returns `Workflow version was rolled back` and writes no pointer.
+After an approval exists for an id, a higher `config.workflows` revision does
+not start a run. An unapproved open run whose id later gains any approval seals
+as `policy_changed` even when the definition bytes match.
+
+Revocation writes an immutable `workflow_revocations` row, deletes the
+activation pointer, leaves the approval row in place, seals open pinned runs,
+and bumps `meta.revision`. A finished or cancelled run stays in that state.
+With the pointer gone and no `config.workflows` entry, a new start returns
+`Configured workflow is unavailable`. The same revision can start from
+configuration again only after a higher revision replaces the high-water, or
+after a new approval of those bytes is activated.
+
+Changed content leaves the sealed run closed and leaves its evidence unused.
+The next execution is a new run of the approved definition and collects its own
+proofs. Cancellation stays `cancelled`. A password call on a run that
+activation already sealed returns `Workflow run is already final`. A password
+call on a run that is still open, after configuration diverges, returns
+`Workflow policy changed`, commits the denial, and adds no evidence.
+
+Browser selector usability still reads `config.workflows`. A run missing from
+`workflow_account_runs` seals on its next verifier call. Same-actor
+`apply_state` can still change `workflow_definitions`; that write is checked
+against the approval. The activation pointer stays the selector. Idempotent activate of a pointer
+that is still current returns the stored approval after a party is later
+disabled, while a new start then fails with `Workflow policy changed`. This
+approval does not establish RI-WF-002.
 
 ## Left to later work
 
@@ -1376,12 +1503,12 @@ These are not implemented or established by this slice:
 * Binding the remaining security dependencies. `RunBinding` covers the
   definition's ID, revision and fingerprint. New source-verifier runs also pin
   the live source registration, and a guest run pins `extension_sha256` of the
-  module that started it. Configured runs loaded from `config.workflows` store
-  a reviewed pin beside that binding, as described above. The rest of the
-  `Environment`, and the approval record RI-WF-002 requires, remain unbound.
-  The source receipt separately pins its explicit account link. Safe resume of
-  changed content, code-owned revisions outside `config.workflows`, and broader
-  dependency binding remain.
+  module that started it. Configured runs store a reviewed pin beside that
+  binding. An activated approval also binds the dependency digest described
+  above. The rest of the `Environment` stays outside that digest. The source
+  receipt separately pins its explicit account link. Continuation of a sealed
+  run, code-owned revisions outside `config.workflows`, and broader dependency
+  binding remain.
 * End-to-end invariant and race tests for the remaining verifier integrations
   across both durable backends. The shared
   [`invitation_passkey_bound_competing_completion` contract](../tests/contracts/shared.rs)
@@ -1410,8 +1537,9 @@ These are not implemented or established by this slice:
   assurance, rejection of untrusted upstream MFA, mandatory local factors and
   source-link revocation, with complete transaction rollback snapshots.
   Those other workflow executor paths still lack shared PostgreSQL evidence.
-* Management API as the executor's selection source, desired-state and the
-  persisted `workflow_definitions` store as that source, versioned multi-party
-  approval and safe resume, the editor and templates, extensions beyond the
-  existing guest gate, and product capability reporting or gating. The executor
-  still reads active definitions from `config.toml`.
+* The editor and templates, extensions beyond the existing guest gate, and
+  product capability reporting or gating. Desired-state apply remains a
+  same-actor catalog write. It becomes the executed definition through the
+  review and activation above. Unapproved `config.workflows` entries are still
+  selected from `config.toml`. Generic reviewer and executor roles, a
+  stopped-writer rewrite of that file, and multi-process exclusion remain.

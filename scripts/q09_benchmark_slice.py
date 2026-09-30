@@ -12,6 +12,7 @@ between measured reads so a pass can outlast the 60-second maintenance cadence.
 python3 scripts/q09_benchmark_slice.py --self-check
 python3 scripts/q09_benchmark_slice.py --binary PATH --backend redb --out FILE
 python3 scripts/q09_benchmark_slice.py --binary PATH --directory-users 2 --directory-groups 2
+python3 scripts/q09_benchmark_slice.py --binary PATH --secure --backend postgresql --out FILE
 
 Build the binary in a private CARGO_TARGET_DIR with CARGO_INCREMENTAL=0.
 Do not use another worktree's target directory. A relative --binary is
@@ -20,13 +21,18 @@ does not start riAuth and does not publish timings.
 """
 
 import argparse
+import base64
+import contextvars
 import hashlib
 import json
 import os
 import platform
+import re
 import secrets
 import shutil
 import signal
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -56,12 +62,35 @@ BACKGROUND_JOBS = (
     "manual_connector",
     "deactivation",
 )
+INSECURE_LISTENER = "The listener is loopback HTTP without TLS. Database encryption is off."
+INSECURE_POSTGRES = (
+    "PostgreSQL uses one disposable loopback cluster with trust auth, sslmode=disable, and local_unencrypted."
+)
+SECURE_LISTENER = (
+    "The listener is loopback HTTPS. The client trusts one fresh private CA and checks the certificate hostname. "
+    "The certificate names DNS:localhost and IP:127.0.0.1. A fresh database_key_file encrypts records as aes256gcm-v1."
+)
+SECURE_POSTGRES = (
+    "PostgreSQL is one disposable loopback cluster with scram-sha-256 on hostssl and local_unencrypted false. "
+    "libpq preflight uses sslmode=verify-full and the private CA. The measured binary connection file uses "
+    "sslmode=require with host localhost and hostaddr 127.0.0.1. This binary parser accepts disable, prefer, "
+    "and require, then sets SslMode::Require. rustls checks that hostname against the webpki roots and ca_file. "
+    "An unrelated CA is refused by libpq and by product init, and sslmode=disable is refused."
+)
+SECURE_REDB = "This run uses the redb backend."
+SECURE_SIGNER = "This observation records no external signer and no published release identity."
+SECURE_DOCKER_VM = "This observation ran inside Docker's Linux VM."
+TLS_CONTEXT = contextvars.ContextVar("q09_tls_context", default=None)
+HOSTSSL_HBA = (
+    "hostssl all all 127.0.0.1/32 scram-sha-256\n"
+    "hostssl all all ::1/128 scram-sha-256\n"
+)
 LIMITATIONS = (
     "One run measures one binary and one backend with one sequential session-read client.",
     "Essentials and Platform both serve Core::me. An edition comparison is two runs at the same settings.",
     "redb and PostgreSQL are selected with --backend. A backend comparison is two runs at the same settings.",
-    "The listener is loopback HTTP without TLS. Database encryption is off.",
-    "PostgreSQL uses one disposable loopback cluster with trust auth, sslmode=disable, and local_unencrypted.",
+    INSECURE_LISTENER,
+    INSECURE_POSTGRES,
     "The default dataset is a fresh init: one administrator and no extra users or group memberships.",
     "Optional directory flags add users and groups, put the administrator and every extra user in each of those groups, and verify that index before measurement.",
     "Directory flags are capped at 32 and by the shared general-request budget. That stays inside one 128-row group-index page.",
@@ -268,7 +297,61 @@ def ensure_redacted(report, hidden):
     for secret in hidden:
         if secret and secret in encoded:
             raise SliceError("report included a credential")
+    assert_report_text_clean(encoded)
     return encoded
+
+
+def assert_report_text_clean(encoded):
+    lowered = encoded.lower()
+    for needle in ("-----begin private", "-----begin rsa private", "password="):
+        if needle in lowered:
+            raise SliceError("report included secret material")
+
+
+def remember_secret(hidden, value):
+    text = str(value)
+    if len(text) < 12:
+        raise SliceError("refusing to track a short credential")
+    if text not in hidden:
+        hidden.append(text)
+
+
+def assert_secrets_absent(blob, hidden, label):
+    data = blob if isinstance(blob, (bytes, bytearray)) else str(blob).encode()
+    for secret in hidden:
+        if secret and secret.encode() in data:
+            raise SliceError(f"{label} contains a credential")
+
+
+def linuxkit_vm(host):
+    uname = host.get("uname") if isinstance(host, dict) else None
+    if not isinstance(uname, dict):
+        return False
+    blob = " ".join(str(uname.get(key, "")) for key in ("system", "node", "release", "version"))
+    return "linuxkit" in blob.lower()
+
+
+def secure_limitations(host, backend):
+    if backend not in ("redb", "postgresql"):
+        raise SliceError("backend must be redb or postgresql")
+    lines = []
+    replaced_listener = False
+    replaced_postgres = False
+    for line in LIMITATIONS:
+        if line == INSECURE_LISTENER:
+            lines.append(SECURE_LISTENER)
+            replaced_listener = True
+        elif line == INSECURE_POSTGRES:
+            lines.append(SECURE_POSTGRES if backend == "postgresql" else SECURE_REDB)
+            replaced_postgres = True
+        else:
+            lines.append(line)
+    if not replaced_listener or not replaced_postgres:
+        raise SliceError("secure limitations could not find the plaintext lines")
+    lines.append(SECURE_SIGNER)
+    if linuxkit_vm(host):
+        lines.append(SECURE_DOCKER_VM)
+    return lines
 
 
 def completion_code(report):
@@ -434,9 +517,14 @@ class ProcessSampler:
 def http_exchange(method, url, body=None, headers=None, timeout=5):
     payload = None if body is None else json.dumps(body).encode()
     request = urllib.request.Request(url, data=payload, headers=headers or {}, method=method)
+    context = TLS_CONTEXT.get()
     started = time.perf_counter()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        if context is None:
+            response_cm = urllib.request.urlopen(request, timeout=timeout)
+        else:
+            response_cm = urllib.request.urlopen(request, timeout=timeout, context=context)
+        with response_cm as response:
             raw = response.read()
             status = response.status
     except urllib.error.HTTPError as error:
@@ -445,7 +533,7 @@ def http_exchange(method, url, body=None, headers=None, timeout=5):
             status = error.code
         finally:
             error.close()
-    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+    except (urllib.error.URLError, TimeoutError, ssl.SSLError, ConnectionError, OSError):
         elapsed = int(round((time.perf_counter() - started) * 1_000_000))
         return elapsed, None, None, True
     elapsed = int(round((time.perf_counter() - started) * 1_000_000))
@@ -639,7 +727,6 @@ def artifact_record(binary, fixture):
 
 
 def free_port():
-    import socket
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         return listener.getsockname()[1]
@@ -651,6 +738,257 @@ def require_programs(names):
     if missing:
         raise SliceError(f"missing programs: {', '.join(missing)}")
     return programs
+
+
+def database_key_text():
+    text = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("ascii").rstrip("=")
+    padded = text + ("=" * ((4 - len(text) % 4) % 4))
+    if "=" in text or len(base64.urlsafe_b64decode(padded)) != 32:
+        raise SliceError("database key encoding is not 32-byte base64url without padding")
+    return text
+
+
+def write_private_text(path, text):
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    fd = os.open(path, flags, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(text)
+    if path.stat().st_mode & 0o077:
+        raise SliceError("private file is readable by the group or others")
+
+
+def toml_basic(value):
+    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def openssl_text(args, cwd, hidden):
+    code, stdout, tail = command_output(
+        ["openssl", *args], cwd=str(cwd), env=os.environ.copy(), timeout=30, hidden=hidden,
+    )
+    if code != 0:
+        raise SliceError(f"openssl {' '.join(args[:2])} failed: {tail}")
+    return stdout
+
+
+def private_ca_context(ca_file):
+    context = ssl.create_default_context(cafile=str(ca_file))
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
+    return context
+
+
+def tls_probe(url, context, timeout=5):
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+            response.read()
+            return response.status
+    except urllib.error.HTTPError as error:
+        try:
+            error.read()
+        finally:
+            error.close()
+        return error.code
+    except (urllib.error.URLError, TimeoutError, ssl.SSLError, ConnectionError, OSError):
+        return None
+
+
+def make_server_material(root, hidden):
+    require_programs(("openssl",))
+    certs = root / "certs"
+    certs.mkdir(mode=0o700)
+    ca_key = certs / "ca.key"
+    ca_crt = certs / "ca.crt"
+    server_key = certs / "server.key"
+    server_csr = certs / "server.csr"
+    server_crt = certs / "server.crt"
+    server_ext = certs / "server.ext"
+    unrelated_key = certs / "unrelated.key"
+    unrelated_crt = certs / "unrelated.crt"
+    ca_config = certs / "ca.cnf"
+    unrelated_config = certs / "unrelated.cnf"
+    for path, name in ((ca_config, "q09-private-ca"), (unrelated_config, "q09-unrelated-ca")):
+        path.write_text(
+            "[req]\n"
+            "distinguished_name=dn\n"
+            "x509_extensions=v3_ca\n"
+            "prompt=no\n"
+            "[dn]\n"
+            f"CN={name}\n"
+            "[v3_ca]\n"
+            "basicConstraints=critical,CA:TRUE\n"
+            "keyUsage=critical,keyCertSign,cRLSign\n"
+            "subjectKeyIdentifier=hash\n"
+        )
+    openssl_text(
+        ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(ca_key),
+         "-out", str(ca_crt), "-days", "2", "-config", str(ca_config)],
+        certs, hidden,
+    )
+    ca_key.chmod(0o600)
+    openssl_text(
+        ["req", "-newkey", "rsa:2048", "-nodes", "-keyout", str(server_key),
+         "-out", str(server_csr), "-subj", "/CN=localhost"],
+        certs, hidden,
+    )
+    server_key.chmod(0o600)
+    server_ext.write_text(
+        "basicConstraints=CA:FALSE\n"
+        "subjectAltName=DNS:localhost,IP:127.0.0.1\n"
+        "extendedKeyUsage=serverAuth\n"
+        "keyUsage=digitalSignature,keyEncipherment\n"
+        "subjectKeyIdentifier=hash\n"
+        "authorityKeyIdentifier=keyid,issuer\n"
+    )
+    openssl_text(
+        ["x509", "-req", "-in", str(server_csr), "-CA", str(ca_crt), "-CAkey", str(ca_key),
+         "-CAcreateserial", "-out", str(server_crt), "-days", "2", "-extfile", str(server_ext)],
+        certs, hidden,
+    )
+    verified = openssl_text(["verify", "-CAfile", str(ca_crt), str(server_crt)], certs, hidden)
+    if "OK" not in verified.split():
+        raise SliceError("private CA did not verify the server certificate")
+    san = openssl_text(
+        ["x509", "-in", str(server_crt), "-noout", "-ext", "subjectAltName"], certs, hidden,
+    )
+    if "DNS:localhost" not in san or "127.0.0.1" not in san:
+        raise SliceError("server certificate SAN does not match the loopback issuer")
+    openssl_text(
+        ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(unrelated_key),
+         "-out", str(unrelated_crt), "-days", "2", "-config", str(unrelated_config)],
+        certs, hidden,
+    )
+    unrelated_key.chmod(0o600)
+    key_text = database_key_text()
+    key_path = certs / "database.key"
+    write_private_text(key_path, key_text + "\n")
+    for secret_path in (ca_key, server_key, unrelated_key):
+        for line in secret_path.read_text().splitlines():
+            if len(line) >= 12:
+                remember_secret(hidden, line)
+    remember_secret(hidden, key_text)
+    return {
+        "ca": ca_crt,
+        "server_cert": server_crt,
+        "server_key": server_key,
+        "unrelated_ca": unrelated_crt,
+        "database_key": key_path,
+        "san": ["DNS:localhost", "IP:127.0.0.1"],
+    }
+
+
+def pg_hba_is_hostssl_scram(text):
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            lines.append(stripped)
+    return lines == [
+        "hostssl all all 127.0.0.1/32 scram-sha-256",
+        "hostssl all all ::1/128 scram-sha-256",
+    ]
+
+
+def require_connection_file(text, port):
+    single = text.strip()
+    if "\n" in single:
+        raise SliceError("connection file has more than one line")
+    parts = single.split()
+    required = [
+        "host=localhost",
+        "hostaddr=127.0.0.1",
+        f"port={port}",
+        "dbname=riauth_q09",
+        "user=riauth_test",
+        "sslmode=require",
+    ]
+    for item in required:
+        if item not in parts:
+            raise SliceError("connection file is missing a required field")
+    for banned in ("sslmode=verify-full", "sslmode=disable", "sslmode=prefer", "sslmode=allow"):
+        if banned in single:
+            raise SliceError("connection file uses a rejected sslmode")
+    if any(part == "trust" or part.startswith("trust=") for part in parts):
+        raise SliceError("connection file names trust")
+    passwords = [part.split("=", 1)[1] for part in parts if part.startswith("password=")]
+    if len(passwords) != 1 or re.fullmatch(r"[0-9a-f]{32,}", passwords[0]) is None:
+        raise SliceError("connection credential is not hex")
+    return passwords[0]
+
+
+def libpq_conninfo(port, sslmode, ca_file):
+    if sslmode not in ("verify-full", "disable", "require"):
+        raise SliceError("libpq preflight sslmode is not one of the checked values")
+    return (
+        f"host=localhost hostaddr=127.0.0.1 port={port} dbname=riauth_q09 "
+        f"user=riauth_test sslmode={sslmode} sslrootcert={ca_file}"
+    )
+
+
+def postgres_env(password):
+    env = os.environ.copy()
+    env["PGPASSWORD"] = password
+    return env
+
+
+def psql_text(psql, conninfo, password, sql, hidden, cwd):
+    code, stdout, tail = command_output(
+        [psql, conninfo, "-v", "ON_ERROR_STOP=1", "-tA", "-c", sql],
+        cwd=str(cwd), env=postgres_env(password), timeout=30, hidden=hidden,
+    )
+    return code, stdout.strip(), tail
+
+
+def attach_https_material(config_path, cert_file, key_file):
+    text = config_path.read_text()
+    if "tls_cert_file" in text or "tls_key_file" in text:
+        raise SliceError("config already names TLS files")
+    addition = (
+        f"tls_cert_file = {toml_basic(cert_file)}\n"
+        f"tls_key_file = {toml_basic(key_file)}\n"
+    )
+    # Root keys must precede the first table. A line after [postgres] would belong to that table.
+    config_path.write_text(addition + text)
+    config_path.chmod(0o600)
+    if config_path.stat().st_mode & 0o077:
+        raise SliceError("config file is readable by the group or others")
+
+
+def parse_cli_document(stdout, stderr, label, hidden):
+    document = None
+    for line in reversed(stdout.splitlines()):
+        stripped = line.strip()
+        if stripped.startswith("{"):
+            try:
+                document = json.loads(stripped)
+            except json.JSONDecodeError:
+                document = None
+            break
+    if not isinstance(document, dict):
+        fail(f"{label} did not return JSON: {stderr}", hidden)
+    return document
+
+
+def feature_facts(runtime, names):
+    states = runtime.get("feature_states")
+    if not isinstance(states, dict):
+        raise SliceError("runtime capabilities have no feature_states")
+    facts = {}
+    for name in names:
+        state = states.get(name)
+        if not isinstance(state, dict):
+            raise SliceError(f"runtime capabilities omit {name}")
+        fact = {
+            "compiled": state.get("compiled") is True,
+            "configured": state.get("configured") is True,
+            "usable": state.get("usable") is True,
+        }
+        if not all(fact.values()):
+            raise SliceError(
+                f"{name} compiled={fact['compiled']} configured={fact['configured']} usable={fact['usable']}"
+            )
+        facts[name] = fact
+    return facts
 
 
 def start_postgres(root):
@@ -707,6 +1045,207 @@ def stop_postgres(programs, cluster, root):
         [programs["pg_ctl"], "-D", str(cluster), "stop", "-m", "immediate", "-w"],
         cwd=root, env=os.environ.copy(), timeout=60,
     )
+
+
+def start_postgres_verified(root, material, hidden):
+    """Disposable PostgreSQL with a private CA. TCP auth is hostssl scram only."""
+    programs = require_programs(("initdb", "pg_ctl", "createdb", "psql"))
+    cluster = root / "postgres-cluster"
+    socket_dir = root / "pg-socket"
+    socket_dir.mkdir(mode=0o700)
+    if "'" in str(socket_dir):
+        raise SliceError("socket directory path is not usable in postgresql.conf")
+    port = free_port()
+    password = secrets.token_hex(24)
+    remember_secret(hidden, password)
+    password_file = root / "pg-password"
+    write_private_text(password_file, password + "\n")
+    code, _stdout, tail = command_output(
+        [programs["initdb"], "-D", str(cluster), "-U", "riauth_test",
+         "--auth=scram-sha-256", "--pwfile", str(password_file),
+         "--encoding=UTF8", "--no-locale"],
+        cwd=root, env=os.environ.copy(), timeout=60, hidden=hidden,
+    )
+    password_file.unlink(missing_ok=True)
+    if code != 0:
+        raise SliceError(f"initdb failed: {tail}")
+    shutil.copyfile(material["server_cert"], cluster / "server.crt")
+    shutil.copyfile(material["server_key"], cluster / "server.key")
+    (cluster / "server.key").chmod(0o600)
+    with (cluster / "postgresql.conf").open("a") as config:
+        config.write(
+            "\nlisten_addresses = '127.0.0.1'\n"
+            f"port = {port}\n"
+            f"unix_socket_directories = '{socket_dir}'\n"
+            "ssl = on\n"
+            "ssl_cert_file = 'server.crt'\n"
+            "ssl_key_file = 'server.key'\n"
+            "ssl_min_protocol_version = 'TLSv1.2'\n"
+            "password_encryption = 'scram-sha-256'\n"
+        )
+    (cluster / "pg_hba.conf").write_text(
+        "local all all scram-sha-256\n" + HOSTSSL_HBA
+    )
+    started = False
+    try:
+        code, _stdout, tail = command_output(
+            [programs["pg_ctl"], "-D", str(cluster), "-l", str(root / "postgres.log"), "start", "-w"],
+            cwd=root, env=os.environ.copy(), timeout=60, hidden=hidden,
+        )
+        if code != 0:
+            raise SliceError(f"pg_ctl start failed: {tail}")
+        started = True
+        code, _stdout, tail = command_output(
+            [programs["createdb"], "-h", str(socket_dir), "-p", str(port),
+             "-U", "riauth_test", "riauth_q09"],
+            cwd=root, env=postgres_env(password), timeout=60, hidden=hidden,
+        )
+        if code != 0:
+            raise SliceError(f"createdb failed: {tail}")
+        (cluster / "pg_hba.conf").write_text(HOSTSSL_HBA)
+        if not pg_hba_is_hostssl_scram((cluster / "pg_hba.conf").read_text()):
+            raise SliceError("pg_hba is not hostssl scram")
+        code, _stdout, tail = command_output(
+            [programs["pg_ctl"], "-D", str(cluster), "reload"],
+            cwd=root, env=os.environ.copy(), timeout=30, hidden=hidden,
+        )
+        if code != 0:
+            raise SliceError(f"pg_ctl reload failed: {tail}")
+        connection = root / "connection"
+        write_private_text(connection, (
+            f"host=localhost hostaddr=127.0.0.1 port={port} dbname=riauth_q09 "
+            f"user=riauth_test password={password} sslmode=require\n"
+        ))
+        require_connection_file(connection.read_text(), port)
+        config_path = root / "postgres.json"
+        config_path.write_text(json.dumps({
+            "connection_file": str(connection),
+            "ca_file": str(material["ca"]),
+            "local_unencrypted": False,
+            "pool_size": 8,
+        }))
+        verified = libpq_preflight(
+            programs["psql"], port, password, material["ca"], material["unrelated_ca"], hidden, root,
+        )
+        return {
+            "programs": programs,
+            "cluster": cluster,
+            "root": root,
+            "config": config_path,
+            "connection": connection,
+            "port": port,
+            "password": password,
+            "preflight": verified,
+        }
+    except Exception:
+        if started or (cluster / "postmaster.pid").exists():
+            stop_postgres(programs, cluster, root)
+        raise
+
+
+def libpq_preflight(psql, port, password, ca_file, unrelated_ca, hidden, cwd):
+    ok_info = libpq_conninfo(port, "verify-full", ca_file)
+    code, stdout, tail = psql_text(psql, ok_info, password, "SELECT current_setting('ssl')", hidden, cwd)
+    if code != 0 or stdout != "on":
+        raise SliceError(f"libpq verify-full preflight failed: {tail}")
+    bad_info = libpq_conninfo(port, "verify-full", unrelated_ca)
+    code, _stdout, _tail = psql_text(psql, bad_info, password, "SELECT 1", hidden, cwd)
+    if code == 0:
+        raise SliceError("libpq accepted an unrelated CA")
+    disabled = libpq_conninfo(port, "disable", ca_file)
+    code, _stdout, _tail = psql_text(psql, disabled, password, "SELECT 1", hidden, cwd)
+    if code == 0:
+        raise SliceError("libpq accepted sslmode=disable")
+    return {
+        "libpq_sslmode_verify_full": True,
+        "server_ssl": True,
+        "libpq_unrelated_ca_refused": True,
+        "libpq_sslmode_disable_refused": True,
+    }
+
+
+def refuse_unrelated_postgres(binary, root, cluster, material, hidden, env):
+    unrelated_root = root / "unrelated-instance"
+    data = unrelated_root / "data"
+    data.mkdir(parents=True)
+    config = unrelated_root / "riauth.toml"
+    pg_json = unrelated_root / "postgres.json"
+    pg_json.write_text(json.dumps({
+        "connection_file": str(cluster["connection"]),
+        "ca_file": str(material["unrelated_ca"]),
+        "local_unencrypted": False,
+        "pool_size": 8,
+    }))
+    port = free_port()
+    password = secrets.token_urlsafe(18)
+    remember_secret(hidden, password)
+    key_text = database_key_text()
+    key_path = unrelated_root / "database.key"
+    write_private_text(key_path, key_text + "\n")
+    remember_secret(hidden, key_text)
+    init = [
+        "--json", "--config", str(config), "--non-interactive", "init",
+        "--issuer", f"https://127.0.0.1:{port}", "--listen", f"127.0.0.1:{port}",
+        "--data-dir", str(data), "--admin", "admin", "--password-stdin",
+        "--database-key-file", str(key_path),
+        "--postgres-config", str(pg_json),
+    ]
+    code, stdout, tail = command_output(
+        [str(binary), *init], cwd=unrelated_root, env=env,
+        input_text=password + "\n", timeout=60, hidden=hidden,
+    )
+    if config.exists():
+        raise SliceError("unrelated CA init published a config")
+    document = parse_cli_document(stdout, tail, "unrelated CA init", hidden)
+    error = document.get("error") if isinstance(document.get("error"), dict) else {}
+    result = {
+        "exit_code": code,
+        "error_code": error.get("code"),
+        "http_status": error.get("http_status"),
+        "config_published": False,
+    }
+    if code != 6 or error.get("code") != "storage_unavailable" or error.get("http_status") != 503:
+        raise SliceError(
+            "unrelated CA init exited "
+            f"{code} code={error.get('code')} status={error.get('http_status')}: {tail}"
+        )
+    if document.get("ok") is not False:
+        raise SliceError("unrelated CA init returned ok")
+    return result
+
+
+def read_storage_format(backend, instance, cluster, hidden):
+    if backend == "redb":
+        path = instance / "data" / "riauth.redb"
+        blob = path.read_bytes()
+        if blob.count(b"aes256gcm-v1") < 1 or blob.count(b"plain-v1") != 0:
+            raise SliceError("redb storage format marker is not aes256gcm-v1")
+        assert_secrets_absent(blob, hidden, "redb store")
+        return "aes256gcm-v1"
+    password = cluster["password"]
+    info = libpq_conninfo(cluster["port"], "verify-full", json.loads(cluster["config"].read_text())["ca_file"])
+    code, stdout, tail = psql_text(
+        cluster["programs"]["psql"], info, password,
+        "SELECT encoding FROM riauth_store.storage_format WHERE singleton",
+        hidden, cluster["root"],
+    )
+    if code != 0 or stdout != "aes256gcm-v1":
+        raise SliceError(f"postgres storage format is {stdout or 'unread'}: {tail}")
+    code, hex_rows, tail = psql_text(
+        cluster["programs"]["psql"], info, password,
+        "SELECT encode(value, 'hex') FROM riauth_store.records_v1",
+        hidden, cluster["root"],
+    )
+    if code != 0:
+        raise SliceError(f"postgres record read failed: {tail}")
+    try:
+        blob = bytes.fromhex("".join(hex_rows.split()))
+    except ValueError as error:
+        raise SliceError("postgres record hex is unreadable") from error
+    if b"plain-v1" in blob:
+        raise SliceError("postgres records include plain-v1")
+    assert_secrets_absent(blob, hidden, "postgres records")
+    return "aes256gcm-v1"
 
 
 def measured_pass(
@@ -991,8 +1530,10 @@ def run_slice(
     binary, backend, iterations, warmup, interference_cap,
     fixture=False, directory_users=0, directory_groups=0,
     build_profile="unrecorded", build_toolchain="unrecorded", build_features="unrecorded",
-    pace_ms=0,
+    pace_ms=0, secure=False,
 ):
+    if secure and fixture:
+        raise SliceError("--secure does not use the fixture server")
     if backend not in ("redb", "postgresql"):
         raise SliceError("backend must be redb or postgresql")
     pace_seconds(pace_ms)
@@ -1023,21 +1564,31 @@ def run_slice(
     root = Path(tempfile.mkdtemp(prefix="riauth-q09-"))
     server = None
     cluster = None
+    material = None
+    tls_reset = None
+    security = None
     try:
+        if secure:
+            material = make_server_material(root, hidden)
         if backend == "postgresql":
-            cluster = start_postgres(root)
+            cluster = start_postgres_verified(root, material, hidden) if secure else start_postgres(root)
         port = free_port()
-        base = f"http://127.0.0.1:{port}"
+        base = f"{'https' if secure else 'http'}://127.0.0.1:{port}"
         instance = root / "instance"
         instance.mkdir()
         config = instance / "riauth.toml"
         password = secrets.token_urlsafe(18)
         hidden.append(password)
+        refusal = None
+        if secure and cluster is not None:
+            refusal = refuse_unrelated_postgres(binary, root, cluster, material, hidden, env)
         init = [
             "--json", "--config", str(config), "--non-interactive", "init",
             "--issuer", base, "--listen", f"127.0.0.1:{port}",
             "--data-dir", str(instance / "data"), "--admin", username, "--password-stdin",
         ]
+        if secure:
+            init.extend(["--database-key-file", str(material["database_key"])])
         if cluster is not None:
             init.extend(["--postgres-config", str(cluster["config"])])
         code, stdout, tail = command_output(
@@ -1047,11 +1598,26 @@ def run_slice(
         if code != 0:
             fail(f"init exited {code}: {tail}", hidden)
         parse_envelope(stdout, tail, "init", hidden)
+        if secure:
+            storage_format = read_storage_format(backend, instance, cluster, hidden)
+            attach_https_material(config, material["server_cert"], material["server_key"])
+            assert_secrets_absent(config.read_bytes(), hidden, "config")
+            if (material["database_key"].stat().st_mode & 0o777) != 0o600:
+                raise SliceError("database key mode is not 0600")
+            tls_reset = TLS_CONTEXT.set(private_ca_context(material["ca"]))
         server = start_process(argv_for(binary, ["--config", str(config), "serve"], fixture), instance, env)
         try:
             wait_ready(server, base, hidden)
         except SliceError:
             fail(f"server failed: {stop_process(server, hidden)}", hidden)
+        if secure:
+            matching = tls_probe(base + "/readyz", TLS_CONTEXT.get())
+            unrelated = tls_probe(base + "/readyz", private_ca_context(material["unrelated_ca"]))
+            system_trust = tls_probe(base + "/readyz", ssl.create_default_context())
+            if matching != 200 or unrelated is not None or system_trust is not None:
+                raise SliceError(
+                    f"https trust probe matching={matching} unrelated={unrelated} system={system_trust}"
+                )
         _elapsed, status, parsed, _unparsed = http_exchange(
             "POST", base + "/api/login",
             {"username": username, "password": password},
@@ -1071,6 +1637,39 @@ def run_slice(
             fail(f"runtime storage_backend is {runtime.get('storage_backend')}", hidden)
         if runtime.get("scope") != "instance":
             fail("runtime capabilities scope is not instance", hidden)
+        if secure:
+            names = ["operations.native_tls", "operations.encrypted_storage"]
+            if backend == "postgresql":
+                names.append("operations.postgresql")
+            security = {
+                "https": {
+                    "matching_ca_readyz": True,
+                    "unrelated_ca_refused": True,
+                    "system_trust_refused": True,
+                    "san": list(material["san"]),
+                    "hostname_check": True,
+                    "client_ca": "fresh private CA",
+                },
+                "database_key_file": {
+                    "present": True,
+                    "decoded_bytes": 32,
+                    "encoding": "base64url-nopad",
+                    "file_mode": "0600",
+                },
+                "storage_format": storage_format,
+                "credential_bytes_in_store": False,
+                "features": feature_facts(runtime, names),
+            }
+            if cluster is not None:
+                security["postgres"] = {
+                    "local_unencrypted": False,
+                    "auth": "scram-sha-256",
+                    "hba": "hostssl 127.0.0.1/32 and ::1/128",
+                    "product_connection_sslmode": "require",
+                    "product_parser": "disable, prefer, and require; SslMode::Require; rustls hostname and ca_file",
+                    "product_unrelated_ca_init": refusal,
+                }
+                security["postgres"].update(cluster["preflight"])
         if plan["writes"]:
             dataset = install_directory(base, token, plan, hidden)
         else:
@@ -1083,9 +1682,10 @@ def run_slice(
         outcome = {"success": 0, "conflict": 0, "error": 0, "posts": 0, "revision_refreshes": 0}
         start = threading.Event()
         stop = threading.Event()
+        writer_context = contextvars.copy_context()
         writer = threading.Thread(
-            target=group_writer,
-            args=(base, token, interference_cap, start, stop, outcome),
+            target=writer_context.run,
+            args=(group_writer, base, token, interference_cap, start, stop, outcome),
             name="q09-groups",
             daemon=True,
         )
@@ -1139,12 +1739,12 @@ def run_slice(
                 "directory_users": directory_users,
                 "directory_groups": directory_groups,
                 "username": username,
-                "database_encryption": False,
-                "tls": False,
-                "issuer": "loopback http base",
+                "database_encryption": bool(secure),
+                "tls": bool(secure),
+                "issuer": "loopback https base" if secure else "loopback http base",
                 "listen": "127.0.0.1 ephemeral",
                 "rate_limits": "process defaults",
-                "postgres_local_unencrypted": cluster is not None,
+                "postgres_local_unencrypted": False if secure else cluster is not None,
                 "postgres_pool_size": 8 if cluster is not None else None,
                 "budget": budget,
             },
@@ -1156,11 +1756,15 @@ def run_slice(
                 "overlap": outcome["success"] > 0,
                 "interference_minus_quiet_us": latency_delta(interference, quiet),
             },
-            "limitations": list(LIMITATIONS),
+            "limitations": secure_limitations(host, backend) if secure else list(LIMITATIONS),
         }
+        if security is not None:
+            report["security"] = security
         ensure_redacted(report, hidden)
         return report
     finally:
+        if tls_reset is not None:
+            TLS_CONTEXT.reset(tls_reset)
         stderr = stop_process(server, hidden)
         if cluster is not None:
             stop_postgres(cluster["programs"], cluster["cluster"], cluster["root"])
@@ -1423,6 +2027,7 @@ def main(argv=None):
     parser.add_argument("--directory-users", type=int, default=0)
     parser.add_argument("--directory-groups", type=int, default=0)
     parser.add_argument("--pace-ms", type=int, default=0)
+    parser.add_argument("--secure", action="store_true")
     parser.add_argument("--build-profile", default="unrecorded")
     parser.add_argument("--build-toolchain", default="unrecorded")
     parser.add_argument("--build-features", default="unrecorded")
@@ -1433,9 +2038,9 @@ def main(argv=None):
             args.binary or args.out or args.backend != "redb"
             or args.directory_users or args.directory_groups
             or args.build_profile != "unrecorded" or args.build_toolchain != "unrecorded"
-            or args.build_features != "unrecorded" or args.pace_ms
+            or args.build_features != "unrecorded" or args.pace_ms or args.secure
         ):
-            raise SliceError("--self-check takes no binary, backend, directory size, pace, build note, or output file")
+            raise SliceError("--self-check takes no binary, backend, directory size, pace, build note, secure mode, or output file")
         report = run_slice(sys.executable, "redb", 12, 1, 4, fixture=True)
         code = completion_code(report)
         if code != 0 or report["product_run"] or not report["interference"]["overlap"]:
@@ -1503,10 +2108,11 @@ def main(argv=None):
         args.binary, args.backend, args.iterations, args.warmup, args.interference_cap,
         directory_users=args.directory_users, directory_groups=args.directory_groups,
         build_profile=args.build_profile, build_toolchain=args.build_toolchain,
-        build_features=args.build_features, pace_ms=args.pace_ms,
+        build_features=args.build_features, pace_ms=args.pace_ms, secure=args.secure,
     )
     code = completion_code(report)
     encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    assert_report_text_clean(encoded)
     if args.out:
         destination = Path(args.out)
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1520,6 +2126,7 @@ def main(argv=None):
         f"directory_groups={len(report['dataset']['groups'])} "
         f"verified={str(report['dataset']['verified']).lower()} "
         f"pace_ms={report['settings']['pace_ms']} "
+        f"secure={str(report['settings']['tls']).lower()} "
         f"quiet_maintenance_overlap={str(report['passes']['quiet']['maintenance_cadence_overlap']).lower()} "
         f"interference_maintenance_overlap={str(report['passes']['interference']['maintenance_cadence_overlap']).lower()}",
         file=sys.stderr,

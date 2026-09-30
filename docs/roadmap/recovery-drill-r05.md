@@ -81,6 +81,73 @@ The PostgreSQL drill covers **archive restore into an empty PostgreSQL database*
 It does not exercise `pg_dump`/`pg_restore`, PITR, asynchronous replication, or
 multi-node failover. Those remain separate deployment gates.
 
+## Native PostgreSQL physical restore drill
+
+The accepted D04 [dump](evidence/d04-postgres-dump-restore-2026-09-29.json),
+[base-backup](evidence/d04-postgres-base-backup-2026-09-29.json), and
+[PITR](evidence/d04-postgres-pitr-2026-09-29.json) reports established the
+lineage behavior manually. A dump into a fresh database changed its OIDs and
+closed the gate automatically. The base backup and PITR kept the recorded
+system/database/table identity, so read-only `recovery status` said serving was
+allowed despite a rollback. D04 deliberately served a pre-backup session from
+the base backup to expose that blind spot. The automated R05 drill never serves
+its restored copy before explicit offline invalidation.
+
+Build and run this fixture on a host with the named native PG16.14 tools and at
+least 8 GiB free. The Cargo target belongs to this worktree; the output path
+must be new. This script never reads an existing PostgreSQL service or database.
+
+```sh
+CARGO_TARGET_DIR="$PWD/target/r05-native" CARGO_BUILD_JOBS=1 \
+  CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo build --locked --bin riauth --example recovery_native_artifacts
+python3 scripts/recovery-drill-native-postgres.py \
+  --binary "$PWD/target/r05-native/debug/riauth" \
+  --fixture "$PWD/target/r05-native/debug/examples/recovery_native_artifacts" \
+  --pg-bin /opt/homebrew/Cellar/postgresql@16/16.14/bin \
+  --out "$PWD/docs/roadmap/evidence/r05-native-postgres-2026-09-29"
+```
+
+The script creates one unique mode-0700 loopback cluster and an isolated empty
+schema. It issues a session, bearer token, refresh token, pending authorization
+code, and invitation proof. It stops the riAuth writer, refuses an occupied
+backup destination, runs and verifies `pg_basebackup`, then changes a user
+password, rotates the signing key, and creates a later user on the source. It
+stops that PostgreSQL postmaster and checks its port is closed before starting
+the physical copy on the same port. No restored riAuth listener starts before
+`recovery invalidate --database-restored` succeeds offline. A held client
+connection must make invalidation fail with `conflict`; the script releases it
+and retries.
+
+The [host run](evidence/r05-native-postgres-2026-09-29/report.json) passed 16
+checks on PostgreSQL 16.14. `pg_verifybackup` passed; 58 riAuth records and the
+recorded PostgreSQL lineage returned in the copy, while the later source had
+68 records. Read-only status on the copy said `serving_allowed: true` before
+invalidation, confirming the same-lineage blind spot without opening a
+listener. The wrong database key exited 2 (`invalid_request`), the empty schema
+was uninitialized and not serving, and the held client made invalidation exit 5
+(`conflict`) without writing a gate. Offline invalidation removed three
+sessions/session tokens, one bearer, one refresh, two codes, and one invitation
+proof; it left passwords, the client, and the signing key for reconciliation.
+The [redacted artifact results](evidence/r05-native-postgres-2026-09-29/artifact-refusals.json)
+show `invalid_token`, `invalid_grant`, and `account_code_invalid` refusals,
+preserved user ID/subjects/pairwise seed, and an advanced account epoch. The
+restored password hash and signing-key ID matched the backup and differed from
+the post-backup source. `serve` exited without a listener; a wrong recovery ID
+and missing attestation could not reopen the gate. The pending gate remains
+closed. The raw read-only [before](evidence/r05-native-postgres-2026-09-29/status-before-invalidation.json),
+[invalidate](evidence/r05-native-postgres-2026-09-29/invalidate.json), and
+[final](evidence/r05-native-postgres-2026-09-29/status-final.json) envelopes
+were saved in owner-only files before the temporary cluster and credentials
+were reaped; the report also checks that generated credentials are absent from
+the durable JSON.
+
+The lost source timeline cannot be used as safe proof that every real credential
+and signing key was reconciled. This fixture therefore does not attest
+`recovery complete`, restore lost secrets, or claim external relying-party and
+deployed HA behavior. A deployment still needs its credential/key inventory,
+escrow, and external exercise before an operator can reopen serving.
+
 ## Deployment gates
 
 Both JSON reports record **observations**, not proof for an actual deployment.
@@ -93,7 +160,7 @@ systems:
 | Database key loss | Recover an encrypted native database copy with the escrowed key, or rebuild from an archive and a new database key. A native copy without its key is unreadable. |
 | Referenced secret-file loss | Provision the saved TLS, mail, directory, device-trust, RADIUS, and other configured files at the restored paths. Check both restore-time and serve-time failures. |
 | External services | Exercise Vault Transit signing, SMTP, upstream login, provisioning, and listeners that are enabled in the deployment. Local doctor and JWKS do not prove external signing. |
-| PostgreSQL | Exercise PITR or dump restore, offline invalidation, fencing, and multi-node readiness with dedicated infrastructure. |
+| PostgreSQL | This local base-backup drill exercises offline invalidation and single-cluster fencing. Exercise PITR or dump restore with the deployment's backup path, then multi-node fencing/readiness with dedicated infrastructure. |
 | Application sign-in | Complete a real OIDC and, where used, SAML login with a relying party after restore. The local drill's normal-user password login is only a representative service login. |
 
 Use the full [disaster recovery runbook](../disaster-recovery.md) before returning

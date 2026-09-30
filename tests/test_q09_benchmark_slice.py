@@ -1,11 +1,15 @@
 """Fixture checks for the Q09 session-read measurement script."""
 
+import base64
 import importlib.util
 import json
 import os
 import pathlib
 import shutil
+import socket
+import ssl
 import tempfile
+import threading
 import unittest
 
 
@@ -327,3 +331,143 @@ class RelativeBinary(unittest.TestCase):
         finally:
             os.chdir(previous)
             shutil.rmtree(checkout)
+
+
+class SecureMode(unittest.TestCase):
+    def test_private_ca_rejects_unrelated_and_system_trust(self):
+        hidden = []
+        root = pathlib.Path(tempfile.mkdtemp(prefix="q09-ca-"))
+        stop = threading.Event()
+        started = []
+        ready = threading.Event()
+
+        def serve():
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(
+                certfile=str(material["server_cert"]), keyfile=str(material["server_key"]),
+            )
+            sock = socket.socket()
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", 0))
+            sock.listen(16)
+            sock.settimeout(0.2)
+            started.append(sock.getsockname()[1])
+            ready.set()
+            while not stop.is_set():
+                try:
+                    client, _addr = sock.accept()
+                except socket.timeout:
+                    continue
+                try:
+                    with context.wrap_socket(client, server_side=True) as tls:
+                        tls.settimeout(2)
+                        try:
+                            tls.recv(4096)
+                        except OSError:
+                            pass
+                        body = b'{"ok":true}'
+                        tls.sendall(
+                            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+                            + str(len(body)).encode()
+                            + b"\r\nConnection: close\r\n\r\n"
+                            + body
+                        )
+                except ssl.SSLError:
+                    pass
+                finally:
+                    try:
+                        client.close()
+                    except OSError:
+                        pass
+            sock.close()
+
+        thread = None
+        token = None
+        try:
+            material = benchmark.make_server_material(root, hidden)
+            key_text = (root / "certs" / "database.key").read_text().strip()
+            decoded = base64.urlsafe_b64decode(key_text + "=")
+            self.assertEqual(len(decoded), 32)
+            self.assertNotIn("=", key_text)
+            self.assertEqual(material["database_key"].stat().st_mode & 0o777, 0o600)
+            self.assertIn(key_text, hidden)
+            thread = threading.Thread(target=serve, name="q09-tls-probe", daemon=True)
+            thread.start()
+            self.assertTrue(ready.wait(5))
+            url = f"https://127.0.0.1:{started[0]}/readyz"
+            matching = benchmark.private_ca_context(material["ca"])
+            self.assertEqual(matching.verify_mode, ssl.CERT_REQUIRED)
+            self.assertTrue(matching.check_hostname)
+            self.assertEqual(benchmark.tls_probe(url, matching), 200)
+            token = benchmark.TLS_CONTEXT.set(matching)
+            _elapsed, status, parsed, _unparsed = benchmark.http_exchange("GET", url, timeout=5)
+            self.assertEqual(status, 200)
+            self.assertEqual(parsed, {"ok": True})
+            self.assertIsNone(benchmark.tls_probe(url, benchmark.private_ca_context(material["unrelated_ca"])))
+            self.assertIsNone(benchmark.tls_probe(url, ssl.create_default_context()))
+        finally:
+            if token is not None:
+                benchmark.TLS_CONTEXT.reset(token)
+            stop.set()
+            if thread is not None:
+                thread.join(timeout=2)
+            shutil.rmtree(root, ignore_errors=True)
+
+    def test_connection_file_hba_and_redaction(self):
+        password = "ab" * 16
+        text = (
+            "host=localhost hostaddr=127.0.0.1 port=5432 dbname=riauth_q09 "
+            f"user=riauth_test password={password} sslmode=require\n"
+        )
+        self.assertEqual(benchmark.require_connection_file(text, 5432), password)
+        for rejected in ("sslmode=verify-full", "sslmode=disable", "sslmode=prefer"):
+            with self.assertRaises(benchmark.SliceError):
+                benchmark.require_connection_file(text.replace("sslmode=require", rejected), 5432)
+        self.assertTrue(benchmark.pg_hba_is_hostssl_scram(benchmark.HOSTSSL_HBA))
+        self.assertFalse(benchmark.pg_hba_is_hostssl_scram("local all all trust\n" + benchmark.HOSTSSL_HBA))
+        self.assertFalse(benchmark.pg_hba_is_hostssl_scram("host all all 127.0.0.1/32 trust\n"))
+        info = benchmark.libpq_conninfo(5432, "verify-full", "/tmp/ca.crt")
+        self.assertIn("sslmode=verify-full", info)
+        self.assertIn("host=localhost", info)
+        self.assertIn("hostaddr=127.0.0.1", info)
+        self.assertNotIn("password=", info)
+        key = benchmark.database_key_text()
+        banner = "-----BEGIN " + "PRIVATE KEY-----"
+        hidden = [key, banner]
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.ensure_redacted({"leak": key}, hidden)
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.ensure_redacted({"leak": banner}, hidden)
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.assert_report_text_clean('{"stored":"password=hidden"}')
+        benchmark.ensure_redacted({"storage_format": "aes256gcm-v1"}, hidden)
+        host = {
+            "uname": {
+                "system": "Linux",
+                "node": "example",
+                "release": "7.0.12-linuxkit",
+                "version": "#1 SMP linuxkit",
+            },
+        }
+        secure = "\n".join(benchmark.secure_limitations(host, "postgresql"))
+        self.assertNotIn("Database encryption is off", secure)
+        self.assertNotIn("trust auth", secure)
+        self.assertIn("sslmode=verify-full", secure)
+        self.assertIn("sslmode=require", secure)
+        self.assertIn("aes256gcm-v1", secure)
+        self.assertIn("external signer", secure)
+        self.assertIn("Docker's Linux VM", secure)
+        self.assertNotIn("password", secure.lower())
+        redb = "\n".join(benchmark.secure_limitations({"uname": {}}, "redb"))
+        self.assertIn("This run uses the redb backend.", redb)
+        self.assertNotIn("Docker's Linux VM", redb)
+        self.assertNotIn("Database encryption is off", redb)
+        insecure = "\n".join(benchmark.LIMITATIONS)
+        self.assertIn(benchmark.INSECURE_LISTENER, insecure)
+        self.assertIn(benchmark.INSECURE_POSTGRES, insecure)
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.main(["--self-check", "--secure"])
+        with self.assertRaises(benchmark.SliceError):
+            benchmark.run_slice(
+                benchmark.sys.executable, "redb", 1, 0, 1, fixture=True, secure=True,
+            )

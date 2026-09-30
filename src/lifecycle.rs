@@ -177,10 +177,16 @@ struct Delivery {
     created_at: u64,
     next_attempt: u64,
     attempts: u32,
+    /// Owner of the current attempt. Absent on a queued, finished, or legacy row.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     lease: Option<String>,
+    /// Set immediately before this attempt opens SMTP. Absent until that pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    dispatch_started: Option<bool>,
     delivered_at: Option<u64>,
     stopped: bool,
 }
+const MAIL_LEASE_SECONDS: u64 = 60;
 /// How long an invitation link stays valid.
 const INVITATION_SECONDS: u64 = 7 * 86400;
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
@@ -442,6 +448,7 @@ pub(crate) fn enqueue(
         next_attempt: now(),
         attempts: 0,
         lease: None,
+        dispatch_started: None,
         delivered_at: None,
         stopped: false,
     };
@@ -1008,7 +1015,7 @@ impl Core {
                 {
                     delivery.stopped = true;
                     delivery.body = None;
-                    delivery.lease = None;
+                    clear_mail_owner(&mut delivery);
                     tx.put("mail_deliveries", &id, &delivery)?;
                     continue;
                 }
@@ -1016,35 +1023,130 @@ impl Core {
                     continue;
                 }
                 delivery.attempts += 1;
-                delivery.next_attempt = now() + 60;
+                delivery.next_attempt = now().saturating_add(MAIL_LEASE_SECONDS);
                 delivery.lease = Some(crypto::id());
+                delivery.dispatch_started = None;
                 tx.put("mail_deliveries", &id, &delivery)?;
                 ready.push(delivery);
             }
             Ok(ready)
         })
     }
-    fn finish_mail(&self, delivery: &Delivery, sent: bool) -> Result<()> {
+    /// Commit this worker's pin before it opens SMTP. False means the lease was
+    /// replaced, already pinned, expired, or the proof was cancelled, and the
+    /// caller must not send.
+    pub fn begin_mail_dispatch(&self, id: &str, attempt: u32, lease: &str) -> Result<bool> {
+        if lease.is_empty() {
+            return Ok(false);
+        }
         self.store.write(|tx| {
-            let Some(mut current) = tx
-                .get::<Delivery>("mail_deliveries", &delivery.id)?
-                .filter(|d| d.lease == delivery.lease)
-            else {
+            let Some(mut delivery) = tx.get::<Delivery>("mail_deliveries", id)? else {
+                return Ok(false);
+            };
+            if delivery.delivered_at.is_some()
+                || delivery.attempts != attempt
+                || delivery.lease.as_deref() != Some(lease)
+            {
+                return Ok(false);
+            }
+            if delivery.stopped {
+                clear_mail_owner(&mut delivery);
+                tx.put("mail_deliveries", id, &delivery)?;
+                return Ok(false);
+            }
+            if delivery.dispatch_started == Some(true) || delivery.next_attempt <= now() {
+                return Ok(false);
+            }
+            if delivery.expires_at <= now()
+                || tx
+                    .get::<Proof>("account_proofs", &delivery.proof)?
+                    .is_none()
+            {
+                delivery.stopped = true;
+                delivery.body = None;
+                clear_mail_owner(&mut delivery);
+                tx.put("mail_deliveries", id, &delivery)?;
+                return Ok(false);
+            }
+            delivery.dispatch_started = Some(true);
+            tx.put("mail_deliveries", id, &delivery)?;
+            Ok(true)
+        })
+    }
+    /// Ignore a completion from an attempt that no longer owns the row.
+    pub fn finish_mail_attempt(
+        &self,
+        id: &str,
+        attempt: u32,
+        lease: &str,
+        sent: bool,
+    ) -> Result<()> {
+        self.store.write(|tx| {
+            let Some(mut current) = tx.get::<Delivery>("mail_deliveries", id)? else {
                 return Ok(());
             };
-            current.lease = None;
+            if current.attempts != attempt
+                || current.lease.as_deref() != Some(lease)
+                || current.delivered_at.is_some()
+                || current.stopped
+            {
+                return Ok(());
+            }
+            clear_mail_owner(&mut current);
             if sent {
                 current.delivered_at = Some(now());
                 current.body = None;
             } else {
-                current.next_attempt = now() + 2u64.pow(current.attempts.min(12)).min(3600);
+                current.next_attempt =
+                    now().saturating_add(2u64.saturating_pow(current.attempts.min(12)).min(3600));
             }
             tx.put("mail_deliveries", &current.id, &current)
         })
     }
 }
+/// One claimed attempt, without the recipient, subject, body, or proof.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MailClaim {
+    pub id: String,
+    pub attempts: u32,
+    pub lease: String,
+}
+impl Core {
+    /// Claim due mail. The returned records omit the message and its proof.
+    pub fn claim_mail_attempts(&self) -> Result<Vec<MailClaim>> {
+        Ok(self
+            .claim_mail()?
+            .into_iter()
+            .filter_map(|delivery| {
+                let lease = delivery.lease?;
+                if lease.is_empty() {
+                    return None;
+                }
+                Some(MailClaim {
+                    id: delivery.id,
+                    attempts: delivery.attempts,
+                    lease,
+                })
+            })
+            .collect())
+    }
+}
+fn clear_mail_owner(delivery: &mut Delivery) {
+    delivery.lease = None;
+    delivery.dispatch_started = None;
+}
+fn outbound_message(from: &str, delivery: &Delivery) -> Option<Message> {
+    let body = delivery.body.clone()?;
+    Message::builder()
+        .from(from.parse::<Mailbox>().ok()?)
+        .to(delivery.recipient.parse::<Mailbox>().ok()?)
+        .subject(delivery.subject.as_str())
+        .header(lettre::message::header::ContentType::TEXT_PLAIN)
+        .body(body)
+        .ok()
+}
 pub async fn deliver(core: Core) -> Result<()> {
-    let Some(config) = &core.config.mail else {
+    let Some(config) = core.config.mail.clone() else {
         return Ok(());
     };
     let transport = config.transport()?;
@@ -1054,40 +1156,49 @@ pub async fn deliver(core: Core) -> Result<()> {
     })
     .await
     .map_err(Error::internal)??;
-    // Build the complete bounded batch before spawning any child work, so a
-    // malformed message cannot detach sends/finishes from this pass.
-    let messages = pending
-        .into_iter()
-        .map(|delivery| {
-            let message = Message::builder()
-                .from(config.from.parse::<Mailbox>().map_err(Error::internal)?)
-                .to(delivery
-                    .recipient
-                    .parse::<Mailbox>()
-                    .map_err(Error::internal)?)
-                .subject(&delivery.subject)
-                .header(lettre::message::header::ContentType::TEXT_PLAIN)
-                .body(
-                    delivery
-                        .body
-                        .clone()
-                        .ok_or_else(|| Error::internal("Missing delivery body"))?,
-                )
-                .map_err(Error::internal)?;
-            Ok((delivery, message))
-        })
-        .collect::<Result<Vec<_>>>()?;
     let mut jobs = tokio::task::JoinSet::new();
-    for (delivery, message) in messages {
+    for delivery in pending {
         let transport = transport.clone();
         let core = core.clone();
+        let from = config.from.clone();
         jobs.spawn(async move {
+            // The claim committed the lease. Pin it before the message is built
+            // or any SMTP bytes are written. A refused pin does not finish and
+            // does not open a connection.
+            let Some(lease) = delivery.lease.clone().filter(|lease| !lease.is_empty()) else {
+                return Ok(());
+            };
+            let attempt = delivery.attempts;
+            let pin_id = delivery.id.clone();
+            let pin_lease = lease.clone();
+            let owner = core.clone();
+            let admitted = tokio::task::spawn_blocking(move || {
+                crate::telemetry::in_activity(crate::telemetry::Activity::Mail, || {
+                    owner.begin_mail_dispatch(&pin_id, attempt, &pin_lease)
+                })
+            })
+            .await
+            .map_err(Error::internal)??;
+            if !admitted {
+                return Ok(());
+            }
+            let Some(message) = outbound_message(&from, &delivery) else {
+                let id = delivery.id.clone();
+                return tokio::task::spawn_blocking(move || {
+                    crate::telemetry::in_activity(crate::telemetry::Activity::Mail, || {
+                        core.finish_mail_attempt(&id, attempt, &lease, false)
+                    })
+                })
+                .await
+                .map_err(Error::internal)?;
+            };
             let sent = tokio::time::timeout(Duration::from_secs(30), transport.send(message))
                 .await
-                .is_ok_and(|r| r.is_ok());
+                .is_ok_and(|result| result.is_ok());
+            let id = delivery.id.clone();
             tokio::task::spawn_blocking(move || {
                 crate::telemetry::in_activity(crate::telemetry::Activity::Mail, || {
-                    core.finish_mail(&delivery, sent)
+                    core.finish_mail_attempt(&id, attempt, &lease, sent)
                 })
             })
             .await
@@ -1135,7 +1246,7 @@ pub fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
         {
             delivery.body = None;
             delivery.stopped = true;
-            delivery.lease = None;
+            clear_mail_owner(&mut delivery);
             tx.put("mail_deliveries", &key, &delivery)?;
         }
     }

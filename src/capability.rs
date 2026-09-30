@@ -485,12 +485,27 @@ fn compiled_for(name: &str, target: crate::edition::Target) -> bool {
 /// Compiled names the operator left enabled. Listener files and runtime
 /// readiness stay out of this set so two roles can differ locally.
 pub(crate) fn active_compiled(config: &Config) -> BTreeSet<String> {
+    active_compiled_for(config, crate::edition::CURRENT)
+}
+
+pub(crate) fn active_compiled_for(
+    config: &Config,
+    target: crate::edition::Target,
+) -> BTreeSet<String> {
     agent::FEATURES
         .iter()
         .copied()
-        .filter(|name| compiled(name) && config.capabilities.enabled(name))
+        .filter(|name| compiled_for(name, target) && config.capabilities.enabled(name))
         .map(str::to_string)
         .collect()
+}
+
+pub(crate) fn optional_source_only_capability(
+    name: &str,
+    source: crate::edition::Target,
+    target: crate::edition::Target,
+) -> bool {
+    compiled_for(name, source) && !compiled_for(name, target) && DISABLABLE.contains(&name)
 }
 
 /// Certificate assurance uses only public trust anchors and revocation data;
