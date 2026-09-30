@@ -2988,8 +2988,10 @@ mod tests {
         assert!(!cli.contains("extension-guest"));
         let maintenance = include_str!("../../src/bin/riauth-maintenance.rs");
         assert!(!maintenance.contains("extension_gate"));
-        assert!(MAX_GUEST_REQUEST_BYTES <= 80 * 1024);
-        assert!(MAX_RESPONSE_BYTES <= 64);
+        const {
+            assert!(MAX_GUEST_REQUEST_BYTES <= 80 * 1024);
+            assert!(MAX_RESPONSE_BYTES <= 64);
+        }
     }
 
     #[cfg(feature = "platform")]

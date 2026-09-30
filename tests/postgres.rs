@@ -1080,7 +1080,22 @@ fn postgres_atomicity_shared_sessions_replay_limits_migration_and_fenced_failove
         assert_eq!(value["payload"].as_str().unwrap().len(), payload.len());
     }
     assert_eq!(restored.jwks().unwrap(), keys);
-    assert!(restored.me(&admin).is_ok());
+    // Authenticated restore preserves identity and keys, but invalidates the
+    // snapshot's sessions and keeps serving closed until reconciliation.
+    assert_eq!(restored.me(&admin).unwrap_err().code, "invalid_token");
+    let recovery = riauth::recovery::status(&restored.store).unwrap();
+    assert_eq!(recovery["serving_allowed"], false);
+    assert!(recovery["pending"].is_object());
+    assert_eq!(recovery["pending"]["cause"], "backup_restore");
+    assert!(restored.store.ready().is_err());
+    let fresh_admin = text(
+        &restored
+            .login("admin".into(), PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    assert!(restored.me(&fresh_admin).is_ok());
+    assert!(restored.store.ready().is_err());
 
     // An old store may contain a value larger than the new stream's page
     // budget. It must fail explicitly before that value joins a fetched page.
