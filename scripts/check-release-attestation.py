@@ -238,7 +238,7 @@ def require_spdx_predicate(predicate, artifact_name, artifact_sha):
     raise AttestationError("subject digest mismatch")
 
 
-def expected_certificate(tag, source):
+def expected_certificate(tag, source, run_id, run_attempt):
     """Certificate fields gh parses from signature.certificate. Not the predicate."""
     return {
         "subjectAlternativeName": certificate_identity(tag),
@@ -248,10 +248,11 @@ def expected_certificate(tag, source):
         "sourceRepositoryRef": f"refs/tags/{tag}",
         "sourceRepositoryURI": f"https://github.com/{REPOSITORY}",
         "runnerEnvironment": "github-hosted",
+        "runInvocationURI": invocation_id(run_id, run_attempt),
     }
 
 
-def require_certificate(result, tag, source):
+def require_certificate(result, tag, source, run_id, run_attempt):
     """Pin the non-forgeable certificate summary and a witnessed timestamp."""
     signature = result.get("signature")
     if not isinstance(signature, dict):
@@ -271,7 +272,7 @@ def require_certificate(result, tag, source):
             or not item["uri"]
         ):
             raise AttestationError("missing proof")
-    for key, value in expected_certificate(tag, source).items():
+    for key, value in expected_certificate(tag, source, run_id, run_attempt).items():
         if certificate.get(key) != value:
             raise AttestationError("certificate identity mismatch")
 
@@ -292,7 +293,7 @@ def require_verification_result(results, artifact_name, artifact_sha, tag, sourc
         result = item.get("verificationResult")
         if not isinstance(result, dict):
             raise AttestationError("missing proof")
-        require_certificate(result, tag, source)
+        require_certificate(result, tag, source, run_id, run_attempt)
         statement = result.get("statement")
         if not isinstance(statement, dict):
             raise AttestationError("bundle schema is invalid")

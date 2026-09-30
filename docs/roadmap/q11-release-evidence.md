@@ -317,8 +317,10 @@ The flags were read from `gh` 2.96.0 on 2026-09-29. The certificate JSON
 fields were read from `cli/cli` `v2.96.0`, which parses `sigstore-go` v1.2.1
 `VerificationResult.signature.certificate`. After `gh` exits 0, the checker
 requires `subjectAlternativeName`, `issuer`, `buildSignerDigest`,
-`sourceRepositoryDigest`, `sourceRepositoryRef`, `sourceRepositoryURI`, and
-`runnerEnvironment` to equal the pin, and it requires one witnessed timestamp.
+`sourceRepositoryDigest`, `sourceRepositoryRef`, `sourceRepositoryURI`,
+`runnerEnvironment`, and `runInvocationURI` to equal the pin, and it requires one witnessed timestamp.
+For both provenance and SPDX, the certificate `runInvocationURI` must equal
+`https://github.com/Rhein-Industries/riAuth/actions/runs/<run-id>/attempts/<run-attempt>`.
 Strings inside the predicate do not satisfy that pin. For provenance, the
 predicate `invocationId` must then be
 `https://github.com/Rhein-Industries/riAuth/actions/runs/<run-id>/attempts/<run-attempt>`.
@@ -330,7 +332,10 @@ workflow-controlled. An unverified bundle parse is not success.
 Exit 0 from `verify` means the supplied file and bundle met those pins.
 `signed_artifact` in its JSON stays false. This checkout did not produce the
 bundle. This command was not run against a riAuth release bundle in this
-slice.
+slice. The 2026-09-30 integration review added the certificate run
+and attempt pin for both predicates and strengthened the existing negative
+fixtures. These fixtures were not rerun during integration. No actual
+release bundle was verified.
 
 ### Public observation on 2026-09-29
 

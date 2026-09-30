@@ -43,7 +43,7 @@ def bundle_for(statement, **overrides):
 
 
 def verification(artifact_name, artifact_sha, predicate_type=PREDICATE, **overrides):
-    certificate = attest.expected_certificate(TAG, SOURCE)
+    certificate = attest.expected_certificate(TAG, SOURCE, RUN_ID, RUN_ATTEMPT)
     certificate.update(overrides.get("certificate", {}))
     if predicate_type == attest.PROVENANCE_PREDICATE:
         predicate = {
@@ -256,12 +256,26 @@ class BundleAndPolicy(unittest.TestCase):
     def test_predicate_decoy_does_not_supply_identity(self):
         with tempfile.TemporaryDirectory() as directory:
             artifact, _bundle_path, _trusted_root, digest = self.materials(directory)
-            result = verification(artifact.name, digest)
-            result["verificationResult"]["signature"]["certificate"]["runnerEnvironment"] = "self-hosted"
-            with self.assertRaisesRegex(attest.AttestationError, "certificate identity mismatch"):
-                attest.require_verification_result(
-                    [result], artifact.name, digest, TAG, SOURCE, RUN_ID, RUN_ATTEMPT, PREDICATE,
-                )
+            mutations = (
+                ("runnerEnvironment", "self-hosted"),
+                ("runInvocationURI", attest.invocation_id("99", RUN_ATTEMPT)),
+                ("runInvocationURI", attest.invocation_id(RUN_ID, "99")),
+                ("runInvocationURI", None),
+            )
+            for predicate_type in attest.PREDICATES:
+                for key, value in mutations:
+                    with self.subTest(predicate_type=predicate_type, field=key, value=value):
+                        result = verification(artifact.name, digest, predicate_type=predicate_type)
+                        certificate = result["verificationResult"]["signature"]["certificate"]
+                        if value is None:
+                            certificate.pop(key)
+                        else:
+                            certificate[key] = value
+                        with self.assertRaisesRegex(attest.AttestationError, "certificate identity mismatch"):
+                            attest.require_verification_result(
+                                [result], artifact.name, digest, TAG, SOURCE, RUN_ID, RUN_ATTEMPT,
+                                predicate_type,
+                            )
 
     def test_missing_timestamp_is_missing_proof(self):
         with tempfile.TemporaryDirectory() as directory:
