@@ -280,9 +280,11 @@ fn parity_server() -> MockServer {
                     .to_string(),
             ),
             (_, "/api/state/revision") => Reply::json("{\"revision\":7}"),
-            ("GET", "/api/registration" | "/api/keys" | "/api/account/invitations") => {
-                Reply::json("[]")
-            }
+            ("GET", "/api/registration" | "/api/keys") => Reply::json("[]"),
+            // The server's account_invitations shape, not a bare list.
+            ("GET", "/api/account/invitations") => Reply::json(
+                "{\"delivery_configured\":true,\"lifetime\":86400,\"invitations\":[]}",
+            ),
             ("POST", "/api/registration") => {
                 let id = request.json()["id"].as_str().unwrap().to_owned();
                 let key = request.header("idempotency-key").unwrap_or("").to_owned();
@@ -775,7 +777,7 @@ fn invitation_commands_use_the_invitation_routes_with_both_headers() {
             &["invitation", "list"],
             None
         )),
-        json!([])
+        json!({"delivery_configured": true, "lifetime": 86400, "invitations": []})
     );
     let created = data(&run(
         &server.origin,
