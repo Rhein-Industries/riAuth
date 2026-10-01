@@ -486,6 +486,7 @@ fn one_workflow(plan: &Plan) -> Result<&Definition> {
         || !plan.manifest.source_links.is_empty()
         || !plan.manifest.ssf_streams.is_empty()
         || !plan.manifest.delegated_grants.is_empty()
+        || plan.manifest.has_connectors()
     {
         return Err(Error::bad("Workflow review applies one workflow only"));
     }
