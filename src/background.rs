@@ -1267,4 +1267,147 @@ mod tests {
             .await
             .unwrap();
     }
+    /// `riauth_background_failed_total` counts a pass that returns `Err`. A
+    /// reconciliation pass that stores a failed job and returns `Ok` is a
+    /// finished pass, so reconciliation job failures are read from the
+    /// reconciliation diagnostics and job reads and not from this counter.
+    #[tokio::test]
+    async fn failed_total_counts_failed_passes_not_stored_reconciliation_failures() {
+        use crate::{
+            agent::{NewAgent, Permission},
+            provisioning::Target,
+            reconciliation::ControllerConfig,
+        };
+        use http_body_util::BodyExt;
+
+        async fn series(core: &Core, token: &str, metric: &str, job: &str) -> f64 {
+            let response = crate::api::router(core.clone())
+                .oneshot(
+                    Request::builder()
+                        .uri("/api/operations/prometheus")
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let text = String::from_utf8(
+                response
+                    .into_body()
+                    .collect()
+                    .await
+                    .unwrap()
+                    .to_bytes()
+                    .to_vec(),
+            )
+            .unwrap();
+            let prefix = format!("riauth_background_{metric}{{job=\"{job}\",");
+            let line = text
+                .lines()
+                .find(|line| line.starts_with(&prefix))
+                .unwrap_or_else(|| panic!("no {metric} series for {job}"));
+            line.rsplit_once(' ').unwrap().1.parse().unwrap()
+        }
+
+        let (dir, mut core) = fixture();
+        let admin = core.login("admin".into(), PASSWORD.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let background = Arc::new(Background::new(core.store.clone()));
+        let stats = &core.store.telemetry().background.0;
+        assert_eq!(series(&core, &admin, "failed_total", "mail").await, 0.0);
+
+        // A pass that returns Err is counted, and so is the series.
+        let error = background
+            .run(Job::Mail, async { Err(Error::bad("planted pass failure")) })
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_request");
+        assert_eq!(stats[Job::Mail as usize].finished.load(Relaxed), 1);
+        assert_eq!(stats[Job::Mail as usize].failed.load(Relaxed), 1);
+        assert_eq!(series(&core, &admin, "failed_total", "mail").await, 1.0);
+        assert_eq!(series(&core, &admin, "finished_total", "mail").await, 1.0);
+        assert_eq!(
+            core.store.telemetry().background.snapshot()["jobs"]["mail"]["failed"],
+            1
+        );
+        // A successful pass raises only the finished counter.
+        background.run(Job::Mail, async { Ok(()) }).await.unwrap();
+        assert_eq!(series(&core, &admin, "failed_total", "mail").await, 1.0);
+        assert_eq!(series(&core, &admin, "finished_total", "mail").await, 2.0);
+
+        // A controller whose credential file is missing stores an error on its
+        // job and schedule, and the worker pass still returns Ok.
+        core.create_group(&admin, "staff").unwrap();
+        let agent = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "scim_controller".into(),
+                    ttl: 3600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "provisioner.sync".into(),
+                        resource: "provisioner/payroll".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        assert!(agent["credential"]["token"].as_str().is_some());
+        core.config.scim_targets.insert(
+            "payroll".into(),
+            Target {
+                url: "http://127.0.0.1:9/scim/v2".into(),
+                token_file: None,
+                oauth: None,
+                ca_file: None,
+                groups: ["staff".into()].into(),
+                export_groups: false,
+            },
+        );
+        core.config.reconciliation_controllers.insert(
+            "scim/payroll".into(),
+            ControllerConfig {
+                agent_id: "scim_controller".into(),
+                credential_file: dir.path().join("no-such-controller-token"),
+                interval_seconds: 3600,
+            },
+        );
+        let worker = core.clone();
+        background
+            .run(Job::Reconciliation, async move {
+                // The shape of the server's reconciliation worker.
+                tokio::task::spawn_blocking(move || worker.reconciliation_process().map(drop))
+                    .await
+                    .map_err(Error::internal)?
+            })
+            .await
+            .unwrap();
+        let jobs = core.reconciliation_jobs(&admin).unwrap();
+        assert_eq!(jobs.as_array().unwrap().len(), 1);
+        assert!(
+            jobs[0]["last_error"]
+                .as_str()
+                .unwrap()
+                .contains("credential")
+        );
+        let report = core.reconciliation_diagnostics(&admin).unwrap();
+        assert_eq!(report["counts"]["attention"], 2);
+        assert_eq!(report["counts"]["schedules_with_error"], 1);
+        assert_eq!(
+            stats[Job::Reconciliation as usize].finished.load(Relaxed),
+            1
+        );
+        assert_eq!(stats[Job::Reconciliation as usize].failed.load(Relaxed), 0);
+        assert_eq!(
+            series(&core, &admin, "failed_total", "reconciliation").await,
+            0.0
+        );
+        assert_eq!(
+            series(&core, &admin, "finished_total", "reconciliation").await,
+            1.0
+        );
+    }
 }
