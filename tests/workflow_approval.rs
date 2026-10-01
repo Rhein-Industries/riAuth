@@ -1188,6 +1188,184 @@ fn legacy_approval_retirement_keeps_floor_without_live_dependencies() {
 }
 
 #[test]
+fn revoked_approval_history_fences_legacy_runs_and_new_activation() {
+    for backend in [Backend::Redb, Backend::EncryptedRedb] {
+        let mut hosted = backend.fixture();
+        let author = hosted.admin.clone();
+        let reviewer = administrator(&hosted.core, &author, "reviewer");
+        let executor = administrator(&hosted.core, &author, "executor");
+        let alice = member(&hosted.core, &author, "alice");
+        let id = "historical-activation-fence";
+        hosted.core.config.workflows.insert(
+            id.into(),
+            ConfiguredWorkflow {
+                active: true,
+                definition: definition(id, 2, 120),
+            },
+        );
+        let old = hosted.core.workflow_configured_start(&alice, id).unwrap();
+        let old_run = run_row(&hosted.core, &old.id);
+        let account = old_run["record"]["account"].as_str().unwrap();
+        let session = old_run["record"]["session"].as_str().unwrap();
+        let request = old_run["record"]["request"].as_str().unwrap();
+        let old_pin: Value = hosted
+            .core
+            .store
+            .get("workflow_reviewed", id)
+            .unwrap()
+            .unwrap();
+        let old_request: Value = hosted
+            .core
+            .store
+            .get("workflow_requests", request)
+            .unwrap()
+            .unwrap();
+        let old_index: Value = hosted
+            .core
+            .store
+            .get("workflow_account_runs", account)
+            .unwrap()
+            .unwrap();
+        hosted.core.config.workflows.remove(id);
+        let planned = plan(&hosted.core, &author, id, 3, 120);
+        hosted
+            .core
+            .review_workflow(&reviewer, &planned.plan_id, "approve")
+            .unwrap();
+        let activated = hosted
+            .core
+            .activate_workflow(&executor, &planned.plan_id)
+            .unwrap();
+        let approval_id = activated["approval_id"].as_str().unwrap();
+        let approval: Value = hosted
+            .core
+            .store
+            .get("workflow_approvals", approval_id)
+            .unwrap()
+            .unwrap();
+        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+
+        // Emulate older code's revoked approval and older open configured run.
+        // These authority rows were generated through the real public start.
+        hosted
+            .core
+            .store
+            .write(|tx| {
+                tx.put("workflow_reviewed", id, &old_pin)?;
+                tx.put("workflow_runs", &old.id, &old_run)?;
+                tx.put("workflow_requests", request, &old_request)?;
+                tx.put("workflow_active_sessions", session, &old.id)?;
+                tx.put("workflow_account_runs", account, &old_index)?;
+                // The relevant immutable approval must be found beyond one page;
+                // unrelated approval rows must not impose their revision on this id.
+                for ordinal in 0..130 {
+                    let key = format!("!unrelated-history-{ordinal:03}");
+                    let other = definition("unrelated-history", 99, 120);
+                    let mut noise = approval.clone();
+                    noise["id"] = json!(key);
+                    noise["definition"] = serde_json::to_value(&other).unwrap();
+                    noise["fingerprint"] = json!(other.fingerprint());
+                    tx.put("workflow_approvals", &key, &noise)?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        hosted = hosted.reopen_edited(|config| {
+            config.workflows.insert(
+                id.into(),
+                ConfiguredWorkflow {
+                    active: true,
+                    definition: definition(id, 2, 120),
+                },
+            );
+        });
+        let rejected = hosted
+            .core
+            .workflow_password(&alice, &old.id, PASSWORD.into())
+            .unwrap_err();
+        assert_eq!(rejected.message, "Workflow version was rolled back");
+        let sealed = run_row(&hosted.core, &old.id);
+        assert_eq!(sealed["reviewed_failure"], "rolled_back");
+        assert_eq!(sealed["record"]["state"]["outcome"], "denied");
+        assert!(sealed["record"]["steps"].as_array().unwrap().is_empty());
+        assert_eq!(sealed["executions"], 0);
+        assert!(
+            hosted
+                .core
+                .store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .is_empty()
+        );
+        assert_message(&hosted.core, &alice, id, "Workflow version was rolled back");
+        assert!(matches!(
+            hosted.core.workflow_resume(&alice, &old.id).unwrap().state,
+            RunState::Finished {
+                outcome: Outcome::Denied,
+                ..
+            }
+        ));
+
+        // The same historical floor also survives an older/missing catalog;
+        // activation must consult approval history, not just the execution pin.
+        hosted
+            .core
+            .store
+            .write(|tx| {
+                tx.delete("workflow_reviewed", id)?;
+                tx.delete("workflow_definitions", id)
+            })
+            .unwrap();
+        let lower = plan(&hosted.core, &author, id, 2, 120);
+        hosted
+            .core
+            .review_workflow(&reviewer, &lower.plan_id, "approve")
+            .unwrap();
+        let revision = hosted.core.store.get::<u64>("meta", "revision").unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &lower.plan_id)
+                .unwrap_err()
+                .message,
+            "Workflow version was rolled back"
+        );
+        assert_eq!(
+            hosted.core.store.get::<u64>("meta", "revision").unwrap(),
+            revision
+        );
+        assert!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_activation", id)
+                .unwrap()
+                .is_none()
+        );
+        hosted.core.config.workflows.get_mut(id).unwrap().definition = definition(id, 3, 120);
+        assert_message(&hosted.core, &alice, id, "Workflow policy changed");
+
+        hosted.core.config.workflows.get_mut(id).unwrap().definition = definition(id, 4, 120);
+        let fresh = hosted.core.workflow_configured_start(&alice, id).unwrap();
+        let verified = hosted
+            .core
+            .workflow_password(&alice, &fresh.id, PASSWORD.into())
+            .unwrap();
+        assert!(matches!(
+            verified.state,
+            RunState::Finished {
+                outcome: Outcome::Authenticated,
+                ..
+            }
+        ));
+        assert_eq!(
+            run_row(&hosted.core, &old.id)["reviewed_failure"],
+            "rolled_back"
+        );
+    }
+}
+
+#[test]
 fn environment_binding_and_activation_replay_require_live_review() {
     for backend in [Backend::Redb, Backend::EncryptedRedb] {
         let mut hosted = backend.fixture();

@@ -189,6 +189,53 @@ pub(crate) fn approval_selected(tx: &Tx<'_>, workflow: &str) -> Result<bool> {
     Ok(tx.get::<ActivationPointer>(ACTIVATION, workflow)?.is_some())
 }
 
+pub(crate) struct HistoricalFloor {
+    pub revision: u32,
+    /// Conflicting content at the same revision cannot be adopted again.
+    pub fingerprint: Option<String>,
+}
+
+/// Immutable approvals survive revocation and restore. Older deployments did
+/// not always retain a pin before revocation; their history still fences reuse.
+/// Page the ledger rather than materializing every approved definition at once.
+pub(crate) fn historical_floor(tx: &Tx<'_>, workflow: &str) -> Result<Option<HistoricalFloor>> {
+    let mut after = None;
+    let mut floor: Option<HistoricalFloor> = None;
+    loop {
+        let page = tx.scan::<WorkflowApproval>(APPROVALS, after.as_deref(), 128)?;
+        let Some((last, _)) = page.last() else {
+            break;
+        };
+        after = Some(last.clone());
+        for (key, approval) in page {
+            if approval.definition.id.as_str() != workflow {
+                continue;
+            }
+            if approval.schema_version != APPROVAL_SCHEMA
+                || approval.id != key
+                || approval.definition.fingerprint() != approval.fingerprint
+            {
+                return Err(Error::conflict("Workflow approval history changed"));
+            }
+            match &mut floor {
+                Some(stored) if stored.revision > approval.definition.revision => {}
+                Some(stored) if stored.revision == approval.definition.revision => {
+                    if stored.fingerprint.as_deref() != Some(approval.fingerprint.as_str()) {
+                        stored.fingerprint = None;
+                    }
+                }
+                _ => {
+                    floor = Some(HistoricalFloor {
+                        revision: approval.definition.revision,
+                        fingerprint: Some(approval.fingerprint),
+                    });
+                }
+            }
+        }
+    }
+    Ok(floor)
+}
+
 pub(crate) fn live(tx: &Tx<'_>, workflow: &str) -> Result<Option<LiveApproval>> {
     let Some(pointer) = tx.get::<ActivationPointer>(ACTIVATION, workflow)? else {
         return Ok(None);

@@ -1537,6 +1537,17 @@ pin carries the historical approval and dependency digest without adopting a
 current environment. It cannot authorize continuation or an unapproved start
 at the retired revision. A newer retained pin stays unchanged.
 
+For approvals already retired by an older deployment without a retained pin,
+the immutable `workflow_approvals` history remains a version floor. Configured
+adoption, continuation and activation also consult that history. An unapproved
+definition below the highest historical revision is a rollback; one at that
+revision needs a fresh exact-content approval. An older open unapproved run
+seals before verification, and a newer configured revision may start a new run.
+The authoring catalog does not select a workflow or replace this historical
+floor. History is read in pages of 128 approval rows and matched by workflow id;
+this bounds each page, not total ledger traversal work. No migration bucket or
+schema change is introduced.
+
 Changed content leaves the sealed run closed and leaves its evidence unused.
 The next execution is a new run of the approved definition and collects its own
 proofs. Cancellation stays `cancelled`. A password call on a run that
