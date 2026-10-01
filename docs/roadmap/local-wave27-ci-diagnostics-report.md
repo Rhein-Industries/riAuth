@@ -13,7 +13,9 @@ here completes O06. Nothing was merged or pushed, and `main` was not touched.
 | `6909c31` | Allow background `job`/`lane` labels in the contention exposition check | `tests/contention.rs` |
 | `d834745` | Hold the changed-authority cloud apply to a strict snapshot | `tests/contracts/shared.rs` |
 | `217a1d3` | Port corrected O06 physical storage allocation | `src/store.rs`, `src/postgres_store.rs`, `src/api.rs`, `src/api/observability.rs`, `src/operations.rs`, `src/cli.rs`, `tests/common/backend.rs`, `tests/storage_allocation.rs` (new), `tests/contention.rs`, `docs/agent.md`, `docs/api.md`, `docs/operations.md`, `docs/roadmap/o06-storage-allocation.md` (new), `docs/roadmap/o06-storage-allocation-run.json` (new), `docs/roadmap/coverage-inventory.{json,md}`, `docs/roadmap/o06-grafana-loopback.md`, `docs/roadmap/o06-storage-key-contract.md` |
-| this commit | This report | `docs/roadmap/local-wave27-ci-diagnostics-report.md` |
+| `c6784f4` | This report, first version | `docs/roadmap/local-wave27-ci-diagnostics-report.md` |
+| `68385ea` | Serve metrics storage allocation from a single-flight sample cache | `src/store.rs`, `src/api/observability.rs`, `tests/storage_allocation.rs`, `docs/roadmap/o06-storage-allocation.md`, `docs/roadmap/o06-storage-allocation-run.json`, `docs/operations.md`, `docs/api.md`, `docs/agent.md`, `docs/roadmap/coverage-inventory.{json,md}` |
+| this commit | This report, updated for `68385ea` | `docs/roadmap/local-wave27-ci-diagnostics-report.md` |
 
 The strict Clippy fixes (`c1dc4f1`) and the `tests/postgres.rs` restore
 expectations (`4cc1c8b`) at base were not changed.
@@ -107,6 +109,46 @@ was not ported.
 The evidence in `o06-storage-allocation-run.json` is fresh from this branch,
 with file hashes. Nothing from `83049f8`'s run is reused.
 
+## Metrics allocation cache (`68385ea`)
+
+This follow-up slice addresses review finding F1, the scrape coupling. The
+metrics routes (`/api/operations/prometheus` and `/api/operations/metrics`) no
+longer read the size on the request thread.
+
+**What was built**
+- **Live authorization first.** Each request decides `operations.read` on `operations/metrics`, then on `operations/storage`, before the cache is consulted. No authorization decision is cached. A caller without `operations/storage` never reaches the cache and cannot start a read.
+- **One cache per opened `Store`.** Clones of one opened store share it, because they share the database. Every distinct open, including reopen and `restored_copy`, starts cold. There are exactly two constructors, and nothing swaps the backend in place.
+- **What a scrape does.** It takes a mutex, copies the sample, and may start the refresh. It never waits for a pool connection, the catalog, a table lock or the filesystem.
+- **How a sample is served.**
+  - Under 30 s old: served as `fresh`.
+  - 30 to 300 s old: served as `stale` while a refresh runs.
+  - No sample, or older than 300 s: `unavailable` with fixed reason `refreshing`, and both series are omitted.
+- **Single-flight.** At most one refresh thread runs per store, and there is no queue.
+- **Failures.** A failed read, a panicking refresh and a failed thread spawn each store an `error` or reason sample. A persistent failure is therefore re-read at most once per 30 s while scraped. A failed read replaces the last good sample, by design and documented.
+- **New fields.** Documents add `sample_age_seconds`, `freshness`, `refresh_in_progress`, `refresh_running_seconds`, `cache_ttl_seconds` and `max_stale_seconds`.
+- **New series.** Prometheus adds `riauth_storage_allocation_age_seconds{backend,scope}`, using the same finite, allowlisted labels.
+- **Unchanged.** `GET /api/operations/storage` and `riauth storage` remain explicit synchronous reads that never touch the cache. Partition counting, the redacted reasons and readiness/doctor are also unchanged.
+
+**Remaining bounds, stated in the docs**
+- **Scrapes are not fully decoupled.** A scrape no longer waits, but it can serve a sample up to 300 s old (the age is exposed). It shows no series on the first scrape after start, or after more than 300 s without a scrape.
+- **Refresh bounds on PostgreSQL.**
+  - Waiting for an idle pooled connection is bounded at 5 s.
+  - Opening a new connection is bounded only per TCP attempt (5 s for each of up to 8 hosts).
+  - The TLS handshake, startup/authentication exchange, read-write probe and session `SET` have no client-side timeout (verified in tokio-postgres 0.7.18).
+  - Once the statement runs, the server's 15 s `statement_timeout` and per-lock 5 s `lock_timeout` apply.
+- **A hung refresh** keeps the single slot, and a pool connection, until the process restarts. Scrapes still return at once. The series disappears after 300 s, and `refresh_running_seconds` keeps growing; operators can alert on it or on the missing series.
+- **redb:** a `stat` on a hung filesystem is likewise unbounded.
+- **The direct route** can hang the same way on a new connection. That is pre-existing.
+- **Per-process caches:** each process keeps its own sample, so `N` scraped processes make `N` refreshes per 30 s against the shared database.
+
+The tests use counters kept by the refresh threads themselves (threads entered and
+maximum concurrent), not only the slot's own bookkeeping. Mutation runs confirmed
+the tests catch each of these regressions:
+- removing single-flight
+- reading synchronously on the caller thread
+- dropping the panic-path error sample
+- not releasing the slot on spawn failure
+
 ## Independent review
 
 A Sonnet reviewer read the whole diff and reported no security defect or
@@ -114,13 +156,25 @@ authorization bypass. Its findings were handled as follows:
 
 | Finding | Outcome |
 | --- | --- |
-| F1 – scrape coupling, and the "up to 5 s" wording understated the wait | Docs corrected (per-lock `lock_timeout`, 15 s overall bound, admins and `*` agents take the read automatically). Code mitigation is **not** done; see gaps. |
+| F1 – scrape coupling, and the "up to 5 s" wording understated the wait | Docs corrected (per-lock `lock_timeout`, 15 s overall bound, admins and `*` agents take the read automatically). Mitigated in `68385ea` by the single-flight sample cache. |
 | F2 – the "metrics-only grant sees nothing new" claim holds only for an exact-resource grant | Comment and docs corrected; `*` agent case added to `tests/storage_allocation.rs` |
 | F3 – changed-authority step used a lenient snapshot | Made strict (`d834745`) |
 | F4 – contention change bundled two fixes | Split into `6909c31` and `217a1d3` |
 | F5 – LDAP `directory_apply_actor` has no per-entry pre-check | Not a leak: it fails closed with a conflict and has no fetch or write. Left as a parity gap. |
 | F6 – `1dfc0bb` rationale imprecise; `management()` evaluated twice | Rationale corrected in this report. The duplicate read-only call was left as is. |
 | F7 – `chmod 000` test is not meaningful as root | Informational; CI runs as non-root |
+
+A second review of the cache slice found no defect in authorization,
+single-flight or slot release. Its findings were handled as follows:
+
+| Finding | Outcome |
+| --- | --- |
+| Hung refresh is invisible, and the docs overstated the PostgreSQL connect bounds | `refresh_running_seconds` added; docs corrected to the verified bounds |
+| The single-flight oracle was self-reported | Thread-entry and maximum-concurrency counters added and asserted |
+| Panic, spawn-failure and upgrade-failure paths were untested | Panic and spawn-failure hooks and tests added; upgrade failure verified by inspection |
+| A failed refresh replaces the last good sample | Kept as designed and documented |
+| The contention label check sees the age gauge only by timing | Labels are exact-value allowlisted, so it cannot flake; noted |
+| A PostgreSQL test that scrapes and then clones or drops must wait for the refresh first | Noted for test authors; no current test does this |
 
 ## Checks actually run
 
@@ -141,6 +195,17 @@ that were removed afterwards. Free disk stayed at 62 GiB or more.
 | `python3 scripts/check-docs.py`; JSON parse of `coverage-inventory.json` | pass |
 | Lane runs before integration | `--test cloud_directory` 47 passed; `--test operations` 15 passed; `--test identity prometheus_metrics_include_rejections` 1 passed; 13 reopen and issuance contracts on redb: 32 passed |
 
+Cache slice (`68385ea`), run by the orchestrator after the lane's own runs:
+
+| Command | Result |
+| --- | --- |
+| `cargo test --locked --features test-support --test storage_allocation -- --include-ignored --test-threads 1` with a fresh disposable cluster | 13/13 twice before the review fixes; 15/15 after them (29.44 s) |
+| `cargo test --locked --features test-support --test storage_allocation` at default parallelism | redb cases: 9/9 three times before the review fixes; 11/11 twice after them |
+| `cargo test --locked --features test-support --test contention http_admission_and_storage_contention_metrics_are_exposed` | 1 passed |
+| `cargo clippy --locked --features test-support,fuzzing --lib --test storage_allocation --test contention -- -D warnings` and `cargo clippy --locked --lib -- -D warnings` | clean |
+| rustfmt check, `check-docs.py`, run-JSON SHA-256 comparison | clean; all 8 hashes match |
+| Lane runs | `--test identity prometheus_metrics_include_rejections` 1 passed, `--test operations` 15 passed |
+
 **Not run:** full `cargo test --all-targets --features test-support,fuzzing`,
 full all-target Clippy, the full PostgreSQL contract suite, `scripts/test-postgres.sh`,
 `riauthctl` and the browser, LDAP, SAML and outpost jobs. A new CI run is needed
@@ -148,7 +213,7 @@ to show that run 36715234200's jobs are green.
 
 ## Residual gaps and dependencies
 
-- **Scrape coupling (F1):** this is unmitigated. Options are a short TTL single-flight cache, tighter `SET LOCAL` timeouts on the metrics path, or removing the series from `/prometheus`.
+- **Cache limits:** see the remaining bounds under [Metrics allocation cache](#metrics-allocation-cache-68385ea). In short: a hung refresh, or a hung `stat` on redb, holds the single slot until restart and is visible only through `refresh_running_seconds` and the missing series. Samples can be 300 s old. The limits are constants. Caches are per process.
 - **CI coverage of allocation:** the PostgreSQL and partition allocation cases are `#[ignore]`, and no script or CI job runs them. Adding `storage_allocation` to a PostgreSQL script is an orchestrator decision.
 - **LDAP apply parity (F5):** narrowing an LDAP syncer's authority reads as a conflict, not a denial. It fails closed, and no test asserts the code.
 - **Untested PostgreSQL conditions:** other PostgreSQL majors, catalogs with thousands of relations, relations larger than 1 GiB, and TLS or remote databases.
@@ -159,4 +224,5 @@ to show that run 36715234200's jobs are green.
 
 - **Orchestrator:** Claude Opus 5.5 (`claude-opus-5-5`) did reconciliation, verification and all commits.
 - **Subagents:** two `sonnet-implementer` lanes (CI failures; PostgreSQL allocation) and one `sonnet-reviewer`. Each self-reported `claude-sonnet-5-5`. They had disjoint file ownership and made no commits.
+- **Cache slice:** the same allocation implementer and reviewer were resumed. Both again reported `claude-sonnet-5-5`. No new RiWork shells, tasks or worktrees were created.
 - **Desktop automation:** none was needed, so the RiWork cua-driver MCP server was not used.
