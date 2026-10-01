@@ -550,6 +550,15 @@ pub(super) fn current_store_blockers(
             }
         }
     }
+    // LDAP and SCIM definitions run on both editions. Workspace and Entra do not.
+    for (id, row) in tx.list::<Value>("connector_definitions")? {
+        if matches!(row["kind"].as_str(), Some("workspace" | "entra")) {
+            issue!(
+                format!("connector_definitions/{id}"),
+                "Stored Google Workspace or Microsoft Entra connector definition requires the Platform build or an explicit migration"
+            );
+        }
+    }
     for bucket in PLATFORM_BUCKETS {
         if crate::recovery::classify(bucket).is_none() {
             return Err(Error::internal(

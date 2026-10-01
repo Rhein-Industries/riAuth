@@ -56,7 +56,7 @@ impl Budget {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Transport {
     #[default]
@@ -65,7 +65,7 @@ pub enum Transport {
     Loopback,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Directory {
     pub url: String,

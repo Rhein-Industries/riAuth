@@ -357,6 +357,11 @@ def main() -> None:
             or re.search(r"\bCore\b|\bTx\b|\.\s*(?:store|config)\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/portal.rs: portal runtime refers directly to Core or storage; it belongs in assembly")
+        if path == SRC / "scim.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*(?:store|config)\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/scim.rs: SCIM runtime refers directly to Core or storage; it belongs in assembly")
         if path == SRC / "directory.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))

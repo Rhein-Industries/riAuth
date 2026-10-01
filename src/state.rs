@@ -15,8 +15,9 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Resources reconciled by desired-state plan and apply.
-/// LDAP, Workspace, Entra, outbound SCIM, listeners, and PAM approvers stay
-/// in the process-local configuration and are rejected as unknown fields.
+/// LDAP, Workspace, Entra, and outbound SCIM definitions are stored only when
+/// the operator sets `connector_secret_dir`. Listeners and PAM approvers stay in
+/// the process-local configuration and are rejected as unknown fields.
 #[derive(schemars::JsonSchema, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
@@ -43,6 +44,28 @@ pub struct Manifest {
     /// streams, authorization headers, private keys, and tokens are not accepted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ssf_streams: Vec<SsfStreamSpec>,
+    /// LDAP directories, in the shape of the `riauth.toml` `[directories]` table.
+    /// Every file field is a relative name under the operator's
+    /// `connector_secret_dir`; no field carries a secret value. Only a full
+    /// human administrator may plan or apply these. Omission leaves every
+    /// stored definition unchanged.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub directories: BTreeMap<String, crate::directory::Directory>,
+    /// Google Workspace directories. Platform only. Same rules as `directories`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub workspace_directories: BTreeMap<String, crate::cloud_directory::WorkspaceDirectory>,
+    /// Microsoft Entra directories. Platform only. Same rules as `directories`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub entra_directories: BTreeMap<String, crate::cloud_directory::EntraDirectory>,
+    /// Outbound SCIM targets. Same rules as `directories`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub scim_targets: BTreeMap<String, crate::provisioning::Target>,
+    /// Stored connector definitions to retire. Omission leaves every stored
+    /// definition unchanged. A retirement deletes the stored row, keeps the
+    /// credential bindings, and needs exact plan-ID confirmation like other
+    /// removals. A running process keeps the definition until its next start.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retired_connectors: Vec<crate::connector_definitions::RetiredConnector>,
     /// The riAuth issuer this manifest was prepared for. When set, planning and applying fail
     /// unless the instance's issuer is exactly this value; unbound manifests stay portable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -233,6 +256,11 @@ impl Manifest {
             + self.delegated_grants.len()
             + self.ssf_streams.len()
             + self.source_links.len()
+            + self.directories.len()
+            + self.workspace_directories.len()
+            + self.entra_directories.len()
+            + self.scim_targets.len()
+            + self.retired_connectors.len()
             > 1000
         {
             return Err(Error::bad("Manifest exceeds 1,000 resources"));
@@ -310,6 +338,7 @@ impl Manifest {
                 return Err(Error::bad("Delegated grant subject exceeds 32 grants"));
             }
         }
+        crate::connector_definitions::validate_manifest(self)?;
         Ok(())
     }
     /// A bound manifest applies only where riAuth publishes exactly its issuer. Relying parties
@@ -755,6 +784,7 @@ fn state_removal_impact(tx: &Tx<'_>, manifest: &Manifest) -> Result<RemovalImpac
             impact.disabled_sources += usize::from(source.enabled && !spec.source.enabled);
         }
     }
+    impact.retired_connectors = crate::connector_definitions::retiring(tx, manifest)?;
     impact.assess(active_users);
     Ok(impact)
 }
@@ -769,7 +799,8 @@ fn state_automation_safe(changes: &[Change]) -> bool {
         if matches!(
             kind,
             "client" | "source" | "source_link" | "workflow" | "ssf.stream"
-        ) {
+        ) || kind.starts_with("connector.")
+        {
             return false;
         }
         if kind == "user" {
@@ -817,6 +848,7 @@ fn group_only(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
         && manifest.delegated_grants.is_empty()
         && manifest.ssf_streams.is_empty()
+        && !manifest.has_connectors()
         && !manifest.groups.is_empty()
         && manifest.users.is_empty()
         && manifest.clients.is_empty()
@@ -912,6 +944,7 @@ fn client_name_shape(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
         && manifest.delegated_grants.is_empty()
         && manifest.ssf_streams.is_empty()
+        && !manifest.has_connectors()
         && manifest.users.is_empty()
         && manifest.groups.is_empty()
         && manifest.sources.is_empty()
@@ -1156,6 +1189,7 @@ fn client_description_shape(manifest: &Manifest) -> bool {
     client_name_shape(manifest)
         && manifest.delegated_grants.is_empty()
         && manifest.ssf_streams.is_empty()
+        && !manifest.has_connectors()
 }
 
 fn catalogue_description(spec: &ClientSpec) -> String {
@@ -1218,6 +1252,7 @@ fn user_display_shape(manifest: &Manifest) -> bool {
     manifest.target_state_fingerprint.is_none()
         && manifest.delegated_grants.is_empty()
         && manifest.ssf_streams.is_empty()
+        && !manifest.has_connectors()
         && manifest.users.len() == 1
         && manifest.groups.is_empty()
         && manifest.clients.is_empty()
@@ -1393,7 +1428,7 @@ fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
     for spec in &plan.manifest.ssf_streams {
         actor.require("ssf.manage", &format!("ssf/{}", spec.id))?;
     }
-    if !plan.manifest.delegated_grants.is_empty() {
+    if !plan.manifest.delegated_grants.is_empty() || plan.manifest.has_connectors() {
         require_immediate_grant_actor(actor)?;
     }
     for spec in &plan.manifest.source_links {
@@ -1428,6 +1463,7 @@ fn authorize_state_result(actor: &Principal, plan: &Plan) -> Result<()> {
                 actor.require("ssf.manage", &format!("ssf/{id}"))?;
             }
             "delegation" => require_immediate_grant_actor(actor)?,
+            kind if kind.starts_with("connector.") => require_immediate_grant_actor(actor)?,
             "source_link" => {
                 let source = change.after["source"]
                     .as_str()
@@ -1492,14 +1528,22 @@ impl Core {
                 if stored.actor == actor.id
                     && stored.result.is_none()
                     && plan.expires_at > now()
-                    && plan_revision_current(&self.config, tx, plan, revision)?
                     && plan.issuer == self.config.issuer
                     && plan.reconciliation_mode == mode
                     && plan.removal_impact == impact
                     && serde_json::to_value(&plan.manifest).map_err(Error::internal)? == desired
                     && validate_state_review(tx, &actor, &stored).is_ok()
                 {
-                    return Ok(Some(plan.clone()));
+                    // Only inspect dependencies of this manifest. A deleted
+                    // resource on another retained plan cannot block this row.
+                    // Missing/rebound dependencies invalidate a matching plan;
+                    // storage and decoding failures still propagate.
+                    match plan_revision_current(&self.config, tx, plan, revision) {
+                        Ok(true) => return Ok(Some(plan.clone())),
+                        Ok(false) => {}
+                        Err(error) if error.code == "conflict" => {}
+                        Err(error) => return Err(error),
+                    }
                 }
             }
             Ok(None)
@@ -1530,6 +1574,26 @@ impl Core {
         })
     }
     pub fn plan_state(&self, token: &str, manifest: Manifest) -> Result<Plan> {
+        self.plan_state_before_persist(token, manifest, || {})
+    }
+    /// Run a deterministic interleaved write after preview aborts, before the
+    /// plan-persistence writer opens. The ordinary API has no callback.
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    pub fn plan_state_interleaved_for_test(
+        &self,
+        token: &str,
+        manifest: Manifest,
+        before_persist: impl FnOnce(),
+    ) -> Result<Plan> {
+        self.plan_state_before_persist(token, manifest, before_persist)
+    }
+    fn plan_state_before_persist(
+        &self,
+        token: &str,
+        manifest: Manifest,
+        before_persist: impl FnOnce(),
+    ) -> Result<Plan> {
         manifest.validate()?;
         let (
             actor,
@@ -1593,39 +1657,21 @@ impl Core {
             review: ReviewBinding::default(),
         };
         plan.hash = digest(&serde_json::to_string(&plan).map_err(Error::internal)?);
+        before_persist();
         self.store.write(|tx| {
             let current = self.principal(tx, token)?;
-            let dependencies_current = match dependency_scope(&plan) {
-                DependencyScope::Mixed => false,
-                DependencyScope::Global => true,
-                DependencyScope::Group(expected) => {
-                    group_dependency_digest(&self.config, tx, &plan.manifest)? == expected
-                }
-                DependencyScope::Client(expected) => {
-                    client_name_dependency_digest(
-                        &self.config,
-                        tx,
-                        &plan.manifest.clients[0].client_id,
-                    )? == expected
-                }
-                DependencyScope::User(expected) => {
-                    user_display_dependency_digest(tx, &plan.manifest.users[0].username)?
-                        == expected
-                }
-                DependencyScope::Description(expected) => {
-                    client_record_dependency_digest(
-                        &self.config,
-                        tx,
-                        &plan.manifest.clients[0].client_id,
-                        CLIENT_DESCRIPTION_DEPENDENCY_VERSION,
-                        "Desired-state client description dependencies changed",
-                    )? == expected
-                }
-            };
+            // Use the same shape and dependency checks as reuse and apply.
+            // Only an eligible narrow family may outlive an unrelated revision;
+            // mixed, connector and target-bound plans keep the global fence.
+            let revision_current = plan_revision_current(
+                &self.config,
+                tx,
+                &plan,
+                tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+            )?;
             if current.id != actor.id
-                || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
                 || ReviewBinding::new(tx, &current, &())?.authority_digest != authority_digest
-                || !dependencies_current
+                || !revision_current
             {
                 return Err(Error::conflict(
                     "Instance or plan authority changed during planning; plan again",
@@ -1818,10 +1864,24 @@ impl Core {
             if serde_json::to_value(&changes).map_err(Error::internal)? != serde_json::to_value(&stored.plan.changes).map_err(Error::internal)? {
                 return Err(Error::conflict("Planned changes differ from current state"));
             }
-            for change in &changes { audit(tx, &actor.id, &format!("{}.reconcile", change.resource.split('/').next().unwrap()), &change.resource)?; }
+            for change in &changes {
+                let kind = change.resource.split('/').next().unwrap();
+                if kind.starts_with("connector.") {
+                    crate::connector_definitions::audit_change(tx, &actor.id, change)?;
+                } else {
+                    audit(tx, &actor.id, &format!("{kind}.reconcile"), &change.resource)?;
+                }
+            }
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
-            let result = json!({"plan_id": input.plan.plan_id, "applied": true, "changed": !changes.is_empty(), "changes": changes, "revision": revision, "run_id": input.run_id});
-            let mut details = json!({"request_id": crate::context::current().map(|c| c.request_id), "result": result});
+            let mut result = json!({"plan_id": input.plan.plan_id, "applied": true, "changed": !changes.is_empty(), "changes": changes, "revision": revision, "run_id": input.run_id});
+            // A stored definition reaches the configuration of a process only at its next start.
+            if changes.iter().any(|change| change.resource.starts_with("connector.")) {
+                result["activation"] = json!("restart_required");
+            }
+            // Audit readers get digest-only views of connector changes.
+            let mut audited = result.clone();
+            audited["changes"] = Value::Array(changes.iter().map(|change| if change.resource.starts_with("connector.") { crate::connector_definitions::audit_view(change) } else { json!(change) }).collect());
+            let mut details = json!({"request_id": crate::context::current().map(|c| c.request_id), "result": audited});
             if let Some(parent) = crate::agent::audit_parent(tx, &actor.id, "state.apply", &input.plan.plan_id)? {
                 details["parent_user"] = json!(parent);
             }
@@ -1881,7 +1941,13 @@ impl Core {
                 delegated_grants.sort_by(|a, b| a.username.cmp(&b.username));
             }
             let ssf_streams = export_ssf_streams(tx, &actor)?;
-            Ok(json!({"manifest": Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, delegated_grants, ssf_streams, issuer: None, target_state_fingerprint: None }, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false}))
+            let mut manifest = Manifest { api_version: "riauth/v1".into(), users, groups, clients, sources, source_links, workflows, delegated_grants, ssf_streams, issuer: None, target_state_fingerprint: None, ..Default::default() };
+            crate::connector_definitions::export_into(tx, &actor, &mut manifest)?;
+            let mut exported = json!({"manifest": manifest, "revision": tx.get::<u64>("meta", "revision")?.unwrap_or(0), "secrets_included": false});
+            if let Some(connectors) = crate::connector_definitions::status(tx, &self.config, &self.connectors, &actor)? {
+                exported["connectors"] = connectors;
+            }
+            Ok(exported)
         })
     }
     /// Browser list uses the same scoped authority as manifest export.
@@ -2174,6 +2240,14 @@ fn reconcile(
             secret_references: BTreeSet::new(),
         });
     }
+    changes.extend(crate::connector_definitions::reconcile(
+        &core.config,
+        &core.connectors,
+        tx,
+        actor,
+        manifest,
+        preview,
+    )?);
     #[cfg(feature = "platform")]
     for spec in &manifest.ssf_streams {
         if let Some(effect) = crate::management::ssf_streams::reconcile_manifest_stream(
@@ -2341,6 +2415,10 @@ mod tests {
             "workspace/staff",
             "entra/staff",
             "scim/payroll",
+            "connector.ldap/staff",
+            "connector.workspace/staff",
+            "connector.entra/staff",
+            "connector.scim/payroll",
             "ldap_listener/legacy",
             "proxy_listener/edge",
             "radius_listener/wifi",

@@ -1694,7 +1694,12 @@ pub async fn run(cli: Cli) -> Result<()> {
             if out.exists() { bail!("Export output already exists"); }
             let result = remote.call(Method::GET, "/api/state/export", None, true).await?;
             write_private(&out, &serde_json::to_vec_pretty(&result["manifest"])?, false)?;
-            json!({"manifest_file": out, "revision": result["revision"], "secrets_included": false})
+            let mut summary = json!({"manifest_file": out, "revision": result["revision"], "secrets_included": false});
+            // Stored connector definitions take effect at the next start: show which.
+            if !result["connectors"].is_null() {
+                summary["connectors"] = result["connectors"].clone();
+            }
+            summary
         }
         Command::Directory { command } => match command {
             DirectoryCommand::List=>remote.call(Method::GET,"/api/directories",None,true).await?,

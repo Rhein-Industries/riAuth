@@ -26,7 +26,7 @@ fn entra_attributes() -> Attributes {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Attributes {
     pub email: String,
@@ -34,7 +34,7 @@ pub struct Attributes {
     pub external_id: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceDirectory {
     pub customer_id: String,
@@ -63,14 +63,14 @@ pub struct WorkspaceDirectory {
     pub scope: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceDirectAuth {
     pub key_file: PathBuf,
     pub delegated_subject: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntraDirectory {
     pub tenant_id: String,

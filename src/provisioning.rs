@@ -31,7 +31,7 @@ mod deactivation_diagnostics;
 mod dispatch_recovery;
 mod token_freshness;
 pub use dispatch_recovery::RecoverDispatch;
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
     pub url: String,
@@ -47,7 +47,7 @@ pub struct Target {
     pub export_groups: bool,
 }
 /// Supported OAuth grants for an outbound SCIM target. The password grant is not accepted.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OauthGrant {
     ClientCredentials,
@@ -62,7 +62,7 @@ impl OauthGrant {
     }
 }
 /// OAuth token-endpoint client. Secrets stay in the named private files.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(schemars::JsonSchema, Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Oauth {
     pub token_url: String,

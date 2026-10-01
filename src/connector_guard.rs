@@ -65,13 +65,15 @@ impl ReconciliationMode {
             || impact.removed_memberships > 0
             || impact.disabled_clients > 0
             || impact.disabled_sources > 0
-            || impact.disabled_passwords > 0;
+            || impact.disabled_passwords > 0
+            || impact.retired_connectors > 0;
         let floor_review = impact.review_required
             || impact.missing_users > 0
             || impact.removed_memberships > 0
             || impact.disabled_clients > 0
             || impact.disabled_sources > 0
-            || impact.disabled_passwords > 0;
+            || impact.disabled_passwords > 0
+            || impact.retired_connectors > 0;
         match self {
             Self::ManualReview => ReconciliationDecision::AwaitingReview,
             Self::GuardedAutomatic if any_removal => ReconciliationDecision::AwaitingReview,
@@ -91,6 +93,7 @@ impl ReconciliationMode {
             || impact.disabled_clients > 0
             || impact.disabled_sources > 0
             || impact.disabled_passwords > 0
+            || impact.retired_connectors > 0
         {
             "removal_review_required"
         } else {
@@ -137,6 +140,9 @@ pub struct RemovalImpact {
     pub disabled_sources: usize,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub disabled_passwords: usize,
+    /// Stored connector definitions the manifest retires. Omitted from every plan that retires none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub retired_connectors: usize,
     pub review_required: bool,
 }
 fn is_zero(value: &usize) -> bool {
@@ -152,6 +158,7 @@ impl RemovalImpact {
             || self.disabled_clients > 0
             || self.disabled_sources > 0
             || self.disabled_passwords > 0
+            || self.retired_connectors > 0
             || large_removal(self.disabled_users, active_users);
     }
 }

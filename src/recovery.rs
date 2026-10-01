@@ -40,6 +40,8 @@ pub const PENDING_ENROLLMENTS: &str = "users.totp_pending";
 pub const INVALIDATED: &[&str] = &[
     // Restored admission cannot establish ownership on the new timeline.
     "connector_admissions",
+    // Rollback-only admission fixture; never retain a test job on recovery.
+    "admission_test_job",
     // Live peers must acquire a new stamp after a restored timeline.
     "scim_oauth_freshness",
     // Bearer, browser and protocol sessions.
@@ -172,6 +174,13 @@ const RETAINED: &[&str] = &[
     "reviewed_membership_holders",
     "sources",
     "workflow_definitions",
+    // Operator-gated connector definitions are configuration. Secrets stay in
+    // files under connector_secret_dir and are never part of a record.
+    "connector_definitions",
+    // The tombstone for a released credential file name. A restore brings back
+    // the bindings of the snapshot it restores, no more; the operator's
+    // connector_credentials pins are the guard that does not depend on the store.
+    "connector_credential_bindings",
     // Highest reviewed configured revision. A restored older definition must not start below it.
     "workflow_reviewed",
     // Exact-content approval records. Restoring the catalog without them would

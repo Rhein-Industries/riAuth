@@ -17,8 +17,10 @@ riauth_pg_target="${RIAUTH_PG_TEST_TARGET:-postgres}"
 # ssf_stream_manifest_postgres proves administrator SSF manifest
 # plan/apply/replay/stale/cancellation on plain and encrypted PostgreSQL,
 # then the HTTP, riauth, and riauthctl adapters against one plain database.
+# connector_definitions_postgres covers protected manifest plan/apply/replay,
+# stale writes, restart activation and retirement on disposable PostgreSQL.
 case "$riauth_pg_target" in
-  postgres|q05_replay_concurrency|reviewed_memberships_postgres|process_role_postgres|node_security_postgres|job_lease_postgres|ssf_lease_postgres|mail_lease_postgres|ssf_stream_manifest_postgres) ;;
+  postgres|q05_replay_concurrency|reviewed_memberships_postgres|process_role_postgres|node_security_postgres|job_lease_postgres|ssf_lease_postgres|mail_lease_postgres|ssf_stream_manifest_postgres|connector_definitions_postgres) ;;
   *) printf 'Unsupported PostgreSQL test target: %s\n' "$riauth_pg_target" >&2; exit 2 ;;
 esac
 riauth_pg_test="$(mktemp -d "${TMPDIR:-/tmp}/riauth-pg-test.XXXXXXXX")"
@@ -57,7 +59,7 @@ chmod 600 "$riauth_pg_test/connection"
 printf 'riauth disposable integration cluster\n' >"$riauth_pg_test/marker"
 riauth_features=()
 case "$riauth_pg_target" in
-  q05_replay_concurrency|reviewed_memberships_postgres|process_role_postgres|node_security_postgres|job_lease_postgres|ssf_lease_postgres|mail_lease_postgres|ssf_stream_manifest_postgres)
+  q05_replay_concurrency|reviewed_memberships_postgres|process_role_postgres|node_security_postgres|job_lease_postgres|ssf_lease_postgres|mail_lease_postgres|ssf_stream_manifest_postgres|connector_definitions_postgres)
     riauth_features=(--features test-support)
     ;;
 esac

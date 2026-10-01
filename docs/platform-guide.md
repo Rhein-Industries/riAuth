@@ -944,11 +944,26 @@ lab configuration, then `directory list`, `directory plan`, and
 remote calls on the server CLI session and are the same verbs on both
 editions.
 
-Those commands reconcile accounts for a directory already named in this file.
-Desired-state plan and apply do not create or update
-`[directories]`, `[workspace_directories]`, `[entra_directories]`, or
-`[scim_targets]`. The restart handoff, and the same limit for listeners and
-PAM approvers, is [Desired state](agent.md#desired-state).
+Those commands reconcile accounts for a directory that is already configured.
+Desired-state plan and apply can also store `directories`,
+`workspace_directories`, `entra_directories`, and `scim_targets` definitions
+when the operator sets `connector_secret_dir` in this file. File names in a
+definition are relative to that directory (ASCII letters, digits, `.`, `_`, and
+`-`), a stored definition is loaded at the next process start, and the same id
+may not also appear in this file. A credential file name belongs to one
+connector and stays bound to the destination of the first definition that names
+it. The operator provisions each credential file and pins it in
+`connector_credentials`, a table from the file name to the origin (or
+comma-separated origins) it may be sent to; a stored definition may name only a
+pinned file, and only with endpoints inside the pinned set. The pin is
+origin-level: the identity fields of a definition, such as the bind DN or client
+id, are fixed by the first definition that claims the file. Credential files
+that this file names elsewhere must stay outside the directory. A definition is
+removed with `retired_connectors`, which needs the exact plan-ID confirmation
+and keeps the credential bindings. Leaving `connector_secret_dir` unset keeps
+stored definitions dormant. The rules, the
+restart activation, and the limit for listeners and PAM approvers are in
+[Desired state](agent.md#desired-state).
 
 The Platform build also accepts `[workspace_directories]` and
 `[entra_directories]`. `riauth directory workspace` and

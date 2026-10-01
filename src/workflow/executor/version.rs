@@ -90,6 +90,18 @@ pub(super) fn review_pin(
     if crate::workflow::approval::approval_selected(tx, id)? {
         return pin_approved(core, tx, checked);
     }
+    if let Some(floor) = crate::workflow::approval::historical_floor(tx, id)? {
+        if checked.definition().revision < floor.revision
+            || tx
+                .get::<ReviewedPin>(REVIEWED, id)?
+                .is_some_and(|stored| checked.definition().revision < stored.revision)
+        {
+            return Err(Error::conflict("Workflow version was rolled back"));
+        }
+        if checked.definition().revision == floor.revision {
+            return Err(Error::conflict("Workflow policy changed"));
+        }
+    }
     let Some(entry) = core.config.workflows.get(id) else {
         return Err(Error::conflict("Workflow policy changed"));
     };
@@ -129,6 +141,7 @@ fn pin_approved(core: &Core, tx: &Tx<'_>, checked: &Validated) -> Result<Option<
     {
         return Err(Error::conflict("Workflow policy changed"));
     }
+    workflow_revision_fence(tx, id, live.revision, &live.fingerprint)?;
     adopt_approved(tx, id, approved_pin(core, tx, &live)?)
 }
 
@@ -156,7 +169,37 @@ fn approved_pin(
 pub(crate) fn retain_workflow_activation(core: &Core, tx: &Tx<'_>, id: &str) -> Result<()> {
     let live = crate::workflow::approval::live(tx, id)?
         .ok_or_else(|| Error::conflict("Workflow approval is not active"))?;
+    workflow_revision_fence(tx, id, live.revision, &live.fingerprint)?;
     adopt_approved(tx, id, approved_pin(core, tx, &live)?)?;
+    Ok(())
+}
+
+/// Older approvals may predate activation-time pins. Retire their version
+/// without rebinding changed or unavailable dependencies, and never lower a
+/// newer floor. A fresh approval must supply the current environment again.
+pub(crate) fn retain_workflow_revocation(tx: &Tx<'_>, id: &str) -> Result<()> {
+    let Some(live) = crate::workflow::approval::live(tx, id)? else {
+        return Ok(());
+    };
+    if let Some(stored) = tx.get::<ReviewedPin>(REVIEWED, id)?
+        && (stored.revision > live.revision
+            || (stored.revision == live.revision
+                && (stored.fingerprint != live.fingerprint || stored.approval.is_some())))
+    {
+        return Ok(());
+    }
+    adopt_approved(
+        tx,
+        id,
+        ReviewedPin {
+            revision: live.revision,
+            fingerprint: live.fingerprint.clone(),
+            policy: approved_policy_digest(&live),
+            approval: Some(live.id.clone()),
+            dependencies: Some(live.dependencies.clone()),
+            environment: None,
+        },
+    )?;
     Ok(())
 }
 
@@ -209,13 +252,23 @@ pub(crate) fn workflow_revision_fence(
     revision: u32,
     fingerprint: &str,
 ) -> Result<()> {
-    let Some(stored) = tx.get::<ReviewedPin>(REVIEWED, id)? else {
-        return Ok(());
-    };
-    if revision < stored.revision {
+    let floor = crate::workflow::approval::historical_floor(tx, id)?;
+    let stored = tx.get::<ReviewedPin>(REVIEWED, id)?;
+    if floor
+        .as_ref()
+        .is_some_and(|floor| revision < floor.revision)
+        || stored
+            .as_ref()
+            .is_some_and(|stored| revision < stored.revision)
+    {
         return Err(Error::conflict("Workflow version was rolled back"));
     }
-    if revision == stored.revision && stored.fingerprint != fingerprint {
+    if floor.as_ref().is_some_and(|floor| {
+        revision == floor.revision && floor.fingerprint.as_deref() != Some(fingerprint)
+    }) || stored
+        .as_ref()
+        .is_some_and(|stored| revision == stored.revision && stored.fingerprint != fingerprint)
+    {
         return Err(Error::conflict("Workflow policy changed"));
     }
     Ok(())
@@ -265,6 +318,14 @@ pub(super) fn reviewed_policy_failure(
     if entry.definition.revision < pin.revision || entry.definition.revision < stored.revision {
         return Ok(Some(ReviewedFailure::RolledBack));
     }
+    if let Some(floor) = crate::workflow::approval::historical_floor(tx, id)? {
+        if entry.definition.revision < floor.revision {
+            return Ok(Some(ReviewedFailure::RolledBack));
+        }
+        if pin.revision <= floor.revision {
+            return Ok(Some(ReviewedFailure::PolicyChanged));
+        }
+    }
     let live_policy = policy_digest(
         entry.active,
         id,
@@ -299,6 +360,16 @@ fn approved_pin_failure(
     };
     if live.revision < pin.revision || live.revision < stored.revision {
         return Ok(Some(ReviewedFailure::RolledBack));
+    }
+    if let Some(floor) = crate::workflow::approval::historical_floor(tx, id)? {
+        if live.revision < floor.revision {
+            return Ok(Some(ReviewedFailure::RolledBack));
+        }
+        if live.revision == floor.revision
+            && floor.fingerprint.as_deref() != Some(live.fingerprint.as_str())
+        {
+            return Ok(Some(ReviewedFailure::PolicyChanged));
+        }
     }
     let holds = crate::workflow::approval::selection_holds(core, tx, &live)?;
     let same = holds

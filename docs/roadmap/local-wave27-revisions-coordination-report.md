@@ -118,3 +118,27 @@ worktree and was not used for coordination. Desktop observation used only the
 configured cua-driver MCP after inspecting descriptions and current state;
 Accessibility and Screen Recording were granted. No desktop input occurred.
 The requested model configuration was retained without rediscovery.
+
+## Wave28 continuation
+
+The historical global planning check above is superseded by focused persistence
+commit `044cdb9e8a658aac90f3670fe4c6a515eb9072ff`; the four established narrow
+families now preserve a plan across an unrelated interleaved management write,
+while relevant dependencies and live authority still invalidate it. The held
+`38886cbe26cee7fe2deb6f89809e79ce4252a88c` lookup hunk remains unchanged and its
+exact test passed on the protected connector baseline.
+
+Main `e5bbc5cdc86df1e5c5ac8b676ec00640bf6902c4` entered this branch through clean
+merge `d791d2fd643308a8ecce1da8941308fda34a968e`. Protected cumulative connector
+port `ace3e7adcb8d249376c05a54b7ff450259c454c5` carries the reviewed pinned
+source's complete connector controls in one bounded delta; root/W02 must also
+carry the reported `approval::one_workflow` exclusion before integration/release.
+The reproduced test-only `admission_test_job` classifier omission was corrected
+by a bounded `INVALIDATED` entry, with no recovery algorithm change.
+
+Exact files, source equivalence, commands and outcomes, remaining integration
+hunks, the held LDAP evidence dependency, and original S04/O03 closure
+recommendations are in the
+[wave28 connector and S04 report](local-wave28-connector-s04-port-report.md).
+Both original task IDs remain in progress. O03 effective rate-threshold agreement
+remains a proposal; no format migration, deployed HA or paused-IO fence is claimed.

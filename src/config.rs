@@ -53,6 +53,20 @@ pub struct Config {
     /// Explicit per-target controller policy. Omitted targets stay manual-review.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub scim_reconciliation_modes: BTreeMap<String, crate::connector_guard::ReconciliationMode>,
+    /// Operator opt-in for connector definitions in desired state. Names in a
+    /// manifest are relative to this directory and are never read by plan, apply
+    /// or export. Omitted means no stored connector definition is accepted or loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connector_secret_dir: Option<PathBuf>,
+    /// Credential files the operator provisioned for stored connector
+    /// definitions: a name relative to `connector_secret_dir` to the origin,
+    /// or comma-separated origins, its content and any token derived from it
+    /// may be sent to. A stored definition may name only a pinned file, and only
+    /// with endpoints inside that set. Empty means no stored definition can name
+    /// a credential, which every connector needs. Inert while
+    /// `connector_secret_dir` is unset.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub connector_credentials: BTreeMap<String, String>,
     /// Instance-wide desired-state controller policy. Omitted means manual-review.
     #[serde(default)]
     pub state_reconciliation_mode: crate::connector_guard::ReconciliationMode,
@@ -403,6 +417,8 @@ impl Default for Config {
             entra_reconciliation_modes: BTreeMap::new(),
             scim_targets: Default::default(),
             scim_reconciliation_modes: BTreeMap::new(),
+            connector_secret_dir: None,
+            connector_credentials: BTreeMap::new(),
             state_reconciliation_mode: Default::default(),
             reconciliation_controllers: BTreeMap::new(),
             workflows: BTreeMap::new(),
@@ -550,6 +566,15 @@ impl Config {
                 bail!("SCIM reconciliation mode references an unconfigured target {id}");
             }
         }
+        if self
+            .connector_secret_dir
+            .as_ref()
+            .is_some_and(|dir| dir.as_os_str().is_empty())
+        {
+            bail!("connector_secret_dir must not be empty");
+        }
+        crate::connector_definitions::validate_pins(&self.connector_credentials)
+            .map_err(|error| anyhow::anyhow!("{}", error.message))?;
         if self.reconciliation_controllers.len() > 96 {
             bail!("Configure at most 96 reconciliation controllers");
         }
@@ -747,6 +772,11 @@ impl Config {
             && key.is_relative()
         {
             *key = path.parent().unwrap_or(Path::new(".")).join(&*key);
+        }
+        if let Some(dir) = value.connector_secret_dir.as_mut()
+            && dir.is_relative()
+        {
+            *dir = path.parent().unwrap_or(Path::new(".")).join(&*dir);
         }
         for file in [&mut value.tls_cert_file, &mut value.tls_key_file]
             .into_iter()
