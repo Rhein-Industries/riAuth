@@ -142,7 +142,7 @@ The timing bounds are generous (2 seconds against a 3 second held refresh, and 2
 
 ## Recorded run
 
-Run on 2026-10-01 in the `local-ci-diagnostics-wave27` worktree at branch commit `c6784f4cedebc9e657fe011f3abe986fee8671f0`, which contains the first port (`217a1d3`), with the metrics-route sample cache and its review follow-ups (running-time field, thread counters, panic and spawn-failure hooks) uncommitted. [o06-storage-allocation-run.json](o06-storage-allocation-run.json) holds the SHA-256 of each changed file at run time. Re-run it after any change to those files.
+Re-run on 2026-10-02 in the `local-ci-diagnostics-wave27` worktree at branch commit `cf971f03afb1aacbadcb9f226812d432f1989b16` (current main `32770ab` merged with this branch's wave 28 commits, committed tree) after `src/api.rs` and `src/cli.rs` changed; every case value matched the 2026-10-01 run, which was taken at `c6784f4` with the sample cache and its review follow-ups uncommitted. [o06-storage-allocation-run.json](o06-storage-allocation-run.json) holds the SHA-256 of each hashed file. Re-run it after any change to those files.
 
 The cluster was PostgreSQL 16.14 (Homebrew) created by `initdb` for this run: trust authentication on `127.0.0.1`, Unix sockets disabled, a `primary` data directory, a `connection` file, and the marker `riauth disposable contract cluster`, which is the layout `tests/common/backend.rs` verifies before it creates a database. Each case created and dropped its own database. The cluster was stopped and removed afterwards. About 56 GiB were free on `/System/Volumes/Data` before the build. The cluster is a fresh one made for this run.
 
@@ -154,7 +154,7 @@ cargo test --locked --features test-support --test storage_allocation -- \
   --include-ignored --test-threads 1
 ```
 
-Result: `ok`. 15 passed, 0 failed, 0 ignored, finished in 28.52s. These checks also ran on the same tree:
+Result: `ok`. 15 passed, 0 failed, 0 ignored, finished in 29.20s on the re-run (28.52s on 2026-10-01). These checks also ran on the same tree:
 
 - `cargo clippy --locked --features test-support,fuzzing --lib --test storage_allocation --test contention -- -D warnings` was clean, and so was `cargo clippy --locked --lib -- -D warnings` without `test-support`.
 - `--test contention http_admission_and_storage_contention_metrics_are_exposed` passed, `--test identity prometheus_metrics_include_rejections` passed, and `--test operations` passed 15 of 15.
