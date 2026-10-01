@@ -5,7 +5,7 @@ use anyhow::Result;
 use clap::Subcommand;
 use reqwest::Method;
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
 pub enum GrantCommand {
@@ -48,7 +48,7 @@ pub enum GrantCommand {
     },
 }
 
-fn read_grants(file: &PathBuf) -> Result<Value> {
+fn read_grants(file: &Path) -> Result<Value> {
     read_request::<Vec<GrantInput>>(file, "Grant")
 }
 
