@@ -347,6 +347,11 @@ def main() -> None:
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/outpost.rs: proxy SSO protocol refers directly to Core or storage")
+        if path == SRC / "browser.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*(?:store|config)\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/browser.rs: browser runtime refers directly to Core or storage; it belongs in assembly")
         if path == SRC / "directory.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
@@ -1962,6 +1967,12 @@ def main() -> None:
             "ssf_core_reference_files": sum(
                 "core" in references(path)
                 for path in paths if root_module(path) == "ssf"
+            ),
+            "browser_storage_reference_files": int(
+                bool(references(SRC / "browser.rs") & STORAGE)
+            ),
+            "browser_core_reference_files": int(
+                "core" in references(SRC / "browser.rs")
             ),
             "saml_browser_storage_reference_files": int(
                 bool(references(SRC / "saml.rs") & STORAGE)

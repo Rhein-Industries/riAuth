@@ -2,6 +2,11 @@
 
 mod authenticator;
 mod authorization;
+mod browser_runtime;
+pub use browser_runtime::cleanup as browser_cleanup;
+pub(crate) use browser_runtime::consents_for_user as browser_consents_for_user;
+#[cfg(feature = "platform")]
+pub(crate) use browser_runtime::reject_configured_pending as browser_reject_configured_pending;
 mod claims;
 #[cfg(feature = "platform")]
 mod cloud_directory_budget;
