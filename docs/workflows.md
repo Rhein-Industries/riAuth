@@ -1358,7 +1358,10 @@ fingerprint, optional source registration, and optional `extension_sha256`.
 
 `workflow_reviewed` keeps the highest adopted pin for that workflow id and is
 retained across restore, so a restored older definition cannot start below it.
-The first start writes it. A higher live revision replaces it when that start
+An unapproved configuration first writes it when a run starts. Approval
+activation writes its pin in the activation transaction, even before the first
+run. Revoking an unexecuted approval cannot permit an older configuration to
+start. A higher live revision replaces the pin when its start or activation
 commits. The same revision, fingerprint, and policy is reused. The same
 revision with a different fingerprint, policy, or environment is rejected with
 `Workflow policy changed` and leaves the stored pin unchanged. A live revision
@@ -1479,7 +1482,8 @@ refuse restores the plan's previous catalog value in that write and then bumps
 `meta.revision`. Activating a refused plan returns `Workflow review was refused`.
 
 Activation writes `workflow_definitions`, `workflow_approvals`,
-`workflow_approval_plans`, and `workflow_activation` in one `store.write`.
+`workflow_approval_plans`, `workflow_activation`, and the retained
+`workflow_reviewed` pin in one `store.write`.
 Those buckets, plus `workflow_reviews` and `workflow_revocations`, are retained
 across restore. The approval row stays immutable. Repeating activate for the
 same executor, while the pointer still names that approval and its current

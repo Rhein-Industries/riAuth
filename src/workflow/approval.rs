@@ -267,7 +267,7 @@ pub(crate) fn configured_definition_in(
         .ok_or_else(|| Error::missing("Configured workflow is unavailable"))
 }
 
-fn review_in(
+pub(crate) fn review_in(
     core: &Core,
     tx: &Tx<'_>,
     token: &str,
@@ -331,7 +331,7 @@ fn review_in(
     Ok(review_view(&review))
 }
 
-fn activate_in(core: &Core, tx: &Tx<'_>, token: &str, plan_id: &str) -> Result<Value> {
+pub(crate) fn activate_in(core: &Core, tx: &Tx<'_>, token: &str, plan_id: &str) -> Result<Value> {
     let caller = caller(core, tx, token)?;
     let (plan, author_id) = open_plan(tx, plan_id)?;
     require_plan_content(&plan)?;
@@ -407,13 +407,14 @@ fn activate_in(core: &Core, tx: &Tx<'_>, token: &str, plan_id: &str) -> Result<V
             dependencies,
         },
     )?;
+    super::executor::retain_workflow_activation(core, tx, definition.id.as_str())?;
     super::executor::seal_approved_runs(core, tx, definition.id.as_str())?;
     bump_revision(tx)?;
     audit(tx, &caller.id, "workflow.activate", definition.id.as_str())?;
     Ok(approval_view(&approval))
 }
 
-fn revoke_in(core: &Core, tx: &Tx<'_>, token: &str, workflow_id: &str) -> Result<Value> {
+pub(crate) fn revoke_in(core: &Core, tx: &Tx<'_>, token: &str, workflow_id: &str) -> Result<Value> {
     let caller = caller(core, tx, token)?;
     let pointer = tx
         .get::<ActivationPointer>(ACTIVATION, workflow_id)?
