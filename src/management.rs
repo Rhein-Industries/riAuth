@@ -1709,6 +1709,22 @@ pub(crate) fn update_user(
     if actor.agent && (user.admin || patch.admin == Some(true)) {
         return Err(Error::forbidden());
     }
+    // A human administrator cannot vouch for a new address in the write that
+    // sets it: the owner confirms it. The rule belongs to this one writer, so
+    // the browser, the bearer API and every client refuse it alike. An agent
+    // keeps its own, separately authorized path (and its credential exposure
+    // marking); a desired-state manifest is not a user patch and is unchanged.
+    if !actor.agent
+        && patch.email_verified == Some(true)
+        && patch
+            .email
+            .as_ref()
+            .is_some_and(|email| previous.email.as_ref() != Some(email))
+    {
+        return Err(Error::bad(
+            "A changed email address is saved unverified; it cannot be marked verified in the same change",
+        ));
+    }
     if (actor.delegated || actor.agent)
         && (patch.password.is_some()
             || patch.reset_mfa
