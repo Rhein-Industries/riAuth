@@ -232,8 +232,15 @@ async fn passkey_cancel<const SAML: bool>(
     app.run(move |core| {
         let binding = binding(core, &headers, SAML, &id);
         if SAML {
-            core.browser_passkey_cancel(&input.ceremony, &format!("saml:{id}"), binding)
-                .map(Json)
+            #[cfg(feature = "platform")]
+            {
+                core.saml_passkey_cancel(&id, binding, sso.as_deref(), &input.ceremony)
+                    .map(Json)
+            }
+            #[cfg(not(feature = "platform"))]
+            {
+                Err(Error::forbidden())
+            }
         } else {
             core.authorize_passkey_cancel(&id, binding, sso.as_deref(), &input.ceremony)
                 .map(Json)

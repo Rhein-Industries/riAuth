@@ -446,7 +446,32 @@ run and spend the prepared request; approval consumes both fresh proofs without
 upgrading the stored session or issuing a new one. Browser reloads resume the
 current stage, and a failed or changed authority has no ordinary-consent
 fallback. The selected graph rejects requests that do not need reauthentication.
-SAML configured consent and remembered-consent creation remain unsupported.
+The same selector connects SP-initiated SAML browser consent after the ordinary
+SAML parser verifies the signed AuthnRequest, issuer, client and registered ACS.
+Only the exact session-to-consent, UV passkey-to-consent, and password plus
+current-TOTP-to-consent graphs are supported. The request, client fingerprint,
+binding cookie, browser SSO mapping, account/session, epoch, and reviewed graph
+are bound to one durable run. Fresh assurance applies only to the response;
+the stored session is not upgraded. Every selected request requires explicit
+Allow/Deny, including clients with implicit or remembered consent. Remember
+submissions do not create a SAML consent record.
+
+The `/saml/resume/{id}` interaction uses the state, password, passkey start,
+finish, cancel, and decision endpoints. An active continuation first seals a
+stale reviewed pin with its own conflict reason. Loss or replacement of the
+browser selector then durably seals the run in a separate successful writer,
+consumes its evidence and abandons challenges. Restoring the selector cannot
+revive the proof. Read-only state inspection does not seal a run.
+
+Approval records a final, run-bound decision. The original browser's one-use
+resume writer revalidates the current selector, exact active definition and
+reviewed policy even after finalization, as well as the live session, epoch,
+client and signed request, before signing and consuming the request atomically.
+A denied run returns `RequestDenied` without an assertion. Exact-content
+approval selection uses the same resolver as OIDC; divergent active approval
+content has no configuration fallback. Terminal approval, IdP-initiated or
+passive requests, embedded source stages, arbitrary graphs, and remembered
+consent creation remain unsupported for configured SAML.
 
 Standard terminal OIDC preparations, outside embedded source stages, admit at
 most 64 live indexed attempts per request hash. At capacity, a new preparation

@@ -10,6 +10,7 @@ mod password;
 mod recovery;
 mod removal;
 mod reset;
+mod saml_consent;
 mod source;
 mod totp;
 mod totp_enrollment;
@@ -21,6 +22,12 @@ pub(crate) use consent::{
     browser_totp_decide_in, browser_totp_owner, browser_totp_stage_in, browser_totp_start_in,
 };
 pub use passkey::PasskeyChallenge;
+pub(crate) use saml_consent::{
+    BrowserSaml, saml_browser_code_in, saml_browser_decide_in, saml_browser_owner,
+    saml_browser_passkey_cancel_in, saml_browser_passkey_finish_in, saml_browser_passkey_start_in,
+    saml_browser_stage_in, saml_browser_start_in, saml_consent_issuance_check_in,
+    saml_selected_definition_in,
+};
 pub use source::SourceStart;
 pub use totp::TotpChallenge;
 pub use totp::TotpChallenge as RecoveryChallenge;
@@ -115,6 +122,8 @@ struct RequestAuthority {
     authorization: Option<authorization::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     consent: Option<consent::Pin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    saml_consent: Option<saml_consent::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recovery: Option<crate::lifecycle::workflow::Pin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -426,6 +435,7 @@ fn authority(
     }
     authorization::check(tx, run, &request, at)?;
     consent::check(tx, run, &request, at)?;
+    saml_consent::check(tx, run, &request, at)?;
     removal::check(tx, run, &request, at)?;
     Ok((user, request))
 }
@@ -738,6 +748,7 @@ fn close(tx: &Tx<'_>, run: &mut RuntimeRun, state: RunState) -> Result<()> {
     enrollment::discard(tx, run)?;
     authorization::abandon(tx, &run.record)?;
     consent::abandon(tx, &run.record)?;
+    saml_consent::abandon(tx, &run.record)?;
     for step in &run.record.steps {
         if let Some(reference) = &step.evidence
             && let Some(mut receipt) = tx.get::<StoredEvidence>(EVIDENCE, reference)?
@@ -969,6 +980,16 @@ impl CompletionStore for TxCompletion<'_, '_> {
             super::Outcome::ConsentGranted | super::Outcome::Denied
         ) {
             current.authorization_response = consent::complete(
+                self.core,
+                self.tx,
+                &checked,
+                run,
+                terminal.outcome,
+                evidence,
+                at,
+            )
+            .map_err(storage_invalid)?;
+            saml_consent::complete(
                 self.core,
                 self.tx,
                 &checked,
@@ -1491,6 +1512,7 @@ impl Core {
                 source: None,
                 authorization: None,
                 consent: None,
+                saml_consent: None,
                 recovery: None,
                 invitation: None,
                 removal: None,

@@ -191,6 +191,15 @@ pub(super) fn reviewed_failure(
     if run.record.state.is_final() {
         return Ok(None);
     }
+    reviewed_policy_failure(core, tx, run)
+}
+
+/// Recheck a reviewed policy even after completion when a deferred grant is issued.
+pub(super) fn reviewed_policy_failure(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &RuntimeRun,
+) -> Result<Option<ReviewedFailure>> {
     let Some(pin) = &run.reviewed else {
         return Ok(None);
     };
@@ -270,6 +279,7 @@ fn request_failure(tx: &Tx<'_>, run: &RuntimeRun) -> Result<Option<ReviewedFailu
     };
     if authorization::client_policy_changed(tx, &request)?
         || consent::client_policy_changed(tx, &request)?
+        || saml_consent::client_policy_changed(tx, &request)?
     {
         return Ok(Some(ReviewedFailure::PolicyChanged));
     }

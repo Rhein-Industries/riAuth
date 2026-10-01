@@ -277,6 +277,53 @@ pub(super) fn complete(
     }
     let (_, authority) = super::authority(core, tx, run, at)?;
     let approved = outcome == super::super::Outcome::ConsentGranted;
+    let mut bound = pending(tx, run, &authority, at)?;
+    let (session, reauthentication) =
+        grant_session(tx, checked, run, &bound.session, outcome, evidence, at)?;
+    if bound.pin.reauthentication != reauthentication {
+        return Err(Error::forbidden());
+    }
+    if approved && reauthentication {
+        let mut prepared: AuthenticationTransaction = tx
+            .get("authentication", &bound.pin.authentication)?
+            .ok_or_else(Error::forbidden)?;
+        prepared.authenticated_session = Some(session.id.clone());
+        tx.put("authentication", &bound.pin.authentication, &prepared)?;
+    }
+    let mut request = bound.request.clone();
+    request.decision = Some(if approved { "approve" } else { "deny" }.into());
+    let response = core.authorize_workflow(
+        tx,
+        authorization::Accepted::for_consent(
+            session.clone(),
+            request,
+            bound.pin.authentication.clone(),
+        ),
+    )?;
+    if bound.expires_at <= now()
+        || session.expires_at <= now()
+        || (approved && evidence.iter().any(|receipt| receipt.expires_at <= now()))
+    {
+        return Err(Error::conflict("Consent expired during completion"));
+    }
+    tx.delete("authentication", &bound.pin.authentication)?;
+    bound.completed = true;
+    tx.put(CONSENTS, &bound_key(tx, &bound.pin)?, &bound)?;
+    Ok(Some(response))
+}
+
+/// Shared exact graph evidence and transient grant assurance for OIDC and SAML.
+/// This never writes an upgraded identity into the stored bearer session.
+pub(super) fn grant_session(
+    tx: &Tx<'_>,
+    checked: &Validated,
+    run: &StoredRun,
+    session_id: &str,
+    outcome: super::super::Outcome,
+    evidence: &[StoredEvidence],
+    at: u64,
+) -> Result<(Session, bool)> {
+    let approved = outcome == super::super::Outcome::ConsentGranted;
     let passkey_reauthentication =
         super::super::supported_configured_passkey_consent(checked.definition());
     let totp_reauthentication =
@@ -300,12 +347,8 @@ pub(super) fn complete(
     {
         return Err(Error::forbidden());
     }
-    let mut bound = pending(tx, run, &authority, at)?;
-    if bound.pin.reauthentication != reauthentication {
-        return Err(Error::forbidden());
-    }
     let mut session: Session = tx
-        .get("sessions", &bound.session)?
+        .get("sessions", session_id)?
         .ok_or_else(Error::forbidden)?;
     if approved && passkey_reauthentication {
         let proof = &evidence[1];
@@ -345,33 +388,7 @@ pub(super) fn complete(
         session.identity.amr = vec!["pwd".into(), "otp".into()];
         session.identity.source = None;
     }
-    if approved && reauthentication {
-        let mut prepared: AuthenticationTransaction = tx
-            .get("authentication", &bound.pin.authentication)?
-            .ok_or_else(Error::forbidden)?;
-        prepared.authenticated_session = Some(session.id.clone());
-        tx.put("authentication", &bound.pin.authentication, &prepared)?;
-    }
-    let mut request = bound.request.clone();
-    request.decision = Some(if approved { "approve" } else { "deny" }.into());
-    let response = core.authorize_workflow(
-        tx,
-        authorization::Accepted::for_consent(
-            session.clone(),
-            request,
-            bound.pin.authentication.clone(),
-        ),
-    )?;
-    if bound.expires_at <= now()
-        || session.expires_at <= now()
-        || (approved && evidence.iter().any(|receipt| receipt.expires_at <= now()))
-    {
-        return Err(Error::conflict("Consent expired during completion"));
-    }
-    tx.delete("authentication", &bound.pin.authentication)?;
-    bound.completed = true;
-    tx.put(CONSENTS, &bound_key(tx, &bound.pin)?, &bound)?;
-    Ok(Some(response))
+    Ok((session, reauthentication))
 }
 
 pub(super) fn abandon(tx: &Tx<'_>, run: &StoredRun) -> Result<()> {
@@ -400,7 +417,7 @@ pub(super) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
     Ok(())
 }
 
-fn decide_loaded(
+pub(super) fn decide_loaded(
     core: &Core,
     tx: &Tx<'_>,
     checked: &Validated,
@@ -428,7 +445,10 @@ fn decide_loaded(
         return Err(Error::forbidden());
     }
     let (user, request) = authority(core, tx, &run.record, now())?;
-    if request.consent.is_none() || request.authorization.is_some() || request.source.is_some() {
+    if request.consent.is_some() == request.saml_consent.is_some()
+        || request.authorization.is_some()
+        || request.source.is_some()
+    {
         return Err(Error::forbidden());
     }
     let had_reservation = run.in_flight.is_some();
@@ -626,6 +646,7 @@ fn browser_consent_start_in(
         source: None,
         authorization: None,
         consent: None,
+        saml_consent: None,
         recovery: None,
         invitation: None,
         removal: None,
