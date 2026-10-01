@@ -135,3 +135,15 @@ official release.
 - **Follow-up:** the orchestrator wrote `66a0434` after the review and verified it.
 - **No new resources:** no new RiWork tasks, worktrees or shells.
 - **No desktop interaction:** the RiWork cua-driver was not needed.
+
+## Root integration note
+
+Root accepted the O06 bounded diagnostics and evidence slices after reviewing the
+final overdue-clock correction. O06 remains in progress. Earlier CI fixes were
+already integrated separately. Root corrected the setup password locator to
+`locator('#setup-password')` in `4bdd3be4`: a password input has no implicit
+textbox role. The lane-run claims above describe that lane; they do not establish
+the integrated main CI result. Subsequent main CI exposed a provider-schema
+snapshot mismatch and browser navigation timeouts, which remain separate CI
+follow-ups. Root ran formatting, documentation, module-boundary, Grafana checker
+and whitespace checks for this integration; no root Cargo builds or tests.
