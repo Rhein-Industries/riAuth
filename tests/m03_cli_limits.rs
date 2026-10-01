@@ -347,3 +347,69 @@ fn ordinary_small_files_still_stage() {
     }
     assert_eq!(server.writes().len(), INPUTS.len());
 }
+
+/// A review digest is unpadded base64url, so about one in sixty-four starts
+/// with `-`. Every review command must accept it, as `riauthctl` does, or the
+/// same change would fail on one interface only.
+#[test]
+fn digests_and_ids_starting_with_a_hyphen_are_accepted_by_every_review_command() {
+    const DIGEST: &str = "-Hn3x_q0Zr8kYb1V4cJf2wTgUo5sAeLpDmRiN6hKyXE";
+    const ID: &str = "-change-1";
+    let classes: [(&[&str], &str); 6] = [
+        (&["grants"], "/api/delegated-grant-changes"),
+        (&["group", "review"], "/api/group-membership-changes"),
+        (&["client", "review"], "/api/client-policy-changes"),
+        (
+            &["client", "endpoint-review"],
+            "/api/client-endpoint-changes",
+        ),
+        (&["client", "status-review"], "/api/client-status-changes"),
+        (
+            &["client", "creation-review"],
+            "/api/client-creation-changes",
+        ),
+    ];
+    let server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let mut expected = 0;
+    for (command, base) in classes {
+        for decision in ["approve", "execute", "cancel"] {
+            let secret_sink = dir.path().join(format!("{}-{decision}.json", base.len()));
+            let mut args: Vec<&str> = Vec::new();
+            // Creation execution refuses to run without a private secret destination.
+            if base.ends_with("client-creation-changes") && decision == "execute" {
+                args.extend(["--output-file", secret_sink.to_str().unwrap()]);
+            }
+            args.extend(command.iter().copied());
+            args.extend([decision, ID, "--digest", DIGEST]);
+            let output = cli(&server.origin, &session, &args, None);
+            assert!(
+                output.status.success(),
+                "{command:?} {decision}: {}",
+                text(&output)
+            );
+            expected += 1;
+            let writes = server.writes();
+            assert_eq!(writes.len(), expected);
+            let sent = writes.last().unwrap();
+            assert_eq!(sent.target, format!("{base}/{ID}/{decision}"));
+            assert_eq!(
+                serde_json::from_slice::<Value>(&sent.body).unwrap(),
+                json!({"digest": DIGEST})
+            );
+        }
+        let output = cli(
+            &server.origin,
+            &session,
+            &[command, &["change", ID]].concat(),
+            None,
+        );
+        assert!(
+            output.status.success(),
+            "{command:?} change: {}",
+            text(&output)
+        );
+    }
+}

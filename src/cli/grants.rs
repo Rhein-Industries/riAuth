@@ -25,21 +25,25 @@ pub enum GrantCommand {
         file: PathBuf,
     },
     Change {
+        #[arg(allow_hyphen_values = true)]
         id: String,
     },
     Approve {
+        #[arg(allow_hyphen_values = true)]
         id: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         digest: String,
     },
     Execute {
+        #[arg(allow_hyphen_values = true)]
         id: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         digest: String,
     },
     Cancel {
+        #[arg(allow_hyphen_values = true)]
         id: String,
-        #[arg(long)]
+        #[arg(long, allow_hyphen_values = true)]
         digest: String,
     },
 }
