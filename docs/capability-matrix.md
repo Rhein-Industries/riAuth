@@ -230,13 +230,19 @@ this page. CI steps are written for the default Platform build.
 
 `riauthctl` commands, all remote, are `status`, `discovery`, `login`,
 `whoami`, `logout`, `revision`, `inventory`, `user`, `group`, `client`,
-`session`, `request`, `device`, `authorize`, `plan`, and `apply`, plus
-`passkey` when `terminal-usb` is compiled
+`grants`, `session`, `request`, `device`, `authorize`, `plan`, and `apply`.
+`grants`, `group review`, `client review`, `client endpoint-review`,
+`client status-review` and `client creation-review` drive the reviewed
+changes. `passkey` is added when `terminal-usb` is compiled
 ([`crates/riauthctl/src/main.rs`](../crates/riauthctl/src/main.rs)). The
 issuer must be canonical HTTPS, or HTTP on loopback. Discovery's token
 endpoint must be `--server` plus `/oauth/token`. Redirects are rejected.
 In-tree coverage is a local TCP fixture in
-[`crates/riauthctl/tests/security.rs`](../crates/riauthctl/tests/security.rs).
+[`crates/riauthctl/tests/security.rs`](../crates/riauthctl/tests/security.rs)
+and [`crates/riauthctl/tests/m03_review.rs`](../crates/riauthctl/tests/m03_review.rs),
+plus [`tests/m03_reviewed_grants_e2e.rs`](../tests/m03_reviewed_grants_e2e.rs),
+which runs one reviewed grant through the real `riauth` server and `riauthctl`
+binaries.
 The check job is written to run that suite without default features. The
 client cannot activate a capability the server build omitted.
 

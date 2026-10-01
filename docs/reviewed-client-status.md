@@ -22,6 +22,8 @@ disabled-user cleanup are unchanged.
 | Execute | `POST /api/client-status-changes/{id}/execute` | `execute <id> --digest <digest>` |
 | Cancel | `POST /api/client-status-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
+`riauthctl client status-review` takes the same `stage <client-id> --file status.json`, `change <id>`, `approve|execute|cancel <id> --digest <digest>` verbs against the same routes, sending the revision and an `Idempotency-Key` on every write.
+
 Browser JSON uses the same routes under `/api/admin` with the existing portal
 cookie, origin and CSRF header checks. Decisions take exactly `{"digest":"..."}`.
 All adapters use the existing mutation envelope, scoped preconditions, audit

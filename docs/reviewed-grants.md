@@ -34,6 +34,8 @@ account's grants immediately.
 | Execute | `POST /api/delegated-grant-changes/{id}/execute` | `execute <id> --digest <digest>` |
 | Cancel | `POST /api/delegated-grant-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
+`riauthctl grants` takes the same verbs (`get`, `set`, `stage`, `change`, `approve`, `execute`, `cancel`) against the same routes, sending the revision and an `Idempotency-Key` on every write.
+
 Browser JSON uses the same paths with `/api/admin` in place of `/api`, behind
 the existing portal read/write guards. The administration page's **Reviewed
 grants** section (`/admin#/grant-review`) stages and reviews these changes.
@@ -179,8 +181,8 @@ workflow; unsupported creation fails closed when creation review is enabled:
 - Desired-state manifests/plans as a general multi-resource review workflow.
 
 Review roles currently use full administrators; configurable quorums, delegated
-reviewer/executor roles, notifications, a searchable review inbox, dedicated standalone
-`riauthctl` commands and finer-grained invalidation are follow-up work. Existing
+reviewer/executor roles, notifications, a searchable review inbox and finer-grained
+invalidation are follow-up work. Standalone `riauthctl` has the same review commands. Existing
 PAM approvals and immutable connector/state plans keep their separate contracts.
 
 M03 integration adds a child module under `management.rs`. M04 integration moves

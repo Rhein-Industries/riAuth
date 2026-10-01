@@ -1,6 +1,7 @@
 mod admin;
 mod approval;
 mod management;
+mod review;
 mod session;
 mod transport;
 mod usb;
@@ -93,6 +94,11 @@ enum Command {
     User {
         #[command(subcommand)]
         command: admin::UserCommand,
+    },
+    /// Read, set, or stage, approve, execute and cancel delegated human grants.
+    Grants {
+        #[command(subcommand)]
+        command: review::GrantCommand,
     },
     /// Manage groups and membership through /api/groups.
     Group {
@@ -332,6 +338,7 @@ async fn run(cli: Cli) -> Result<Value> {
             Ok(result)
         }
         Command::User { command } => admin::user(&remote, command, &mutation).await,
+        Command::Grants { command } => review::grants(&remote, command, &mutation).await,
         Command::Group { command } => admin::group(&remote, command, &mutation).await,
         Command::Client { command } => admin::client(&remote, command, &mutation).await,
         Command::Session { command } => admin::session(&remote, command, &mutation).await,
@@ -494,14 +501,17 @@ fn redact(value: &mut Value) {
         Value::Object(fields) => {
             for (key, child) in fields {
                 let key = key.to_ascii_lowercase();
-                if key == "token"
-                    || key.ends_with("_token")
-                    || key.contains("secret")
-                    || key.contains("password")
-                    || key.contains("private_key")
-                    || key.contains("recovery_code")
-                    || key == "otp"
-                    || key == "credential"
+                // A boolean cannot hold a credential, and reviews show whether
+                // `generate_client_secret` is set.
+                if !child.is_boolean()
+                    && (key == "token"
+                        || key.ends_with("_token")
+                        || key.contains("secret")
+                        || key.contains("password")
+                        || key.contains("private_key")
+                        || key.contains("recovery_code")
+                        || key == "otp"
+                        || key == "credential")
                 {
                     *child = json!("[redacted]");
                 } else {

@@ -22,6 +22,8 @@ Reviewers and executors send only the returned digest, never replacement content
 | Execute | `POST /api/client-policy-changes/{id}/execute` | `execute <id> --digest <digest>` |
 | Cancel | `POST /api/client-policy-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
+`riauthctl client review` takes the same verbs against the same routes, sending the revision and an `Idempotency-Key` on every write.
+
 Browser JSON uses `/api/admin` instead of `/api` under the existing browser
 session/origin guards. **Applications → application → Review access policy**
 opens the browser workflow described below. The existing client editor and
