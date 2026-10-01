@@ -752,7 +752,11 @@ impl SecretFile {
         })
     }
 
-    fn write(&mut self, value: &Value) -> Result<()> {
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn write(&mut self, value: &Value) -> Result<()> {
         let mut bytes = Zeroizing::new(serde_json::to_vec_pretty(value)?);
         bytes.push(b'\n');
         let file = self.file.as_mut().context("Client secret file is closed")?;

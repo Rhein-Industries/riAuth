@@ -1,4 +1,5 @@
 mod admin;
+mod agent;
 mod approval;
 mod management;
 mod review;
@@ -94,6 +95,11 @@ enum Command {
     User {
         #[command(subcommand)]
         command: admin::UserCommand,
+    },
+    /// Create, rotate, revoke and list scoped agent credentials.
+    Agent {
+        #[command(subcommand)]
+        command: agent::AgentCommand,
     },
     /// Read, set, or stage, approve, execute and cancel delegated human grants.
     Grants {
@@ -338,6 +344,7 @@ async fn run(cli: Cli) -> Result<Value> {
             Ok(result)
         }
         Command::User { command } => admin::user(&remote, command, &mutation).await,
+        Command::Agent { command } => agent::run(&remote, command, &mutation).await,
         Command::Grants { command } => review::grants(&remote, command, &mutation).await,
         Command::Group { command } => admin::group(&remote, command, &mutation).await,
         Command::Client { command } => admin::client(&remote, command, &mutation).await,
