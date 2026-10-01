@@ -362,6 +362,11 @@ def main() -> None:
             or re.search(r"\bCore\b|\bTx\b|\.\s*(?:store|config)\b", masked_rust_source(path.read_text()))
         ):
             errors.append("src/scim.rs: SCIM runtime refers directly to Core or storage; it belongs in assembly")
+        if path in {SRC / "source.rs", SRC / "source/saml.rs", SRC / "source/saml_essentials.rs"} and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*(?:store|config)\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append(f"{path.relative_to(ROOT)}: source runtime refers directly to Core or storage; it belongs in assembly")
         if path == SRC / "directory.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))
@@ -899,8 +904,8 @@ def main() -> None:
             ):
                 errors.append("src/source/workflow.rs: workflow source storage belongs in assembly")
         if path == SRC / "source/saml.rs":
-            saml_source = path.read_text()
-            source_root = (SRC / "source.rs").read_text()
+            saml_source = (SRC / "assembly/source_saml_runtime.rs").read_text()
+            source_root = (SRC / "assembly/source_runtime.rs").read_text()
             assembly_source_keys = (SRC / "assembly/source_saml_keys.rs").read_text()
             assembly_source_cleanup = (SRC / "assembly/source_saml_cleanup.rs").read_text()
             metadata_adapter = rust_function_body(saml_source, "saml_source_metadata")
@@ -1052,7 +1057,8 @@ def main() -> None:
             ):
                 errors.append("src/source/saml.rs: one-use browser return claim belongs in assembly")
         if path == SRC / "source.rs":
-            source_protocol = masked_rust_source(path.read_text())
+            source_runtime = (SRC / "assembly/source_runtime.rs").read_text()
+            source_protocol = masked_rust_source(source_runtime)
             source_catalog = (SRC / "assembly/source_catalog.rs").read_text()
             source_identity = (SRC / "assembly/source_identity.rs").read_text()
             identity_read = rust_function_body(source_identity, "validate_identity")
@@ -1097,7 +1103,7 @@ def main() -> None:
                 errors.append("src/source.rs: source identity trust reads belong in assembly")
             if rust_function_body(source_protocol, "source_list") is not None:
                 errors.append("src/source.rs: authorized source catalog read belongs in assembly")
-            require_source_write = rust_function_body(path.read_text(), "require_write")
+            require_source_write = rust_function_body(source_runtime, "require_write")
             write_compact = re.sub(r"\s+", "", require_source_write or "")
             write_prior = rust_function_body(source_catalog, "source_write_prior")
             prior_compact = re.sub(r"\s+", "", write_prior or "")
@@ -1179,7 +1185,7 @@ def main() -> None:
                 or not re.search(r"\bpub\(crate\)\s+fn\s+source_start_in\s*\(", source_protocol)
             ):
                 errors.append("src/source.rs: source start writer belongs in assembly")
-            source_start_for = rust_function_body(path.read_text(), "source_start_for")
+            source_start_for = rust_function_body(source_runtime, "source_start_for")
             source_start_for_compact = re.sub(r"\s+", "", source_start_for or "")
             start_authentication = rust_function_body(
                 source_catalog, "validate_source_start_authentication"
@@ -1193,7 +1199,7 @@ def main() -> None:
                         < source_start_for_compact.find("ifletSome(challenge)=&input.authentication_transaction")
                         < source_start_for_compact.find("crate::assembly::validate_source_start_authentication(tx,challenge)?")
                         < source_start_for_compact.find("letstate=crypto::random_token"))
-                or re.search(r'\btx\s*\.\s*(?:get|list|query|scan|count|find)\s*::\s*<', path.read_text())
+                or re.search(r'\btx\s*\.\s*(?:get|list|query|scan|count|find)\s*::\s*<', source_runtime)
                 or start_authentication is None
                 or not (0 <= auth_compact.find('tx.get::<AuthenticationTransaction>("authentication",&digest(challenge))?')
                         < auth_compact.find("record.expires_at>now()&&record.authenticated_session.is_none()")
@@ -1288,8 +1294,8 @@ def main() -> None:
             export_all_compact = re.sub(r"\s+", "", export_all or "")
             export_scoped = rust_function_body(source_catalog, "export_links")
             export_scoped_compact = re.sub(r"\s+", "", export_scoped or "")
-            source_export_all = rust_function_body(path.read_text(), "export_all_links")
-            source_export_scoped = rust_function_body(path.read_text(), "export_links")
+            source_export_all = rust_function_body(source_runtime, "export_all_links")
+            source_export_scoped = rust_function_body(source_runtime, "export_links")
             assembly_exports = re.sub(r"\s+", "", (SRC / "assembly.rs").read_text())
             state_source = (SRC / "state.rs").read_text()
             state_export = rust_function_body(state_source, "export_state")
@@ -1324,7 +1330,7 @@ def main() -> None:
                 or "crate::source::export_all_links(tx)?" not in live_target
             ):
                 errors.append("src/source.rs: source link export reads and scope filter belong in assembly")
-            protocol_enabled = rust_function_body(path.read_text(), "enabled")
+            protocol_enabled = rust_function_body(source_runtime, "enabled")
             catalog_enabled = rust_function_body(source_catalog, "enabled_source")
             catalog_enabled_compact = re.sub(r"\s+", "", catalog_enabled or "")
             if (
@@ -1345,7 +1351,7 @@ def main() -> None:
                 (SRC / "assembly/oidc.rs").read_text(), "authorize_session_proof_inner"
             )
             caller_compact = re.sub(r"\s+", "", pending_caller or "")
-            suspension = rust_function_body(path.read_text(), "suspension_hash")
+            suspension = rust_function_body(source_runtime, "suspension_hash")
             suspension_compact = re.sub(r"\s+", "", suspension or "")
             if (
                 rust_function_body(source_protocol, "enforce_pending_stage") is not None
@@ -1373,7 +1379,7 @@ def main() -> None:
                 or '"access_denied","Thesourcestagewascancelled"' not in pending_compact
                 or re.search(r"\btx\s*\.\s*(?:put|delete)\s*\(", pending_stage)
                 or suspension is None
-                or not re.search(r"\bpub\(crate\)\s+fn\s+suspension_hash\s*\(", path.read_text())
+                or not re.search(r"\bpub\(crate\)\s+fn\s+suspension_hash\s*\(", source_runtime)
                 or not (0 <= suspension_compact.find("request.decision=None")
                         < suspension_compact.find("request.transaction_id=None")
                         < suspension_compact.find("request.request_binding=None")
@@ -1388,7 +1394,7 @@ def main() -> None:
                 errors.append("src/source.rs: pending source-stage storage reads belong in assembly")
             stage_creation = rust_function_body(source_protocol, "begin_source_stage")
             stage_creation_compact = re.sub(r"\s+", "", stage_creation or "")
-            stage_creation_raw = rust_function_body(path.read_text(), "begin_source_stage")
+            stage_creation_raw = rust_function_body(source_runtime, "begin_source_stage")
             stage_auth_write = rust_function_body(
                 source_stage_assembly, "persist_source_stage_authentication"
             )
@@ -1496,7 +1502,7 @@ def main() -> None:
                 errors.append("src/source.rs: charged source stage resume writer belongs in assembly")
             stage_resume = rust_function_body(source_protocol, "resume_stage")
             stage_resume_compact = re.sub(r"\s+", "", stage_resume or "")
-            stage_resume_raw = rust_function_body(path.read_text(), "resume_stage")
+            stage_resume_raw = rust_function_body(source_runtime, "resume_stage")
             stage_login_read = rust_function_body(source_stage_assembly, "stage_resume_login")
             stage_login_compact = re.sub(r"\s+", "", stage_login_read or "")
             stage_linked_read = rust_function_body(source_stage_assembly, "stage_linked_user")
@@ -1564,11 +1570,11 @@ def main() -> None:
                 errors.append("src/source.rs: source stage resume bearer and one-use writes belong in assembly")
             stage_loader = rust_function_body(source_stage_assembly, "load_source_stage")
             stage_loader_compact = re.sub(r"\s+", "", stage_loader or "")
-            cancel_stage = rust_function_body(path.read_text(), "cancel_stage")
+            cancel_stage = rust_function_body(source_runtime, "cancel_stage")
             cancel_stage_compact = re.sub(r"\s+", "", cancel_stage or "")
             load_call = "crate::assembly::load_source_stage(tx,stage_id,authorization_id)?"
             if (
-                rust_function_body(path.read_text(), "load_stage") is not None
+                rust_function_body(source_runtime, "load_stage") is not None
                 or not (0 <= stage_resume_compact.find(load_call)
                         < stage_resume_compact.find("ifstage.used||stage.cancelled"))
                 or cancel_stage is None
@@ -1587,7 +1593,7 @@ def main() -> None:
                 errors.append("src/source.rs: source stage ownership read belongs in assembly")
             callback_stage = rust_function_body(source_stage_assembly, "callback_source_stage")
             callback_stage_compact = re.sub(r"\s+", "", callback_stage or "")
-            callback_body = rust_function_body(path.read_text(), "callback_body")
+            callback_body = rust_function_body(source_runtime, "callback_body")
             callback_body_compact = re.sub(r"\s+", "", callback_body or "")
             if (
                 callback_body is None
@@ -1614,7 +1620,7 @@ def main() -> None:
                 errors.append("src/source.rs: source callback stage projection belongs in assembly")
             stage_rejection = rust_function_body(source_protocol, "reject_stage")
             stage_rejection_compact = re.sub(r"\s+", "", stage_rejection or "")
-            stage_rejection_raw = rust_function_body(path.read_text(), "reject_stage")
+            stage_rejection_raw = rust_function_body(source_runtime, "reject_stage")
             persist_rejection = rust_function_body(source_stage_assembly, "persist_stage_rejection")
             persist_rejection_compact = re.sub(r"\s+", "", persist_rejection or "")
             if (
@@ -1638,13 +1644,13 @@ def main() -> None:
                         < persist_rejection_compact.find("Ok(())"))
             ):
                 errors.append("src/source.rs: terminal source stage rejection writes belong in assembly")
-            source_cleanup = rust_function_body(path.read_text(), "cleanup")
+            source_cleanup = rust_function_body(source_runtime, "cleanup")
             source_cleanup_compact = re.sub(r"\s+", "", source_cleanup or "")
             expiry_cleanup = rust_function_body(source_stage_assembly, "cleanup_expired_source_state")
             expiry_cleanup_compact = re.sub(r"\s+", "", expiry_cleanup or "")
             if (
                 source_cleanup_compact != "#[cfg(feature=\"platform\")]crate::assembly::cleanup_source_saml(tx,at)?;#[cfg(not(feature=\"platform\"))]saml::cleanup(tx,at)?;crate::assembly::cleanup_expired_source_state(tx,at)"
-                or not re.search(r"\bpub\s+fn\s+cleanup\s*\(\s*tx\s*:\s*&Tx", path.read_text())
+                or not re.search(r"\bpub\s+fn\s+cleanup\s*\(\s*tx\s*:\s*&Tx", source_runtime)
                 or expiry_cleanup is None
                 or not re.search(r"\bpub\(crate\)\s+fn\s+cleanup_expired_source_state\s*\(", source_stage_assembly)
                 or not (0 <= expiry_cleanup_compact.find('tx.maintenance_page::<Login>("source_logins")?')
@@ -1692,7 +1698,7 @@ def main() -> None:
             )
             source_finish_browser_compact = re.sub(r"\s+", "", source_finish_browser or "")
             if (
-                re.search(r"\bfn\s+source_finish_browser\s*<", path.read_text())
+                re.search(r"\bfn\s+source_finish_browser\s*<", source_runtime)
                 or source_finish_browser is None
                 or not re.search(r"\bpub\(crate\)\s+fn\s+source_finish_browser\s*<T>\s*\(", source_finish_assembly)
                 or not (0 <= source_finish_browser_compact.find("self.store.write")
@@ -1742,7 +1748,7 @@ def main() -> None:
             ):
                 errors.append("src/source.rs: source completion identity and one-use writes belong in assembly")
             source_callback = rust_function_body(source_protocol, "source_callback")
-            source_callback_raw = rust_function_body(path.read_text(), "source_callback")
+            source_callback_raw = rust_function_body(source_runtime, "source_callback")
             callback_assembly = (SRC / "assembly/source_callback.rs").read_text()
             callback_claim = rust_function_body(
                 masked_rust_source(callback_assembly), "source_callback_claim"
@@ -1775,8 +1781,8 @@ def main() -> None:
                 or not re.search(r"\bpub\(crate\)\s+fn\s+source_callback_claim\s*\(", callback_assembly)
                 or not re.search(r'let\s+source\s*=\s*tx\.get::<Source>\s*\(\s*"sources"\s*,\s*id\s*\)\s*\?', callback_claim_raw)
                 or not re.search(r'p\.expires_at\s*>\s*now\s*\(\s*\)\s*&&\s*!p\.claimed', callback_claim_raw)
-                or not re.search(r"\bpub\(crate\)\s+fn\s+browser_binding_matches\s*\(", path.read_text())
-                or not re.search(r"\bpub\(crate\)\s+fn\s+presented_source_retired\s*\(", path.read_text())
+                or not re.search(r"\bpub\(crate\)\s+fn\s+browser_binding_matches\s*\(", source_runtime)
+                or not re.search(r"\bpub\(crate\)\s+fn\s+presented_source_retired\s*\(", source_runtime)
             ):
                 errors.append("src/source.rs: one-use source callback claim belongs in assembly")
             callback_record = rust_function_body(

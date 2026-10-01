@@ -111,6 +111,24 @@ pub(crate) use scim_runtime::{
 mod session_protocol;
 mod signin;
 pub use signin::{bearer_backed, bind_proof, discard_staged, proof_valid};
+mod source_runtime;
+pub use source_runtime::cleanup as source_cleanup;
+#[cfg(not(feature = "platform"))]
+pub(crate) use source_runtime::saml_cleanup_stub as source_saml_cleanup_stub;
+#[cfg(feature = "platform")]
+pub(crate) use source_runtime::workflow as source_workflow_adapter;
+pub(crate) use source_runtime::{
+    Login as SourceLogin, SourceStage, StartedLogin as SourceStartedLogin,
+    UpstreamIdentity as SourceUpstreamIdentity,
+    browser_binding_matches as source_runtime_browser_binding_matches,
+    callback_body as source_runtime_callback_body, enabled as source_runtime_enabled,
+    export_all_links as source_runtime_export_all_links,
+    export_links as source_runtime_export_links, link_key as source_runtime_link_key,
+    presented_source_retired as source_runtime_presented_source_retired,
+    reconcile_link as source_runtime_reconcile_link,
+    stage_authentication_required as source_runtime_stage_authentication_required,
+    suspension_hash as source_runtime_suspension_hash,
+};
 mod source_callback;
 mod source_catalog;
 pub(crate) use source_catalog::{
