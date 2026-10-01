@@ -2487,3 +2487,193 @@ fn retained_stale_dependencies_only_invalidate_their_own_manifest() {
     assert!(f.core.state_reconcile(&f.admin, broken).is_err());
     f.assert_snapshot(&before);
 }
+
+/// Commit through the real writers after preview aborts and before persistence.
+/// No sleeps or scheduling assumptions: relevant writes must abort persistence,
+/// while the four established narrow families tolerate unrelated revisions.
+#[cfg(feature = "test-support")]
+#[test]
+fn plan_persistence_checks_dependencies_across_interleaved_writes() {
+    fn setup() -> Fixture {
+        let f = Fixture::new();
+        for name in ["alice", "bob", "stranger"] {
+            f.user(name);
+        }
+        f.client("portal", false);
+        f.core.create_group(&f.admin, "ordinary").unwrap();
+        f
+    }
+    fn desired(f: &Fixture, family: &str) -> Manifest {
+        match family {
+            "group" => groups("ordinary", &["alice", "bob"]),
+            "client" => client_manifest(f, "portal", "Renamed", None),
+            "user" => named_user(f, "alice", "Renamed", None),
+            "description" => described_manifest(f, "portal", "New description"),
+            _ => unreachable!(),
+        }
+    }
+
+    for family in ["group", "client", "user", "description"] {
+        for relevant in [false, true] {
+            let f = setup();
+            let base = revision(&f);
+            let mut after_write = None;
+            let planned =
+                f.core
+                    .plan_state_interleaved_for_test(&f.admin, desired(&f, family), || {
+                        if !relevant {
+                            rename(&f, "stranger", "Unrelated writer");
+                        } else if matches!(family, "group" | "user") {
+                            rename(&f, "alice", "Relevant writer");
+                        } else {
+                            f.core
+                                .update_client(
+                                    &f.admin,
+                                    "portal",
+                                    riauth::model::ClientPatch {
+                                        name: Some("Relevant writer".into()),
+                                        ..Default::default()
+                                    },
+                                )
+                                .unwrap();
+                        }
+                        assert!(revision(&f) > base);
+                        after_write = Some(f.snapshot().unwrap());
+                    });
+            if relevant {
+                assert_eq!(planned.err().unwrap().code, "conflict", "{family}");
+                f.assert_snapshot(after_write.as_ref().unwrap());
+                assert!(f.core.store.list::<Value>("plans").unwrap().is_empty());
+            } else {
+                let plan = planned.unwrap_or_else(|error| panic!("{family}: {error}"));
+                assert_scoped(&plan, family);
+                assert_eq!(plan.base_revision, base);
+                let persisted = f.core.plan_status(&f.admin, &plan.plan_id).unwrap();
+                assert_eq!(persisted["plan"], json!(plan));
+                assert!(!plan.review.authority_digest.is_empty());
+                assert_eq!(
+                    f.core.apply_state(&f.admin, request(&plan)).unwrap()["applied"],
+                    true
+                );
+                match family {
+                    "group" => assert_eq!(members(&f, "ordinary").len(), 2),
+                    "client" => assert_eq!(client_record(&f, "portal").name, "Renamed"),
+                    "user" => assert_eq!(user_record(&f, "alice").display_name, "Renamed"),
+                    "description" => assert_eq!(
+                        client_record(&f, "portal")
+                            .settings
+                            .app
+                            .unwrap()
+                            .description,
+                        "New description"
+                    ),
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+
+    // Shapes that opt out of narrow scope must still reject an unrelated write.
+    for kind in ["mixed", "grant", "connector", "retirement", "target"] {
+        let mut f = setup();
+        let secrets = tempfile::tempdir().unwrap();
+        let mut input = desired(&f, "group");
+        match kind {
+            "mixed" => input.users = desired(&f, "user").users,
+            "grant" => input = with_help_desk(input, "bob", "alice"),
+            "connector" => {
+                f.core.config.connector_secret_dir = Some(secrets.path().into());
+                f.core
+                    .config
+                    .connector_credentials
+                    .insert("scim/token".into(), "https://scim.example.test".into());
+                input.scim_targets = manifest(json!({
+                    "api_version":"riauth/v1",
+                    "scim_targets":{"payroll":{
+                        "url":"https://scim.example.test", "token_file":"scim/token",
+                        "groups":["ordinary"]
+                    }}
+                }))
+                .scim_targets;
+            }
+            "retirement" => {
+                input.retired_connectors = manifest(json!({
+                    "api_version":"riauth/v1",
+                    "retired_connectors":[{"kind":"ldap", "id":"not_stored"}]
+                }))
+                .retired_connectors
+            }
+            "target" => {
+                let converted = riauth::migration::convert(
+                    serde_json::from_value(json!({
+                        "api_version":"riauth.authentik-import/v1", "issuer":f.core.config.issuer,
+                        "target_state": f.core.export_state(&f.admin).unwrap()["manifest"],
+                        "users":[], "groups":[], "providers":[], "applications":[],
+                        "policy_bindings":[], "sources":[], "passwords":{}, "clients":{}
+                    }))
+                    .unwrap(),
+                )
+                .unwrap();
+                input.target_state_fingerprint = Some(
+                    converted["manifest"]["target_state_fingerprint"]
+                        .as_str()
+                        .unwrap()
+                        .into(),
+                );
+            }
+            _ => unreachable!(),
+        }
+        let mut after_write = None;
+        let planned = f.core.plan_state_interleaved_for_test(&f.admin, input, || {
+            rename(&f, "stranger", "Unrelated writer");
+            after_write = Some(f.snapshot().unwrap());
+        });
+        assert!(
+            after_write.is_some(),
+            "{kind}: preview did not reach persistence"
+        );
+        assert_eq!(planned.err().unwrap().code, "conflict", "{kind}");
+        f.assert_snapshot(after_write.as_ref().unwrap());
+        assert!(f.core.store.list::<Value>("plans").unwrap().is_empty());
+    }
+
+    // Narrow dependencies alone cannot preserve a planner's revoked authority.
+    let f = setup();
+    let token = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "interleaved-planner".into(),
+                ttl: 3600,
+                parent: None,
+                permissions: vec![Permission {
+                    action: "group.members".into(),
+                    resource: "group/ordinary".into(),
+                }],
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let base = revision(&f);
+    let mut after_write = None;
+    let planned = f
+        .core
+        .plan_state_interleaved_for_test(&token, desired(&f, "group"), || {
+            f.core
+                .store
+                .write(|tx| {
+                    let mut agent: Agent = tx.get("agents", "interleaved-planner")?.unwrap();
+                    agent.permissions.clear();
+                    tx.put("agents", "interleaved-planner", &agent)
+                })
+                .unwrap();
+            assert_eq!(revision(&f), base);
+            after_write = Some(f.snapshot().unwrap());
+        });
+    assert_eq!(planned.err().unwrap().code, "conflict");
+    f.assert_snapshot(after_write.as_ref().unwrap());
+    assert!(f.core.store.list::<Value>("plans").unwrap().is_empty());
+}

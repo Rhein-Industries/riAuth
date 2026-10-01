@@ -1574,6 +1574,26 @@ impl Core {
         })
     }
     pub fn plan_state(&self, token: &str, manifest: Manifest) -> Result<Plan> {
+        self.plan_state_before_persist(token, manifest, || {})
+    }
+    /// Run a deterministic interleaved write after preview aborts, before the
+    /// plan-persistence writer opens. The ordinary API has no callback.
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    pub fn plan_state_interleaved_for_test(
+        &self,
+        token: &str,
+        manifest: Manifest,
+        before_persist: impl FnOnce(),
+    ) -> Result<Plan> {
+        self.plan_state_before_persist(token, manifest, before_persist)
+    }
+    fn plan_state_before_persist(
+        &self,
+        token: &str,
+        manifest: Manifest,
+        before_persist: impl FnOnce(),
+    ) -> Result<Plan> {
         manifest.validate()?;
         let (
             actor,
@@ -1637,39 +1657,21 @@ impl Core {
             review: ReviewBinding::default(),
         };
         plan.hash = digest(&serde_json::to_string(&plan).map_err(Error::internal)?);
+        before_persist();
         self.store.write(|tx| {
             let current = self.principal(tx, token)?;
-            let dependencies_current = match dependency_scope(&plan) {
-                DependencyScope::Mixed => false,
-                DependencyScope::Global => true,
-                DependencyScope::Group(expected) => {
-                    group_dependency_digest(&self.config, tx, &plan.manifest)? == expected
-                }
-                DependencyScope::Client(expected) => {
-                    client_name_dependency_digest(
-                        &self.config,
-                        tx,
-                        &plan.manifest.clients[0].client_id,
-                    )? == expected
-                }
-                DependencyScope::User(expected) => {
-                    user_display_dependency_digest(tx, &plan.manifest.users[0].username)?
-                        == expected
-                }
-                DependencyScope::Description(expected) => {
-                    client_record_dependency_digest(
-                        &self.config,
-                        tx,
-                        &plan.manifest.clients[0].client_id,
-                        CLIENT_DESCRIPTION_DEPENDENCY_VERSION,
-                        "Desired-state client description dependencies changed",
-                    )? == expected
-                }
-            };
+            // Use the same shape and dependency checks as reuse and apply.
+            // Only an eligible narrow family may outlive an unrelated revision;
+            // mixed, connector and target-bound plans keep the global fence.
+            let revision_current = plan_revision_current(
+                &self.config,
+                tx,
+                &plan,
+                tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+            )?;
             if current.id != actor.id
-                || tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
                 || ReviewBinding::new(tx, &current, &())?.authority_digest != authority_digest
-                || !dependencies_current
+                || !revision_current
             {
                 return Err(Error::conflict(
                     "Instance or plan authority changed during planning; plan again",
