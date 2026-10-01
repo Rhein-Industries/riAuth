@@ -82,6 +82,9 @@ impl MockServer {
             while !stopping.load(Ordering::Relaxed) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // BSD-derived systems hand back the listener's
+                        // non-blocking flag; read the request blocking.
+                        stream.set_nonblocking(false).unwrap();
                         stream
                             .set_read_timeout(Some(Duration::from_secs(5)))
                             .unwrap();
