@@ -779,7 +779,7 @@ fn device_writer_preserves_scope_binding_and_ticket_invalidation() {
 }
 
 #[test]
-fn agent_enrollment_fences_temporary_access_and_preserves_device_replay() {
+fn agent_enrollment_fences_temporary_access_and_never_replays_device_secret() {
     let mut fx = Fixture::new();
     let alice = fx.user("alice");
     let bob = fx.user("bob");

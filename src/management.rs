@@ -1010,7 +1010,7 @@ pub(crate) fn enroll_windows_device_issuing(
     token: &str,
     request: &WindowsDeviceEnrollment,
 ) -> Result<Value> {
-    issue_credential_once(core, tx, token, "Windows device", |_| {
+    issue_credential_once(core, tx, token, WINDOWS_DEVICE_ALREADY_ISSUED, |_| {
         let written = enroll_windows_device(core, tx, token, request)?;
         let marker = json!({"device_id": written.device.id, "credential_issued": true});
         let response = json!({
@@ -2978,6 +2978,10 @@ fn require_registration_bounds(
     Ok(())
 }
 
+#[cfg(feature = "platform")]
+const WINDOWS_DEVICE_ALREADY_ISSUED: &str = "Windows device credential was already issued; if delivery failed, enroll the device again with a new key and the current revision";
+const REGISTRATION_ALREADY_ISSUED: &str = "Registration credential was already issued and cannot be reissued; if delivery failed, revoke the template and create one with a new id";
+
 /// Run a writer that generates a credential under the generic management
 /// envelope without storing that credential in its retry receipt.
 ///
@@ -2992,7 +2996,7 @@ fn issue_credential_once(
     core: &Core,
     tx: &Tx<'_>,
     token: &str,
-    noun: &str,
+    already_issued: &'static str,
     write: impl FnOnce(&Principal) -> Result<(Value, Value)>,
 ) -> Result<Value> {
     let actor = core.principal(tx, token)?;
@@ -3008,9 +3012,7 @@ fn issue_credential_once(
         return Err(Error::new(
             axum::http::StatusCode::CONFLICT,
             "credential_already_issued",
-            format!(
-                "{noun} credential was already issued; inspect the resource and issue a new credential if delivery failed"
-            ),
+            already_issued,
         ));
     }
     if let Some(context) = &context {
@@ -3046,7 +3048,7 @@ pub(crate) fn create_registration_template_issuing(
     template: RegistrationTemplate,
 ) -> Result<Value> {
     let id = template.id.clone();
-    issue_credential_once(core, tx, token, "Registration", |actor| {
+    issue_credential_once(core, tx, token, REGISTRATION_ALREADY_ISSUED, |actor| {
         let response = create_registration_template(tx, actor, template)?;
         Ok((
             response,
