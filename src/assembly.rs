@@ -76,6 +76,9 @@ pub use pam::{cleanup as pam_cleanup, extra_groups as pam_extra_groups};
 pub(crate) mod passkey;
 mod password;
 mod portal_mfa;
+mod portal_runtime;
+pub use portal_runtime::cleanup as portal_cleanup;
+pub(crate) use portal_runtime::pending_by_code as portal_pending_by_code;
 mod portal_self_service;
 mod portal_sources;
 #[cfg(feature = "platform")]
