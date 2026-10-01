@@ -122,6 +122,18 @@ pub(crate) struct LiveApproval {
     pub executor_authority: String,
 }
 
+/// Activation outcome within the caller's writer transaction.
+#[derive(Debug)]
+pub(crate) enum Activation {
+    /// First activation, including its retained pin, revision and audit.
+    Activated(Value),
+    /// Valid current selection; may repair a legacy missing pin without a new
+    /// approval, revision bump or activation audit.
+    Replayed(Value),
+    /// Stale runs were sealed in `tx`. Commit before exposing this error.
+    Stale(Error),
+}
+
 impl Core {
     /// Record one administrator's approval or refusal of the author's stored plan.
     pub fn review_workflow(&self, token: &str, plan_id: &str, decision: &str) -> Result<Value> {
@@ -140,34 +152,10 @@ impl Core {
     pub fn activate_workflow(&self, token: &str, plan_id: &str) -> Result<Value> {
         bounded_id(plan_id, "plan_id")?;
         self.store.write(|tx| {
-            let Some(existing_id) = tx.get::<String>(APPROVAL_PLANS, plan_id)? else {
-                // A failed first activation must still roll back every write.
-                return activate_in(self, tx, token, plan_id).map(Ok);
-            };
-            let caller = caller(self, tx, token)?;
-            let existing = tx
-                .get::<WorkflowApproval>(APPROVALS, &existing_id)?
-                .ok_or_else(|| Error::conflict("Workflow approval is not active"))?;
-            let current =
-                tx.get::<ActivationPointer>(ACTIVATION, existing.definition.id.as_str())?;
-            if existing.executor != caller.id
-                || existing.plan_id != plan_id
-                || current.is_none_or(|pointer| pointer.approval_id != existing.id)
-            {
-                return Ok(Err(Error::conflict("Workflow approval already exists")));
+            match activate_or_replay_in(self, tx, token, plan_id, |_| Ok(()))? {
+                Activation::Activated(view) | Activation::Replayed(view) => Ok(Ok(view)),
+                Activation::Stale(error) => Ok(Err(error)),
             }
-            if let Some(live) = live(tx, existing.definition.id.as_str())?
-                && selection_holds(self, tx, &live)?
-            {
-                match super::executor::retain_workflow_activation(self, tx, &live.workflow_id) {
-                    Ok(()) => return Ok(Ok(approval_view(&existing))),
-                    Err(error) if error.status.is_server_error() => return Err(error),
-                    Err(_) => {}
-                }
-            }
-            // Commit stale-run retirement without reviving or rewriting the pointer.
-            super::executor::seal_approved_runs(self, tx, existing.definition.id.as_str())?;
-            Ok(Err(Error::conflict("Workflow approval is not active")))
         })?
     }
 
@@ -183,6 +171,48 @@ impl Core {
         self.store
             .read(|tx| configured_definition_in(self, tx, workflow))
     }
+}
+
+/// Revalidate every replay inside the same writer as the caller's receipt logic.
+/// The first-activation guard runs after caller authority, before any activation
+/// writes, and is skipped for existing approvals. Propagate `Err` out of the
+/// writer to roll back; commit `Stale` so its run sealing survives the error.
+pub(crate) fn activate_or_replay_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    plan_id: &str,
+    first_activation_guard: impl FnOnce(&Tx<'_>) -> Result<()>,
+) -> Result<Activation> {
+    let caller = caller(core, tx, token)?;
+    let Some(existing_id) = tx.get::<String>(APPROVAL_PLANS, plan_id)? else {
+        first_activation_guard(tx)?;
+        return activate_in(core, tx, token, plan_id).map(Activation::Activated);
+    };
+    let existing = tx
+        .get::<WorkflowApproval>(APPROVALS, &existing_id)?
+        .ok_or_else(|| Error::conflict("Workflow approval is not active"))?;
+    let current = tx.get::<ActivationPointer>(ACTIVATION, existing.definition.id.as_str())?;
+    if existing.executor != caller.id
+        || existing.plan_id != plan_id
+        || current.is_none_or(|pointer| pointer.approval_id != existing.id)
+    {
+        return Err(Error::conflict("Workflow approval already exists"));
+    }
+    if let Some(live) = live(tx, existing.definition.id.as_str())?
+        && selection_holds(core, tx, &live)?
+    {
+        match super::executor::retain_workflow_activation(core, tx, &live.workflow_id) {
+            Ok(()) => return Ok(Activation::Replayed(approval_view(&existing))),
+            Err(error) if error.status.is_server_error() => return Err(error),
+            Err(_) => {}
+        }
+    }
+    // Retire stale runs without reviving or rewriting the pointer.
+    super::executor::seal_approved_runs(core, tx, existing.definition.id.as_str())?;
+    Ok(Activation::Stale(Error::conflict(
+        "Workflow approval is not active",
+    )))
 }
 
 pub(crate) fn approval_selected(tx: &Tx<'_>, workflow: &str) -> Result<bool> {
@@ -884,4 +914,354 @@ fn approval_view(approval: &WorkflowApproval) -> Value {
         "selection": "approved-definition",
         "configuration_file": "unchanged",
     })
+}
+
+#[cfg(all(test, feature = "platform"))]
+mod tests {
+    use super::*;
+    use crate::{config::Config, model::NewUser, model::UserPatch};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    const PASSWORD: &str = "workflow-approval-fixture-password";
+    const WORKFLOW: &str = "activation-hook-password";
+
+    struct Fixture {
+        _dir: tempfile::TempDir,
+        core: Core,
+        author: String,
+        executor: String,
+        plan: Plan,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let administrator = |name: &str| NewUser {
+                username: name.into(),
+                password: PASSWORD.into(),
+                email: None,
+                display_name: name.into(),
+                admin: true,
+            };
+            let core = Core::initialize(
+                Config {
+                    data_dir: dir.path().into(),
+                    ..Default::default()
+                },
+                administrator("author"),
+            )
+            .unwrap();
+            let login = |name: &str| {
+                core.login(name.into(), PASSWORD.into(), None).unwrap()["session_token"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            };
+            let author = login("author");
+            core.create_user(&author, administrator("reviewer"))
+                .unwrap();
+            core.create_user(&author, administrator("executor"))
+                .unwrap();
+            let reviewer = login("reviewer");
+            let executor = login("executor");
+            let definition = super::super::parse(
+                json!({
+                    "format": "riauth.workflow/v1", "id": WORKFLOW, "revision": 3,
+                    "category": "authentication", "origin": "configured", "entry": "password",
+                    "limits": {"max_duration_seconds": 600, "max_executions": 3},
+                    "steps": [{
+                        "id": "password", "action": {"type": "verify_password"},
+                        "max_attempts": 3, "timeout_seconds": 120, "cancellable": true,
+                        "transitions": [
+                            {"on": "verified", "to": "success"},
+                            {"on": "failed", "to": "denied"}
+                        ]
+                    }],
+                    "terminals": [
+                        {"id": "success", "outcome": "authenticated", "requires": [["password"]]},
+                        {"id": "denied", "outcome": "denied", "requires": []}
+                    ]
+                })
+                .to_string()
+                .as_bytes(),
+            )
+            .unwrap();
+            let plan = core
+                .plan_state(
+                    &author,
+                    crate::state::Manifest {
+                        api_version: "riauth/v1".into(),
+                        workflows: vec![definition],
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            core.review_workflow(&reviewer, &plan.plan_id, "approve")
+                .unwrap();
+            Self {
+                _dir: dir,
+                core,
+                author,
+                executor,
+                plan,
+            }
+        }
+
+        fn activate(&self) -> Value {
+            match self
+                .core
+                .store
+                .write(|tx| {
+                    activate_or_replay_in(
+                        &self.core,
+                        tx,
+                        &self.executor,
+                        &self.plan.plan_id,
+                        |_| Ok(()),
+                    )
+                })
+                .unwrap()
+            {
+                Activation::Activated(view) => view,
+                other => panic!("Expected first activation, got {other:?}"),
+            }
+        }
+
+        fn snapshot(&self) -> BTreeMap<String, Value> {
+            self.core.store.read(|tx| tx.snapshot()).unwrap()
+        }
+    }
+
+    fn assert_unchanged(before: &BTreeMap<String, Value>, after: &BTreeMap<String, Value>) {
+        // A fixture snapshot includes private credentials; report keys only.
+        let changed = before
+            .keys()
+            .chain(after.keys())
+            .filter(|key| before.get(*key) != after.get(*key))
+            .collect::<BTreeSet<_>>();
+        assert!(
+            changed.is_empty(),
+            "Unexpected changed records: {changed:?}"
+        );
+    }
+
+    fn replay_guard(_: &Tx<'_>) -> Result<()> {
+        panic!("First-activation guard must not run for a replay");
+    }
+
+    #[test]
+    fn activation_hook_authorizes_before_lookup_and_rolls_back_first_activation() {
+        let fixture = Fixture::new();
+        let core = &fixture.core;
+        let plan_id = &fixture.plan.plan_id;
+        // Even an unreadable plan index cannot precede caller authentication.
+        core.store
+            .write(|tx| tx.put(APPROVAL_PLANS, plan_id, &42))
+            .unwrap();
+        let before = fixture.snapshot();
+        let error = core
+            .store
+            .write(|tx| activate_or_replay_in(core, tx, "invalid-session", plan_id, replay_guard))
+            .unwrap_err();
+        assert_eq!(error.status, axum::http::StatusCode::UNAUTHORIZED);
+        assert_unchanged(&before, &fixture.snapshot());
+        core.store
+            .write(|tx| tx.delete(APPROVAL_PLANS, plan_id))
+            .unwrap();
+
+        let before = fixture.snapshot();
+        let error = core
+            .store
+            .write(|tx| {
+                activate_or_replay_in(core, tx, &fixture.executor, plan_id, |tx| {
+                    assert_unchanged(&before, &tx.snapshot()?);
+                    Err(Error::conflict("First activation precondition failed"))
+                })
+            })
+            .unwrap_err();
+        assert_eq!(error.message, "First activation precondition failed");
+        assert_unchanged(&before, &fixture.snapshot());
+
+        // Adapter failure after activation must abort approval, pin, pointer,
+        // audit and revision together, leaving the same plan usable.
+        let error = core
+            .store
+            .write::<()>(|tx| {
+                assert!(matches!(
+                    activate_or_replay_in(core, tx, &fixture.executor, plan_id, |_| Ok(()))?,
+                    Activation::Activated(_)
+                ));
+                Err(Error::conflict("Adapter receipt rejected"))
+            })
+            .unwrap_err();
+        assert_eq!(error.message, "Adapter receipt rejected");
+        assert_unchanged(&before, &fixture.snapshot());
+        assert_eq!(fixture.activate()["revision"], 3);
+    }
+
+    #[test]
+    fn activation_hook_replays_and_repairs_legacy_pin_without_new_activation() {
+        let fixture = Fixture::new();
+        let core = &fixture.core;
+        let view = fixture.activate();
+        let before = fixture.snapshot();
+        for repair in [false, true] {
+            if repair {
+                core.store
+                    .write(|tx| tx.delete("workflow_reviewed", WORKFLOW))
+                    .unwrap();
+            }
+            match core
+                .store
+                .write(|tx| {
+                    activate_or_replay_in(
+                        core,
+                        tx,
+                        &fixture.executor,
+                        &fixture.plan.plan_id,
+                        replay_guard,
+                    )
+                })
+                .unwrap()
+            {
+                Activation::Replayed(replayed) => assert_eq!(replayed, view),
+                other => panic!("Expected live replay, got {other:?}"),
+            }
+            // Includes the repaired pin and every audit/revision/index row.
+            assert_unchanged(&before, &fixture.snapshot());
+        }
+
+        let error = core
+            .store
+            .write(|tx| {
+                activate_or_replay_in(
+                    core,
+                    tx,
+                    &fixture.author,
+                    &fixture.plan.plan_id,
+                    replay_guard,
+                )
+            })
+            .unwrap_err();
+        assert_eq!(error.message, "Workflow approval already exists");
+        assert_unchanged(&before, &fixture.snapshot());
+
+        core.revoke_workflow_approval(&fixture.executor, WORKFLOW)
+            .unwrap();
+        let before = fixture.snapshot();
+        let error = core
+            .store
+            .write(|tx| {
+                activate_or_replay_in(
+                    core,
+                    tx,
+                    &fixture.executor,
+                    &fixture.plan.plan_id,
+                    replay_guard,
+                )
+            })
+            .unwrap_err();
+        assert_eq!(error.message, "Workflow approval already exists");
+        assert_unchanged(&before, &fixture.snapshot());
+    }
+
+    #[test]
+    fn activation_hook_stale_outcome_commits_sealing_and_cannot_revive_proof() {
+        let fixture = Fixture::new();
+        let core = &fixture.core;
+        fixture.activate();
+        let open = core
+            .workflow_configured_start(&fixture.author, WORKFLOW)
+            .unwrap();
+        core.update_user(
+            &fixture.author,
+            "reviewer",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let run: Value = core.store.get("workflow_runs", &open.id).unwrap().unwrap();
+        assert_eq!(run["record"]["state"]["state"], "active");
+        let before = fixture.snapshot();
+        let error = core
+            .store
+            .write::<Result<Value>>(|tx| {
+                match activate_or_replay_in(
+                    core,
+                    tx,
+                    &fixture.executor,
+                    &fixture.plan.plan_id,
+                    replay_guard,
+                )? {
+                    Activation::Stale(error) => Ok(Err(error)),
+                    other => panic!("Expected stale selection, got {other:?}"),
+                }
+            })
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.message, "Workflow approval is not active");
+        let after = fixture.snapshot();
+        for bucket in [
+            APPROVALS,
+            APPROVAL_PLANS,
+            ACTIVATION,
+            "workflow_reviewed",
+            "workflow_definitions",
+            "audit",
+            "meta",
+        ] {
+            let prefix = format!("{bucket}/");
+            let selection = |snapshot: &BTreeMap<String, Value>| {
+                snapshot
+                    .iter()
+                    .filter(|(key, _)| key.starts_with(&prefix))
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect()
+            };
+            assert_unchanged(&selection(&before), &selection(&after));
+        }
+        let run: Value = core.store.get("workflow_runs", &open.id).unwrap().unwrap();
+        assert_eq!(run["reviewed_failure"], "policy_changed");
+        assert_eq!(run["record"]["state"]["state"], "finished");
+        assert_eq!(run["record"]["state"]["outcome"], "denied");
+        assert_eq!(run["executions"], 0);
+        assert!(run["record"]["steps"].as_array().unwrap().is_empty());
+        assert!(
+            core.store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .is_empty()
+        );
+        core.update_user(
+            &fixture.author,
+            "reviewer",
+            UserPatch {
+                enabled: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            core.activate_workflow(&fixture.executor, &fixture.plan.plan_id)
+                .unwrap_err()
+                .message,
+            "Workflow approval is not active"
+        );
+        assert!(
+            core.workflow_password(&fixture.author, &open.id, PASSWORD.into())
+                .is_err()
+        );
+        assert_eq!(
+            core.store.get::<Value>("workflow_runs", &open.id).unwrap(),
+            Some(run)
+        );
+        assert!(
+            core.store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .is_empty()
+        );
+    }
 }

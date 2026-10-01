@@ -272,3 +272,131 @@ Only the original isolated branch was edited. Root owns board reconciliation,
 integration and push. No tasks were marked done, new tasks/worktrees/workers or
 managed shells created, main files edited, external messages sent, cloud state
 mutated, accessibility scans run, or Grok/model configuration changes performed.
+
+## Wave29: shared activation and replay hook
+
+Date: 2026-10-02. Project: `891e7443-8dac-4c1b-897f-9e53cb59c7ee`.
+Existing worktree `a1303b57-4a34-487e-9c63-a841f05b51a0` and branch
+`roadmap/local-workflow-safety-wave27` only. W02
+`548d114f-9d0a-474a-a4c8-fa03af3ec3b1` remains **in_progress**. Root has reviewed
+and closed W05 `ceaddee1-2c9a-48d2-9ff4-d1f71396e954`; this wave does not change
+that board state. The original W02 acceptance remains bounded retries, expiry,
+cancellation, resumable state and explicit transitions, with the Platform
+conditional-workflow completion gate still unestablished.
+
+Read the current task records and immutable interface proposal
+`fa7511f3ac8854df77bfd3a12d950eed2f1d9e73` at
+`docs/roadmap/local-wave29-activation-interface-proposal.md`. The clean isolated
+branch was aligned to reviewed main
+`148fafd4825c6cf803faf4ae869e3089e1462982` through the history-preserving own-branch
+merge `954d76f625a21c03e46eef334057e17446a22a7d`. There were no conflicts, and the
+resulting tree matched that reviewed main before implementation. Prior commits
+were retained; no reset or merge to main was performed. Root received the
+focused ownership claim before edits.
+
+### Implementation commit and exact interface
+
+`a1a1cd60bfbf3d166af8716f0c24142294193241` — **Share transactional workflow
+activation and live replay.** Only `src/workflow/approval.rs` changed: the shared
+outcome/hook, the existing Core activation wrapper and three focused unit tests.
+No extra executor/version exports were needed. The interface is crate-visible:
+
+```rust
+pub(crate) enum Activation {
+    Activated(Value),
+    Replayed(Value),
+    Stale(Error),
+}
+
+pub(crate) fn activate_or_replay_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    plan_id: &str,
+    first_activation_guard: impl FnOnce(&Tx<'_>) -> Result<()>,
+) -> Result<Activation>
+```
+
+The hook checks caller authority before looking up the approval-plan index.
+For a first activation it invokes the guard before activation writes, then
+delegates to the accepted `activate_in` implementation. For an existing
+approval it preserves current executor/plan/pointer conflicts and the accepted
+live exact-content selection, environment and all-party authority checks.
+Historical-ledger and retained-pin fences still run before accepting replay.
+
+- `Activated` contains the first activation view; approval, selection, retained
+  activation-time pin, audit and revision share the caller's transaction.
+- `Replayed` contains the current validated view. A valid legacy missing pin
+  can be repaired; replay adds no approval, activation audit or revision bump.
+  This accepted repair is preserved even though the older proposal described
+  replay as writing nothing.
+- `Stale` contains the conflict after stale-run sealing has been written in
+  `tx`. The caller must commit before exposing that error. The Core wrapper
+  uses one writer and maps this to `Ok(Err(error))`.
+- An outer `Err` must propagate out of the writer to roll back all writes,
+  including a first activation whose adapter subsequently fails. Executor,
+  plan or pointer mismatch returns the existing "already exists" conflict.
+  The first-activation guard never runs for an existing approval.
+
+Static byte comparison against reviewed main confirmed `review_in`,
+`activate_in`, `revoke_in`, `historical_floor` and `one_workflow` are unchanged.
+All three existing entry points remain `pub(crate)`. The required
+`plan.manifest.has_connectors()` rejection is already accepted on this base and
+was preserved, resolving the earlier wave28 future-guard dependency. The shared
+version/executor implementation was not edited. No API/client, A03 source,
+SAML, isolation, extension gate, process binding or workflow-guide edits were
+made in this slice.
+
+### Fresh focused evidence
+
+All Cargo invocations used this prefix in the assigned worktree:
+
+```sh
+CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+```
+
+Free disk readings remained between 32 and 36 GiB, above the 8 GiB stop
+threshold. No accepted target directory was used.
+
+| Command after the prefix | Actual result |
+| --- | --- |
+| `cargo test --locked --lib workflow::approval::tests:: -- --test-threads=1` | First run: **2 passed, 1 failed**. The stale test had already verified committed denial but incorrectly expected reviewer re-enablement to restore the original approval; accepted authority fencing requires fresh review. Corrected only that test expectation. Final run: **3 passed**, 120 filtered out, plaintext redb. Covers authentication before an unreadable approval index, guard-before-writes, complete rollback after adapter failure, usable plan after rollback, first/replay/stale outcomes, whole-store equality on healthy replay and legacy pin repair, executor/pointer conflicts, committed stale denial, unchanged activation state/audit/revision and zero usable proof after re-enablement. |
+| `cargo test --locked --test workflow_approval activation_ -- --test-threads=1` | **2 passed**, 14 filtered out. Existing `activation_retains_revision_before_first_run_and_revocation` and `environment_binding_and_activation_replay_require_live_review`, each exercising plaintext and encrypted redb. |
+| `cargo test --locked --test workflow_approval legacy_approval_retirement_keeps_floor_without_live_dependencies -- --exact --test-threads=1` | **1 passed**, 15 filtered out, both local modes. Preserves legacy missing-pin replay, unavailable source, stale replay, revocation and a retained higher floor. Synthetic source registration; no upstream network call. |
+
+Six distinct test functions passed after the test expectation correction;
+backend iterations and repeated runs are not additional functions.
+`cargo fmt --all -- --check`, `git diff --check` and
+`python3 scripts/check-docs.py` passed. The existing macOS
+`__eh_frame` compact-unwind linker warning remained, with successful final test
+processes. No broad suite, PostgreSQL, Linux, deployed/multinode, real cloud or
+external peer execution was performed. Actual unsupported-host Linux extension
+runtime evidence from the earlier W07 compatibility slice remains pending CI;
+this wave makes no new isolation claim.
+
+### Handoff and closure recommendation
+
+Root received implementation commit `a1a1cd60bfbf3d166af8716f0c24142294193241`,
+the exact hook signature, outcome rules, files and fresh check results with the
+explicit project ID so Claude can implement the M07 adapter. Root can review
+and integrate this focused code commit; the alignment merge is local history.
+
+Claude owns `src/api/workflow.rs` and API tests. That remaining adapter must
+authenticate caller/agent/delegated authority before receipt lookup, validate
+headers and receipt fingerprint/permissions without returning a cached result,
+and call this hook inside the same writer. Its first-activation guard supplies
+the revision precondition. Receipt saving must be atomic with `Activated`;
+`Replayed` must preserve current validation and the legacy pin-repair exception
+without a new receipt/audit/revision write. `Stale` must commit as `Ok(Err(..))`.
+Same/new-key retries, stale `If-Match`, authority precedence and receipt failures
+remain API-lane evidence requirements. This shared hook does not accept the held
+management branch or establish those wire-level behaviors by itself.
+
+**W02: keep in progress against the original acceptance.** This slice closes
+the requested shared activation/replay interface dependency for M07. It does
+not connect arbitrary conditional graphs or the remaining initial/upstream and
+verifier chains, and it does not establish configurable-executor completeness.
+**W05: retain root's reviewed done state.** No task was marked done by this lane.
+Root owns board reconciliation, integration and push. No new task, worktree,
+worker or managed shell was created, and no main/accepted files, external
+messages, cloud state or model configuration were changed.

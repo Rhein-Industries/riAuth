@@ -162,5 +162,5 @@ fn issued(mut result: Value, id: &str, destination: &mut SecretFile) -> Result<V
     }
     saved?;
     let agent = agent.context("Server returned a mismatched agent")?;
-    Ok(json!({"agent": agent, "credential_file": destination.path()}))
+    Ok(json!({"agent": agent, "credential_file": destination.path_text()?}))
 }

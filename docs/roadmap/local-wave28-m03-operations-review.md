@@ -1,13 +1,23 @@
 # Wave28 M03 operations review
 
+Latest static review: management snapshot
+`fa7511f3ac8854df77bfd3a12d950eed2f1d9e73`, compared with accepted main
+`148fafd4825c6cf803faf4ae869e3089e1462982`, plus the separately pinned F3
+correction `a162347cf0b5d55d2957066fff26ca2145f6197e`. F1, F2 and F3 are corrected; the
+connector-independent operations and corrected backup/SSF slices are recommended
+for acceptance within the port boundary at the end of this report. The initial
+review below records the earlier snapshot; the correction follow-up supersedes
+its F1/F2 holds and F3 residual.
+
 Date: 2026-10-02. Project: `891e7443-8dac-4c1b-897f-9e53cb59c7ee`.
 Task: `3b9fbfa6-716a-4ce8-842a-2c953bab3d0f` (M03).
 Review worktree: `e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`, branch
 `roadmap/local-extension-isolation-wave27`, starting HEAD
 `88c50b025e5b3c65876944011b95fb05b30e08cd`.
 
-Accept the local backend proof and the operation slices identified below.
-Hold offboarding schedule/reschedule for a validation mismatch (F1), and SSF
+Initial recommendation at `9471b9a`: accept the local backend proof and the
+operation slices identified below. Hold offboarding schedule/reschedule for
+a validation mismatch (F1), and SSF
 deletion for a missing secret-response guard (F2). Neither finding was
 reproduced by running a product binary in this review. No task closure or board
 change is requested.
@@ -45,7 +55,7 @@ historical; the actual corrective code supersedes it. Reported runs below are
 worker-reported historical evidence, not independently rerun results or raw-log
 verification.
 
-## Integration matrix
+## Initial integration matrix
 
 ACCEPT means a review recommendation for the stated slice, with the evidence
 limits below. It is not acceptance of an entire cumulative source branch.
@@ -168,7 +178,8 @@ that plan-bound commands would otherwise silently ignore.
 and Core/shared transaction writers for access, offboarding, directory and
 provisioning. Direct writes carry a revision and idempotency key. PAM's
 revision-fetch fallback omits the revision only for the server's explicit
-403 `revision_optional` response, preserving its bearer policy for approvers
+403 revision-read refusal while the access adapter has enabled the local
+`revision_optional` flag, preserving its bearer policy for approvers
 without `state.read`; it does not reinterpret another failure as permission.
 The browser's stricter requirement for both headers remains an existing M03
 policy difference, not resolved by this client addition. The SSF shared writer
@@ -275,3 +286,154 @@ Documentation verification: `python3 scripts/check-docs.py` passed
 (`Markdown links and build-directory layout checked`). `git diff --cached
 --check` passed; the staged diff contains only this new Markdown report.
 No production checks were run by this reviewer.
+
+## Correction follow-up at fa7511f
+
+The original M03 task details and current worktree state were read again before
+this follow-up. The acceptance and completion gate above still apply. All
+implementation reads again used immutable objects; the management worktree's
+mutable client files were not read or edited. The supplied accepted main was
+used as a comparison object without merging it into this report-only branch.
+
+| Input | Full pinned commit |
+| --- | --- |
+| Cumulative management snapshot | `fa7511f3ac8854df77bfd3a12d950eed2f1d9e73` |
+| Accepted main | `148fafd4825c6cf803faf4ae869e3089e1462982` |
+| Earlier review | `1210f6b50e3c18453ff4886d011ab7efd63dd785` |
+| Initial corrective | `9471b9aa3b14c703b95f9a4848016c3cd091d05d` |
+| Signal/privacy follow-up | `e2e5e8c64fc072c545ff8a8e4f1609f5aa3c8b4c` |
+| F1 correction | `174215399559bd77aeb16fc95f26a52ca5b81d7e` |
+| F2 correction | `07a754dfc9a19a2680a1b2896ce7abf1ae5b09b2` |
+| Separately committed F3 correction | `a162347cf0b5d55d2957066fff26ca2145f6197e` |
+
+F3 was committed while this review was being finished. Its full hash was
+resolved before reading its six-file diff and relevant cumulative helpers.
+That diff against `fa7511f` contains only the UTF-8 plan-output correction,
+its focused test definition and README wording; it adds no workflow or
+connector-status change. The port checklist keeps `fa7511f` as its baseline
+and explicitly names the F3 hunks to add.
+
+### Findings disposition and acceptance recommendation
+
+| Source slice | Static recommendation | Evidence and residual |
+| --- | --- | --- |
+| Connector-independent `bbbfd63`, with `1742153` and `a162347` | ACCEPT corrected operation slice | F1 is corrected at cumulative `offboard.rs:121-135`: the same component count, byte bound and ASCII alphabet as accepted `src/offboarding.rs:75-89`. The new mock definition covers the 65-byte counterexample, three 64-byte components, reschedule and local malformed-input refusals. Include the separately reviewed F3 correction for plan output. |
+| Operation-only `ee2b2ab` | ACCEPT specified operation hunks | Preserve the prior plan-bound flag refusal and exact removal/retained-job test corrections. Workflow/client-connector hunks remain held. |
+| `7de8635` plus `9471b9a` plus `e2e5e8c` | ACCEPT cumulative backup/archive and SSF create/list | Keep all corrections together. Archive framing/config parsing is unchanged from reviewed `9471b9a`; early UTF-8 backup refusal, size limits and no-replace private publication remain. Unix INT/TERM cancellation and inherited HUP disposition are scoped below. |
+| `07a754d` | ACCEPT SSF delete correction; release F2 hold | At cumulative `ssf.rs:82-100`, recursively refuse the known header field, validate `deleted: true` and the requested `stream_id`, then reconstruct only those two fields. Extra response fields cannot reach stdout. New definitions cover nested/mixed-case header refusal and allowlisted output. |
+| `fa7511f` itself | Do not port as product code | It adds a workflow activation proposal, not an accepted replay correction. It is only the immutable review snapshot here. |
+| `a162347` | ACCEPT F3 correction | Every LDAP/Workspace/Entra/SCIM and desired-state plan command checks UTF-8 output before requests or output checks/writes. The shared save helper also checks; summaries serialize a validated `&str` and return `Result` rather than panicking. The five-command Unix refusal and valid-summary definitions were inspected, not run. No client edits or duplicate tests were made by this reviewer. |
+| Workflow/client-connector slices | HOLD | The replay API and live activation/sealing correction have not been accepted for this review. No workflow or connector-status acceptance is implied by operation acceptance. |
+
+No additional blocking code defect was found within the corrected bounded
+backup/SSF operation slice. This recommendation does not turn the original M03
+task into done. Whole `bbbfd63`, `ee2b2ab`, `7de8635` or management-branch copies
+are not approved as an integration method: use the port boundaries below and
+include the separately reviewed F3 hunks.
+
+The accepted and source server objects for `src/offboarding.rs`,
+`src/management/ssf_streams.rs` and `src/provisioning.rs` have identical blob
+IDs in the two snapshots. The current SSF shared delete writer still returns
+`{"deleted":true,"stream_id":id}` at lines 483–503, after live authorization,
+receipt replay/preconditions and one transaction. `id` is not the response key.
+There was no observed server leak in either review.
+
+The normal CLI emitter still does not generically mask `authorization_header`;
+the corrected SSF operation guard and deletion allowlist provide that protection.
+`e2e5e8c` strengthens `carries`: case-insensitive header-field keys, exact secret
+keys/values and substring matches in values for secrets at least eight bytes.
+It is a conservative heuristic: a short secret coinciding with an ordinary
+property name can cause a refusal after creation, and arbitrary encodings or
+transformed secrets are not covered. Fixed errors describe an uncertain already
+committed create/delete without reflecting response bodies or secret values.
+Best-effort zeroization and non-Unix private-permission limits remain as recorded
+above; the crate retains `unsafe_code = "forbid"`.
+
+One wording correction to the initial review is made above: PAM fallback tests
+the HTTP 403 status when its local `revision_optional` flag is enabled; it does
+not require a server error code named `revision_optional`. Other status failures
+remain errors, and the server still authorizes the mutation independently.
+
+### Signals and publication boundary
+
+At cumulative `backup.rs:74,118-154`, registration occurs before partial-file
+creation and covers SIGINT/SIGTERM only. No SIGHUP listener is installed. This
+preserves the inherited ignore used by `nohup`; with the ordinary default HUP
+disposition, a HUP can end the process and leave a private partial. The new
+fixtures model both cases with an explicit HUP signal and use TERM to clean up
+the surviving `nohup` transfer. They do not exercise a real terminal closure.
+
+The prepublication `pending()` poll at lines 97–102 consumes an already visible
+notification before the hard link. Tokio's signal API documents process-wide
+handler installation and cancel-safe `recv`; the timeout implementation polls
+its inner future before the timer, supporting a zero-duration poll for an
+immediately ready notification. These are library facts, not host execution
+evidence. [Tokio 1.53.1 Signal API](https://docs.rs/tokio/1.53.1/tokio/signal/unix/struct.Signal.html),
+[Tokio timeout source](https://docs.rs/tokio/latest/src/tokio/time/timeout.rs.html).
+
+Residual documentation condition for port: say "checks for a visible pending
+notification before publication", rather than promising that every signal
+arriving before the hard link wins. Notification delivery can lag, and a signal
+can arrive after the last poll. The unit definition at `backup.rs:348-363`
+loops/sleeps until the notification becomes visible; it does not establish
+one-poll observation of every delivered OS signal. Publication and synchronous
+cleanup remain outside cooperative polling, and unlink errors are ignored.
+Describe ordinary partial cleanup as best-effort. This is a low contract-wording
+limit, not a claim that an unverified archive is published or that an existing
+destination is replaced. No Unix-host/Windows signal result was executed here.
+
+### Bounded source-to-port checklist
+
+Each row is a permissible source boundary for root, not an instruction to replace
+an accepted cumulative file. Base the target on reviewed main `148fafd`; preserve
+its accepted equivalents, CI/A03 and credential writers. Review any later target
+delta before applying these hunks. Directory operations below operate the
+already configured directory/provisioning routes; connector definition/export
+and activation support are excluded.
+
+| Destination | Pinned source boundary | Port requirement |
+| --- | --- | --- |
+| `crates/riauthctl/src/access.rs`, `directory.rs`, `offboard.rs`, `plans.rs`, `provision.rs` | New connector-independent operation modules from cumulative `fa7511f` (`bbbfd63`, operation helpers from `ee2b2ab`, corrected `1742153`), plus `a162347` in directory/plans/provision | Include exact confirmation, bounded plan paging, stored-plan matching, typed recovery input and PAM policy. `offboard.rs` must include F1 correction. Add F3's early output checks and fallible validated-string summary/callers together. |
+| `crates/riauthctl/src/management.rs` | Only `bbbfd63` removal-confirmation signature/check/header hunks in `apply`, plus `a162347` UTF-8 check/string summary in `plan` | Retain other accepted `plan`/`export` and credential behavior. Exclude `ee2b2ab` connector-status extraction/helper and cumulative export changes. |
+| `crates/riauthctl/src/transport.rs` | `bbbfd63` confirmation headers and optional-revision/plan methods; `7de8635` streaming client/`open_stream` hunks | Update all `RequestHeaders` constructors explicitly. Preserve primary-issuer/session binding, no redirects/proxies and bounded safe error handling. Streaming gets connect/read timeout, not a whole-transfer deadline. |
+| `crates/riauthctl/src/archive.rs`, `backup.rs`, `ssf.rs` | Cumulative `fa7511f`, incorporating `7de8635` → `9471b9a` → `e2e5e8c`, and `07a754d` for SSF | Treat the corrections as a unit. Preserve framing/quotas, typed envelopes/strict config, no-replace publication, UTF-8 backup refusal, INT/TERM-only listeners, widened secret guard and two-field delete output. |
+| `crates/riauthctl/src/main.rs` | Operation modules/enums/dispatch and apply confirmation from `bbbfd63`; pre-Remote flag check only from `ee2b2ab`; SSF/backup routing and 32-byte–4-GiB parser bound from `7de8635` | Exclude `mod workflow`, Workflow enum and dispatch. Preserve accepted command paths and emitter behavior. |
+| `crates/riauthctl/Cargo.toml`, `Cargo.lock` | `7de8635` adds direct `aws-lc-rs`/`base64`, Tokio `signal` and its lock wiring | Reconcile only required dependency/feature entries; keep accepted locked graph changes and `unsafe_code = "forbid"`. The corrective commits add no dependency changes. |
+| `crates/riauthctl/tests/m03_parity_ops.rs` | Operation fixtures/tests from `bbbfd63`, retained-job/flag corrections from `ee2b2ab`, timezone definition from `1742153`, non-UTF-8 plan definition from `a162347` | Include through the plan-bound refusal test, stopping before `export_server` (line 1670 at `fa7511f`, line 1807 with F3). Exclude connector export fixtures/tests after that boundary. |
+| `crates/riauthctl/tests/m03_parity_ssf_backup.rs` | Cumulative `fa7511f`, from `7de8635` and `9471b9a`/`e2e5e8c`/`07a754d` | Include corrected archive faults, local input/privacy checks, nested/mixed-case deletion response cases and INT/TERM/default-HUP/nohup definitions. They are definitions, not this review's execution results. |
+| `tests/m03_pam_e2e.rs`, `tests/m03_state_removal_e2e.rs`, `tests/m03_backup_e2e.rs` | PAM/removal tests from `bbbfd63`, exact refusal from `ee2b2ab`, real backup/restore test from `7de8635` | Preserve ignored real-binary setup and explicit evidence limits. Do not include workflow/connector e2e tests from mixed commits. |
+| `crates/riauthctl/README.md`, `docs/capability-matrix.md`, `docs/operations.md` | Only command/confirmation/private-file/backup/SSF statements belonging to these operation slices and their corrections, including F3's plan-output sentence | Preserve accepted other-lane text, exclude workflow/client-connector claims, and scope pending-signal/cleanup and duplicate-key promises as above. Do not copy historical source-report closure assertions into product docs. |
+
+Not in this port: `src/cli/workflows.rs`, server workflow API/assembly or sealing
+changes, `crates/riauthctl/src/workflow.rs`, workflow mock/e2e files, connector
+export/status code/tests, or the activation proposal added by `fa7511f`.
+The already reviewed `4b9851a` backend-proof recommendation remains limited to
+its two files and local evidence; it does not authorize the connector stack.
+W07 implementation is untouched.
+
+### Follow-up evidence and remaining gates
+
+Pinned `fa7511f:docs/roadmap/local-wave28-management-report.md`, last edited by
+`3d10007316fb4c93f56cd993e6638b0de3c27f16`, supplies newer historical evidence
+than the initial review's wave27 report: after `9471b9a`, the worker reports
+17 SSF/backup mock tests and one real backup/restore pass; after `e2e5e8c`, it
+reports unit 1, SSF/backup 19, clean client clippy/fmt/terminal-usb check and one
+real backup/restore pass. Those are source-reported results, not fresh checks
+or independent log verification. The pinned report predates `1742153` and
+`07a754d`; their new test definitions were inspected but no run result for
+those commits or `a162347` is asserted here. Earlier SIGHUP-cleanup claims in that report
+are historical and superseded by its own `e2e5e8c` section.
+
+Performed in this follow-up: task/guidance/status reads, full-hash resolution,
+immutable correction/cumulative-source reads, accepted-server blob comparisons,
+focused patch/test-definition inspection and primary library documentation
+review. No build or product test was run, and no Cargo target was used.
+Only this Markdown report was edited. `git diff --check` and
+`git diff --cached --check` passed; the staged scope is this report only.
+No source, main, accepted worktree, task status,
+merge or push was changed.
+
+F3 is closed by static review of `a162347`. Low documentation limits, broader
+interface/header policy decisions, official released artifacts and external acceptance remain
+explicit. Root owns porting, validation and board reconciliation. Acceptance of
+this static operation review is not whole-task or external completion.
