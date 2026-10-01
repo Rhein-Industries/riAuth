@@ -19,6 +19,11 @@ The connector port uses fixed Git objects from management source
 `e5faa33ad6a8ce82abffd2bac0df9e1ddf21a817`, never its moving worktree diff.
 It combines the protected end state of these source commits in one port:
 
+The bounded connector port commit is
+`ace3e7adcb8d249376c05a54b7ff450259c454c5` (24 files, 6,465 additions and
+106 removals, including this report's initial evidence). Its shared-file delta
+does not include the separately held S04 lookup hunk.
+
 | Source | Included behavior |
 | --- | --- |
 | `c8dd4f8cc0b75c7e5fb0d7bf23abd44d8a0e74f8` | Typed manifest definitions, validation, full-human authorization, global dependency fallback and digest-only audit |
@@ -135,10 +140,10 @@ versioned-resource/interface acceptance. Root must review the protected port and
 carry the approval exclusion; remaining workflow correction and independent
 adapter, PostgreSQL and release evidence stay explicit dependencies.
 
-S04 still requires the separate narrow-family plan-persistence interleaving fix
-and focused evidence on this protected connector baseline. Its held lookup fix
-remains in branch history. O03 effective rate-threshold agreement remains a
-proposal; no agreement format migration is included.
+S04's separate persistence fix and evidence are recorded below. Its earlier
+lookup fix remains in branch history and still requires root's acceptance after
+the protected connector integration. O03 effective rate-threshold agreement
+remains a proposal; no agreement format migration is included.
 
 Admission remains a nonrenewed 60-second shared lease. A paused process after
 admission and before external IO has no atomic external-IO fence. Connector
@@ -147,3 +152,74 @@ Credential path exclusion is lexical and case-folded, not filesystem
 canonicalization; operators control symlinks/hardlinks. Restored bindings return
 to the snapshot's timeline; independent operator pins do not confer identity or
 scope rollback protection. Synthetic local peers do not demonstrate deployed HA.
+
+## Separate S04 persistence slice
+
+Commit `044cdb9e8a658aac90f3670fe4c6a515eb9072ff` changes only `src/state.rs`
+and `tests/state_reconciliation.rs` (221 additions, 29 removals). Persistence now
+uses the same `plan_revision_current` shape and digest checks as retained-plan
+reuse and apply. This removes its unconditional global-revision rejection for
+the four existing eligible families: Group membership, one existing client's
+display name, one existing user's display name, and one existing client's
+catalogue description. The captured base revision stays in the plan; the final
+writer rereads the principal and authority, verifies current dependencies and
+target binding, binds the final plan content, and stores it atomically.
+
+Relevant dependency changes still abort persistence. Mixed family, grant,
+connector definition, connector retirement and target-fingerprinted shapes keep
+the global revision. No family was added, no digest format was migrated, and the
+held Group representation was not changed. The deterministic callback is exposed
+only under `test-support` after the aborted preview and before the real writer;
+the ordinary API supplies a no-op callback.
+
+The existing `38886cbe26cee7fe2deb6f89809e79ce4252a88c` matching-plan lookup hunk
+survives the protected connector port unchanged. It checks only a candidate for
+this actor, manifest and review before consulting its dependencies; conflicting
+missing/rebound dependencies cause replan, while matching decoding/storage
+failures still propagate. No unrelated retained plan can trigger its row digest.
+
+Focused checks actually run on the protected baseline:
+
+- `cargo test --features test-support --test state_reconciliation plan_persistence_checks_dependencies_across_interleaved_writes -- --exact`: passed. One deterministic test covers 14 scenarios: four unrelated-write successes that persist and apply, four relevant-write conflicts, five global-fallback conflicts (mixed, grant, definition, retirement, target fingerprint), and a revoked agent's authority with an unchanged global revision. Conflict snapshots preserve the interleaved committed write and contain no plan or preview mutation.
+- The first run of that same test stopped on a missing required `groups` field in its new SCIM fixture. The fixture was corrected; no product workaround was introduced. The exact rerun passed.
+- `target/wave27/debug/deps/state_reconciliation-4fd9f4fc50528004 retained_stale_dependencies_only_invalidate_their_own_manifest --exact`: passed on the newly built S04 binary, validating the retained lookup on this connector baseline.
+- `cargo fmt --all -- --check`, `git diff --check` and `python3 scripts/check-docs.py`: passed before the S04 commit. The linker retained the existing `__eh_frame` warning. Free disk stayed above 40 GiB. No further builds or test campaign followed these focused checks.
+
+Root integration order: protected connector `ace3e7a` together with the required
+owned approval exclusion, then previously held lookup `38886cb`, then persistence
+`044cdb9`. Root must preserve newer accepted workflow/management equivalents
+when carrying these narrow deltas. This branch's history was preserved; no
+unaccepted source stack was merged or reset.
+
+## Closure recommendations against the original tasks
+
+S04's requested acceptance is "Avoid conflicts from unrelated changes while
+invalidating plans when relevant policy or authorization dependencies change."
+Its workstream gate requires improved performance under equivalent security
+settings and concurrency evidence preserving identity invariants. Recommend
+accepting the local lookup and persistence slices after connector integration;
+keep the whole task `43b4ad2e-5b7c-46db-98ff-148be042d6ac` in progress until
+root reconciles full-scope acceptance and its measured-performance/concurrency
+evidence. This check proves the specified local interleaving behavior on redb;
+it supplies neither a benchmark nor independent PostgreSQL/release evidence.
+Other resource edits deliberately retain the global fence.
+
+O03's requested acceptance is "Detect mismatched capabilities and security
+settings; define shared jobs, rate limits, and cache freshness." Its operator
+gate requires knowing the failing component, remaining safety and corrective
+action. Accepted wave27 admission, shared rate counters and SCIM freshness are
+preserved. Keep whole task `85240c6b-8c87-4a62-a07e-68c7ed1a5d5a` in progress:
+effective thresholds still depend on node-local configuration, and this lane
+does not supply deployed multi-node or complete operator acceptance evidence.
+
+The next O03 local implementation proposal is a canonical map of all 16
+effective rate thresholds, resolving each accepted category's compiled default
+and configured override through one shared resolver used by HTTP counting and
+agreement checks. Compare semantic values, so omission and an explicit default
+agree. Plan an explicit offline upgrade of the strict format-2 agreement with
+backup and stopped processes; never silently amend it during open or infer that
+old nodes implement the shared-ledger protocol. Fail before startup writes on a
+mismatch and identify the category and align/restart remedy. This needs root's
+ownership coordination for configuration, API rate paths, node-security and
+maintenance/edition handoff. It is a proposal only: this lane changed no agreement
+format, node-security record, maintenance operation or rate thresholds.
