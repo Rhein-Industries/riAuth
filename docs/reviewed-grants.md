@@ -58,10 +58,16 @@ cancel and stage a new proposal when intent changes.
 
 A full administrator can load one exact recipient, inspect the current grants,
 and edit the complete proposed replacement (at most 32 rows). Removing all rows
-proposes complete revocation. Acknowledging the replacement and selecting **Stage
-exact change** opens its immutable review page; it does not assign or revoke
-grants. The server still decides which changes need review. This UI does not add
-an immediate-write path or change the grant authorization rules.
+proposes complete revocation. When the replacement adds, removes or alters a
+directory-operator or security-administrator grant, acknowledging it and selecting
+**Stage exact change** opens its immutable review page; that does not assign or
+revoke grants. A replacement that leaves those two roles untouched shows **Apply
+change now** instead and uses the existing immediate endpoint
+(`PUT /api/admin/users/{username}/delegated-grants`) with the same
+`Idempotency-Key` and `If-Match` as every browser write. It takes effect at once,
+is audited as `delegation.grants.set`, and the page then shows the saved grants.
+The page only chooses the endpoint. The server still decides which changes need
+review, shows its refusal as sent, and no grant authorization rule changed.
 
 The review page shows exact before/after grants and bound target identities,
 author, every reviewer, executor, timestamps, expiry, canonical digest, management
