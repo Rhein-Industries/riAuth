@@ -23,6 +23,7 @@ mod cloud_directory_types;
 #[cfg(feature = "platform")]
 mod cloud_operations;
 pub mod config;
+mod connector_definitions;
 pub mod connector_guard;
 pub mod context;
 pub mod core;

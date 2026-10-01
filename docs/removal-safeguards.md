@@ -129,10 +129,12 @@ or body returns `Idempotency key was used for a different request`. Manifests
 that name another resource family, other than one client display-name change,
 one client catalogue-description change, or one user display-name change, and
 manifests with `target_state_fingerprint`, still compare the global revision.
-A manifest that includes `delegated_grants` or `ssf_streams` keeps that global
-revision when its other entries are only groups, one client display name, one
-catalogue description, or one user display name. An empty grant list is still a
-grant entry. An empty `ssf_streams` list is not. Removal confirmation is unchanged.
+A manifest that includes `delegated_grants`, `ssf_streams`, or a connector
+definition or retirement (`directories`, `workspace_directories`,
+`entra_directories`, `scim_targets`, or `retired_connectors`) keeps that global revision when its other entries are only
+groups, one client display name, one catalogue description, or one user display
+name. An empty grant list is still a grant entry. An empty `ssf_streams` list or
+an empty connector table is not. Removal confirmation is unchanged.
 
 A manifest that names one existing client and changes only its display name
 stores a client dependency digest with its base revision. An unrelated audited
@@ -191,8 +193,9 @@ Removal confirmation is unchanged.
 
 Each plan reports `removal_impact`: `disabled_users`, `missing_users`,
 `removed_memberships` and `review_required`. Desired-state plans also report
-nonzero `disabled_clients`, `disabled_sources` and `disabled_passwords`; each
-requires review. The fixed baseline policy requires review for every missing
+nonzero `disabled_clients`, `disabled_sources`, `disabled_passwords` and
+`retired_connectors` (stored connector definitions that a `retired_connectors`
+entry deletes); each requires review. The fixed baseline policy requires review for every missing
 imported user or managed membership removal. Disabling explicitly present users
 requires review when all active linked users would be
 disabled, at least five would be disabled and that is at least 20% of active

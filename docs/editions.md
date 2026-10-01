@@ -120,7 +120,12 @@ the shared deactivation rows and `GET /api/provisioning/deactivations`.
 Platform `GET /api/operations/ssf` is the redacted read for outbound Shared
 Signals delivery failures. Essentials rejects stored `ssf_deliveries` and does
 not serve that route. Essentials also rejects a nonempty desired-state
-`ssf_streams` list with `SSF streams require Platform`. The incident procedure is [SSF delivery](ssf-delivery.md).
+`ssf_streams` list with `SSF streams require Platform`, and a nonempty desired-state
+`workspace_directories` or `entra_directories` table with
+`Google Workspace and Microsoft Entra connector definitions require Platform`.
+A Platform-to-Essentials transition is blocked while such a stored connector
+definition exists, and retiring it (`retired_connectors`, on the Platform build)
+clears the blocker; LDAP and SCIM definitions are shared by both editions. The incident procedure is [SSF delivery](ssf-delivery.md).
 Shared configuration, temporary access, offboarding and
 remote-key records remain decodable for downgrade inspection; an Essentials
 binary still refuses to restore or open a store that retains them. Restore a Platform archive with Platform, then use the handoff

@@ -7,10 +7,9 @@ use crate::{
 };
 use axum::http::StatusCode;
 use serde_json::{Value, json};
-use std::{
-    collections::BTreeSet,
-    sync::{Arc, Mutex},
-};
+#[cfg(feature = "platform")]
+use std::sync::Mutex;
+use std::{collections::BTreeSet, sync::Arc};
 
 /// Who receives a verified password login: a bearer token, or a staged browser login.
 #[doc(hidden)]
@@ -25,7 +24,10 @@ pub struct Core {
     pub config: Config,
     pub store: Store,
     dummy_hash: Arc<String>,
+    #[cfg_attr(not(feature = "platform"), allow(dead_code))]
     pub(crate) runtime: Arc<crate::capability::RuntimeStatus>,
+    /// Stored connector definitions merged into `config` when this process opened.
+    pub(crate) connectors: Arc<crate::connector_definitions::Loaded>,
     #[cfg(feature = "platform")]
     pub(crate) verified_access_cache: Arc<Mutex<crate::device_trust::TokenCache>>,
     #[cfg(all(feature = "platform", feature = "test-support"))]
@@ -195,6 +197,7 @@ impl Core {
             store,
             dummy_hash: Arc::new(dummy),
             runtime: Arc::default(),
+            connectors: Arc::default(),
             #[cfg(feature = "platform")]
             verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
             #[cfg(all(feature = "platform", feature = "test-support"))]
@@ -219,6 +222,9 @@ impl Core {
         // Edition compatibility is read-only and must run before either migration
         // or restored-lineage reconciliation mutates shared state.
         crate::edition::validate_store(&store)?;
+        // Stored connector definitions join this process's configuration here,
+        // read-only, before the agreement check and before any worker starts.
+        let (config, connectors) = crate::connector_definitions::merge(config, &store)?;
         // An existing agreement is compared before any startup write. A missing
         // row is recorded only after the read-only edition and capability gates,
         // so a refused build does not become canonical.
@@ -238,6 +244,7 @@ impl Core {
             store,
             dummy_hash: Arc::new(dummy),
             runtime: Arc::default(),
+            connectors: Arc::new(connectors),
             #[cfg(feature = "platform")]
             verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
             #[cfg(all(feature = "platform", feature = "test-support"))]
@@ -1141,6 +1148,7 @@ pub(crate) fn audit_with_details(
         "delegation.",
         "access.",
         "ssf.stream.",
+        "connector.",
         "signing_key.",
         "admin.recover",
         "directory.apply",
