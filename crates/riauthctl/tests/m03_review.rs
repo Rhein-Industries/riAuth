@@ -277,6 +277,18 @@ fn review_server() -> MockServer {
             let id = target.rsplit('/').next().unwrap();
             Reply::json(json!({"proposal": {"id": id}, "digest": DIGEST, "status": "pending"}).to_string())
         }
+                // A creation execution reports whether it generated a secret.
+        target
+            if request.method == "POST"
+                && target.starts_with("/api/client-creation-changes/")
+                && target.ends_with("/execute") =>
+        {
+            Reply::json(
+                json!({"change": {"proposal": {"id": CHANGE_ID, "generate_client_secret": false}},
+                       "client": {"client_id": "new-app"}})
+                .to_string(),
+            )
+        }
         _ => Reply::json("{\"ok\":true}"),
     }
     })
@@ -535,6 +547,48 @@ fn an_explicit_retry_pair_is_forwarded_without_a_revision_read() {
     }
 }
 
+/// A `{"members":["aaa…"]}` file of exactly `size` bytes.
+fn members_file(size: usize) -> Vec<u8> {
+    let prefix = b"{\"members\":[\"";
+    let suffix = b"\"]}";
+    let mut bytes = prefix.to_vec();
+    bytes.resize(size - suffix.len(), b'a');
+    bytes.extend_from_slice(suffix);
+    assert_eq!(bytes.len(), size);
+    bytes
+}
+
+#[test]
+fn content_at_the_server_request_limit_is_sent_and_one_byte_more_is_not() {
+    let server = review_server();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let at_limit = dir.path().join("at-limit.json");
+    std::fs::write(&at_limit, members_file(32 * 1024)).unwrap();
+    assert_ok(&run(
+        &server.origin,
+        &session,
+        &[
+            "group",
+            "review",
+            "stage",
+            "ops",
+            "--file",
+            at_limit.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let writes = server.writes();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(writes[0].target, "/api/groups/ops/membership-changes");
+    assert!(writes[0].body.len() <= 32 * 1024);
+    assert_eq!(
+        writes[0].json()["members"][0].as_str().unwrap().len(),
+        32 * 1024 - 16
+    );
+}
+
 #[test]
 fn malformed_ids_digests_and_content_never_reach_the_server() {
     let server = review_server();
@@ -549,7 +603,9 @@ fn malformed_ids_digests_and_content_never_reach_the_server() {
     let object = write("object.json", b"{\"members\":[]}");
     let array = write("array.json", b"[]");
     let broken = write("broken.json", b"{not json");
-    let oversized = write("oversized.json", &vec![b' '; 64 * 1024 + 1]);
+    // The server rejects any request body over 32 KiB, so one byte more stays local.
+    let oversized = write("oversized.json", &vec![b' '; 32 * 1024 + 1]);
+    let over_by_one = write("over-by-one.json", &members_file(32 * 1024 + 1));
     let not_a_file = dir.path().join("directory");
     std::fs::create_dir(&not_a_file).unwrap();
 
@@ -606,6 +662,14 @@ fn malformed_ids_digests_and_content_never_reach_the_server() {
             "app",
             "--file",
             "/nonexistent/review.json",
+        ],
+        vec![
+            "group",
+            "review",
+            "stage",
+            "ops",
+            "--file",
+            over_by_one.to_str().unwrap(),
         ],
         vec![
             "grants",
@@ -737,8 +801,11 @@ fn creation_execute_keeps_the_secret_in_a_private_file() {
 
     // A server that promises a secret and omits it is an error, with no file left.
     let lost = dir.path().join("lost.json");
-    assert!(!execute("lost", &lost).status.success());
+    let output = execute("lost", &lost);
+    assert!(!output.status.success());
     assert!(!lost.exists());
+    let message = output_text(&output);
+    assert!(message.contains("was executed") && message.contains("rotate its secret"));
 
     // A refused execution leaves no empty file to block a retry.
     let stale = dir.path().join("stale.json");
@@ -758,4 +825,157 @@ fn creation_execute_keeps_the_secret_in_a_private_file() {
         None,
     ));
     assert_eq!(change["proposal"]["generate_client_secret"], true);
+}
+
+#[test]
+fn creation_execute_fails_closed_without_the_secret_flag_and_keeps_an_issued_secret() {
+    const SECRET: &str = "ri_client_flagless-secret-sentinel";
+    let server = MockServer::start(|origin, request| {
+        match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => Reply::json(
+            json!({"session_token": SESSION_TOKEN, "expires_at": 4_102_444_800_u64, "user": {}})
+                .to_string(),
+        ),
+        "/api/state/revision" => Reply::json("{\"revision\":7}"),
+        // Neither the flag nor a secret: a public client cannot be told from a lost secret.
+        "/api/client-creation-changes/unsure/execute" => Reply::json(
+            json!({"change": {"proposal": {"id": "unsure"}}, "client": {"client_id": "unsure-app"}})
+                .to_string(),
+        ),
+        // No flag, but a secret was issued: it must be kept, never dropped.
+        "/api/client-creation-changes/flagless/execute" => Reply::json(
+            json!({"change": {"proposal": {"id": "flagless"}}, "client": {"client_id": "flagless-app"},
+                   "client_secret": SECRET})
+            .to_string(),
+        ),
+        // A flag that is not a boolean is as unreadable as a missing one.
+        "/api/client-creation-changes/mistyped/execute" => Reply::json(
+            json!({"change": {"proposal": {"id": "mistyped", "generate_client_secret": "yes"}},
+                   "client": {"client_id": "mistyped-app"}})
+            .to_string(),
+        ),
+        _ => Reply::json("{}"),
+    }
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let execute = |id: &str, file: &Path| {
+        run(
+            &server.origin,
+            &session,
+            &[
+                "client",
+                "creation-review",
+                "execute",
+                id,
+                "--digest",
+                DIGEST,
+                "--secret-file",
+                file.to_str().unwrap(),
+            ],
+            None,
+        )
+    };
+
+    for id in ["unsure", "mistyped"] {
+        let file = dir.path().join(format!("{id}.json"));
+        let output = execute(id, &file);
+        assert!(!output.status.success(), "{id} failed open");
+        assert!(!file.exists(), "{id} left a file");
+        let message = output_text(&output);
+        assert!(
+            message.contains("did not say whether a client secret was generated")
+                && message.contains("was executed")
+                && message.contains("rotate its secret"),
+            "{id}: {message}"
+        );
+    }
+
+    let kept = dir.path().join("kept.json");
+    let output = execute("flagless", &kept);
+    let result = data(&output);
+    assert!(!output_text(&output).contains(SECRET));
+    assert_eq!(result["credential_file"], kept.to_str().unwrap());
+    let stored: Value = serde_json::from_slice(&std::fs::read(&kept).unwrap()).unwrap();
+    assert_eq!(stored["client_secret"], SECRET);
+}
+
+#[test]
+fn creation_execute_replays_the_committed_secret_into_a_new_file_on_an_exact_retry() {
+    const SECRET: &str = "ri_client_replayed-secret-sentinel";
+    // The receipt exception: the server replays the committed result, secret
+    // included, for the same key, caller and request.
+    let server = MockServer::start(|origin, request| match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => Reply::json(
+            json!({"session_token": SESSION_TOKEN, "expires_at": 4_102_444_800_u64, "user": {}})
+                .to_string(),
+        ),
+        "/api/client-creation-changes/change-1/execute" => Reply::json(
+            json!({"change": {"proposal": {"id": "change-1", "generate_client_secret": true}},
+                   "client": {"client_id": "new-app"}, "client_secret": SECRET})
+            .to_string(),
+        ),
+        _ => Reply::json("{}"),
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let first = dir.path().join("first.json");
+    let second = dir.path().join("second.json");
+    let execute = |file: &Path| {
+        run(
+            &server.origin,
+            &session,
+            &[
+                "--if-revision",
+                "9",
+                "--idempotency-key",
+                "execute-creation-1",
+                "client",
+                "creation-review",
+                "execute",
+                "change-1",
+                "--digest",
+                DIGEST,
+                "--secret-file",
+                file.to_str().unwrap(),
+            ],
+            None,
+        )
+    };
+    for file in [&first, &second] {
+        let output = execute(file);
+        let result = data(&output);
+        assert!(!output_text(&output).contains(SECRET));
+        assert_eq!(result["credential_file"], file.to_str().unwrap());
+        let stored: Value = serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap();
+        assert_eq!(stored["client_secret"], SECRET);
+    }
+    // Both attempts carried the same pair, with no revision read; the old file is untouched.
+    let executes: Vec<_> = server
+        .writes()
+        .into_iter()
+        .filter(|r| r.target.ends_with("/execute"))
+        .collect();
+    assert_eq!(executes.len(), 2);
+    for execute in &executes {
+        assert_eq!(execute.header("if-match"), Some("\"9\""));
+        assert_eq!(
+            execute.header("idempotency-key"),
+            Some("execute-creation-1")
+        );
+    }
+    assert!(
+        server
+            .requests()
+            .iter()
+            .all(|r| r.target != "/api/state/revision")
+    );
+    // An existing destination is still refused before any request.
+    let before = server.writes().len();
+    assert!(!execute(&first).status.success());
+    assert_eq!(server.writes().len(), before);
 }

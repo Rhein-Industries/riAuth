@@ -20,7 +20,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const MAX_CONTENT_BYTES: u64 = 64 * 1024;
+/// The server rejects any request body over 32 KiB (and an idempotent command
+/// body is read to 32 KiB), so a larger file could only ever fail with 413.
+const MAX_CONTENT_BYTES: u64 = 32 * 1024;
+/// The execution has already committed when these errors are reported.
+fn committed(reason: impl std::fmt::Display) -> anyhow::Error {
+    anyhow::anyhow!(
+        "{reason}. The change was executed: retry the exact command with the same --idempotency-key, --if-revision and a new --secret-file to recover the result, or inspect the client and rotate its secret"
+    )
+}
 const GRANT_CHANGES: &str = "/api/delegated-grant-changes";
 const MEMBERSHIP_CHANGES: &str = "/api/group-membership-changes";
 const POLICY_CHANGES: &str = "/api/client-policy-changes";
@@ -307,16 +315,33 @@ pub(crate) async fn creation(
             secret_file,
         } => {
             // Reserve the private destination first. A failed or secret-less
-            // execution removes the empty file; an exact retry with the same
-            // key and revision replays the committed result into a new file.
+            // execution removes the empty file. This route is the documented
+            // receipt exception: an exact retry with the same key and revision
+            // replays the committed result, secret included, into a new file.
             let mut destination = SecretFile::reserve(secret_file)?;
             let result =
                 decision_write(remote, options, CREATION_CHANGES, &id, "execute", &digest).await?;
-            let expected = result
+            // The committed proposal says whether a secret was generated. Without
+            // that boolean a missing secret cannot be told from a public client,
+            // so fail closed instead of guessing. A secret in the response is
+            // always kept.
+            let issued = result
+                .get("client_secret")
+                .and_then(Value::as_str)
+                .is_some_and(|secret| !secret.is_empty());
+            let expected = match result
                 .pointer("/change/proposal/generate_client_secret")
                 .and_then(Value::as_bool)
-                .unwrap_or(false);
-            protect_secret(result, Some(&mut destination), expected)
+            {
+                Some(expected) => expected,
+                None if issued => true,
+                None => {
+                    return Err(committed(
+                        "The response did not say whether a client secret was generated",
+                    ));
+                }
+            };
+            protect_secret(result, Some(&mut destination), expected).map_err(committed)
         }
     }
 }
@@ -395,19 +420,23 @@ fn read_content(path: &Path, what: &str, shape: Shape) -> Result<Value> {
         bail!("{what} file must be a regular file");
     }
     if metadata.len() > MAX_CONTENT_BYTES {
-        bail!("{what} file exceeds 64 KiB");
+        bail!("{what} file exceeds 32 KiB");
     }
     let mut bytes = Vec::new();
     file.take(MAX_CONTENT_BYTES + 1).read_to_end(&mut bytes)?;
     if bytes.len() as u64 > MAX_CONTENT_BYTES {
-        bail!("{what} file exceeds 64 KiB");
+        bail!("{what} file exceeds 32 KiB");
     }
     let value: Value =
         serde_json::from_slice(&bytes).with_context(|| format!("{what} file is not valid JSON"))?;
     match (shape, &value) {
-        (Shape::Array, Value::Array(_)) => Ok(value),
-        (Shape::Object, Value::Object(_)) => Ok(value),
+        (Shape::Array, Value::Array(_)) | (Shape::Object, Value::Object(_)) => {}
         (Shape::Array, _) => bail!("{what} file must contain a JSON array"),
         (Shape::Object, _) => bail!("{what} file must contain a JSON object"),
     }
+    // The request body is the re-serialized value, which is what the server limits.
+    if serde_json::to_vec(&value)?.len() as u64 > MAX_CONTENT_BYTES {
+        bail!("{what} content exceeds the server's 32 KiB request limit");
+    }
+    Ok(value)
 }
