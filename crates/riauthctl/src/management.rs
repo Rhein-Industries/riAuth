@@ -27,6 +27,9 @@ pub(crate) async fn plan(
     out: &Path,
     run_id: Option<&str>,
 ) -> Result<Value> {
+    // The summary names the file as JSON text: refuse a non-UTF-8 path before
+    // anything is requested or written.
+    let plan_file = crate::plans::require_utf8_output(out)?;
     if out.exists() {
         bail!("Plan destination already exists");
     }
@@ -53,7 +56,7 @@ pub(crate) async fn plan(
     }
     session::write_private(out, &serialized, false, false)?;
     Ok(json!({
-        "plan_file": out,
+        "plan_file": plan_file,
         "plan_id": result["plan_id"],
         "hash": result["hash"],
         "base_revision": result["base_revision"],
@@ -104,8 +107,20 @@ pub(crate) async fn export(remote: &Remote, out: &Path, run_id: Option<&str>) ->
     }))
 }
 
-pub(crate) async fn apply(remote: &Remote, file: &Path, run_id: Option<&str>) -> Result<Value> {
+pub(crate) async fn apply(
+    remote: &Remote,
+    file: &Path,
+    run_id: Option<&str>,
+    confirm_removals: Option<&str>,
+) -> Result<Value> {
     let plan = read_private_json(file, MAX_PLAN_BYTES)?;
+    // A confirmation names exactly the plan being applied, and is never implied.
+    // A mismatch is refused before any request.
+    if let Some(confirmed) = confirm_removals
+        && plan.get("plan_id").and_then(Value::as_str) != Some(confirmed)
+    {
+        bail!("--confirm-removals must be the exact plan_id of the plan being applied");
+    }
     let verified = remote.verify_issuer().await?;
     validate_plan(&plan, &verified)?;
     let credential = remote.credential(&verified)?;
@@ -139,6 +154,14 @@ pub(crate) async fn apply(remote: &Remote, file: &Path, run_id: Option<&str>) ->
     if plan["expires_at"].as_u64().is_none_or(|at| at <= now) {
         bail!("Plan expired; create a new plan");
     }
+    // The server refuses an unconfirmed removal too; stopping here keeps the
+    // review step explicit and sends nothing.
+    if plan["removal_impact"]["review_required"] == Value::Bool(true) && confirm_removals.is_none()
+    {
+        bail!(
+            "Inspect the plan's removal_impact and changes, then rerun with --confirm-removals {id}"
+        );
+    }
     let secrets = resolve_secrets(&plan)?;
     let body = ApplyBody {
         plan: &plan,
@@ -151,13 +174,14 @@ pub(crate) async fn apply(remote: &Remote, file: &Path, run_id: Option<&str>) ->
     }
     drop(encoded);
     remote
-        .request_api(
+        .request_api_confirmed(
             &verified,
             Method::POST,
             "/api/state/apply",
             Some(&body),
-            Some(credential.token()),
+            credential.token(),
             run_id,
+            confirm_removals,
         )
         .await
 }
