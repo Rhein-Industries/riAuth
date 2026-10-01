@@ -1,6 +1,8 @@
 //! Physical allocation of the process store. redb is the opened file, including
 //! free pages. PostgreSQL is the riAuth-owned tables, partitions and inheritance
-//! children, with their indexes and TOAST, each counted once.
+//! children, with their indexes and TOAST, each counted once. The metrics routes
+//! serve a cached, background-refreshed sample of that number.
+#![cfg(feature = "test-support")]
 mod common;
 
 use axum::{
@@ -10,7 +12,7 @@ use axum::{
 use common::backend::{Backend, BackendFixture};
 use http_body_util::BodyExt;
 use riauth::{
-    agent::{NewAgent, Permission},
+    agent::{Agent, NewAgent, Permission},
     config::Config,
     core::Core,
     model::NewUser,
@@ -22,7 +24,8 @@ use std::{
     fs,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
-    sync::atomic::Ordering::Relaxed,
+    sync::{Arc, Barrier, atomic::Ordering::Relaxed},
+    thread,
     time::{Duration, Instant},
 };
 use tower::ServiceExt;
@@ -203,6 +206,99 @@ fn gauge_bytes(text: &str) -> Option<u64> {
         let rest = line.strip_prefix("riauth_storage_allocated_bytes{")?;
         rest.rsplit_once(' ')?.1.parse().ok()
     })
+}
+
+fn gauge_age(text: &str) -> Option<f64> {
+    text.lines().find_map(|line| {
+        let rest = line.strip_prefix("riauth_storage_allocation_age_seconds{")?;
+        rest.rsplit_once(' ')?.1.parse().ok()
+    })
+}
+
+/// The fields only the metrics routes add to the allocation document.
+const CACHE_FIELDS: [&str; 6] = [
+    "sample_age_seconds",
+    "freshness",
+    "refresh_in_progress",
+    "refresh_running_seconds",
+    "cache_ttl_seconds",
+    "max_stale_seconds",
+];
+
+/// Product limits of the cache, and the limits these tests use after a refresh so
+/// a slow machine cannot let a sample expire between two assertions.
+const TTL: f64 = 30.0;
+const MAX_STALE: f64 = 300.0;
+const QUIET_TTL: Duration = Duration::from_secs(3600);
+const QUIET_MAX_STALE: Duration = Duration::from_secs(7200);
+const WAIT: Duration = Duration::from_secs(60);
+
+#[derive(Debug)]
+struct Cached {
+    freshness: String,
+    age: Option<f64>,
+    in_progress: bool,
+    running: Option<f64>,
+}
+
+/// A document from a metrics route: the closed allocation document plus the six
+/// cache fields, whose types and limits are checked here.
+fn assert_cached(report: &Value, fixture: &BackendFixture) -> Cached {
+    let mut closed = report.clone();
+    let object = closed.as_object_mut().unwrap();
+    for field in CACHE_FIELDS {
+        assert!(object.remove(field).is_some(), "missing {field}");
+    }
+    assert_closed(&closed, fixture);
+    let freshness = report["freshness"].as_str().unwrap().to_owned();
+    assert!(["fresh", "stale", "none"].contains(&freshness.as_str()));
+    let age = report["sample_age_seconds"].as_f64();
+    assert_eq!(age.is_some(), freshness != "none", "{report}");
+    if let Some(age) = age {
+        assert!(age.is_finite() && age >= 0.0);
+    }
+    let in_progress = report["refresh_in_progress"].as_bool().unwrap();
+    // The running time is a number exactly while a refresh is in flight.
+    let running = report["refresh_running_seconds"].as_f64();
+    assert_eq!(running.is_some(), in_progress, "{report}");
+    if let Some(running) = running {
+        assert!(running.is_finite() && running >= 0.0);
+    }
+    assert!(report["cache_ttl_seconds"].is_number());
+    assert!(report["max_stale_seconds"].is_number());
+    Cached {
+        freshness,
+        age,
+        in_progress,
+        running,
+    }
+}
+
+fn refreshing(report: &Value) {
+    unavailable(report, "refreshing");
+    assert_eq!(report["freshness"], "none");
+    assert!(report["sample_age_seconds"].is_null());
+}
+
+/// Takes one new sample now and leaves the quiet limits. The sample is whatever
+/// the store says at this moment, so a test that changes the store calls this
+/// afterwards to make the metrics routes show the change.
+fn refresh_cache(fixture: &BackendFixture) {
+    let store = &fixture.core.store;
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    store.set_allocation_cache_limits_for_test(Duration::ZERO, QUIET_MAX_STALE);
+    let _ = store.cached_allocation();
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    store.set_allocation_cache_limits_for_test(QUIET_TTL, QUIET_MAX_STALE);
+}
+
+/// Scrapes both metrics routes with `token` and returns the two bodies.
+fn scrape(fixture: &BackendFixture, token: &str) -> (String, Value) {
+    let (status, text) = http_text(fixture.core.clone(), token, "/api/operations/prometheus");
+    assert_eq!(status, StatusCode::OK);
+    let (status, json) = http(fixture.core.clone(), Some(token), "/api/operations/metrics");
+    assert_eq!(status, StatusCode::OK);
+    (text, json)
 }
 
 /// Autovacuum can create a free-space or visibility-map fork, or truncate trailing
@@ -441,28 +537,47 @@ fn allocation_case(mut fixture: BackendFixture) {
     assert_eq!(http_status, StatusCode::OK);
     assert_closed(&http_body, &fixture);
     same_size(&fixture, available(&http_body, scope), after_bytes);
-    let (prom_status, prom_body) = http_text(
+    // The metrics routes serve a cached sample. Every read above was the direct
+    // read, which neither fills nor consults the cache, so the cache is cold: the
+    // first scrape has no sample, says so, and starts the one refresh.
+    let store = &fixture.core.store;
+    assert_eq!(store.allocation_refreshes_for_test(), 0);
+    let (prom_status, cold_text) = http_text(
         fixture.core.clone(),
         &fixture.admin,
         "/api/operations/prometheus",
     );
     assert_eq!(prom_status, StatusCode::OK);
-    same_size(&fixture, gauge_bytes(&prom_body).unwrap(), after_bytes);
-    assert!(prom_body.contains(&format!(
+    assert!(!cold_text.contains("riauth_storage_allocated_bytes"));
+    assert!(!cold_text.contains("riauth_storage_allocation_age_seconds"));
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    // The sample was taken after `after_bytes` and is served until it expires.
+    let (warm_text, warm_json) = scrape(&fixture, &fixture.admin);
+    let cached_bytes = gauge_bytes(&warm_text).unwrap();
+    same_size(&fixture, cached_bytes, after_bytes);
+    assert!(warm_text.contains(&format!(
         "riauth_storage_allocated_bytes{{backend=\"{}\",scope=\"{scope}\"}} ",
         fixture.core.store.backend()
     )));
-    let (metrics_json_status, metrics_json) = http(
-        fixture.core.clone(),
-        Some(&fixture.admin),
-        "/api/operations/metrics",
-    );
-    assert_eq!(metrics_json_status, StatusCode::OK);
-    same_size(
-        &fixture,
-        available(&metrics_json["storage_allocation"], scope),
-        after_bytes,
-    );
+    assert!(warm_text.contains(&format!(
+        "riauth_storage_allocation_age_seconds{{backend=\"{}\",scope=\"{scope}\"}} ",
+        fixture.core.store.backend()
+    )));
+    let age = gauge_age(&warm_text).unwrap();
+    assert!((0.0..TTL).contains(&age), "{age}");
+    assert!(warm_text.contains("can be up to 300 seconds old"));
+    let sample = &warm_json["storage_allocation"];
+    assert_eq!(available(sample, scope), cached_bytes);
+    let view = assert_cached(sample, &fixture);
+    assert_eq!(view.freshness, "fresh");
+    assert!(view.age.unwrap() < TTL);
+    assert!(!view.in_progress);
+    assert_eq!(sample["cache_ttl_seconds"], TTL);
+    assert_eq!(sample["max_stale_seconds"], MAX_STALE);
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    // From here the sample stays fresh for the rest of the case.
+    store.set_allocation_cache_limits_for_test(QUIET_TTL, QUIET_MAX_STALE);
 
     // The allocation number has its own permission everywhere it is shown. A
     // grant issued for exactly `operations/metrics` sees nothing new in either
@@ -534,26 +649,28 @@ fn allocation_case(mut fixture: BackendFixture) {
         "/api/operations/prometheus",
     );
     assert_eq!(metrics_status, StatusCode::OK);
-    same_size(&fixture, gauge_bytes(&metrics_body).unwrap(), current);
+    // The warm sample, not a new read: the number is the one cached above.
+    assert_eq!(gauge_bytes(&metrics_body), Some(cached_bytes));
     let (status, wide_json) = http(
         fixture.core.clone(),
         Some(&both_agent),
         "/api/operations/metrics",
     );
     assert_eq!(status, StatusCode::OK);
-    same_size(
-        &fixture,
+    assert_eq!(
         available(&wide_json["storage_allocation"], scope),
-        current,
+        cached_bytes
     );
-    // A wildcard `operations.read` scraper reads the size on every scrape.
+    // A wildcard `operations.read` scraper is served the same sample.
     let (wildcard_status, wildcard_body) = http_text(
         fixture.core.clone(),
         &wildcard_agent,
         "/api/operations/prometheus",
     );
     assert_eq!(wildcard_status, StatusCode::OK);
-    same_size(&fixture, gauge_bytes(&wildcard_body).unwrap(), current);
+    assert_eq!(gauge_bytes(&wildcard_body), Some(cached_bytes));
+    // None of the scrapes above, authorized or not, started another read.
+    assert_eq!(fixture.core.store.allocation_refreshes_for_test(), 1);
 
     let doctor_after = fixture.core.doctor(&fixture.admin).unwrap();
     assert_eq!(doctor_before["healthy"], doctor_after["healthy"]);
@@ -609,7 +726,7 @@ fn allocation_case(mut fixture: BackendFixture) {
             "secret_absent": true,
             "doctor_healthy_unchanged": true,
             "ready_status": "ok",
-            "gauge_when_available": current,
+            "gauge_when_available": cached_bytes,
             "capacity": "unknown",
             "occupancy_ratio": Value::Null,
             "affects_readiness": false
@@ -636,24 +753,34 @@ fn redb_permission(fixture: &BackendFixture, scope: &str) -> &'static str {
     );
     assert_eq!(status, StatusCode::OK);
     unavailable(&body, "permission");
-    let (prom_status, prom_body) = http_text(
-        fixture.core.clone(),
-        &fixture.admin,
-        "/api/operations/prometheus",
-    );
-    assert_eq!(prom_status, StatusCode::OK);
-    assert!(
-        !prom_body.contains("riauth_storage_allocated_bytes"),
-        "unavailable allocation emitted a gauge"
-    );
-    let (metrics_status, metrics_body) = http(
-        fixture.core.clone(),
-        Some(&fixture.admin),
-        "/api/operations/metrics",
-    );
-    assert_eq!(metrics_status, StatusCode::OK);
-    unavailable(&metrics_body["storage_allocation"], "permission");
+    cached_failure(fixture, scope, "permission");
     "permission"
+}
+
+/// The metrics routes after `reason` has become the sample: no gauge, the failure
+/// as the document with its age, and any number of scrapes within the TTL read
+/// nothing more.
+fn cached_failure(fixture: &BackendFixture, scope: &str, reason: &str) {
+    refresh_cache(fixture);
+    let refreshes = fixture.core.store.allocation_refreshes_for_test();
+    for _ in 0..3 {
+        let (text, json) = scrape(fixture, &fixture.admin);
+        assert!(
+            !text.contains("riauth_storage_allocated_bytes"),
+            "unavailable allocation emitted a gauge"
+        );
+        assert!(!text.contains("riauth_storage_allocation_age_seconds"));
+        let sample = &json["storage_allocation"];
+        unavailable(sample, reason);
+        assert_eq!(sample["scope"], scope);
+        let view = assert_cached(sample, fixture);
+        assert_eq!(view.freshness, "fresh");
+        assert!(view.age.is_some() && !view.in_progress);
+    }
+    assert_eq!(
+        fixture.core.store.allocation_refreshes_for_test(),
+        refreshes
+    );
 }
 
 fn redb_missing(fixture: &BackendFixture, scope: &str) -> &'static str {
@@ -669,13 +796,7 @@ fn redb_missing(fixture: &BackendFixture, scope: &str) -> &'static str {
     );
     assert_eq!(status, StatusCode::OK);
     unavailable(&body, "missing");
-    let (prom_status, prom_body) = http_text(
-        fixture.core.clone(),
-        &fixture.admin,
-        "/api/operations/prometheus",
-    );
-    assert_eq!(prom_status, StatusCode::OK);
-    assert!(!prom_body.contains("riauth_storage_allocated_bytes"));
+    cached_failure(fixture, scope, "missing");
     "missing"
 }
 
@@ -700,12 +821,6 @@ fn postgres_timeout(fixture: &mut BackendFixture, scope: &str) -> &'static str {
 }
 
 fn postgres_permission(fixture: &mut BackendFixture, scope: &str) -> &'static str {
-    #[cfg(not(feature = "test-support"))]
-    {
-        let _ = (fixture, scope);
-        panic!("PostgreSQL allocation permission proof requires --features test-support");
-    }
-    #[cfg(feature = "test-support")]
     {
         let role = format!("alloc_{}", uuid::Uuid::new_v4().simple());
         let database = fixture.database_name();
@@ -775,25 +890,12 @@ fn postgres_permission(fixture: &mut BackendFixture, scope: &str) -> &'static st
         assert_eq!(status, StatusCode::OK, "{}", body["error"]);
         unavailable(&body, "permission");
         assert!(!body.to_string().contains(&role));
-        let (prom_status, prom_body) = http_text(
-            fixture.core.clone(),
-            &fixture.admin,
-            "/api/operations/prometheus",
-        );
-        assert_eq!(prom_status, StatusCode::OK);
-        assert!(
-            !prom_body.contains("riauth_storage_allocated_bytes"),
-            "unavailable allocation emitted a gauge"
-        );
-        assert!(!prom_body.contains(&role));
-        let (metrics_status, metrics_body) = http(
-            fixture.core.clone(),
-            Some(&fixture.admin),
-            "/api/operations/metrics",
-        );
-        assert_eq!(metrics_status, StatusCode::OK);
-        unavailable(&metrics_body["storage_allocation"], "permission");
-        assert!(!metrics_body.to_string().contains(&role));
+        // The refusal is cached like any other sample: three scrapes within the
+        // TTL leave the one refresh that took it.
+        cached_failure(fixture, scope, "permission");
+        let (text, json) = scrape(fixture, &fixture.admin);
+        assert!(!text.contains(&role));
+        assert!(!json.to_string().contains(&role));
         fixture.core.store.discard_idle_postgres_connections();
         fixture
             .postgres_client()
@@ -978,6 +1080,389 @@ fn postgres_allocation_counts_each_leaf_once() {
     assert!(expected + u64::try_from(unrelated).unwrap() <= u64::try_from(database).unwrap());
     // Reading is repeatable and writes nothing.
     assert_eq!(available(&fixture.core.store.allocation(), scope), expected);
+}
+
+/// Runs `cached_allocation` on 16 threads at once and returns what each saw and
+/// how long its call took.
+fn concurrent_cached(store: &riauth::store::Store) -> Vec<(Duration, Value)> {
+    let barrier = Arc::new(Barrier::new(16));
+    let handles: Vec<_> = (0..16)
+        .map(|_| {
+            let (store, barrier) = (store.clone(), barrier.clone());
+            thread::spawn(move || {
+                barrier.wait();
+                let started = Instant::now();
+                let document = store.cached_allocation();
+                (started.elapsed(), document)
+            })
+        })
+        .collect();
+    handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .collect()
+}
+
+/// One refresh at a time, shared by every caller and clone of a store. While a
+/// refresh is held open, callers return at once, the cache serves what it has, and
+/// no second refresh starts.
+#[test]
+fn cached_allocation_is_single_flight_and_never_waits_for_the_read() {
+    let fixture = Backend::Redb.fixture();
+    let store = fixture.core.store.clone();
+    let scope = "redb_file_including_free_pages";
+    // Each refresh sleeps 3 seconds before it reads, standing in for a read that
+    // is stuck behind a lock. No caller may take anything like that long.
+    store.set_allocation_refresh_delay_for_test(Duration::from_secs(3));
+
+    // Cold: 16 simultaneous callers, one refresh.
+    let results = concurrent_cached(&store);
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    for (elapsed, document) in &results {
+        assert!(*elapsed < Duration::from_secs(2), "{elapsed:?}");
+        refreshing(document);
+        assert_cached(document, &fixture);
+        assert_eq!(document["refresh_in_progress"], true);
+    }
+    // While it is in flight a clone sees the same slot, still no thread starts,
+    // and the slot reports how long it has been taken.
+    thread::sleep(Duration::from_millis(50));
+    let held = store.clone().cached_allocation();
+    assert_eq!(held["refresh_in_progress"], true);
+    let running = assert_cached(&held, &fixture).running.unwrap();
+    assert!(running >= 0.04, "{running}");
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    // The threads themselves counted one entry and never two at once.
+    assert_eq!(store.allocation_refresh_threads_for_test(), (1, 1));
+
+    // Within the TTL every call serves the sample and starts nothing.
+    for _ in 0..16 {
+        let document = store.cached_allocation();
+        assert_eq!(
+            available(&document, scope),
+            fs::metadata(redb_file(&fixture)).unwrap().len()
+        );
+        let view = assert_cached(&document, &fixture);
+        assert_eq!(view.freshness, "fresh");
+        assert!(!view.in_progress && view.running.is_none());
+    }
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    assert_eq!(store.allocation_refresh_threads_for_test(), (1, 1));
+
+    // Past the TTL: the old sample is served as stale, with its age, and the 16
+    // callers add exactly one refresh between them.
+    thread::sleep(Duration::from_millis(50));
+    store.set_allocation_cache_limits_for_test(Duration::ZERO, Duration::from_secs(300));
+    let results = concurrent_cached(&store);
+    assert_eq!(store.allocation_refreshes_for_test(), 2);
+    for (elapsed, document) in &results {
+        assert!(*elapsed < Duration::from_secs(2), "{elapsed:?}");
+        available(document, scope);
+        let view = assert_cached(document, &fixture);
+        assert_eq!(view.freshness, "stale");
+        assert!(view.age.unwrap() >= 0.04, "{view:?}");
+        assert!(view.in_progress);
+    }
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    assert_eq!(store.allocation_refreshes_for_test(), 2);
+    assert_eq!(store.allocation_refresh_threads_for_test(), (2, 1));
+
+    // Past MAX_STALE the sample is not served: no bytes, reason `refreshing`.
+    store.set_allocation_refresh_delay_for_test(Duration::ZERO);
+    store.set_allocation_cache_limits_for_test(Duration::ZERO, Duration::ZERO);
+    let document = store.cached_allocation();
+    refreshing(&document);
+    assert_cached(&document, &fixture);
+    assert_eq!(document["max_stale_seconds"], 0.0);
+    assert_eq!(store.allocation_refreshes_for_test(), 3);
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    assert_eq!(store.allocation_refresh_threads_for_test(), (3, 1));
+}
+
+/// The direct read behind `/api/operations/storage` and `riauth storage` never
+/// touches the cache, and an unauthorized caller never starts a read.
+#[test]
+fn direct_read_and_unauthorized_callers_leave_the_cache_alone() {
+    let fixture = Backend::Redb.fixture();
+    let store = &fixture.core.store;
+    for _ in 0..3 {
+        available(
+            &fixture.core.storage_allocation(&fixture.admin).unwrap(),
+            "redb_file_including_free_pages",
+        );
+        available(&store.allocation(), "redb_file_including_free_pages");
+    }
+    let (status, _) = http(
+        fixture.core.clone(),
+        Some(&fixture.admin),
+        "/api/operations/storage",
+    );
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(store.allocation_refreshes_for_test(), 0);
+
+    let metrics_only = agent(&fixture, "alloc-only-metrics", &["operations/metrics"]);
+    let storage_only = agent(&fixture, "alloc-only-storage", &["operations/storage"]);
+    for token in [metrics_only.as_str(), "ri_agent_not_a_credential"] {
+        for path in ["/api/operations/prometheus", "/api/operations/metrics"] {
+            let (status, text) = http_text(fixture.core.clone(), token, path);
+            if token == metrics_only {
+                assert_eq!(status, StatusCode::OK);
+                assert!(!text.contains("storage_allocat"), "{path}");
+            } else {
+                assert_eq!(status, StatusCode::UNAUTHORIZED, "{path}");
+            }
+        }
+    }
+    for path in ["/api/operations/prometheus", "/api/operations/metrics"] {
+        let (status, _) = http_text(fixture.core.clone(), &storage_only, path);
+        assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
+    }
+    assert_eq!(store.allocation_refreshes_for_test(), 0);
+    // A caller who may read the number is the one who starts the read.
+    let (text, _) = scrape(&fixture, &fixture.admin);
+    assert!(!text.contains("riauth_storage_allocated_bytes"));
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+}
+
+/// Authorization is decided on every scrape, before the cache is consulted: a
+/// warm sample is not shown to a caller whose permission was just removed.
+#[test]
+fn a_warm_cache_is_shown_only_to_a_caller_who_may_read_it() {
+    let fixture = Backend::Redb.fixture();
+    let store = &fixture.core.store;
+    let scraper = agent(
+        &fixture,
+        "alloc-scraper",
+        &["operations/metrics", "operations/storage"],
+    );
+    // The first scrape finds a cold cache and starts the one read.
+    let (status, text) = http_text(fixture.core.clone(), &scraper, "/api/operations/prometheus");
+    assert_eq!(status, StatusCode::OK);
+    assert!(!text.contains("riauth_storage_allocated_bytes"));
+    refresh_cache(&fixture);
+    let (text, json) = scrape(&fixture, &scraper);
+    assert!(gauge_bytes(&text).is_some() && gauge_age(&text).is_some());
+    assert_eq!(json["storage_allocation"]["status"], "available");
+    let refreshes = store.allocation_refreshes_for_test();
+
+    let revoke = |resource: &str| {
+        store
+            .write(|tx| {
+                let mut stored: Agent = tx.get("agents", "alloc-scraper")?.unwrap();
+                stored
+                    .permissions
+                    .retain(|permission| permission.resource != resource);
+                tx.put("agents", "alloc-scraper", &stored)
+            })
+            .unwrap();
+    };
+    revoke("operations/storage");
+    let (text, json) = scrape(&fixture, &scraper);
+    assert!(!text.contains("riauth_storage_alloc"), "{text}");
+    assert!(json.get("storage_allocation").is_none());
+    assert!(json.get("queues").is_some());
+    revoke("operations/metrics");
+    for path in ["/api/operations/prometheus", "/api/operations/metrics"] {
+        let (status, _) = http_text(fixture.core.clone(), &scraper, path);
+        assert_eq!(status, StatusCode::FORBIDDEN, "{path}");
+    }
+    // The sample was warm throughout and nothing re-read it.
+    assert_eq!(store.allocation_refreshes_for_test(), refreshes);
+    // The administrator still sees it.
+    let (text, _) = scrape(&fixture, &fixture.admin);
+    assert!(gauge_bytes(&text).is_some());
+}
+
+/// A cache belongs to one opened store. Clones share it, and every open starts
+/// cold.
+#[test]
+fn every_opened_store_has_its_own_cold_cache() {
+    let fixture = Backend::Redb.fixture();
+    let clone = fixture.core.store.clone();
+    let _ = clone.cached_allocation();
+    assert!(clone.wait_allocation_refresh_for_test(WAIT));
+    // The original handle sees the clone's refresh and its sample.
+    assert_eq!(fixture.core.store.allocation_refreshes_for_test(), 1);
+    assert_eq!(fixture.core.store.cached_allocation()["freshness"], "fresh");
+    drop(clone);
+
+    let fixture = fixture.reopen_with(|_| {});
+    let store = &fixture.core.store;
+    assert_eq!(store.allocation_refreshes_for_test(), 0);
+    let (text, json) = scrape(&fixture, &fixture.admin);
+    assert!(!text.contains("riauth_storage_allocated_bytes"));
+    // The second scrape may or may not have finished the refresh already.
+    assert!(["none", "fresh"].contains(&json["storage_allocation"]["freshness"].as_str().unwrap()));
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    let (text, _) = scrape(&fixture, &fixture.admin);
+    assert!(gauge_bytes(&text).is_some());
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+
+    let fixture = fixture.restored_copy();
+    assert_eq!(fixture.core.store.allocation_refreshes_for_test(), 0);
+}
+
+/// A catalog that is locked does not slow a scrape. The refresh waits for the
+/// lock in the background; scrapes keep serving the old sample and start nothing,
+/// and when the refresh times out the failure is the sample.
+#[test]
+#[ignore = "requires an isolated PostgreSQL test cluster"]
+fn postgres_metrics_do_not_wait_for_a_locked_catalog() {
+    let fixture = Backend::Postgres.fixture();
+    let store = fixture.core.store.clone();
+    let scope = "postgresql_owned_relations_and_indexes";
+    refresh_cache(&fixture);
+    let (text, _) = scrape(&fixture, &fixture.admin);
+    let warm = gauge_bytes(&text).unwrap();
+    let refreshes = store.allocation_refreshes_for_test();
+
+    // Expire the sample, then lock the table the size statement must open.
+    store.set_allocation_cache_limits_for_test(Duration::ZERO, QUIET_MAX_STALE);
+    let mut holder = fixture.postgres_client();
+    holder
+        .batch_execute("BEGIN; LOCK TABLE riauth_store.storage_format IN ACCESS EXCLUSIVE MODE")
+        .unwrap();
+    let started = Instant::now();
+    let (status, text) = http_text(
+        fixture.core.clone(),
+        &fixture.admin,
+        "/api/operations/prometheus",
+    );
+    let elapsed = started.elapsed();
+    assert_eq!(status, StatusCode::OK);
+    assert!(elapsed < Duration::from_secs(2), "{elapsed:?}");
+    assert_eq!(gauge_bytes(&text), Some(warm));
+    assert!(gauge_age(&text).unwrap() > 0.0);
+    assert_eq!(store.allocation_refreshes_for_test(), refreshes + 1);
+    for _ in 0..3 {
+        let started = Instant::now();
+        let (status, json) = http(
+            fixture.core.clone(),
+            Some(&fixture.admin),
+            "/api/operations/metrics",
+        );
+        assert_eq!(status, StatusCode::OK);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        let sample = &json["storage_allocation"];
+        assert_eq!(available(sample, scope), warm);
+        let view = assert_cached(sample, &fixture);
+        assert_eq!(view.freshness, "stale");
+        assert!(view.in_progress);
+    }
+    assert_eq!(store.allocation_refreshes_for_test(), refreshes + 1);
+
+    // The refresh gives up at the session lock_timeout and stores that.
+    assert!(store.wait_allocation_refresh_for_test(Duration::from_secs(30)));
+    drop(holder);
+    store.set_allocation_cache_limits_for_test(QUIET_TTL, QUIET_MAX_STALE);
+    for _ in 0..3 {
+        let (text, json) = scrape(&fixture, &fixture.admin);
+        assert!(!text.contains("riauth_storage_alloc"), "{text}");
+        let sample = &json["storage_allocation"];
+        unavailable(sample, "timeout");
+        let view = assert_cached(sample, &fixture);
+        assert_eq!(view.freshness, "fresh");
+        assert!(view.age.unwrap() < 60.0 && !view.in_progress);
+    }
+    assert_eq!(store.allocation_refreshes_for_test(), refreshes + 1);
+    // The lock is gone, so the next refresh reads the size again.
+    refresh_cache(&fixture);
+    let (text, _) = scrape(&fixture, &fixture.admin);
+    assert!(gauge_bytes(&text).is_some());
+    // Every refresh that was started ran as one thread, and never two at once,
+    // including the one that waited on the lock.
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    let (entered, most_at_once) = store.allocation_refresh_threads_for_test();
+    assert_eq!(entered, store.allocation_refreshes_for_test());
+    assert_eq!(most_at_once, 1);
+}
+
+/// A refresh that panics, or whose thread cannot start, must not leave the slot
+/// taken or the failure unrecorded: the failed attempt is the sample, it is served
+/// like any other failure, and it is retried once the TTL has passed.
+#[test]
+fn a_refresh_that_panics_frees_the_slot_with_an_error_sample() {
+    let fixture = Backend::Redb.fixture();
+    let store = &fixture.core.store;
+    store.set_allocation_refresh_panic_for_test(true);
+    let first = store.cached_allocation();
+    refreshing(&first);
+    assert_eq!(first["refresh_in_progress"], true);
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    assert_eq!(store.allocation_refresh_threads_for_test(), (1, 1));
+    for _ in 0..4 {
+        let document = store.cached_allocation();
+        unavailable(&document, "error");
+        let view = assert_cached(&document, &fixture);
+        assert_eq!(view.freshness, "fresh");
+        assert!(!view.in_progress && view.running.is_none());
+    }
+    // The sample is a failure, so the scrape has no series either.
+    let (text, json) = scrape(&fixture, &fixture.admin);
+    assert!(!text.contains("riauth_storage_alloc"), "{text}");
+    unavailable(&json["storage_allocation"], "error");
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+
+    // Past the TTL, with the panic off: exactly one new refresh, which reads.
+    store.set_allocation_refresh_panic_for_test(false);
+    store.set_allocation_cache_limits_for_test(Duration::ZERO, QUIET_MAX_STALE);
+    let stale = store.cached_allocation();
+    unavailable(&stale, "error");
+    let view = assert_cached(&stale, &fixture);
+    assert_eq!(view.freshness, "stale");
+    assert!(view.in_progress);
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    assert_eq!(store.allocation_refreshes_for_test(), 2);
+    assert_eq!(store.allocation_refresh_threads_for_test(), (2, 1));
+    store.set_allocation_cache_limits_for_test(QUIET_TTL, QUIET_MAX_STALE);
+    let next = store.cached_allocation();
+    available(&next, "redb_file_including_free_pages");
+    assert_eq!(assert_cached(&next, &fixture).freshness, "fresh");
+    assert_eq!(store.allocation_refreshes_for_test(), 2);
+    store.set_allocation_refresh_panic_for_test(false);
+}
+
+#[test]
+fn a_refresh_thread_that_cannot_start_stores_an_error_sample() {
+    let fixture = Backend::Redb.fixture();
+    let store = &fixture.core.store;
+    store.set_allocation_spawn_failure_for_test(true);
+    // The same call that found no sample already says why there is none.
+    let first = store.cached_allocation();
+    unavailable(&first, "error");
+    let view = assert_cached(&first, &fixture);
+    assert_eq!(view.freshness, "fresh");
+    assert!(!view.in_progress && view.running.is_none());
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    assert_eq!(store.allocation_refresh_threads_for_test(), (0, 0));
+    // The slot is already free and nothing is running.
+    assert!(store.wait_allocation_refresh_for_test(Duration::from_millis(100)));
+    for _ in 0..4 {
+        let document = store.cached_allocation();
+        unavailable(&document, "error");
+        assert_eq!(assert_cached(&document, &fixture).freshness, "fresh");
+    }
+    assert_eq!(store.allocation_refreshes_for_test(), 1);
+    assert_eq!(store.allocation_refresh_threads_for_test(), (0, 0));
+
+    // Past the TTL, with threads allowed again: one refresh, which reads.
+    store.set_allocation_spawn_failure_for_test(false);
+    store.set_allocation_cache_limits_for_test(Duration::ZERO, QUIET_MAX_STALE);
+    let stale = store.cached_allocation();
+    unavailable(&stale, "error");
+    assert_eq!(assert_cached(&stale, &fixture).freshness, "stale");
+    assert!(store.wait_allocation_refresh_for_test(WAIT));
+    assert_eq!(store.allocation_refreshes_for_test(), 2);
+    assert_eq!(store.allocation_refresh_threads_for_test(), (1, 1));
+    store.set_allocation_cache_limits_for_test(QUIET_TTL, QUIET_MAX_STALE);
+    available(&store.cached_allocation(), "redb_file_including_free_pages");
+    assert_eq!(store.allocation_refreshes_for_test(), 2);
+    store.set_allocation_spawn_failure_for_test(false);
 }
 
 #[test]

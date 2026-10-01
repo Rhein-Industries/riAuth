@@ -223,12 +223,13 @@ pub(super) async fn observe(State(app): State<App>, req: Request, next: Next) ->
 
 pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Result<Response> {
     let token = bearer(&headers)?;
-    // The allocation read is gated by its own permission, so a grant issued for
+    // The allocation number is gated by its own permission, so a grant issued for
     // exactly `operations/metrics` sees no new data. An administrator or a `*`
-    // grant already covers `operations/storage` and reads the size every scrape.
-    // It runs on the blocking thread: the PostgreSQL client starts its own
-    // runtime, which cannot be nested under this request's Tokio worker. The
-    // authorization checkout has already returned before that size read.
+    // grant already covers `operations/storage`. The decision is made here, on
+    // this request's live authorization, before the cache is consulted, so a
+    // caller without it never starts a read. The cache is a mutex and, at most,
+    // one thread spawn: this handler never waits on the pool, the catalog, or the
+    // filesystem for it.
     let (queues, allocation) = app
         .run(move |core| {
             let (queues, storage) = core.store.read(|tx| {
@@ -242,7 +243,7 @@ pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Re
                     actor.allows("operations.read", "operations/storage"),
                 ))
             })?;
-            Ok((queues, storage.then(|| core.store.allocation())))
+            Ok((queues, storage.then(|| core.store.cached_allocation())))
         })
         .await?;
     use std::sync::atomic::Ordering::Relaxed;
@@ -329,11 +330,14 @@ pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Re
     for (queue, stats) in queues {
         writeln!(text, "riauth_queue_pending{{queue=\"{queue}\"}} {}\nriauth_queue_failed{{queue=\"{queue}\"}} {}\nriauth_queue_oldest_pending_seconds{{queue=\"{queue}\"}} {}", stats.pending, stats.failed, stats.oldest_pending_seconds).unwrap();
     }
-    // Withheld without `operations.read` on `operations/storage`. A failed size
-    // read omits the series. Zero is a real size, not an unknown one.
+    // Withheld without `operations.read` on `operations/storage`. A sample that is
+    // unavailable, still being taken, or older than the cache allows omits both
+    // series. Zero is a real size, not an unknown one.
     if let Some(allocation) = &allocation
         && allocation["status"] == "available"
         && let Some(bytes) = allocation["allocated_bytes"].as_u64()
+        && let Some(age) = allocation["sample_age_seconds"].as_f64()
+        && let Some(max_stale) = allocation["max_stale_seconds"].as_f64()
         && let (Some(backend), Some(scope)) =
             (allocation["backend"].as_str(), allocation["scope"].as_str())
         && [backend, scope].into_iter().all(|label| {
@@ -344,7 +348,7 @@ pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Re
     {
         writeln!(
             text,
-            "# HELP riauth_storage_allocated_bytes Physical bytes of the riAuth store this process opened (redb file length, or the riauth_store tables, indexes and TOAST that every process on that PostgreSQL database shares), including free space. WAL, backups, and filesystem capacity are excluded.\n# TYPE riauth_storage_allocated_bytes gauge\nriauth_storage_allocated_bytes{{backend=\"{backend}\",scope=\"{scope}\"}} {bytes}"
+            "# HELP riauth_storage_allocated_bytes Physical bytes of the riAuth store this process opened (redb file length, or the riauth_store tables, indexes and TOAST that every process on that PostgreSQL database shares), including free space. WAL, backups, and filesystem capacity are excluded. The value is a cached sample that can be up to {max_stale} seconds old; riauth_storage_allocation_age_seconds is its age.\n# TYPE riauth_storage_allocated_bytes gauge\nriauth_storage_allocated_bytes{{backend=\"{backend}\",scope=\"{scope}\"}} {bytes}\n# HELP riauth_storage_allocation_age_seconds Seconds since the riauth_storage_allocated_bytes sample was taken.\n# TYPE riauth_storage_allocation_age_seconds gauge\nriauth_storage_allocation_age_seconds{{backend=\"{backend}\",scope=\"{scope}\"}} {age}"
         )
         .unwrap();
     }
@@ -357,7 +361,7 @@ pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Re
 
 pub(super) async fn metrics(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    // Same permission gate and blocking-thread allocation read as the Prometheus text.
+    // Same live permission gate and cached sample as the Prometheus text.
     let (queues, storage_allocation) = app
         .run(move |core| {
             let (queues, storage) = core.store.read(|tx| {
@@ -371,7 +375,7 @@ pub(super) async fn metrics(State(app): State<App>, headers: HeaderMap) -> Resul
                     actor.allows("operations.read", "operations/storage"),
                 ))
             })?;
-            Ok((queues, storage.then(|| core.store.allocation())))
+            Ok((queues, storage.then(|| core.store.cached_allocation())))
         })
         .await?;
     use std::sync::atomic::Ordering::Relaxed;
