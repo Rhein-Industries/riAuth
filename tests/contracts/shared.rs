@@ -5525,6 +5525,28 @@ pub fn offboard_intent_durable_cancel(backend: Backend) {
             && event["actor"] == "agent:scheduler"
             && event["target"] == format!("{id}/alice")
     }));
+    // Platform-only state now exists: the scheduler agents' offboarding
+    // permissions and the job. The first open after that records the
+    // dependency once in the sticky edition provenance, by design. Observe
+    // exactly that one record here so the reopen oracle below compares a
+    // settled store and still proves that opening unchanged state rewrites
+    // nothing.
+    let unsettled = f.snapshot().unwrap();
+    let f = f.reopen_with(|_| {});
+    let settled = f.snapshot().unwrap();
+    let changed: BTreeSet<&str> = unsettled
+        .keys()
+        .chain(settled.keys())
+        .filter(|key| unsettled.get(*key) != settled.get(*key))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(changed, BTreeSet::from(["meta/edition_provenance"]));
+    assert!(
+        settled["meta/edition_provenance"]["platform_dependencies"]
+            .get("agents/scheduler")
+            .is_some()
+    );
+    assert_eq!(f.core.offboard_get(&allowed, &id).unwrap(), scheduled);
     let before_rejection = f.snapshot().unwrap();
     assert_eq!(
         f.core
