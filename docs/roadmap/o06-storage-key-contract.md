@@ -2,6 +2,8 @@
 
 Status: one local slice. O06 stays open. Label remains **extend**. Journey remains `module`.
 
+Later change: [storage allocation](o06-storage-allocation.md) adds `GET /api/operations/storage` (`riauth storage`) and the `riauth_storage_allocated_bytes` series, which read the redb file length and the PostgreSQL relation sizes this audit found no code reading. Every statement below that no route, metric, function or query reads those sizes describes the audited commits and is no longer true of the tree. The key-health findings, the absence of a configured capacity, and the absence of an occupancy ratio are unchanged.
+
 This page records an audit of the store, telemetry, and signing-key paths at `f00c39329f09660e5bd00f78a2cc9f7695f3ccd1`. A re-read at `9c374beae00e99fbc7f922ef44c23243d6fbc28a` found those Rust sources unchanged and names the extra readings below. A publishable signal would be the same fact on redb and PostgreSQL, a point read or another bounded read, a response that keeps key material out, and a result that leaves readiness on its existing rules. No current reading meets that set. This slice adds no route, metric, schema field, or readiness change.
 
 ## Occupancy

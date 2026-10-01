@@ -567,6 +567,7 @@ pub fn router(core: Core) -> Router {
         .route("/api/state/plans/{id}", get(plan_status))
         .route("/api/operations/logout", get(logout_deliveries))
         .route("/api/operations/doctor", get(doctor))
+        .route("/api/operations/storage", get(storage_allocation))
         .route(
             "/api/operations/reconciliation",
             get(reconciliation_diagnostics),
@@ -2264,6 +2265,7 @@ session_handler!(list_agents, list_agents);
 session_handler!(export_state, export_state);
 session_handler!(logout_deliveries, logout_deliveries);
 session_handler!(doctor, doctor);
+session_handler!(storage_allocation, storage_allocation);
 session_handler!(recovery_codes, recovery_codes);
 
 #[derive(Deserialize)]

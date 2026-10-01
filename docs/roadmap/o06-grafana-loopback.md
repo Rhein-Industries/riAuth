@@ -119,7 +119,7 @@ The corrected API summaries are the lab responses with credential fields left ou
 ## What remains open
 
 - Remote connector lag and delivery completion. `last_completed_at` is local controller completion time, recorded on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
-- A shared occupancy reading and a key-health status distinct from `meta/keys`, the doctor key id, and `riauth_signing_errors_total`. The audit is [storage and key diagnostics](o06-storage-key-contract.md). Writer wait on this dashboard is not occupancy.
+- Physical allocation is [storage allocation](o06-storage-allocation.md). This dashboard does not plot it, and the recorded lab runs used a binary built before that series existed. An occupancy ratio still needs a validated configured capacity. A key-health status distinct from `meta/keys`, the doctor key id, and `riauth_signing_errors_total` is still open. The audit is [storage and key diagnostics](o06-storage-key-contract.md). Writer wait on this dashboard is not occupancy.
 - Readiness, `/readyz`, and `/livez` are unchanged. This run adds no series.
 - The Platform offboarding deactivation read can still show a missing account's target name to a full administrator. The shared aggregate is [provisioning deactivation diagnostics](o06-provisioning-deactivation-diagnostics.md).
 - Diagnostic page reads still decode full stored values and do not size-cap a value.

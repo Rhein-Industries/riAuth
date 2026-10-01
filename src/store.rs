@@ -17,12 +17,12 @@ use redb::{
     TableDefinition, WriteTransaction,
 };
 use serde::{Serialize, de::DeserializeOwned};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    path::Path,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use zeroize::Zeroizing;
@@ -50,9 +50,96 @@ pub(crate) trait RecordTransitions: Send + Sync {
 #[derive(Clone)]
 pub struct Store {
     db: Backend,
+    /// Path passed to redb open. Absent for PostgreSQL. Never copied into a response.
+    redb_path: Option<Arc<PathBuf>>,
     key: Option<Arc<Zeroizing<[u8; 32]>>>,
     telemetry: Arc<crate::telemetry::Telemetry>,
     transitions: Arc<dyn RecordTransitions>,
+}
+
+/// Catalog size of riAuth-owned tables, as one statement and one number.
+///
+/// The walk starts at the tables and partitioned tables in schema `riauth_store`
+/// and follows `pg_inherits` downward, so partitions and inheritance children
+/// are found wherever their schema is. `UNION` makes a relation reached twice one
+/// row. Only `relkind = 'r'` rows are sized, so every leaf partition counts exactly
+/// once. A partitioned parent (`relkind = 'p'`) owns no storage, sizes to zero in
+/// `pg_total_relation_size`, and does not include its children; it is walked
+/// through and never summed. `pg_total_relation_size` adds that table's indexes,
+/// TOAST table, TOAST index, free-space map and visibility map, so index and
+/// TOAST relkinds are never selected on their own. Tables outside this walk,
+/// other databases, WAL and backups are not read.
+///
+/// Cost: one catalog walk over `pg_class` and `pg_inherits`, plus one
+/// `stat` per fork and 1 GiB segment of every sized file on the PostgreSQL
+/// server host. Each size call takes ACCESS SHARE on that table, its indexes and
+/// its TOAST table and releases it before the next call. It waits, up to the
+/// session `lock_timeout`, only while another session holds ACCESS EXCLUSIVE on
+/// one of them (`VACUUM FULL`, `TRUNCATE`, most `ALTER TABLE`, `DROP`).
+pub const POSTGRES_STORAGE_ALLOCATION_SQL: &str = "\
+WITH RECURSIVE tables AS (
+  SELECT relation.oid, relation.relkind
+  FROM pg_class AS relation
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'riauth_store'
+    AND relation.relkind IN ('r', 'p')
+  UNION
+  SELECT child.oid, child.relkind
+  FROM tables
+  JOIN pg_inherits AS link ON link.inhparent = tables.oid
+  JOIN pg_class AS child ON child.oid = link.inhrelid
+)
+SELECT
+  EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'riauth_store') AS schema_exists,
+  EXISTS (
+    SELECT 1
+    FROM pg_class AS relation
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'riauth_store'
+      AND relation.relname = 'records_v1'
+      AND relation.relkind IN ('r', 'p')
+  ) AS records_exist,
+  (
+    SELECT COALESCE(SUM(pg_total_relation_size(oid)) FILTER (WHERE relkind = 'r'), 0)::bigint
+    FROM tables
+  ) AS allocated_bytes";
+
+const REDB_ALLOCATION_SCOPE: &str = "redb_file_including_free_pages";
+const POSTGRES_ALLOCATION_SCOPE: &str = "postgresql_owned_relations_and_indexes";
+
+fn postgres_allocation_reason(error: &postgres::Error) -> &'static str {
+    let code = error.code().map(|code| code.code());
+    tracing::warn!(code, "storage allocation read failed");
+    match code {
+        Some("42501") => "permission",
+        Some("57014") | Some("55P03") => "timeout",
+        _ => "error",
+    }
+}
+
+fn allocation_document(
+    backend: &str,
+    scope: &str,
+    status: &str,
+    reason: Option<&str>,
+    bytes: Option<u64>,
+) -> Value {
+    json!({
+        "schema_version": "riauth.storage-allocation/v1",
+        "backend": backend,
+        "status": status,
+        "unavailable_reason": reason,
+        "scope": scope,
+        "allocated_bytes": bytes,
+        "includes_free_space": bytes.map(|_| true),
+        "includes_wal": false,
+        "includes_backups": false,
+        "configured_capacity_bytes": Value::Null,
+        "filesystem_capacity_bytes": Value::Null,
+        "capacity": "unknown",
+        "occupancy_ratio": Value::Null,
+        "affects_readiness": false,
+    })
 }
 #[derive(Clone)]
 enum Backend {
@@ -107,6 +194,146 @@ impl Store {
         match self.db {
             Backend::Redb(_) => "redb",
             Backend::Postgres(_) => "postgresql",
+        }
+    }
+
+    /// Physical bytes occupied by the store this process opened.
+    ///
+    /// redb is the apparent length (`metadata().len()`, not allocated disk
+    /// blocks) of the path that was passed to open, which includes free pages.
+    /// redb 4.3 `Database` does not expose that length, and this stat does not open
+    /// a table or take the writer. PostgreSQL runs `POSTGRES_STORAGE_ALLOCATION_SQL`,
+    /// which is shared by every process on that database. Neither reading walks
+    /// record keys or values. A failure becomes `status: unavailable` with a fixed
+    /// reason. The body never includes a path, connection string, or driver message.
+    ///
+    /// This is synchronous and uncached: every call is one `stat` (redb) or one
+    /// pooled connection and one catalog statement (PostgreSQL), which can wait up
+    /// to the pool timeout, `lock_timeout` and `statement_timeout`. Call it from a
+    /// blocking thread, never from a hot path.
+    pub fn allocation(&self) -> Value {
+        match &self.db {
+            Backend::Redb(_) => self.redb_allocation(),
+            Backend::Postgres(pool) => self.postgres_allocation(pool),
+        }
+    }
+
+    #[cfg(feature = "test-support")]
+    pub fn discard_idle_postgres_connections(&self) {
+        if let Backend::Postgres(pool) = &self.db {
+            pool.discard_idle_for_test();
+        }
+    }
+
+    fn redb_allocation(&self) -> Value {
+        let Some(path) = &self.redb_path else {
+            return allocation_document(
+                "redb",
+                REDB_ALLOCATION_SCOPE,
+                "unavailable",
+                Some("error"),
+                None,
+            );
+        };
+        // Follow a symlink: the opened database is the target file.
+        match std::fs::metadata(path.as_ref()) {
+            Ok(metadata) if metadata.is_file() => allocation_document(
+                "redb",
+                REDB_ALLOCATION_SCOPE,
+                "available",
+                None,
+                Some(metadata.len()),
+            ),
+            Ok(_) => {
+                tracing::warn!("storage allocation path is not a file");
+                allocation_document(
+                    "redb",
+                    REDB_ALLOCATION_SCOPE,
+                    "unavailable",
+                    Some("error"),
+                    None,
+                )
+            }
+            Err(error) => {
+                let reason = match error.kind() {
+                    std::io::ErrorKind::NotFound => "missing",
+                    std::io::ErrorKind::PermissionDenied => "permission",
+                    std::io::ErrorKind::TimedOut => "timeout",
+                    _ => "error",
+                };
+                tracing::warn!(kind = ?error.kind(), "storage allocation read failed");
+                allocation_document(
+                    "redb",
+                    REDB_ALLOCATION_SCOPE,
+                    "unavailable",
+                    Some(reason),
+                    None,
+                )
+            }
+        }
+    }
+
+    fn postgres_allocation(&self, pool: &Arc<crate::postgres_store::Pool>) -> Value {
+        let mut connection = match pool.get() {
+            Ok(connection) => connection,
+            Err(error) => {
+                let reason = if error.code == "storage_busy" {
+                    "timeout"
+                } else {
+                    "error"
+                };
+                tracing::warn!(code = error.code, "storage allocation checkout failed");
+                return allocation_document(
+                    "postgresql",
+                    POSTGRES_ALLOCATION_SCOPE,
+                    "unavailable",
+                    Some(reason),
+                    None,
+                );
+            }
+        };
+        let row = match connection.query_one(POSTGRES_STORAGE_ALLOCATION_SQL, &[]) {
+            Ok(row) => row,
+            Err(error) => {
+                return allocation_document(
+                    "postgresql",
+                    POSTGRES_ALLOCATION_SCOPE,
+                    "unavailable",
+                    Some(postgres_allocation_reason(&error)),
+                    None,
+                );
+            }
+        };
+        let schema_exists: bool = row.get(0);
+        let records_exist: bool = row.get(1);
+        if !schema_exists || !records_exist {
+            return allocation_document(
+                "postgresql",
+                POSTGRES_ALLOCATION_SCOPE,
+                "unavailable",
+                Some("missing"),
+                None,
+            );
+        }
+        let allocated: i64 = row.get(2);
+        match u64::try_from(allocated) {
+            Ok(bytes) => allocation_document(
+                "postgresql",
+                POSTGRES_ALLOCATION_SCOPE,
+                "available",
+                None,
+                Some(bytes),
+            ),
+            Err(_) => {
+                tracing::warn!("storage allocation size was not a byte count");
+                allocation_document(
+                    "postgresql",
+                    POSTGRES_ALLOCATION_SCOPE,
+                    "unavailable",
+                    Some("error"),
+                    None,
+                )
+            }
         }
     }
     pub fn ready(&self) -> Result<()> {
@@ -208,6 +435,7 @@ impl Store {
         drop(connection);
         Ok(Self {
             db: Backend::Postgres(pool),
+            redb_path: None,
             key: key.map(Arc::new),
             telemetry,
             transitions,
@@ -258,6 +486,7 @@ impl Store {
         }
         Ok(Self {
             db: Backend::Redb(Arc::new(db)),
+            redb_path: Some(Arc::new(path.to_path_buf())),
             key: key.map(Arc::new),
             telemetry: Arc::default(),
             transitions,

@@ -268,6 +268,8 @@ pub enum Command {
     },
     /// Inspect storage, key health, inventory counts and pending notifications
     Doctor,
+    /// Read physical bytes occupied by the server's store (not a capacity or occupancy ratio)
+    Storage,
     /// Read process counters and available worker capacity
     Metrics {
         #[arg(long)]
@@ -1578,6 +1580,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             result
         }
         Command::Doctor => remote.call(Method::GET, "/api/operations/doctor", None, true).await?,
+        Command::Storage => remote.call(Method::GET, "/api/operations/storage", None, true).await?,
         Command::Backup { key_file, out, max_bytes } => {
             let transfer = backup::Transfer { ca_cert: cli.ca_cert.as_deref(), idle_timeout: Duration::from_secs(cli.request_timeout), max_bytes };
             backup::download(&remote, &transfer, &key_file, &out).await?

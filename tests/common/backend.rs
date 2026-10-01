@@ -64,6 +64,31 @@ impl BackendFixture {
         }
     }
 
+    /// A new connection to this fixture's disposable database as the test role.
+    pub fn postgres_client(&self) -> Client {
+        self._database.as_ref().expect("postgres fixture").connect()
+    }
+
+    /// The generated name of this fixture's disposable database.
+    pub fn database_name(&self) -> String {
+        self._database
+            .as_ref()
+            .expect("postgres fixture")
+            .name
+            .clone()
+    }
+
+    /// Runs `sql` on the cluster control connection. Cluster-wide statements such
+    /// as `CREATE ROLE` need it; it can name only the disposable cluster.
+    pub fn postgres_maintenance(&mut self, sql: &str) {
+        self._database
+            .as_mut()
+            .expect("postgres fixture")
+            .control
+            .batch_execute(sql)
+            .expect("postgres maintenance statement");
+    }
+
     /// A database-native restore of this instance's current state: PostgreSQL
     /// clones the database (a new database OID; `TEMPLATE` keeps relation OIDs);
     /// redb copies the closed file. The copy is opened; the original is discarded.
@@ -273,6 +298,14 @@ impl DisposableDatabase {
 }
 
 impl DisposableDatabase {
+    fn connect(&self) -> Client {
+        self.connection
+            .parse::<postgres::Config>()
+            .expect("disposable connection")
+            .connect(NoTls)
+            .expect("disposable database connection")
+    }
+
     /// Requires that no connection to this database remains open.
     fn clone_database(&mut self) -> Self {
         let name = format!("riauth_contract_{}", uuid::Uuid::new_v4().simple());

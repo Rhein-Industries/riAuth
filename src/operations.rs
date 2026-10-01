@@ -113,6 +113,16 @@ impl Core {
             }))
         })
     }
+    /// Physical store allocation. Authorization uses a record read; the size read
+    /// runs after that checkout returns, so a size failure is the allocation
+    /// document rather than an authentication error.
+    pub fn storage_allocation(&self, token: &str) -> Result<Value> {
+        self.store.read(|tx| {
+            self.management(tx, token, "operations.read", "operations/storage")?;
+            Ok(())
+        })?;
+        Ok(self.store.allocation())
+    }
     pub fn backup(&self, token: &str, encryption_key: &str) -> Result<Value> {
         let key = decode_key(encryption_key)?;
         // Seal one maintenance page at a time. The manifest is sealed only after
