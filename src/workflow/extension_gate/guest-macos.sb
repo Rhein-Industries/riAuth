@@ -1,0 +1,24 @@
+(version 1)
+(deny default)
+; Only the selected installed image may exec. Fork/spawn, network, Mach IPC,
+; filesystem writes and other host operations stay denied by default.
+(allow process-exec (literal (param "GUEST")))
+; Read-only loader paths. Root directory lookup is needed by dyld on macOS 26.2.
+; These rules do not permit reading arbitrary files under the root directory.
+(allow file-read*
+    (literal "/")
+    (literal (param "GUEST"))
+    (literal (param "SSL"))
+    (literal (param "CRYPTO"))
+    (subpath "/System/Library")
+    (subpath "/usr/lib"))
+; Metadata supports dyld and the fail-closed inherited-descriptor audit.
+(allow file-read-metadata)
+(allow file-read-data (literal "/dev/fd"))
+; CPU/page-size queries only; process arguments/environment sysctls stay denied.
+(allow sysctl-read
+    (sysctl-name "hw.pagesize")
+    (sysctl-name "hw.pagesize_compat")
+    (sysctl-name "hw.ncpu")
+    (sysctl-name-prefix "hw.optional.arm."))
+(allow file-write-data (literal "/dev/null"))

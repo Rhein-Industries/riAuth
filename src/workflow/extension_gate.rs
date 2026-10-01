@@ -48,9 +48,17 @@
 //! directory removed after reap, and stderr is discarded. The request carries
 //! the module, the projected identifier frame, the declared labels, and the
 //! caps. It does not carry a bearer token, password, configuration path, or
-//! database URL. File descriptors already open in the server can still be
-//! inherited, because closing them would require `unsafe`. There is no seccomp
-//! sandbox. A missing executable or a spawn failure is `failed`. Stdout is a
+//! database URL. On macOS the parent uses `/usr/bin/sandbox-exec` and a
+//! default-deny Seatbelt profile before exec. The helper refuses any inherited
+//! descriptor above stderr before reading IPC or compiling; inability to audit
+//! `/dev/fd` also refuses. It does not close raw descriptors through unsafe
+//! ownership hooks. Fork/spawn, network access, Mach IPC and filesystem writes
+//! are denied; loader reads, file metadata and selected CPU/page-size sysctl
+//! reads are allowed. Direct
+//! unsandboxed argv entry is refused by native confinement probes. Other OSes
+//! have no supported backend and return `external_runtime_required` before
+//! spawn. macOS sandbox setup, a missing executable or a spawn failure is
+//! `failed`, with no unsandboxed fallback. Stdout is a
 //! fixed buffer; a larger write is `output` and is not a label.
 //!
 //! The interpreter value stack is allocated when the child calls `route`.
@@ -79,6 +87,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+
+#[cfg(feature = "platform")]
+mod isolation;
 
 pub const FORMAT: &str = "riauth.workflow-extension/v1";
 /// Internal argv token for the platform server's guest re-exec.
@@ -1022,6 +1033,11 @@ fn guest_program(current: &std::path::Path) -> &std::path::Path {
 
 #[cfg(feature = "platform")]
 fn resolve_guest_program() -> Result<std::path::PathBuf, Denial> {
+    // Unsupported hosts must refuse without relying on executable discovery
+    // (or on a companion server having been built for a unit-test harness).
+    if !cfg!(target_os = "macos") {
+        return Err(Denial::ExternalRuntimeRequired);
+    }
     let current = std::env::current_exe().map_err(|_| Denial::Failed)?;
     #[cfg(test)]
     if let Some(server) = harness_server(&current) {
@@ -1046,7 +1062,7 @@ fn harness_server(current: &std::path::Path) -> Option<std::path::PathBuf> {
 #[cfg(feature = "platform")]
 struct Supervised {
     outcome: Result<Label, Denial>,
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "macos"))]
     pid: u32,
 }
 
@@ -1328,6 +1344,7 @@ fn guest_workdir() -> Result<std::path::PathBuf, Denial> {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!("riauth-guest-{}-{n}", std::process::id()));
     let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
@@ -1371,7 +1388,7 @@ struct Observed {
 #[cfg(feature = "platform")]
 struct Launched {
     result: Result<Observed, Denial>,
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "macos"))]
     pid: u32,
 }
 
@@ -1398,7 +1415,7 @@ fn supervise_timed(
     };
     Ok(Supervised {
         outcome,
-        #[cfg(test)]
+        #[cfg(all(test, target_os = "macos"))]
         pid: launched.pid,
     })
 }
@@ -1437,8 +1454,10 @@ fn launch(
     if request.is_empty() || request.len() > MAX_GUEST_REQUEST_BYTES || timeout.is_zero() {
         return Err(Denial::Failed);
     }
+    // Resolve the confinement backend before creating resources. Unsupported
+    // hosts and missing sandbox setup never fall back to an ordinary child.
+    let mut command = isolation::command(program)?;
     let workdir = guest_workdir()?;
-    let mut command = std::process::Command::new(program);
     command
         .arg(GUEST_ARGV)
         .env_clear()
@@ -1454,7 +1473,7 @@ fn launch(
             return Err(Denial::Failed);
         }
     };
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "macos"))]
     let pid = child.id();
     let stdin = match child.stdin.take() {
         Some(stdin) => stdin,
@@ -1485,7 +1504,7 @@ fn launch(
     let result = wait_for_guest(&mut guest, started + timeout, &overflowed, timing);
     Ok(Launched {
         result,
-        #[cfg(test)]
+        #[cfg(all(test, target_os = "macos"))]
         pid,
     })
 }
@@ -1680,6 +1699,7 @@ fn guest_environment_is_closed() -> bool {
         None => true,
         Some((key, value)) => {
             vars.next().is_none()
+                && cfg!(target_os = "macos")
                 && key == "__CF_USER_TEXT_ENCODING"
                 && corefoundation_text_encoding(&value)
         }
@@ -1722,6 +1742,9 @@ fn isolated_guest_entry() -> Result<(), ()> {
     use std::io::Read;
     if !guest_environment_is_closed() {
         return write_status(Err(Denial::Failed)).map_err(|_| ());
+    }
+    if let Err(denial) = isolation::check_entry() {
+        return write_status(Err(denial)).map_err(|_| ());
     }
     let mut input = Vec::new();
     let limit = u64::try_from(MAX_GUEST_REQUEST_BYTES)
@@ -1828,7 +1851,7 @@ fn write_status(outcome: Result<Label, Denial>) -> std::io::Result<()> {
     std::io::Write::flush(&mut out)
 }
 
-#[cfg(all(feature = "platform", test))]
+#[cfg(all(feature = "platform", test, target_os = "macos"))]
 fn process_alive(pid: u32) -> bool {
     std::process::Command::new("/bin/kill")
         .arg("-0")
@@ -1841,7 +1864,10 @@ fn process_alive(pid: u32) -> bool {
 }
 
 #[cfg(test)]
-#[cfg_attr(not(feature = "platform"), allow(dead_code))]
+#[cfg_attr(
+    any(not(feature = "platform"), not(target_os = "macos")),
+    allow(dead_code)
+)]
 pub(crate) mod fixture {
     pub fn allow() -> Vec<u8> {
         module(&store_label(*b"allo", Some(b'w')), &i32_const(5), &[])
@@ -2231,6 +2257,145 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
+    #[cfg(all(feature = "platform", target_os = "macos"))]
+    fn native_probe(root: &std::path::Path) -> std::path::PathBuf {
+        let source = root.join("probe.c");
+        let binary = root.join("probe");
+        std::fs::write(&source, include_bytes!("extension_gate/native-probe.c")).unwrap();
+        let compiled = std::process::Command::new("cc")
+            .arg("-Wall")
+            .arg("-Wextra")
+            .arg("-Werror")
+            .arg(&source)
+            .arg("-o")
+            .arg(&binary)
+            .output()
+            .unwrap();
+        assert!(
+            compiled.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+        binary
+    }
+
+    #[cfg(all(feature = "platform", target_os = "macos"))]
+    #[test]
+    fn kernel_isolation_denies_escaped_io_and_child_creation() {
+        let installed = disposable_server();
+        let probe = native_probe(&installed.root);
+        let result = isolation::command(&probe)
+            .unwrap()
+            .env_clear()
+            .current_dir(&installed.root)
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{:?}", result);
+        assert_eq!(result.stdout, b"read/write/network/fork/spawn denied\n");
+        assert!(!installed.root.join("write-sentinel").exists());
+    }
+
+    #[cfg(all(feature = "platform", target_os = "macos"))]
+    #[test]
+    fn inherited_descriptors_and_unsandboxed_entry_refuse_before_ipc() {
+        use std::io::Write;
+        let installed = disposable_server();
+        let probe = native_probe(&installed.root);
+        let confined = isolation::command(&installed.server).unwrap();
+        let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
+        let request = encode_request(MODE_RUN, false, 10_000, &checked, 32, &[]).unwrap();
+        for mode in ["inherit", "inherit-socket", "inherit-kqueue"] {
+            if mode == "inherit-kqueue" {
+                // Darwin closes kqueues across exec even after dup2 clears
+                // FD_CLOEXEC. Prove that with fcntl, rather than attributing
+                // the closure to the guest's /dev/fd audit.
+                let confined_probe = isolation::command(&probe).unwrap();
+                let closed = std::process::Command::new(&probe)
+                    .arg(mode)
+                    .arg(confined_probe.get_program())
+                    .args(confined_probe.get_args())
+                    .arg("fd-closed")
+                    .env_clear()
+                    .current_dir(&installed.root)
+                    .output()
+                    .unwrap();
+                assert!(closed.status.success(), "{closed:?}");
+                assert_eq!(closed.stdout, b"descriptor 100 closed\n");
+            }
+            let mut child = std::process::Command::new(&probe)
+                .arg(mode)
+                .arg(confined.get_program())
+                .args(confined.get_args())
+                .arg(GUEST_ARGV)
+                .env_clear()
+                .current_dir(&installed.root)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut stdin = child.stdin.take().unwrap();
+            // The same request returns allow without an inherited descriptor.
+            // BrokenPipe is expected if entry refuses before the write arrives.
+            let _ = stdin.write_all(&request);
+            drop(stdin);
+            let result = child.wait_with_output().unwrap();
+            assert!(result.status.success(), "{mode}: {result:?}");
+            if mode == "inherit-kqueue" {
+                assert_eq!(result.stdout, b"\x00\x05allow", "{mode}");
+            } else {
+                assert_eq!(
+                    result.stdout,
+                    [STATUS_DENIAL, Denial::Failed.code()],
+                    "{mode}"
+                );
+            }
+        }
+        let direct = std::process::Command::new(&installed.server)
+            .arg(GUEST_ARGV)
+            .env_clear()
+            .current_dir(&installed.root)
+            .output()
+            .unwrap();
+        assert!(direct.status.success());
+        assert_eq!(direct.stdout, [STATUS_DENIAL, Denial::Failed.code()]);
+    }
+
+    #[cfg(all(feature = "platform", not(target_os = "macos")))]
+    #[test]
+    fn unsupported_hosts_refuse_validation_and_execution_without_spawning() {
+        let document = fixture::document(&fixture::allow(), |_| {});
+        assert_eq!(
+            check(&document).unwrap_err(),
+            Denial::ExternalRuntimeRequired
+        );
+        let bound = bind(&document).unwrap();
+        assert_eq!(
+            execute(&bound, &GuestFacts::default(), &BTreeSet::new(), bounds()),
+            Err(Denial::ExternalRuntimeRequired)
+        );
+        assert!(matches!(
+            isolation::command(std::path::Path::new("/missing")),
+            Err(Denial::ExternalRuntimeRequired)
+        ));
+        // Binding/structural admission remain portable and do not compile.
+        assert!(
+            bind(&fixture::document(
+                &fixture::allow_with_invalid_tail(1),
+                |_| {}
+            ))
+            .is_ok()
+        );
+        assert_eq!(
+            bind(&fixture::document(
+                &fixture::allow_with_unreachable_tail(12_000),
+                |_| {}
+            ))
+            .unwrap_err(),
+            Denial::Fuel
+        );
+    }
+
     fn bounds() -> StepBounds {
         StepBounds {
             timeout_seconds: 30,
@@ -2238,11 +2403,12 @@ mod tests {
         }
     }
 
+    #[cfg(any(not(feature = "platform"), target_os = "macos"))]
     fn profile() -> BTreeSet<StagePermission> {
         BTreeSet::from([StagePermission::ReadProfile])
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     fn run(
         module: &[u8],
         mutate: impl FnOnce(&mut serde_json::Value),
@@ -2416,7 +2582,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn a_bounded_guest_returns_one_declared_label_and_hides_module_bytes() {
         let module = fixture::with_sentinel(fixture::allow_with_trailer());
@@ -2438,7 +2604,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn attacks_and_budgets_deny_without_a_label() {
         assert_eq!(
@@ -2581,7 +2747,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn value_stack_refuses_a_frame_that_would_reach_the_slot_cap() {
         // Pinned Wasmi 0.40.0: N live loads need height N + 2. Height 64 runs
@@ -2623,13 +2789,13 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     fn translation_charge(module: &[u8]) -> u64 {
         let body = admit_sections(module).expect("fixture has one function body");
         u64::from(body).saturating_mul(GUEST_TRANSLATION_FUEL_PER_BYTE)
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn admission_refuses_a_large_unreachable_body_before_validation() {
         // Twelve thousand unreachable bytes exceed the 10,000 fuel cap even at
@@ -2684,7 +2850,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn low_budgets_refuse_translation_and_a_repeat_call_pays_again() {
         let bare = fixture::allow_with_unreachable_tail(0);
@@ -2744,7 +2910,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn the_host_reads_at_most_one_label_from_the_guest() {
         let wide = StepBounds {
@@ -2833,7 +2999,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn the_guest_sees_only_the_granted_identifiers() {
         let facts = GuestFacts {
@@ -2902,7 +3068,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     fn hides(module: &[u8], facts: &GuestFacts, requested: &BTreeSet<StagePermission>) -> Label {
         run(
             module,
@@ -2918,7 +3084,7 @@ mod tests {
         .unwrap_or_else(|error| panic!("guest failed: {}", error.as_str()))
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn a_nonreturning_helper_is_killed_reaped_and_is_not_fuel() {
         let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
@@ -2943,7 +3109,7 @@ mod tests {
         assert_ne!(Denial::Timeout.as_str(), "elapsed");
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn a_flooding_helper_is_capped_and_reaped_without_a_label() {
         let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
@@ -2958,7 +3124,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn a_missing_helper_denies_without_a_label() {
         let checked = check(&fixture::document(&fixture::allow(), |_| {})).unwrap();
@@ -2978,12 +3144,19 @@ mod tests {
         assert_eq!(guest_program(installed), installed);
         let renamed = std::path::Path::new("/opt/riauth/images/identity");
         assert_eq!(guest_program(renamed), renamed);
-        let program = resolve_guest_program().unwrap();
-        assert_eq!(
-            program.file_name().and_then(|name| name.to_str()),
-            Some("riauth")
-        );
-        assert!(program.is_file(), "{program:?}");
+        if cfg!(target_os = "macos") {
+            let program = resolve_guest_program().unwrap();
+            assert_eq!(
+                program.file_name().and_then(|name| name.to_str()),
+                Some("riauth")
+            );
+            assert!(program.is_file(), "{program:?}");
+        } else {
+            assert_eq!(
+                resolve_guest_program(),
+                Err(Denial::ExternalRuntimeRequired)
+            );
+        }
         let cli = include_str!("../../src/cli.rs");
         assert!(!cli.contains("extension-guest"));
         let maintenance = include_str!("../../src/bin/riauth-maintenance.rs");
@@ -2994,13 +3167,13 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     struct DisposableCopy {
         root: std::path::PathBuf,
         server: std::path::PathBuf,
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     impl Drop for DisposableCopy {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
@@ -3008,7 +3181,7 @@ mod tests {
     }
 
     /// Copy of the built server under a temp name, outside the Cargo layout.
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     fn disposable_server() -> DisposableCopy {
         let source = resolve_guest_program().unwrap();
         assert!(source.is_file(), "{source:?}");
@@ -3043,7 +3216,7 @@ mod tests {
         DisposableCopy { root, server }
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     fn assert_deadline_discarded(
         supervised: &Supervised,
         elapsed: std::time::Duration,
@@ -3061,7 +3234,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn a_completed_guest_observed_after_the_deadline_is_not_a_label() {
         let installed = disposable_server();
@@ -3123,7 +3296,7 @@ mod tests {
         assert!(elapsed < std::time::Duration::from_secs(30), "{elapsed:?}");
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     fn assert_environment_refusal(
         program: &std::path::Path,
         root: &std::path::Path,
@@ -3188,7 +3361,7 @@ mod tests {
         assert_eq!(buf[1], Denial::Failed.code());
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn a_copied_renamed_server_serves_the_guest_with_an_empty_environment() {
         let installed = disposable_server();
@@ -3300,7 +3473,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "platform")]
+    #[cfg(all(feature = "platform", target_os = "macos"))]
     #[test]
     fn request_binding_leaves_wasm_validation_to_the_child() {
         let invalid = fixture::allow_with_invalid_tail(1);

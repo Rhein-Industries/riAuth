@@ -1082,7 +1082,10 @@ graph, or a rejected or non-covering manifest reports the name not configured
 and not usable. This build rejects an attempt to disable that name. Essentials
 does not compile the capability, so configured and usable stay false there.
 A custom stage with no checked manifest still fails configuration as an unknown
-stage. The one executable shape is the Wasmi guest documented below.
+stage. The one executable shape is the Wasmi guest documented below. Its
+isolation backend is macOS-only. Other hosts refuse manifest validation and
+execution with `external_runtime_required`; linking Wasmi alone does not make
+an extension usable.
 
 [`workflow::extension::Host`](../src/workflow/extension.rs) is a held in-process
 contract for a native registrant. It is not an isolation boundary and it is not
@@ -1126,7 +1129,13 @@ Platform links Wasmi 0.40 through `dep:wasmi` on the `platform` feature.
 Essentials does not link it. [`extension_gate::execute`](../src/workflow/extension_gate.rs)
 returns `external_runtime_required` on Essentials, and `RUNTIME_LINKED` is true
 only on Platform. The executor calls this gate for one configured shape. It
-does not call [`Host::invoke`](../src/workflow/extension.rs).
+does not call [`Host::invoke`](../src/workflow/extension.rs). The supported
+isolation backend uses macOS Seatbelt through `/usr/bin/sandbox-exec`. Linux,
+Windows, and other hosts have no implemented backend and refuse with
+`external_runtime_required` before spawning. Native verification here covers
+macOS 26.2 on Apple Silicon; it establishes no other OS or macOS-version
+compatibility result. `sandbox-exec` is deprecated by Apple: its absence or
+policy/setup failure refuses with `failed`, with no ordinary-process fallback.
 
 `config.toml` may contain `workflow_extensions`, at most 16 JSON manifests
 keyed by stage id. A non-empty map on Essentials is rejected because it
@@ -1252,7 +1261,7 @@ The helper is the platform `riauth` binary. `execute` resolves `current_exe`
 and passes only the internal argv token `riauth.extension-guest/v1`. The server
 recognizes that token before clap and does not list it in `--help`. An
 installed image at `/usr/local/bin/riauth`, or a renamed copy of that binary,
-re-executes its own path. The lookup does not read an environment override and
+re-executes its resolved path through the sandbox. The lookup does not read an environment override and
 does not assume a Cargo target directory. The child environment is cleared.
 The helper refuses to run when any variable remains, except the macOS
 CoreFoundation variable `__CF_USER_TEXT_ENCODING` after exec, and only when
@@ -1262,10 +1271,34 @@ directory is a private empty directory
 removed after reap, and stderr is discarded. The request is the module, the
 projected identifier frame, the
 declared labels, and the caps. It does not include a bearer token, password,
-configuration path, or database URL. File descriptors already open in the
-server can still be inherited, because closing them would require `unsafe`.
-There is no seccomp or network namespace. A missing executable or a spawn
-failure is `failed`. The executor stores every guest denial as the `failed`
+configuration path, or database URL.
+
+The default-deny [Seatbelt profile](../src/workflow/extension_gate/guest-macos.sb)
+permits exec of that exact server image, read-only loader access to
+`/System/Library`, `/usr/lib`, the image itself, and the two resolved conventional
+Homebrew OpenSSL dylibs when present. It also allows root-directory reads,
+file metadata, `/dev/fd` enumeration, selected CPU/page-size sysctl reads, and
+writes to `/dev/null`. It grants no network, Mach IPC, filesystem write, fork,
+or child-spawn permission. Native regression probes cover denied file reads,
+writes, loopback binding, fork, and spawning the same executable. This prevents
+a guest descendant from retaining the IPC pipe after the supervised pid exits.
+The allowed loader files and host metadata remain outside the projected
+identifier frame; the profile does not hide all host metadata.
+
+Before reading the request or compiling Wasm, the single-threaded helper
+enumerates `/dev/fd`, requires that the directory iterator is the only descriptor
+above stderr, drops that iterator, and verifies that its descriptor is closed.
+Any extra descriptor or enumeration/inspection error refuses. Darwin
+reports `EBADF` for the iterator's now-closed descriptor; that and `ENOENT` are
+the only accepted absent-descriptor results. Extra descriptors are refused,
+not closed through raw-fd ownership hooks. Thus an operator or dependency
+leaving an inheritable descriptor open makes the invocation fail closed.
+Native confinement probes also refuse direct unsandboxed invocation of the
+internal argv entry. These probes are guard checks, not an attestation of a
+caller-supplied sandbox policy; the parent always supplies the fixed profile.
+
+A missing executable or sandbox/spawn failure is `failed`.
+The executor stores every guest denial as the `failed`
 signal with no evidence and no proof. Stdout is read into a 64-byte buffer by
 one joined thread. A larger write is `output` and is not accepted as a label.
 The maintenance binary and `riauthctl` do not host this entry. The Essentials
