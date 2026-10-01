@@ -229,6 +229,12 @@ async fn reconciliation_diagnostics_reports_controller_failures_without_secrets(
     assert_eq!(count(&report, "failed"), 1);
     assert_eq!(count(&report, "stale"), 3);
     assert_eq!(count(&report, "attention"), 8);
+    // Both enabled schedules have no completion stored and an ancient clock
+    // start; the disabled one is in none of the completion counts.
+    assert_eq!(count(&report, "schedules_overdue"), 2);
+    assert_eq!(count(&report, "schedules_never_completed"), 2);
+    assert!(report["counts"]["oldest_completion_age_seconds"].is_null());
+    assert_eq!(report["limits"]["overdue_grace_seconds"], 300);
     assert_eq!(report["listed"], 8);
     assert_eq!(report["truncated"], false);
     assert_redacted(&report);
@@ -288,6 +294,8 @@ async fn reconciliation_diagnostics_reports_controller_failures_without_secrets(
     assert_eq!(payroll["agent_id"], "payroll_controller");
     assert_eq!(payroll["next_action"], "inspect_controller");
     assert!(payroll["last_completed_at"].is_null());
+    assert!(payroll["completion_age_seconds"].is_null());
+    assert_eq!(payroll["overdue"], true);
     assert!(!report.to_string().contains("ldap/people"));
 
     let jobs = fixture.core.reconciliation_jobs(&fixture.admin).unwrap();

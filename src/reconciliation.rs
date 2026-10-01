@@ -3,7 +3,8 @@
 //! `Core::reconciliation_diagnostics` reports stored controller failures with a
 //! fixed action and leaves the stored error text on the schedule and job reads.
 //! `Schedule::last_completed_at` is local controller completion time. It is not
-//! remote connector lag or downstream delivery completion.
+//! remote connector lag or downstream delivery completion. The diagnostic also
+//! reports its age and flags an enabled schedule whose completion is overdue.
 use crate::{
     agent::{Agent, Principal},
     background::{Background, Job as BackgroundJob, TargetPermit},
@@ -31,6 +32,9 @@ const MAX_JOBS: usize = 256;
 const MAX_ATTEMPTS: u32 = 4;
 const LEASE_SECONDS: u64 = 900;
 const DIAGNOSTIC_ITEMS: usize = 50;
+/// Slack added to twice a schedule's interval before the diagnostic calls its
+/// local completion overdue. Fixed, not configurable.
+const OVERDUE_GRACE_SECONDS: u64 = 300;
 /// Stored by schedule disable before a queued periodic job is dispatched.
 /// The diagnostic omits that stale row and does not copy this sentence.
 const DISABLED_BEFORE_DISPATCH: &str = "Schedule disabled before dispatch";
@@ -498,6 +502,22 @@ struct DiagnosticCounts {
     failed: u64,
     stale: u64,
     attention: u64,
+    /// Enabled schedules whose local completion is overdue (see [`local_completion`]).
+    schedules_overdue: u64,
+    /// Enabled schedules with no stored completion time.
+    schedules_never_completed: u64,
+    /// Largest local completion age among enabled schedules that have a stored
+    /// completion time; null when there is none.
+    oldest_completion_age_seconds: Option<u64>,
+}
+
+/// Local controller completion age of one schedule at one instant. It is not
+/// remote connector lag: the clock is `last_completed_at`, written by this
+/// controller, and `next_run` is not an input for a schedule that has completed.
+struct Completion {
+    /// `at - last_completed_at`; null when no completion time is stored.
+    age: Option<u64>,
+    overdue: bool,
 }
 
 struct Listed {
@@ -542,10 +562,59 @@ fn job_next_action(job: &Job) -> &'static str {
     }
 }
 
-fn count_schedule(counts: &mut DiagnosticCounts, schedule: &Schedule) {
+/// An enabled schedule is overdue when no completion is recorded within twice
+/// its interval plus [`OVERDUE_GRACE_SECONDS`]. With a stored completion time
+/// the age is `at - last_completed_at`. Without one the clock starts at the
+/// creation time of the retained `last_job`, else at `next_run`; a `next_run`
+/// still in the future is not overdue. A disabled schedule is never overdue.
+/// `last_job_created_at` is that job's stored `created_at` when it is retained.
+fn local_completion(schedule: &Schedule, last_job_created_at: Option<u64>, at: u64) -> Completion {
+    let limit = schedule
+        .interval_seconds
+        .saturating_mul(2)
+        .saturating_add(OVERDUE_GRACE_SECONDS);
+    match schedule.last_completed_at {
+        Some(done) => {
+            let age = at.saturating_sub(done);
+            Completion {
+                age: Some(age),
+                overdue: schedule.enabled && age > limit,
+            }
+        }
+        None => {
+            let since = last_job_created_at.unwrap_or(schedule.next_run);
+            Completion {
+                age: None,
+                overdue: schedule.enabled && at.saturating_sub(since) > limit,
+            }
+        }
+    }
+}
+
+fn count_schedule(counts: &mut DiagnosticCounts, schedule: &Schedule, completion: &Completion) {
     counts.schedules = counts.schedules.saturating_add(1);
     if schedule.last_error.is_some() {
         counts.schedules_with_error = counts.schedules_with_error.saturating_add(1);
+    }
+    if schedule.enabled {
+        match completion.age {
+            Some(age) => {
+                counts.oldest_completion_age_seconds = Some(
+                    counts
+                        .oldest_completion_age_seconds
+                        .map_or(age, |oldest| oldest.max(age)),
+                );
+            }
+            None => {
+                counts.schedules_never_completed =
+                    counts.schedules_never_completed.saturating_add(1);
+            }
+        }
+    }
+    if completion.overdue {
+        counts.schedules_overdue = counts.schedules_overdue.saturating_add(1);
+    }
+    if schedule.last_error.is_some() || completion.overdue {
         counts.attention = counts.attention.saturating_add(1);
     }
 }
@@ -564,7 +633,15 @@ fn count_job(counts: &mut DiagnosticCounts, job: &Job) {
     }
 }
 
-fn schedule_item(schedule: &Schedule) -> Listed {
+/// `inspect_controller` when a stored error is present, else
+/// `check_worker_duty`: only the completion is overdue, so confirm that a
+/// process with the background-jobs duty is running and can reach the connector.
+fn schedule_item(schedule: &Schedule, completion: &Completion) -> Listed {
+    let next_action = if schedule.last_error.is_some() {
+        "inspect_controller"
+    } else {
+        "check_worker_duty"
+    };
     Listed {
         rank: 3,
         id: schedule.scope.clone(),
@@ -577,8 +654,10 @@ fn schedule_item(schedule: &Schedule) -> Listed {
             "last_job": schedule.last_job,
             "agent_id": schedule.agent_id,
             "has_error": schedule.last_error.is_some(),
-            "next_action": "inspect_controller",
+            "next_action": next_action,
             "last_completed_at": schedule.last_completed_at,
+            "completion_age_seconds": completion.age,
+            "overdue": completion.overdue,
         }),
     }
 }
@@ -847,20 +926,31 @@ impl Core {
     /// `last_error`; the text stays on the schedule and job reads. `next_run`
     /// is the next enqueue time. A schedule row's `last_completed_at` is the
     /// local time a then-current `last_job` was stored completed; it can name
-    /// an earlier job. This read does not change readiness, doctor, or probes.
+    /// an earlier job. Each schedule row also carries its local completion age
+    /// and an `overdue` verdict (see [`local_completion`]); an overdue enabled
+    /// schedule is an attention row without a stored error. This read does not
+    /// change readiness, doctor, or probes.
     pub fn reconciliation_diagnostics(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let _actor =
                 self.management(tx, token, "operations.read", "operations/reconciliation")?;
+            let at = now();
+            let jobs = tx.list::<Job>(JOBS)?;
             let mut counts = DiagnosticCounts::default();
             let mut listed = Vec::new();
             for (_, schedule) in tx.list::<Schedule>(SCHEDULES)? {
-                count_schedule(&mut counts, &schedule);
-                if schedule.last_error.is_some() {
-                    listed.push(schedule_item(&schedule));
+                let created = schedule.last_job.as_deref().and_then(|id| {
+                    jobs.iter()
+                        .find(|(_, job)| job.id == id)
+                        .map(|(_, job)| job.created_at)
+                });
+                let completion = local_completion(&schedule, created, at);
+                count_schedule(&mut counts, &schedule, &completion);
+                if schedule.last_error.is_some() || completion.overdue {
+                    listed.push(schedule_item(&schedule, &completion));
                 }
             }
-            for (_, job) in tx.list::<Job>(JOBS)? {
+            for (_, job) in jobs {
                 count_job(&mut counts, &job);
                 if job_needs_attention(&job) {
                     listed.push(job_item(&job));
@@ -876,9 +966,12 @@ impl Core {
             let items: Vec<Value> = listed.into_iter().map(|item| item.body).collect();
             Ok(json!({
                 "schema_version": "riauth.reconciliation-diagnostics/v1",
-                "checked_at": now(),
+                "checked_at": at,
                 "affects_readiness": false,
-                "limits": { "attention_items": DIAGNOSTIC_ITEMS },
+                "limits": {
+                    "attention_items": DIAGNOSTIC_ITEMS,
+                    "overdue_grace_seconds": OVERDUE_GRACE_SECONDS,
+                },
                 "counts": counts,
                 "listed": items.len(),
                 "truncated": truncated,
