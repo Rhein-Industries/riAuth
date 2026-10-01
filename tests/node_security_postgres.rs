@@ -2,7 +2,7 @@
 //! authentication policy differ from the initialized PostgreSQL store must
 //! exit before it binds, and must leave the committed records unchanged.
 //! A format 1 row stays unchanged until `riauth-maintenance
-//! security-agreement-record` writes one format 2 row.
+//! security-agreement-record` writes one format 3 row.
 //!
 //! The allowed process is a gateway on another loopback listen address with
 //! `browser_ui` false. Its `/readyz` success is storage readiness for that
@@ -38,8 +38,9 @@ const CAPABILITY_MISMATCH: &str =
 const ISSUER_MISMATCH: &str = "Configured issuer does not match the initialized instance";
 const POLICY_MISMATCH: &str =
     "Configured token lifetimes or password policy do not match the initialized instance";
-const POLICY_ABSENT: &str = "Stored security agreement does not record token lifetimes and password policy; stop every riAuth process, back up, and run riauth-maintenance security-agreement-record --confirm-authentication-policy";
-const PEERS_CONNECTED: &str = "Stop every riAuth process connected to this database before recording the authentication policy";
+const POLICY_ABSENT: &str = "Stored security agreement does not record token lifetimes and password policy; stop every riAuth process, back up, and run riauth-maintenance security-agreement-record --confirm-authentication-policy --confirm-rate-limits";
+const PEERS_CONNECTED: &str =
+    "Stop every riAuth process connected to this database before recording the security agreement";
 
 struct Disposable {
     control: postgres::Client,
@@ -491,7 +492,7 @@ fn capability_or_issuer_mismatch_binds_nothing_and_preserves_postgres() {
             .iter()
             .any(|name| name == "identity.device_trust")
     );
-    assert_eq!(agreement_value["format"], 2);
+    assert_eq!(agreement_value["format"], 3);
     assert_eq!(agreement_value["authentication"]["access_token_ttl"], 300);
     assert_eq!(
         agreement_value["authentication"]["refresh_token_ttl"],
@@ -667,7 +668,7 @@ fn authentication_policy_mismatch_binds_nothing_and_preserves_postgres() {
     let before = database.records();
     let agreement = text_of(&before, "meta/node_security");
     let agreement_value: Value = serde_json::from_str(&agreement).unwrap();
-    assert_eq!(agreement_value["format"], 2);
+    assert_eq!(agreement_value["format"], 3);
     assert_eq!(agreement_value["issuer"], ISSUER);
     assert_eq!(agreement_value["authentication"]["access_token_ttl"], 300);
     assert_eq!(
@@ -772,6 +773,10 @@ fn format1_record_is_one_row_and_a_different_policy_binds_nothing() {
     let mut legacy = stamped.clone();
     legacy["format"] = serde_json::json!(1);
     legacy.as_object_mut().unwrap().remove("authentication");
+    legacy
+        .as_object_mut()
+        .unwrap()
+        .remove("effective_rate_limits");
     let store = Store::from_config(&init).unwrap();
     store
         .write(|tx| tx.put("meta", "node_security", &legacy))
@@ -829,6 +834,7 @@ fn format1_record_is_one_row_and_a_different_policy_binds_nothing() {
         &[
             "security-agreement-record",
             "--confirm-authentication-policy",
+            "--confirm-rate-limits",
         ],
     );
     assert_failure(&blocked, 5, PEERS_CONNECTED);
@@ -840,13 +846,14 @@ fn format1_record_is_one_row_and_a_different_policy_binds_nothing() {
         &[
             "security-agreement-record",
             "--confirm-authentication-policy",
+            "--confirm-rate-limits",
         ],
     );
     assert!(recorded.status.success(), "{}", stderr(&recorded));
     let envelope: Value = serde_json::from_slice(&recorded.stdout).unwrap();
     assert_eq!(envelope["ok"], true);
     assert_eq!(envelope["data"]["recorded"], true);
-    assert_eq!(envelope["data"]["format"], 2);
+    assert_eq!(envelope["data"]["format"], 3);
     assert_eq!(envelope["data"]["issuer"], ISSUER);
     assert_eq!(envelope["data"]["authentication"]["access_token_ttl"], 300);
     assert_eq!(
@@ -883,6 +890,7 @@ fn format1_record_is_one_row_and_a_different_policy_binds_nothing() {
         &[
             "security-agreement-record",
             "--confirm-authentication-policy",
+            "--confirm-rate-limits",
         ],
     );
     assert!(repeat.status.success(), "{}", stderr(&repeat));
@@ -905,6 +913,7 @@ fn format1_record_is_one_row_and_a_different_policy_binds_nothing() {
         &[
             "security-agreement-record",
             "--confirm-authentication-policy",
+            "--confirm-rate-limits",
         ],
     );
     assert_failure(&history, 2, POLICY_MISMATCH);

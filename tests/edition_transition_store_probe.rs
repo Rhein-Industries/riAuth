@@ -88,7 +88,7 @@ fn isolated_store_probe() {
                                     .unwrap();
                             match action.as_str() {
                                 "old-agreement" => changed["format"] = json!(1),
-                                "new-agreement" => changed["format"] = json!(3),
+                                "new-agreement" => changed["format"] = json!(4),
                                 _ => {
                                     let active =
                                         changed["active_capabilities"].as_array_mut().unwrap();

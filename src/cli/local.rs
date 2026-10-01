@@ -131,12 +131,18 @@ pub enum LocalCommand {
     RecoverAdmin(RecoverAdminArgs),
     /// Copy an offline redb instance into an empty PostgreSQL database and write its new configuration
     MigratePostgres(MigratePostgresArgs),
-    /// Record token lifetimes and password history on a format 1 agreement.
-    /// Stop every riAuth process and back up first. The previous release refuses the store after commit.
+    /// Record authentication policy and all effective HTTP rate limits offline.
+    /// Stop every riAuth process and back up first. Older releases refuse format 3.
     SecurityAgreementRecord {
         /// Confirm this process's configured lifetimes and password_history are the shared policy
         #[arg(long, required = true)]
         confirm_authentication_policy: bool,
+        /// Confirm all 16 effective defaults/overrides are the shared policy
+        #[arg(long, required = true)]
+        confirm_rate_limits: bool,
+        /// Explicitly adopt an initialized store whose agreement row is missing
+        #[arg(long)]
+        adopt_missing_agreement: bool,
     },
     /// Generate a private encryption key file
     Keygen(KeygenArgs),
@@ -349,16 +355,18 @@ pub(crate) async fn dispatch(options: LocalOptions<'_>, command: LocalCommand) -
         }
         LocalCommand::SecurityAgreementRecord {
             confirm_authentication_policy,
+            confirm_rate_limits,
+            adopt_missing_agreement,
         } => {
-            if !confirm_authentication_policy {
+            if !confirm_authentication_policy || !confirm_rate_limits {
                 return Err(crate::error::Error::bad(
-                    "Pass --confirm-authentication-policy to record this process's token lifetimes and password history",
+                    "Pass --confirm-authentication-policy and --confirm-rate-limits to record the shared policy",
                 )
                 .into());
             }
             let config = Config::load(options.config)?;
             let result = tokio::task::spawn_blocking(move || {
-                crate::node_security::record_authentication_policy(&config)
+                crate::node_security::record_security_agreement(&config, adopt_missing_agreement)
             })
             .await??;
             emit_local(&options, &result)?;

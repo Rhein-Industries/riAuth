@@ -1031,9 +1031,9 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
             || p.starts_with("/saml/resume/")
             || p.starts_with("/oauth/logout/resume/")
     };
-    let (category, limit) = match route_path {
-        "/api/portal/sign-in" => ("portal_start", 10),
-        path if path.starts_with("/api/portal/requests/") => ("portal_approve", 20),
+    let category = match route_path {
+        "/api/portal/sign-in" => "portal_start",
+        path if path.starts_with("/api/portal/requests/") => "portal_approve",
         "/api/login"
         | "/api/login/certificate"
         | "/api/password"
@@ -1042,70 +1042,68 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         | "/api/portal/sources/finish"
         | "/api/windows-devices/login"
         | "/api/windows-devices/tickets/redeem"
-        | "/api/windows-devices/offline/verify" => ("login", 20),
+        | "/api/windows-devices/offline/verify" => "login",
         path if path.starts_with("/api/workflows/configured/")
             && path.ends_with("/password-reset") =>
         {
-            ("account", 10)
+            "account"
         }
         path if path.starts_with("/api/workflows/configured/")
             && path.ends_with("/source-passkey") =>
         {
-            ("source_start", 30)
+            "source_start"
         }
-        path if path.starts_with("/api/workflows/") && path.ends_with("/password") => ("login", 20),
-        path if path.starts_with("/api/passkey/") => ("passkey", 30),
+        path if path.starts_with("/api/workflows/") && path.ends_with("/password") => "login",
+        path if path.starts_with("/api/passkey/") => "passkey",
         path if path.starts_with("/api/account/") || path.starts_with("/api/portal/account/") => {
-            ("account", 10)
+            "account"
         }
         path if (path.starts_with("/api/sources/") || path.starts_with("/api/portal/sources/"))
             && path.ends_with("/start") =>
         {
-            ("source_start", 30)
+            "source_start"
         }
         path if path.starts_with("/oauth/sources/")
             || path.starts_with("/oauth/source-stages/") =>
         {
-            ("source_callback", 30)
+            "source_callback"
         }
-        "/api/portal/login/password" => ("login", 20),
-        "/api/portal/mfa/totp/confirm" => ("mfa", 10),
+        "/api/portal/login/password" => "login",
+        "/api/portal/mfa/totp/confirm" => "mfa",
         p if p.starts_with("/api/portal/login/passkey/")
             || p == "/api/portal/passkeys"
             || p.starts_with("/api/portal/passkeys/")
             || p == "/api/portal/mfa"
             || p.starts_with("/api/portal/mfa/") =>
         {
-            ("passkey", 30)
+            "passkey"
         }
-        p if interaction(p) && p.ends_with("/state") => ("browser_state", 1200),
-        p if interaction(p) && p.ends_with("/password") => ("login", 20),
+        p if interaction(p) && p.ends_with("/state") => "browser_state",
+        p if interaction(p) && p.ends_with("/password") => "login",
         p if interaction(p)
             && (p.ends_with("/passkey/start")
                 || p.ends_with("/passkey/finish")
                 || p.ends_with("/passkey/cancel")) =>
         {
-            ("passkey", 30)
+            "passkey"
         }
-        p if interaction(p) && p.ends_with("/decision") => ("browser_decision", 60),
+        p if interaction(p) && p.ends_with("/decision") => "browser_decision",
         p if p.starts_with("/outpost/") && (p.ends_with("/auth") || p.ends_with("/traefik")) => {
-            ("forward_auth", 6000)
+            "forward_auth"
         }
-        p if p.starts_with("/outpost/") && p.ends_with("/start") => ("outpost_start", 30),
-        path if path.starts_with("/saml/") && !path.starts_with("/saml/resume/") => ("saml", 30),
-        "/api/mfa/confirm" => ("mfa", 10),
-        "/oauth/device/code" => ("device_start", 30),
-        path if path.starts_with("/api/device/") => ("device_verify", 20),
-        path if path.starts_with("/api/authorization/") => ("device_verify", 20),
-        _ => ("general", 600),
+        p if p.starts_with("/outpost/") && p.ends_with("/start") => "outpost_start",
+        path if path.starts_with("/saml/") && !path.starts_with("/saml/resume/") => "saml",
+        "/api/mfa/confirm" => "mfa",
+        "/oauth/device/code" => "device_start",
+        path if path.starts_with("/api/device/") => "device_verify",
+        path if path.starts_with("/api/authorization/") => "device_verify",
+        _ => "general",
     };
     let limit = app
         .core
         .config
-        .rate_limits
-        .get(category)
-        .copied()
-        .unwrap_or(limit);
+        .effective_rate_limit(category)
+        .expect("known rate category");
     let grouped = rate_key(ip);
     // Shared forward-auth counting uses its reserved admission budget. The
     // counter transaction finishes before the request's authorization check.

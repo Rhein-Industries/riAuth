@@ -1,5 +1,12 @@
 # O03 shared security agreement
 
+Current follow-up: the bounded format-3 implementation adds semantic agreement
+for all 16 effective HTTP rate thresholds and removes automatic missing-row
+startup adoption. See the [current local implementation and evidence](local-wave29-o03-rate-agreement-report.md)
+and [offline operator procedure](../operations.md#rate-limits-and-admission).
+The format-1/2 commands and executions below are historical evidence; they do
+not establish a format-3 PostgreSQL run or deployed fleet agreement. O03 stays open.
+
 Status: one stored comparison, one authentication policy, one explicit
 format 1 record command, one logout dispatch lease, one SSF dispatch lease,
 and one mail dispatch lease. Wave27 adds bounded shared connector admission,

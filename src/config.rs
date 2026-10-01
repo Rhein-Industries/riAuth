@@ -154,25 +154,36 @@ impl CapabilityActivation {
     }
 }
 
-/// Every HTTP rate-limit category that `rate_limits` may override.
-pub const RATE_LIMIT_CATEGORIES: [&str; 16] = [
-    "portal_start",
-    "portal_approve",
-    "login",
-    "passkey",
-    "account",
-    "source_start",
-    "source_callback",
-    "saml",
-    "mfa",
-    "device_start",
-    "device_verify",
-    "browser_decision",
-    "browser_state",
-    "forward_auth",
-    "outpost_start",
-    "general",
+/// Shared semantic defaults, in requests per fixed 60-second window. Both HTTP
+/// counting and the stored node-security agreement resolve through this table.
+pub const RATE_LIMIT_DEFAULTS: [(&str, u32); 16] = [
+    ("portal_start", 10),
+    ("portal_approve", 20),
+    ("login", 20),
+    ("passkey", 30),
+    ("account", 10),
+    ("source_start", 30),
+    ("source_callback", 30),
+    ("saml", 30),
+    ("mfa", 10),
+    ("device_start", 30),
+    ("device_verify", 20),
+    ("browser_decision", 60),
+    ("browser_state", 1200),
+    ("forward_auth", 6000),
+    ("outpost_start", 30),
+    ("general", 600),
 ];
+/// Every HTTP rate-limit category that `rate_limits` may override.
+pub const RATE_LIMIT_CATEGORIES: [&str; 16] = {
+    let mut categories = [""; 16];
+    let mut index = 0;
+    while index < RATE_LIMIT_DEFAULTS.len() {
+        categories[index] = RATE_LIMIT_DEFAULTS[index].0;
+        index += 1;
+    }
+    categories
+};
 
 fn default_alert_signal() -> bool {
     true
@@ -482,6 +493,29 @@ fn listener_ids<T>(map: &BTreeMap<String, T>) -> Vec<&str> {
 }
 
 impl Config {
+    /// An omitted override and an explicit default have the same meaning.
+    /// Unknown categories have no effective limit, even in unvalidated config.
+    pub fn effective_rate_limit(&self, category: &str) -> Option<u32> {
+        let default = RATE_LIMIT_DEFAULTS
+            .iter()
+            .find(|(name, _)| *name == category)?
+            .1;
+        Some(self.rate_limits.get(category).copied().unwrap_or(default))
+    }
+
+    pub fn effective_rate_limits(&self) -> BTreeMap<String, u32> {
+        RATE_LIMIT_CATEGORIES
+            .into_iter()
+            .map(|category| {
+                (
+                    category.into(),
+                    self.effective_rate_limit(category)
+                        .expect("known rate category"),
+                )
+            })
+            .collect()
+    }
+
     pub fn validate(&self) -> Result<()> {
         crate::edition::validate_config(self)?;
         crate::capability::validate_config(self)?;

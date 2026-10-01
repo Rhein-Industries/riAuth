@@ -382,7 +382,7 @@ fn marked_compatible_transition_cross_build() {
         "essentials"
     );
     assert_eq!(after["meta/version_activation"]["edition"], "essentials");
-    assert_eq!(after["meta/node_security"]["format"], 2);
+    assert_eq!(after["meta/node_security"]["format"], 3);
     assert_eq!(
         after["meta/node_security"]["issuer"],
         original_security["issuer"]
@@ -390,6 +390,10 @@ fn marked_compatible_transition_cross_build() {
     assert_eq!(
         after["meta/node_security"]["authentication"],
         original_security["authentication"]
+    );
+    assert_eq!(
+        after["meta/node_security"]["effective_rate_limits"],
+        original_security["effective_rate_limits"]
     );
     assert_ne!(
         after["meta/node_security"]["active_capabilities"],

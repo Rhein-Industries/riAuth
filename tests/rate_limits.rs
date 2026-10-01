@@ -231,6 +231,83 @@ async fn configured_rate_limit_overrides_apply() {
 }
 const BASE: &str = "issuer='http://127.0.0.1:9000'\nlisten='127.0.0.1:9000'\ndata_dir='data'\naccess_token_ttl=300\nrefresh_token_ttl=2592000\nsession_ttl=28800\n";
 
+/// The HTTP caller must resolve the same all-category policy that startup
+/// records. Both counter paths run locally; the shared path uses redb as its
+/// transactional fixture, never a PostgreSQL connection or a fleet claim.
+#[tokio::test]
+async fn every_http_category_uses_the_recorded_effective_threshold() {
+    let routes = [
+        ("portal_start", "POST", "/api/portal/sign-in"),
+        ("portal_approve", "POST", "/api/portal/requests/missing"),
+        ("login", "POST", "/api/login"),
+        ("passkey", "POST", "/api/passkey/start"),
+        ("account", "POST", "/api/account/reset"),
+        ("source_start", "POST", "/api/sources/missing/start"),
+        ("source_callback", "GET", "/oauth/sources/missing/callback"),
+        ("saml", "GET", "/saml/missing"),
+        ("mfa", "POST", "/api/mfa/confirm"),
+        ("device_start", "POST", "/oauth/device/code"),
+        ("device_verify", "POST", "/api/device/missing"),
+        ("browser_decision", "POST", "/oauth/resume/missing/decision"),
+        ("browser_state", "GET", "/oauth/resume/missing/state"),
+        ("forward_auth", "GET", "/outpost/missing/auth"),
+        ("outpost_start", "GET", "/outpost/missing/start"),
+        ("general", "GET", "/.well-known/openid-configuration"),
+    ];
+    assert_eq!(
+        routes
+            .iter()
+            .map(|(category, _, _)| *category)
+            .collect::<std::collections::BTreeSet<_>>(),
+        riauth::config::RATE_LIMIT_CATEGORIES.into_iter().collect()
+    );
+    for shared in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config {
+            data_dir: dir.path().into(),
+            rate_limits: routes
+                .iter()
+                .map(|(category, _, _)| ((*category).into(), 2))
+                .collect(),
+            ..Config::default()
+        };
+        let mut core = riauth::core::Core::initialize(
+            config,
+            riauth::model::NewUser {
+                username: "admin".into(),
+                password: common::PASSWORD.into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let agreement = core
+            .store
+            .get::<serde_json::Value>("meta", "node_security")
+            .unwrap()
+            .unwrap();
+        if shared {
+            // Only select the shared-counter middleware path. Store stays redb.
+            core.config.postgres = Some(riauth::postgres_store::PostgresConfig {
+                connection_file: dir.path().join("unused-connection"),
+                ca_file: None,
+                local_unencrypted: true,
+                pool_size: 1,
+            });
+        }
+        let router = riauth::api::router(core);
+        for (category, method, path) in routes {
+            assert_eq!(agreement["effective_rate_limits"][category], 2);
+            exhaust(&router, &[(method, path)], 2, CLIENT).await;
+            assert!(
+                limited(&router, method, path, CLIENT).await,
+                "{category}, shared={shared}"
+            );
+        }
+    }
+}
+
 #[test]
 fn config_rejects_unknown_rate_limit_categories() {
     let categories = [

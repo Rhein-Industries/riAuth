@@ -388,7 +388,45 @@ browser_state = 3000  # default 1200: sign-in page polling
 general = 2000        # default 600
 ```
 
-Raise limits when many staff share one public address (office NAT). An open sign-in page polls its state every 15 seconds while visible, and every 2 seconds while the terminal panel is open, so `browser_state` at 1200 allows about 300 visible pages, or 40 with the terminal panel open, per address. `login` counts every password attempt from the portal, the interaction pages and the CLI. The per-username lockout (5 failures within 15 minutes locks the name for 15 minutes) is separate and cannot be tuned; passkey sign-in is not affected by it.
+Choose initial limits with shared office addresses in mind. An open sign-in page polls its state every 15 seconds while visible, and every 2 seconds while the terminal panel is open, so `browser_state` at 1200 allows about 300 visible pages, or 40 with the terminal panel open, per address. `login` counts every password attempt from the portal, the interaction pages and the CLI. The per-username lockout (5 failures within 15 minutes locks the name for 15 minutes) is separate and cannot be tuned; passkey sign-in is not affected by it.
+
+**Shared policy and offline upgrade.** Security agreement format 3 records the
+effective value of every category, including defaults for omitted overrides.
+Omission and an explicit default agree. Startup compares that map, issuer,
+active capabilities, token lifetimes and password history before migration,
+backfill or edition stamping. A mismatch names its category and recorded limit:
+set that `rate_limits` entry to the recorded value on every node and restart.
+Existing format-3 policy is preserved; the record command does not overwrite a
+different rate or authentication policy. A deliberate policy change needs a
+separately reviewed migration, not deleting the agreement to bypass its checks.
+
+Formats 1 and 2, and an initialized store with no agreement, now refuse startup
+and remain unchanged. For an upgrade, verify a pre-upgrade backup with all
+encryption keys, using the previous compatible release or a stopped-store
+database/storage backup. Stop **every** server, gateway, worker, listener and
+administration process on every node. Align issuer, active capabilities,
+authentication policy and all effective rates, then use the maintenance binary
+matching the source edition:
+
+```sh
+riauth-maintenance --config /etc/riauth/riauth.toml --json security-agreement-record --confirm-authentication-policy --confirm-rate-limits
+```
+
+Only for a deliberately reviewed missing-row adoption, add
+`--adopt-missing-agreement`. It does not bypass a present incompatible row.
+The command writes one complete agreement or nothing; a matching format-3 retry
+reports `recorded: false`. redb requires exclusive ownership. PostgreSQL rejects
+other connected sessions named `riauth`, but that check cannot prove every
+process is stopped: checking and stopping all nodes is the operator's duty.
+Keep the pre-upgrade backup. Older binaries refuse format 3; rollback requires
+restoring the compatible backup and reconciling credentials/recovery, not editing
+the format number. Restart only participating binaries that implement this
+agreement and the accepted shared ledgers. The agreement does not discover peer
+versions, revoke a paused old process, or establish deployed HA.
+
+Shared connector admission still expires after 60 seconds and is not renewed.
+It provides no atomic fence for a process paused after admission and before
+external IO. Existing SCIM freshness/lease completion fences remain separate.
 
 **Admission queues.** Blocking work runs on bounded queues, each with a two-second wait before 503 `temporarily_unavailable` ("Server busy; retry shortly"):
 
