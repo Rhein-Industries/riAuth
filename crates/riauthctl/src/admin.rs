@@ -2,7 +2,7 @@
 //! management service; this module only shapes requests and protects replies.
 
 use crate::{read_password, review, transport::Remote};
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Subcommand};
 use reqwest::Method;
 use serde::Serialize;
@@ -724,6 +724,14 @@ fn read_settings(path: &Path) -> Result<Value> {
     Ok(settings)
 }
 
+/// A command that names its output file in a JSON summary needs a UTF-8 path.
+/// `what` is a fixed label ("Credential", "Export", "Callback"); the message is
+/// fixed too and never echoes the path. Run it before any request or write.
+pub(crate) fn utf8_output<'a>(path: &'a Path, what: &str) -> Result<&'a str> {
+    path.to_str()
+        .ok_or_else(|| anyhow!("{what} output path must be valid UTF-8"))
+}
+
 pub(crate) struct SecretFile {
     path: PathBuf,
     file: Option<File>,
@@ -732,6 +740,9 @@ pub(crate) struct SecretFile {
 
 impl SecretFile {
     pub(crate) fn reserve(path: PathBuf) -> Result<Self> {
+        // Every credential summary names this file as JSON text. Refuse a path
+        // that is not UTF-8 before anything is reserved, requested or issued.
+        utf8_output(&path, "Credential")?;
         if path.file_name().is_none() {
             bail!("Secret file must name a new file");
         }
@@ -752,8 +763,10 @@ impl SecretFile {
         })
     }
 
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
+    /// The path as text for a summary. `reserve` refused anything that is not
+    /// UTF-8, so this cannot fail there; it returns an error rather than panic.
+    pub(crate) fn path_text(&self) -> Result<&str> {
+        utf8_output(&self.path, "Credential")
     }
 
     pub(crate) fn write(&mut self, value: &Value) -> Result<()> {
@@ -783,7 +796,7 @@ pub(crate) fn protect_secret(
     destination: Option<&mut SecretFile>,
     expected: bool,
 ) -> Result<Value> {
-    let saved = (|| -> Result<Option<PathBuf>> {
+    let saved = (|| -> Result<Option<String>> {
         let secret = match result.get("client_secret") {
             Some(Value::String(secret)) if !secret.is_empty() => true,
             Some(Value::Null) | None => false,
@@ -796,7 +809,7 @@ pub(crate) fn protect_secret(
             let destination =
                 destination.context("Server issued a secret without a private destination")?;
             destination.write(&result)?;
-            Ok(Some(destination.path.clone()))
+            Ok(Some(destination.path_text()?.to_owned()))
         } else {
             Ok(None)
         }

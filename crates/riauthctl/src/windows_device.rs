@@ -159,6 +159,6 @@ fn issued(
     Ok(json!({
         "device": device.context("Server returned a device that is not the requested, active one")?,
         "offline_expires_at": offline_expires_at,
-        "credential_file": destination.path(),
+        "credential_file": destination.path_text()?,
     }))
 }

@@ -63,6 +63,8 @@ pub(crate) async fn plan(
 }
 
 pub(crate) async fn export(remote: &Remote, out: &Path, run_id: Option<&str>) -> Result<Value> {
+    // Reject an output path that the JSON summary cannot represent before any request or write.
+    let manifest_file = crate::admin::utf8_output(out, "Export")?;
     if out.exists() {
         bail!("Export destination already exists");
     }
@@ -96,7 +98,7 @@ pub(crate) async fn export(remote: &Remote, out: &Path, run_id: Option<&str>) ->
     }
     session::write_private(out, &serialized, false, false)?;
     Ok(json!({
-        "manifest_file": out,
+        "manifest_file": manifest_file,
         "revision": result["revision"],
         "secrets_included": false,
     }))

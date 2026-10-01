@@ -111,5 +111,5 @@ fn issued(
     saved?;
     let registration =
         registration.context("Server returned a mismatched registration template")?;
-    Ok(json!({"registration": registration, "credential_file": destination.path()}))
+    Ok(json!({"registration": registration, "credential_file": destination.path_text()?}))
 }
