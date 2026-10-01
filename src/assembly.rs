@@ -98,6 +98,16 @@ mod response;
 mod saml;
 #[cfg(feature = "platform")]
 mod saml_logout;
+#[cfg(feature = "platform")]
+mod scim_runtime;
+#[cfg(feature = "platform")]
+pub use scim_runtime::metadata as scim_metadata;
+#[cfg(feature = "platform")]
+pub(crate) use scim_runtime::record_transition as scim_record_transition;
+#[cfg(all(feature = "platform", feature = "fuzzing"))]
+pub(crate) use scim_runtime::{
+    fuzz_filter as scim_fuzz_filter, fuzz_resource as scim_fuzz_resource,
+};
 mod session_protocol;
 mod signin;
 pub use signin::{bearer_backed, bind_proof, discard_staged, proof_valid};
