@@ -128,6 +128,12 @@ fn schedule_last_completed_at_is_local_controller_time() {
             interval_seconds: 3600,
         },
     );
+    // `reconciliation_process` takes a shared target admission. Its release is
+    // queued on the shared background executor and settled at the next
+    // admission. Without a live holder (a router, as in the server) the weak
+    // executor drops with the first permit, its queued release is lost, and the
+    // 60-second ledger entry defers the next job for this scope.
+    let _background = riauth::api::router(fixture.core.clone());
     fixture
         .core
         .store
