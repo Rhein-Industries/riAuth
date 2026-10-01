@@ -160,6 +160,35 @@ pub(crate) fn retain_workflow_activation(core: &Core, tx: &Tx<'_>, id: &str) -> 
     Ok(())
 }
 
+/// Older approvals may predate activation-time pins. Retire their version
+/// without rebinding changed or unavailable dependencies, and never lower a
+/// newer floor. A fresh approval must supply the current environment again.
+pub(crate) fn retain_workflow_revocation(tx: &Tx<'_>, id: &str) -> Result<()> {
+    let Some(live) = crate::workflow::approval::live(tx, id)? else {
+        return Ok(());
+    };
+    if let Some(stored) = tx.get::<ReviewedPin>(REVIEWED, id)?
+        && (stored.revision > live.revision
+            || (stored.revision == live.revision
+                && (stored.fingerprint != live.fingerprint || stored.approval.is_some())))
+    {
+        return Ok(());
+    }
+    adopt_approved(
+        tx,
+        id,
+        ReviewedPin {
+            revision: live.revision,
+            fingerprint: live.fingerprint.clone(),
+            policy: approved_policy_digest(&live),
+            approval: Some(live.id.clone()),
+            dependencies: Some(live.dependencies.clone()),
+            environment: None,
+        },
+    )?;
+    Ok(())
+}
+
 fn adopt_unapproved(tx: &Tx<'_>, id: &str, pin: ReviewedPin) -> Result<Option<ReviewedPin>> {
     match tx.get::<ReviewedPin>(REVIEWED, id)? {
         None => tx.put(REVIEWED, id, &pin)?,

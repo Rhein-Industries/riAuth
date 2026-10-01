@@ -159,7 +159,11 @@ impl Core {
             if let Some(live) = live(tx, existing.definition.id.as_str())?
                 && selection_holds(self, tx, &live)?
             {
-                return Ok(Ok(approval_view(&existing)));
+                match super::executor::retain_workflow_activation(self, tx, &live.workflow_id) {
+                    Ok(()) => return Ok(Ok(approval_view(&existing))),
+                    Err(error) if error.status.is_server_error() => return Err(error),
+                    Err(_) => {}
+                }
             }
             // Commit stale-run retirement without reviving or rewriting the pointer.
             super::executor::seal_approved_runs(self, tx, existing.definition.id.as_str())?;
@@ -430,6 +434,7 @@ pub(crate) fn revoke_in(core: &Core, tx: &Tx<'_>, token: &str, workflow_id: &str
         at: now(),
     };
     tx.put(REVOCATIONS, &revocation.id, &revocation)?;
+    super::executor::retain_workflow_revocation(tx, workflow_id)?;
     tx.delete(ACTIVATION, workflow_id)?;
     super::executor::seal_approved_runs(core, tx, workflow_id)?;
     bump_revision(tx)?;

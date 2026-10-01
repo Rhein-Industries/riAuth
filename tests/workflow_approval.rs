@@ -972,6 +972,222 @@ fn activation_retains_revision_before_first_run_and_revocation() {
 }
 
 #[test]
+fn legacy_approval_retirement_keeps_floor_without_live_dependencies() {
+    for backend in [Backend::Redb, Backend::EncryptedRedb] {
+        let mut hosted = backend.fixture();
+        let author = hosted.admin.clone();
+        let reviewer = administrator(&hosted.core, &author, "reviewer");
+        let executor = administrator(&hosted.core, &author, "executor");
+        let alice = member(&hosted.core, &author, "alice");
+        let id = "legacy-activation-fence";
+        hosted
+            .core
+            .source_put(
+                &author,
+                riauth::source::SourceInput {
+                    source: serde_json::from_value(json!({
+                        "id": "upstream",
+                        "name": "Synthetic upstream",
+                        "issuer": "https://upstream.example.test",
+                        "authorization_endpoint": "https://upstream.example.test/authorize",
+                        "token_endpoint": "https://upstream.example.test/token",
+                        "token_endpoint_auth_method": riauth::jose::ClientAuthMethod::ClientSecretBasic,
+                        "client_id": "synthetic-client",
+                        "jwks": hosted.core.jwks().unwrap()
+                    }))
+                    .unwrap(),
+                    client_secret: Some("synthetic-source-secret".into()),
+                },
+            )
+            .unwrap();
+        let mut document = serde_json::to_value(
+            workflow::builtin(&workflow::Id::new("essentials-passkey-enrollment").unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        let steps = document["steps"].as_array().unwrap().clone();
+        document["id"] = json!(id);
+        document["revision"] = json!(3);
+        document["origin"] = json!("configured");
+        document["limits"] = json!({"max_duration_seconds":600,"max_executions":8});
+        document["steps"] = json!([
+            steps[0],
+            {
+                "id":"source",
+                "action":{"type":"verify_source","source":"upstream"},
+                "max_attempts":1,
+                "timeout_seconds":300,
+                "cancellable":true,
+                "transitions":[
+                    {"on":"verified","to":"enroll"},
+                    {"on":"failed","to":"denied"}
+                ]
+            },
+            steps[4]
+        ]);
+        document["steps"][0]["transitions"] = json!([
+            {"on":"verified","to":"source"},
+            {"on":"failed","to":"denied"}
+        ]);
+        document["steps"][2]["cancellable"] = json!(true);
+        document["terminals"][0]["requires"] = json!([["session", "source", "enrolled"]]);
+        document["terminals"][0]["max_proof_age_seconds"] = json!(120);
+        let planned = hosted
+            .core
+            .plan_state(
+                &author,
+                Manifest {
+                    api_version: "riauth/v1".into(),
+                    workflows: vec![serde_json::from_value(document).unwrap()],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        hosted
+            .core
+            .review_workflow(&reviewer, &planned.plan_id, "approve")
+            .unwrap();
+        let activated = hosted
+            .core
+            .activate_workflow(&executor, &planned.plan_id)
+            .unwrap();
+        let pin: Value = hosted
+            .core
+            .store
+            .get("workflow_reviewed", id)
+            .unwrap()
+            .unwrap();
+        let pointer: Value = hosted
+            .core
+            .store
+            .get("workflow_activation", id)
+            .unwrap()
+            .unwrap();
+
+        // Simulate an approval created by older code before any run pinned it.
+        hosted
+            .core
+            .store
+            .write(|tx| tx.delete("workflow_reviewed", id))
+            .unwrap();
+        hosted = hosted.reopen_edited(|_| {});
+        let revision = hosted.core.store.get::<u64>("meta", "revision").unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .unwrap(),
+            activated
+        );
+        assert_eq!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_reviewed", id)
+                .unwrap(),
+            Some(pin)
+        );
+        assert_eq!(
+            hosted.core.store.get::<u64>("meta", "revision").unwrap(),
+            revision
+        );
+
+        // A stale replay cannot rebind a missing source. Revocation still must
+        // retire the old version without needing that source to be restored.
+        hosted
+            .core
+            .store
+            .write(|tx| {
+                tx.delete("workflow_reviewed", id)?;
+                tx.delete("sources", "upstream")
+            })
+            .unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .unwrap_err()
+                .message,
+            "Workflow approval is not active"
+        );
+        assert!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_reviewed", id)
+                .unwrap()
+                .is_none()
+        );
+        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        let retired: Value = hosted
+            .core
+            .store
+            .get("workflow_reviewed", id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retired["revision"], 3);
+        assert_eq!(retired["approval"], activated["approval_id"]);
+        assert_eq!(retired["fingerprint"], pointer["fingerprint"]);
+        assert_eq!(retired["dependencies"], pointer["dependencies"]);
+        assert!(retired["environment"].is_null());
+        assert!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_activation", id)
+                .unwrap()
+                .is_none()
+        );
+        hosted = hosted.reopen_edited(|config| {
+            config.workflows.insert(
+                id.into(),
+                ConfiguredWorkflow {
+                    active: true,
+                    definition: definition(id, 2, 120),
+                },
+            );
+        });
+        assert_message(&hosted.core, &alice, id, "Workflow version was rolled back");
+        assert!(
+            hosted
+                .core
+                .store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .is_empty()
+        );
+
+        // A restored older pointer can be revoked without lowering a newer,
+        // legitimately adopted floor or granting the older workflow authority.
+        hosted.core.config.workflows.get_mut(id).unwrap().definition = definition(id, 5, 120);
+        let fresh = hosted.core.workflow_configured_start(&alice, id).unwrap();
+        let higher: Value = hosted
+            .core
+            .store
+            .get("workflow_reviewed", id)
+            .unwrap()
+            .unwrap();
+        hosted
+            .core
+            .store
+            .write(|tx| tx.put("workflow_activation", id, &pointer))
+            .unwrap();
+        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_reviewed", id)
+                .unwrap(),
+            Some(higher)
+        );
+        hosted.core.workflow_cancel(&alice, &fresh.id).unwrap();
+        hosted.core.config.workflows.get_mut(id).unwrap().definition = definition(id, 4, 120);
+        assert_message(&hosted.core, &alice, id, "Workflow version was rolled back");
+    }
+}
+
+#[test]
 fn environment_binding_and_activation_replay_require_live_review() {
     for backend in [Backend::Redb, Backend::EncryptedRedb] {
         let mut hosted = backend.fixture();

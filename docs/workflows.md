@@ -1497,6 +1497,10 @@ response selection is `approved-definition` and `configuration_file` is
 `unchanged`. The writer lock is the existing redb lock or PostgreSQL advisory
 lock. Other clients stay connected, and `config.toml` stays unchanged.
 
+A valid replay also retains an older approval's pin if the deployment predates
+activation-time pins. A pointer below the retained version cannot be replayed
+into a lower high-water. This repair leaves the approval and revision unchanged.
+
 The approved policy digest appends the approval id and the dependency digest
 to the five unapproved lines, with the active flag forced to `true`. The
 dependency digest is the SHA-256 hex of `riauth.workflow-approval-dependencies/v1`,
@@ -1526,6 +1530,12 @@ With the pointer gone and no `config.workflows` entry, a new start returns
 `Configured workflow is unavailable`. The same revision can start from
 configuration again only after a higher revision replaces the high-water, or
 after a new approval of those bytes is activated.
+
+Revocation of a valid older approval also retains its version if no pin was
+ever recorded, even when a referenced source is now missing. That retirement
+pin carries the historical approval and dependency digest without adopting a
+current environment. It cannot authorize continuation or an unapproved start
+at the retired revision. A newer retained pin stays unchanged.
 
 Changed content leaves the sealed run closed and leaves its evidence unused.
 The next execution is a new run of the approved definition and collects its own
