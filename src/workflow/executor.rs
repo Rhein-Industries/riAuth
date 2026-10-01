@@ -32,8 +32,8 @@ pub use source::SourceStart;
 pub use totp::TotpChallenge;
 pub use totp::TotpChallenge as RecoveryChallenge;
 pub(crate) use version::{
-    seal_approved_runs, seal_disabled_account, seal_lost_browser_selection, seal_reviewed_run,
-    seal_session_run, workflow_revision_fence,
+    retain_workflow_activation, seal_approved_runs, seal_disabled_account,
+    seal_lost_browser_selection, seal_reviewed_run, seal_session_run, workflow_revision_fence,
 };
 
 use super::{

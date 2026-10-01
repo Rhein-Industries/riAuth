@@ -817,6 +817,161 @@ approval_backends!(approval_negative, approval_negative_paths);
 approval_backends!(approval_concurrent, approval_concurrent_review_and_activate);
 
 #[test]
+fn activation_retains_revision_before_first_run_and_revocation() {
+    for backend in [Backend::Redb, Backend::EncryptedRedb] {
+        let mut hosted = backend.fixture();
+        let author = hosted.admin.clone();
+        let reviewer = administrator(&hosted.core, &author, "reviewer");
+        let executor = administrator(&hosted.core, &author, "executor");
+        let alice = member(&hosted.core, &author, "alice");
+        let id = "activation-fence";
+        let planned = plan(&hosted.core, &author, id, 3, 120);
+        hosted
+            .core
+            .review_workflow(&reviewer, &planned.plan_id, "approve")
+            .unwrap();
+        let activated = hosted
+            .core
+            .activate_workflow(&executor, &planned.plan_id)
+            .unwrap();
+        let pin: Value = hosted
+            .core
+            .store
+            .get("workflow_reviewed", id)
+            .unwrap()
+            .expect("activation must retain its version before any execution");
+        assert_eq!(pin["revision"], 3);
+        assert_eq!(pin["fingerprint"], definition(id, 3, 120).fingerprint());
+        assert_eq!(pin["approval"], activated["approval_id"]);
+        assert!(
+            hosted
+                .core
+                .store
+                .list::<Value>("workflow_runs")
+                .unwrap()
+                .is_empty()
+        );
+        let revision = hosted.core.store.get::<u64>("meta", "revision").unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .unwrap(),
+            activated
+        );
+        assert_eq!(
+            hosted.core.store.get::<u64>("meta", "revision").unwrap(),
+            revision
+        );
+        assert_eq!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_reviewed", id)
+                .unwrap(),
+            Some(pin.clone())
+        );
+
+        hosted = hosted.reopen_edited(|_| {});
+        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_reviewed", id)
+                .unwrap(),
+            Some(pin.clone())
+        );
+        // Revocation and another reopen must not turn an unexecuted approval
+        // into permission to execute a rolled-back configured policy.
+        hosted = hosted.reopen_edited(|config| {
+            config.workflows.insert(
+                id.into(),
+                ConfiguredWorkflow {
+                    active: true,
+                    definition: definition(id, 2, 120),
+                },
+            );
+        });
+        assert_message(&hosted.core, &alice, id, "Workflow version was rolled back");
+        hosted.core.config.workflows.get_mut(id).unwrap().definition = definition(id, 3, 120);
+        assert_message(&hosted.core, &alice, id, "Workflow policy changed");
+        assert_eq!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_reviewed", id)
+                .unwrap(),
+            Some(pin)
+        );
+        assert!(
+            hosted
+                .core
+                .store
+                .list::<Value>("workflow_runs")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            hosted
+                .core
+                .store
+                .list::<Value>("workflow_evidence")
+                .unwrap()
+                .is_empty()
+        );
+
+        // A fresh exact-content approval may rebind the same revision. The
+        // revoked approval itself remains retired, and later revocation seals
+        // this new active run without a password proof.
+        let renewed = plan(&hosted.core, &author, id, 3, 120);
+        hosted
+            .core
+            .review_workflow(&reviewer, &renewed.plan_id, "approve")
+            .unwrap();
+        let renewed_approval = hosted
+            .core
+            .activate_workflow(&executor, &renewed.plan_id)
+            .unwrap();
+        assert_ne!(renewed_approval["approval_id"], activated["approval_id"]);
+        assert_eq!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_reviewed", id)
+                .unwrap()
+                .unwrap()["approval"],
+            renewed_approval["approval_id"]
+        );
+        let started = hosted.core.workflow_configured_start(&alice, id).unwrap();
+        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        assert_denied(&hosted.core, &started.id);
+        assert!(
+            hosted
+                .core
+                .workflow_password(&alice, &started.id, PASSWORD.into())
+                .is_err()
+        );
+        hosted.core.config.workflows.get_mut(id).unwrap().definition = definition(id, 4, 120);
+        let fresh = hosted.core.workflow_configured_start(&alice, id).unwrap();
+        assert_ne!(fresh.id, started.id);
+        assert_eq!(fresh.reviewed_revision, Some(4));
+        let verified = hosted
+            .core
+            .workflow_password(&alice, &fresh.id, PASSWORD.into())
+            .unwrap();
+        assert!(matches!(
+            verified.state,
+            RunState::Finished {
+                outcome: Outcome::Authenticated,
+                ..
+            }
+        ));
+        assert_denied(&hosted.core, &started.id);
+    }
+}
+
+#[test]
 fn environment_binding_and_activation_replay_require_live_review() {
     for backend in [Backend::Redb, Backend::EncryptedRedb] {
         let mut hosted = backend.fixture();
@@ -876,6 +1031,14 @@ fn environment_binding_and_activation_replay_require_live_review() {
                 .core
                 .store
                 .get::<Value>("workflow_activation", "reviewed-reset")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_reviewed", "reviewed-reset")
                 .unwrap()
                 .is_none()
         );

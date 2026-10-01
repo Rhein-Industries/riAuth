@@ -129,19 +129,35 @@ fn pin_approved(core: &Core, tx: &Tx<'_>, checked: &Validated) -> Result<Option<
     {
         return Err(Error::conflict("Workflow policy changed"));
     }
-    let pin = ReviewedPin {
+    adopt_approved(tx, id, approved_pin(core, tx, &live)?)
+}
+
+fn approved_pin(
+    core: &Core,
+    tx: &Tx<'_>,
+    live: &crate::workflow::approval::LiveApproval,
+) -> Result<ReviewedPin> {
+    Ok(ReviewedPin {
         revision: live.revision,
         fingerprint: live.fingerprint.clone(),
-        policy: approved_policy_digest(&live),
+        policy: approved_policy_digest(live),
         approval: Some(live.id.clone()),
         dependencies: Some(live.dependencies.clone()),
         environment: Some(crate::workflow::approval::environment_digest(
             core,
             tx,
-            checked.definition(),
+            &live.definition,
         )?),
-    };
-    adopt_approved(tx, id, pin)
+    })
+}
+
+/// Retain the activated version even when no account has started it yet.
+/// This write shares the approval transaction; revocation cannot lower it.
+pub(crate) fn retain_workflow_activation(core: &Core, tx: &Tx<'_>, id: &str) -> Result<()> {
+    let live = crate::workflow::approval::live(tx, id)?
+        .ok_or_else(|| Error::conflict("Workflow approval is not active"))?;
+    adopt_approved(tx, id, approved_pin(core, tx, &live)?)?;
+    Ok(())
 }
 
 fn adopt_unapproved(tx: &Tx<'_>, id: &str, pin: ReviewedPin) -> Result<Option<ReviewedPin>> {
