@@ -52,12 +52,13 @@ groups:
         annotations:
           summary: riAuth storage writer waits exceed 500 milliseconds at the 95th percentile
       - alert: RiAuthDeliveryBacklog
-        expr: riauth_queue_oldest_pending_seconds > 300 and riauth_queue_pending > 0
+        expr: riauth_queue_oldest_pending_seconds{queue!="offboard_jobs"} > 300 and riauth_queue_pending{queue!="offboard_jobs"} > 0
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "riAuth delivery queue is stalled"
+          description: The oldest pending row was created more than 300 seconds ago. The offboard_jobs queue is excluded because its age counts from creation, not from the scheduled time. A failed offboarding job raises RiAuthFailedDeliveries. GET /api/operations/offboarding reports offboarding jobs that need attention.
       - alert: RiAuthFailedDeliveries
         expr: riauth_queue_failed > 0
         for: 10m

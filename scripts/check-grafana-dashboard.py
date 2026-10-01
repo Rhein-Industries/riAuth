@@ -3,8 +3,9 @@
 
 Reads deploy/riauth-grafana.json, deploy/riauth-alerts.yml, src/api/observability.rs,
 src/telemetry.rs, and src/store/maintenance.rs. Every panel expression must be an
-alert expression with its threshold removed. Every PromQL metric name must be
-rendered by those emitters. This does not start Grafana or Prometheus.
+alert expression with its threshold and any `{queue!="<queue>"}` exclusion removed.
+Every PromQL metric name must be rendered by those emitters. This does not start
+Grafana or Prometheus.
 """
 
 import json
@@ -22,6 +23,9 @@ MAINTENANCE = ROOT / "src" / "store" / "maintenance.rs"
 FUNCTIONS = {"clamp_min", "histogram_quantile", "increase", "rate"}
 IDENT = re.compile(r"[A-Za-z_:][A-Za-z0-9_:]*")
 COMPARISON = re.compile(r"\s*(?:>=|<=|==|!=|>|<)\s*-?(?:\d+(?:\.\d+)?|\.\d+)\s*$")
+# The only label matcher an alert may carry: it drops one known queue from a rule.
+# The dashboard still draws that queue, so the panel query has no matcher.
+QUEUE_EXCLUSION = re.compile(r'\{queue!="([a-z0-9_]+)"\}')
 RANGE = re.compile(r"\[[0-9]+[smhdwy](?::[0-9]+[smhdwy])?\]")
 LOOP = re.compile(
     r"for\s*\(\s*name\s*,\s*[A-Za-z0-9_]+\s*\)\s*in\s*\[(.*?)\]\s*\{(?=(.{0,500}))",
@@ -138,10 +142,18 @@ def alert_expressions(text):
     return found
 
 
-def product_queries(expressions):
+def strip_queue_exclusions(part, queue_names):
+    for name in QUEUE_EXCLUSION.findall(part):
+        if name not in queue_names:
+            die(f"alert excludes an unknown queue: {name}")
+    return QUEUE_EXCLUSION.sub("", part)
+
+
+def product_queries(expressions, queue_names):
     queries = []
     for expr in expressions:
         for part in re.split(r"\s+and\s+", expr.strip()):
+            part = strip_queue_exclusions(part, queue_names)
             core = COMPARISON.sub("", part).strip()
             if core == part.strip() and re.search(r"[<>]=?|==|!=", part):
                 die(f"alert comparison was not removed: {part}")
@@ -337,7 +349,7 @@ def main():
     emitted = observability_metrics(OBSERVABILITY.read_text())
     emitted.update(telemetry_metrics(TELEMETRY.read_text()))
     queue_names = queues(MAINTENANCE.read_text())
-    queries = product_queries(alert_expressions(ALERTS.read_text()))
+    queries = product_queries(alert_expressions(ALERTS.read_text()), queue_names)
     allowed = {normalize(query) for query in queries}
     for query in queries:
         problems = expression_problems(query, allowed, emitted)
