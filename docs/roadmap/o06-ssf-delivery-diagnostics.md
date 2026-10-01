@@ -35,7 +35,7 @@ The retained response is the fixed counters plus at most 50 redacted items. Each
 - A Grafana dashboard document at [deploy/riauth-grafana.json](../../deploy/riauth-grafana.json). Setup and limits are in [operations](../operations.md). The file repeats the alert PromQL. A disposable loopback import is recorded in [o06-grafana-loopback.md](o06-grafana-loopback.md). Connector lag, key problems, and readiness stay unplotted.
 - Connector lag. A schedule can store `last_completed_at`, the local unix time when its then-current `last_job` was stored completed. That time can remain after `last_job` changes. It is not a remote high-water mark and not downstream delivery completion. `next_run` still moves when a job is enqueued. The field is on [reconciliation diagnostics](o06-reconciliation-diagnostics.md).
 - Node mismatch, which remains [O03](coverage-inventory.md).
-- Storage occupancy and key health have no shared store contract. The audit is [storage and key diagnostics](o06-storage-key-contract.md).
+- Storage occupancy against a capacity, and key health, have no shared store contract. Physical allocated bytes are [storage allocation](o06-storage-allocation.md). The audit is [storage and key diagnostics](o06-storage-key-contract.md).
 - Provisioning-job failure counts are [provisioning job diagnostics](o06-provisioning-job-diagnostics.md). Stored error text stays on `GET /api/provisioning/jobs`.
 - Mail delivery status, which stays on `GET /api/operations/mail` and the `mail_deliveries` queue gauges. That response omits `dispatch_started` as well as the lease, recipient, subject, body, and proof.
 - Logout delivery state, which stays on `GET /api/operations/logout`.

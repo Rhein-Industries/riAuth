@@ -1355,10 +1355,13 @@
           "label": "extend",
           "journey": "module",
           "gaps": [
-            "Dashboards",
-            "Connector lag",
-            "Storage pressure and key problems",
-            "Failed jobs outside scheduled offboarding"
+            "Remote connector lag (local controller completion time only)",
+            "Node-mismatch operator visibility",
+            "Storage capacity, occupancy and pool-pressure alerting",
+            "Key-health status beyond the signing-error counter",
+            "Alerts never shown firing on a live deployment",
+            "PostgreSQL diagnostics tests are ignored and outside CI",
+            "No released artifact carries these diagnostics"
           ]
         },
         "O07": {

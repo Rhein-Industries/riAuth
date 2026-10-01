@@ -53,6 +53,16 @@ the logout outbox, not mail and not SCIM. Incomplete scheduled offboarding is
 separate from `doctor`. Deactivation rows, including a row no offboarding job
 records, are `GET /api/operations/offboarding/deactivations` on Platform.
 That read pages the deactivation bucket and does not load offboarding jobs.
+Essentials and Platform both serve `GET /api/operations/provisioning/deactivations`,
+a redacted aggregate of the same bucket that needs `operations.read` on
+`operations/provisioning`, not `user.offboard`. Reconciliation controller
+failures are `GET /api/operations/reconciliation`, and provisioning-job
+failure counts are `GET /api/operations/provisioning`. Both are served by
+either edition and neither has a `riauth` or `riauthctl` command. A failed
+reconciliation job does not increment `riauth_background_failed_total` and has
+no queue gauge, so this route is the only aggregate that shows it.
+`GET /api/operations/storage` (`riauth storage`) reports physical allocated
+bytes for the opened store. It says nothing about a connector.
 
 Counters in `riauth metrics` reset at process start. `runtime.signing_errors`,
 `runtime.alert_delivery_errors`, and `runtime.cleanup_errors` are those

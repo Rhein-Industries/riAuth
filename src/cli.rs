@@ -267,7 +267,7 @@ pub enum Command {
         #[arg(long)]
         password_stdin: bool,
     },
-    /// Inspect storage, key health, inventory counts and pending notifications
+    /// Read the storage backend, active signing key id, inventory counts and pending logout deliveries
     Doctor,
     /// Read physical bytes occupied by the server's store (not a capacity or occupancy ratio)
     Storage,
