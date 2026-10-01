@@ -5922,9 +5922,8 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
         "Cloud source, authority or local revision changed during snapshot"
     );
     assert_eq!(remote.users_hits(), hits_before_denied);
-    f.assert_snapshot_except(&before_changed_authority, |key| {
-        key.starts_with("cloud_directory_runs/")
-    });
+    // Rejected before the retry budget: not even the run ledger advances.
+    f.assert_snapshot(&before_changed_authority);
     f.core
         .store
         .write(|tx| {
