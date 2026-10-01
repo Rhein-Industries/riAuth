@@ -346,3 +346,43 @@ fn a_full_shared_rate_table_evicts_its_oldest_window() {
         .unwrap();
     assert_eq!(count, 2, "one of the two older windows was evicted");
 }
+
+#[tokio::test]
+async fn shared_forward_auth_counter_survives_router_replacement() {
+    let mut f = Fixture::new();
+    f.core.config.rate_limits.insert("forward_auth".into(), 2);
+    // Exercise the shared-counter middleware path on the local transactional
+    // store. This marker never opens a PostgreSQL connection and establishes
+    // neither multi-process PostgreSQL behavior nor deployed HA.
+    f.core.config.postgres = Some(riauth::postgres_store::PostgresConfig {
+        connection_file: f._dir.path().join("unused-connection"),
+        ca_file: None,
+        local_unencrypted: true,
+        pool_size: 1,
+    });
+    let first = riauth::api::router(f.core.clone());
+    let second = riauth::api::router(f.core.clone());
+    let before = f.snapshot().unwrap();
+    assert!(!limited(&first, "GET", "/outpost/dashboard/auth", CLIENT).await);
+    assert!(!limited(&second, "GET", "/outpost/dashboard/traefik", CLIENT).await);
+    let replacement = riauth::api::router(f.core.clone());
+    assert!(limited(&replacement, "GET", "/outpost/dashboard/auth", CLIENT).await);
+    assert!(
+        !limited(
+            &replacement,
+            "GET",
+            "/outpost/dashboard/auth",
+            "198.51.100.8"
+        )
+        .await
+    );
+    f.assert_http_mutation_snapshot(&before);
+    assert_eq!(
+        f.core
+            .store
+            .list::<serde_json::Value>("http_rates")
+            .unwrap()
+            .len(),
+        2
+    );
+}
