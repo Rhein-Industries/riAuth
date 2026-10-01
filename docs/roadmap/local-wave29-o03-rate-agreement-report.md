@@ -19,6 +19,11 @@ no previously held source stack was imported again. No main/accepted edits,
 push, new task/worktree/shell, desktop interaction or external message occurred.
 RiWork claims and reporting used only the explicit project UUID.
 
+Bounded implementation commit
+`8046c66ab8e52eb11a78a05c2350480047f3e0d0` changes the 16 files listed below
+(828 additions, 169 removals, including this report's initial evidence). Root
+owns review, integration and push; the commit remains on this lane's branch.
+
 Before editing Core, this lane reported the exact required compatibility hunk
 to root: remove `node_security::adopt_if_absent` from `Core::open_store` and
 revise its comment. That automatic startup writer would otherwise silently

@@ -142,3 +142,27 @@ recommendations are in the
 [wave28 connector and S04 report](local-wave28-connector-s04-port-report.md).
 Both original task IDs remain in progress. O03 effective rate-threshold agreement
 remains a proposal; no format migration, deployed HA or paused-IO fence is claimed.
+
+## Authorized O03 rate-agreement continuation
+
+The later authorization supersedes the proposal-only status above. Reviewed main
+`148fafd4825c6cf803faf4ae869e3089e1462982` entered this branch via clean merge
+`a113c74f83566b027605d88de86b03144223ad54`; implementation
+`8046c66ab8e52eb11a78a05c2350480047f3e0d0` adds the canonical all-16 effective
+threshold resolver, strict format-3 agreement and explicit offline
+upgrade/adoption. Defaults and HTTP route classification are preserved;
+omission equals an explicit default. Old/missing agreement and rate mismatch
+refusals precede startup writes, and existing format-3 disagreement cannot be
+overwritten by the record command. The required one-line Core adoption removal
+was reported to root before editing.
+
+Seven focused node-security checks and the two new exact HTTP/maintenance
+fixtures passed. Essentials compilation, targeted Clippy, formatting, diff and
+documentation checks passed. PostgreSQL and cross-build fixtures were only
+adapted; the PostgreSQL target compiled without execution or service launch.
+Exact files, commands, failures corrected in fixture assertions, source
+comparisons, operator procedure and residual acceptance are in the
+[O03 rate agreement report](local-wave29-o03-rate-agreement-report.md).
+Task `85240c6b-8c87-4a62-a07e-68c7ed1a5d5a` was not marked done. No deployed
+store was upgraded, no peer versions were inferred, and the 60-second admission,
+SCIM completion fences, global fallback and Group hold remain unchanged.
