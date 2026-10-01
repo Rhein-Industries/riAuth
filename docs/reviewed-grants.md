@@ -34,7 +34,7 @@ account's grants immediately.
 | Execute | `POST /api/delegated-grant-changes/{id}/execute` | `execute <id> --digest <digest>` |
 | Cancel | `POST /api/delegated-grant-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
-`riauthctl grants` takes the same verbs (`get`, `set`, `stage`, `change`, `approve`, `execute`, `cancel`) against the same routes, sending the revision and an `Idempotency-Key` on every write.
+`riauthctl grants` takes the same verbs (`get`, `set`, `stage`, `change`, `approve`, `execute`, `cancel`) against the same routes, sending the revision and an `Idempotency-Key` on every write. Input files for `set`, `stage` and every other review class are limited to 32 KiB, the server's request-body limit, in both `riauth` and `riauthctl`; a larger file is refused before any request.
 
 Browser JSON uses the same paths with `/api/admin` in place of `/api`, behind
 the existing portal read/write guards. The administration page's **Reviewed

@@ -4,6 +4,7 @@ mod client_endpoint;
 mod client_policy;
 mod client_status;
 mod grants;
+mod input;
 pub mod local;
 mod memberships;
 mod transport;

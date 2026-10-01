@@ -1,11 +1,11 @@
 //! Thin remote adapter; the shared server service chooses the review boundary.
-use super::{Remote, segment};
+use super::{Remote, input::read_request, segment};
 use crate::delegation::GrantInput;
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::Subcommand;
 use reqwest::Method;
 use serde_json::{Value, json};
-use std::{fs::File, io::Read, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum GrantCommand {
@@ -45,13 +45,7 @@ pub enum GrantCommand {
 }
 
 fn read_grants(file: &PathBuf) -> Result<Value> {
-    let mut bytes = Vec::new();
-    File::open(file)?.take(65_537).read_to_end(&mut bytes)?;
-    if bytes.len() > 65_536 {
-        bail!("Grant file exceeds 64 KiB");
-    }
-    let grants: Vec<GrantInput> = serde_json::from_slice(&bytes)?;
-    Ok(json!(grants))
+    read_request::<Vec<GrantInput>>(file, "Grant")
 }
 
 pub(super) async fn run(remote: &Remote, command: GrantCommand) -> Result<Value> {
