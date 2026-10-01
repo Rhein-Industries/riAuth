@@ -69,7 +69,7 @@ test('private ownership proof is single use, then ordinary cookie sign-in works'
     await page.getByLabel('Administrator username').fill('owner');
     await page.getByLabel('Display name').fill('Browser administrator');
     await page.getByLabel('Setup proof', { exact: true }).fill('ri_setup_' + 'x'.repeat(43));
-    await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('textbox', { name: 'Password', exact: true }).fill(password);
     await page.getByLabel('Confirm password').fill(password + 'wrong');
     await page.getByRole('button', { name: 'Create administrator' }).click();
     await expect(page.getByRole('alert')).toHaveText('Your passwords do not match.');
@@ -77,9 +77,9 @@ test('private ownership proof is single use, then ordinary cookie sign-in works'
     await page.getByRole('button', { name: 'Create administrator' }).click();
     await expect(page.getByRole('alert')).toContainText('invalid or expired');
     await expect(page.getByLabel('Setup proof', { exact: true })).toHaveValue('');
-    await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: 'Password', exact: true })).toHaveValue('');
     await page.getByLabel('Setup proof', { exact: true }).fill(fixture.proof);
-    await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('textbox', { name: 'Password', exact: true }).fill(password);
     await page.getByLabel('Confirm password').fill(password);
     await page.getByRole('button', { name: 'Create administrator' }).click();
     await expect(page.getByRole('heading', { name: 'Your administrator is ready' })).toBeVisible();
@@ -133,12 +133,12 @@ test('a visitor without the private proof cannot claim the first administrator',
     await page.getByLabel('Administrator username').fill('intruder');
     await page.getByLabel('Display name').fill('Uninvited visitor');
     await page.getByLabel('Setup proof', { exact: true }).fill('ri_setup_' + 'x'.repeat(43));
-    await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('textbox', { name: 'Password', exact: true }).fill(password);
     await page.getByLabel('Confirm password').fill(password);
     await page.getByRole('button', { name: 'Create administrator' }).click();
     await expect(page.getByRole('alert')).toContainText('invalid or expired');
     await expect(page.getByLabel('Setup proof', { exact: true })).toHaveValue('');
-    await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: 'Password', exact: true })).toHaveValue('');
     // A denied visitor cannot spend the claim; only a separate owner context gets the proof.
     const owner = await browser.newContext();
     try {
@@ -147,7 +147,7 @@ test('a visitor without the private proof cannot claim the first administrator',
       await ownerPage.getByLabel('Administrator username').fill('owner');
       await ownerPage.getByLabel('Display name').fill('Browser administrator');
       await ownerPage.getByLabel('Setup proof', { exact: true }).fill(fixture.proof);
-      await ownerPage.getByLabel('Password', { exact: true }).fill(password);
+      await ownerPage.getByRole('textbox', { name: 'Password', exact: true }).fill(password);
       await ownerPage.getByLabel('Confirm password').fill(password);
       await ownerPage.getByRole('button', { name: 'Create administrator' }).click();
       await expect(ownerPage.getByRole('heading', { name: 'Your administrator is ready' })).toBeVisible();
@@ -168,12 +168,12 @@ test('an expired proof leaves the setup URL pending without an administrator', a
     await page.getByLabel('Administrator username').fill('owner');
     await page.getByLabel('Display name').fill('Browser administrator');
     await page.getByLabel('Setup proof', { exact: true }).fill(fixture.proof);
-    await page.getByLabel('Password', { exact: true }).fill(password);
+    await page.getByRole('textbox', { name: 'Password', exact: true }).fill(password);
     await page.getByLabel('Confirm password').fill(password);
     await page.getByRole('button', { name: 'Create administrator' }).click();
     await expect(page.getByRole('alert')).toContainText('invalid or expired');
     await expect(page.getByLabel('Setup proof', { exact: true })).toHaveValue('');
-    await expect(page.getByLabel('Password', { exact: true })).toHaveValue('');
+    await expect(page.getByRole('textbox', { name: 'Password', exact: true })).toHaveValue('');
     await page.goto(`${fixture.issuer}/apps`);
     await expect(page).toHaveURL(`${fixture.issuer}/setup`);
     await expect(page.getByRole('heading', { name: 'Set up your administrator' })).toBeVisible();
