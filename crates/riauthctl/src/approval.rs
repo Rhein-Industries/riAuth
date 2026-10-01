@@ -385,6 +385,11 @@ pub(crate) async fn authorize(
     reauthentication: Reauthentication,
     non_interactive: bool,
 ) -> Result<Value> {
+    // The result names the callback file as JSON text: refuse a path that is
+    // not UTF-8 before any request, reservation or private write.
+    if let Some(path) = callback_file {
+        crate::admin::utf8_output(path, "Callback")?;
+    }
     end_user_only(remote)?;
     let verified = remote.verify_issuer().await?;
     let parsed = Url::parse(url).context("Invalid authorization URL")?;
@@ -516,6 +521,8 @@ struct CallbackFile {
 
 impl CallbackFile {
     fn reserve(path: PathBuf) -> Result<Self> {
+        // Defense in depth: `authorize` already refused a non-UTF-8 path.
+        crate::admin::utf8_output(&path, "Callback")?;
         if path.file_name().is_none() {
             bail!("Callback file must name a new file");
         }
@@ -536,7 +543,10 @@ impl CallbackFile {
         })
     }
 
-    fn write(&mut self, callback: &str) -> Result<&Path> {
+    /// Write the callback and return the file's path as text for the result,
+    /// built from the validated path so it cannot panic.
+    fn write(&mut self, callback: &str) -> Result<&str> {
+        let text = crate::admin::utf8_output(&self.path, "Callback")?;
         let file = self.file.as_mut().context("Callback file is closed")?;
         file.write_all(callback.as_bytes())
             .context("Cannot write callback file")?;
@@ -544,7 +554,7 @@ impl CallbackFile {
             .context("Cannot write callback file")?;
         file.sync_all().context("Cannot sync callback file")?;
         self.complete = true;
-        Ok(&self.path)
+        Ok(text)
     }
 }
 
