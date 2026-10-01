@@ -161,6 +161,11 @@ const RETAINED: &[&str] = &[
     "usernames",
     "invitation_reservations",
     "groups",
+    // The reviewed-membership fence is derived from `groups` in the same writer
+    // and only counts while the group still lists the member. Clearing it would
+    // unfence restored members of groups no longer named in configuration. It
+    // holds no credential and no staged approval.
+    "reviewed_membership_holders",
     "sources",
     "workflow_definitions",
     // Highest reviewed configured revision. A restored older definition must not start below it.
