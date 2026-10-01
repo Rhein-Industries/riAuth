@@ -362,6 +362,9 @@ def main() -> None:
             errors.append("src/cloud_directory.rs: retry-budget storage belongs in assembly")
         if path == SRC / "cloud_directory.rs":
             cloud_protocol = masked_rust_source(path.read_text().split("#[cfg(test)]", 1)[0])
+            runtime_source = (SRC / "assembly/cloud_directory_runtime.rs").read_text()
+            if re.search(r"\bCore\b|\bimpl\s+Core\b|\.\s*config\b", cloud_protocol):
+                errors.append("src/cloud_directory.rs: Core entrypoints and configuration selection belong in assembly")
             reconcile_assembly = (SRC / "assembly/cloud_directory_reconcile.rs").read_text()
             assembly_root = (SRC / "assembly.rs").read_text()
             plan_assembly = (SRC / "assembly/cloud_directory_plan.rs").read_text()
@@ -383,17 +386,17 @@ def main() -> None:
                 errors.append("src/cloud_directory.rs: concrete cloud reconciliation storage belongs in assembly")
             if rust_function_body(masked_rust_source(path.read_text()), "cloud_snapshot_actor") is not None:
                 errors.append("src/cloud_directory.rs: snapshot authority/revision check belongs in assembly")
-            reconcile = rust_function_body(masked_rust_source(path.read_text()), "cloud_reconcile")
+            reconcile = rust_function_body(masked_rust_source(runtime_source), "cloud_reconcile")
             if (
                 reconcile is None
                 or not re.search(r"\bcloud_reconcile_pending\s*\(", reconcile)
                 or re.search(r"\.\s*store\s*\.\s*read\s*\(", reconcile)
             ):
                 errors.append("src/cloud_directory.rs: pending reconcile-plan read belongs in assembly")
-            plan_get = rust_function_body(masked_rust_source(path.read_text()), "cloud_plan_get")
+            plan_get = rust_function_body(masked_rust_source(runtime_source), "cloud_plan_get")
             if plan_get is None or re.search(r"\.\s*store\b|\bTx\b|\btx\b", plan_get):
                 errors.append("src/cloud_directory.rs: reviewed-plan read belongs in assembly")
-            plan_internal = rust_function_body(masked_rust_source(path.read_text()), "cloud_plan_internal")
+            plan_internal = rust_function_body(masked_rust_source(runtime_source), "cloud_plan_internal")
             if (
                 plan_internal is None
                 or not re.search(r"\bcloud_snapshot_actor_revision\s*\(", plan_internal)
@@ -474,7 +477,7 @@ def main() -> None:
                 )
             ):
                 errors.append("src/cloud_directory.rs: final reviewed-plan write belongs in assembly")
-            apply_confirmed = rust_function_body(masked_rust_source(path.read_text()), "cloud_apply_confirmed")
+            apply_confirmed = rust_function_body(masked_rust_source(runtime_source), "cloud_apply_confirmed")
             if (
                 apply_confirmed is None
                 or not re.search(r"\bcloud_applied_plan_sync_authorized\s*\(", apply_confirmed)
