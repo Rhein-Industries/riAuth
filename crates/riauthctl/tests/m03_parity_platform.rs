@@ -18,7 +18,7 @@ use std::{
 };
 
 const SESSION_TOKEN: &str = "ri_session_platform_admin_sentinel";
-const DEVICE_SECRET: &str = "ri_windev_device-secret-sentinel";
+const DEVICE_SECRET: &str = "ri_windev_device-secret-sentinel-0123456789";
 const OFFLINE_TICKET: &str = "offline-ticket-sentinel";
 const SOURCE_SECRET: &str = "upstream-client-secret-sentinel";
 
@@ -292,6 +292,11 @@ fn platform_server() -> MockServer {
                 if !seen_keys.lock().unwrap().insert(key) && id == "retried" {
                     return Reply::already_issued();
                 }
+                let view_for = |id: &str| {
+                    let mut view = device_view(id);
+                    view["username"] = body["username"].clone();
+                    view
+                };
                 let issue = |view: Value, secret: &str, ticket: Option<&str>| {
                     Reply::json(
                         json!({"device": view, "device_secret": secret,
@@ -302,23 +307,61 @@ fn platform_server() -> MockServer {
                 };
                 match id.as_str() {
                     "lost" => Reply::already_issued(),
-                    "other-device" => issue(device_view("someone-else"), DEVICE_SECRET, ticket.then_some(OFFLINE_TICKET)),
-                    "bad-secret" => issue(device_view(&id), "ri_session_not_a_device", ticket.then_some(OFFLINE_TICKET)),
-                    "surprise-ticket" => issue(device_view(&id), DEVICE_SECRET, Some(OFFLINE_TICKET)),
-                    _ => issue(device_view(&id), DEVICE_SECRET, ticket.then_some(OFFLINE_TICKET)),
+                    "other-device" => issue(view_for("someone-else"), DEVICE_SECRET, ticket.then_some(OFFLINE_TICKET)),
+                    "bad-secret" => issue(view_for(&id), "ri_session_not_a_device", ticket.then_some(OFFLINE_TICKET)),
+                    "short-secret" => issue(view_for(&id), "ri_windev_short", ticket.then_some(OFFLINE_TICKET)),
+                    "surprise-ticket" => issue(view_for(&id), DEVICE_SECRET, Some(OFFLINE_TICKET)),
+                    // The device belongs to another user, or is already revoked.
+                    "wrong-user" => {
+                        let mut view = view_for(&id);
+                        view["username"] = json!("mallory");
+                        issue(view, DEVICE_SECRET, ticket.then_some(OFFLINE_TICKET))
+                    }
+                    "revoked-device" => {
+                        let mut view = view_for(&id);
+                        view["revoked"] = json!(true);
+                        issue(view, DEVICE_SECRET, ticket.then_some(OFFLINE_TICKET))
+                    }
+                    _ => issue(view_for(&id), DEVICE_SECRET, ticket.then_some(OFFLINE_TICKET)),
                 }
             }
             ("DELETE", p) if p.starts_with("/api/windows-devices/") => {
                 let id = p.trim_start_matches("/api/windows-devices/");
                 let mut view = device_view(id);
-                view["revoked"] = json!(true);
+                // A server that answers without revoking is an error, not a success.
+                view["revoked"] = json!(id != "not-revoked");
                 Reply::json(view.to_string())
             }
-            ("POST", "/api/certificates" | "/api/radius/certificates") => {
-                Reply::json("{\"id\":\"binding-1\",\"username\":\"alice\"}")
+            // The real shapes: a client-certificate Binding view, a RADIUS Certificate,
+            // and `{"revoked":true,"id":ID}` for both revocations.
+            ("POST", "/api/certificates") => {
+                let body = request.json();
+                let username = if body["san_email"] == "mismatch@example.test" { json!("mallory") } else { body["username"].clone() };
+                Reply::json(
+                    json!({"id": "binding-1", "username": username, "user_id": "u-1",
+                           "fingerprint": "fp", "san_uri": body["san_uri"], "san_email": body["san_email"],
+                           "not_after": 4_102_444_800_u64, "created_at": 1})
+                    .to_string(),
+                )
+            }
+            ("POST", "/api/radius/certificates") => {
+                let body = request.json();
+                let listener = if body["username"] == "wronglistener" { json!("other-listener") } else { body["listener"].clone() };
+                Reply::json(
+                    json!({"id": "binding-1", "username": body["username"], "user_id": "u-1",
+                           "listener": listener, "fingerprint": "fp", "expires_at": 4_102_444_800_u64})
+                    .to_string(),
+                )
             }
             ("DELETE", p) if p.starts_with("/api/certificates/") || p.starts_with("/api/radius/certificates/") => {
-                Reply::json("{\"revoked\":true}")
+                let id = p.rsplit('/').next().unwrap();
+                if id == "unrevoked" {
+                    return Reply::json("{\"revoked\":false,\"id\":\"unrevoked\"}");
+                }
+                if id == "other-binding" {
+                    return Reply::json("{\"revoked\":true,\"id\":\"someone-else\"}");
+                }
+                Reply::json(json!({"revoked": true, "id": id}).to_string())
             }
             ("POST", "/api/sources") => {
                 let body = request.json();
@@ -561,6 +604,11 @@ fn a_refused_or_malformed_device_issuance_leaves_no_file() {
         ("other-device", Some("600")),
         ("bad-secret", Some("600")),
         ("surprise-ticket", None),
+        // What the Windows DeviceHost also refuses: another user's device, a
+        // revoked one, and a secret shorter than 32 characters.
+        ("wrong-user", Some("600")),
+        ("revoked-device", Some("600")),
+        ("short-secret", Some("600")),
     ] {
         let out = dir.path().join(format!("{id}.json"));
         let output = enroll(&server, &session, id, ttl, &out);
@@ -910,4 +958,190 @@ fn bad_source_input_is_refused_before_any_request() {
     );
     assert!(!output.status.success());
     assert!(!output_text(&output).contains(SOURCE_SECRET));
+}
+
+#[test]
+fn revocation_and_binding_responses_must_show_what_was_asked() {
+    let server = platform_server();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let pem = dir.path().join("leaf.pem");
+    std::fs::write(&pem, PEM).unwrap();
+    let good: Vec<Vec<&str>> = vec![
+        vec!["windows-device", "revoke", "laptop"],
+        vec!["certificate", "revoke", "binding-1"],
+        vec!["radius", "revoke-certificate", "binding-1"],
+        vec![
+            "certificate",
+            "bind",
+            "alice",
+            "--san-email",
+            "alice@example.test",
+        ],
+        vec![
+            "radius",
+            "bind-certificate",
+            "alice",
+            "--listener",
+            "eap-tls",
+            "--file",
+            pem.to_str().unwrap(),
+        ],
+    ];
+    for args in good {
+        assert_ok(&run(&server.origin, &session, &args, None));
+    }
+    // A server that answers with another binding, user, listener, or an
+    // unrevoked state is an error, not a success.
+    let bad: Vec<Vec<&str>> = vec![
+        vec!["windows-device", "revoke", "not-revoked"],
+        vec!["certificate", "revoke", "unrevoked"],
+        vec!["certificate", "revoke", "other-binding"],
+        vec!["radius", "revoke-certificate", "unrevoked"],
+        vec!["radius", "revoke-certificate", "other-binding"],
+        vec![
+            "certificate",
+            "bind",
+            "alice",
+            "--san-email",
+            "mismatch@example.test",
+        ],
+        vec![
+            "radius",
+            "bind-certificate",
+            "wronglistener",
+            "--listener",
+            "eap-tls",
+            "--file",
+            pem.to_str().unwrap(),
+        ],
+    ];
+    for args in bad {
+        assert!(
+            !run(&server.origin, &session, &args, None).status.success(),
+            "{args:?} accepted a mismatched response"
+        );
+    }
+}
+
+#[test]
+fn display_names_and_listeners_follow_the_servers_limits() {
+    let server = platform_server();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let pem = dir.path().join("leaf.pem");
+    std::fs::write(&pem, PEM).unwrap();
+    let enroll_named = |name: &str, out: &Path| {
+        run(
+            &server.origin,
+            &session,
+            &[
+                "windows-device",
+                "enroll",
+                "laptop",
+                "--username",
+                "alice",
+                "--display-name",
+                name,
+                "--out",
+                out.to_str().unwrap(),
+            ],
+            None,
+        )
+    };
+    // 200 bytes is the server's limit; 201 never leaves the client.
+    let exact = dir.path().join("exact.json");
+    assert_ok(&enroll_named(&"a".repeat(200), &exact));
+    assert!(exact.exists());
+    let before = server.writes().len();
+    let over = dir.path().join("over.json");
+    assert!(!enroll_named(&"a".repeat(201), &over).status.success());
+    assert!(!over.exists());
+    // Two-byte characters count as bytes, as they do on the server.
+    assert!(!enroll_named(&"\u{e9}".repeat(101), &over).status.success());
+    assert_eq!(server.writes().len(), before);
+
+    // A RADIUS listener is a name: 1-64 of [A-Za-z0-9-_.@].
+    let bind = |listener: &str| {
+        run(
+            &server.origin,
+            &session,
+            &[
+                "radius",
+                "bind-certificate",
+                "alice",
+                "--listener",
+                listener,
+                "--file",
+                pem.to_str().unwrap(),
+            ],
+            None,
+        )
+    };
+    assert_ok(&bind(&"l".repeat(64)));
+    let before = server.writes().len();
+    for listener in [
+        "",
+        &"l".repeat(65),
+        "eap/tls",
+        "eap tls",
+        "eap:tls",
+        "..",
+        ".",
+    ] {
+        assert!(
+            !bind(listener).status.success(),
+            "{listener:?} was accepted"
+        );
+    }
+    assert_eq!(server.writes().len(), before);
+}
+
+#[test]
+fn a_source_without_a_valid_id_is_refused_before_any_request_and_never_echoes_its_secret() {
+    let server = platform_server();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let write = |name: &str, source: Value| {
+        let path = dir.path().join(name);
+        std::fs::write(
+            &path,
+            json!({"source": source, "client_secret": SOURCE_SECRET}).to_string(),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        set_mode(&path, 0o600);
+        path
+    };
+    let files = [
+        write("no-id.json", json!({"name": "Upstream"})),
+        write("numeric-id.json", json!({"id": 7})),
+        write("empty-id.json", json!({"id": ""})),
+        write("slash-id.json", json!({"id": "a/b"})),
+        write("dots-id.json", json!({"id": ".."})),
+        write("long-id.json", json!({"id": "s".repeat(65)})),
+    ];
+    let before = server.requests().len();
+    for file in &files {
+        let output = run(
+            &server.origin,
+            &session,
+            &["source", "put", "--file", file.to_str().unwrap()],
+            None,
+        );
+        assert!(!output.status.success(), "{file:?} was accepted");
+        assert!(
+            !output_text(&output).contains(SOURCE_SECRET),
+            "{file:?} echoed the secret"
+        );
+    }
+    assert!(
+        server.requests()[before..]
+            .iter()
+            .all(|r| r.method == "GET")
+    );
+    assert!(server.writes().is_empty());
 }

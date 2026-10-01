@@ -8,7 +8,7 @@
 //! `put` sends `If-Match` and an `Idempotency-Key`.
 
 use crate::{
-    admin::{MutationOptions, mutate},
+    admin::{MutationOptions, mutate, segment},
     transport::Remote,
 };
 use anyhow::{Context, Result, bail};
@@ -43,12 +43,11 @@ pub(crate) async fn run(
                 .await
         }
         SourceCommand::Put { file } => {
+            // Every local check, including the source id, runs before any request.
             let mut input = read_source(&file)?;
             let id = input["source"]["id"].as_str().map(str::to_owned);
             let result = mutate(remote, Method::POST, "/api/sources", Some(&input), options).await;
-            if let Some(Value::String(secret)) = input.get_mut("client_secret") {
-                secret.zeroize();
-            }
+            zeroize_secret(&mut input);
             let result = result?;
             if id.is_none() || result.get("id").and_then(Value::as_str) != id.as_deref() {
                 bail!("Source response does not match the requested source");
@@ -58,8 +57,15 @@ pub(crate) async fn run(
     }
 }
 
-/// A bounded regular JSON file with an object `source`. A file holding a
-/// non-empty `client_secret` must not be readable by group or others.
+fn zeroize_secret(input: &mut Value) {
+    if let Some(Value::String(secret)) = input.get_mut("client_secret") {
+        secret.zeroize();
+    }
+}
+
+/// A bounded regular JSON file with an object `source` whose id follows the
+/// server's name rule. A file holding a non-empty `client_secret` must not be
+/// readable by group or others. The secret is zeroized on every early refusal.
 fn read_source(path: &std::path::Path) -> Result<Value> {
     let file = File::open(path).context("Cannot read source file")?;
     let metadata = file.metadata()?;
@@ -75,10 +81,25 @@ fn read_source(path: &std::path::Path) -> Result<Value> {
     if bytes.len() > MAX_BODY_BYTES {
         bail!("Source file exceeds 32 KiB");
     }
-    let input: Value = serde_json::from_slice(&bytes).context("Source file is not valid JSON")?;
+    let mut input: Value =
+        serde_json::from_slice(&bytes).context("Source file is not valid JSON")?;
+    let checked = check_source(&input, &metadata);
+    if let Err(error) = checked {
+        zeroize_secret(&mut input);
+        return Err(error);
+    }
+    Ok(input)
+}
+
+fn check_source(input: &Value, metadata: &std::fs::Metadata) -> Result<()> {
     if !input.get("source").is_some_and(Value::is_object) {
         bail!("Source file must contain a JSON object with a \"source\" object");
     }
+    // The id becomes part of the source's identity: 1-64 of [A-Za-z0-9-_.@].
+    let id = input["source"]["id"]
+        .as_str()
+        .context("Source needs a string id")?;
+    segment(id)?;
     let has_secret = input
         .get("client_secret")
         .and_then(Value::as_str)
@@ -92,8 +113,11 @@ fn read_source(path: &std::path::Path) -> Result<Value> {
             );
         }
     }
-    if serde_json::to_vec(&input)?.len() > MAX_BODY_BYTES {
+    #[cfg(not(unix))]
+    let _ = (has_secret, metadata);
+    // The size check serializes the secret too, so its buffer is zeroized.
+    if Zeroizing::new(serde_json::to_vec(input)?).len() > MAX_BODY_BYTES {
         bail!("Source content exceeds the server's 32 KiB request limit");
     }
-    Ok(input)
+    Ok(())
 }

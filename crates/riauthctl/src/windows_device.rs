@@ -60,11 +60,12 @@ pub(crate) async fn run(
         } => {
             segment(&id)?;
             segment(&username)?;
+            // The server's rule: 1-200 bytes without control characters.
             if display_name.is_empty()
-                || display_name.len() > 256
+                || display_name.len() > 200
                 || display_name.chars().any(char::is_control)
             {
-                bail!("Display name must be short printable text");
+                bail!("Display name must be 1-200 bytes without control characters");
             }
             // Reserve the private destination first. A refused or failed
             // issuance removes it again, so an exact retry can use the same path.
@@ -79,13 +80,21 @@ pub(crate) async fn run(
                 options,
             )
             .await?;
-            issued(result, &id, offline_ttl.is_some(), &mut destination)
+            issued(
+                result,
+                &id,
+                &username,
+                offline_ttl.is_some(),
+                &mut destination,
+            )
         }
         WindowsDeviceCommand::Revoke { id } => {
             let path = format!("/api/windows-devices/{}", segment(&id)?);
             let revoked = mutate(remote, Method::DELETE, &path, None::<&()>, options).await?;
-            if revoked.get("id").and_then(Value::as_str) != Some(id.as_str()) {
-                bail!("Revocation response does not match the requested device");
+            if revoked.get("id").and_then(Value::as_str) != Some(id.as_str())
+                || revoked.get("revoked") != Some(&Value::Bool(true))
+            {
+                bail!("Revocation response does not show the requested device revoked");
             }
             Ok(revoked)
         }
@@ -95,15 +104,24 @@ pub(crate) async fn run(
 /// Move the secret and ticket from the response into the reserved file,
 /// zeroizing the in-memory copies. Standard output carries the device view and
 /// the file path, never either credential.
+///
+/// The response is held to what the Windows DeviceHost also requires of it: the
+/// requested device and username, a device that is not revoked, and a
+/// `ri_windev_` secret of 32 to 1024 characters.
 fn issued(
     mut result: Value,
     id: &str,
+    username: &str,
     expect_ticket: bool,
     destination: &mut SecretFile,
 ) -> Result<Value> {
     let device = result
         .get("device")
-        .filter(|device| device.get("id").and_then(Value::as_str) == Some(id))
+        .filter(|device| {
+            device.get("id").and_then(Value::as_str) == Some(id)
+                && device.get("username").and_then(Value::as_str) == Some(username)
+                && device.get("revoked") == Some(&Value::Bool(false))
+        })
         .cloned();
     let offline_expires_at = result
         .get("offline_expires_at")
@@ -111,7 +129,7 @@ fn issued(
         .unwrap_or(Value::Null);
     let saved = (|| -> Result<()> {
         if device.is_none() {
-            bail!("Server returned a mismatched device");
+            bail!("Server returned a device that is not the requested, active one");
         }
         let fields = result
             .as_object()
@@ -119,7 +137,9 @@ fn issued(
         if !fields
             .get("device_secret")
             .and_then(Value::as_str)
-            .is_some_and(|secret| secret.starts_with("ri_windev_"))
+            .is_some_and(|secret| {
+                secret.starts_with("ri_windev_") && (32..=1024).contains(&secret.len())
+            })
         {
             bail!("Server did not return a device secret");
         }
@@ -137,7 +157,7 @@ fn issued(
     }
     saved?;
     Ok(json!({
-        "device": device.context("Server returned a mismatched device")?,
+        "device": device.context("Server returned a device that is not the requested, active one")?,
         "offline_expires_at": offline_expires_at,
         "credential_file": destination.path(),
     }))

@@ -84,18 +84,22 @@ pub(crate) async fn certificate(
             let body = json!({"username": username, "certificate_pem": pem,
                               "san_uri": san_uri, "san_email": san_email});
             fit(&body)?;
-            mutate(
+            let bound = mutate(
                 remote,
                 Method::POST,
                 "/api/certificates",
                 Some(&body),
                 options,
             )
-            .await
+            .await?;
+            check_binding(&bound, &username, None)?;
+            Ok(bound)
         }
         CertificateCommand::Revoke { id } => {
             let path = format!("/api/certificates/{}", segment(&id)?);
-            mutate(remote, Method::DELETE, &path, None::<&()>, options).await
+            let revoked = mutate(remote, Method::DELETE, &path, None::<&()>, options).await?;
+            check_revoked(&revoked, &id)?;
+            Ok(revoked)
         }
     }
 }
@@ -117,27 +121,28 @@ pub(crate) async fn radius(
             file,
         } => {
             segment(&username)?;
-            // The listener is a configured name the server resolves, not a path segment.
-            if listener.is_empty() || listener.len() > 128 || listener.chars().any(char::is_control)
-            {
-                bail!("Listener must be a short printable name");
-            }
+            // Listener names follow the server's name rule: 1-64 of [A-Za-z0-9-_.@].
+            segment(&listener)?;
             let chain = read_pem(&file, "Certificate chain")?;
             let body = json!({"username": username, "listener": listener,
                               "certificate_chain_pem": chain});
             fit(&body)?;
-            mutate(
+            let bound = mutate(
                 remote,
                 Method::POST,
                 "/api/radius/certificates",
                 Some(&body),
                 options,
             )
-            .await
+            .await?;
+            check_binding(&bound, &username, Some(&listener))?;
+            Ok(bound)
         }
         RadiusCommand::RevokeCertificate { id } => {
             let path = format!("/api/radius/certificates/{}", segment(&id)?);
-            mutate(remote, Method::DELETE, &path, None::<&()>, options).await
+            let revoked = mutate(remote, Method::DELETE, &path, None::<&()>, options).await?;
+            check_revoked(&revoked, &id)?;
+            Ok(revoked)
         }
     }
 }
@@ -164,6 +169,33 @@ fn read_pem(path: &Path, what: &str) -> Result<String> {
 fn fit(body: &Value) -> Result<()> {
     if serde_json::to_vec(body)?.len() > MAX_BODY_BYTES {
         bail!("Certificate request exceeds the server's 32 KiB request limit");
+    }
+    Ok(())
+}
+
+/// A bind response is the binding itself: it must name the user (and, for
+/// RADIUS, the listener) that was asked for.
+fn check_binding(bound: &Value, username: &str, listener: Option<&str>) -> Result<()> {
+    let named =
+        |field: &str, expected: &str| bound.get(field).and_then(Value::as_str) == Some(expected);
+    if !bound
+        .get("id")
+        .and_then(Value::as_str)
+        .is_some_and(|id| !id.is_empty())
+        || !named("username", username)
+        || listener.is_some_and(|listener| !named("listener", listener))
+    {
+        bail!("Binding response does not match the requested binding");
+    }
+    Ok(())
+}
+
+/// A revoke response is `{"revoked":true,"id":ID}` for the requested binding.
+fn check_revoked(revoked: &Value, id: &str) -> Result<()> {
+    if revoked.get("revoked") != Some(&Value::Bool(true))
+        || revoked.get("id").and_then(Value::as_str) != Some(id)
+    {
+        bail!("Revocation response does not show the requested binding revoked");
     }
     Ok(())
 }
