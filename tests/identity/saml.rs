@@ -2827,8 +2827,7 @@ fn configured_saml_selector_loss_durably_seals_active_continuations() {
                 "start" => f
                     .core
                     .saml_passkey_start(&id, Some(&binding), Some(&sso))
-                    .err()
-                    .expect("continuation must reject"),
+                    .expect_err("continuation must reject"),
                 "finish" => f
                     .core
                     .saml_passkey_finish(
@@ -2843,8 +2842,7 @@ fn configured_saml_selector_loss_durably_seals_active_continuations() {
                 "cancel" => f
                     .core
                     .saml_passkey_cancel(&id, Some(&binding), Some(&sso), &ceremony)
-                    .err()
-                    .expect("continuation must reject"),
+                    .expect_err("continuation must reject"),
                 "decide" => f
                     .core
                     .saml_browser_decide(
@@ -2855,8 +2853,7 @@ fn configured_saml_selector_loss_durably_seals_active_continuations() {
                         false,
                         Some(signin::session_ref(&id, &sid)),
                     )
-                    .err()
-                    .expect("continuation must reject"),
+                    .expect_err("continuation must reject"),
                 _ => unreachable!(),
             };
             assert_eq!(
@@ -2921,8 +2918,7 @@ fn configured_saml_selector_loss_durably_seals_active_continuations() {
     let error = f
         .core
         .saml_passkey_start(&id, Some(&binding), Some(&sso))
-        .err()
-        .expect("continuation must reject");
+        .expect_err("continuation must reject");
     assert_eq!(error.message, "Workflow version was rolled back");
     let run_id = text(&pending_row(&f, &id).unwrap(), "configured_run");
     let sealed: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
