@@ -551,6 +551,7 @@ async fn decode_response(mut response: Response) -> Result<Value> {
                         | "credential_already_issued"
                         | "precondition_required"
                         | "permission_denied"
+                        | "delivery_unavailable"
                 )
             })
             .unwrap_or_else(|| "http_error".into());

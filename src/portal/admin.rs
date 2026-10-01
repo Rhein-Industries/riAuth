@@ -889,13 +889,7 @@ async fn update_user(
     Json(input): Json<UserPatch>,
 ) -> Result<Json<Value>> {
     let token = writer(&app, &headers)?;
-    // Core clears verification when the address changes; a browser edit cannot restore it in
-    // the same write, so a new address is always confirmed by its owner.
-    if input.email.is_some() && input.email_verified == Some(true) {
-        return Err(Error::bad(
-            "A changed email address is saved unverified; it cannot be marked verified in the same change",
-        ));
-    }
+    // The shared user writer refuses a changed address marked verified in the same change.
     app.run(move |core| core.update_user(&token, &username, input).map(Json))
         .await
 }

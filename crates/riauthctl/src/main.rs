@@ -1,11 +1,17 @@
 mod admin;
 mod agent;
 mod approval;
+mod certificates;
+mod invitation;
+mod keys;
 mod management;
+mod registration;
 mod review;
 mod session;
+mod source;
 mod transport;
 mod usb;
+mod windows_device;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -95,6 +101,42 @@ enum Command {
     User {
         #[command(subcommand)]
         command: admin::UserCommand,
+    },
+    /// Create, list and revoke dynamic-registration templates (initial access tokens).
+    Registration {
+        #[command(subcommand)]
+        command: registration::RegistrationCommand,
+    },
+    /// List, generate, bind, import and rotate signing keys.
+    Key {
+        #[command(subcommand)]
+        command: keys::KeyCommand,
+    },
+    /// List, create and revoke account invitations.
+    Invitation {
+        #[command(subcommand)]
+        command: invitation::InvitationCommand,
+    },
+    /// List, enroll and revoke Windows devices; the secret goes to a private file.
+    #[command(name = "windows-device")]
+    WindowsDevice {
+        #[command(subcommand)]
+        command: windows_device::WindowsDeviceCommand,
+    },
+    /// List, bind and revoke client-certificate bindings.
+    Certificate {
+        #[command(subcommand)]
+        command: certificates::CertificateCommand,
+    },
+    /// List, bind and revoke RADIUS EAP-TLS certificate bindings.
+    Radius {
+        #[command(subcommand)]
+        command: certificates::RadiusCommand,
+    },
+    /// List and put upstream identity sources.
+    Source {
+        #[command(subcommand)]
+        command: source::SourceCommand,
     },
     /// Create, rotate, revoke and list scoped agent credentials.
     Agent {
@@ -344,6 +386,17 @@ async fn run(cli: Cli) -> Result<Value> {
             Ok(result)
         }
         Command::User { command } => admin::user(&remote, command, &mutation).await,
+        Command::Registration { command } => registration::run(&remote, command, &mutation).await,
+        Command::Key { command } => keys::run(&remote, command, &mutation).await,
+        Command::Invitation { command } => invitation::run(&remote, command, &mutation).await,
+        Command::WindowsDevice { command } => {
+            windows_device::run(&remote, command, &mutation).await
+        }
+        Command::Certificate { command } => {
+            certificates::certificate(&remote, command, &mutation).await
+        }
+        Command::Radius { command } => certificates::radius(&remote, command, &mutation).await,
+        Command::Source { command } => source::run(&remote, command, &mutation).await,
         Command::Agent { command } => agent::run(&remote, command, &mutation).await,
         Command::Grants { command } => review::grants(&remote, command, &mutation).await,
         Command::Group { command } => admin::group(&remote, command, &mutation).await,
