@@ -16,6 +16,8 @@ mod cloud_directory_reconcile;
 #[cfg(feature = "platform")]
 mod cloud_directory_runtime;
 #[cfg(feature = "platform")]
+mod cloud_operations;
+#[cfg(feature = "platform")]
 pub(crate) use cloud_directory_plan::cleanup_plans as cloud_plan_cleanup;
 #[cfg(feature = "platform")]
 mod cloud_directory_snapshot;

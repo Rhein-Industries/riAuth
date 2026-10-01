@@ -363,7 +363,7 @@ def main() -> None:
         if path == SRC / "cloud_directory.rs":
             cloud_protocol = masked_rust_source(path.read_text().split("#[cfg(test)]", 1)[0])
             runtime_source = (SRC / "assembly/cloud_directory_runtime.rs").read_text()
-            if re.search(r"\bCore\b|\bimpl\s+Core\b|\.\s*config\b", cloud_protocol):
+            if re.search(r"\bCore\b|\bcore\s*::|\.\s*config\b", cloud_protocol):
                 errors.append("src/cloud_directory.rs: Core entrypoints and configuration selection belong in assembly")
             reconcile_assembly = (SRC / "assembly/cloud_directory_reconcile.rs").read_text()
             assembly_root = (SRC / "assembly.rs").read_text()
@@ -558,7 +558,11 @@ def main() -> None:
             ):
                 errors.append("src/cloud_directory.rs: snapshot retention belongs in assembly")
         if path == SRC / "cloud_operations.rs":
-            operations = rust_function_body(masked_rust_source(path.read_text()), "cloud_operations")
+            operations_protocol = masked_rust_source(path.read_text())
+            if re.search(r"\bCore\b|\bTx\b|\b(?:core|store|postgres_store)\s*::|\.\s*(?:config|store)\b", operations_protocol):
+                errors.append("src/cloud_operations.rs: Core entrypoints, configuration selection and storage belong in assembly")
+            operations_source = (SRC / "assembly/cloud_operations.rs").read_text()
+            operations = rust_function_body(masked_rust_source(operations_source), "cloud_operations")
             catalog_source = (SRC / "assembly/cloud_directory_catalog.rs").read_text()
             initial_auth = rust_function_body(
                 masked_rust_source(catalog_source), "cloud_operation_authorize_read"
@@ -719,7 +723,7 @@ def main() -> None:
                 or operations[read_auth_calls[1].end():operations.find("Ok(json!")].strip()
             ):
                 errors.append("src/cloud_operations.rs: final read authorization must follow connection check")
-            probe = rust_function_body(masked_rust_source(path.read_text()), "cloud_test_connection")
+            probe = rust_function_body(masked_rust_source(operations_source), "cloud_test_connection")
             probe_auth = rust_function_body(
                 masked_rust_source(catalog_source), "cloud_operation_authorize_probe"
             )
@@ -771,7 +775,7 @@ def main() -> None:
                 or re.search(r"\.\s*store\s*\.\s*read\s*\(", probe)
             ):
                 errors.append("src/cloud_operations.rs: post-probe sync recheck belongs in assembly")
-            verify = rust_function_body(masked_rust_source(path.read_text()), "cloud_verify_credential")
+            verify = rust_function_body(masked_rust_source(operations_source), "cloud_verify_credential")
             preflight = rust_function_body(
                 masked_rust_source(catalog_source), "cloud_operation_credential_preflight"
             )
