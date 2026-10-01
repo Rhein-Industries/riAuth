@@ -406,14 +406,14 @@ fn valid_digest(digest: &str) -> Result<&str> {
 }
 
 #[derive(Clone, Copy)]
-enum Shape {
+pub(crate) enum Shape {
     Array,
     Object,
 }
 
 /// Staged content is a bounded regular JSON file of the expected shape. The
 /// server still owns every field rule, including unknown-field rejection.
-fn read_content(path: &Path, what: &str, shape: Shape) -> Result<Value> {
+pub(crate) fn read_content(path: &Path, what: &str, shape: Shape) -> Result<Value> {
     let file = File::open(path).with_context(|| format!("Cannot read {what} file"))?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {

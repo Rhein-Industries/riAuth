@@ -1,7 +1,10 @@
 mod admin;
 mod agent;
 mod approval;
+mod invitation;
+mod keys;
 mod management;
+mod registration;
 mod review;
 mod session;
 mod transport;
@@ -95,6 +98,21 @@ enum Command {
     User {
         #[command(subcommand)]
         command: admin::UserCommand,
+    },
+    /// Create, list and revoke dynamic-registration templates (initial access tokens).
+    Registration {
+        #[command(subcommand)]
+        command: registration::RegistrationCommand,
+    },
+    /// List, generate, bind, import and rotate signing keys.
+    Key {
+        #[command(subcommand)]
+        command: keys::KeyCommand,
+    },
+    /// List, create and revoke account invitations.
+    Invitation {
+        #[command(subcommand)]
+        command: invitation::InvitationCommand,
     },
     /// Create, rotate, revoke and list scoped agent credentials.
     Agent {
@@ -344,6 +362,9 @@ async fn run(cli: Cli) -> Result<Value> {
             Ok(result)
         }
         Command::User { command } => admin::user(&remote, command, &mutation).await,
+        Command::Registration { command } => registration::run(&remote, command, &mutation).await,
+        Command::Key { command } => keys::run(&remote, command, &mutation).await,
+        Command::Invitation { command } => invitation::run(&remote, command, &mutation).await,
         Command::Agent { command } => agent::run(&remote, command, &mutation).await,
         Command::Grants { command } => review::grants(&remote, command, &mutation).await,
         Command::Group { command } => admin::group(&remote, command, &mutation).await,

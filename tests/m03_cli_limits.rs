@@ -239,6 +239,20 @@ const INPUTS: &[Input] = &[
         small: r#"{"enabled":false}"#,
     },
     Input {
+        name: "ssf stream",
+        command: &["ssf", "stream", "create"],
+        route: "/api/ssf/admin/streams",
+        template: Some(r#"{"id":"stream","issuer":"https://r.example.test","audience":"@"}"#),
+        small: r#"{"id":"stream","issuer":"https://r.example.test","audience":"aud"}"#,
+    },
+    Input {
+        name: "registration",
+        command: &["registration", "create"],
+        route: "/api/registration",
+        template: None,
+        small: r#"{"id":"reg","redirect_uris":["https://app.example.test/cb"],"scopes":["openid"],"grant_types":["authorization_code"],"auth_methods":["client_secret_basic"],"settings":{},"ttl":300,"max_uses":1}"#,
+    },
+    Input {
         name: "client creation",
         command: &["client", "creation-review", "stage"],
         route: "/api/client-creation-changes",
@@ -262,6 +276,16 @@ fn file_of(input: &Input, size: usize) -> Vec<u8> {
     bytes
 }
 
+/// The command line for one input; `registration create` also needs a new `--out`.
+fn command_line<'a>(input: &Input, file: &'a Path, out: &'a str) -> Vec<&'a str> {
+    let mut args = input.command.to_vec();
+    args.extend(["--file", file.to_str().unwrap()]);
+    if input.name == "registration" {
+        args.extend(["--out", out]);
+    }
+    args
+}
+
 fn login(server: &MockServer, session: &Path) {
     let output = cli(
         &server.origin,
@@ -281,10 +305,11 @@ fn a_file_one_byte_over_the_server_limit_is_refused_before_any_request() {
     for input in INPUTS {
         let file = dir.path().join("over.json");
         std::fs::write(&file, file_of(input, LIMIT + 1)).unwrap();
-        let mut args = input.command.to_vec();
-        args.extend(["--file", file.to_str().unwrap()]);
+        let out = dir.path().join("over-credential.json");
+        let args = command_line(input, &file, out.to_str().unwrap());
         let output = cli(&server.origin, &session, &args, None);
         assert!(!output.status.success(), "{} was accepted", input.name);
+        assert!(!out.exists(), "{} wrote a credential file", input.name);
         assert!(
             text(&output).contains("exceeds 32 KiB"),
             "{}: {}",
@@ -308,8 +333,8 @@ fn a_file_at_the_server_limit_reaches_the_server_unchanged() {
         let file = dir.path().join("at-limit.json");
         let bytes = file_of(input, LIMIT);
         std::fs::write(&file, &bytes).unwrap();
-        let mut args = input.command.to_vec();
-        args.extend(["--file", file.to_str().unwrap()]);
+        let out = dir.path().join(format!("credential-{index}.json"));
+        let args = command_line(input, &file, out.to_str().unwrap());
         let output = cli(&server.origin, &session, &args, None);
         assert!(output.status.success(), "{}: {}", input.name, text(&output));
 
@@ -328,6 +353,7 @@ fn a_file_at_the_server_limit_reaches_the_server_unchanged() {
         // Typed parsing may add defaults (client creation); the content must survive.
         match input.name {
             "client creation" => assert_eq!(body["client_id"], expected["client_id"]),
+            "registration" => assert_eq!(body["id"], expected["id"]),
             _ => assert_eq!(body, expected, "{}", input.name),
         }
     }
@@ -339,11 +365,11 @@ fn ordinary_small_files_still_stage() {
     let dir = tempfile::tempdir().unwrap();
     let session = dir.path().join("session.json");
     login(&server, &session);
-    for input in INPUTS {
+    for (index, input) in INPUTS.iter().enumerate() {
         let file = dir.path().join("small.json");
         std::fs::write(&file, input.small).unwrap();
-        let mut args = input.command.to_vec();
-        args.extend(["--file", file.to_str().unwrap()]);
+        let out = dir.path().join(format!("small-credential-{index}.json"));
+        let args = command_line(input, &file, out.to_str().unwrap());
         let output = cli(&server.origin, &session, &args, None);
         assert!(output.status.success(), "{}: {}", input.name, text(&output));
     }
@@ -584,4 +610,44 @@ fn a_source_file_over_32_kib_is_refused_and_a_normal_one_reaches_the_server() {
         serde_json::from_slice::<Value>(&writes[0].body).unwrap()["client_secret"],
         SECRET
     );
+}
+
+/// The request body is the typed, re-serialized template: it gains defaults
+/// the file omitted, so a compact file already at the limit would exceed it.
+#[test]
+fn a_file_whose_typed_body_grows_past_the_limit_is_refused_locally() {
+    let server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let prefix = r#"{"id":"reg","redirect_uris":["https://app.example.test/"#;
+    let suffix = r#""],"scopes":["openid"],"grant_types":["authorization_code"],"auth_methods":["client_secret_basic"],"settings":{},"ttl":300,"max_uses":1}"#;
+    let mut file_bytes = prefix.as_bytes().to_vec();
+    file_bytes.resize(LIMIT - suffix.len(), b'a');
+    file_bytes.extend_from_slice(suffix.as_bytes());
+    assert_eq!(file_bytes.len(), LIMIT);
+    let file = dir.path().join("grows.json");
+    std::fs::write(&file, &file_bytes).unwrap();
+    let out = dir.path().join("credential.json");
+    let output = cli(
+        &server.origin,
+        &session,
+        &[
+            "registration",
+            "create",
+            "--file",
+            file.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
+        ],
+        None,
+    );
+    assert!(!output.status.success());
+    assert!(
+        text(&output).contains("content exceeds the server's 32 KiB request limit"),
+        "{}",
+        text(&output)
+    );
+    assert!(!out.exists());
+    assert!(server.writes().is_empty());
 }

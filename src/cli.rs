@@ -1906,8 +1906,8 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Registration { command } => match command {
             RegistrationCommand::Create { file, out } => {
                 if out.exists() { bail!("Credential output already exists"); }
-                let template: crate::registration::RegistrationTemplate = serde_json::from_slice(&fs::read(file)?)?;
-                let result = remote.call(Method::POST, "/api/registration", Some(json!(template)), true).await?;
+                let template = input::read_request::<crate::registration::RegistrationTemplate>(&file, "Registration template")?;
+                let result = remote.call(Method::POST, "/api/registration", Some(template), true).await?;
                 write_private(&out, &serde_json::to_vec(&json!({"issuer": remote.issuer, "token": result["initial_access_token"]}))?, false)?;
                 json!({"registration": result["registration"], "credential_file": out})
             }
@@ -2568,11 +2568,9 @@ async fn run_ssf(remote: &Remote, command: SsfCommand) -> Result<Value> {
                     .await
             }
             SsfStreamCommand::Create { file } => {
-                let bytes = fs::read(&file)?;
-                if bytes.len() > 65_536 {
-                    bail!("SSF stream file exceeds 64 KiB");
-                }
-                let body = serde_json::from_slice(&bytes)?;
+                // Essentials has no typed stream input, so the server owns field
+                // validation; the file still obeys the server's 32 KiB body limit.
+                let body = input::read_request::<Value>(&file, "SSF stream")?;
                 remote
                     .call(Method::POST, "/api/ssf/admin/streams", Some(body), true)
                     .await
