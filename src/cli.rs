@@ -1500,7 +1500,9 @@ pub async fn run(cli: Cli) -> Result<()> {
                 let mut certificate = String::new();
                 fs::File::open(file)?.take(32769).read_to_string(&mut certificate)?;
                 if certificate.len() > 32768 { anyhow::bail!("Certificate chain exceeds 32 KiB"); }
-                remote.call(Method::POST, "/api/radius/certificates", Some(json!({"username":username,"listener":listener,"certificate_chain_pem":certificate})), true).await?
+                let body = json!({"username":username,"listener":listener,"certificate_chain_pem":certificate});
+                input::check_body(&body, "RADIUS certificate request")?;
+                remote.call(Method::POST, "/api/radius/certificates", Some(body), true).await?
             },
             RadiusCommand::RevokeCertificate { id } => {
                 if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
@@ -1558,7 +1560,9 @@ pub async fn run(cli: Cli) -> Result<()> {
                 if certificate_pem.is_none() && san_uri.is_none() && san_email.is_none() {
                     anyhow::bail!("Provide --file, --san-uri, or --san-email");
                 }
-                remote.call(Method::POST, "/api/certificates", Some(json!({"username": username, "certificate_pem": certificate_pem, "san_uri": san_uri, "san_email": san_email})), true).await?
+                let body = json!({"username": username, "certificate_pem": certificate_pem, "san_uri": san_uri, "san_email": san_email});
+                input::check_body(&body, "Certificate request")?;
+                remote.call(Method::POST, "/api/certificates", Some(body), true).await?
             }
             CertificateCommand::Revoke { id } => {
                 if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
@@ -1844,8 +1848,8 @@ pub async fn run(cli: Cli) -> Result<()> {
             },
             SourceCommand::List => remote.call(Method::GET,"/api/sources",None,true).await?,
             SourceCommand::Put { file } => {
-                let input: crate::source::SourceInput = serde_json::from_slice(&fs::read(file)?)?;
-                remote.call(Method::POST,"/api/sources",Some(json!(input)),true).await?
+                let body = input::read_request::<crate::source::SourceInput>(&file, "Source")?;
+                remote.call(Method::POST,"/api/sources",Some(body),true).await?
             }
             SourceCommand::Start { id, out, link, authentication_transaction } => {
                 if out.exists() { bail!("Source transaction file already exists"); }

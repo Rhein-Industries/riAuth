@@ -32,3 +32,12 @@ pub(super) fn read_request<T: DeserializeOwned + Serialize>(
     }
     Ok(body)
 }
+
+/// A request assembled from several parts (a PEM inside a JSON field) is
+/// re-escaped when serialized, so check the body that will actually be sent.
+pub(super) fn check_body(body: &Value, what: &str) -> Result<()> {
+    if serde_json::to_vec(body)?.len() > MAX_REQUEST_BYTES {
+        bail!("{what} exceeds the server's 32 KiB request limit");
+    }
+    Ok(())
+}

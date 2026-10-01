@@ -24,6 +24,7 @@ const LIMIT: usize = 32 * 1024;
 struct Request {
     method: String,
     target: String,
+    headers: BTreeMap<String, String>,
     body: Vec<u8>,
 }
 
@@ -143,6 +144,7 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
     Some(Request {
         method,
         target,
+        headers,
         body: bytes[header_end..header_end + body_len].to_vec(),
     })
 }
@@ -412,4 +414,174 @@ fn digests_and_ids_starting_with_a_hyphen_are_accepted_by_every_review_command()
             text(&output)
         );
     }
+}
+
+const PEM: &str = "-----BEGIN CERTIFICATE-----\nMIIBcertificatebody\n-----END CERTIFICATE-----\n";
+
+/// The retry pair the certificate writes always require from the server CLI.
+fn pair() -> [&'static str; 4] {
+    ["--idempotency-key", "bind-1", "--if-revision", "7"]
+}
+
+fn binding_commands(file: &Path) -> Vec<(Vec<String>, &'static str)> {
+    let file = file.to_str().unwrap();
+    let with_pair = |rest: &[&str]| -> Vec<String> {
+        pair()
+            .iter()
+            .chain(rest)
+            .map(|part| (*part).to_owned())
+            .collect()
+    };
+    vec![
+        (
+            with_pair(&["certificate", "bind", "alice", "--file", file]),
+            "/api/certificates",
+        ),
+        (
+            with_pair(&[
+                "radius",
+                "bind-certificate",
+                "alice",
+                "--listener",
+                "eap-tls",
+                "--file",
+                file,
+            ]),
+            "/api/radius/certificates",
+        ),
+    ]
+}
+
+/// A PEM file just under 32 KiB whose JSON body, with every newline escaped as
+/// two bytes, is far over the server's limit: the client must refuse it rather
+/// than send a request that can only fail with 413.
+#[test]
+fn a_newline_heavy_pem_whose_escaped_body_exceeds_the_limit_is_refused_locally() {
+    let server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let heavy = dir.path().join("newlines.pem");
+    std::fs::write(&heavy, "\n".repeat(LIMIT - 8)).unwrap();
+    assert!(std::fs::metadata(&heavy).unwrap().len() <= LIMIT as u64);
+    for (args, route) in binding_commands(&heavy) {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let output = cli(&server.origin, &session, &args, None);
+        assert!(!output.status.success(), "{route} accepted the file");
+        assert!(
+            text(&output).contains("exceeds the server's 32 KiB request limit"),
+            "{route}: {}",
+            text(&output)
+        );
+    }
+    assert!(
+        server.writes().is_empty(),
+        "an oversized body reached the server"
+    );
+}
+
+#[test]
+fn a_normal_certificate_reaches_both_binding_routes_with_the_retry_pair() {
+    let server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let pem = dir.path().join("leaf.pem");
+    std::fs::write(&pem, PEM).unwrap();
+    for (args, _) in binding_commands(&pem) {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let output = cli(&server.origin, &session, &args, None);
+        assert!(output.status.success(), "{}", text(&output));
+    }
+    let writes = server.writes();
+    assert_eq!(writes.len(), 2);
+    assert_eq!(writes[0].target, "/api/certificates");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&writes[0].body).unwrap(),
+        json!({"username": "alice", "certificate_pem": PEM, "san_uri": null, "san_email": null})
+    );
+    assert_eq!(writes[1].target, "/api/radius/certificates");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&writes[1].body).unwrap(),
+        json!({"username": "alice", "listener": "eap-tls", "certificate_chain_pem": PEM})
+    );
+    for write in &writes {
+        assert_eq!(
+            write.headers.get("if-match").map(String::as_str),
+            Some("\"7\"")
+        );
+        assert_eq!(
+            write.headers.get("idempotency-key").map(String::as_str),
+            Some("bind-1")
+        );
+    }
+}
+
+fn source_json(secret: Option<&str>) -> Value {
+    let mut input = json!({"source": {"id": "corp", "name": "Upstream",
+        "issuer": "https://idp.example.test",
+        "authorization_endpoint": "https://idp.example.test/authorize",
+        "client_id": "riauth", "token_endpoint_auth_method": "client_secret_basic"}});
+    if let Some(secret) = secret {
+        input["client_secret"] = json!(secret);
+    }
+    input
+}
+
+#[test]
+fn a_source_file_over_32_kib_is_refused_and_a_normal_one_reaches_the_server() {
+    const SECRET: &str = "upstream-client-secret-sentinel";
+    let server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+
+    // Valid JSON padded one byte past the limit: refused locally, nothing sent.
+    let mut padded = source_json(Some(SECRET)).to_string().into_bytes();
+    padded.resize(LIMIT + 1, b' ');
+    let oversized = dir.path().join("oversized.json");
+    std::fs::write(&oversized, padded).unwrap();
+    let output = cli(
+        &server.origin,
+        &session,
+        &["source", "put", "--file", oversized.to_str().unwrap()],
+        None,
+    );
+    assert!(!output.status.success());
+    assert!(
+        text(&output).contains("Source file exceeds 32 KiB"),
+        "{}",
+        text(&output)
+    );
+    assert!(!text(&output).contains(SECRET));
+    assert!(server.writes().is_empty());
+
+    // The same document at exactly the limit, and a small one, are sent.
+    let mut at_limit = source_json(Some(SECRET)).to_string().into_bytes();
+    at_limit.resize(LIMIT, b' ');
+    let at_limit_file = dir.path().join("at-limit.json");
+    std::fs::write(&at_limit_file, at_limit).unwrap();
+    let small = dir.path().join("small.json");
+    std::fs::write(&small, source_json(None).to_string()).unwrap();
+    for file in [&at_limit_file, &small] {
+        let output = cli(
+            &server.origin,
+            &session,
+            &["source", "put", "--file", file.to_str().unwrap()],
+            None,
+        );
+        assert!(output.status.success(), "{}", text(&output));
+    }
+    let writes = server.writes();
+    assert_eq!(writes.len(), 2);
+    for write in &writes {
+        assert_eq!(write.target, "/api/sources");
+        assert!(write.body.len() <= LIMIT);
+        let body: Value = serde_json::from_slice(&write.body).unwrap();
+        assert_eq!(body["source"]["id"], "corp");
+    }
+    assert_eq!(
+        serde_json::from_slice::<Value>(&writes[0].body).unwrap()["client_secret"],
+        SECRET
+    );
 }
