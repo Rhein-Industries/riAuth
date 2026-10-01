@@ -1842,6 +1842,110 @@ mod tests {
 
     #[test]
     fn configured_extension_routes_to_password_and_cannot_prove_itself() {
+        if !cfg!(target_os = "macos") {
+            // A structurally bound manifest cannot supply native admission or
+            // proof when this host has no supported isolation backend.
+            let dir = tempfile::tempdir().unwrap();
+            let mut core = Core::initialize(
+                Config {
+                    data_dir: dir.path().to_owned(),
+                    ..Default::default()
+                },
+                NewUser {
+                    username: "admin".into(),
+                    password: "fixture-password".into(),
+                    email: None,
+                    display_name: "Administrator".into(),
+                    admin: true,
+                },
+            )
+            .unwrap();
+            let token = core
+                .login("admin".into(), "fixture-password".into(), None)
+                .unwrap()["session_token"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let definition = extension_definition();
+            core.config.workflows.insert(
+                "risk-route".into(),
+                crate::workflow::ConfiguredWorkflow {
+                    active: true,
+                    definition: definition.clone(),
+                },
+            );
+            core.config.workflow_extensions.insert(
+                "risk-check".into(),
+                manifest(&extension_gate::fixture::account_kind()),
+            );
+            let error = core.config.validate().unwrap_err().to_string();
+            assert!(error.contains("external_runtime_required"), "{error}");
+            let document = &core.config.workflow_extensions["risk-check"];
+            assert_eq!(
+                extension_gate::check(document.as_bytes()).unwrap_err(),
+                extension_gate::Denial::ExternalRuntimeRequired
+            );
+            let registered =
+                extension_gate::stage_binding(&core.config.workflow_extensions).unwrap();
+            let bound = &registered[&Id::new("risk-check").unwrap()];
+            assert!(extension_gate::covers(bound, &definition));
+            let result = extension_gate::execute(
+                bound,
+                &extension_gate::GuestFacts {
+                    account: Some("account".into()),
+                    ..Default::default()
+                },
+                &BTreeSet::from([StagePermission::ReadProfile]),
+                extension_gate::StepBounds {
+                    timeout_seconds: 30,
+                    max_output_bytes: 128,
+                },
+            );
+            assert_eq!(result, Err(extension_gate::Denial::ExternalRuntimeRequired));
+            assert_eq!(guest_signal(result).as_str(), "failed");
+
+            // Exercise the public start after configuration drift as well as
+            // admission: refusal must never reach the password verifier.
+            let started = core
+                .workflow_configured_start(&token, "risk-route")
+                .unwrap();
+            assert!(denied(&started.state), "{started:?}");
+            assert_eq!(
+                started.binding.extension_sha256.as_deref(),
+                Some(bound.module_sha256_hex().as_str())
+            );
+            let run = load(&core, &started.id);
+            assert_eq!(run.record.steps.len(), 1);
+            assert_eq!(run.record.steps[0].signal.as_str(), "failed");
+            assert!(run.record.steps[0].evidence.is_none());
+            assert!(
+                core.workflow_password(&token, &started.id, "fixture-password".into())
+                    .is_err()
+            );
+            assert!(denied(
+                &core.workflow_resume(&token, &started.id).unwrap().state
+            ));
+            assert!(
+                core.store
+                    .list::<StoredEvidence>(EVIDENCE)
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                core.store
+                    .list::<StagedLogin>("browser_logins")
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(
+                core.store
+                    .list::<String>(ACTIVE_SESSIONS)
+                    .unwrap()
+                    .is_empty()
+            );
+            return;
+        }
+
         let (_dir, core, token) = extension_core(&extension_gate::fixture::account_kind());
         let blocked = extension_core(&extension_gate::fixture::block());
         let denied_view = blocked
@@ -1899,6 +2003,71 @@ mod tests {
 
     #[test]
     fn extension_attacks_finish_denied_and_a_changed_module_seals_the_run() {
+        // These refusals precede runtime discovery on every host. Keep their
+        // exact classification and request-stage binding coverage portable.
+        for (document, expected) in [
+            (b"{}".to_vec(), extension_gate::Denial::Malformed),
+            (
+                extension_gate::fixture::document(&extension_gate::fixture::allow(), |value| {
+                    value["module_sha256"] = serde_json::json!("ab".repeat(32));
+                }),
+                extension_gate::Denial::Integrity,
+            ),
+            (
+                extension_gate::fixture::document(&extension_gate::fixture::allow(), |value| {
+                    value["network"] = serde_json::json!("allow");
+                }),
+                extension_gate::Denial::Permission,
+            ),
+            (
+                extension_gate::fixture::document(&extension_gate::fixture::allow(), |value| {
+                    value["fuel"] = serde_json::json!(0);
+                }),
+                extension_gate::Denial::Limit,
+            ),
+            (
+                extension_gate::fixture::document(&extension_gate::fixture::with_import(), |_| {}),
+                extension_gate::Denial::Permission,
+            ),
+            (
+                extension_gate::fixture::document(&extension_gate::fixture::two_pages(), |_| {}),
+                extension_gate::Denial::Limit,
+            ),
+        ] {
+            assert_eq!(extension_gate::check(&document).unwrap_err(), expected);
+            let documents = [("risk-check".into(), String::from_utf8(document).unwrap())].into();
+            assert_eq!(
+                extension_gate::stage_binding(&documents).unwrap_err(),
+                expected
+            );
+        }
+        let documents = [(
+            "wrong-stage".into(),
+            manifest(&extension_gate::fixture::allow()),
+        )]
+        .into();
+        assert_eq!(
+            extension_gate::stage_binding(&documents).unwrap_err(),
+            extension_gate::Denial::Malformed
+        );
+
+        if !cfg!(target_os = "macos") {
+            for module in [
+                extension_gate::fixture::spin(),
+                extension_gate::fixture::oversized(),
+                extension_gate::fixture::undeclared(),
+                extension_gate::fixture::memory_grow(),
+            ] {
+                let document = manifest(&module);
+                assert!(extension_gate::bind(document.as_bytes()).is_ok());
+                assert_eq!(
+                    extension_gate::check(document.as_bytes()).unwrap_err(),
+                    extension_gate::Denial::ExternalRuntimeRequired
+                );
+            }
+            return;
+        }
+
         let (_dir, mut core, token) = extension_core(&extension_gate::fixture::account_kind());
         for module in [
             extension_gate::fixture::spin(),

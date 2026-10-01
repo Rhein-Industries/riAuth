@@ -1521,7 +1521,20 @@ mod tests {
     #[test]
     fn controlled_extensions_follow_the_supported_guest() {
         use crate::workflow::extension::CAPABILITY;
-        use crate::workflow::extension_gate::fixture;
+        use crate::workflow::extension_gate::{self, fixture};
+
+        let validate_admission = |config: &Config| {
+            if cfg!(target_os = "macos") {
+                config.validate().unwrap();
+            } else {
+                let error = config.validate().unwrap_err().to_string();
+                assert!(error.contains("external_runtime_required"), "{error}");
+                assert_eq!(
+                    extension_gate::stage_registration(&config.workflow_extensions).unwrap_err(),
+                    extension_gate::Denial::ExternalRuntimeRequired
+                );
+            }
+        };
 
         assert_eq!(agent::FEATURES.len(), 87);
         assert_eq!(agent::PLATFORM_FEATURES.len(), 27);
@@ -1542,11 +1555,20 @@ mod tests {
         let manifest = &active.workflow_extensions["risk-check"];
         assert!(manifest.contains("\"permissions\":[\"read_profile\"]"));
         assert!(manifest.contains("\"network\":\"deny\""));
-        active.validate().unwrap();
-        assert!(configured(CAPABILITY, &active, &Facts::default()));
+        validate_admission(&active);
+        assert_eq!(
+            configured(CAPABILITY, &active, &Facts::default()),
+            cfg!(target_os = "macos")
+        );
+        // Request binding remains portable; it cannot advertise a native runtime.
+        let registered = extension_gate::stage_binding(&active.workflow_extensions).unwrap();
+        assert!(extension_gate::covers(
+            &registered[&crate::workflow::Id::new("risk-check").unwrap()],
+            &active.workflows["risk-route"].definition
+        ));
 
         let inactive = supported_extension_config(false);
-        inactive.validate().unwrap();
+        validate_admission(&inactive);
         assert!(!configured(CAPABILITY, &inactive, &Facts::default()));
 
         let mut manifest_only = Config::default();
@@ -1554,7 +1576,7 @@ mod tests {
             "risk-check".into(),
             String::from_utf8(fixture::document(&fixture::allow(), |_| {})).unwrap(),
         );
-        manifest_only.validate().unwrap();
+        validate_admission(&manifest_only);
         assert!(!configured(CAPABILITY, &manifest_only, &Facts::default()));
 
         let mut mismatched_key = active.clone();
@@ -1573,6 +1595,10 @@ mod tests {
             .unwrap(),
         );
         assert!(!configured(CAPABILITY, &rejected, &Facts::default()));
+        assert_eq!(
+            extension_gate::stage_binding(&rejected.workflow_extensions).unwrap_err(),
+            extension_gate::Denial::Integrity
+        );
 
         let mut uncovered = active.clone();
         uncovered.workflow_extensions.insert(
@@ -1583,6 +1609,32 @@ mod tests {
             .unwrap(),
         );
         assert!(!configured(CAPABILITY, &uncovered, &Facts::default()));
+        let registered = extension_gate::stage_binding(&uncovered.workflow_extensions).unwrap();
+        assert!(!extension_gate::covers(
+            &registered[&crate::workflow::Id::new("risk-check").unwrap()],
+            &uncovered.workflows["risk-route"].definition
+        ));
+
+        for field in ["permissions", "timeout_seconds"] {
+            let mut uncovered = active.clone();
+            uncovered.workflow_extensions.insert(
+                "risk-check".into(),
+                String::from_utf8(fixture::document(&fixture::allow(), |value| {
+                    value[field] = if field == "permissions" {
+                        json!([])
+                    } else {
+                        json!(1)
+                    };
+                }))
+                .unwrap(),
+            );
+            let registered = extension_gate::stage_binding(&uncovered.workflow_extensions).unwrap();
+            assert!(!extension_gate::covers(
+                &registered[&crate::workflow::Id::new("risk-check").unwrap()],
+                &uncovered.workflows["risk-route"].definition
+            ));
+            assert!(!configured(CAPABILITY, &uncovered, &Facts::default()));
+        }
 
         let mut other_stage = active.clone();
         other_stage.workflow_extensions.clear();
@@ -1594,21 +1646,64 @@ mod tests {
             .unwrap(),
         );
         assert!(!configured(CAPABILITY, &other_stage, &Facts::default()));
+        let registered = extension_gate::stage_binding(&other_stage.workflow_extensions).unwrap();
+        assert!(!extension_gate::covers(
+            &registered[&crate::workflow::Id::new("other-stage").unwrap()],
+            &other_stage.workflows["risk-route"].definition
+        ));
 
         let mut unsupported = password_only_config();
         unsupported.workflow_extensions.insert(
             "risk-check".into(),
             String::from_utf8(fixture::document(&fixture::allow(), |_| {})).unwrap(),
         );
-        unsupported.validate().unwrap();
+        validate_admission(&unsupported);
         assert!(!configured(CAPABILITY, &unsupported, &Facts::default()));
 
         let mut mixed = unsupported.clone();
         let parked = supported_extension_config(false);
         mixed.workflows.extend(parked.workflows);
         mixed.workflow_extensions = parked.workflow_extensions;
-        mixed.validate().unwrap();
+        validate_admission(&mixed);
         assert!(!configured(CAPABILITY, &mixed, &Facts::default()));
+
+        if !cfg!(target_os = "macos") {
+            // Startup rejects these manifests. Also verify a changed in-memory
+            // configuration cannot expose a usable capability after startup.
+            let dir = tempfile::tempdir().unwrap();
+            let mut core = Core::initialize(
+                Config {
+                    data_dir: dir.path().into(),
+                    ..Default::default()
+                },
+                NewUser {
+                    username: "admin".into(),
+                    password: "capability-test-password".into(),
+                    email: None,
+                    display_name: "Administrator".into(),
+                    admin: true,
+                },
+            )
+            .unwrap();
+            for config in [active, inactive, manifest_only, unsupported, mixed] {
+                core.config.workflows = config.workflows;
+                core.config.workflow_extensions = config.workflow_extensions;
+                let reported = runtime(&core).unwrap();
+                let state = &reported["feature_states"][CAPABILITY];
+                assert_eq!(state["compiled"], true);
+                assert_eq!(state["enabled"], true);
+                assert_eq!(state["configured"], false);
+                assert_eq!(state["usable"], false);
+                assert_eq!(state["reason"], "not_configured");
+                assert!(
+                    !reported["features"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&json!(CAPABILITY))
+                );
+            }
+            return;
+        }
 
         let started = started_runtime(active);
         let state = &started["feature_states"][CAPABILITY];
