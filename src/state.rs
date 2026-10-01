@@ -1528,14 +1528,22 @@ impl Core {
                 if stored.actor == actor.id
                     && stored.result.is_none()
                     && plan.expires_at > now()
-                    && plan_revision_current(&self.config, tx, plan, revision)?
                     && plan.issuer == self.config.issuer
                     && plan.reconciliation_mode == mode
                     && plan.removal_impact == impact
                     && serde_json::to_value(&plan.manifest).map_err(Error::internal)? == desired
                     && validate_state_review(tx, &actor, &stored).is_ok()
                 {
-                    return Ok(Some(plan.clone()));
+                    // Only inspect dependencies of this manifest. A deleted
+                    // resource on another retained plan cannot block this row.
+                    // Missing/rebound dependencies invalidate a matching plan;
+                    // storage and decoding failures still propagate.
+                    match plan_revision_current(&self.config, tx, plan, revision) {
+                        Ok(true) => return Ok(Some(plan.clone())),
+                        Ok(false) => {}
+                        Err(error) if error.code == "conflict" => {}
+                        Err(error) => return Err(error),
+                    }
                 }
             }
             Ok(None)

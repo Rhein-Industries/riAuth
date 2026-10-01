@@ -2431,3 +2431,59 @@ fn delegated_grants_keep_scoped_families_on_global_revision() {
     );
     assert_eq!(audits(&f, "delegation.reconcile"), 0);
 }
+
+#[test]
+fn retained_stale_dependencies_only_invalidate_their_own_manifest() {
+    let f = Fixture::new();
+    f.user("alice");
+    f.client("deleted", false);
+    let desired = client_manifest(&f, "deleted", "Renamed", None);
+    let stale = f.core.plan_state(&f.admin, desired.clone()).unwrap();
+    assert!(stale.client_dependencies.is_some());
+    // Put this plan first so the controller must encounter it before any
+    // unrelated pending plan. This models a retained plan after deletion.
+    f.core
+        .store
+        .write(|tx| {
+            let stored = tx.get::<Value>("plans", &stale.plan_id)?.unwrap();
+            tx.delete("plans", &stale.plan_id)?;
+            tx.put("plans", "000-stale-client", &stored)?;
+            tx.delete("clients", "deleted")
+        })
+        .unwrap();
+
+    let mut unrelated = user_manifest(&f, "alice");
+    unrelated.users[0].display_name = "Alice Updated".into();
+    let pending = f.core.plan_state(&f.admin, unrelated.clone()).unwrap();
+    let before = f.snapshot().unwrap();
+    let result = f.core.state_reconcile(&f.admin, unrelated).unwrap();
+    assert_eq!(result["plan"]["plan_id"], pending.plan_id);
+    f.assert_snapshot(&before);
+
+    // The matching missing dependency is stale, so replan as a new client;
+    // do not surface the old plan's missing-client conflict as a global error.
+    let replacement = f.core.state_reconcile(&f.admin, desired).unwrap();
+    assert_ne!(replacement["plan"]["plan_id"], stale.plan_id);
+    assert_eq!(replacement["decision"], "awaiting_review");
+    assert!(replacement["plan"]["client_dependencies"].is_null());
+    assert_eq!(replacement["plan"]["changes"][0]["action"], "create");
+    assert!(
+        f.core
+            .store
+            .get::<Value>("clients", "deleted")
+            .unwrap()
+            .is_none()
+    );
+
+    // A decoding failure in matching dependencies is not stale-state evidence.
+    let mut broken = user_manifest(&f, "alice");
+    broken.users[0].display_name = "Other Name".into();
+    f.core.plan_state(&f.admin, broken.clone()).unwrap();
+    f.core
+        .store
+        .write(|tx| tx.put("usernames", "alice", &json!({"bad": true})))
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    assert!(f.core.state_reconcile(&f.admin, broken).is_err());
+    f.assert_snapshot(&before);
+}
