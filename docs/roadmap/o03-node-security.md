@@ -2,7 +2,9 @@
 
 Status: one stored comparison, one authentication policy, one explicit
 format 1 record command, one logout dispatch lease, one SSF dispatch lease,
-and one mail dispatch lease. O03 stays open.
+and one mail dispatch lease. Wave27 adds bounded shared connector admission,
+shared PostgreSQL forward-auth counting, and SCIM OAuth freshness stamps.
+O03 stays open.
 This page records the issuer and active-capability check, the token-lifetime
 and password-history agreement, the format 1 upgrade, the logout lease, the
 SSF lease, the mail lease, and the coordination that was not built.
@@ -610,7 +612,8 @@ the database-key run, `riauth_o03m_jwrlwkpoco1dmtbluofw`. Public CI runs
   the 30-second delivery timeout does not fence a process suspended across
   the 60-second lease. A 250 accepted reply is at least once. Provisioning,
   deactivation, reconciliation, and offboarding keep their existing leases.
-  Their target permits stay in the worker process. Maintenance and alert
+  Their local target permits stay in the worker process; wave27 adds the
+  finite shared admission lease documented below. Maintenance and alert
   passes run on every worker.
 - A process paused after a logout or SSF pin commits can still start or
   finish its POST after a later claim. Admission and the external network
@@ -619,8 +622,12 @@ the database-key run, `riauth_o03m_jwrlwkpoco1dmtbluofw`. Public CI runs
 - Public CI runs the default PostgreSQL target and `q05_replay_concurrency`.
   It does not select `node_security_postgres`, `job_lease_postgres`,
   `ssf_lease_postgres`, or `mail_lease_postgres`.
-- Cache freshness remains per process.
-- The `forward_auth` rate limit is still counted in memory on each node.
+- Verified Access token caching remains per process. Outbound SCIM token caches
+  now compare a shared freshness stamp; see the wave27 contract below.
+- The `forward_auth` rate limit uses the shared HTTP counter on PostgreSQL,
+  through reserved forward-auth permits. redb retains process-local counters.
+  Counter capacity/oldest-window eviction and node-local configured thresholds
+  remain unchanged. Operators must align thresholds across participating nodes.
 - Trusted proxies, external signer files, and the database encryption key
   are outside `meta.node_security`. Password length, account lockout, and the
   compiled authorization-code and device-code defaults stay in this binary.
@@ -642,3 +649,51 @@ the database-key run, `riauth_o03m_jwrlwkpoco1dmtbluofw`. Public CI runs
 - Gateway `/readyz` stayed successful while background loops were off. This
   slice did not change that.
 - The comparison does not survey peer health.
+
+## Wave27 local coordination contract
+
+`connector_admissions` stores a hashed connector scope with a random owner, a
+generation, and a 60-second expiry. A live row refuses another admission for
+that scope. Durable provisioning, deactivation, and reconciliation claims
+write their admission in the existing claim transaction; manual connector work
+uses a separate short writer before starting. These transactions perform no
+network operation. The ledger caps admissions at 128, prunes expired rows in
+one bounded scan, and refuses capacity rather than evicting a live owner.
+The two general local slots and the deactivation reserve are unchanged.
+
+Manual operations acknowledge settlement before returning their result, even
+when the operation rejects the caller or replays a receipt. Cleanup failure
+preserves the operation's result; its release is retried on the next admission
+or ages out at expiry. A guard dropped inside a claim queues a release in the
+three-slot local budget, and the next admission settles it. Releases compare
+both owner and generation and cannot delete a successor's admission. A
+transaction rollback can delay cleanup until expiry. Existing job authority,
+lease, dispatch pin, ambiguity, and completion checks remain in their original
+operation. Mail, logout, and SSF leases were not changed.
+
+This is a finite shared admission lease. It is not renewed for an overdue
+operation, and it is not full-lifetime cross-process target exclusion. A
+process paused after admission and before external IO can resume after another
+process has reclaimed admission. Local permits still stay held until the
+operation actually finishes. No atomic fence around external IO is claimed.
+
+`scim_oauth_freshness` stores one non-secret owner/generation stamp per target
+name. Outbound SCIM cache reads compare it with the local cache entry in
+addition to target configuration, secret fingerprint, and token expiry. OAuth
+acquisition remains outside the writer. Publishing compares the previously
+observed stamp and commits its successor with the existing expiry/fingerprint
+metadata; a late response returns conflict and is never inserted in the local
+cache. A 401 invalidates only the bearer generation and freshness stamp that
+produced it. A stale rejection cannot clear newer issuance metadata, including
+after local cache eviction resets the local generation. Access tokens and
+client secrets are not stored in these stamps. Static credentials still read
+the private file on every call. A stamp comparison does not atomically fence
+a cached token against changes between that comparison and external IO.
+
+Recovery invalidates both new ledgers. Existing historical SCIM OAuth expiry
+metadata retains its previous classification. All cooperating processes must
+run the new implementation; the security agreement does not force an older
+binary to participate in these ledgers. This local slice does not establish a
+production rollout, live PostgreSQL peers, transport fencing, TLS, failover, or
+deployed HA. Actual local checks and remaining integration dependencies are in
+[the wave27 report](local-wave27-revisions-coordination-report.md).

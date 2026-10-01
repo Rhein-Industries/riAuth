@@ -540,3 +540,63 @@ fn recovery_ends_every_rp_session_page_and_clears_pending_mfa_enrollment() {
             .contains_key(recovery::PENDING_ENROLLMENTS)
     );
 }
+
+#[test]
+fn restore_invalidates_connector_admission_and_oauth_cache_stamps() {
+    let f = Fixture::new();
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "connector_admissions",
+                "synthetic-target",
+                &json!({
+                    "owner": "synthetic-owner", "generation": 7, "expires_at": crypto::now() + 60
+                }),
+            )?;
+            tx.put(
+                "scim_oauth_freshness",
+                "synthetic-target",
+                &json!({
+                    "owner": "synthetic-issuance", "generation": 9
+                }),
+            )?;
+            tx.put(
+                "scim_oauth_cache",
+                "synthetic-target",
+                &json!({
+                    "expires_at": crypto::now() + 600, "fingerprint": "synthetic-token-digest"
+                }),
+            )
+        })
+        .unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let archive = backup(&f, directory.path());
+    let (result, restored) = restore(directory.path(), &archive);
+    let recovery: Recovery = serde_json::from_value(result["recovery"].clone()).unwrap();
+    assert_eq!(recovery.invalidated["connector_admissions"], 1);
+    assert_eq!(recovery.invalidated["scim_oauth_freshness"], 1);
+    assert!(recovery.unclassified.is_empty());
+    assert!(
+        restored
+            .store
+            .list::<Value>("connector_admissions")
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        restored
+            .store
+            .list::<Value>("scim_oauth_freshness")
+            .unwrap()
+            .is_empty()
+    );
+    // Historical non-secret expiry metadata retains its established policy.
+    assert!(
+        restored
+            .store
+            .get::<Value>("scim_oauth_cache", "synthetic-target")
+            .unwrap()
+            .is_some()
+    );
+}

@@ -29,6 +29,7 @@ use zeroize::{Zeroize, Zeroizing};
 mod deactivation;
 mod deactivation_diagnostics;
 mod dispatch_recovery;
+mod token_freshness;
 pub use dispatch_recovery::RecoverDispatch;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -136,6 +137,7 @@ impl Target {
             })?;
             return Ok(Bearer {
                 generation: 0,
+                freshness: token_freshness::Stamp::default(),
                 token: read_secret_file(path)?,
             });
         };
@@ -143,17 +145,22 @@ impl Target {
         let lock = target_lock(name);
         let _guard = mutex_guard(&lock);
         let secrets = read_oauth_secrets(oauth)?;
-        if let Some(cached) = cached_bearer(&key, &secrets.fingerprint) {
+        let observed = token_freshness::current(core, name)?;
+        if let Some(cached) = cached_bearer(&key, &secrets.fingerprint, &observed) {
             return Ok(cached);
         }
         let issued = request_token(self, oauth, &secrets, fence)?;
-        let generation = store_bearer(name, &key, &secrets.fingerprint, &issued);
-        if let Err(error) = persist_oauth_meta(core, name, issued.expires_at, &issued.fingerprint) {
-            forget_cache_key(&key);
-            return Err(error);
-        }
+        let stamp = token_freshness::publish(
+            core,
+            name,
+            &observed,
+            issued.expires_at,
+            &issued.fingerprint,
+        )?;
+        let generation = store_bearer(name, &key, &secrets.fingerprint, &issued, &stamp);
         Ok(Bearer {
             generation,
+            freshness: stamp,
             token: issued.token,
         })
     }
@@ -161,6 +168,7 @@ impl Target {
 /// In-memory access token. `Debug` redacts the credential.
 pub struct Bearer {
     pub(crate) generation: u64,
+    freshness: token_freshness::Stamp,
     token: Zeroizing<String>,
 }
 impl Bearer {
@@ -2468,10 +2476,12 @@ fn authorized_fenced(
         discard_body(response);
         if target.oauth.is_some() {
             invalidate_generation(
+                core,
                 name,
                 &cache_key(name, &target.fingerprint()?),
                 bearer.generation,
-            );
+                &bearer.freshness,
+            )?;
         }
         bearer = target.bearer_fenced(core, name, fence)?;
         fence()?;
@@ -2490,20 +2500,9 @@ struct OauthTokenRecord {
     expires_at: u64,
     fingerprint: String,
 }
-fn persist_oauth_meta(core: &Core, name: &str, expires_at: u64, fingerprint: &str) -> Result<()> {
-    core.store.write(|tx| {
-        tx.put(
-            "scim_oauth_cache",
-            name,
-            &OauthTokenRecord {
-                expires_at,
-                fingerprint: fingerprint.to_owned(),
-            },
-        )
-    })
-}
 struct Slot {
     generation: u64,
+    freshness: token_freshness::Stamp,
     secret_fingerprint: String,
     expires_at: u64,
     token: Option<Zeroizing<String>>,
@@ -2531,18 +2530,32 @@ fn target_lock(name: &str) -> Arc<Mutex<()>> {
 fn cache_key(name: &str, config_fingerprint: &str) -> String {
     format!("{name}\0{config_fingerprint}")
 }
-fn cached_bearer(key: &str, secret_fingerprint: &str) -> Option<Bearer> {
+fn cached_bearer(
+    key: &str,
+    secret_fingerprint: &str,
+    freshness: &token_freshness::Stamp,
+) -> Option<Bearer> {
     let cache = mutex_guard(token_cache());
     let slot = cache.get(key)?;
-    if slot.secret_fingerprint != secret_fingerprint || slot.expires_at <= now() {
+    if slot.secret_fingerprint != secret_fingerprint
+        || slot.expires_at <= now()
+        || slot.freshness != *freshness
+    {
         return None;
     }
     slot.token.as_ref().map(|token| Bearer {
         generation: slot.generation,
+        freshness: slot.freshness.clone(),
         token: token.clone(),
     })
 }
-fn store_bearer(name: &str, key: &str, secret_fingerprint: &str, issued: &Issued) -> u64 {
+fn store_bearer(
+    name: &str,
+    key: &str,
+    secret_fingerprint: &str,
+    issued: &Issued,
+    freshness: &token_freshness::Stamp,
+) -> u64 {
     let mut cache = mutex_guard(token_cache());
     let generation = match cache.get(key) {
         Some(slot) if slot.token.is_none() => slot.generation.max(1),
@@ -2555,6 +2568,7 @@ fn store_bearer(name: &str, key: &str, secret_fingerprint: &str, issued: &Issued
         key.to_owned(),
         Slot {
             generation,
+            freshness: freshness.clone(),
             secret_fingerprint: secret_fingerprint.to_owned(),
             expires_at: issued.expires_at,
             token: Some(issued.token.clone()),
@@ -2562,21 +2576,27 @@ fn store_bearer(name: &str, key: &str, secret_fingerprint: &str, issued: &Issued
     );
     generation
 }
-fn forget_cache_key(key: &str) {
-    mutex_guard(token_cache()).remove(key);
-}
-fn invalidate_generation(name: &str, key: &str, generation: u64) {
+fn invalidate_generation(
+    core: &Core,
+    name: &str,
+    key: &str,
+    generation: u64,
+    freshness: &token_freshness::Stamp,
+) -> Result<()> {
     let lock = target_lock(name);
     let _guard = mutex_guard(&lock);
     let mut cache = mutex_guard(token_cache());
     if let Some(slot) = cache.get_mut(key)
         && slot.generation == generation
+        && slot.freshness == *freshness
         && slot.token.is_some()
     {
+        token_freshness::invalidate(core, name, &slot.freshness)?;
         slot.token = None;
         slot.expires_at = 0;
         slot.generation = slot.generation.saturating_add(1);
     }
+    Ok(())
 }
 /// Operator evidence for an ambiguous write: what the target showed and a
 /// reference to where it was checked.

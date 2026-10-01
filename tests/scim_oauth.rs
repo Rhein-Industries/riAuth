@@ -2692,3 +2692,94 @@ fn scim_apply_binds_reviewed_content_authority_and_previous_links() {
             .is_empty()
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shared_freshness_invalidates_local_cache_and_fences_late_publication() {
+    let f = Fixture::new();
+    let tokens = token_state();
+    let scim = scim_state();
+    tokens.hold.store(true, Ordering::SeqCst);
+    set_script(
+        &tokens,
+        vec![reply(
+            200,
+            json!({
+                "access_token": ACCESS, "token_type": "Bearer", "expires_in": 3600
+            }),
+        )],
+        true,
+    );
+    let (_servers, scim_url, token_url) = serve(&tokens, &scim).await;
+    let dir = tempfile::tempdir().unwrap();
+    let target = oauth_target(
+        &scim_url,
+        &token_url,
+        write_secret(&dir, "client", SECRET),
+        OauthGrant::ClientCredentials,
+        None,
+        None,
+        None,
+    );
+    let name = unique("shared-freshness");
+    let first = {
+        let core = f.core.clone();
+        let target = target.clone();
+        let name = name.clone();
+        tokio::task::spawn_blocking(move || target.bearer(&core, &name))
+    };
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !tokens.entered.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // Model a peer's committed stamp while this process waits on token I/O.
+    // This is a local schedule-point test, not evidence of deployed peers.
+    let peer = json!({"generation": 1, "owner": "synthetic-peer"});
+    f.core
+        .store
+        .write(|tx| tx.put("scim_oauth_freshness", &name, &peer))
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    tokens.barrier.wait().await;
+    let error = first.await.unwrap().unwrap_err();
+    assert_eq!(error.status, StatusCode::CONFLICT);
+    f.assert_snapshot(&before);
+
+    let fresh = acquire(&f.core, &target, &name).await.unwrap();
+    assert_eq!(fresh.as_str(), ACCESS);
+    assert_eq!(tokens.hits.load(Ordering::SeqCst), 2);
+    let _cached = acquire(&f.core, &target, &name).await.unwrap();
+    assert_eq!(tokens.hits.load(Ordering::SeqCst), 2);
+    let observed: Value = f
+        .core
+        .store
+        .get("scim_oauth_freshness", &name)
+        .unwrap()
+        .unwrap();
+    assert_eq!(observed["generation"], 2);
+    assert_ne!(observed["owner"], peer["owner"]);
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(
+                "scim_oauth_freshness",
+                &name,
+                &json!({
+                    "generation": 3, "owner": "synthetic-peer-next"
+                }),
+            )
+        })
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    let refreshed = acquire(&f.core, &target, &name).await.unwrap();
+    assert_eq!(refreshed.as_str(), ACCESS);
+    assert_eq!(tokens.hits.load(Ordering::SeqCst), 3);
+    f.assert_snapshot_except(&before, |key| {
+        key.starts_with("scim_oauth_freshness/") || key.starts_with("scim_oauth_cache/")
+    });
+    let stored = f.core.store.list::<Value>("scim_oauth_freshness").unwrap();
+    assert_redacted(&serde_json::to_string(&stored).unwrap(), &[ACCESS, SECRET]);
+    assert_redacted(&format!("{refreshed:?}"), &[ACCESS, SECRET]);
+}

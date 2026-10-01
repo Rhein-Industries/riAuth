@@ -40,6 +40,8 @@ pub const PENDING_ENROLLMENTS: &str = "users.totp_pending";
 pub const INVALIDATED: &[&str] = &[
     // Restored admission cannot establish ownership on the new timeline.
     "connector_admissions",
+    // Live peers must acquire a new stamp after a restored timeline.
+    "scim_oauth_freshness",
     // Bearer, browser and protocol sessions.
     "sessions",
     "session_tokens",
