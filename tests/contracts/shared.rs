@@ -5875,7 +5875,9 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
         })
         .unwrap();
     // Even a permission addition that preserves all required scopes changes
-    // the reviewed authority. A new plan is required before any write.
+    // the reviewed authority. Apply authorizes the live scopes first, then the
+    // snapshot gate rejects the changed authority digest before any fetch or
+    // write; a new plan is required.
     f.core
         .store
         .write(|tx| {
@@ -5895,8 +5897,9 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
     assert_eq!(changed_authority.code, "conflict");
     assert_eq!(
         changed_authority.message,
-        "Connector plan content or authority changed; create and review a new plan"
+        "Cloud source, authority or local revision changed during snapshot"
     );
+    assert_eq!(remote.users_hits(), hits_before_denied);
     f.assert_snapshot_except(&before_changed_authority, |key| {
         key.starts_with("cloud_directory_runs/")
     });
