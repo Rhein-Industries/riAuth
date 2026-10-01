@@ -564,30 +564,39 @@ fn job_next_action(job: &Job) -> &'static str {
 
 /// An enabled schedule is overdue when no completion is recorded within twice
 /// its interval plus [`OVERDUE_GRACE_SECONDS`]. With a stored completion time
-/// the age is `at - last_completed_at`. Without one the clock starts at the
-/// creation time of the retained `last_job`, else at `next_run`; a `next_run`
-/// still in the future is not overdue. A disabled schedule is never overdue.
+/// the clock starts at `last_completed_at`. Without one it starts at the
+/// creation time of the retained `last_job`, else at `next_run`; a start still
+/// in the future is not overdue. A disabled schedule is never overdue.
+///
+/// When no job for the schedule is queued or running, the clock starts no
+/// earlier than `next_run - interval_seconds`: the scheduler and a schedule
+/// update set `next_run` one interval after a dispatch, a re-enable or an
+/// interval change, so an operator re-enable after a long pause is not
+/// reported overdue for its old completion. While a job is queued or running
+/// the scheduler still advances `next_run` without dispatching, so that
+/// restart is not applied and a stuck job keeps its old clock. The reported
+/// `completion_age_seconds` is always `at - last_completed_at`.
 /// `last_job_created_at` is that job's stored `created_at` when it is retained.
-fn local_completion(schedule: &Schedule, last_job_created_at: Option<u64>, at: u64) -> Completion {
+fn local_completion(
+    schedule: &Schedule,
+    last_job_created_at: Option<u64>,
+    active: bool,
+    at: u64,
+) -> Completion {
     let limit = schedule
         .interval_seconds
         .saturating_mul(2)
         .saturating_add(OVERDUE_GRACE_SECONDS);
-    match schedule.last_completed_at {
-        Some(done) => {
-            let age = at.saturating_sub(done);
-            Completion {
-                age: Some(age),
-                overdue: schedule.enabled && age > limit,
-            }
-        }
-        None => {
-            let since = last_job_created_at.unwrap_or(schedule.next_run);
-            Completion {
-                age: None,
-                overdue: schedule.enabled && at.saturating_sub(since) > limit,
-            }
-        }
+    let restart = (!active).then(|| schedule.next_run.saturating_sub(schedule.interval_seconds));
+    let base = schedule
+        .last_completed_at
+        .unwrap_or_else(|| last_job_created_at.unwrap_or(schedule.next_run));
+    let since = restart.map_or(base, |restart| base.max(restart));
+    Completion {
+        age: schedule
+            .last_completed_at
+            .map(|done| at.saturating_sub(done)),
+        overdue: schedule.enabled && at.saturating_sub(since) > limit,
     }
 }
 
@@ -944,7 +953,13 @@ impl Core {
                         .find(|(_, job)| job.id == id)
                         .map(|(_, job)| job.created_at)
                 });
-                let completion = local_completion(&schedule, created, at);
+                // The scheduler's own test for an outstanding job.
+                let active = jobs.iter().any(|(_, job)| {
+                    job.scope == schedule.scope
+                        && job.config_fingerprint == schedule.config_fingerprint
+                        && matches!(job.status, Status::Queued | Status::Running)
+                });
+                let completion = local_completion(&schedule, created, active, at);
                 count_schedule(&mut counts, &schedule, &completion);
                 if schedule.last_error.is_some() || completion.overdue {
                     listed.push(schedule_item(&schedule, &completion));

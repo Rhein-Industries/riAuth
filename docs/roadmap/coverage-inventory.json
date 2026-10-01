@@ -3478,7 +3478,7 @@
       ],
       "unverified": [
         "tests_run_in_this_task is a record of earlier runs. Those PostgreSQL and redb cases ran in earlier O06 slices, before the shared connector_admissions lease (1e7fefc) and the wave27 merges, and were not re-run on the current main. Public CI runs the redb cases that are not ignored through cargo test --all-targets. No workflow runs the nine #[ignore] PostgreSQL cases (names starting postgres_), and scripts/check-grafana-dashboard.py is not in CI.",
-        "docs/roadmap/o06-storage-allocation-run.json records SHA-256 for src/api.rs and src/cli.rs that no longer match the tree; that suite needs a re-run before its hashes can be cited."
+        "docs/roadmap/o06-storage-allocation-run.json was re-run on 2026-10-02 at the committed wave 28 tree after src/api.rs and src/cli.rs changed; its hashes match that tree and must be refreshed after any later change to the hashed files."
       ]
     },
     {

@@ -462,3 +462,62 @@ fn completion_age_follows_a_real_worker_pass_and_the_test_clock() {
     assert_eq!(count(&renewed, "oldest_completion_age_seconds"), 0);
     assert!(renewed["items"].as_array().unwrap().is_empty());
 }
+
+/// A re-enable or interval change sets `next_run` one interval ahead without
+/// a dispatch. With no job queued or running the overdue clock restarts there,
+/// so an old completion is not reported overdue right after re-enabling. A
+/// stuck job keeps the old clock even though the scheduler advances `next_run`.
+#[test]
+fn a_re_enabled_schedule_restarts_the_clock_but_a_stuck_job_does_not() {
+    let fixture = Fixture::new();
+    let at = now();
+    // Re-enabled 60 seconds ago after a long pause; its last job completed.
+    let mut reenabled = schedule("scim/reenabled", 3600, true);
+    reenabled.last_completed_at = Some(at - 20_000);
+    reenabled.last_job = Some("job-done".into());
+    reenabled.next_run = at - 60 + 3600;
+    // The scheduler kept advancing next_run while one job stays running.
+    let mut stuck = schedule("scim/stuck", 3600, true);
+    stuck.last_completed_at = Some(at - 20_000);
+    stuck.last_job = Some("job-stuck".into());
+    stuck.next_run = at + 3000;
+    let mut done = job("job-done", "scim/reenabled", at - 21_000);
+    done.status = Status::Completed;
+    let mut running = job("job-stuck", "scim/stuck", at - 19_000);
+    running.status = Status::Running;
+    fixture
+        .core
+        .store
+        .write(|tx| {
+            tx.put(SCHEDULES, &reenabled.scope, &reenabled)?;
+            tx.put(SCHEDULES, &stuck.scope, &stuck)?;
+            tx.put(JOBS, &done.id, &done)?;
+            tx.put(JOBS, &running.id, &running)
+        })
+        .unwrap();
+    let read = |at: u64| {
+        with_test_time(at, || {
+            fixture.core.reconciliation_diagnostics(&fixture.admin)
+        })
+        .unwrap()
+    };
+
+    let report = read(at);
+    assert_eq!(scopes(&report), vec!["scim/stuck"]);
+    assert_eq!(row(&report, "scim/stuck")["overdue"], true);
+    assert_eq!(row(&report, "scim/stuck")["completion_age_seconds"], 20_000);
+    assert_eq!(count(&report, "schedules_overdue"), 1);
+    // The reported age stays the true completion age.
+    assert_eq!(count(&report, "oldest_completion_age_seconds"), 20_000);
+
+    // One interval-limit after the re-enable, with still no completion, it is due.
+    let later = read(at - 60 + LIMIT + 1);
+    assert!(scopes(&later).contains(&"scim/reenabled"));
+    assert_eq!(row(&later, "scim/reenabled")["overdue"], true);
+    assert_eq!(
+        row(&later, "scim/reenabled")["next_action"],
+        "check_worker_duty"
+    );
+    let edge = read(at - 60 + LIMIT);
+    assert!(!scopes(&edge).contains(&"scim/reenabled"));
+}
