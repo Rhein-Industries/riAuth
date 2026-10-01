@@ -34,6 +34,8 @@ account's grants immediately.
 | Execute | `POST /api/delegated-grant-changes/{id}/execute` | `execute <id> --digest <digest>` |
 | Cancel | `POST /api/delegated-grant-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
+`riauthctl grants` takes the same verbs (`get`, `set`, `stage`, `change`, `approve`, `execute`, `cancel`) against the same routes, sending the revision and an `Idempotency-Key` on every write. Input files for `set`, `stage` and every other review class are limited to 32 KiB, the server's request-body limit, in both `riauth` and `riauthctl`; a larger file is refused before any request.
+
 Browser JSON uses the same paths with `/api/admin` in place of `/api`, behind
 the existing portal read/write guards. The administration page's **Reviewed
 grants** section (`/admin#/grant-review`) stages and reviews these changes.
@@ -56,10 +58,16 @@ cancel and stage a new proposal when intent changes.
 
 A full administrator can load one exact recipient, inspect the current grants,
 and edit the complete proposed replacement (at most 32 rows). Removing all rows
-proposes complete revocation. Acknowledging the replacement and selecting **Stage
-exact change** opens its immutable review page; it does not assign or revoke
-grants. The server still decides which changes need review. This UI does not add
-an immediate-write path or change the grant authorization rules.
+proposes complete revocation. When the replacement adds, removes or alters a
+directory-operator or security-administrator grant, acknowledging it and selecting
+**Stage exact change** opens its immutable review page; that does not assign or
+revoke grants. A replacement that leaves those two roles untouched shows **Apply
+change now** instead and uses the existing immediate endpoint
+(`PUT /api/admin/users/{username}/delegated-grants`) with the same
+`Idempotency-Key` and `If-Match` as every browser write. It takes effect at once,
+is audited as `delegation.grants.set`, and the page then shows the saved grants.
+The page only chooses the endpoint. The server still decides which changes need
+review, shows its refusal as sent, and no grant authorization rule changed.
 
 The review page shows exact before/after grants and bound target identities,
 author, every reviewer, executor, timestamps, expiry, canonical digest, management
@@ -179,8 +187,8 @@ workflow; unsupported creation fails closed when creation review is enabled:
 - Desired-state manifests/plans as a general multi-resource review workflow.
 
 Review roles currently use full administrators; configurable quorums, delegated
-reviewer/executor roles, notifications, a searchable review inbox, dedicated standalone
-`riauthctl` commands and finer-grained invalidation are follow-up work. Existing
+reviewer/executor roles, notifications, a searchable review inbox and finer-grained
+invalidation are follow-up work. Standalone `riauthctl` has the same review commands. Existing
 PAM approvals and immutable connector/state plans keep their separate contracts.
 
 M03 integration adds a child module under `management.rs`. M04 integration moves

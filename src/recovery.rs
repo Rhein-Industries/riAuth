@@ -38,6 +38,10 @@ pub const PENDING_ENROLLMENTS: &str = "users.totp_pending";
 /// in-flight protocol exchange or its reverse index; losing one costs a new
 /// sign-in, consent prompt or restarted flow.
 pub const INVALIDATED: &[&str] = &[
+    // Restored admission cannot establish ownership on the new timeline.
+    "connector_admissions",
+    // Live peers must acquire a new stamp after a restored timeline.
+    "scim_oauth_freshness",
     // Bearer, browser and protocol sessions.
     "sessions",
     "session_tokens",
@@ -161,6 +165,11 @@ const RETAINED: &[&str] = &[
     "usernames",
     "invitation_reservations",
     "groups",
+    // The reviewed-membership fence is derived from `groups` in the same writer
+    // and only counts while the group still lists the member. Clearing it would
+    // unfence restored members of groups no longer named in configuration. It
+    // holds no credential and no staged approval.
+    "reviewed_membership_holders",
     "sources",
     "workflow_definitions",
     // Highest reviewed configured revision. A restored older definition must not start below it.

@@ -212,6 +212,7 @@ pub(crate) struct Background {
     // Two general entries plus one reserved for deactivation. Rejecting work
     // never adds a waiter, and the reserve still shares target exclusion.
     targets: Mutex<[Option<String>; LANES[0].1 + LANES[DEACTIVATION_LANE].1]>,
+    target_releases: Mutex<Vec<targets::TargetRelease>>,
 }
 impl Background {
     fn new(store: Store) -> Self {
@@ -221,6 +222,7 @@ impl Background {
             store,
             deadline: DEADLINE,
             targets: Mutex::new(std::array::from_fn(|_| None)),
+            target_releases: Mutex::new(Vec::new()),
         }
     }
     /// API routers, bootstrap activation and scheduled workers sharing a Store
@@ -629,8 +631,8 @@ mod tests {
             let app = App::new(core.clone());
             // The reserved registry entry is unavailable to general work and
             // cannot bypass exclusion of a target held in the general lane.
-            assert!(background.try_target(Job::Provisioning, "scim/third").is_none());
-            assert!(background.try_target(Job::Deactivation, "scim/manual-a").is_none());
+            assert!(background.try_target(Job::Provisioning, "scim/third").unwrap().is_none());
+            assert!(background.try_target(Job::Deactivation, "scim/manual-a").unwrap().is_none());
             assert_eq!(app.run_connector::<()>(ConnectorWork::target("scim", "third"), |_| {
                 panic!("manual requests cannot borrow the deactivation reserve")
             }).await.unwrap_err().code, "connector_overloaded");
@@ -654,7 +656,7 @@ mod tests {
             assert!(claimed["lease_owner"].as_str().is_some());
             assert_eq!(core.store.get::<Value>(downstream::BUCKET, &busy_id).unwrap().unwrap(), busy_before);
             assert_eq!(background.targets.lock().unwrap().iter().flatten().count(), 3);
-            assert!(background.try_target(Job::Reconciliation, "scim/offboarding").is_none());
+            assert!(background.try_target(Job::Reconciliation, "scim/offboarding").unwrap().is_none());
             for worker in workers {
                 worker.abort();
                 assert!(worker.await.unwrap_err().is_cancelled());

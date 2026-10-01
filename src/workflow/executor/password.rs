@@ -117,7 +117,8 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
     if request.source.is_some()
         || request.requires_mfa != mfa
         || user.totp_secret.is_some() != mfa
-        || request.consent.is_some() != consent_totp
+        || (request.consent.is_some() || request.saml_consent.is_some()) != consent_totp
+        || (request.consent.is_some() && request.saml_consent.is_some())
         || (consent_totp
             && (request.authorization.is_some()
                 || request.recovery.is_some()
@@ -129,6 +130,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
                 || user.totp_pending.is_some()
                 || request.authorization.is_some()
                 || request.consent.is_some()
+                || request.saml_consent.is_some()
                 || request.recovery.is_some()
                 || request.invitation.is_some()
                 || request.removal.is_some()))
@@ -138,6 +140,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
                 || request.removal.is_none()
                 || request.authorization.is_some()
                 || request.consent.is_some()
+                || request.saml_consent.is_some()
                 || request.recovery.is_some()
                 || request.invitation.is_some()))
         || (first_passkey && crate::passkey::passkey_count(tx, &user.id)? != 0)

@@ -387,10 +387,11 @@ impl Core {
                     // A provably unstarted owner loses admission at expiry.
                     release(&mut row);
                 }
-                let Some(target) = background.try_target(
+                let Some(target) = background.try_target_in(
+                    tx,
                     crate::background::Job::Deactivation,
                     &scope(&row.target),
-                ) else {
+                )? else {
                     return Ok(None);
                 };
                 if expired && row.attempts >= MAX_ATTEMPTS {

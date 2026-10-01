@@ -107,9 +107,17 @@ fn resume_path(core: &Core, id: &str) -> String {
 }
 fn waiting(core: &Core, p: &Pending, cookies: Vec<String>) -> Reply {
     let resume = resume_path(core, &p.id);
+    let instruction = if p.configured_consent.is_some() {
+        "Sign in and decide this request in the original browser.".to_owned()
+    } else {
+        format!(
+            "Run riauth request approve {} in your terminal. This browser will return to the application automatically.",
+            p.code
+        )
+    };
     Reply::Waiting(BrowserReply {
         form_post: false,
-        body: json!({"protocol":"saml","status":"authorization_pending","user_code":p.code,"client_id":p.client_id,"expires_at":p.expires_at,"resume_uri":resume,"instruction":format!("Run riauth request approve {} in your terminal. This browser will return to the application automatically.",p.code)}),
+        body: json!({"protocol":"saml","status":"authorization_pending","user_code":p.configured_consent.is_none().then_some(&p.code),"client_id":p.client_id,"expires_at":p.expires_at,"resume_uri":resume,"instruction":instruction}),
         location: None,
         refresh: Some(format!("2; url={resume}")),
         cookies,
@@ -147,6 +155,14 @@ fn matches_context(core: &Core, request: &wire::Authn, identity: &Identity) -> b
 }
 
 impl Core {
+    pub(crate) fn saml_reauthentication_needed(
+        &self,
+        client: &Client,
+        request: &wire::Authn,
+        identity: &Identity,
+    ) -> bool {
+        request.force || insufficient(self, client, request, identity)
+    }
     pub fn saml_metadata(&self, cid: &str) -> Result<String> {
         self.store.read(|tx|{let (client,settings)=client(tx,cid)?;validate_key(tx,&client)?;let endpoint=format!("{}/saml/{cid}/sso",endpoint_base(&self.config.issuer));let issuer=settings.issuer(self,&client);let cert=STANDARD.encode(wire::certificate(&settings.idp_certificate_pem)?);
         let key=format!("<md:KeyDescriptor use=\"signing\"><ds:KeyInfo><ds:X509Data><ds:X509Certificate>{cert}</ds:X509Certificate></ds:X509Data></ds:KeyInfo></md:KeyDescriptor>");
@@ -239,7 +255,16 @@ impl Core {
         request: wire::Authn,
         cookie: Option<&str>,
     ) -> Result<Reply> {
-        if let Some(session) = self.browser_session(tx, cookie)?
+        let configured = self.config.browser_consent_workflow.as_deref();
+        // The configured adapter accepts only an SP-signed, parsed AuthnRequest.
+        // IdP-initiated and passive requests cannot acquire an explicit page decision.
+        if configured.is_some()
+            && (request.id.is_none() || request.passive || client.settings.source_stage.is_some())
+        {
+            return Err(Error::forbidden());
+        }
+        if configured.is_none()
+            && let Some(session) = self.browser_session(tx, cookie)?
             && !request.force
             && !insufficient(self, client, &request, &session.identity)
             && consented(tx, client, &session.identity)?
@@ -271,6 +296,11 @@ impl Core {
                 break code;
             }
         };
+        let initial = if configured.is_some() {
+            self.browser_session(tx, cookie)?
+        } else {
+            None
+        };
         let p = Pending {
             id: id.clone(),
             code,
@@ -284,6 +314,11 @@ impl Core {
             cancelled: false,
             requested_from: crate::context::requester(),
             approved_by: None,
+            configured_consent: configured.map(str::to_owned),
+            configured_run: None,
+            configured_session: initial.as_ref().map(|s| s.id.clone()),
+            configured_account: initial.as_ref().map(|s| s.identity.user_id.clone()),
+            configured_epoch: initial.as_ref().map(|s| s.identity.epoch),
         };
         tx.put(
             "saml_codes",
@@ -305,18 +340,42 @@ impl Core {
         })
     }
     pub fn saml_details(&self, token: &str, code: &str) -> Result<Value> {
-        self.store.write(|tx|{
-        let (user,session)=self.session(tx,token)?;let p=pending(tx,code)?;if p.decided(){return Err(Error::conflict("SAML request already decided"));}let(client,settings)=current_client(tx,&p)?;
-        let transaction=crypto::random_token("ri_auth_");tx.put("authentication",&digest(&transaction),&AuthenticationTransaction{request_hash:p.request_hash(),user_id:Some(user.id),authenticated_session:None,expires_at:p.expires_at,source_stage:None})?;
-        // Ask the CLI to sign in again before an approval could fail the F13 freshness rule.
-        let fresh=p.request.force||insufficient(self,&client,&p.request,&session.identity)||stale(&session.identity,TERMINAL_WARN_SECONDS);
-        Ok(json!({"protocol":"saml","user_code":p.code,"client_id":client.id,"application":client.name,"sp_entity_id":settings.sp_entity_id,"redirect_uri":p.request.acs,"scopes":settings.scopes(&client)?,"attributes":settings.attributes,"name_id_format":settings.name_id_format.uri(),"username":user.username,"require_mfa":client.require_mfa,"requested_authn_context":p.request.contexts,"reauthentication_required":fresh,"transaction_id":transaction,"requested_from":p.requested_from,"delivery":"original_browser"}))
-    })
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            let p = pending(tx, code)?;
+            if p.decided() {
+                return Err(Error::conflict("SAML request already decided"));
+            }
+            if p.configured_consent.is_some() {
+                return Err(Error::forbidden());
+            }
+            let (client, settings) = current_client(tx, &p)?;
+            let transaction = crypto::random_token("ri_auth_");
+            tx.put(
+                "authentication",
+                &digest(&transaction),
+                &AuthenticationTransaction {
+                    request_hash: p.request_hash(),
+                    user_id: Some(user.id),
+                    authenticated_session: None,
+                    expires_at: p.expires_at,
+                    source_stage: None,
+                },
+            )?;
+            // Ask the CLI to sign in again before an approval could fail F13 freshness.
+            let fresh = p.request.force
+                || insufficient(self, &client, &p.request, &session.identity)
+                || stale(&session.identity, TERMINAL_WARN_SECONDS);
+            Ok(json!({"protocol":"saml","user_code":p.code,"client_id":client.id,"application":client.name,"sp_entity_id":settings.sp_entity_id,"redirect_uri":p.request.acs,"scopes":settings.scopes(&client)? ,"attributes":settings.attributes,"name_id_format":settings.name_id_format.uri(),"username":user.username,"require_mfa":client.require_mfa,"requested_authn_context":p.request.contexts,"reauthentication_required":fresh,"transaction_id":transaction,"requested_from":p.requested_from,"delivery":"original_browser"}))
+        })
     }
     pub fn saml_decide(&self, token: &str, input: BrowserDecision) -> Result<Value> {
         self.store.write(|tx| {
             let (_, session) = self.session(tx, token)?;
             let mut p = pending(tx, &input.code)?;
+            if p.configured_consent.is_some() {
+                return Err(Error::forbidden());
+            }
             if p.decided() {
                 return Err(Error::conflict("SAML request already decided"));
             }
@@ -400,8 +459,36 @@ impl Core {
         self.store.read(|tx| {
             let p = interaction(tx, id, binding)?;
             let session = self.browser_session(tx, sso)?;
-            self.saml_state_in(tx, &p, session)
+            self.saml_state_in(tx, &p, session, sso)
         })
+    }
+    fn saml_seal_browser_continuations(
+        &self,
+        id: &str,
+        binding: Option<&str>,
+        sso: Option<&str>,
+    ) -> Result<()> {
+        let p = self.store.read(|tx| interaction(tx, id, binding))?;
+        if p.configured_consent.is_none() {
+            return Ok(());
+        }
+        if let Some(run_id) = p.configured_run.as_deref() {
+            // A stale pin keeps its own conflict precedence. Selector loss is
+            // then sealed in a separate successful writer before returning Err.
+            crate::workflow::executor::seal_reviewed_run(self, run_id)?;
+            if !self.saml_configured_selected(p.configured_consent.as_deref().unwrap())? {
+                crate::workflow::executor::seal_lost_browser_selection(self, run_id)?;
+                return Err(Error::forbidden());
+            }
+        }
+        if let Some(session) = self.store.read(|tx| self.browser_session(tx, sso))? {
+            crate::workflow::executor::seal_session_run(
+                self,
+                &session.id,
+                p.configured_run.as_deref(),
+            )?;
+        }
+        Ok(())
     }
     /// Browser password sign-in for this request. The body is the interaction state.
     pub fn saml_password(
@@ -413,9 +500,111 @@ impl Core {
         password: String,
         otp: Option<String>,
     ) -> Result<BrowserReply> {
-        let (_, pin) = self.saml_open(id, binding, sso)?;
+        self.saml_seal_browser_continuations(id, binding, sso)?;
+        let (p, pin) = self.saml_open(id, binding, sso)?;
+        if let Some(workflow) = p.configured_consent.as_deref() {
+            if !self.saml_configured_selected(workflow)? {
+                return Err(Error::forbidden());
+            }
+            if let (Some(cookie), Some(_)) = (sso, pin.as_deref())
+                && self
+                    .store
+                    .read(|tx| self.saml_configured_definition(tx, workflow))?
+                    .is_some_and(|definition| {
+                        crate::workflow::supported_configured_password_totp_consent(&definition)
+                    })
+            {
+                return self
+                    .saml_totp_password(id, binding, cookie, workflow, username, password, otp);
+            }
+            if p.configured_run.is_some() || pin.is_some() {
+                return Err(Error::forbidden());
+            }
+        }
         let staged = self.browser_password_login(username, password, otp, pin.as_deref())?;
         self.saml_attach(id, binding, sso, &staged, pin.as_deref())
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "SAML interaction, session, workflow and submitted credentials are distinct authority inputs"
+    )]
+    fn saml_totp_password(
+        &self,
+        id: &str,
+        binding: Option<&str>,
+        cookie: &str,
+        workflow: &str,
+        username: String,
+        password: String,
+        otp: Option<String>,
+    ) -> Result<BrowserReply> {
+        use crate::workflow::executor::{
+            BrowserSaml, saml_browser_code_in, saml_browser_owner, saml_browser_stage_in,
+            saml_browser_start_in,
+        };
+        let (run_id, stage, session) = self.store.write(|tx| {
+            let mut p = undecided(interaction(tx, id, binding)?)?;
+            if p.configured_consent.as_deref() != Some(workflow) {
+                return Err(Error::forbidden());
+            }
+            let session = self
+                .browser_session(tx, Some(cookie))?
+                .ok_or_else(Error::unauthorized)?;
+            let user = self.identity_user(tx, &session.identity)?;
+            if user.username != username {
+                return Err(Error::new(
+                    StatusCode::CONFLICT,
+                    "account_changed",
+                    "The signed-in account changed. Review the request again.",
+                ));
+            }
+            let run_id = if let Some(run_id) = &p.configured_run {
+                run_id.clone()
+            } else {
+                saml_browser_start_in(self, tx, &mut p, cookie, &session)?
+            };
+            let owner = BrowserSaml {
+                workflow,
+                interaction: id,
+                cookie,
+                session: &session,
+                run_id: &run_id,
+            };
+            let stage = saml_browser_stage_in(self, tx, &owner)?;
+            Ok((run_id, stage, session))
+        })?;
+        let owner = BrowserSaml {
+            workflow,
+            interaction: id,
+            cookie,
+            session: &session,
+            run_id: &run_id,
+        };
+        match stage {
+            "password" => {
+                self.workflow_password_with(
+                    &run_id,
+                    password,
+                    |core, tx, run| saml_browser_owner(core, tx, &owner, run),
+                    |_, _| Ok(()),
+                )?;
+            }
+            "totp" => {
+                let code = otp.ok_or_else(|| Error::bad("Enter a current authenticator code"))?;
+                self.store.write(|tx| {
+                    saml_browser_code_in(self, tx, &owner, code)?;
+                    Ok(())
+                })?;
+            }
+            _ => return Err(Error::conflict("Consent is awaiting a decision")),
+        }
+        Ok(BrowserReply {
+            form_post: false,
+            body: self.saml_state(id, binding, Some(cookie))?,
+            location: None,
+            refresh: None,
+            cookies: vec![],
+        })
     }
     /// A pinned account signs in with its own passkeys; otherwise the browser offers any.
     pub fn saml_passkey_start(
@@ -424,7 +613,51 @@ impl Core {
         binding: Option<&str>,
         sso: Option<&str>,
     ) -> Result<Value> {
+        self.saml_seal_browser_continuations(id, binding, sso)?;
         let (p, pin) = self.saml_open(id, binding, sso)?;
+        if let Some(workflow) = p.configured_consent.as_deref() {
+            if !self.saml_configured_selected(workflow)? {
+                return Err(Error::forbidden());
+            }
+            if let (Some(cookie), Some(_)) = (sso, pin.as_deref()) {
+                if self
+                    .store
+                    .read(|tx| self.saml_configured_definition(tx, workflow))?
+                    .is_some_and(|definition| {
+                        crate::workflow::supported_configured_passkey_consent(&definition)
+                    })
+                {
+                    return self.store.write(|tx| {
+                        let mut p = undecided(interaction(tx, id, binding)?)?;
+                        let session = self
+                            .browser_session(tx, Some(cookie))?
+                            .ok_or_else(Error::unauthorized)?;
+                        let run_id = if let Some(run_id) = &p.configured_run {
+                            run_id.clone()
+                        } else {
+                            crate::workflow::executor::saml_browser_start_in(
+                                self, tx, &mut p, cookie, &session,
+                            )?
+                        };
+                        crate::workflow::executor::saml_browser_passkey_start_in(
+                            self,
+                            tx,
+                            &crate::workflow::executor::BrowserSaml {
+                                workflow,
+                                interaction: id,
+                                cookie,
+                                session: &session,
+                                run_id: &run_id,
+                            },
+                        )
+                    });
+                }
+                return Err(Error::forbidden());
+            }
+            if p.configured_run.is_some() {
+                return Err(Error::forbidden());
+            }
+        }
         self.browser_passkey_start(pin.as_deref(), &format!("saml:{id}"), &p.browser_hash)
     }
     pub fn saml_passkey_finish(
@@ -435,7 +668,53 @@ impl Core {
         ceremony: &str,
         response: PublicKeyCredential,
     ) -> Result<BrowserReply> {
-        let (_, pin) = self.saml_open(id, binding, sso)?;
+        self.saml_seal_browser_continuations(id, binding, sso)?;
+        let (p, pin) = self.saml_open(id, binding, sso)?;
+        if let Some(workflow) = p.configured_consent.as_deref()
+            && !self.saml_configured_selected(workflow)?
+        {
+            return Err(Error::forbidden());
+        }
+        if let Some(run_id) = p.configured_run.as_deref() {
+            let workflow = p
+                .configured_consent
+                .as_deref()
+                .ok_or_else(Error::forbidden)?;
+            let cookie = sso.ok_or_else(Error::unauthorized)?;
+            return self.store.write(|tx| {
+                let session = self
+                    .browser_session(tx, Some(cookie))?
+                    .ok_or_else(Error::unauthorized)?;
+                crate::workflow::executor::saml_browser_passkey_finish_in(
+                    self,
+                    tx,
+                    &crate::workflow::executor::BrowserSaml {
+                        workflow,
+                        interaction: id,
+                        cookie,
+                        session: &session,
+                        run_id,
+                    },
+                    ceremony,
+                    response,
+                )?;
+                Ok(BrowserReply {
+                    form_post: false,
+                    body: self.saml_state_in(
+                        tx,
+                        &interaction(tx, id, binding)?,
+                        Some(session),
+                        sso,
+                    )?,
+                    location: None,
+                    refresh: None,
+                    cookies: vec![],
+                })
+            });
+        }
+        if p.configured_consent.is_some() && pin.is_some() {
+            return Err(Error::forbidden());
+        }
         let staged = self.browser_passkey_finish(
             ceremony,
             response,
@@ -444,6 +723,57 @@ impl Core {
             pin.as_deref(),
         )?;
         self.saml_attach(id, binding, sso, &staged, pin.as_deref())
+    }
+    pub fn saml_passkey_cancel(
+        &self,
+        id: &str,
+        binding: Option<&str>,
+        sso: Option<&str>,
+        ceremony: &str,
+    ) -> Result<Value> {
+        self.saml_seal_browser_continuations(id, binding, sso)?;
+        let p = self
+            .store
+            .read(|tx| undecided(interaction(tx, id, binding)?))?;
+        if let Some(workflow) = p.configured_consent.as_deref()
+            && !self.saml_configured_selected(workflow)?
+        {
+            return Err(Error::forbidden());
+        }
+        if let Some(run_id) = p.configured_run.as_deref() {
+            let workflow = p
+                .configured_consent
+                .as_deref()
+                .ok_or_else(Error::forbidden)?;
+            let cookie = sso.ok_or_else(Error::unauthorized)?;
+            return self.store.write(|tx| {
+                let session = self
+                    .browser_session(tx, Some(cookie))?
+                    .ok_or_else(Error::unauthorized)?;
+                crate::workflow::executor::saml_browser_passkey_cancel_in(
+                    self,
+                    tx,
+                    &crate::workflow::executor::BrowserSaml {
+                        workflow,
+                        interaction: id,
+                        cookie,
+                        session: &session,
+                        run_id,
+                    },
+                    ceremony,
+                )?;
+                self.saml_state_in(tx, &interaction(tx, id, binding)?, Some(session), sso)
+            });
+        }
+        if p.configured_consent.is_some()
+            && self
+                .store
+                .read(|tx| self.browser_session(tx, sso))?
+                .is_some()
+        {
+            return Err(Error::forbidden());
+        }
+        self.browser_passkey_cancel(ceremony, &format!("saml:{id}"), binding)
     }
     /// Approves as this browser's session, or cancels without one. The body is the state.
     pub fn saml_browser_decide(
@@ -455,9 +785,68 @@ impl Core {
         remember: bool,
         session_ref: Option<String>,
     ) -> Result<Value> {
+        self.saml_seal_browser_continuations(id, binding, sso)?;
         self.store.write(|tx| {
             let mut p = undecided(interaction(tx, id, binding)?)?;
             let session = self.browser_session(tx, sso)?;
+            if let Some(workflow) = p.configured_consent.clone() {
+                let configured = self.saml_configured_definition(tx, &workflow)?.is_some();
+                if approve && !configured {
+                    return Err(Error::forbidden());
+                }
+                if approve {
+                    let session = session.as_ref().ok_or_else(Error::unauthorized)?;
+                    if !session_ref.as_deref().is_some_and(|reference| {
+                        crypto::constant_eq(reference, &signin::session_ref(id, &session.id))
+                    }) {
+                        return Err(Error::new(
+                            StatusCode::CONFLICT,
+                            "account_changed",
+                            "The signed-in account changed. Review the request again.",
+                        ));
+                    }
+                    let cookie = sso.ok_or_else(Error::unauthorized)?;
+                    let run_id = if let Some(run_id) = p.configured_run.clone() {
+                        run_id
+                    } else {
+                        crate::workflow::executor::saml_browser_start_in(
+                            self, tx, &mut p, cookie, session,
+                        )?
+                    };
+                    let binding = crate::workflow::executor::BrowserSaml {
+                        workflow: &workflow,
+                        interaction: id,
+                        cookie,
+                        session,
+                        run_id: &run_id,
+                    };
+                    crate::workflow::executor::saml_browser_decide_in(self, tx, &binding, true)?;
+                } else if let (Some(run_id), Some(session), Some(cookie)) =
+                    (p.configured_run.as_deref(), session.as_ref(), sso)
+                {
+                    let binding = crate::workflow::executor::BrowserSaml {
+                        workflow: &workflow,
+                        interaction: id,
+                        cookie,
+                        session,
+                        run_id,
+                    };
+                    crate::workflow::executor::saml_browser_decide_in(self, tx, &binding, false)?;
+                } else {
+                    p.cancelled = true;
+                    tx.put("saml_requests", &p.id, &p)?;
+                    audit(
+                        tx,
+                        session
+                            .as_ref()
+                            .map_or("anonymous", |s| s.identity.user_id.as_str()),
+                        "saml.deny",
+                        &p.client_id,
+                    )?;
+                }
+                let p: Pending = tx.get("saml_requests", id)?.ok_or_else(Error::forbidden)?;
+                return self.saml_state_in(tx, &p, session, sso);
+            }
             if approve {
                 let session = session.as_ref().ok_or_else(Error::unauthorized)?;
                 if !session_ref
@@ -492,7 +881,7 @@ impl Core {
                 let actor = session.as_ref().map(|s| s.identity.user_id.as_str());
                 audit(tx, actor.unwrap_or("anonymous"), "saml.deny", &p.client_id)?;
             }
-            self.saml_state_in(tx, &p, session)
+            self.saml_state_in(tx, &p, session, sso)
         })
     }
     /// The undecided request and the account it is pinned to: always the browser
@@ -508,6 +897,23 @@ impl Core {
             let pin = self.browser_session(tx, sso)?.map(|s| s.identity.user_id);
             Ok((p, pin))
         })
+    }
+    fn saml_configured_selected(&self, workflow: &str) -> Result<bool> {
+        self.store.read(|tx| {
+            self.saml_configured_definition(tx, workflow)
+                .map(|d| d.is_some())
+        })
+    }
+    fn saml_configured_definition(
+        &self,
+        tx: &Tx<'_>,
+        workflow: &str,
+    ) -> Result<Option<crate::workflow::Definition>> {
+        match crate::workflow::executor::saml_selected_definition_in(self, tx, workflow) {
+            Ok(definition) => Ok(Some(definition)),
+            Err(error) if error.status.is_server_error() => Err(error),
+            Err(_) => Ok(None),
+        }
     }
     /// Phase 2 of a browser sign-in: sufficiency (F8), attach (F3) and the request-bound
     /// proof (F7) in one write; then auto-continue (F9) in its own write.
@@ -531,8 +937,16 @@ impl Core {
                     return Ok(Err(error));
                 }
             };
+            if let Some(workflow) = p.configured_consent.as_deref()
+                && self.saml_configured_definition(tx, workflow)?.is_none()
+            {
+                signin::discard_staged(tx, staged)?;
+                return Ok(Err(Error::forbidden()));
+            }
             let login = self.staged_login(tx, staged)?;
-            if insufficient(self, &client, &p.request, &login.identity) {
+            if p.configured_consent.is_none()
+                && insufficient(self, &client, &p.request, &login.identity)
+            {
                 signin::discard_staged(tx, staged)?;
                 let user = tx.get::<User>("users", &login.identity.user_id)?;
                 return Ok(Err(insufficient_error(
@@ -545,6 +959,22 @@ impl Core {
                 Ok(attached) => attached,
                 Err(error) => return Ok(Err(error)),
             };
+            if p.configured_consent.is_some() {
+                if p.configured_session
+                    .as_ref()
+                    .is_some_and(|sid| sid != &attached.session.id)
+                    || p.configured_account
+                        .as_ref()
+                        .is_some_and(|id| id != &attached.session.identity.user_id)
+                    || p.configured_epoch
+                        .is_some_and(|epoch| epoch != attached.session.identity.epoch)
+                {
+                    return Err(Error::forbidden());
+                }
+                p.configured_session = Some(attached.session.id.clone());
+                p.configured_account = Some(attached.session.identity.user_id.clone());
+                p.configured_epoch = Some(attached.session.identity.epoch);
+            }
             p.authentication = Some(signin::bind_proof(
                 tx,
                 p.authentication.as_deref(),
@@ -568,7 +998,7 @@ impl Core {
             let session = tx.get::<Session>("sessions", holder)?.filter(|s| {
                 !s.revoked && s.expires_at > now() && self.identity_user(tx, &s.identity).is_ok()
             });
-            self.saml_state_in(tx, &p, session)
+            self.saml_state_in(tx, &p, session, sso)
         })?;
         Ok(BrowserReply {
             form_post: false,
@@ -587,6 +1017,9 @@ impl Core {
         else {
             return Ok(false);
         };
+        if p.configured_consent.is_some() {
+            return Ok(false);
+        }
         let Some(session) = tx
             .get::<Session>("sessions", holder)?
             .filter(|s| !s.revoked && s.expires_at > now())
@@ -611,7 +1044,13 @@ impl Core {
         Ok(true)
     }
     /// The §4.5 state for `session`, the browser's live session if any.
-    fn saml_state_in(&self, tx: &Tx<'_>, p: &Pending, session: Option<Session>) -> Result<Value> {
+    fn saml_state_in(
+        &self,
+        tx: &Tx<'_>,
+        p: &Pending,
+        session: Option<Session>,
+        sso: Option<&str>,
+    ) -> Result<Value> {
         let name = tx
             .get::<Client>("clients", &p.client_id)?
             .map_or_else(|| p.client_id.clone(), |c| c.name);
@@ -646,11 +1085,29 @@ impl Core {
             state["continue"] = json!(resume_path(self, &p.id));
             return Ok(state);
         }
-        state["terminal"] = json!({"user_code": p.code, "issuer": self.config.issuer});
+        if p.configured_consent.is_none() {
+            state["terminal"] = json!({"user_code": p.code, "issuer": self.config.issuer});
+        }
         let (client, settings) = match current_client(tx, p) {
             Ok(current) => current,
             Err(error) if error.status.is_server_error() => return Err(error),
             Err(_) => return unavailable(state, "invalid_request", None),
+        };
+        let configured = if let Some(workflow) = p.configured_consent.as_deref() {
+            let definition = self.saml_configured_definition(tx, workflow)?;
+            if client.settings.source_stage.is_some()
+                || p.request.id.is_none()
+                || definition.is_none()
+            {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Configured SAML consent is unavailable".into()),
+                );
+            }
+            definition
+        } else {
+            None
         };
         let probe = |mfa: bool| Identity {
             amr: if mfa {
@@ -672,7 +1129,117 @@ impl Core {
             None => !client.settings.implicit_consent,
         };
         state["requirements"] = json!({"mfa": mfa, "browser": browser});
-        state["consent"] = json!({"required": required, "scopes": null, "attributes": settings.attributes, "resource": null, "remember_default": true});
+        state["consent"] = json!({"required": configured.is_some() || required, "scopes": null, "attributes": settings.attributes, "resource": null, "remember_default": configured.is_none(), "remember_enabled": configured.is_none()});
+        if let Some(configured) = configured {
+            let passkey = crate::workflow::supported_configured_passkey_consent(&configured);
+            let totp = crate::workflow::supported_configured_password_totp_consent(&configured);
+            if passkey {
+                state["requirements"]["configured_passkey"] = json!(true);
+            }
+            if totp {
+                state["requirements"]["configured_totp"] = json!(true);
+            }
+            let possible = if totp {
+                let mut identity = probe(true);
+                identity.amr = vec!["pwd".into(), "otp".into()];
+                !insufficient(self, &client, &p.request, &identity)
+            } else {
+                browser
+            };
+            if !possible {
+                return unavailable(state, "step_up_unavailable", None);
+            }
+            let Some(session) = session else {
+                if p.configured_run.is_some() {
+                    return unavailable(
+                        state,
+                        "access_denied",
+                        Some("Bound browser session is unavailable".into()),
+                    );
+                }
+                state["status"] = json!("authenticate");
+                state["reason"] = json!("sign_in");
+                return Ok(state);
+            };
+            if p.configured_account
+                .as_ref()
+                .is_some_and(|id| id != &session.identity.user_id)
+                || p.configured_session
+                    .as_ref()
+                    .is_some_and(|id| id != &session.id)
+                || p.configured_epoch
+                    .is_some_and(|epoch| epoch != session.identity.epoch)
+            {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Bound browser session changed".into()),
+                );
+            }
+            let needed = self.saml_reauthentication_needed(&client, &p.request, &session.identity);
+            if (passkey || totp) != needed {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("SAML request needs a different consent graph".into()),
+                );
+            }
+            if passkey || totp {
+                let stage = if let Some(run_id) = p.configured_run.as_deref() {
+                    let Some(cookie) = sso else {
+                        return unavailable(state, "access_denied", None);
+                    };
+                    let binding = crate::workflow::executor::BrowserSaml {
+                        workflow: configured.id.as_str(),
+                        interaction: &p.id,
+                        cookie,
+                        session: &session,
+                        run_id,
+                    };
+                    match crate::workflow::executor::saml_browser_stage_in(self, tx, &binding) {
+                        Ok(stage) => stage,
+                        Err(error) if error.status.is_server_error() => return Err(error),
+                        Err(_) => {
+                            return unavailable(
+                                state,
+                                "access_denied",
+                                Some("Bound SAML consent run is unavailable".into()),
+                            );
+                        }
+                    }
+                } else if passkey {
+                    "passkey"
+                } else {
+                    "password"
+                };
+                if totp {
+                    state["requirements"]["configured_stage"] = json!(stage);
+                }
+                state["status"] = json!(if stage == "consent" {
+                    "consent"
+                } else {
+                    "authenticate"
+                });
+                if stage != "consent" {
+                    state["reason"] = json!(if stage == "totp" {
+                        "configured_totp"
+                    } else {
+                        "step_up"
+                    });
+                }
+                return Ok(state);
+            }
+            if p.configured_run.is_some() {
+                return unavailable(
+                    state,
+                    "access_denied",
+                    Some("Bound SAML consent run is unavailable".into()),
+                );
+            }
+            self.saml_identity(tx, &client, &settings, &p.request, &session.identity)?;
+            state["status"] = json!("consent");
+            return Ok(state);
+        }
         if !browser {
             return unavailable(state, "step_up_unavailable", None);
         }
@@ -742,6 +1309,9 @@ impl Core {
             let mut cookies = vec![self.binding_cookie("saml", id, "", &resume_path(self, id), 0)];
             let approved = p.decision.as_ref().filter(|d| d.approve);
             if let Some(decision) = approved {
+                if p.configured_consent.is_some() {
+                    crate::workflow::executor::saml_consent_issuance_check_in(self, tx, &p)?;
+                }
                 self.saml_identity(tx, &client, &settings, &p.request, &decision.identity)?;
                 cookies.extend(self.point_browser(
                     tx,
@@ -749,7 +1319,7 @@ impl Core {
                     &decision.identity.session_id,
                     &decision.identity.user_id,
                 )?);
-                if decision.remember {
+                if decision.remember && p.configured_consent.is_none() {
                     remember_approved_consent(
                         tx,
                         ConsentApproval::SamlResume {
@@ -776,7 +1346,7 @@ impl Core {
             Ok(reply)
         })
     }
-    fn saml_identity(
+    pub(crate) fn saml_identity(
         &self,
         tx: &Tx<'_>,
         client: &Client,

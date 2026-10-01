@@ -202,6 +202,7 @@ impl Core {
             source: None,
             authorization: None,
             consent: None,
+            saml_consent: None,
             recovery: Some(pin),
             invitation: None,
             removal: None,

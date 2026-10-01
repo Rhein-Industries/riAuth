@@ -139,7 +139,32 @@ impl Core {
     /// Commit the reviewed definition and its immutable approval as the selection.
     pub fn activate_workflow(&self, token: &str, plan_id: &str) -> Result<Value> {
         bounded_id(plan_id, "plan_id")?;
-        self.store.write(|tx| activate_in(self, tx, token, plan_id))
+        self.store.write(|tx| {
+            let Some(existing_id) = tx.get::<String>(APPROVAL_PLANS, plan_id)? else {
+                // A failed first activation must still roll back every write.
+                return activate_in(self, tx, token, plan_id).map(Ok);
+            };
+            let caller = caller(self, tx, token)?;
+            let existing = tx
+                .get::<WorkflowApproval>(APPROVALS, &existing_id)?
+                .ok_or_else(|| Error::conflict("Workflow approval is not active"))?;
+            let current =
+                tx.get::<ActivationPointer>(ACTIVATION, existing.definition.id.as_str())?;
+            if existing.executor != caller.id
+                || existing.plan_id != plan_id
+                || current.is_none_or(|pointer| pointer.approval_id != existing.id)
+            {
+                return Ok(Err(Error::conflict("Workflow approval already exists")));
+            }
+            if let Some(live) = live(tx, existing.definition.id.as_str())?
+                && selection_holds(self, tx, &live)?
+            {
+                return Ok(Ok(approval_view(&existing)));
+            }
+            // Commit stale-run retirement without reviving or rewriting the pointer.
+            super::executor::seal_approved_runs(self, tx, existing.definition.id.as_str())?;
+            Ok(Err(Error::conflict("Workflow approval is not active")))
+        })?
     }
 
     /// Retire the current approval. The approval row stays. Open pinned runs seal.
@@ -308,21 +333,6 @@ fn review_in(
 
 fn activate_in(core: &Core, tx: &Tx<'_>, token: &str, plan_id: &str) -> Result<Value> {
     let caller = caller(core, tx, token)?;
-    if let Some(existing_id) = tx.get::<String>(APPROVAL_PLANS, plan_id)? {
-        let existing = tx
-            .get::<WorkflowApproval>(APPROVALS, &existing_id)?
-            .ok_or_else(|| Error::conflict("Workflow approval is not active"))?;
-        let current = tx.get::<ActivationPointer>(ACTIVATION, existing.definition.id.as_str())?;
-        // A revoked or replaced pointer stays revoked. Repeating activate does
-        // not write the selection back.
-        if existing.executor == caller.id
-            && existing.plan_id == plan_id
-            && current.is_some_and(|pointer| pointer.approval_id == existing.id)
-        {
-            return Ok(approval_view(&existing));
-        }
-        return Err(Error::conflict("Workflow approval already exists"));
-    }
     let (plan, author_id) = open_plan(tx, plan_id)?;
     require_plan_content(&plan)?;
     let review = tx
@@ -568,6 +578,57 @@ fn config_agrees(core: &Core, definition: &Definition) -> Result<()> {
     }
 }
 
+/// Security inputs consumed by the supported adapters, scoped to this graph.
+/// Source records contain public registration/trust data, not stored client secrets.
+/// Guest module/process binding remains the extension gate's separate contract.
+pub(crate) fn environment_digest(
+    core: &Core,
+    tx: &Tx<'_>,
+    definition: &Definition,
+) -> Result<String> {
+    let password_history = definition
+        .steps
+        .iter()
+        .any(|step| {
+            matches!(
+                step.action,
+                Action::ResetPassword {}
+                    | Action::EnrollCredential {
+                        credential: super::Credential::Password
+                    }
+            )
+        })
+        .then_some(core.config.password_history);
+    let ids: std::collections::BTreeSet<_> = definition
+        .steps
+        .iter()
+        .filter_map(|step| {
+            if let Action::VerifySource { source } = &step.action {
+                Some(source.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    let mut sources = Vec::new();
+    for id in ids {
+        let source = tx
+            .get::<crate::source::Source>("sources", id)?
+            .filter(|source| source.enabled && source.id == id)
+            .ok_or_else(|| Error::conflict("Workflow approval dependencies changed"))?;
+        sources.push((id, source.fingerprint()?));
+    }
+    let material = serde_json::to_string(&(
+        "riauth.workflow-environment/v1",
+        "platform",
+        &core.config.issuer,
+        password_history,
+        sources,
+    ))
+    .map_err(Error::internal)?;
+    Ok(digest(&material))
+}
+
 fn dependency_digest(core: &Core, tx: &Tx<'_>, definition: &Definition) -> Result<String> {
     let adapter = adapter_label(definition)
         .ok_or_else(|| Error::conflict("Configured workflow is unavailable"))?;
@@ -575,6 +636,7 @@ fn dependency_digest(core: &Core, tx: &Tx<'_>, definition: &Definition) -> Resul
         DEPENDENCY_PREFIX.to_owned(),
         "profile=platform".to_owned(),
         format!("adapter={adapter}"),
+        format!("environment={}", environment_digest(core, tx, definition)?),
     ];
     let mut sources = Vec::new();
     let mut extensions = Vec::new();

@@ -548,6 +548,8 @@ async fn decode_response(mut response: Response) -> Result<Value> {
                         | "not_ready"
                         | "not_found"
                         | "conflict"
+                        | "credential_already_issued"
+                        | "precondition_required"
                         | "permission_denied"
                 )
             })

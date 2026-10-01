@@ -24,6 +24,9 @@ pub(super) struct ReviewedPin {
     /// Dependency digest bound into an approval. Absent on an unapproved pin.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) dependencies: Option<String>,
+    /// Live adapter security settings, also bound for unapproved config runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) environment: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -107,6 +110,11 @@ pub(super) fn review_pin(
         ),
         approval: None,
         dependencies: None,
+        environment: Some(crate::workflow::approval::environment_digest(
+            core,
+            tx,
+            checked.definition(),
+        )?),
     };
     adopt_unapproved(tx, id, pin)
 }
@@ -127,6 +135,11 @@ fn pin_approved(core: &Core, tx: &Tx<'_>, checked: &Validated) -> Result<Option<
         policy: approved_policy_digest(&live),
         approval: Some(live.id.clone()),
         dependencies: Some(live.dependencies.clone()),
+        environment: Some(crate::workflow::approval::environment_digest(
+            core,
+            tx,
+            checked.definition(),
+        )?),
     };
     adopt_approved(tx, id, pin)
 }
@@ -136,6 +149,15 @@ fn adopt_unapproved(tx: &Tx<'_>, id: &str, pin: ReviewedPin) -> Result<Option<Re
         None => tx.put(REVIEWED, id, &pin)?,
         Some(stored) if stored.revision < pin.revision => tx.put(REVIEWED, id, &pin)?,
         Some(stored) if stored == pin => {}
+        // Old config pins may be upgraded only for a fresh run with identical
+        // policy bytes. Existing runs without the environment pin fail closed.
+        Some(mut stored) if stored.environment.is_none() && stored.revision == pin.revision => {
+            stored.environment = pin.environment.clone();
+            if stored != pin {
+                return Err(Error::conflict("Workflow policy changed"));
+            }
+            tx.put(REVIEWED, id, &pin)?;
+        }
         Some(stored) if stored.revision == pin.revision => {
             return Err(Error::conflict("Workflow policy changed"));
         }
@@ -191,6 +213,15 @@ pub(super) fn reviewed_failure(
     if run.record.state.is_final() {
         return Ok(None);
     }
+    reviewed_policy_failure(core, tx, run)
+}
+
+/// Recheck a reviewed policy even after completion when a deferred grant is issued.
+pub(super) fn reviewed_policy_failure(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &RuntimeRun,
+) -> Result<Option<ReviewedFailure>> {
     let Some(pin) = &run.reviewed else {
         return Ok(None);
     };
@@ -231,6 +262,9 @@ pub(super) fn reviewed_failure(
     {
         return Ok(Some(ReviewedFailure::PolicyChanged));
     }
+    if environment_changed(core, tx, run, pin)? {
+        return Ok(Some(ReviewedFailure::PolicyChanged));
+    }
     request_failure(tx, run)
 }
 
@@ -261,15 +295,54 @@ fn approved_pin_failure(
     if !same {
         return Ok(Some(ReviewedFailure::PolicyChanged));
     }
+    if environment_changed(core, tx, run, pin)? {
+        return Ok(Some(ReviewedFailure::PolicyChanged));
+    }
     request_failure(tx, run)
+}
+
+fn environment_changed(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &RuntimeRun,
+    pin: &ReviewedPin,
+) -> Result<bool> {
+    match crate::workflow::approval::environment_digest(core, tx, &run.definition) {
+        Ok(live) => Ok(pin.environment.as_deref() != Some(live.as_str())),
+        Err(error) if !error.status.is_server_error() => Ok(true),
+        Err(error) => Err(error),
+    }
 }
 
 fn request_failure(tx: &Tx<'_>, run: &RuntimeRun) -> Result<Option<ReviewedFailure>> {
     let Some(request) = tx.get::<RequestAuthority>(REQUESTS, &run.record.request)? else {
         return Ok(Some(ReviewedFailure::PolicyChanged));
     };
+    if let Some(pin) = &request.source {
+        let user = tx
+            .get::<User>("users", &run.record.account)?
+            .ok_or_else(Error::forbidden)?;
+        let mut checks = vec![upstream::authority(tx, pin, &user)];
+        for step in &run.record.steps {
+            if let Some(reference) = &step.evidence
+                && let Some(evidence) = tx.get::<StoredEvidence>(EVIDENCE, reference)?
+                && let Some(source) = &evidence.source
+            {
+                checks.push(upstream::evidence_authority(tx, pin, &user, source));
+            }
+        }
+        for check in checks {
+            if let Err(error) = check {
+                if error.status.is_server_error() {
+                    return Err(error);
+                }
+                return Ok(Some(ReviewedFailure::PolicyChanged));
+            }
+        }
+    }
     if authorization::client_policy_changed(tx, &request)?
         || consent::client_policy_changed(tx, &request)?
+        || saml_consent::client_policy_changed(tx, &request)?
     {
         return Ok(Some(ReviewedFailure::PolicyChanged));
     }
@@ -948,6 +1021,86 @@ mod tests {
                 .is_err()
         );
         assert_denied(&saved(&core, &started.id), "policy_changed");
+    }
+
+    #[test]
+    fn missing_environment_pin_seals_old_run_and_fresh_start_rebinds() {
+        let (_dir, core, token) = start_core(1);
+        let open = core
+            .workflow_configured_start(&token, "local-password")
+            .unwrap();
+        core.store
+            .write(|tx| {
+                let mut run = load_runtime(tx, &open.id)?;
+                run.reviewed.as_mut().unwrap().environment = None;
+                let mut retained: ReviewedPin = tx.get(REVIEWED, "local-password")?.unwrap();
+                retained.environment = None;
+                tx.put(RUNS, &open.id, &run)?;
+                tx.put(REVIEWED, "local-password", &retained)
+            })
+            .unwrap();
+        assert_eq!(
+            core.workflow_password(&token, &open.id, PASSWORD.into())
+                .unwrap_err()
+                .message,
+            "Workflow policy changed"
+        );
+        assert_denied(&saved(&core, &open.id), "policy_changed");
+        let fresh = core
+            .workflow_configured_start(&token, "local-password")
+            .unwrap();
+        assert_ne!(fresh.id, open.id);
+        assert!(
+            saved(&core, &fresh.id)
+                .reviewed
+                .unwrap()
+                .environment
+                .is_some()
+        );
+        assert!(
+            core.workflow_password(&token, &open.id, PASSWORD.into())
+                .is_err()
+        );
+        core.workflow_password(&token, &fresh.id, PASSWORD.into())
+            .unwrap();
+    }
+
+    #[test]
+    fn configured_environment_change_requires_fresh_revision() {
+        let (_dir, mut core, token) = start_core(1);
+        let open = core
+            .workflow_configured_start(&token, "local-password")
+            .unwrap();
+        core.config.issuer = "http://localhost:9001".into();
+        assert_eq!(
+            core.workflow_password(&token, &open.id, PASSWORD.into())
+                .unwrap_err()
+                .message,
+            "Workflow policy changed"
+        );
+        assert_denied(&saved(&core, &open.id), "policy_changed");
+        assert_eq!(
+            core.workflow_configured_start(&token, "local-password")
+                .unwrap_err()
+                .message,
+            "Workflow policy changed"
+        );
+        core.config
+            .workflows
+            .get_mut("local-password")
+            .unwrap()
+            .definition
+            .revision = 2;
+        let fresh = core
+            .workflow_configured_start(&token, "local-password")
+            .unwrap();
+        assert_ne!(fresh.id, open.id);
+        assert!(
+            core.workflow_password(&token, &open.id, PASSWORD.into())
+                .is_err()
+        );
+        core.workflow_password(&token, &fresh.id, PASSWORD.into())
+            .unwrap();
     }
 
     #[test]

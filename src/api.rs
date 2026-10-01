@@ -103,11 +103,11 @@ impl App {
             .connector(async move {
                 tokio::task::spawn_blocking(move || {
                     crate::context::scope(context, || {
-                        let _target = target
+                        let target = target
                             .scope(&core.store)?
                             .map(|scope| {
                                 background
-                                    .try_target(crate::background::Job::ManualConnector, &scope)
+                                    .try_target(crate::background::Job::ManualConnector, &scope)?
                                     .ok_or_else(|| Error::new(
                                         StatusCode::SERVICE_UNAVAILABLE,
                                         "connector_overloaded",
@@ -115,7 +115,16 @@ impl App {
                                     ))
                             })
                             .transpose()?;
-                        f(&core)
+                        let result = f(&core);
+                        if let Some(target) = target
+                            && let Err(error) = target.release()
+                        {
+                            // The operation may already have committed. Keep
+                            // its result/receipt truthful; cleanup retries on
+                            // the next admission or expires with the lease.
+                            tracing::warn!(%error, "Connector admission settlement deferred");
+                        }
+                        result
                     })
                 })
                 .await
@@ -123,7 +132,7 @@ impl App {
             })
             .await
     }
-    /// Runs a read-only forward-auth check on the forward permits instead of a worker.
+    /// Runs forward-auth work, including shared counters, on reserved forward permits.
     pub async fn run_forward<T: Send + 'static>(
         &self,
         f: impl FnOnce(&Core) -> Result<T> + Send + 'static,
@@ -567,6 +576,7 @@ pub fn router(core: Core) -> Router {
         .route("/api/state/plans/{id}", get(plan_status))
         .route("/api/operations/logout", get(logout_deliveries))
         .route("/api/operations/doctor", get(doctor))
+        .route("/api/operations/storage", get(storage_allocation))
         .route(
             "/api/operations/reconciliation",
             get(reconciliation_diagnostics),
@@ -1097,13 +1107,16 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         .copied()
         .unwrap_or(limit);
     let grouped = rate_key(ip);
-    // Forward auth answers every proxied request, so it never takes a worker for a shared
-    // counter; its limit applies per node.
-    let limited = if app.core.config.postgres.is_some() && category != "forward_auth" {
-        match app
-            .run(move |core| core.store.shared_rate_limit(grouped, category, limit))
-            .await
-        {
+    // Shared forward-auth counting uses its reserved admission budget. The
+    // counter transaction finishes before the request's authorization check.
+    let limited = if app.core.config.postgres.is_some() {
+        let hit = move |core: &Core| core.store.shared_rate_limit(grouped, category, limit);
+        let counted = if category == "forward_auth" {
+            app.run_forward(hit).await
+        } else {
+            app.run(hit).await
+        };
+        match counted {
             Ok(limited) => limited,
             Err(error) => return error.into_response(),
         }
@@ -2264,6 +2277,7 @@ session_handler!(list_agents, list_agents);
 session_handler!(export_state, export_state);
 session_handler!(logout_deliveries, logout_deliveries);
 session_handler!(doctor, doctor);
+session_handler!(storage_allocation, storage_allocation);
 session_handler!(recovery_codes, recovery_codes);
 
 #[derive(Deserialize)]

@@ -5525,6 +5525,28 @@ pub fn offboard_intent_durable_cancel(backend: Backend) {
             && event["actor"] == "agent:scheduler"
             && event["target"] == format!("{id}/alice")
     }));
+    // Platform-only state now exists: the scheduler agents' offboarding
+    // permissions and the job. The first open after that records the
+    // dependency once in the sticky edition provenance, by design. Observe
+    // exactly that one record here so the reopen oracle below compares a
+    // settled store and still proves that opening unchanged state rewrites
+    // nothing.
+    let unsettled = f.snapshot().unwrap();
+    let f = f.reopen_with(|_| {});
+    let settled = f.snapshot().unwrap();
+    let changed: BTreeSet<&str> = unsettled
+        .keys()
+        .chain(settled.keys())
+        .filter(|key| unsettled.get(*key) != settled.get(*key))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(changed, BTreeSet::from(["meta/edition_provenance"]));
+    assert!(
+        settled["meta/edition_provenance"]["platform_dependencies"]
+            .get("agents/scheduler")
+            .is_some()
+    );
+    assert_eq!(f.core.offboard_get(&allowed, &id).unwrap(), scheduled);
     let before_rejection = f.snapshot().unwrap();
     assert_eq!(
         f.core
@@ -5875,7 +5897,9 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
         })
         .unwrap();
     // Even a permission addition that preserves all required scopes changes
-    // the reviewed authority. A new plan is required before any write.
+    // the reviewed authority. Apply authorizes the live scopes first, then the
+    // snapshot gate rejects the changed authority digest before any fetch or
+    // write; a new plan is required.
     f.core
         .store
         .write(|tx| {
@@ -5895,11 +5919,11 @@ pub fn cloud_snapshot_apply_atomic_retry(backend: Backend) {
     assert_eq!(changed_authority.code, "conflict");
     assert_eq!(
         changed_authority.message,
-        "Connector plan content or authority changed; create and review a new plan"
+        "Cloud source, authority or local revision changed during snapshot"
     );
-    f.assert_snapshot_except(&before_changed_authority, |key| {
-        key.starts_with("cloud_directory_runs/")
-    });
+    assert_eq!(remote.users_hits(), hits_before_denied);
+    // Rejected before the retry budget: not even the run ledger advances.
+    f.assert_snapshot(&before_changed_authority);
     f.core
         .store
         .write(|tx| {

@@ -388,16 +388,17 @@ new rotation with a fresh key and current revision; the prior token is already
 invalid and the first rotated token cannot be recovered from the receipt.
 
 On every startup, riAuth scans stored receipts in 128-record transactions
-before serving and replaces only the exact legacy agent
-create/rotate response envelope with the redacted issuance marker. The
+before serving and replaces only the exact legacy response envelopes of agent
+create/rotate, direct client create/rotate, registration-template creation and
+Windows device enrollment with the redacted issuance marker. The
 receipt key, request fingerprint, permission scope and expiry remain, so an
 exact retry is still denied and a changed request still conflicts. An older
 completion marker does not skip the scan: a restore or older writer can add a
 receipt afterward. An interrupted scan restarts safely on the next open;
 routine receipt cleanup also scrubs matching rows introduced while running.
-Startup reads every receipt once and rewrites matching agent receipts only.
-DCR, client-secret and other secret-return receipts keep their existing replay
-behavior. The rewrite
+Startup reads every receipt once and rewrites only those matching receipts.
+RFC 7591 dynamic registration and reviewed client-creation execution receipts
+keep their existing replay behavior. The rewrite
 removes plaintext from live logical receipt rows; it cannot erase older
 database pages, PostgreSQL WAL, or backups made before the scrub. Keep those
 copies under the existing private-storage and retention policy.

@@ -31,6 +31,8 @@
 //! a delivery authorization, or widen receiver-stream ownership.
 //! RFC 7591 registration reaches the same write path with its own bounded
 //! authority, not a management principal.
+//! Registration-template and Windows-device issuance disclose their generated
+//! credentials only in the first committed response; their receipts keep a marker.
 
 mod client_creation;
 mod client_endpoint;
@@ -911,10 +913,11 @@ fn delete_windows_tickets(tx: &Tx<'_>, device_id: &str) -> Result<()> {
 }
 
 /// Enroll or rotate a Windows device under the exact device authority. A
-/// repeat without an idempotency receipt intentionally rotates the secret;
-/// the Core envelope returns a saved result for a matching receipt.
+/// repeat without an idempotency receipt intentionally rotates the secret; an
+/// exact keyed retry is refused by `enroll_windows_device_issuing`, the only
+/// caller, so a receipt never holds either credential.
 #[cfg(feature = "platform")]
-pub(crate) fn enroll_windows_device(
+fn enroll_windows_device(
     core: &Core,
     tx: &Tx<'_>,
     token: &str,
@@ -993,6 +996,30 @@ pub(crate) fn enroll_windows_device(
         device,
         secret,
         offline,
+    })
+}
+
+/// Enroll or rotate a Windows device, returning its secret and offline ticket
+/// only in the first committed response. The retry receipt keeps a marker, so
+/// an exact retry returns 409 `credential_already_issued` instead of
+/// re-disclosing either credential.
+#[cfg(feature = "platform")]
+pub(crate) fn enroll_windows_device_issuing(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    request: &WindowsDeviceEnrollment,
+) -> Result<Value> {
+    issue_credential_once(core, tx, token, WINDOWS_DEVICE_ALREADY_ISSUED, |_| {
+        let written = enroll_windows_device(core, tx, token, request)?;
+        let marker = json!({"device_id": written.device.id, "credential_issued": true});
+        let response = json!({
+            "device": crate::windows_login::view(&written.device),
+            "device_secret": written.secret,
+            "offline_ticket": written.offline.as_ref().map(|(ticket, _)| ticket),
+            "offline_expires_at": written.offline.as_ref().map(|(_, exp)| exp),
+        });
+        Ok((response, marker))
     })
 }
 
@@ -2951,9 +2978,90 @@ fn require_registration_bounds(
     Ok(())
 }
 
+#[cfg(feature = "platform")]
+const WINDOWS_DEVICE_ALREADY_ISSUED: &str = "Windows device credential was already issued; if delivery failed, enroll the device again with a new key and the current revision";
+const REGISTRATION_ALREADY_ISSUED: &str = "Registration credential was already issued and cannot be reissued; if delivery failed, revoke the template and create one with a new id";
+
+/// Run a writer that generates a credential under the generic management
+/// envelope without storing that credential in its retry receipt.
+///
+/// Authority, scope binding, replay ordering and the revision precondition match
+/// `Core::mutation_checked`. A request with no `Idempotency-Key` saves no
+/// receipt, so there is nothing to redact. With a key, the receipt keeps only
+/// the marker `write` returns. An exact retry therefore never re-discloses the
+/// credential: it gets 409 `credential_already_issued`, as agent and client
+/// issuance do. A receipt already stored under that key, including a legacy
+/// one that still holds the plaintext, is never returned.
+fn issue_credential_once(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    already_issued: &'static str,
+    write: impl FnOnce(&Principal) -> Result<(Value, Value)>,
+) -> Result<Value> {
+    let actor = core.principal(tx, token)?;
+    let context = crate::context::current();
+    let receipt_key = context
+        .as_ref()
+        .and_then(|c| c.idempotency_key.as_ref())
+        .map(|key| digest(&format!("{}\0{key}", actor.id)));
+    let permissions = crate::context::management_permissions(tx, &actor)?;
+    if let (Some(key), Some(context)) = (&receipt_key, &context)
+        && crate::context::replay_receipt(tx, key, &context.fingerprint, &permissions)?.is_some()
+    {
+        return Err(Error::new(
+            axum::http::StatusCode::CONFLICT,
+            "credential_already_issued",
+            already_issued,
+        ));
+    }
+    if let Some(context) = &context {
+        if (actor.agent || actor.delegated) && context.revision.is_none() {
+            return Err(Error::new(
+                axum::http::StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Scoped mutations require If-Match with the current revision",
+            ));
+        }
+        let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
+        if context
+            .revision
+            .is_some_and(|expected| expected != revision)
+        {
+            return Err(Error::conflict("Configuration revision changed"));
+        }
+    }
+    let (response, marker) = write(&actor)?;
+    if let (Some(key), Some(context)) = (receipt_key, context) {
+        crate::context::save_receipt(tx, &key, context.fingerprint, permissions, &marker)?;
+    }
+    Ok(response)
+}
+
+/// Configure bounded registration authority, returning the initial access
+/// token only in the first committed response. Direct writers, the browser and
+/// the CLI reach this one writer through `Core::registration_template`.
+pub(crate) fn create_registration_template_issuing(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    template: RegistrationTemplate,
+) -> Result<Value> {
+    let id = template.id.clone();
+    issue_credential_once(core, tx, token, REGISTRATION_ALREADY_ISSUED, |actor| {
+        let response = create_registration_template(tx, actor, template)?;
+        Ok((
+            response,
+            json!({"registration_id": id, "credential_issued": true}),
+        ))
+    })
+}
+
 /// Configure bounded registration authority through the same management
-/// transaction and receipt envelope used by direct application writes.
-pub(crate) fn create_registration_template(
+/// transaction and receipt envelope used by direct application writes. Reach it
+/// only through `create_registration_template_issuing`, which keeps the
+/// generated token out of the retry receipt.
+fn create_registration_template(
     tx: &Tx<'_>,
     actor: &Principal,
     template: RegistrationTemplate,

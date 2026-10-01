@@ -12,6 +12,7 @@ use riauth::{
     browser::{BrowserDecision, BrowserReply},
     saml::{Attribute, NameIdFormat, Reply, Settings},
     signin,
+    workflow::{self, ConfiguredWorkflow, Id, Origin, Proof},
 };
 use std::{
     io::{Read, Write},
@@ -1934,4 +1935,1155 @@ async fn saml_browser_interaction_over_http() {
     assert!(pending_row(&f, &id).is_none());
     let (status, _, _) = send(get(&format!("/saml/resume/{id}"), "text/html", &cookies)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// Local signed SP fixture: exercise the public HTTP adapter and one-use writer
+/// on both redb modes, and on the disposable PG modes when that cluster is supplied.
+#[test]
+fn configured_saml_signed_browser_consent_is_bound_and_one_use() {
+    use axum::{
+        Router,
+        body::Body,
+        http::{HeaderMap, Request, StatusCode},
+    };
+    use common::backend::Backend;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    async fn send(app: &Router, request: Request<Body>) -> (StatusCode, HeaderMap, String) {
+        let response = app.clone().oneshot(request).await.unwrap();
+        let (status, headers) = (response.status(), response.headers().clone());
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        (
+            status,
+            headers,
+            String::from_utf8_lossy(&bytes).into_owned(),
+        )
+    }
+    fn cookie(headers: &HeaderMap, name: &str) -> String {
+        headers
+            .get_all("set-cookie")
+            .iter()
+            .map(|value| value.to_str().unwrap().split(';').next().unwrap())
+            .find_map(|value| value.strip_prefix(&format!("{name}=")))
+            .unwrap()
+            .to_owned()
+    }
+    fn get(uri: &str, cookies: &str) -> Request<Body> {
+        Request::get(uri)
+            .header("accept", "text/html")
+            .header("cookie", cookies)
+            .body(Body::empty())
+            .unwrap()
+    }
+    fn post(uri: &str, cookies: &str, body: Value) -> Request<Body> {
+        Request::post(uri)
+            .header("origin", "http://localhost:9000")
+            .header("x-riauth-portal", "1")
+            .header("sec-fetch-site", "same-origin")
+            .header("content-type", "application/json")
+            .header("cookie", cookies)
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    }
+    let mut backends = vec![Backend::Redb, Backend::EncryptedRedb];
+    if std::env::var_os("RIAUTH_TEST_CONTRACT_PG_ROOT").is_some() {
+        backends.extend([Backend::Postgres, Backend::EncryptedPostgres]);
+    }
+    for backend in backends {
+        let mut f = backend.fixture();
+        let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+        definition.id = Id::new("saml-browser-consent").unwrap();
+        definition.origin = Origin::Configured;
+        definition.limits.max_duration_seconds = 120;
+        definition.steps[1].timeout_seconds = 120;
+        definition.terminals[0].requires = vec![vec![Proof::Session, Proof::Consent]];
+        f.core.config.workflows.insert(
+            "saml-browser-consent".into(),
+            ConfiguredWorkflow {
+                active: true,
+                definition,
+            },
+        );
+        f.core.config.browser_consent_workflow = Some("saml-browser-consent".into());
+        f.core.config.validate().unwrap();
+        let sp_key = browser_app(&f, false, true);
+        f.user("alice");
+        f.user("bob");
+        let alice = browser_signed_in(&f, "alice");
+        let bob = browser_signed_in(&f, "bob");
+        let app = riauth::api::router(f.core.clone());
+
+        let request_id = format!("_{}", crypto::id());
+        let signed = redirect(&authn(&request_id, ""), &sp_key, "SAMLRequest");
+        let (status, headers, _) = runtime.block_on(send(
+            &app,
+            get(
+                &format!("/saml/saml-app/sso?{signed}"),
+                &format!("riauth_sso={alice}"),
+            ),
+        ));
+        assert_eq!(status, StatusCode::SEE_OTHER, "{backend:?}");
+        let id = headers["location"]
+            .to_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .to_owned();
+        let binding = cookie(&headers, "riauth_saml");
+        let alice_cookies = format!("riauth_saml={binding}; riauth_sso={alice}");
+        let bob_cookies = format!("riauth_saml={binding}; riauth_sso={bob}");
+        let uri = format!("/saml/resume/{id}");
+        let (_, _, state) =
+            runtime.block_on(send(&app, get(&format!("{uri}/state"), &alice_cookies)));
+        let state: Value = serde_json::from_str(&state).unwrap();
+        assert_eq!(state["status"], "consent", "{backend:?}");
+        assert_eq!(state["consent"]["remember_enabled"], false);
+        assert!(state["terminal"].is_null());
+        let (_, _, wrong) =
+            runtime.block_on(send(&app, get(&format!("{uri}/state"), &bob_cookies)));
+        assert_eq!(
+            serde_json::from_str::<Value>(&wrong).unwrap()["status"],
+            "unavailable"
+        );
+        let (wrong_status, _, _) = runtime.block_on(send(
+            &app,
+            post(
+                &format!("{uri}/decision"),
+                &bob_cookies,
+                json!({"approve":true,"remember":true,"session_ref":state["session_ref"]}),
+            ),
+        ));
+        assert_ne!(wrong_status, StatusCode::OK);
+        let (status, _, done) = runtime.block_on(send(
+            &app,
+            post(
+                &format!("{uri}/decision"),
+                &alice_cookies,
+                json!({"approve":true,"remember":true,"session_ref":state["session_ref"]}),
+            ),
+        ));
+        assert_eq!(status, StatusCode::OK, "{backend:?}: {done}");
+        assert_eq!(
+            serde_json::from_str::<Value>(&done).unwrap()["status"],
+            "complete"
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("saml_consents")
+                .unwrap()
+                .is_empty()
+        );
+        drop(app);
+        f = f.reopen_with(|config| {
+            assert_eq!(
+                config.browser_consent_workflow.as_deref(),
+                Some("saml-browser-consent")
+            )
+        });
+        let app = riauth::api::router(f.core.clone());
+        let (one, two) = runtime.block_on(async {
+            tokio::join!(
+                send(&app, get(&uri, &alice_cookies)),
+                send(&app, get(&uri, &alice_cookies))
+            )
+        });
+        let results = [one, two];
+        assert_eq!(
+            results
+                .iter()
+                .filter(|(status, _, _)| *status == StatusCode::OK)
+                .count(),
+            1,
+            "{backend:?}"
+        );
+        assert_eq!(
+            results
+                .iter()
+                .filter(|(status, _, _)| *status == StatusCode::NOT_FOUND)
+                .count(),
+            1,
+            "{backend:?}"
+        );
+        let form = &results
+            .iter()
+            .find(|(status, _, _)| *status == StatusCode::OK)
+            .unwrap()
+            .2;
+        let encoded = form
+            .split("name=\"SAMLResponse\" value=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        let xml = String::from_utf8(STANDARD.decode(encoded).unwrap()).unwrap();
+        assert!(xml.contains(":status:Success\"") && xml.contains(&request_id));
+        assert!(xml.contains(&format!("Recipient=\"{ACS}\"")) && xml.contains(SP));
+        if let Some(binary) = std::env::var_os("RIAUTH_TEST_XMLSEC") {
+            let client: Client = f.core.store.get("clients", "saml-app").unwrap().unwrap();
+            let certificate = f._dir.path().join("configured-saml-idp.pem");
+            std::fs::write(
+                &certificate,
+                &client.settings.saml.unwrap().idp_certificate_pem,
+            )
+            .unwrap();
+            verify_xml(Path::new(&binary), &xml, &certificate, f._dir.path(), false);
+            verify_xml(Path::new(&binary), &xml, &certificate, f._dir.path(), true);
+        }
+        assert_eq!(
+            f.core.store.list::<Value>("saml_sessions").unwrap().len(),
+            1
+        );
+        let (replay, _, _) = runtime.block_on(send(
+            &app,
+            get(
+                &format!("/saml/saml-app/sso?{signed}"),
+                &format!("riauth_sso={alice}"),
+            ),
+        ));
+        assert_ne!(replay, StatusCode::SEE_OTHER);
+
+        let second_id = format!("_{}", crypto::id());
+        let second = redirect(&authn(&second_id, ""), &sp_key, "SAMLRequest");
+        let (status, headers, _) = runtime.block_on(send(
+            &app,
+            get(
+                &format!("/saml/saml-app/sso?{second}"),
+                &format!("riauth_sso={alice}"),
+            ),
+        ));
+        assert_eq!(status, StatusCode::SEE_OTHER);
+        let second_uri = format!(
+            "/saml/resume/{}",
+            headers["location"]
+                .to_str()
+                .unwrap()
+                .rsplit('/')
+                .next()
+                .unwrap()
+        );
+        let second_cookies = format!(
+            "riauth_saml={}; riauth_sso={alice}",
+            cookie(&headers, "riauth_saml")
+        );
+        let (_, _, second_state) = runtime.block_on(send(
+            &app,
+            get(&format!("{second_uri}/state"), &second_cookies),
+        ));
+        let second_state: Value = serde_json::from_str(&second_state).unwrap();
+        assert_eq!(
+            second_state["status"], "consent",
+            "implicit or remembered grant bypassed the selected graph"
+        );
+        let (status, _, denied) = runtime.block_on(send(
+            &app,
+            post(
+                &format!("{second_uri}/decision"),
+                &second_cookies,
+                json!({"approve":false,"session_ref":second_state["session_ref"]}),
+            ),
+        ));
+        assert_eq!(status, StatusCode::OK, "{denied}");
+        let (status, _, denied_form) =
+            runtime.block_on(send(&app, get(&second_uri, &second_cookies)));
+        assert_eq!(status, StatusCode::OK);
+        let encoded = denied_form
+            .split("name=\"SAMLResponse\" value=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        let denied_xml = String::from_utf8(STANDARD.decode(encoded).unwrap()).unwrap();
+        assert!(
+            denied_xml.contains(":status:RequestDenied\"")
+                && !denied_xml.contains("<saml:Assertion")
+        );
+        assert_eq!(
+            f.core.store.list::<Value>("saml_sessions").unwrap().len(),
+            1
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("saml_consents")
+                .unwrap()
+                .is_empty()
+        );
+
+        let invalid_acs =
+            authn(&format!("_{}", crypto::id()), "").replace(ACS, "https://sp.example.test/other");
+        let signed_bad = redirect(&invalid_acs, &sp_key, "SAMLRequest");
+        let (invalid, _, _) = runtime.block_on(send(
+            &app,
+            get(
+                &format!("/saml/saml-app/sso?{signed_bad}"),
+                &format!("riauth_sso={alice}"),
+            ),
+        ));
+        assert_ne!(
+            invalid,
+            StatusCode::SEE_OTHER,
+            "unregistered signed ACS was accepted"
+        );
+
+        let changed_id = format!("_{}", crypto::id());
+        let changed = redirect(&authn(&changed_id, ""), &sp_key, "SAMLRequest");
+        let (status, headers, _) = runtime.block_on(send(
+            &app,
+            get(
+                &format!("/saml/saml-app/sso?{changed}"),
+                &format!("riauth_sso={alice}"),
+            ),
+        ));
+        assert_eq!(status, StatusCode::SEE_OTHER);
+        let changed_uri = format!(
+            "/saml/resume/{}",
+            headers["location"]
+                .to_str()
+                .unwrap()
+                .rsplit('/')
+                .next()
+                .unwrap()
+        );
+        let changed_cookies = format!(
+            "riauth_saml={}; riauth_sso={alice}",
+            cookie(&headers, "riauth_saml")
+        );
+        let (_, _, before_change) = runtime.block_on(send(
+            &app,
+            get(&format!("{changed_uri}/state"), &changed_cookies),
+        ));
+        let before_change: Value = serde_json::from_str(&before_change).unwrap();
+        f.core
+            .update_client(
+                &f.admin,
+                "saml-app",
+                ClientPatch {
+                    name: Some("Changed registration".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let (status, _, _) = runtime.block_on(send(
+            &app,
+            post(
+                &format!("{changed_uri}/decision"),
+                &changed_cookies,
+                json!({"approve":true,"session_ref":before_change["session_ref"]}),
+            ),
+        ));
+        assert_ne!(status, StatusCode::OK);
+        assert_eq!(
+            f.core.store.list::<Value>("saml_sessions").unwrap().len(),
+            1
+        );
+        // An embedded source-stage client has no configured SAML fallback.
+        f.core
+            .store
+            .write(|tx| {
+                let mut client: Client = tx.get("clients", "saml-app")?.unwrap();
+                client.settings.source_stage = Some("unconnected-source".into());
+                tx.put("clients", "saml-app", &client)
+            })
+            .unwrap();
+        let source_request = redirect(
+            &authn(&format!("_{}", crypto::id()), ""),
+            &sp_key,
+            "SAMLRequest",
+        );
+        let (source_status, _, _) = runtime.block_on(send(
+            &app,
+            get(
+                &format!("/saml/saml-app/sso?{source_request}"),
+                &format!("riauth_sso={alice}"),
+            ),
+        ));
+        assert_ne!(source_status, StatusCode::SEE_OTHER);
+    }
+}
+
+#[test]
+fn configured_saml_password_totp_reauthentication_consumes_current_factor_once() {
+    let mut f = Fixture::new();
+    let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+    definition.id = Id::new("saml-totp-consent").unwrap();
+    definition.origin = Origin::Configured;
+    definition.limits.max_duration_seconds = 120;
+    definition.limits.max_executions = 6;
+    definition.steps[0].transitions[0].to = Id::new("password").unwrap();
+    let mut document = serde_json::to_value(definition).unwrap();
+    let steps = document["steps"].as_array().unwrap().clone();
+    document["steps"] = json!([
+        steps[0],
+        {"id":"password","action":{"type":"verify_password"},"max_attempts":2,"timeout_seconds":120,"cancellable":true,"transitions":[{"on":"verified","to":"totp"},{"on":"failed","to":"denied"}]},
+        {"id":"totp","action":{"type":"verify_totp"},"max_attempts":2,"timeout_seconds":120,"cancellable":true,"transitions":[{"on":"verified","to":"consent"},{"on":"failed","to":"denied"}]},
+        steps[1]
+    ]);
+    document["steps"][3]["timeout_seconds"] = json!(120);
+    document["terminals"][0]["requires"] = json!([["session", "password", "totp", "consent"]]);
+    document["terminals"][0]["max_proof_age_seconds"] = json!(120);
+    f.core.config.workflows.insert(
+        "saml-totp-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: serde_json::from_value(document).unwrap(),
+        },
+    );
+    f.core.config.browser_consent_workflow = Some("saml-totp-consent".into());
+    f.core.config.validate().unwrap();
+    let sp_key = browser_app(&f, true, true);
+    let alice = f.user("alice");
+    f.user("bob");
+    let enrollment = f.core.mfa_begin(&alice).unwrap();
+    let totp = crypto::totp(enrollment["secret"].as_str().unwrap(), "alice").unwrap();
+    f.core
+        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
+        .unwrap();
+    let login = f
+        .core
+        .portal_password(
+            None,
+            "alice".into(),
+            PASSWORD.into(),
+            Some(totp.generate(now()).to_string()),
+            false,
+        )
+        .unwrap();
+    let sso = sso_cookie(&login.cookies).unwrap();
+    let sid = sso_session(&f, &sso);
+    let session_before: Value = f.core.store.get("sessions", &sid).unwrap().unwrap();
+    let request_id = format!("_{}", crypto::id());
+    let reply = signed_start(&f, &sp_key, &request_id, "ForceAuthn=\"true\"", Some(&sso));
+    let Reply::Waiting(reply) = reply else {
+        panic!("configured SAML request did not wait")
+    };
+    assert!(reply.body["user_code"].is_null());
+    let id = reply
+        .refresh
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let binding = reply
+        .cookies
+        .iter()
+        .find_map(|cookie| {
+            cookie
+                .split(';')
+                .next()
+                .unwrap()
+                .strip_prefix("riauth_saml=")
+        })
+        .unwrap()
+        .to_owned();
+    let state = f.core.saml_state(&id, Some(&binding), Some(&sso)).unwrap();
+    assert_eq!(state["status"], "authenticate");
+    assert_eq!(state["requirements"]["configured_totp"], true);
+    assert_eq!(state["requirements"]["configured_stage"], "password");
+    assert!(allow(&f, &id, &binding, &sso, &state).is_err());
+    let first = password(&f, &id, &binding, Some(&sso), "alice").unwrap();
+    assert_eq!(first.body["requirements"]["configured_stage"], "totp");
+    assert!(password(&f, &id, &binding, Some(&sso), "alice").is_err());
+    let current = totp.generate(now() + 30).to_string();
+    let verified = f
+        .core
+        .saml_password(
+            &id,
+            Some(&binding),
+            Some(&sso),
+            "alice".into(),
+            String::new(),
+            Some(current.clone()),
+        )
+        .unwrap();
+    assert_eq!(verified.body["status"], "consent");
+    assert!(
+        f.core
+            .saml_password(
+                &id,
+                Some(&binding),
+                Some(&sso),
+                "alice".into(),
+                String::new(),
+                Some(current)
+            )
+            .is_err()
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("saml_sessions").unwrap().len(),
+        0
+    );
+    let done = allow(&f, &id, &binding, &sso, &verified.body).unwrap();
+    assert_eq!(done["status"], "complete");
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("sessions", &sid)
+            .unwrap()
+            .unwrap()["identity"],
+        session_before["identity"]
+    );
+    let (xml, _) = body(
+        f.core
+            .saml_resume_with(&id, Some(&binding), Some(&sso))
+            .unwrap(),
+    );
+    assert!(xml.contains(":status:Success\"") && xml.contains("urn:riauth:acr:mfa"));
+    assert!(
+        f.core
+            .saml_resume_with(&id, Some(&binding), Some(&sso))
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("saml_consents")
+            .unwrap()
+            .is_empty()
+    );
+
+    // Deny while the next run is at a verifier stage. The shared executor
+    // closes that exact run and SAML sends RequestDenied without an assertion.
+    let Reply::Waiting(next) = signed_start(
+        &f,
+        &sp_key,
+        &format!("_{}", crypto::id()),
+        "ForceAuthn=\"true\"",
+        Some(&sso),
+    ) else {
+        panic!("configured SAML request did not wait")
+    };
+    let next_id = next.refresh.unwrap().rsplit('/').next().unwrap().to_owned();
+    let next_binding = next
+        .cookies
+        .iter()
+        .find_map(|cookie| {
+            cookie
+                .split(';')
+                .next()
+                .unwrap()
+                .strip_prefix("riauth_saml=")
+        })
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        password(&f, &next_id, &next_binding, Some(&sso), "alice")
+            .unwrap()
+            .body["requirements"]["configured_stage"],
+        "totp"
+    );
+    let denied = f
+        .core
+        .saml_browser_decide(
+            &next_id,
+            Some(&next_binding),
+            Some(&sso),
+            false,
+            false,
+            None,
+        )
+        .unwrap();
+    assert_eq!(denied["status"], "complete");
+    let (denied_xml, _) = body(
+        f.core
+            .saml_resume_with(&next_id, Some(&next_binding), Some(&sso))
+            .unwrap(),
+    );
+    assert!(denied_xml.contains(":status:RequestDenied\""));
+    assert!(!denied_xml.contains("<saml:Assertion"));
+    assert_eq!(
+        f.core.store.list::<Value>("saml_sessions").unwrap().len(),
+        1
+    );
+}
+
+#[test]
+fn configured_saml_passkey_reauthentication_requires_uv_and_live_session_at_issue() {
+    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    let mut f = Fixture::new();
+    let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+    definition.id = Id::new("saml-passkey-consent").unwrap();
+    definition.origin = Origin::Configured;
+    definition.limits.max_duration_seconds = 120;
+    definition.limits.max_executions = 4;
+    definition.steps[0].transitions[0].to = Id::new("passkey").unwrap();
+    let mut passkey = workflow::builtin(&Id::new("essentials-passkey-sign-in").unwrap())
+        .unwrap()
+        .steps
+        .remove(0);
+    passkey.max_attempts = 2;
+    passkey.timeout_seconds = 120;
+    passkey.transitions[0].to = Id::new("consent").unwrap();
+    definition.steps.insert(1, passkey);
+    definition.steps[2].timeout_seconds = 120;
+    definition.terminals[0].requires = vec![vec![Proof::Session, Proof::Passkey, Proof::Consent]];
+    definition.terminals[0].max_proof_age_seconds = Some(120);
+    f.core.config.workflows.insert(
+        "saml-passkey-consent".into(),
+        ConfiguredWorkflow {
+            active: true,
+            definition,
+        },
+    );
+    f.core.config.browser_consent_workflow = Some("saml-passkey-consent".into());
+    f.core.config.validate().unwrap();
+    let sp_key = browser_app(&f, true, true);
+    let alice = f.user("alice");
+    f.user("bob");
+    let origin = url::Url::parse(&f.core.config.issuer).unwrap();
+    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let start = f
+        .core
+        .passkey_register_start(&alice, "Configured SAML key".into())
+        .unwrap();
+    let mut options = start["public_key"].clone();
+    options["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
+    let registration = authenticator
+        .do_registration(origin.clone(), serde_json::from_value(options).unwrap())
+        .unwrap();
+    f.core
+        .passkey_register_finish(&alice, &text(&start, "ceremony"), registration)
+        .unwrap();
+    let sso = browser_signed_in(&f, "alice");
+    let bob = browser_signed_in(&f, "bob");
+    let sid = sso_session(&f, &sso);
+    let before: Value = f.core.store.get("sessions", &sid).unwrap().unwrap();
+    let prepare = |f: &Fixture| {
+        let request_id = format!("_{}", crypto::id());
+        let Reply::Waiting(reply) =
+            signed_start(f, &sp_key, &request_id, "ForceAuthn=\"true\"", Some(&sso))
+        else {
+            panic!("configured SAML request did not wait")
+        };
+        let id = reply
+            .refresh
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap()
+            .to_owned();
+        let binding = reply
+            .cookies
+            .iter()
+            .find_map(|cookie| {
+                cookie
+                    .split(';')
+                    .next()
+                    .unwrap()
+                    .strip_prefix("riauth_saml=")
+            })
+            .unwrap()
+            .to_owned();
+        (request_id, id, binding)
+    };
+    let (request_id, id, binding) = prepare(&f);
+    let state = f.core.saml_state(&id, Some(&binding), Some(&sso)).unwrap();
+    assert_eq!(state["status"], "authenticate");
+    assert_eq!(state["requirements"]["configured_passkey"], true);
+    assert!(allow(&f, &id, &binding, &sso, &state).is_err());
+    assert!(
+        f.core
+            .saml_passkey_start(&id, Some(&binding), Some(&bob))
+            .is_err()
+    );
+    let started = f
+        .core
+        .saml_passkey_start(&id, Some(&binding), Some(&sso))
+        .unwrap();
+    let assertion = authenticator
+        .do_authentication(
+            origin.clone(),
+            serde_json::from_value(started["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    let reply = f
+        .core
+        .saml_passkey_finish(
+            &id,
+            Some(&binding),
+            Some(&sso),
+            &text(&started, "ceremony"),
+            assertion,
+        )
+        .unwrap();
+    assert_eq!(reply.body["status"], "consent");
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("sessions", &sid)
+            .unwrap()
+            .unwrap()["identity"],
+        before["identity"]
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("saml_sessions").unwrap().len(),
+        0
+    );
+    allow(&f, &id, &binding, &sso, &reply.body).unwrap();
+    let (xml, _) = body(
+        f.core
+            .saml_resume_with(&id, Some(&binding), Some(&sso))
+            .unwrap(),
+    );
+    assert!(
+        xml.contains(":status:Success\"")
+            && xml.contains(&request_id)
+            && xml.contains("urn:riauth:acr:mfa")
+    );
+    assert!(
+        f.core
+            .saml_resume_with(&id, Some(&binding), Some(&sso))
+            .is_err()
+    );
+
+    let (_, second, second_binding) = prepare(&f);
+    let started = f
+        .core
+        .saml_passkey_start(&second, Some(&second_binding), Some(&sso))
+        .unwrap();
+    let assertion = authenticator
+        .do_authentication(
+            origin,
+            serde_json::from_value(started["public_key"].clone()).unwrap(),
+        )
+        .unwrap();
+    let ready = f
+        .core
+        .saml_passkey_finish(
+            &second,
+            Some(&second_binding),
+            Some(&sso),
+            &text(&started, "ceremony"),
+            assertion,
+        )
+        .unwrap();
+    allow(&f, &second, &second_binding, &sso, &ready.body).unwrap();
+    f.core
+        .store
+        .write(|tx| {
+            let mut session: Session = tx.get("sessions", &sid)?.unwrap();
+            session.revoked = true;
+            tx.put("sessions", &sid, &session)
+        })
+        .unwrap();
+    assert!(
+        f.core
+            .saml_resume_with(&second, Some(&second_binding), Some(&sso))
+            .is_err()
+    );
+    assert_eq!(
+        f.core.store.list::<Value>("saml_sessions").unwrap().len(),
+        1
+    );
+    assert!(
+        f.core
+            .store
+            .list::<Value>("saml_consents")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+fn selected_saml_policy(f: &mut Fixture, passkey: bool) -> workflow::Definition {
+    let mut definition = workflow::builtin(&Id::new("essentials-consent").unwrap()).unwrap();
+    definition.id = Id::new("saml-reviewed-consent").unwrap();
+    definition.origin = Origin::Configured;
+    definition.limits.max_duration_seconds = 120;
+    definition.steps[1].timeout_seconds = 120;
+    definition.terminals[0].requires = vec![vec![Proof::Session, Proof::Consent]];
+    if passkey {
+        definition.limits.max_executions = 4;
+        definition.steps[0].transitions[0].to = Id::new("passkey").unwrap();
+        let mut factor = workflow::builtin(&Id::new("essentials-passkey-sign-in").unwrap())
+            .unwrap()
+            .steps
+            .remove(0);
+        factor.transitions[0].to = Id::new("consent").unwrap();
+        factor.timeout_seconds = 120;
+        factor.max_attempts = 2;
+        definition.steps.insert(1, factor);
+        definition.terminals[0].requires =
+            vec![vec![Proof::Session, Proof::Passkey, Proof::Consent]];
+        definition.terminals[0].max_proof_age_seconds = Some(120);
+    }
+    f.core.config.workflows.insert(
+        definition.id.to_string(),
+        ConfiguredWorkflow {
+            active: true,
+            definition: definition.clone(),
+        },
+    );
+    f.core.config.browser_consent_workflow = Some(definition.id.to_string());
+    f.core.config.validate().unwrap();
+    definition
+}
+
+fn configured_saml_request(
+    f: &Fixture,
+    key: &PKey<Private>,
+    sso: &str,
+    force: bool,
+) -> (String, String) {
+    let Reply::Waiting(reply) = signed_start(
+        f,
+        key,
+        &format!("_{}", crypto::id()),
+        if force { "ForceAuthn=\"true\"" } else { "" },
+        Some(sso),
+    ) else {
+        panic!("expected configured browser consent")
+    };
+    let id = reply
+        .refresh
+        .unwrap()
+        .rsplit('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    let binding = reply
+        .cookies
+        .iter()
+        .find_map(|cookie| {
+            cookie
+                .split(';')
+                .next()
+                .unwrap()
+                .strip_prefix("riauth_saml=")
+        })
+        .unwrap()
+        .to_owned();
+    (id, binding)
+}
+
+#[test]
+fn configured_saml_selector_loss_durably_seals_active_continuations() {
+    use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+    let mut f = Fixture::new();
+    let definition = selected_saml_policy(&mut f, true);
+    let key = browser_app(&f, true, true);
+    let alice = f.user("alice");
+    let origin = url::Url::parse(&f.core.config.issuer).unwrap();
+    let mut authenticator = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let start = f
+        .core
+        .passkey_register_start(&alice, "Selector regression".into())
+        .unwrap();
+    let mut options = start["public_key"].clone();
+    options["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
+    let registration = authenticator
+        .do_registration(origin.clone(), serde_json::from_value(options).unwrap())
+        .unwrap();
+    f.core
+        .passkey_register_finish(&alice, &text(&start, "ceremony"), registration)
+        .unwrap();
+    let sso = browser_signed_in(&f, "alice");
+    let sid = sso_session(&f, &sso);
+    for changed in [false, true] {
+        for route in ["password", "start", "finish", "cancel", "decide"] {
+            let (id, binding) = configured_saml_request(&f, &key, &sso, true);
+            let started = f
+                .core
+                .saml_passkey_start(&id, Some(&binding), Some(&sso))
+                .unwrap();
+            let ceremony = text(&started, "ceremony");
+            let assertion = authenticator
+                .do_authentication(
+                    origin.clone(),
+                    serde_json::from_value(started["public_key"].clone()).unwrap(),
+                )
+                .unwrap();
+            let assertion = if matches!(route, "finish" | "cancel") {
+                Some(assertion)
+            } else {
+                f.core
+                    .saml_passkey_finish(&id, Some(&binding), Some(&sso), &ceremony, assertion)
+                    .unwrap();
+                None
+            };
+            let run_id = text(&pending_row(&f, &id).unwrap(), "configured_run");
+            f.core.config.browser_consent_workflow = changed.then(|| "other-consent".into());
+            let error = match route {
+                "password" => f
+                    .core
+                    .saml_password(
+                        &id,
+                        Some(&binding),
+                        Some(&sso),
+                        "alice".into(),
+                        PASSWORD.into(),
+                        None,
+                    )
+                    .err()
+                    .expect("continuation must reject"),
+                "start" => f
+                    .core
+                    .saml_passkey_start(&id, Some(&binding), Some(&sso))
+                    .err()
+                    .expect("continuation must reject"),
+                "finish" => f
+                    .core
+                    .saml_passkey_finish(
+                        &id,
+                        Some(&binding),
+                        Some(&sso),
+                        &ceremony,
+                        assertion.unwrap(),
+                    )
+                    .err()
+                    .expect("continuation must reject"),
+                "cancel" => f
+                    .core
+                    .saml_passkey_cancel(&id, Some(&binding), Some(&sso), &ceremony)
+                    .err()
+                    .expect("continuation must reject"),
+                "decide" => f
+                    .core
+                    .saml_browser_decide(
+                        &id,
+                        Some(&binding),
+                        Some(&sso),
+                        true,
+                        false,
+                        Some(signin::session_ref(&id, &sid)),
+                    )
+                    .err()
+                    .expect("continuation must reject"),
+                _ => unreachable!(),
+            };
+            assert_eq!(
+                error.status,
+                axum::http::StatusCode::FORBIDDEN,
+                "{route}, changed={changed}"
+            );
+            let sealed: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+            assert_eq!(sealed["reviewed_failure"], "policy_changed");
+            assert_eq!(sealed["record"]["state"]["outcome"], "denied");
+            assert!(sealed["in_flight"].is_null());
+            assert!(
+                pending_row(&f, &id).unwrap()["cancelled"]
+                    .as_bool()
+                    .unwrap()
+            );
+            assert!(
+                f.core
+                    .store
+                    .get::<String>("workflow_active_sessions", &sid)
+                    .unwrap()
+                    .is_none()
+            );
+            for step in sealed["record"]["steps"].as_array().unwrap() {
+                if let Some(reference) = step["evidence"].as_str() {
+                    let evidence: Value = f
+                        .core
+                        .store
+                        .get("workflow_evidence", reference)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(evidence["consumed"], true);
+                }
+            }
+            f.core.config.browser_consent_workflow = Some(definition.id.to_string());
+            assert!(
+                f.core
+                    .saml_passkey_start(&id, Some(&binding), Some(&sso))
+                    .is_err()
+            );
+            let (xml, _) = body(
+                f.core
+                    .saml_resume_with(&id, Some(&binding), Some(&sso))
+                    .unwrap(),
+            );
+            assert!(xml.contains(":status:RequestDenied\"") && !xml.contains("<saml:Assertion"));
+        }
+    }
+    // The pin's conflict wins when both the selector and revision are lost.
+    let (id, binding) = configured_saml_request(&f, &key, &sso, true);
+    f.core
+        .saml_passkey_start(&id, Some(&binding), Some(&sso))
+        .unwrap();
+    f.core.config.browser_consent_workflow = None;
+    f.core
+        .config
+        .workflows
+        .get_mut(definition.id.as_str())
+        .unwrap()
+        .definition
+        .revision = 0;
+    let error = f
+        .core
+        .saml_passkey_start(&id, Some(&binding), Some(&sso))
+        .err()
+        .expect("continuation must reject");
+    assert_eq!(error.message, "Workflow version was rolled back");
+    let run_id = text(&pending_row(&f, &id).unwrap(), "configured_run");
+    let sealed: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+    assert_eq!(sealed["reviewed_failure"], "rolled_back");
+    assert!(
+        f.core
+            .store
+            .list::<Value>("saml_sessions")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn configured_saml_final_approval_rechecks_policy_before_issuance() {
+    for change in [
+        "removed_selector",
+        "changed_selector",
+        "inactive",
+        "removed_policy",
+        "changed_graph",
+        "rollback",
+        "revoked_approval",
+        "divergent_approved_config",
+    ] {
+        let mut f = Fixture::new();
+        let definition = selected_saml_policy(&mut f, false);
+        let key = browser_app(&f, false, true);
+        f.user("alice");
+        let sso = browser_signed_in(&f, "alice");
+        if matches!(change, "revoked_approval" | "divergent_approved_config") {
+            let mut admins = vec![];
+            for username in ["reviewer", "executor"] {
+                f.core
+                    .create_user(
+                        &f.admin,
+                        NewUser {
+                            username: username.into(),
+                            password: PASSWORD.into(),
+                            email: None,
+                            display_name: username.into(),
+                            admin: true,
+                        },
+                    )
+                    .unwrap();
+                admins.push(text(
+                    &f.core
+                        .login(username.into(), PASSWORD.into(), None)
+                        .unwrap(),
+                    "session_token",
+                ));
+            }
+            let plan = f
+                .core
+                .plan_state(
+                    &f.admin,
+                    riauth::state::Manifest {
+                        api_version: "riauth/v1".into(),
+                        workflows: vec![definition.clone()],
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            f.core
+                .review_workflow(&admins[0], &plan.plan_id, "approve")
+                .unwrap();
+            f.core.activate_workflow(&admins[1], &plan.plan_id).unwrap();
+            // A stored exact-content approval works without a duplicate config entry.
+            f.core.config.workflows.remove(definition.id.as_str());
+        }
+        let (id, binding) = configured_saml_request(&f, &key, &sso, false);
+        let state = f.core.saml_state(&id, Some(&binding), Some(&sso)).unwrap();
+        assert_eq!(state["status"], "consent");
+        allow(&f, &id, &binding, &sso, &state).unwrap();
+        let run_id = text(&pending_row(&f, &id).unwrap(), "configured_run");
+        let finished: Value = f.core.store.get("workflow_runs", &run_id).unwrap().unwrap();
+        assert_eq!(finished["record"]["state"]["outcome"], "consent_granted");
+        match change {
+            "removed_selector" => f.core.config.browser_consent_workflow = None,
+            "changed_selector" => {
+                f.core.config.browser_consent_workflow = Some("other-consent".into())
+            }
+            "inactive" => {
+                f.core
+                    .config
+                    .workflows
+                    .get_mut(definition.id.as_str())
+                    .unwrap()
+                    .active = false
+            }
+            "removed_policy" => {
+                f.core.config.workflows.remove(definition.id.as_str());
+            }
+            "changed_graph" => {
+                f.core
+                    .config
+                    .workflows
+                    .get_mut(definition.id.as_str())
+                    .unwrap()
+                    .definition
+                    .steps[1]
+                    .timeout_seconds -= 1
+            }
+            "rollback" => {
+                f.core
+                    .config
+                    .workflows
+                    .get_mut(definition.id.as_str())
+                    .unwrap()
+                    .definition
+                    .revision = 0
+            }
+            "revoked_approval" => {
+                f.core
+                    .revoke_workflow_approval(&f.admin, definition.id.as_str())
+                    .unwrap();
+            }
+            "divergent_approved_config" => {
+                let mut divergent = definition.clone();
+                divergent.revision += 1;
+                f.core.config.workflows.insert(
+                    definition.id.to_string(),
+                    ConfiguredWorkflow {
+                        active: true,
+                        definition: divergent,
+                    },
+                );
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            f.core
+                .saml_resume_with(&id, Some(&binding), Some(&sso))
+                .is_err(),
+            "{change}"
+        );
+        assert!(
+            pending_row(&f, &id).is_some(),
+            "failed issuance must roll back consumption"
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("saml_sessions")
+                .unwrap()
+                .is_empty(),
+            "{change}"
+        );
+        assert!(
+            f.core
+                .store
+                .list::<Value>("saml_consents")
+                .unwrap()
+                .is_empty(),
+            "{change}"
+        );
+        assert!(!audited(
+            &f,
+            &user_id(&f, "alice"),
+            "saml.response",
+            "saml-app"
+        ));
+    }
 }

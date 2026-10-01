@@ -6,6 +6,12 @@
     help_desk: "Help desk", application_owner: "Application owner", directory_operator: "Directory operator",
     auditor: "Auditor", security_administrator: "Security administrator",
   };
+  // The service decides what needs review: a change that adds, removes or alters a
+  // directory-operator or security-administrator grant is staged; every other
+  // change is the immediate grant write. This only picks the endpoint, and the
+  // server still refuses a wrong choice with its own error.
+  const PRIVILEGED = new Set(["directory_operator", "security_administrator"]);
+  const privileged = (grants) => grants.filter((grant) => PRIVILEGED.has(grant.role)).map((grant) => `${grant.role}\u0000${grant.scope}`).sort();
   const route = (id = "") => `#/grant-review${id ? `/${encodeURIComponent(id)}` : ""}`;
   const idPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const namePattern = /^[A-Za-z0-9_.@-]{1,64}$/;
@@ -46,7 +52,7 @@
     const title = h("h1", { tabindex: "-1" }, id ? "Review grant change" : "Reviewed grants");
     const status = h("p", { class: "form-error", role: "alert", tabindex: "-1", hidden: true });
     root.append(h("section", { class: "page-heading" }, h("div", {}, h("p", { class: "eyebrow" }, "SECURITY"), title,
-      h("p", { class: "page-description" }, "Stage exact changes to directory-operator and security-administrator grants. A separate administrator reviews and another executes."))), status);
+      h("p", { class: "page-description" }, "Change a person's delegated grants. Help desk, application owner and auditor changes apply immediately. Directory-operator and security-administrator changes are staged: a separate administrator reviews and another executes."))), status);
     const localError = (text) => { status.textContent = text; status.hidden = false; status.focus(); };
     const error = (e) => {
       if (!active()) return;
@@ -98,7 +104,7 @@
       const select = h("form", { class: "inline-form" }, field("Recipient username", recipient),
         h("datalist", { id: "grant-recipients" }, users.filter((u) => !u.admin && u.enabled && u.id !== owner).map((u) => h("option", { value: u.username }))), load);
       const editor = h("div");
-      root.append(h("h2", {}, "Stage a replacement"), h("p", { class: "field-hint" }, "Load one recipient's current grants, then propose the complete set they should retain. Removing every row proposes a complete revocation."), select, editor);
+      root.append(h("h2", {}, "Change a recipient's grants"), h("p", { class: "field-hint" }, "Load one recipient's current grants, then give the complete set they should retain. Removing every row revokes all of them."), select, editor);
       let loading = false, selection = 0;
       recipient.addEventListener("input", () => { selection += 1; editor.replaceChildren(); });
       select.addEventListener("submit", async (event) => {
@@ -120,14 +126,27 @@
         const rows = h("div", { class: "grant-rows" });
         const acknowledgement = h("input", { id: "grant-stage-ack", type: "checkbox", required: true });
         const stage = h("button", { type: "submit", class: "button primary" }, "Stage exact change");
+        const modeHint = h("p", { class: "field-hint", id: "grant-mode-hint" });
+        const held = JSON.stringify(privileged(before));
         const add = button("Add grant", () => addRow());
         const empty = h("p", { class: "notice warn-notice" }, "No grants will remain. Execution will revoke all delegated grants for this recipient.");
         const form = h("form", { class: "admin-form admin-card" }, h("h2", {}, `Proposed grants for ${username}`), rows, empty, add,
           h("label", { class: "checkbox", for: acknowledgement.id }, acknowledgement, "I checked the complete replacement, including every grant being removed."),
-          h("div", { class: "form-actions" }, stage));
+          modeHint, h("div", { class: "form-actions" }, stage));
         let next = 0, pending = null, busy = false, uncertain = false;
-        const changed = () => { acknowledgement.checked = false; pending = null; update(); };
-        const update = () => { empty.hidden = !!rows.children.length; add.disabled = busy || uncertain || rows.children.length >= 32; stage.disabled = busy || (!uncertain && !acknowledgement.checked); };
+        const proposed = () => [...rows.children].map((row) => ({ role: row.querySelector("select").value, scope: row.querySelector("input").value.trim() }));
+        const needsReview = () => JSON.stringify(privileged(proposed())) !== held;
+        const forgetSaved = () => editor.querySelector("#grant-saved")?.remove();
+        const changed = () => { acknowledgement.checked = false; pending = null; forgetSaved(); update(); };
+        const update = () => {
+          empty.hidden = !!rows.children.length; add.disabled = busy || uncertain || rows.children.length >= 32; stage.disabled = busy || (!uncertain && !acknowledgement.checked);
+          const staged = pending ? pending.mode === "stage" : needsReview();
+          empty.textContent = staged ? "No grants will remain. Execution will revoke all delegated grants for this recipient."
+            : "No grants will remain. Saving will revoke all delegated grants for this recipient.";
+          stage.textContent = uncertain ? (staged ? "Retry same staging request" : "Retry same request") : (staged ? "Stage exact change" : "Apply change now");
+          modeHint.textContent = staged ? "This change touches directory-operator or security-administrator grants. It is staged for an independent reviewer and a separate executor."
+            : "This change touches only help desk, application owner and auditor grants. It takes effect immediately and is audited.";
+        };
         function addRow(grant = { role: "", scope: "" }) {
           if (rows.children.length >= 32 || busy || uncertain) return;
           const n = ++next;
@@ -145,25 +164,40 @@
         form.addEventListener("submit", async (event) => {
           event.preventDefault();
           if (busy || (!uncertain && !acknowledgement.checked) || chosen !== selection) return;
-          const after = [...rows.children].map((row) => ({ role: row.querySelector("select").value, scope: row.querySelector("input").value.trim() }));
-          if (!pending) pending = { body: after, key: key() };
-          busy = true; status.hidden = true;
+          const after = proposed();
+          if (!pending) pending = { body: after, key: key(), mode: needsReview() ? "stage" : "set" };
+          busy = true; status.hidden = true; forgetSaved();
           for (const control of form.querySelectorAll("input, select, button")) control.disabled = true;
           recipient.disabled = true; load.disabled = true;
+          const immediate = pending.mode === "set";
+          const target = `admin/users/${encodeURIComponent(username)}/delegated-grants`;
           try {
             const current = await session();
             if (!current) return;
-            const change = checkedChange(await api("POST", `admin/users/${encodeURIComponent(username)}/delegated-grants/changes`, pending.body, { revision, key: pending.key }));
+            if (immediate) {
+              const saved = await api("PUT", target, pending.body, { revision, key: pending.key });
+              if (!Array.isArray(saved?.grants) || saved.username !== username) throw { status: 502 };
+              const latest = await session();
+              const result = latest && await api("GET", target);
+              if (active() && result && chosen === selection) {
+                draft(username, result.grants, latest.revision, chosen);
+                const done = h("p", { class: "notice", id: "grant-saved", role: "status", tabindex: "-1" }, `Grants saved for ${username}. The change took effect immediately and was audited.`);
+                editor.prepend(done); done.focus();
+              }
+              return;
+            }
+            const change = checkedChange(await api("POST", `${target}/changes`, pending.body, { revision, key: pending.key }));
             if (active()) location.hash = route(change.proposal.id);
           } catch (e) {
             uncertain = !e.status || e.status >= 500;
-            error(e);
-            if (active() && uncertain) localError("The staging response was lost. Retry the same staging request to retrieve its result. The proposed grants are locked until it is resolved.");
+            // The server's own refusal of an immediate write is shown as it was sent.
+            if (immediate && (e.status === 400 || e.status === 409) && e.message) localError(e.message); else error(e);
+            if (active() && uncertain) localError(immediate ? "The response was lost. Retry the same request to learn its outcome; the same request key applies it at most once. The proposed grants are locked until it is resolved."
+              : "The staging response was lost. Retry the same staging request to retrieve its result. The proposed grants are locked until it is resolved.");
           } finally {
             busy = false;
             for (const control of form.querySelectorAll("input, select, button")) control.disabled = uncertain;
             recipient.disabled = uncertain; load.disabled = uncertain;
-            stage.textContent = uncertain ? "Retry same staging request" : "Stage exact change";
             update();
           }
         });

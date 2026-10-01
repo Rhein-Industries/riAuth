@@ -267,7 +267,8 @@ fn session_password_primary(
         || !request.requires_mfa
         || request.source.is_some()
         || request.authorization.is_some()
-        || request.consent.is_some() != consent
+        || (request.consent.is_some() || request.saml_consent.is_some()) != consent
+        || (request.consent.is_some() && request.saml_consent.is_some())
         || request.recovery.is_some()
         || request.invitation.is_some()
         || request.removal.is_some() != removal

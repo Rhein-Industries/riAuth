@@ -4,6 +4,7 @@ mod client_endpoint;
 mod client_policy;
 mod client_status;
 mod grants;
+mod input;
 pub mod local;
 mod memberships;
 mod transport;
@@ -268,6 +269,8 @@ pub enum Command {
     },
     /// Inspect storage, key health, inventory counts and pending notifications
     Doctor,
+    /// Read physical bytes occupied by the server's store (not a capacity or occupancy ratio)
+    Storage,
     /// Read process counters and available worker capacity
     Metrics {
         #[arg(long)]
@@ -1497,7 +1500,9 @@ pub async fn run(cli: Cli) -> Result<()> {
                 let mut certificate = String::new();
                 fs::File::open(file)?.take(32769).read_to_string(&mut certificate)?;
                 if certificate.len() > 32768 { anyhow::bail!("Certificate chain exceeds 32 KiB"); }
-                remote.call(Method::POST, "/api/radius/certificates", Some(json!({"username":username,"listener":listener,"certificate_chain_pem":certificate})), true).await?
+                let body = json!({"username":username,"listener":listener,"certificate_chain_pem":certificate});
+                input::check_body(&body, "RADIUS certificate request")?;
+                remote.call(Method::POST, "/api/radius/certificates", Some(body), true).await?
             },
             RadiusCommand::RevokeCertificate { id } => {
                 if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
@@ -1555,7 +1560,9 @@ pub async fn run(cli: Cli) -> Result<()> {
                 if certificate_pem.is_none() && san_uri.is_none() && san_email.is_none() {
                     anyhow::bail!("Provide --file, --san-uri, or --san-email");
                 }
-                remote.call(Method::POST, "/api/certificates", Some(json!({"username": username, "certificate_pem": certificate_pem, "san_uri": san_uri, "san_email": san_email})), true).await?
+                let body = json!({"username": username, "certificate_pem": certificate_pem, "san_uri": san_uri, "san_email": san_email});
+                input::check_body(&body, "Certificate request")?;
+                remote.call(Method::POST, "/api/certificates", Some(body), true).await?
             }
             CertificateCommand::Revoke { id } => {
                 if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
@@ -1578,6 +1585,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             result
         }
         Command::Doctor => remote.call(Method::GET, "/api/operations/doctor", None, true).await?,
+        Command::Storage => remote.call(Method::GET, "/api/operations/storage", None, true).await?,
         Command::Backup { key_file, out, max_bytes } => {
             let transfer = backup::Transfer { ca_cert: cli.ca_cert.as_deref(), idle_timeout: Duration::from_secs(cli.request_timeout), max_bytes };
             backup::download(&remote, &transfer, &key_file, &out).await?
@@ -1840,8 +1848,8 @@ pub async fn run(cli: Cli) -> Result<()> {
             },
             SourceCommand::List => remote.call(Method::GET,"/api/sources",None,true).await?,
             SourceCommand::Put { file } => {
-                let input: crate::source::SourceInput = serde_json::from_slice(&fs::read(file)?)?;
-                remote.call(Method::POST,"/api/sources",Some(json!(input)),true).await?
+                let body = input::read_request::<crate::source::SourceInput>(&file, "Source")?;
+                remote.call(Method::POST,"/api/sources",Some(body),true).await?
             }
             SourceCommand::Start { id, out, link, authentication_transaction } => {
                 if out.exists() { bail!("Source transaction file already exists"); }

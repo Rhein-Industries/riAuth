@@ -1798,6 +1798,17 @@ async fn client_create_and_update_require_retry_binding_across_browser_and_beare
             .filter(|event| event["action"] == action)
             .count()
     };
+    let client_count = |id: &str| {
+        fixture
+            .core
+            .list_clients(&fixture.admin)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|client| client["client_id"] == id)
+            .count()
+    };
     let create_body = |id: &str, name: &str, confidential| {
         json!({
             "client_id": id, "name": name, "confidential": confidential,
@@ -1901,12 +1912,22 @@ async fn client_create_and_update_require_retry_binding_across_browser_and_beare
             .starts_with("ri_client_")
     );
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(
-        send(&app, browser_collection, browser_create()).await.2,
-        first.2
+    // A shared-secret client is disclosed only by the first response. The
+    // exact retry reveals that issuance committed but never the credential,
+    // and creates neither a second client nor a second audit event.
+    let replay = send(&app, browser_collection, browser_create()).await;
+    assert_eq!(replay.0, StatusCode::CONFLICT, "{}", replay.2);
+    assert_eq!(replay.2["error"], "credential_already_issued");
+    assert!(replay.2.get("client_secret").is_none());
+    assert!(
+        !replay
+            .2
+            .to_string()
+            .contains(first.2["client_secret"].as_str().unwrap())
     );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("client.create"), 1);
+    assert_eq!(client_count("browser-app"), 1);
     assert_eq!(revision(), at + 1);
     assert_eq!(
         send(
@@ -1956,12 +1977,14 @@ async fn client_create_and_update_require_retry_binding_across_browser_and_beare
     assert_eq!(second.0, StatusCode::OK, "{}", second.2);
     assert!(second.2["client_secret"].is_null());
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(
-        send(&app, bearer_collection, bearer_create()).await.2,
-        second.2
-    );
+    // A public client has no secret to protect, so the established ordinary
+    // receipt contract replays its original response unchanged.
+    let replay = send(&app, bearer_collection, bearer_create()).await;
+    assert_eq!(replay.0, StatusCode::OK, "{}", replay.2);
+    assert_eq!(replay.2, second.2);
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("client.create"), 2);
+    assert_eq!(client_count("bearer-app"), 1);
     assert_eq!(revision(), current + 1);
 
     let at = revision();

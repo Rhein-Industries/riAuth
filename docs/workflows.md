@@ -446,7 +446,32 @@ run and spend the prepared request; approval consumes both fresh proofs without
 upgrading the stored session or issuing a new one. Browser reloads resume the
 current stage, and a failed or changed authority has no ordinary-consent
 fallback. The selected graph rejects requests that do not need reauthentication.
-SAML configured consent and remembered-consent creation remain unsupported.
+The same selector connects SP-initiated SAML browser consent after the ordinary
+SAML parser verifies the signed AuthnRequest, issuer, client and registered ACS.
+Only the exact session-to-consent, UV passkey-to-consent, and password plus
+current-TOTP-to-consent graphs are supported. The request, client fingerprint,
+binding cookie, browser SSO mapping, account/session, epoch, and reviewed graph
+are bound to one durable run. Fresh assurance applies only to the response;
+the stored session is not upgraded. Every selected request requires explicit
+Allow/Deny, including clients with implicit or remembered consent. Remember
+submissions do not create a SAML consent record.
+
+The `/saml/resume/{id}` interaction uses the state, password, passkey start,
+finish, cancel, and decision endpoints. An active continuation first seals a
+stale reviewed pin with its own conflict reason. Loss or replacement of the
+browser selector then durably seals the run in a separate successful writer,
+consumes its evidence and abandons challenges. Restoring the selector cannot
+revive the proof. Read-only state inspection does not seal a run.
+
+Approval records a final, run-bound decision. The original browser's one-use
+resume writer revalidates the current selector, exact active definition and
+reviewed policy even after finalization, as well as the live session, epoch,
+client and signed request, before signing and consuming the request atomically.
+A denied run returns `RequestDenied` without an assertion. Exact-content
+approval selection uses the same resolver as OIDC; divergent active approval
+content has no configuration fallback. Terminal approval, IdP-initiated or
+passive requests, embedded source stages, arbitrary graphs, and remembered
+consent creation remain unsupported for configured SAML.
 
 Standard terminal OIDC preparations, outside embedded source stages, admit at
 most 64 live indexed attempts per request hash. At capacity, a new preparation
@@ -1057,7 +1082,10 @@ graph, or a rejected or non-covering manifest reports the name not configured
 and not usable. This build rejects an attempt to disable that name. Essentials
 does not compile the capability, so configured and usable stay false there.
 A custom stage with no checked manifest still fails configuration as an unknown
-stage. The one executable shape is the Wasmi guest documented below.
+stage. The one executable shape is the Wasmi guest documented below. Its
+isolation backend is macOS-only. Other hosts refuse manifest validation and
+execution with `external_runtime_required`; linking Wasmi alone does not make
+an extension usable.
 
 [`workflow::extension::Host`](../src/workflow/extension.rs) is a held in-process
 contract for a native registrant. It is not an isolation boundary and it is not
@@ -1101,7 +1129,13 @@ Platform links Wasmi 0.40 through `dep:wasmi` on the `platform` feature.
 Essentials does not link it. [`extension_gate::execute`](../src/workflow/extension_gate.rs)
 returns `external_runtime_required` on Essentials, and `RUNTIME_LINKED` is true
 only on Platform. The executor calls this gate for one configured shape. It
-does not call [`Host::invoke`](../src/workflow/extension.rs).
+does not call [`Host::invoke`](../src/workflow/extension.rs). The supported
+isolation backend uses macOS Seatbelt through `/usr/bin/sandbox-exec`. Linux,
+Windows, and other hosts have no implemented backend and refuse with
+`external_runtime_required` before spawning. Native verification here covers
+macOS 26.2 on Apple Silicon; it establishes no other OS or macOS-version
+compatibility result. `sandbox-exec` is deprecated by Apple: its absence or
+policy/setup failure refuses with `failed`, with no ordinary-process fallback.
 
 `config.toml` may contain `workflow_extensions`, at most 16 JSON manifests
 keyed by stage id. A non-empty map on Essentials is rejected because it
@@ -1227,7 +1261,7 @@ The helper is the platform `riauth` binary. `execute` resolves `current_exe`
 and passes only the internal argv token `riauth.extension-guest/v1`. The server
 recognizes that token before clap and does not list it in `--help`. An
 installed image at `/usr/local/bin/riauth`, or a renamed copy of that binary,
-re-executes its own path. The lookup does not read an environment override and
+re-executes its resolved path through the sandbox. The lookup does not read an environment override and
 does not assume a Cargo target directory. The child environment is cleared.
 The helper refuses to run when any variable remains, except the macOS
 CoreFoundation variable `__CF_USER_TEXT_ENCODING` after exec, and only when
@@ -1237,10 +1271,34 @@ directory is a private empty directory
 removed after reap, and stderr is discarded. The request is the module, the
 projected identifier frame, the
 declared labels, and the caps. It does not include a bearer token, password,
-configuration path, or database URL. File descriptors already open in the
-server can still be inherited, because closing them would require `unsafe`.
-There is no seccomp or network namespace. A missing executable or a spawn
-failure is `failed`. The executor stores every guest denial as the `failed`
+configuration path, or database URL.
+
+The default-deny [Seatbelt profile](../src/workflow/extension_gate/guest-macos.sb)
+permits exec of that exact server image, read-only loader access to
+`/System/Library`, `/usr/lib`, the image itself, and the two resolved conventional
+Homebrew OpenSSL dylibs when present. It also allows root-directory reads,
+file metadata, `/dev/fd` enumeration, selected CPU/page-size sysctl reads, and
+writes to `/dev/null`. It grants no network, Mach IPC, filesystem write, fork,
+or child-spawn permission. Native regression probes cover denied file reads,
+writes, loopback binding, fork, and spawning the same executable. This prevents
+a guest descendant from retaining the IPC pipe after the supervised pid exits.
+The allowed loader files and host metadata remain outside the projected
+identifier frame; the profile does not hide all host metadata.
+
+Before reading the request or compiling Wasm, the single-threaded helper
+enumerates `/dev/fd`, requires that the directory iterator is the only descriptor
+above stderr, drops that iterator, and verifies that its descriptor is closed.
+Any extra descriptor or enumeration/inspection error refuses. Darwin
+reports `EBADF` for the iterator's now-closed descriptor; that and `ENOENT` are
+the only accepted absent-descriptor results. Extra descriptors are refused,
+not closed through raw-fd ownership hooks. Thus an operator or dependency
+leaving an inheritable descriptor open makes the invocation fail closed.
+Native confinement probes also refuse direct unsandboxed invocation of the
+internal argv entry. These probes are guard checks, not an attestation of a
+caller-supplied sandbox policy; the parent always supplies the fixed profile.
+
+A missing executable or sandbox/spawn failure is `failed`.
+The executor stores every guest denial as the `failed`
 signal with no evidence and no proof. Stdout is read into a 64-byte buffer by
 one joined thread. A larger write is `output` and is not accepted as a label.
 The maintenance binary and `riauthctl` do not host this entry. The Essentials
@@ -1293,7 +1351,8 @@ definition is that entry, stores a reviewed pin beside `RunBinding`. The pin
 holds the definition revision, the definition fingerprint, and a policy digest.
 The digest is the SHA-256 hex of `riauth.workflow-reviewed/v1`, the active flag
 (`true` or `false`), the workflow id, the revision, and the fingerprint, each
-on its own line. An unapproved pin omits the approval id and dependency digest.
+on its own line. An unapproved pin omits the approval id and approval dependency
+digest, but every new reviewed pin also stores an environment digest.
 `RunBinding` equality remains the definition id, revision,
 fingerprint, optional source registration, and optional `extension_sha256`.
 
@@ -1301,9 +1360,32 @@ fingerprint, optional source registration, and optional `extension_sha256`.
 retained across restore, so a restored older definition cannot start below it.
 The first start writes it. A higher live revision replaces it when that start
 commits. The same revision, fingerprint, and policy is reused. The same
-revision with a different fingerprint or policy is rejected with
+revision with a different fingerprint, policy, or environment is rejected with
 `Workflow policy changed` and leaves the stored pin unchanged. A live revision
 below the stored pin is rejected with `Workflow version was rolled back`.
+
+The environment digest is SHA-256 over canonical JSON for the tuple
+`("riauth.workflow-environment/v1", "platform", issuer, password_history, sources)`.
+Password history is null unless the graph resets or enrolls a password. Sources
+are sorted pairs of referenced source ID and source-record fingerprint; each
+source must exist, be enabled, and have the matching ID. Unrelated source
+registrations, listener addresses, and delivery settings do not invalidate this
+pin. Source secrets are not serialized into it. Custom-stage module and process
+binding remain the extension gate's separate contract.
+
+A changed environment seals an open run as `policy_changed`. An unapproved
+start needs a higher definition revision to adopt the changed environment, or
+an exact-content approval of the same bytes. A restored environment may start
+a fresh run under its matching high-water; a sealed run remains final. After
+accepting source proof, continuation also checks its exact account link. A
+changed or missing link retires the run and its evidence before returning an
+error, so restoring that link cannot revive proof or an enrollment challenge.
+
+Older runs without an environment pin fail closed on continuation. A fresh
+unapproved start may upgrade a retained legacy pin only when every existing
+policy field matches. Existing approval dependency digests without this new
+environment line require fresh review and activation; they are not silently
+adopted. These transitions preserve the definition revision fence.
 
 Open pinned runs are listed in `workflow_account_runs`, keyed by account, with
 at most 32 run ids. Clearing `workflow_active_sessions` for that run removes
@@ -1346,38 +1428,19 @@ old policy returns or the account is enabled again.
 Code-owned revisions stay unpinned. That includes the shipped password, passkey,
 source reauthentication, invitation, and password-reset workflows. The pin is
 recorded only for configured start, configured passkey removal, configured
-consent, browser OIDC consent starts, and configured source-first passkey
+consent, browser OIDC/SAML consent starts, and configured source-first passkey
 enrollment. With no activation pointer, the executor selects the active
 definition from `config.toml`. The `workflow_definitions` catalog stays unused
 for that selection.
 
-This executor matches `roadmap/w02-configured-executor-wave15` at
-`06b9793a943d2d0ab15c8990a009449f346adc33`: `RuntimeRun` and
-`start_authorization_workflow` live in `src/workflow/executor.rs`, and
-`workflow_password` lives in `src/workflow/executor/password.rs`. The separate
-`roadmap/w02-runtime-executor` worktree at
-`c03d1f8e831694819edf0adb02d129ea8ca62da9` is a smaller password-only executor.
-Its `RuntimeRun` is `deny_unknown_fields` in `src/workflow/executor.rs`, its
-only public methods are `workflow_start`, `workflow_resume`, `workflow_cancel`,
-and `workflow_password` (all in that file), and it has no
-`start_authorization_workflow`. Its password start is the code-owned essentials
-workflow and stays unpinned. Those worktrees were not edited. They do not gain
-this guard until this branch is merged.
-
-A later W02 merge keeps `reviewed` and `reviewed_failure` optional, with serde
-default and omission when absent, so an unpinned row stays readable by an older
-`deny_unknown_fields` reader. A pinned row carries both fields, and that older
-reader rejects it until it grows the same fields. Finalization that clears
-`workflow_active_sessions` also drops the account index; a finalizer that
-writes a final state without `close` or `clear_active_session` drops the index
-itself. A new verifier entry point that loads a run by id calls
-`reject_stale_reviewed` before reserving or completing a step, and commits a
-seal with `Ok(Err)` or with an earlier write that returns `Ok`. Resume and
-cancel call `reviewed_outcome` and return the sealed view. On the
-runtime-executor tree, `close` untracks the account index if this slice is
-ported, and `workflow_password`, `workflow_resume`, and `workflow_cancel` use
-the same guards. Client fingerprints remain that tree's client-policy pins;
-this slice also seals when those fingerprints change.
+`RuntimeRun` retains optional `reviewed` and `reviewed_failure` fields. A verifier
+entry point checks and durably seals a stale pin before reserving or completing
+a step, using `Ok(Err)` or an earlier successful writer. Resume and cancel return
+the sealed view. Finalization removes the active-session and account indexes.
+SAML deferred issuance additionally checks the reviewed policy after a final
+consent decision; ordinary final run inspection leaves its state unchanged.
+Focused local evidence is recorded in
+[the wave27 report](roadmap/local-wave27-workflow-safety-report.md).
 
 ## Exact-content approval
 
@@ -1419,8 +1482,12 @@ Activation writes `workflow_definitions`, `workflow_approvals`,
 `workflow_approval_plans`, and `workflow_activation` in one `store.write`.
 Those buckets, plus `workflow_reviews` and `workflow_revocations`, are retained
 across restore. The approval row stays immutable. Repeating activate for the
-same executor, while the pointer still names that approval, returns the stored
-approval and leaves `meta.revision` unchanged. A revoked or replaced pointer
+same executor, while the pointer still names that approval and its current
+catalog, configuration, dependencies and administrator authority all match,
+returns the stored approval and leaves `meta.revision` unchanged. A stale replay
+returns `Workflow approval is not active`, commits retirement of stale open
+runs, and leaves the approval row, pointer and revision unchanged. First
+activation failures still roll back every write. A revoked or replaced pointer
 stays retired: the same plan returns `Workflow approval already exists`. The
 response selection is `approved-definition` and `configuration_file` is
 `unchanged`. The writer lock is the existing redb lock or PostgreSQL advisory
@@ -1429,14 +1496,15 @@ lock. Other clients stay connected, and `config.toml` stays unchanged.
 The approved policy digest appends the approval id and the dependency digest
 to the five unapproved lines, with the active flag forced to `true`. The
 dependency digest is the SHA-256 hex of `riauth.workflow-approval-dependencies/v1`,
-`profile=platform`, the supported adapter label, then `sources=none` or one
+`profile=platform`, the supported adapter label, `environment={digest}` as defined
+above, then `sources=none` or one
 sorted line per referenced source (`source={id}` plus the SHA-256 of that
 source record), then `extension=none` or one line per custom stage
 (`extension={stage}`, the guest module hash, and its permissions). A disabled
 or missing referenced source, or a missing extension stage, refuses. Sources
 and extensions the graph does not use stay outside the digest. The digest
-covers the platform profile, the adapter, those source records, and those
-extension modules.
+covers the platform profile, the adapter, the graph-scoped environment, those
+source records, and those extension modules.
 
 A higher approved revision replaces the high-water and seals open pinned runs
 for that id as `policy_changed`. The same revision and fingerprint may be
@@ -1474,14 +1542,12 @@ approval does not establish RI-WF-002.
 
 These are not implemented or established by this slice:
 
-* Connecting the remaining verifier actions and existing OIDC/browser sign-in,
-  lifecycle, browser/remembered consent and embedded source-stage paths. Current
-  W02 endpoints cover password, passkey and OIDC/SAML source reauthentication,
-  plus the exact configured OIDC consent path, for a live bearer session.
-  Password/MFA, passkey and source/MFA chains consume a prepared terminal OIDC
-  request atomically; browser integration and changing a SAML session's logout
-  association remain unconnected.
-  No workflow issues a session. Endpoint parity has not been checked.
+* Connecting arbitrary verifier graphs, embedded source-stage browser consent,
+  and remembered-consent creation. Exact selected OIDC and SP-initiated SAML
+  browser consent is connected as described above. Other graph shapes have no
+  fallback. Changing a SAML session's logout association through a workflow
+  remains unconnected. No workflow issues a session. Endpoint parity has not
+  been checked.
 * Extending atomic credential-mutation finalization beyond existing-passkey
   authorized passkey enrollment and removal, password-only and current-TOTP
   first-passkey enrollment, existing-passkey or password-only TOTP enrollment,
@@ -1505,10 +1571,12 @@ These are not implemented or established by this slice:
   the live source registration, and a guest run pins `extension_sha256` of the
   module that started it. Configured runs store a reviewed pin beside that
   binding. An activated approval also binds the dependency digest described
-  above. The rest of the `Environment` stays outside that digest. The source
-  receipt separately pins its explicit account link. Continuation of a sealed
-  run, code-owned revisions outside `config.workflows`, and broader dependency
-  binding remain.
+  above, including graph-scoped issuer, password-history and source settings.
+  The source receipt separately pins its explicit account link; loss of that
+  link now seals the configured run. Other security configuration and adapters,
+  code-owned revisions outside `config.workflows`, and any deliberate migration
+  of a sealed run remain outside this binding. Full environment completeness
+  has not been established.
 * End-to-end invariant and race tests for the remaining verifier integrations
   across both durable backends. The shared
   [`invitation_passkey_bound_competing_completion` contract](../tests/contracts/shared.rs)

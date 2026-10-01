@@ -33,6 +33,8 @@ content, policy, expiry or a caller-selected revision binding.
 | Execute | `POST /api/group-membership-changes/{id}/execute` | `execute <id> --digest <digest>` |
 | Cancel | `POST /api/group-membership-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
+`riauthctl group review` takes the same verbs against the same routes, sending the revision and an `Idempotency-Key` on every write.
+
 Browser JSON uses `/api/admin` instead of `/api`, with the existing session and
 origin guards. Administration now includes **Reviewed membership** at
 `/admin#/membership-review`, also linked from each group's page.

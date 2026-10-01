@@ -89,7 +89,10 @@ token is one line on redirected standard input; it is never accepted in a
 command argument. Use an administrator session or an agent authorized for
 `device.enroll` on the exact device, and supply the current numeric configuration
 revision plus a stable idempotency key. Reuse the same key and request on an
-ambiguous enrollment or revoke retry.
+ambiguous revoke retry. An exact enrollment retry returns 409
+`credential_already_issued` without the device secret, because the server never
+re-discloses it; if the enrollment response was lost, enroll again with a new
+key and the current revision.
 
 ```text
 RiAuth.DeviceHost.exe enroll --issuer https://id.example.test --device-id laptop --username alice --local-account .\alice --display-name "Alice laptop" --revision 42 --idempotency-key <stable-key> --token-stdin

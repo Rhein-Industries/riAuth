@@ -815,3 +815,199 @@ macro_rules! approval_backends {
 approval_backends!(approval_http, approval_http_restart_seal_and_resume);
 approval_backends!(approval_negative, approval_negative_paths);
 approval_backends!(approval_concurrent, approval_concurrent_review_and_activate);
+
+#[test]
+fn environment_binding_and_activation_replay_require_live_review() {
+    for backend in [Backend::Redb, Backend::EncryptedRedb] {
+        let mut hosted = backend.fixture();
+        let author = hosted.admin.clone();
+        let reviewer = administrator(&hosted.core, &author, "reviewer");
+        let executor = administrator(&hosted.core, &author, "executor");
+        let alice = member(&hosted.core, &author, "alice");
+        let mut reset =
+            workflow::builtin(&workflow::Id::new("essentials-password-reset").unwrap()).unwrap();
+        reset.id = workflow::Id::new("reviewed-reset").unwrap();
+        reset.origin = workflow::Origin::Configured;
+        reset.terminals[0].requires = vec![vec![
+            workflow::Proof::ResetEmail,
+            workflow::Proof::PasswordReset,
+        ]];
+        reset.terminals[0].max_proof_age_seconds = Some(120);
+        let planned = hosted
+            .core
+            .plan_state(
+                &author,
+                Manifest {
+                    api_version: "riauth/v1".into(),
+                    workflows: vec![reset],
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        hosted
+            .core
+            .review_workflow(&reviewer, &planned.plan_id, "approve")
+            .unwrap();
+        let revision: u64 = hosted.core.store.get("meta", "revision").unwrap().unwrap();
+        let history = hosted.core.config.password_history;
+        hosted.core.config.password_history += 1;
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .unwrap_err()
+                .message,
+            "Workflow approval dependencies changed"
+        );
+        assert_eq!(
+            hosted.core.store.get::<u64>("meta", "revision").unwrap(),
+            Some(revision)
+        );
+        assert!(
+            hosted
+                .core
+                .store
+                .list::<Value>("workflow_approvals")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            hosted
+                .core
+                .store
+                .get::<Value>("workflow_activation", "reviewed-reset")
+                .unwrap()
+                .is_none()
+        );
+        hosted.core.config.password_history = history;
+        let activated = hosted
+            .core
+            .activate_workflow(&executor, &planned.plan_id)
+            .unwrap();
+        let revision: u64 = hosted.core.store.get("meta", "revision").unwrap().unwrap();
+        hosted.core.config.listen = "127.0.0.1:9001".parse().unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .unwrap(),
+            activated
+        );
+        assert_eq!(
+            hosted.core.store.get::<u64>("meta", "revision").unwrap(),
+            Some(revision)
+        );
+        hosted.core.config.password_history += 1;
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .unwrap_err()
+                .message,
+            "Workflow approval is not active"
+        );
+        assert_eq!(
+            hosted.core.store.get::<u64>("meta", "revision").unwrap(),
+            Some(revision)
+        );
+        assert_eq!(
+            hosted
+                .core
+                .store
+                .list::<Value>("workflow_approvals")
+                .unwrap()
+                .len(),
+            1
+        );
+
+        let planned = plan(&hosted.core, &author, "environment-password", 1, 120);
+        hosted
+            .core
+            .review_workflow(&reviewer, &planned.plan_id, "approve")
+            .unwrap();
+        hosted
+            .core
+            .activate_workflow(&executor, &planned.plan_id)
+            .unwrap();
+        let open = hosted
+            .core
+            .workflow_configured_start(&alice, "environment-password")
+            .unwrap();
+        let issuer = hosted.core.config.issuer.clone();
+        hosted.core.config.issuer = "http://localhost:9001".into();
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .unwrap_err()
+                .message,
+            "Workflow approval is not active"
+        );
+        assert_denied(&hosted.core, &open.id);
+        hosted.core.config.issuer = issuer;
+        hosted
+            .core
+            .activate_workflow(&executor, &planned.plan_id)
+            .unwrap();
+        assert_denied(&hosted.core, &open.id);
+        assert!(
+            hosted
+                .core
+                .workflow_password(&alice, &open.id, PASSWORD.into())
+                .is_err()
+        );
+        let fresh = hosted
+            .core
+            .workflow_configured_start(&alice, "environment-password")
+            .unwrap();
+        hosted
+            .core
+            .update_user(
+                &author,
+                "reviewer",
+                UserPatch {
+                    enabled: Some(false),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .unwrap_err()
+                .message,
+            "Workflow approval is not active"
+        );
+        assert_denied(&hosted.core, &fresh.id);
+        hosted
+            .core
+            .update_user(
+                &author,
+                "reviewer",
+                UserPatch {
+                    enabled: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(
+            hosted
+                .core
+                .activate_workflow(&executor, &planned.plan_id)
+                .is_err()
+        );
+        assert!(
+            hosted
+                .core
+                .workflow_password(&alice, &fresh.id, PASSWORD.into())
+                .is_err()
+        );
+        assert!(
+            hosted
+                .core
+                .workflow_configured_start(&alice, "environment-password")
+                .is_err()
+        );
+    }
+}

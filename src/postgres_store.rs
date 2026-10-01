@@ -214,6 +214,19 @@ impl Pool {
             );
         }
     }
+    #[cfg(feature = "test-support")]
+    pub(crate) fn discard_idle_for_test(&self) {
+        let idle = {
+            let mut connections = self
+                .connections
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let idle = std::mem::take(&mut connections.idle);
+            connections.total = connections.total.saturating_sub(idle.len());
+            idle
+        };
+        drop(idle);
+    }
     fn checked_out(self: &Arc<Self>, client: Client) -> Pooled {
         self.telemetry.pool_in_use.enter();
         Pooled {

@@ -58,6 +58,8 @@ and reviewed advanced creation remain follow-up work.
 | Execute | `POST /api/client-creation-changes/{id}/execute` | `execute <id> --digest <digest>` |
 | Cancel | `POST /api/client-creation-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
+`riauthctl client creation-review` takes the same verbs against the same routes. Its `execute` always needs `--secret-file`: a generated secret is written once to that new owner-only file and never printed, and the file is removed when the client has no secret or the execution fails. An exact retry with the same `--idempotency-key` and `--if-revision` replays the committed secret into a new file, as the browser's recovery does.
+
 Browser JSON uses the same paths with `/api/admin` and the existing session,
 origin and write guards. These are thin adapters to the same service, not a
 second writer. The admin **Reviewed applications** page

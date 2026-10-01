@@ -848,6 +848,35 @@ fn assert_well_formed(text: &str, forbidden: &[&str]) {
         ("context", Some(&["read", "writer", "prepared"][..])),
         ("limit", Some(&["bounded", "unbounded"][..])),
         ("permits", Some(&["workers", "credentials", "forward"][..])),
+        (
+            "job",
+            Some(
+                &[
+                    "reconciliation",
+                    "provisioning",
+                    "mail",
+                    "logout_ssf",
+                    "maintenance",
+                    "alerts",
+                    "manual_connector",
+                    "deactivation",
+                ][..],
+            ),
+        ),
+        (
+            "lane",
+            Some(&["connectors", "delivery", "maintenance", "deactivation"][..]),
+        ),
+        ("backend", Some(&["redb", "postgresql"][..])),
+        (
+            "scope",
+            Some(
+                &[
+                    "redb_file_including_free_pages",
+                    "postgresql_owned_relations_and_indexes",
+                ][..],
+            ),
+        ),
     ]);
     for secret in forbidden {
         assert!(!text.contains(secret), "exposition contains {secret}");

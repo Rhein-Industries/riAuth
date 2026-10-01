@@ -215,6 +215,18 @@ pub struct Pending {
     /// collects the response; a terminal approval leaves it unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) approved_by: Option<String>,
+    /// Selected canonical browser consent graph and its durable, request-bound run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) configured_consent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) configured_run: Option<String>,
+    /// The SSO principal present at signed request preparation, or first attached sign-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) configured_session: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) configured_account: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) configured_epoch: Option<u64>,
 }
 impl Pending {
     pub(crate) fn request_hash(&self) -> String {
@@ -222,6 +234,11 @@ impl Pending {
     }
     pub(crate) fn decided(&self) -> bool {
         self.decision.is_some() || self.cancelled
+    }
+    pub(crate) fn signed_request_hash(&self) -> Result<String> {
+        Ok(digest(
+            &serde_json::to_string(&self.request).map_err(Error::internal)?,
+        ))
     }
 }
 #[derive(Clone, Serialize, Deserialize)]

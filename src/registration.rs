@@ -112,9 +112,10 @@ impl Core {
         token: &str,
         template: RegistrationTemplate,
     ) -> Result<Value> {
-        self.mutation(token, |tx| {
-            let actor = self.principal(tx, token)?;
-            crate::management::create_registration_template(tx, &actor, template)
+        // The first response alone carries the initial access token; the
+        // generic mutation receipt would persist and replay it.
+        self.store.write(|tx| {
+            crate::management::create_registration_template_issuing(self, tx, token, template)
         })
     }
     pub fn registration_templates(&self, token: &str) -> Result<Value> {

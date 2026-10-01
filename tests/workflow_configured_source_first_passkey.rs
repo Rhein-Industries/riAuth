@@ -393,6 +393,19 @@ async fn linked_source_proof_enrolls_first_passkey_once_after_restart() {
         .store
         .write(|tx| tx.put("sources", "upstream", &source))
         .unwrap();
+    let sealed: Value = f.core.store.get("workflow_runs", &id).unwrap().unwrap();
+    assert_eq!(sealed["reviewed_failure"], "policy_changed");
+    assert_eq!(sealed["record"]["state"]["outcome"], "denied");
+    assert!(f.core.workflow_source_finish(&alice, &id).is_err());
+    let fresh = f
+        .core
+        .workflow_configured_source_passkey_start(&alice, WORKFLOW)
+        .unwrap();
+    assert_ne!(fresh.workflow.id, id);
+    let id = fresh.workflow.id;
+    upstream
+        .callback(&f, &fresh.authorization_url, "subject-1")
+        .await;
     assert!(matches!(
         f.core.workflow_source_finish(&alice, &id).unwrap().state,
         RunState::Active { ref step, .. } if step.as_str() == "enroll"
@@ -402,6 +415,41 @@ async fn linked_source_proof_enrolls_first_passkey_once_after_restart() {
         f.core.store.list::<Value>("passkeys").unwrap().len(),
         keys_before
     );
+    let links = f.core.store.list::<Value>("source_links").unwrap();
+    let (link_key, link) = links
+        .iter()
+        .find(|(_, link)| link["user_id"] == account)
+        .unwrap();
+    f.core
+        .store
+        .write(|tx| tx.delete("source_links", link_key))
+        .unwrap();
+    assert!(
+        f.core
+            .workflow_passkey_enrollment_challenge(&alice, &id, "Retired link".into())
+            .is_err()
+    );
+    f.core
+        .store
+        .write(|tx| tx.put("source_links", link_key, link))
+        .unwrap();
+    let sealed: Value = f.core.store.get("workflow_runs", &id).unwrap().unwrap();
+    assert_eq!(sealed["reviewed_failure"], "policy_changed");
+    assert!(
+        f.core
+            .workflow_passkey_enrollment_challenge(&alice, &id, "Restored link".into())
+            .is_err()
+    );
+    let fresh = f
+        .core
+        .workflow_configured_source_passkey_start(&alice, WORKFLOW)
+        .unwrap();
+    assert_ne!(fresh.workflow.id, id);
+    let id = fresh.workflow.id;
+    upstream
+        .callback(&f, &fresh.authorization_url, "subject-1")
+        .await;
+    f.core.workflow_source_finish(&alice, &id).unwrap();
     let challenge = f
         .core
         .workflow_passkey_enrollment_challenge(&alice, &id, "First key".into())
@@ -454,6 +502,40 @@ async fn linked_source_proof_enrolls_first_passkey_once_after_restart() {
     f.core
         .store
         .write(|tx| tx.put("sources", "upstream", &source))
+        .unwrap();
+    let sealed: Value = f.core.store.get("workflow_runs", &id).unwrap().unwrap();
+    assert_eq!(sealed["reviewed_failure"], "policy_changed");
+    assert!(
+        f.core
+            .workflow_passkey_enroll(&alice, &id, response)
+            .is_err()
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("passkey_registration", &digest(&ceremony))
+            .unwrap()
+            .is_none()
+    );
+    let fresh = f
+        .core
+        .workflow_configured_source_passkey_start(&alice, WORKFLOW)
+        .unwrap();
+    assert_ne!(fresh.workflow.id, id);
+    let id = fresh.workflow.id;
+    upstream
+        .callback(&f, &fresh.authorization_url, "subject-1")
+        .await;
+    f.core.workflow_source_finish(&alice, &id).unwrap();
+    let challenge = f
+        .core
+        .workflow_passkey_enrollment_challenge(&alice, &id, "Fresh proof".into())
+        .unwrap();
+    let response = signer
+        .do_registration(
+            ORIGIN.parse().unwrap(),
+            serde_json::from_value(challenge.public_key).unwrap(),
+        )
         .unwrap();
     let finished = f
         .core

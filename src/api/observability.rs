@@ -223,15 +223,27 @@ pub(super) async fn observe(State(app): State<App>, req: Request, next: Next) ->
 
 pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Result<Response> {
     let token = bearer(&headers)?;
-    let queues = app
+    // The allocation number is gated by its own permission, so a grant issued for
+    // exactly `operations/metrics` sees no new data. An administrator or a `*`
+    // grant already covers `operations/storage`. The decision is made here, on
+    // this request's live authorization, before the cache is consulted, so a
+    // caller without it never starts a read. The cache is a mutex and, at most,
+    // one thread spawn: this handler never waits on the pool, the catalog, or the
+    // filesystem for it.
+    let (queues, allocation) = app
         .run(move |core| {
-            core.store.read(|tx| {
-                core.management(tx, &token, "operations.read", "operations/metrics")?;
-                crate::store::maintenance::QUEUES
+            let (queues, storage) = core.store.read(|tx| {
+                let actor = core.management(tx, &token, "operations.read", "operations/metrics")?;
+                let queues = crate::store::maintenance::QUEUES
                     .into_iter()
                     .map(|queue| Ok((queue, tx.queue_stats(queue, crate::crypto::now())?)))
-                    .collect::<Result<std::collections::BTreeMap<_, _>>>()
-            })
+                    .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+                Ok((
+                    queues,
+                    actor.allows("operations.read", "operations/storage"),
+                ))
+            })?;
+            Ok((queues, storage.then(|| core.store.cached_allocation())))
         })
         .await?;
     use std::sync::atomic::Ordering::Relaxed;
@@ -318,6 +330,28 @@ pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Re
     for (queue, stats) in queues {
         writeln!(text, "riauth_queue_pending{{queue=\"{queue}\"}} {}\nriauth_queue_failed{{queue=\"{queue}\"}} {}\nriauth_queue_oldest_pending_seconds{{queue=\"{queue}\"}} {}", stats.pending, stats.failed, stats.oldest_pending_seconds).unwrap();
     }
+    // Withheld without `operations.read` on `operations/storage`. A sample that is
+    // unavailable, still being taken, or older than the cache allows omits both
+    // series. Zero is a real size, not an unknown one.
+    if let Some(allocation) = &allocation
+        && allocation["status"] == "available"
+        && let Some(bytes) = allocation["allocated_bytes"].as_u64()
+        && let Some(age) = allocation["sample_age_seconds"].as_f64()
+        && let Some(max_stale) = allocation["max_stale_seconds"].as_f64()
+        && let (Some(backend), Some(scope)) =
+            (allocation["backend"].as_str(), allocation["scope"].as_str())
+        && [backend, scope].into_iter().all(|label| {
+            label
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+        })
+    {
+        writeln!(
+            text,
+            "# HELP riauth_storage_allocated_bytes Physical bytes of the riAuth store this process opened (redb file length, or the riauth_store tables, indexes and TOAST that every process on that PostgreSQL database shares), including free space. WAL, backups, and filesystem capacity are excluded. The value is a cached sample that can be up to {max_stale} seconds old; riauth_storage_allocation_age_seconds is its age.\n# TYPE riauth_storage_allocated_bytes gauge\nriauth_storage_allocated_bytes{{backend=\"{backend}\",scope=\"{scope}\"}} {bytes}\n# HELP riauth_storage_allocation_age_seconds Seconds since the riauth_storage_allocated_bytes sample was taken.\n# TYPE riauth_storage_allocation_age_seconds gauge\nriauth_storage_allocation_age_seconds{{backend=\"{backend}\",scope=\"{scope}\"}} {age}"
+        )
+        .unwrap();
+    }
     Ok((
         [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
         text,
@@ -327,19 +361,27 @@ pub(super) async fn prometheus(State(app): State<App>, headers: HeaderMap) -> Re
 
 pub(super) async fn metrics(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
-    let queues = app
+    // Same live permission gate and cached sample as the Prometheus text.
+    let (queues, storage_allocation) = app
         .run(move |core| {
-            core.store.read(|tx| {
-                core.management(tx, &token, "operations.read", "operations/metrics")?;
-                crate::store::maintenance::QUEUES
+            let (queues, storage) = core.store.read(|tx| {
+                let actor = core.management(tx, &token, "operations.read", "operations/metrics")?;
+                let queues = crate::store::maintenance::QUEUES
                     .into_iter()
                     .map(|queue| Ok((queue, tx.queue_stats(queue, crate::crypto::now())?)))
-                    .collect::<Result<std::collections::BTreeMap<_, _>>>()
-            })
+                    .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+                Ok((
+                    queues,
+                    actor.allows("operations.read", "operations/storage"),
+                ))
+            })?;
+            Ok((queues, storage.then(|| core.store.cached_allocation())))
         })
         .await?;
     use std::sync::atomic::Ordering::Relaxed;
-    Ok(Json(
-        json!({"schema_version":"riauth.metrics/v1","reset":"process_start","requests_total":app.stats.requests.load(Relaxed),"responses_error_total":app.stats.errors.load(Relaxed),"client_errors_total":app.stats.client_errors.load(Relaxed),"server_errors_total":app.stats.server_errors.load(Relaxed),"authentication_rejections_total":app.stats.authentication_rejections.load(Relaxed),"worker_rejections_total":app.stats.worker_rejections.load(Relaxed),"rate_limited_total":app.stats.rate_limited.load(Relaxed),"request_duration_microseconds_total":app.stats.elapsed_micros.load(Relaxed),"worker_slots_available":app.workers.available_permits(),"admission":app.stats.admission_snapshot(&app),"runtime":app.core.store.telemetry().snapshot(),"queues":queues}),
-    ))
+    let mut body = json!({"schema_version":"riauth.metrics/v1","reset":"process_start","requests_total":app.stats.requests.load(Relaxed),"responses_error_total":app.stats.errors.load(Relaxed),"client_errors_total":app.stats.client_errors.load(Relaxed),"server_errors_total":app.stats.server_errors.load(Relaxed),"authentication_rejections_total":app.stats.authentication_rejections.load(Relaxed),"worker_rejections_total":app.stats.worker_rejections.load(Relaxed),"rate_limited_total":app.stats.rate_limited.load(Relaxed),"request_duration_microseconds_total":app.stats.elapsed_micros.load(Relaxed),"worker_slots_available":app.workers.available_permits(),"admission":app.stats.admission_snapshot(&app),"runtime":app.core.store.telemetry().snapshot(),"queues":queues});
+    if let Some(allocation) = storage_allocation {
+        body["storage_allocation"] = allocation;
+    }
+    Ok(Json(body))
 }

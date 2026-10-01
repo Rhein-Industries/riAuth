@@ -42,6 +42,8 @@ credential-exposure, actor epoch and apply-lease checks are reused.
 | Execute | `POST /api/client-endpoint-changes/{id}/execute` | `execute <id> --digest <digest>` |
 | Cancel | `POST /api/client-endpoint-changes/{id}/cancel` | `cancel <id> --digest <digest>` |
 
+`riauthctl client endpoint-review` takes the same verbs against the same routes, sending the revision and an `Idempotency-Key` on every write.
+
 Decisions accept exactly `{"digest":"..."}`. Browser JSON uses `/api/admin` under
 the existing cookie, origin and CSRF-header guards. All paths use the same shared
 management transaction and idempotency receipts. The ordinary client writer

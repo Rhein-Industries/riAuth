@@ -140,8 +140,8 @@ fn redact_legacy_agent_issuance(receipt: &mut Receipt) -> bool {
 
 /// Older direct client create and rotate calls used Core::mutation and stored
 /// the generated secret as the entire result. Match only those two exact
-/// response envelopes; registration and other secret-return receipts retain
-/// their own replay contract.
+/// response envelopes; DCR and other secret-return receipts retain their own
+/// replay contract.
 fn legacy_client_issuance_id(receipt: &Receipt) -> Option<&str> {
     let result = receipt.result.as_object()?;
     let secret = result.get("client_secret")?.as_str()?;
@@ -190,9 +190,98 @@ fn redact_legacy_client_issuance(receipt: &mut Receipt) -> bool {
     true
 }
 
+/// Older registration-template creation used Core::mutation and stored the
+/// initial access token with the template view. Match that exact envelope only.
+fn legacy_registration_issuance_id(receipt: &Receipt) -> Option<&str> {
+    let result = receipt.result.as_object()?;
+    if !exact_keys(result, &["registration", "initial_access_token"])
+        || !result
+            .get("initial_access_token")?
+            .as_str()?
+            .starts_with("ri_register_")
+    {
+        return None;
+    }
+    let registration = result.get("registration")?.as_object()?;
+    if !exact_keys(
+        registration,
+        &["template", "created_by", "expires_at", "used", "enabled"],
+    ) {
+        return None;
+    }
+    registration
+        .get("template")?
+        .as_object()?
+        .get("id")?
+        .as_str()
+        .filter(|id| !id.is_empty())
+}
+
+fn redact_legacy_registration_issuance(receipt: &mut Receipt) -> bool {
+    let Some(id) = legacy_registration_issuance_id(receipt).map(str::to_owned) else {
+        return false;
+    };
+    receipt.result = json!({"registration_id": id, "credential_issued": true});
+    true
+}
+
+/// Older Windows device enrollment used Core::mutation and stored the device
+/// secret and any offline ticket with the device view. Match that envelope only.
+fn legacy_windows_device_issuance_id(receipt: &Receipt) -> Option<&str> {
+    let result = receipt.result.as_object()?;
+    if !exact_keys(
+        result,
+        &[
+            "device",
+            "device_secret",
+            "offline_ticket",
+            "offline_expires_at",
+        ],
+    ) || !result
+        .get("device_secret")?
+        .as_str()?
+        .starts_with("ri_windev_")
+        || !result
+            .get("offline_ticket")
+            .is_some_and(|ticket| ticket.is_null() || ticket.is_string())
+        || !result
+            .get("offline_expires_at")
+            .is_some_and(|at| at.is_null() || at.is_u64())
+    {
+        return None;
+    }
+    let device = result.get("device")?.as_object()?;
+    if !exact_keys(
+        device,
+        &[
+            "id",
+            "display_name",
+            "username",
+            "user_id",
+            "created_at",
+            "rotated_at",
+            "revoked",
+        ],
+    ) {
+        return None;
+    }
+    device.get("id")?.as_str().filter(|id| !id.is_empty())
+}
+
+fn redact_legacy_windows_device_issuance(receipt: &mut Receipt) -> bool {
+    let Some(id) = legacy_windows_device_issuance_id(receipt).map(str::to_owned) else {
+        return false;
+    };
+    receipt.result = json!({"device_id": id, "credential_issued": true});
+    true
+}
+
 fn redact_legacy_issuance(receipt: &mut Receipt) -> bool {
-    // Inspect both independently; the response envelopes are disjoint.
-    redact_legacy_agent_issuance(receipt) || redact_legacy_client_issuance(receipt)
+    // Inspect each independently; the response envelopes are disjoint.
+    redact_legacy_agent_issuance(receipt)
+        || redact_legacy_client_issuance(receipt)
+        || redact_legacy_registration_issuance(receipt)
+        || redact_legacy_windows_device_issuance(receipt)
 }
 
 /// Inspect every receipt before this Core is returned to a server. An older

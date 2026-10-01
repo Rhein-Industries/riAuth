@@ -1,7 +1,7 @@
 //! Routine remote administration. The API handlers call the server's shared
 //! management service; this module only shapes requests and protects replies.
 
-use crate::{read_password, transport::Remote};
+use crate::{read_password, review, transport::Remote};
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use reqwest::Method;
@@ -99,6 +99,11 @@ pub(crate) enum GroupCommand {
     AddMember { group: String, username: String },
     /// Remove a named user from a group using group.members authority.
     RemoveMember { group: String, username: String },
+    /// Stage, approve, execute or cancel exact membership of a protected group.
+    Review {
+        #[command(subcommand)]
+        command: review::MembershipCommand,
+    },
 }
 
 #[derive(Subcommand)]
@@ -136,7 +141,9 @@ pub(crate) enum ClientCommand {
         #[arg(long)]
         secret_file: Option<PathBuf>,
     },
-    /// Change only the supplied application fields.
+    /// Change only the supplied application fields. The server refuses a changed
+    /// enabled state, allowed groups, MFA requirement or callback and logout
+    /// endpoint here; use the matching review command instead.
     Update {
         client_id: String,
         #[arg(long)]
@@ -164,8 +171,30 @@ pub(crate) enum ClientCommand {
         #[arg(long)]
         secret_file: PathBuf,
     },
-    /// Disable one application and let the server revoke dependent grants.
+    /// Disable one application and let the server revoke dependent grants. The
+    /// server requires a reviewed change for an enabled-state change; use
+    /// `client status-review`.
     Disable { client_id: String },
+    /// Review exact allowed_groups and require_mfa changes on an existing client.
+    Review {
+        #[command(subcommand)]
+        command: review::PolicyCommand,
+    },
+    /// Review exact OAuth callbacks, browser origins and logout endpoints.
+    EndpointReview {
+        #[command(subcommand)]
+        command: review::EndpointCommand,
+    },
+    /// Review exact application enable and disable, with its revocation effects.
+    StatusReview {
+        #[command(subcommand)]
+        command: review::StatusCommand,
+    },
+    /// Review a new application when instance policy requires it.
+    CreationReview {
+        #[command(subcommand)]
+        command: review::CreationCommand,
+    },
 }
 
 #[derive(Subcommand)]
@@ -357,6 +386,7 @@ pub(crate) async fn group(
             let path = member_path(&group, &username)?;
             mutate(remote, Method::DELETE, &path, None::<&()>, options).await
         }
+        GroupCommand::Review { command } => review::membership(remote, command, options).await,
     }
 }
 
@@ -473,6 +503,14 @@ pub(crate) async fn client(
             let mut destination = SecretFile::reserve(secret_file)?;
             let result = mutate(remote, Method::POST, &path, None::<&()>, options).await?;
             protect_secret(result, Some(&mut destination), true)
+        }
+        ClientCommand::Review { command } => review::policy(remote, command, options).await,
+        ClientCommand::EndpointReview { command } => {
+            review::endpoint(remote, command, options).await
+        }
+        ClientCommand::StatusReview { command } => review::status(remote, command, options).await,
+        ClientCommand::CreationReview { command } => {
+            review::creation(remote, command, options).await
         }
         ClientCommand::Disable { client_id } => {
             let path = format!("/api/clients/{}", segment(&client_id)?);
@@ -624,7 +662,7 @@ async fn get(remote: &Remote, kind: &str, name: &str, identity_field: &str) -> R
     Ok(result)
 }
 
-async fn mutate<T: Serialize + ?Sized>(
+pub(crate) async fn mutate<T: Serialize + ?Sized>(
     remote: &Remote,
     method: Method,
     path: &str,
@@ -653,7 +691,7 @@ fn member_path(group: &str, username: &str) -> Result<String> {
 
 // Path arguments use the server's name alphabet, which contains no path or
 // query delimiters. The server still performs its own resource validation.
-fn segment(value: &str) -> Result<&str> {
+pub(crate) fn segment(value: &str) -> Result<&str> {
     if value.is_empty()
         || value == "."
         || value == ".."
@@ -686,14 +724,14 @@ fn read_settings(path: &Path) -> Result<Value> {
     Ok(settings)
 }
 
-struct SecretFile {
+pub(crate) struct SecretFile {
     path: PathBuf,
     file: Option<File>,
     complete: bool,
 }
 
 impl SecretFile {
-    fn reserve(path: PathBuf) -> Result<Self> {
+    pub(crate) fn reserve(path: PathBuf) -> Result<Self> {
         if path.file_name().is_none() {
             bail!("Secret file must name a new file");
         }
@@ -714,7 +752,11 @@ impl SecretFile {
         })
     }
 
-    fn write(&mut self, value: &Value) -> Result<()> {
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub(crate) fn write(&mut self, value: &Value) -> Result<()> {
         let mut bytes = Zeroizing::new(serde_json::to_vec_pretty(value)?);
         bytes.push(b'\n');
         let file = self.file.as_mut().context("Client secret file is closed")?;
@@ -736,7 +778,7 @@ impl Drop for SecretFile {
     }
 }
 
-fn protect_secret(
+pub(crate) fn protect_secret(
     mut result: Value,
     destination: Option<&mut SecretFile>,
     expected: bool,

@@ -17,13 +17,19 @@ use redb::{
     TableDefinition, WriteTransaction,
 };
 use serde::{Serialize, de::DeserializeOwned};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+#[cfg(feature = "test-support")]
+use std::sync::atomic::AtomicBool;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
-    path::Path,
-    sync::Arc,
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Condvar, Mutex, MutexGuard, Weak,
+        atomic::{AtomicU64, Ordering::Relaxed},
+    },
+    time::{Duration, Instant},
 };
 use zeroize::Zeroizing;
 
@@ -50,10 +56,402 @@ pub(crate) trait RecordTransitions: Send + Sync {
 #[derive(Clone)]
 pub struct Store {
     db: Backend,
+    /// Path passed to redb open. Absent for PostgreSQL. Never copied into a response.
+    redb_path: Option<Arc<PathBuf>>,
+    /// Samples for the metrics routes. One per opened store: clones share it
+    /// because they share the database, and every distinct open starts cold.
+    allocation_cache: Arc<AllocationCache>,
     key: Option<Arc<Zeroizing<[u8; 32]>>>,
     telemetry: Arc<crate::telemetry::Telemetry>,
     transitions: Arc<dyn RecordTransitions>,
 }
+
+/// Catalog size of riAuth-owned tables, as one statement and one number.
+///
+/// The walk starts at the tables and partitioned tables in schema `riauth_store`
+/// and follows `pg_inherits` downward, so partitions and inheritance children
+/// are found wherever their schema is. `UNION` makes a relation reached twice one
+/// row. Only `relkind = 'r'` rows are sized, so every leaf partition counts exactly
+/// once. A partitioned parent (`relkind = 'p'`) owns no storage, sizes to zero in
+/// `pg_total_relation_size`, and does not include its children; it is walked
+/// through and never summed. `pg_total_relation_size` adds that table's indexes,
+/// TOAST table, TOAST index, free-space map and visibility map, so index and
+/// TOAST relkinds are never selected on their own. Tables outside this walk,
+/// other databases, WAL and backups are not read.
+///
+/// Cost: one catalog walk over `pg_class` and `pg_inherits`, plus one
+/// `stat` per fork and 1 GiB segment of every sized file on the PostgreSQL
+/// server host. Each size call takes ACCESS SHARE on that table, its indexes and
+/// its TOAST table and releases it before the next call. It waits, up to the
+/// session `lock_timeout`, only while another session holds ACCESS EXCLUSIVE on
+/// one of them (`VACUUM FULL`, `TRUNCATE`, most `ALTER TABLE`, `DROP`).
+pub const POSTGRES_STORAGE_ALLOCATION_SQL: &str = "\
+WITH RECURSIVE tables AS (
+  SELECT relation.oid, relation.relkind
+  FROM pg_class AS relation
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  WHERE namespace.nspname = 'riauth_store'
+    AND relation.relkind IN ('r', 'p')
+  UNION
+  SELECT child.oid, child.relkind
+  FROM tables
+  JOIN pg_inherits AS link ON link.inhparent = tables.oid
+  JOIN pg_class AS child ON child.oid = link.inhrelid
+)
+SELECT
+  EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'riauth_store') AS schema_exists,
+  EXISTS (
+    SELECT 1
+    FROM pg_class AS relation
+    JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'riauth_store'
+      AND relation.relname = 'records_v1'
+      AND relation.relkind IN ('r', 'p')
+  ) AS records_exist,
+  (
+    SELECT COALESCE(SUM(pg_total_relation_size(oid)) FILTER (WHERE relkind = 'r'), 0)::bigint
+    FROM tables
+  ) AS allocated_bytes";
+
+const REDB_ALLOCATION_SCOPE: &str = "redb_file_including_free_pages";
+const POSTGRES_ALLOCATION_SCOPE: &str = "postgresql_owned_relations_and_indexes";
+
+fn postgres_allocation_reason(error: &postgres::Error) -> &'static str {
+    let code = error.code().map(|code| code.code());
+    tracing::warn!(code, "storage allocation read failed");
+    match code {
+        Some("42501") => "permission",
+        Some("57014") | Some("55P03") => "timeout",
+        _ => "error",
+    }
+}
+
+fn allocation_document(
+    backend: &str,
+    scope: &str,
+    status: &str,
+    reason: Option<&str>,
+    bytes: Option<u64>,
+) -> Value {
+    json!({
+        "schema_version": "riauth.storage-allocation/v1",
+        "backend": backend,
+        "status": status,
+        "unavailable_reason": reason,
+        "scope": scope,
+        "allocated_bytes": bytes,
+        "includes_free_space": bytes.map(|_| true),
+        "includes_wal": false,
+        "includes_backups": false,
+        "configured_capacity_bytes": Value::Null,
+        "filesystem_capacity_bytes": Value::Null,
+        "capacity": "unknown",
+        "occupancy_ratio": Value::Null,
+        "affects_readiness": false,
+    })
+}
+
+/// redb: `metadata().len()` of the opened path, or an `unavailable` document.
+fn redb_allocation(path: Option<&Path>) -> Value {
+    let Some(path) = path else {
+        return allocation_document(
+            "redb",
+            REDB_ALLOCATION_SCOPE,
+            "unavailable",
+            Some("error"),
+            None,
+        );
+    };
+    // Follow a symlink: the opened database is the target file.
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => allocation_document(
+            "redb",
+            REDB_ALLOCATION_SCOPE,
+            "available",
+            None,
+            Some(metadata.len()),
+        ),
+        Ok(_) => {
+            tracing::warn!("storage allocation path is not a file");
+            allocation_document(
+                "redb",
+                REDB_ALLOCATION_SCOPE,
+                "unavailable",
+                Some("error"),
+                None,
+            )
+        }
+        Err(error) => {
+            let reason = match error.kind() {
+                std::io::ErrorKind::NotFound => "missing",
+                std::io::ErrorKind::PermissionDenied => "permission",
+                std::io::ErrorKind::TimedOut => "timeout",
+                _ => "error",
+            };
+            tracing::warn!(kind = ?error.kind(), "storage allocation read failed");
+            allocation_document(
+                "redb",
+                REDB_ALLOCATION_SCOPE,
+                "unavailable",
+                Some(reason),
+                None,
+            )
+        }
+    }
+}
+
+/// PostgreSQL: one pooled connection and `POSTGRES_STORAGE_ALLOCATION_SQL`.
+/// Blocks for the pool checkout (an idle or busy pool waits at most 5 seconds,
+/// but a new connection has no client-side bound beyond each TCP attempt) and,
+/// once the statement runs, for `lock_timeout` and `statement_timeout`.
+fn postgres_allocation(pool: &Arc<crate::postgres_store::Pool>) -> Value {
+    let mut connection = match pool.get() {
+        Ok(connection) => connection,
+        Err(error) => {
+            let reason = if error.code == "storage_busy" {
+                "timeout"
+            } else {
+                "error"
+            };
+            tracing::warn!(code = error.code, "storage allocation checkout failed");
+            return allocation_document(
+                "postgresql",
+                POSTGRES_ALLOCATION_SCOPE,
+                "unavailable",
+                Some(reason),
+                None,
+            );
+        }
+    };
+    let row = match connection.query_one(POSTGRES_STORAGE_ALLOCATION_SQL, &[]) {
+        Ok(row) => row,
+        Err(error) => {
+            return allocation_document(
+                "postgresql",
+                POSTGRES_ALLOCATION_SCOPE,
+                "unavailable",
+                Some(postgres_allocation_reason(&error)),
+                None,
+            );
+        }
+    };
+    let schema_exists: bool = row.get(0);
+    let records_exist: bool = row.get(1);
+    if !schema_exists || !records_exist {
+        return allocation_document(
+            "postgresql",
+            POSTGRES_ALLOCATION_SCOPE,
+            "unavailable",
+            Some("missing"),
+            None,
+        );
+    }
+    let allocated: i64 = row.get(2);
+    match u64::try_from(allocated) {
+        Ok(bytes) => allocation_document(
+            "postgresql",
+            POSTGRES_ALLOCATION_SCOPE,
+            "available",
+            None,
+            Some(bytes),
+        ),
+        Err(_) => {
+            tracing::warn!("storage allocation size was not a byte count");
+            allocation_document(
+                "postgresql",
+                POSTGRES_ALLOCATION_SCOPE,
+                "unavailable",
+                Some("error"),
+                None,
+            )
+        }
+    }
+}
+
+/// A sample younger than this is served as `fresh` and starts no read.
+const ALLOCATION_TTL: Duration = Duration::from_secs(30);
+/// A sample older than this is not served at all.
+const ALLOCATION_MAX_STALE: Duration = Duration::from_secs(300);
+
+#[derive(Default)]
+struct AllocationState {
+    /// When the last read finished and what it said, including a failure.
+    sample: Option<(Instant, Value)>,
+    /// When the one refresh thread started. At most one runs per store.
+    refreshing: Option<Instant>,
+}
+
+/// What the metrics routes serve instead of reading the store themselves. The
+/// reader threads and the mutex never touch the pool, the catalog or the
+/// filesystem on the caller's thread.
+struct AllocationCache {
+    state: Mutex<AllocationState>,
+    idle: Condvar,
+    ttl_millis: AtomicU64,
+    max_stale_millis: AtomicU64,
+    /// Refreshes started, successful or not.
+    refreshes: AtomicU64,
+    #[cfg(feature = "test-support")]
+    probe: AllocationProbe,
+}
+
+/// Test-only controls and counters of the refresh threads, off by default. The
+/// counters are kept by the threads themselves, so a test does not have to trust
+/// the slot's own bookkeeping.
+#[cfg(feature = "test-support")]
+#[derive(Default)]
+struct AllocationProbe {
+    delay_millis: AtomicU64,
+    panic: AtomicBool,
+    spawn_failure: AtomicBool,
+    entered: AtomicU64,
+    running: AtomicU64,
+    max_running: AtomicU64,
+}
+
+/// Counts one refresh thread in on entry and out on every exit, including a panic.
+#[cfg(feature = "test-support")]
+struct ThreadCount<'a>(&'a AllocationProbe);
+
+#[cfg(feature = "test-support")]
+impl<'a> ThreadCount<'a> {
+    fn enter(probe: &'a AllocationProbe) -> Self {
+        probe.entered.fetch_add(1, Relaxed);
+        let running = probe.running.fetch_add(1, Relaxed) + 1;
+        probe.max_running.fetch_max(running, Relaxed);
+        Self(probe)
+    }
+}
+
+#[cfg(feature = "test-support")]
+impl Drop for ThreadCount<'_> {
+    fn drop(&mut self) {
+        self.0.running.fetch_sub(1, Relaxed);
+    }
+}
+
+impl AllocationCache {
+    fn new() -> Self {
+        Self {
+            state: Mutex::default(),
+            idle: Condvar::new(),
+            ttl_millis: AtomicU64::new(ALLOCATION_TTL.as_millis() as u64),
+            max_stale_millis: AtomicU64::new(ALLOCATION_MAX_STALE.as_millis() as u64),
+            refreshes: AtomicU64::new(0),
+            #[cfg(feature = "test-support")]
+            probe: AllocationProbe::default(),
+        }
+    }
+    fn lock(&self) -> MutexGuard<'_, AllocationState> {
+        self.state.lock().unwrap_or_else(|error| error.into_inner())
+    }
+    fn ttl(&self) -> Duration {
+        Duration::from_millis(self.ttl_millis.load(Relaxed))
+    }
+    fn max_stale(&self) -> Duration {
+        Duration::from_millis(self.max_stale_millis.load(Relaxed))
+    }
+    /// Stores the result and frees the refresh slot in one step, so no caller
+    /// sees a free slot with the old sample.
+    fn finish(&self, document: Value) {
+        let mut state = self.lock();
+        state.sample = Some((Instant::now(), document));
+        state.refreshing = None;
+        drop(state);
+        self.idle.notify_all();
+    }
+}
+
+/// Frees the refresh slot however the refresh ends. A refresh that panics or
+/// returns early stores an `error` sample, so a persistent failure is retried
+/// once per TTL and not on every scrape.
+struct RefreshSlot<'a> {
+    cache: &'a AllocationCache,
+    backend: &'static str,
+    scope: &'static str,
+    finished: bool,
+}
+
+impl RefreshSlot<'_> {
+    fn finish(mut self, document: Value) {
+        self.finished = true;
+        self.cache.finish(document);
+    }
+}
+
+impl Drop for RefreshSlot<'_> {
+    fn drop(&mut self) {
+        if !self.finished {
+            self.cache.finish(allocation_document(
+                self.backend,
+                self.scope,
+                "unavailable",
+                Some("error"),
+                None,
+            ));
+        }
+    }
+}
+
+/// What a refresh thread reads. PostgreSQL is held weakly: a store that is
+/// dropped while a refresh waits is not kept open by it.
+enum AllocationSource {
+    Redb(Option<Arc<PathBuf>>),
+    Postgres(Weak<crate::postgres_store::Pool>),
+}
+
+fn run_allocation_refresh(
+    cache: Weak<AllocationCache>,
+    source: AllocationSource,
+    backend: &'static str,
+    scope: &'static str,
+) {
+    // The cache holds no connection or file, so it may outlive its store for
+    // the length of this read.
+    let Some(cache) = cache.upgrade() else {
+        return;
+    };
+    #[cfg(feature = "test-support")]
+    let _counted = ThreadCount::enter(&cache.probe);
+    let slot = RefreshSlot {
+        cache: &cache,
+        backend,
+        scope,
+        finished: false,
+    };
+    #[cfg(feature = "test-support")]
+    {
+        let delay = cache.probe.delay_millis.load(Relaxed);
+        if delay > 0 {
+            std::thread::sleep(Duration::from_millis(delay));
+        }
+        if cache.probe.panic.load(Relaxed) {
+            panic!("allocation refresh panic requested by a test");
+        }
+    }
+    let document = match source {
+        AllocationSource::Redb(path) => {
+            crate::telemetry::in_activity(crate::telemetry::Activity::Maintenance, || {
+                redb_allocation(path.as_deref().map(PathBuf::as_path))
+            })
+        }
+        AllocationSource::Postgres(pool) => {
+            // The store is gone: the slot stores an `error` sample on drop.
+            let Some(pool) = pool.upgrade() else {
+                return;
+            };
+            crate::telemetry::in_activity(crate::telemetry::Activity::Maintenance, || {
+                postgres_allocation(&pool)
+            })
+        }
+    };
+    slot.finish(document);
+}
+
+fn seconds(duration: Duration) -> Value {
+    json!(duration.as_millis() as f64 / 1000.0)
+}
+
 #[derive(Clone)]
 enum Backend {
     Redb(Arc<Database>),
@@ -109,6 +507,218 @@ impl Store {
             Backend::Postgres(_) => "postgresql",
         }
     }
+
+    /// Physical bytes occupied by the store this process opened.
+    ///
+    /// redb is the apparent length (`metadata().len()`, not allocated disk
+    /// blocks) of the path that was passed to open, which includes free pages.
+    /// redb 4.3 `Database` does not expose that length, and this stat does not open
+    /// a table or take the writer. PostgreSQL runs `POSTGRES_STORAGE_ALLOCATION_SQL`,
+    /// which is shared by every process on that database. Neither reading walks
+    /// record keys or values. A failure becomes `status: unavailable` with a fixed
+    /// reason. The body never includes a path, connection string, or driver message.
+    ///
+    /// This is synchronous and uncached: every call is one `stat` (redb) or one
+    /// pooled connection and one catalog statement (PostgreSQL). Waiting for a
+    /// free pooled connection is bounded at 5 seconds and the statement by the
+    /// server's `statement_timeout` and `lock_timeout`, but opening a new
+    /// connection is bounded only per TCP attempt, so a call that has to open one
+    /// can block indefinitely. Call it from a blocking thread, never from a hot
+    /// path. It neither reads nor writes the cache `cached_allocation` serves.
+    pub fn allocation(&self) -> Value {
+        match &self.db {
+            Backend::Redb(_) => redb_allocation(self.redb_path.as_deref().map(PathBuf::as_path)),
+            Backend::Postgres(pool) => postgres_allocation(pool),
+        }
+    }
+
+    fn allocation_identity(&self) -> (&'static str, &'static str) {
+        match self.db {
+            Backend::Redb(_) => ("redb", REDB_ALLOCATION_SCOPE),
+            Backend::Postgres(_) => ("postgresql", POSTGRES_ALLOCATION_SCOPE),
+        }
+    }
+
+    /// The allocation document for the metrics routes: a sample that a
+    /// background thread took, never a read on the caller's thread. This only
+    /// takes a mutex and may start the refresh thread, so it cannot wait for the
+    /// pool, the catalog, a lock, or the filesystem.
+    ///
+    /// - A sample younger than 30 seconds is served as `fresh`.
+    /// - A sample up to 300 seconds old is served as `stale`, and a refresh
+    ///   starts when none is in flight.
+    /// - With no sample, or an older one, the document is `unavailable` with
+    ///   reason `refreshing` and a refresh starts when none is in flight.
+    ///
+    /// At most one refresh thread exists per store. A failed read is stored as
+    /// the sample, so a persistent failure is read again at most once per
+    /// 30 seconds while scraped. A refresh that hangs keeps the one slot until it
+    /// ends, or until the process does, and starts no second thread; scrapes keep
+    /// returning and `refresh_running_seconds` keeps growing. The document adds
+    /// `sample_age_seconds`, `freshness`, `refresh_in_progress`,
+    /// `refresh_running_seconds`, `cache_ttl_seconds` and `max_stale_seconds` to
+    /// the schema of `allocation`.
+    /// The authorization decision belongs to the caller and must come first, so
+    /// that an unauthorized caller never starts a read.
+    pub fn cached_allocation(&self) -> Value {
+        let cache = &self.allocation_cache;
+        let (ttl, max_stale) = (cache.ttl(), cache.max_stale());
+        let (backend, scope) = self.allocation_identity();
+        let now = Instant::now();
+        let mut state = cache.lock();
+        let age = state
+            .sample
+            .as_ref()
+            .map(|(taken, _)| now.saturating_duration_since(*taken));
+        let (freshness, served) = match age {
+            Some(age) if age < ttl => ("fresh", state.sample.as_ref()),
+            Some(age) if age <= max_stale => ("stale", state.sample.as_ref()),
+            _ => ("none", None),
+        };
+        let mut document = served.map(|(_, document)| document.clone());
+        let started = freshness != "fresh" && state.refreshing.is_none();
+        if started {
+            state.refreshing = Some(now);
+            cache.refreshes.fetch_add(1, Relaxed);
+        }
+        let mut running = state
+            .refreshing
+            .map(|began| now.saturating_duration_since(began));
+        drop(state);
+        let mut age = if freshness == "none" { None } else { age };
+        let mut freshness = freshness;
+        if started && !self.spawn_allocation_refresh(backend, scope) {
+            // No thread: the slot is free again and holds an `error` sample.
+            running = None;
+            document = Some(allocation_document(
+                backend,
+                scope,
+                "unavailable",
+                Some("error"),
+                None,
+            ));
+            freshness = "fresh";
+            age = Some(Duration::ZERO);
+        }
+        let mut document = document.unwrap_or_else(|| {
+            allocation_document(backend, scope, "unavailable", Some("refreshing"), None)
+        });
+        if let Some(object) = document.as_object_mut() {
+            object.insert(
+                "sample_age_seconds".into(),
+                age.map_or(Value::Null, seconds),
+            );
+            object.insert("freshness".into(), json!(freshness));
+            object.insert("refresh_in_progress".into(), json!(running.is_some()));
+            object.insert(
+                "refresh_running_seconds".into(),
+                running.map_or(Value::Null, seconds),
+            );
+            object.insert("cache_ttl_seconds".into(), seconds(ttl));
+            object.insert("max_stale_seconds".into(), seconds(max_stale));
+        }
+        document
+    }
+
+    /// Starts the refresh thread for a slot `cached_allocation` just took.
+    /// False when the thread could not start; the slot is then released.
+    fn spawn_allocation_refresh(&self, backend: &'static str, scope: &'static str) -> bool {
+        let source = match &self.db {
+            Backend::Redb(_) => AllocationSource::Redb(self.redb_path.clone()),
+            Backend::Postgres(pool) => AllocationSource::Postgres(Arc::downgrade(pool)),
+        };
+        let cache = Arc::downgrade(&self.allocation_cache);
+        #[cfg(feature = "test-support")]
+        let refused = self.allocation_cache.probe.spawn_failure.load(Relaxed);
+        #[cfg(not(feature = "test-support"))]
+        let refused = false;
+        let spawned = !refused
+            && std::thread::Builder::new()
+                .name("riauth-storage-allocation".into())
+                .spawn(move || run_allocation_refresh(cache, source, backend, scope))
+                .is_ok();
+        if spawned {
+            return true;
+        }
+        tracing::warn!("storage allocation refresh thread did not start");
+        self.allocation_cache.finish(allocation_document(
+            backend,
+            scope,
+            "unavailable",
+            Some("error"),
+            None,
+        ));
+        false
+    }
+
+    /// Replaces the 30 and 300 second limits of this store's cache.
+    #[cfg(feature = "test-support")]
+    pub fn set_allocation_cache_limits_for_test(&self, ttl: Duration, max_stale: Duration) {
+        let cache = &self.allocation_cache;
+        cache.ttl_millis.store(ttl.as_millis() as u64, Relaxed);
+        cache
+            .max_stale_millis
+            .store(max_stale.as_millis() as u64, Relaxed);
+    }
+
+    /// Makes each refresh thread wait this long before it reads, to hold the
+    /// refresh slot open without a database lock.
+    #[cfg(feature = "test-support")]
+    pub fn set_allocation_refresh_delay_for_test(&self, delay: Duration) {
+        self.allocation_cache
+            .probe
+            .delay_millis
+            .store(delay.as_millis() as u64, Relaxed);
+    }
+
+    /// Makes each refresh thread panic after it starts and before it reads.
+    #[cfg(feature = "test-support")]
+    pub fn set_allocation_refresh_panic_for_test(&self, panic: bool) {
+        self.allocation_cache.probe.panic.store(panic, Relaxed);
+    }
+
+    /// Makes `cached_allocation` act as if the operating system refused the
+    /// refresh thread, without starting one.
+    #[cfg(feature = "test-support")]
+    pub fn set_allocation_spawn_failure_for_test(&self, fail: bool) {
+        self.allocation_cache
+            .probe
+            .spawn_failure
+            .store(fail, Relaxed);
+    }
+
+    /// `(entered, max_concurrent)`: refresh threads that have started running,
+    /// counted by the threads, and the most that ever ran at once.
+    #[cfg(feature = "test-support")]
+    pub fn allocation_refresh_threads_for_test(&self) -> (u64, u64) {
+        let probe = &self.allocation_cache.probe;
+        (probe.entered.load(Relaxed), probe.max_running.load(Relaxed))
+    }
+
+    /// True when no refresh was in flight, or the last one ended within `timeout`.
+    #[cfg(feature = "test-support")]
+    pub fn wait_allocation_refresh_for_test(&self, timeout: Duration) -> bool {
+        let cache = &self.allocation_cache;
+        let (state, _) = cache
+            .idle
+            .wait_timeout_while(cache.lock(), timeout, |state| state.refreshing.is_some())
+            .unwrap_or_else(|error| error.into_inner());
+        state.refreshing.is_none()
+    }
+
+    /// Refreshes started by this store's cache since it was opened.
+    #[cfg(feature = "test-support")]
+    pub fn allocation_refreshes_for_test(&self) -> u64 {
+        self.allocation_cache.refreshes.load(Relaxed)
+    }
+
+    #[cfg(feature = "test-support")]
+    pub fn discard_idle_postgres_connections(&self) {
+        if let Backend::Postgres(pool) = &self.db {
+            pool.discard_idle_for_test();
+        }
+    }
+
     pub fn ready(&self) -> Result<()> {
         if let Backend::Postgres(pool) = &self.db {
             let mut connection = pool.get()?;
@@ -208,6 +818,8 @@ impl Store {
         drop(connection);
         Ok(Self {
             db: Backend::Postgres(pool),
+            redb_path: None,
+            allocation_cache: Arc::new(AllocationCache::new()),
             key: key.map(Arc::new),
             telemetry,
             transitions,
@@ -258,6 +870,8 @@ impl Store {
         }
         Ok(Self {
             db: Backend::Redb(Arc::new(db)),
+            redb_path: Some(Arc::new(path.to_path_buf())),
+            allocation_cache: Arc::new(AllocationCache::new()),
             key: key.map(Arc::new),
             telemetry: Arc::default(),
             transitions,

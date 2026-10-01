@@ -177,6 +177,14 @@ impl Core {
         expected: &Plan,
         reviewed_plan: Option<&str>,
     ) -> Result<Principal> {
+        // The caller's live authority over everything reconciliation can touch
+        // is decided before any source, authority-digest or plan-staleness
+        // conflict is reported. A permission reduction must read as a denial,
+        // never as a conflict that discloses plan state or invites a retry
+        // against the feed. A bound-authority change that keeps every required
+        // scope still reports the conflict below.
+        let caller = self.management(tx, token, "directory.sync", &settings.resource())?;
+        authorize_reconcile(tx, &caller, settings, &expected.entries)?;
         let actor = self.cloud_snapshot_actor(
             tx,
             token,
@@ -206,7 +214,6 @@ impl Core {
         expected
             .review
             .confirm(&expected.id, &expected.removal_impact, reviewed_plan)?;
-        authorize_reconcile(tx, &actor, settings, &expected.entries)?;
         Ok(actor)
     }
 

@@ -6,10 +6,10 @@
 use crate::{
     agent::Principal,
     config::CloudReconciliationQuota,
-    connector_guard::{Pagination, ReconciliationMode, ReviewBinding, reconcile_plan},
-    core::{Core, validate_display, validate_email, validate_name},
+    connector_guard::{Pagination, ReconciliationMode, ReviewBinding},
     crypto::{self, digest, now},
     error::{Error, Result},
+    validation::{validate_display, validate_email, validate_name},
 };
 use axum::http::StatusCode;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -56,7 +56,7 @@ impl Provider {
             _ => Err(Error::bad("Unknown cloud directory provider")),
         }
     }
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Workspace => "workspace",
             Self::Entra => "entra",
@@ -351,6 +351,90 @@ pub(crate) struct Settings {
     quota: CloudReconciliationQuota,
 }
 impl Settings {
+    pub(crate) fn quota(&self) -> CloudReconciliationQuota {
+        self.quota
+    }
+
+    pub(crate) fn workspace(
+        id: &str,
+        directory: &WorkspaceDirectory,
+        mode: ReconciliationMode,
+        quota: CloudReconciliationQuota,
+    ) -> Result<Self> {
+        directory.validate()?;
+        Ok(Self {
+            kind: Provider::Workspace.as_str(),
+            id: id.into(),
+            tenant: directory.customer_id.clone(),
+            domain: directory.domain.clone(),
+            token_url: if directory.direct_auth.is_some() && directory.token_url.is_empty() {
+                GOOGLE_TOKEN_URL.into()
+            } else {
+                directory.token_url.clone()
+            },
+            client_id: directory.client_id.clone(),
+            client_secret_file: directory.client_secret_file.clone(),
+            entra_certificate: None,
+            direct_auth: directory.direct_auth.clone(),
+            base_url: directory.directory_url.clone(),
+            scope: directory.scope.clone(),
+            groups: directory.groups.clone(),
+            attributes: directory.attributes.clone(),
+            username_prefix: directory.username_prefix.clone(),
+            fingerprint: mode.fingerprint(&quota_fingerprint(
+                fingerprint_of(Provider::Workspace.as_str(), directory)?,
+                quota,
+            )?)?,
+            identity_fingerprint: digest(&format!(
+                "workspace\0{}\0{}\0{}",
+                directory.customer_id,
+                directory.directory_url,
+                directory.attributes.external_id.to_ascii_lowercase()
+            )),
+            quota,
+        })
+    }
+
+    pub(crate) fn entra(
+        id: &str,
+        directory: &EntraDirectory,
+        mode: ReconciliationMode,
+        quota: CloudReconciliationQuota,
+    ) -> Result<Self> {
+        directory.validate()?;
+        Ok(Self {
+            kind: Provider::Entra.as_str(),
+            id: id.into(),
+            tenant: directory.tenant_id.clone(),
+            domain: String::new(),
+            token_url: directory.token_url.clone(),
+            client_id: directory.client_id.clone(),
+            client_secret_file: directory.client_secret_file.clone(),
+            entra_certificate: directory
+                .certificate_file
+                .as_ref()
+                .zip(directory.private_key_file.as_ref())
+                .map(|(certificate, key)| (certificate.clone(), key.clone())),
+            direct_auth: None,
+            base_url: directory.graph_url.clone(),
+            scope: directory.scope.clone(),
+            groups: directory.groups.clone(),
+            attributes: directory.attributes.clone(),
+            username_prefix: directory.username_prefix.clone(),
+            fingerprint: mode.fingerprint(&quota_fingerprint(
+                fingerprint_of(Provider::Entra.as_str(), directory)?,
+                quota,
+            )?)?,
+            identity_fingerprint: digest(&format!(
+                "entra\0{}\0{}\0{}",
+                directory.tenant_id,
+                directory.graph_url,
+                directory.attributes.external_id.to_ascii_lowercase()
+            )),
+            quota,
+        })
+    }
+
     pub(crate) fn resource(&self) -> String {
         format!("{}/{}", self.kind, self.id)
     }
@@ -363,10 +447,10 @@ impl Settings {
     pub(crate) fn reconcile_identity_fingerprint(&self) -> &str {
         &self.identity_fingerprint
     }
-    fn run_key(&self) -> String {
+    pub(crate) fn run_key(&self) -> String {
         self.resource()
     }
-    fn snapshot_bucket(&self) -> &'static str {
+    pub(crate) fn snapshot_bucket(&self) -> &'static str {
         if self.kind == "workspace" {
             WORKSPACE_SNAPSHOTS
         } else {
@@ -1264,6 +1348,15 @@ pub(crate) struct CloudSnapshotDraft {
 }
 
 impl CloudSnapshotDraft {
+    pub(crate) fn advance(&mut self, settings: &Settings) -> Result<()> {
+        self.snapshot
+            .advance(settings, settings.quota.pages_per_call)
+    }
+
+    pub(crate) fn complete(&self, settings: &Settings) -> bool {
+        self.snapshot.complete(settings)
+    }
+
     pub(crate) fn new(
         settings: &Settings,
         actor: &Principal,
@@ -1468,328 +1561,47 @@ pub(crate) fn materialize_completed_draft(
     materialize(settings, draft.snapshot.clone().into_users(), linked)
 }
 
-impl Core {
-    /// One read-only upstream page for operational diagnostics. This does not
-    /// create a plan, consume the sync retry budget, or persist connector state.
-    pub(crate) fn cloud_connection_probe(&self, kind: &str, id: &str) -> Result<()> {
-        let settings = self.cloud_settings(kind, id)?;
-        let http = http_client(settings.direct_auth.is_some())?;
-        let token = access_token(&settings, &http)?;
-        let users = if kind == "workspace" {
-            endpoint(
-                &settings.base_url,
-                &["admin", "directory", "v1", "users"],
-                &[
-                    ("customer", settings.tenant.as_str()),
-                    ("domain", settings.domain.as_str()),
-                    ("maxResults", "1"),
-                ],
-            )?
-        } else {
-            endpoint(
-                &settings.base_url,
-                &["v1.0", "users"],
-                &[("$select", "id"), ("$top", "1"), ("$count", "true")],
-            )?
-        };
-        let body = get_json(&http, &token, &users, kind == "entra")?;
-        let valid = if kind == "workspace" {
-            body.get("users").is_some_and(Value::is_array)
-                || (body.get("users").is_none()
-                    && body.get("nextPageToken").is_none()
-                    && body
-                        .get("kind")
-                        .and_then(Value::as_str)
-                        .is_some_and(|value| {
-                            matches!(value, "admin#directory#users" | "directory#users")
-                        }))
-        } else {
-            body.get("value").is_some_and(Value::is_array)
-        };
-        if !valid || body.get("error").is_some() {
-            return Err(unavailable("Cloud directory returned an unreadable page"));
-        }
-        Ok(())
+/// One read-only upstream page for operational diagnostics. This does not
+/// create a plan, consume the sync retry budget, or persist connector state.
+pub(crate) fn connection_probe(settings: &Settings) -> Result<()> {
+    let kind = settings.kind;
+    let http = http_client(settings.direct_auth.is_some())?;
+    let token = access_token(settings, &http)?;
+    let users = if kind == "workspace" {
+        endpoint(
+            &settings.base_url,
+            &["admin", "directory", "v1", "users"],
+            &[
+                ("customer", settings.tenant.as_str()),
+                ("domain", settings.domain.as_str()),
+                ("maxResults", "1"),
+            ],
+        )?
+    } else {
+        endpoint(
+            &settings.base_url,
+            &["v1.0", "users"],
+            &[("$select", "id"), ("$top", "1"), ("$count", "true")],
+        )?
+    };
+    let body = get_json(&http, &token, &users, kind == "entra")?;
+    let valid = if kind == "workspace" {
+        body.get("users").is_some_and(Value::is_array)
+            || (body.get("users").is_none()
+                && body.get("nextPageToken").is_none()
+                && body
+                    .get("kind")
+                    .and_then(Value::as_str)
+                    .is_some_and(|value| {
+                        matches!(value, "admin#directory#users" | "directory#users")
+                    }))
+    } else {
+        body.get("value").is_some_and(Value::is_array)
+    };
+    if !valid || body.get("error").is_some() {
+        return Err(unavailable("Cloud directory returned an unreadable page"));
     }
-
-    pub(crate) fn cloud_mode(&self, provider: Provider, id: &str) -> ReconciliationMode {
-        let modes = match provider {
-            Provider::Workspace => &self.config.workspace_reconciliation_modes,
-            Provider::Entra => &self.config.entra_reconciliation_modes,
-        };
-        modes.get(id).copied().unwrap_or_default()
-    }
-
-    pub(crate) fn cloud_settings(&self, kind: &str, id: &str) -> Result<Settings> {
-        let provider = Provider::parse(kind)?;
-        validate_name(id)?;
-        let quota = self.config.reconciliation_quotas.cloud;
-        quota
-            .validate()
-            .map_err(|error| Error::bad(error.to_string()))?;
-        match provider {
-            Provider::Workspace => {
-                let directory = self
-                    .config
-                    .workspace_directories
-                    .get(id)
-                    .ok_or_else(|| Error::missing("Workspace directory not configured"))?;
-                directory.validate()?;
-                Ok(Settings {
-                    kind: provider.as_str(),
-                    id: id.into(),
-                    tenant: directory.customer_id.clone(),
-                    domain: directory.domain.clone(),
-                    token_url: if directory.direct_auth.is_some() && directory.token_url.is_empty()
-                    {
-                        GOOGLE_TOKEN_URL.into()
-                    } else {
-                        directory.token_url.clone()
-                    },
-                    client_id: directory.client_id.clone(),
-                    client_secret_file: directory.client_secret_file.clone(),
-                    entra_certificate: None,
-                    direct_auth: directory.direct_auth.clone(),
-                    base_url: directory.directory_url.clone(),
-                    scope: directory.scope.clone(),
-                    groups: directory.groups.clone(),
-                    attributes: directory.attributes.clone(),
-                    username_prefix: directory.username_prefix.clone(),
-                    fingerprint: self
-                        .cloud_mode(provider, id)
-                        .fingerprint(&quota_fingerprint(
-                            fingerprint_of(provider.as_str(), directory)?,
-                            quota,
-                        )?)?,
-                    identity_fingerprint: digest(&format!(
-                        "workspace\0{}\0{}\0{}",
-                        directory.customer_id,
-                        directory.directory_url,
-                        directory.attributes.external_id.to_ascii_lowercase()
-                    )),
-                    quota,
-                })
-            }
-            Provider::Entra => {
-                let directory = self
-                    .config
-                    .entra_directories
-                    .get(id)
-                    .ok_or_else(|| Error::missing("Entra directory not configured"))?;
-                directory.validate()?;
-                Ok(Settings {
-                    kind: provider.as_str(),
-                    id: id.into(),
-                    tenant: directory.tenant_id.clone(),
-                    domain: String::new(),
-                    token_url: directory.token_url.clone(),
-                    client_id: directory.client_id.clone(),
-                    client_secret_file: directory.client_secret_file.clone(),
-                    entra_certificate: directory
-                        .certificate_file
-                        .as_ref()
-                        .zip(directory.private_key_file.as_ref())
-                        .map(|(certificate, key)| (certificate.clone(), key.clone())),
-                    direct_auth: None,
-                    base_url: directory.graph_url.clone(),
-                    scope: directory.scope.clone(),
-                    groups: directory.groups.clone(),
-                    attributes: directory.attributes.clone(),
-                    username_prefix: directory.username_prefix.clone(),
-                    fingerprint: self
-                        .cloud_mode(provider, id)
-                        .fingerprint(&quota_fingerprint(
-                            fingerprint_of(provider.as_str(), directory)?,
-                            quota,
-                        )?)?,
-                    identity_fingerprint: digest(&format!(
-                        "entra\0{}\0{}\0{}",
-                        directory.tenant_id,
-                        directory.graph_url,
-                        directory.attributes.external_id.to_ascii_lowercase()
-                    )),
-                    quota,
-                })
-            }
-        }
-    }
-    pub fn cloud_plan_get(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
-        let provider = Provider::parse(kind)?;
-        self.cloud_plan_get_authorized(token, provider.as_str(), id)
-    }
-    /// Controller trigger for one cloud directory. An in-progress apply crawl
-    /// resumes its exact plan without starting a new planning crawl.
-    pub fn cloud_reconcile(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
-        let provider = Provider::parse(kind)?;
-        let mode = self.cloud_mode(provider, id);
-        let settings = self.cloud_settings(kind, id)?;
-        let key = digest(&settings.resource());
-        let pending = self.cloud_reconcile_pending(token, &settings, &key, mode)?;
-        let plan = match pending {
-            Some(plan) => plan,
-            None => self.cloud_plan_internal(token, kind, id, true)?,
-        };
-        if plan["decision"] == "snapshot_in_progress" {
-            return Ok(json!({"decision":"snapshot_in_progress","mode":mode,"snapshot":plan}));
-        }
-        let impact: RemovalImpact =
-            serde_json::from_value(plan["removal_impact"].clone()).map_err(Error::internal)?;
-        reconcile_plan(mode, &impact, plan, |plan_id| {
-            self.cloud_apply_confirmed(token, kind, plan_id, None)
-        })
-    }
-
-    pub fn cloud_plan(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
-        self.cloud_plan_internal(token, kind, id, false)
-    }
-
-    fn cloud_plan_internal(
-        &self,
-        token: &str,
-        kind: &str,
-        id: &str,
-        supersede: bool,
-    ) -> Result<Value> {
-        let settings = self.cloud_settings(kind, id)?;
-        let bucket = settings.snapshot_bucket();
-        let (actor, revision) = self.cloud_snapshot_actor_revision(token, &settings.resource())?;
-        let (entries, snapshot_prior) = {
-            let key = digest(&settings.resource());
-            let (prior, mut draft, restarted, authority_digest) =
-                self.cloud_snapshot_prepare(token, &settings, bucket, &key, &actor, revision)?;
-            self.cloud_budget_ensure(&settings.run_key())?;
-            if let Err(error) = draft
-                .snapshot
-                .advance(&settings, settings.quota.pages_per_call)
-            {
-                if error.status == StatusCode::SERVICE_UNAVAILABLE {
-                    self.cloud_budget_record_failure(&settings.run_key())?;
-                }
-                return Err(error);
-            }
-            self.cloud_budget_reset(&settings.run_key())?;
-            draft.sequence = draft.sequence.saturating_add(1);
-            draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
-            draft.bounded(&settings)?;
-            if !draft.snapshot.complete(&settings) {
-                return self.cloud_snapshot_stage(
-                    token,
-                    &settings,
-                    bucket,
-                    &key,
-                    &actor,
-                    revision,
-                    &authority_digest,
-                    prior,
-                    draft,
-                    restarted,
-                );
-            }
-            let entries = self.cloud_plan_materialize(
-                token,
-                &settings,
-                &actor,
-                revision,
-                &authority_digest,
-                &draft,
-            )?;
-            (entries, (key, prior, authority_digest))
-        };
-        let (changes, impact) = self.cloud_plan_preview(
-            token,
-            &settings,
-            &actor,
-            revision,
-            &snapshot_prior.2,
-            &entries,
-        )?;
-        self.cloud_plan_commit(
-            token,
-            &settings,
-            bucket,
-            &actor,
-            revision,
-            snapshot_prior,
-            entries,
-            changes,
-            impact,
-            supersede,
-            id,
-        )
-    }
-    pub fn cloud_apply(&self, token: &str, kind: &str, id: &str) -> Result<Value> {
-        self.cloud_apply_confirmed(token, kind, id, None)
-    }
-    pub fn cloud_apply_confirmed(
-        &self,
-        token: &str,
-        kind: &str,
-        id: &str,
-        reviewed_plan: Option<&str>,
-    ) -> Result<Value> {
-        let provider = Provider::parse(kind)?;
-        let plan: Plan = serde_json::from_value(self.cloud_plan_get(token, kind, id)?)
-            .map_err(Error::internal)?;
-        if plan.kind != provider.as_str() {
-            return Err(Error::missing("Cloud directory plan not found"));
-        }
-        let settings = self.cloud_settings(kind, &plan.directory)?;
-        let key = digest(&settings.resource());
-        let initially_applied = plan.applied;
-        let snapshot_prior = if initially_applied {
-            self.cloud_applied_plan_sync_authorized(token, &settings.resource(), &plan.actor)?;
-            None
-        } else {
-            let (prior, mut apply, restarted) =
-                self.cloud_apply_snapshot_prepare(token, &settings, &plan, reviewed_plan, &key)?;
-            self.cloud_budget_ensure(&settings.run_key())?;
-            if let Err(error) = apply
-                .draft
-                .snapshot
-                .advance(&settings, settings.quota.pages_per_call)
-            {
-                if error.status == StatusCode::SERVICE_UNAVAILABLE {
-                    self.cloud_budget_record_failure(&settings.run_key())?;
-                }
-                return Err(error);
-            }
-            self.cloud_budget_reset(&settings.run_key())?;
-            apply.draft.sequence = apply.draft.sequence.saturating_add(1);
-            apply.draft.expires_at = now().saturating_add(settings.quota.draft_ttl_seconds);
-            apply.bounded(&settings)?;
-            if !apply.draft.snapshot.complete(&settings) {
-                return self.cloud_apply_snapshot_stage(
-                    token,
-                    &settings,
-                    &plan,
-                    reviewed_plan,
-                    &key,
-                    prior,
-                    apply,
-                    restarted,
-                );
-            }
-            let entries =
-                self.cloud_apply_materialize(token, &settings, &plan, reviewed_plan, &apply)?;
-            if entries != plan.entries {
-                return Err(Error::conflict(
-                    "Cloud directory changed after planning; create a new plan",
-                ));
-            }
-            Some(prior)
-        };
-        let observed_review = plan.review.clone();
-        self.cloud_apply_commit(
-            token,
-            &settings,
-            id,
-            reviewed_plan,
-            &key,
-            snapshot_prior,
-            initially_applied,
-            observed_review,
-        )
-    }
+    Ok(())
 }
 
 pub(crate) use crate::assembly::cleanup_cloud_directory as cleanup;

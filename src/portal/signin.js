@@ -162,8 +162,8 @@
     const host = next.application?.host;
     $("signin-app-host").textContent = host ? `You'll return to ${host}` : ""; $("signin-app-host").hidden = !host;
     const account = next.account, pinned = next.pinned === true && !!account;
-    const configuredPasskey = next.kind === "authorize" && next.requirements?.configured_passkey === true && !!account;
-    const configuredTotp = next.kind === "authorize" && next.requirements?.configured_totp === true && !!account;
+    const configuredPasskey = ["authorize", "saml"].includes(next.kind) && next.requirements?.configured_passkey === true && !!account;
+    const configuredTotp = ["authorize", "saml"].includes(next.kind) && next.requirements?.configured_totp === true && !!account;
     const totpStage = configuredTotp ? next.requirements?.configured_stage : null;
     $("signin-account").hidden = !pinned;
     $("signin-account-text").textContent = pinned ? `Signed in as ${account.display_name} (@${account.username})` : "";
