@@ -1,9 +1,9 @@
 # Wave 27 A03 module boundary handoff
 
-Project: `891e7443-8dac-4c1b-897f-9e53cb59c7ee`  
-Task: `4467345d-7a4f-4bb9-bd5a-586c775b0b44`  
-Worktree: `42bb51c6-c198-4adb-bd92-0a5222853231`  
-Branch: `roadmap/local-module-boundaries-wave27`  
+Project: `891e7443-8dac-4c1b-897f-9e53cb59c7ee`
+Task: `4467345d-7a4f-4bb9-bd5a-586c775b0b44`
+Worktree: `42bb51c6-c198-4adb-bd92-0a5222853231`
+Branch: `roadmap/local-module-boundaries-wave27`
 Base: `4cc1c8bf82f48d9561f1f61c7fb13487b8d610b0`
 
 This is a bounded continuation of A03, not completion of the whole task.
