@@ -1058,7 +1058,7 @@ impl Core {
                 if !due || running_scopes.contains(&job.scope) {
                     continue;
                 }
-                let Some(target) = background.try_target(BackgroundJob::Reconciliation, &job.scope) else {
+                let Some(target) = background.try_target_in(tx, BackgroundJob::Reconciliation, &job.scope)? else {
                     continue;
                 };
                 if job.status == Status::Running && job.lease_until <= at && job.attempts >= MAX_ATTEMPTS {

@@ -38,6 +38,8 @@ pub const PENDING_ENROLLMENTS: &str = "users.totp_pending";
 /// in-flight protocol exchange or its reverse index; losing one costs a new
 /// sign-in, consent prompt or restarted flow.
 pub const INVALIDATED: &[&str] = &[
+    // Restored admission cannot establish ownership on the new timeline.
+    "connector_admissions",
     // Bearer, browser and protocol sessions.
     "sessions",
     "session_tokens",

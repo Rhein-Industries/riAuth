@@ -1413,10 +1413,11 @@ impl Core {
                     tx.put("provisioning_jobs", &id, &job)?;
                     return Ok(None);
                 }
-                let Some(target) = background.try_target(
+                let Some(target) = background.try_target_in(
+                    tx,
                     crate::background::Job::Provisioning,
                     &format!("scim/{}", job.plan.target),
-                ) else {
+                )? else {
                     return Ok(None);
                 };
                 if !self.provisioning_job_eligible(tx, &job)? {

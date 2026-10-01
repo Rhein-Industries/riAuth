@@ -103,11 +103,11 @@ impl App {
             .connector(async move {
                 tokio::task::spawn_blocking(move || {
                     crate::context::scope(context, || {
-                        let _target = target
+                        let target = target
                             .scope(&core.store)?
                             .map(|scope| {
                                 background
-                                    .try_target(crate::background::Job::ManualConnector, &scope)
+                                    .try_target(crate::background::Job::ManualConnector, &scope)?
                                     .ok_or_else(|| Error::new(
                                         StatusCode::SERVICE_UNAVAILABLE,
                                         "connector_overloaded",
@@ -115,7 +115,16 @@ impl App {
                                     ))
                             })
                             .transpose()?;
-                        f(&core)
+                        let result = f(&core);
+                        if let Some(target) = target
+                            && let Err(error) = target.release()
+                        {
+                            // The operation may already have committed. Keep
+                            // its result/receipt truthful; cleanup retries on
+                            // the next admission or expires with the lease.
+                            tracing::warn!(%error, "Connector admission settlement deferred");
+                        }
+                        result
                     })
                 })
                 .await
