@@ -117,7 +117,18 @@ fn populated_configuration_json_and_schemas_match_baseline() {
         ),
         (
             "provider_schema",
-            "6f68906ad83708fc8a817ea0d9b7d996e8863abb06dfed01e34d70a41454400c",
+            // The Platform edition additively exposes the optional, nullable
+            // `settings.policy.conditional` (cf999a6, W04). Against the original
+            // baseline 6f68906a... the only differences are the new
+            // `$defs.Policy.properties.conditional` property and the new
+            // `$defs.{ConditionalPolicy, ConditionalClaimMapping, Predicate,
+            // AuthenticationProof, AssuranceLevel}`; nothing else changed.
+            // Essentials does not accept or advertise it and keeps the original schema.
+            if cfg!(feature = "platform") {
+                "31f187d5ccf1b82a9075940ed755133de7b7e4f575a2075357ef0337f76b0be2"
+            } else {
+                "6f68906ad83708fc8a817ea0d9b7d996e8863abb06dfed01e34d70a41454400c"
+            },
         ),
     ];
     for ((name, bytes), (expected_name, expected_digest)) in cases.into_iter().zip(expected) {
