@@ -1,15 +1,15 @@
 {
   "schema_version": "riauth.storage-allocation-runs/v2",
   "provenance": {
-    "base_commit": "c6784f4cedebc9e657fe011f3abe986fee8671f0",
-    "tree": "branch commit c6784f4 (which contains the first port, 217a1d3) with the metrics-route sample cache uncommitted at run time; the sha256 of each file this slice changed is below. Re-run the command in docs/roadmap/o06-storage-allocation.md after any change to these files.",
+    "base_commit": "cf971f03afb1aacbadcb9f226812d432f1989b16",
+    "tree": "branch commit cf971f0 (current main 32770ab merged with this branch's wave 28 commits), committed tree; re-run on 2026-10-02 after src/api.rs and src/cli.rs changed. The sha256 of each hashed file is below. Re-run the command in docs/roadmap/o06-storage-allocation.md after any change to these files.",
     "file_sha256": {
       "src/store.rs": "dfb62f2e482e9e334e148a932c7900607f37297748f0c1f90a8ef65f77babc0f",
       "src/postgres_store.rs": "6a4f0cadb59385db481406ffe533aa027540710c2f7db2134d7b4bd9eb7ac8e9",
       "src/api/observability.rs": "12caa2a54222ab7b36a75b7fef3f6c19723291cd51732e2018abd7836f5ce06b",
       "src/operations.rs": "ca43ec8118a05254ba246e46c88b4ba41eddf8295627ada2cca84654823259f6",
-      "src/api.rs": "2e2425aa1fbdc99ce397842daadb13d0b791919edced6669b61a9b385d8d75ad",
-      "src/cli.rs": "d4744e1b60eb19bd8328fa6adc50b6a78a30530924534bb2de62bca50cd1b5c8",
+      "src/api.rs": "3ddb2ba755b624133bee9ea0f513f02c8059a2614c4419b037618cb71962f2cb",
+      "src/cli.rs": "9bb5e879c91fbab9f2b0250c1ebe458f9eeb848f6f0f72d604709541d46e28aa",
       "tests/storage_allocation.rs": "48b48f2548862efb29fcde0388b633a3b2544e868b449849567ba48d4e98590b",
       "tests/common/backend.rs": "5007c0bbf0af6a5784ba305975a3aff83e0df9cc5a3f521edcab4402e332372d"
     },
@@ -22,7 +22,7 @@
   "passed": 15,
   "failed": 0,
   "ignored": 0,
-  "finished_in": "28.52s",
+  "finished_in": "29.20s",
   "tests": [
     "redb_storage_allocation_reports_physical_bytes",
     "redb_encrypted_storage_allocation_reports_physical_bytes",
