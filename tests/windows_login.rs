@@ -951,9 +951,14 @@ fn agent_enrollment_fences_temporary_access_and_preserves_device_replay() {
         .unwrap(),
         "signin_ticket",
     );
-    assert_eq!(
-        context::scope(Some(receipt.clone()), rotate).unwrap(),
-        rotated
+    // An exact retry never re-discloses the rotated secret or offline ticket.
+    let retried = context::scope(Some(receipt.clone()), rotate).unwrap_err();
+    assert_eq!(retried.status.as_u16(), 409);
+    assert_eq!(retried.code, "credential_already_issued");
+    assert!(
+        fx.core
+            .windows_offline_verify(&new_secret, &text(&rotated, "offline_ticket"))
+            .is_ok()
     );
     let mut changed = receipt.clone();
     changed.fingerprint = "laptop-alice-changed-body".into();
@@ -1010,7 +1015,9 @@ fn agent_enrollment_fences_temporary_access_and_preserves_device_replay() {
         )
         .is_err()
     );
-    assert_eq!(context::scope(Some(receipt), rotate).unwrap(), rotated);
+    // The committed receipt outlives the revocation but never returns the secret.
+    let replayed = context::scope(Some(receipt), rotate).unwrap_err();
+    assert_eq!(replayed.code, "credential_already_issued");
 
     let exposed_request = fx
         .core
@@ -1156,8 +1163,10 @@ async fn windows_device_http_writes_require_bound_retries_without_rotating_twice
     let offline = text(&first, "offline_ticket");
     assert!(fx.core.windows_offline_verify(&secret, &offline).is_ok());
     let (status, replay) = enroll().await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(first == replay);
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(replay["error"], "credential_already_issued");
+    assert!(!replay.to_string().contains(&secret));
+    assert!(!replay.to_string().contains(&offline));
     assert_eq!(revision(), at + 1);
     assert_eq!(
         fx.core

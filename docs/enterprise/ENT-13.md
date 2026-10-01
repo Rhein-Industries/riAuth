@@ -44,7 +44,7 @@ HTTP, relative to the issuer path:
 | POST | `/api/windows-devices/tickets/redeem` | None. The sign-in ticket in the body |
 | POST | `/api/windows-devices/offline/verify` | None. Device secret plus offline ticket |
 
-Enrollment and revocation require `Idempotency-Key` and `If-Match: "<revision>"` for every bearer caller, including administrators and agents. Obtain the current revision with `riauth revision`; use a distinct key for each new operation and reuse the same key, revision, and body for an exact retry. An exact enrollment retry returns the committed secret without rotating it again. Login, redeem, and offline verify are protocol operations, so a retried login mints another ticket; unused tickets expire after 300 seconds.
+Enrollment and revocation require `Idempotency-Key` and `If-Match: "<revision>"` for every bearer caller, including administrators and agents. Obtain the current revision with `riauth revision`; use a distinct key for each new operation and reuse the same key, revision, and body for an exact retry. An exact enrollment retry returns 409 `credential_already_issued` without the secret or offline ticket and does not rotate again; if the first response was lost, enroll again with a new key and the current revision. Login, redeem, and offline verify are protocol operations, so a retried login mints another ticket; unused tickets expire after 300 seconds.
 
 JSON Schemas: `riauth schema windows-device` and `riauth schema windows-login`.
 

@@ -147,15 +147,10 @@ impl Core {
     ) -> Result<Value> {
         let request = crate::management::WindowsDeviceEnrollment::new(input)?;
         Self::require_windows_device_retry_binding()?;
-        self.mutation(token, |tx| {
-            let written = crate::management::enroll_windows_device(self, tx, token, &request)?;
-            Ok(json!({
-                "device": view(&written.device),
-                "device_secret": written.secret,
-                "offline_ticket": written.offline.as_ref().map(|(ticket, _)| ticket),
-                "offline_expires_at": written.offline.as_ref().map(|(_, exp)| exp),
-            }))
-        })
+        // The first response alone carries the secret and offline ticket; the
+        // generic mutation receipt would persist and replay both.
+        self.store
+            .write(|tx| crate::management::enroll_windows_device_issuing(self, tx, token, &request))
     }
 
     pub fn windows_device_revoke(&self, token: &str, id: &str) -> Result<Value> {

@@ -1786,7 +1786,7 @@ fn cli_client_writes_require_retry_binding_and_replay_once() {
 }
 
 #[test]
-fn cli_windows_device_writes_require_retry_binding_and_replay_once() {
+fn cli_windows_device_writes_require_retry_binding_and_never_replay_the_secret() {
     let dir = TempDir::new().unwrap();
     let (config, session, _server) = serve_with_admin(dir.path());
     let cli = |args: &[&str]| invoke(dir.path(), &config, &session, args, None);
@@ -1848,7 +1848,15 @@ fn cli_windows_device_writes_require_retry_binding_and_replay_once() {
     let first = success(cli(&enroll));
     assert_eq!(first["device"]["id"], "laptop");
     assert!(first["device_secret"].as_str().is_some());
-    assert!(success(cli(&enroll)) == first);
+    // An exact retry never re-discloses the secret or offline ticket.
+    let (_, replay) = failure(cli(&enroll));
+    assert_eq!(replay["code"], "credential_already_issued");
+    assert_eq!(replay["http_status"], 409);
+    assert!(
+        !replay
+            .to_string()
+            .contains(first["device_secret"].as_str().unwrap())
+    );
     assert_eq!(
         revision().parse::<u64>().unwrap(),
         at.parse::<u64>().unwrap() + 1
