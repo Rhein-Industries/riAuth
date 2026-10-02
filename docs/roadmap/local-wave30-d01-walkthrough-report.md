@@ -496,3 +496,75 @@ run, installed or described as official released artifacts. The matching pair
 now exists; standalone-client provenance and the disposable port-9000 checkpoint
 remain separately scheduled by root. D01 stays in_progress against its original
 independent-user/operator gate; no task status was changed.
+
+## Released base-client build — 2026-10-02
+
+Root released exactly one base-client build in ledger
+`wave30_D01_base_client_build` (`approved: true`, `runtime_released: true`
+for this build only). The entry specifies reuse of the warm private target,
+the 9 GiB stop and 8 GiB floor. Operator/service/binary execution remains held.
+The one build **exited 0** in **27.764 seconds**; exit, binary hash and result
+were sent through the explicit project orchestrator and the Cargo slot released
+immediately after receiving them. This appendix was added after that release.
+
+Client source/manifests were verified against reviewed
+`c01c39ab4e092423d5522bedc50fff87656d8c0a`, built from own HEAD
+`d87eb1522d08a6836992b6b003f63ef36058f8c1`. Entire client tree:
+`27344f623abd1829a9eb408af6b3e2d5ed16ab31`; client source tree:
+`f909fcccab7f9e39234df7df9a25b4816efe3569`. Exact SHA-256 inputs:
+
+| Input | SHA-256 |
+| --- | --- |
+| crates/riauthctl/Cargo.toml | `af385d4d989c53987396edfdfa684cd3902a603d1cf65dd31ac72da7f08de9ea` |
+| crates/riauthctl/Cargo.lock | `2998555ddb2d00e8130a970fcacfed19dfee7a0b2e3305011ebd40746f67b4db` |
+| rust-toolchain.toml | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+
+Actual toolchain remained Rust/Cargo 1.98.1, compiler full commit
+`48a229ceaefd4985c50990b14116b6d856af0985`, Cargo commit `797e8a9bc`, native
+`aarch64-apple-darwin`, LLVM 22.1.8. No Cargo config files were found in working
+directory ancestors or active Cargo home; checked Rust/compiler/wrapper/
+toolchain/target overrides were unset. Actual Cargo argv used the absolute
+own-worktree client manifest path:
+
+```sh
+cargo build --locked --manifest-path "$PWD/crates/riauthctl/Cargo.toml" --no-default-features --target aarch64-apple-darwin --bin riauthctl
+```
+
+Environment: the same absolute `target/d01-essentials-c01c39a` private target,
+`CARGO_BUILD_JOBS=1`, `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_DEV_DEBUG=0`,
+`CARGO_PROFILE_TEST_DEBUG=0`. Client fingerprint features are exactly `[]`,
+with empty Rust flags: base client, no terminal-usb. No new target, server/test/
+other build or cache deletion was performed. The log has no warnings or server
+package compilation line; the independent client workspace was used.
+
+Started `2026-10-02T11:53:05.903140+00:00`; ended
+`2026-10-02T11:53:33.667980+00:00`. Initial free space was **12280758272 bytes
+(11.437 GiB)**. The two-second monitor recorded 14 observations, maximum actual
+sample gap 2.005 seconds. Minimum/final free space was **12090331136 bytes
+(11.260 GiB)**; no stop was triggered and the 8 GiB floor was preserved.
+The shared private target occupied `1703824 KiB` by `du -sk` afterward.
+
+Produced `target/d01-essentials-c01c39a/aarch64-apple-darwin/debug/riauthctl`:
+**20406784 bytes**, SHA-256
+`bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf`.
+Compiler fingerprint SHA-256:
+`7657f171d9e3a951215d9e5995f6667eed5e02cce9fec52b467bfc1de072442f`.
+The prior Essentials server and maintenance SHA-256 values were freshly
+verified unchanged both before and after this build.
+
+Private evidence retained in the same target:
+
+| File | SHA-256 |
+| --- | --- |
+| client-build-provenance.json | `19a19fe12e23ec465b2f5434b3ce50c2e525e0326eaa71c20fde52e4927319f0` |
+| client-build-result.json | `4337fa7f7341b6977b880e8b73720873b7b0ba5b9fdfb90e997e51630c1b4919` |
+| client-build.stdout.log | `52997132a8df9e6ad675d87357f94c5b17984114f91606d292b7c8937ef0b872` |
+| client-disk-observations.jsonl | `4d1fb489f60648685711e097f9ab182f27131a457f2a7bd328e244811a13bc8b` |
+
+Post-build static checks freshly verified client hash/size/empty features,
+unchanged Essentials pair, pinned client inputs and clean tracked state before
+this appendix. No produced binary was executed, installed or claimed as an
+official release. The complete local matching artifact set is now available
+for root review; the disposable port-9000 checkpoint remains separately held.
+No guide/product edit, merge, push, desktop, worker/task creation or status
+mutation occurred. D01 remains in_progress against the original gate.
