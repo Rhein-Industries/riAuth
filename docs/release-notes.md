@@ -1,5 +1,11 @@
 # Unreleased targeted workflow retirement and live review retries
 
+- Browser and Core workflow activation now honor optional supplied
+  `Idempotency-Key` and `If-Match` through the shared activation envelope.
+  Bearer still requires both headers. Revision comparison is first-only;
+  live replay never returns a stored receipt response, and stale-run sealing
+  still commits before its 409.
+
 - Workflow review and retirement retries reconstruct a currently validated
   domain outcome; stored receipt responses are never returned. Bearer commands
   still require the existing retry headers, and current revision checks apply
