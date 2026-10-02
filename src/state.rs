@@ -1519,6 +1519,26 @@ impl Core {
     /// Scoped controller trigger for a supplied desired-state manifest. P02 may
     /// schedule this later; the decision reports only a committed local apply.
     pub fn state_reconcile(&self, token: &str, manifest: Manifest) -> Result<Value> {
+        self.state_reconcile_with_reuse_fence(token, manifest, false)
+    }
+    /// Same controller and security checks, with a conservative global-revision
+    /// reuse policy for an equivalent-authority measurement. No runtime route or
+    /// configuration selects this control.
+    #[cfg(feature = "test-support")]
+    #[doc(hidden)]
+    pub fn state_reconcile_global_fence_for_test(
+        &self,
+        token: &str,
+        manifest: Manifest,
+    ) -> Result<Value> {
+        self.state_reconcile_with_reuse_fence(token, manifest, true)
+    }
+    fn state_reconcile_with_reuse_fence(
+        &self,
+        token: &str,
+        manifest: Manifest,
+        global_reuse_fence: bool,
+    ) -> Result<Value> {
         manifest.validate()?;
         let mode = self.config.state_reconciliation_mode;
         let desired = serde_json::to_value(&manifest).map_err(Error::internal)?;
@@ -1545,7 +1565,10 @@ impl Core {
                     // Missing/rebound dependencies invalidate a matching plan;
                     // storage and decoding failures still propagate.
                     match plan_revision_current(&self.config, tx, plan, revision) {
-                        Ok(true) => return Ok(Some(plan.clone())),
+                        Ok(true) if !global_reuse_fence || plan.base_revision == revision => {
+                            return Ok(Some(plan.clone()));
+                        }
+                        Ok(true) => {}
                         Ok(false) => {}
                         Err(error) if error.code == "conflict" => {}
                         Err(error) => return Err(error),
