@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 
+pub(crate) mod storage_diagnostics;
 pub mod stream;
 
 const BACKUP_V1: &str = "riauth.backup/v1";
@@ -121,7 +122,7 @@ impl Core {
             self.management(tx, token, "operations.read", "operations/storage")?;
             Ok(())
         })?;
-        Ok(self.store.allocation())
+        Ok(storage_diagnostics::with_pressure(self.store.allocation()))
     }
     pub fn backup(&self, token: &str, encryption_key: &str) -> Result<Value> {
         let key = decode_key(encryption_key)?;
