@@ -119,13 +119,22 @@ Its findings were handled as follows:
 
 **Not run:** PostgreSQL, browser, any broad suite, accessibility, cloud, and benchmarks.
 
-## Docs outside this slice's approved files
+## Docs corrected after review
 
-These now contradict the read. They were not edited, because they are outside the approved file list. Proposed wording follows each.
-- **`docs/operations.md` ~161 (offboarding diagnostics paragraph):** it says an item is a scheduled or running job "that already has `last_error`". Proposed: "…or a scheduled or running job that has a stored error or is overdue (more than 300 seconds past its due time; `next_action` `check_worker_duty`)".
-- **`docs/operations.md` ~202:** it says an unclaimed due job has no signal and that the route lists a scheduled or running job only once it carries a `last_error`. Proposed: "the route lists it as overdue after 300 seconds; there is still no Prometheus series or alert".
-- **`docs/roadmap/o06-offboarding-diagnostics.md` ~25:** the `next_action` token list lacks `check_worker_duty`.
-- **`docs/enterprise/ENT-10.md` ~75:** it does not mention the overdue rule.
+Root approved the follow-up correction of the four contradictory spans. It is
+the docs-only commit directly after `7ee05a7`, and it touches no product code
+and no other wording:
+- **`docs/operations.md`, offboarding diagnostic paragraph.** The definition of an item now includes overdue jobs: the stored local due time plus 300 seconds, `check_worker_duty`, ordering, row fields and counts. It separates containment (disabling the account revokes its sessions and tokens) from restoring duty (a process with the background-jobs duty whose maintenance pass succeeds). It states that overdue is not proof that no worker runs, is not remote completion, and adds no series or alert. The `has_error` sentence now says `next_action` also uses the overdue verdict.
+- **`docs/operations.md`, queue paragraph.** The read now lists an errorless scheduled or running job once it is more than 300 seconds past its due time, with `check_worker_duty`, and there is still no series or alert. The `RiAuthDeliveryBacklog` and `RiAuthFailedDeliveries` wording is unchanged.
+- **`docs/roadmap/o06-offboarding-diagnostics.md`, token list.** The list adds `check_worker_duty` and the overdue verdict as a token input.
+- **`docs/enterprise/ENT-10.md`, operator diagnostic paragraph.** It adds the overdue attention item, the qualified revocation statement, containment versus restoring duty, and the not-remote, not-proof, no-metric limits.
+
+Checks for that commit:
+- `python3 scripts/check-docs.py`;
+- `git diff --check`;
+- a source-scope check that the diff touches only those three files plus this section.
+
+No build or test was run, because no code changed.
 
 ## O06 original-scope residuals
 
