@@ -422,3 +422,77 @@ No Cargo, executable walkthrough, installation, service, browser, desktop,
 source/guide edit, merge, push or task-status mutation occurred in this phase.
 D01 remains in_progress; its original independent-user/operator gate is not
 replaced by the link check. Root owns integration and closure.
+
+## Released matching Essentials build — 2026-10-02
+
+Root released the sole Cargo slot after the six budget cases exited 0. The
+one authorized server/maintenance build **exited 0**; the slot was released
+through the explicit project orchestrator immediately after receiving its
+exit/hash result. No second Cargo build, client build or walkthrough ran.
+Root also reported the accepted-worktree docs checker passed after porting
+`b8f2784`; that is root's result, distinct from this tree's earlier recorded
+five layout failures.
+
+Actual source: `c01c39ab4e092423d5522bedc50fff87656d8c0a`-equivalent production
+inputs, built from own HEAD `b8f27841bc4085303dc2642a72fc327e68f90308`.
+Its only differences from that pin are the two guides and this report. Source
+tree object: `3adc2b59c3547d22bff202daccfd8ad97f1e78ab`. Server manifests,
+lock and toolchain file match the earlier exact input-hash table byte-for-byte.
+Additional config/policy input hashes:
+
+| Input | SHA-256 |
+| --- | --- |
+| src/config.rs | `6bf9a9fc6e4274a87fe175752edee4ac8b8995011af71e7756bf64a5cdf740d5` |
+| src/node_security.rs | `979f1d22a4835bce97866e302dc2a8a21df4f0d383d4bd1e6960b6a5d7a3bcb7` |
+
+Actual toolchain: `rustc 1.98.1 (48a229cea 2026-09-01)`, full compiler commit
+`48a229ceaefd4985c50990b14116b6d856af0985`, host `aarch64-apple-darwin`, LLVM
+22.1.8; `cargo 1.98.1 (797e8a9bc 2026-08-05)`. No Cargo config file exists at
+working-directory ancestors or active Cargo home. The checked Rust flags,
+compiler/wrapper, toolchain and build-target override variables were unset.
+
+A local Python process launched and monitored exactly this Cargo argv in the
+assigned worktree, using the released environment below:
+
+```sh
+cargo build --locked --no-default-features --features essentials --target aarch64-apple-darwin --bin riauth --bin riauth-maintenance
+```
+
+`CARGO_TARGET_DIR` was the absolute own-worktree path
+`target/d01-essentials-c01c39a`; `CARGO_BUILD_JOBS=1`, `CARGO_INCREMENTAL=0`,
+`CARGO_PROFILE_DEV_DEBUG=0`, `CARGO_PROFILE_TEST_DEBUG=0`. Both produced compiler
+fingerprints contain exactly `["essentials"]` and empty Rust flags: no default,
+Platform, test-support, fuzzing or USB feature. The new target was absent at
+preflight; no accepted target, existing cache deletion or artifact substitution
+was used.
+
+Started `2026-10-02T11:32:08.766800+00:00`; ended
+`2026-10-02T11:35:27.497222+00:00`; elapsed **198.729 seconds**. Initial free
+space was **14237978624 bytes (13.260 GiB)**, above the 12 GiB start threshold.
+The two-second monitor recorded 100 observations (maximum actual sample gap
+2.007 seconds). Minimum/final observed free space was **12958531584 bytes
+(12.069 GiB)**; no 9 GiB stop was triggered and the 8 GiB floor was preserved.
+The target occupied `1500880 KiB` by `du -sk` after completion.
+
+| Built executable under `target/d01-essentials-c01c39a/aarch64-apple-darwin/debug/` | Bytes | SHA-256 |
+| --- | --- | --- |
+| riauth | 183038592 | `7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606` |
+| riauth-maintenance | 56499296 | `86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95` |
+
+Private evidence in that target: `build-provenance.json` (SHA-256
+`39c9167129193aa9e4c861992a44696c614bcf689ecf99b27334a66df7b59684`),
+`build-result.json` (`a2da665f407dba364de074fe693900142f24b2a43161b03281a30e1b486795b7`),
+`build.stdout.log` (`ab67b2837d4a775bf8ac364147abf135c3fc41fe8876f5f586e73b4829cbe369`)
+and `disk-observations.jsonl`
+(`883b388645bea4cc361998ab94a77dffbf8389e18549f979b35abd4d07908af7`).
+The build emitted three existing dead-code warnings: passkey workflow discard,
+workflow registration start/verify, and `PostLogoutReturn::allowed_by`. No
+warning-driven source change or extra build was attempted.
+
+Post-build static checks freshly recomputed both executable hashes and verified
+their sizes/exact Essentials fingerprints, unchanged pinned production inputs
+and a clean tracked tree before this report appendix. The executables were not
+run, installed or described as official released artifacts. The matching pair
+now exists; standalone-client provenance and the disposable port-9000 checkpoint
+remain separately scheduled by root. D01 stays in_progress against its original
+independent-user/operator gate; no task status was changed.
