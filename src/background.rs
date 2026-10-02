@@ -1232,6 +1232,18 @@ mod tests {
                         .load(Relaxed),
                     0
                 );
+                // A finishing pass returns its job permit before its lane permit,
+                // on the lane's own runtime. Wait for the whole lane as well, so
+                // the next pass is not refused by that pass's remaining slot.
+                let lane = &background.lanes[job.lane()];
+                let lane_slots = tokio::time::timeout(
+                    Duration::from_secs(3),
+                    lane.slots.clone().acquire_many_owned(lane.spec.1 as u32),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                drop(lane_slots);
                 background.run(job, async { Ok(()) }).await.unwrap();
             }
         });
