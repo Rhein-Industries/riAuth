@@ -945,3 +945,9 @@ EXIT1 reports only the same five pre-existing build directories:
 `target-wave29-source`, `target-wave28-scim`, `target-wave28-portal`,
 `target-wave28`, `target-wave27`; no Markdown-link errors. No directory deletion
 or checker change. These static results do not release any runtime.
+
+## Root full source and independent review acceptance
+
+Root fully read all1,516 helper lines and88 workflow lines, Dockerfile/.dockerignore, the201-line implementation appendix and the complete222-line independent8f29d25b4f632e3fa1c4eba31d53340a2abe7cf1 review. Whole source hashes, AST/in-memory syntax only, manual permissions/action/provenance controls, both shell blocks and exact resource-prefix reversal were checked. No concrete source/interface blocker was established. Source be22eebb8cc957037f5e5c1f153f87df81f3dc25 is accepted for publication, without importing supporting alignment history or changing existing product/recipes. Native daemon/private builder schema, image save/load layout, UID copy-up, mounted tool compatibility, actual fixture gates and cleanup remain unmeasured.
+
+The selected container snapshot deliberately excludes fresh session ID/expiry from cross-handoff equality; it verifies saved logged-out sessions stay refused. It does not measure same-session expiry nonrenewal. The separate PostgreSQL helper retains that assertion, currently unreached after its recorded Store-equality failure. No cross-gate success is borrowed. Root may later reserve one exact native x86 cohort after immutable publication and lane availability; no dispatch or Docker runtime is credited by this source review. Original A09/O07 remain open and both earlier Desktop failures remain failures.
