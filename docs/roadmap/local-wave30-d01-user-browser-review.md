@@ -727,3 +727,110 @@ remain an exact prefix; the committed helper bytes/SHA-256 are unchanged.
 The pending diff contains only this report append, Markdown fences are
 balanced and the final newline is present. `git diff --check` passed. These
 document/source checks did not execute the helper or repeat the provider call.
+
+## Separately authorized native-provider diagnostic — 2026-10-02
+
+**The one diagnostic exited 0; the confidential fixture remains held.** Root
+received `93643763a1fc3360491a0a4a32424fd353e92cc0`, preserved its first refusal
+and reporting correction, and authorized exactly one new native-provider
+version observation. That authorization did not release the helper, operator
+fixture, desktop or Cargo. This phase is separate from the lost first native
+invocation; its return/output values remain unknown.
+
+### Retained observation and provenance
+
+Own source input remains helper commit
+`0b0d15cda6e6c61388ce40338de707f84851989f`, blob
+`cbbaaea8afa667112546c5ee6b85e945d6f306bd`, SHA-256
+`d8446bfdf22f2a345b019673fe93828d5f75024a87b530b100eb6c027da9a863`.
+The exact guard and sanitized environment in `setup()` were read directly;
+the helper was neither imported nor executed. Ancestor instruction checks
+found no `AGENTS.md`. No task/worktree/shell was created.
+
+The diagnostic rehashed `/opt/homebrew/bin/openssl` after resolving it to
+`/opt/homebrew/Cellar/openssl@3/3.6.4/bin/openssl`. Its 880512 bytes match
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+It then invoked the resolved executable with the sole argument `version`,
+using exactly the helper's inherited-environment filter: `PATH`, `HOME`,
+`TMPDIR`, `LANG`, `LC_ALL` only. All five keys were present; their values were
+not printed or copied into evidence. The native process had a five-second
+timeout, completed in 0.003956 seconds and was reaped. There was no timeout,
+second invocation or provider substitution.
+
+| Retained field | Actual observation |
+| --- | --- |
+| Numeric native return code | `0` |
+| ASCII stdout | `OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)` followed by one newline |
+| Full stdout length | 63 bytes; no truncation |
+| ASCII stderr | Empty |
+| Full stderr length | 0 bytes; no truncation |
+| Started UTC | `2026-10-02T14:23:52.077151+00:00` |
+| Completed UTC | `2026-10-02T14:23:52.082796+00:00` |
+
+The wrapper opened an exclusive, no-follow, owner-private metadata file before
+the invocation, then retained the numeric return code, bounded ASCII outputs,
+full byte lengths, digest, timing and disk sample and flushed/fsynced it
+**before any output assertion or comparison**. The per-stream retained limit
+was 4096 bytes. Readback verified mode `0600`, 1103 bytes and SHA-256
+`8f47d8fbd384ccf9746de938ef5c6e9cbba8d0e072484b443e2c2cbc4fa7439d`.
+The metadata is
+`deployment-private/d01-provider-version-diagnostic-20261002.json`, under the
+existing owned `0700` private directory, ignored by Git and not committed.
+Its contents contain provider metadata rather than credentials. The wrapper
+itself also exited 0. No exception, timeout or cleanup failure was recorded.
+
+After persistence, source-only AST extraction of `OPENSSL_VERSION` and metadata
+readback established that the current exact equality is false. The other
+existing version predicates pass: return code zero, stdout at most 256 bytes,
+stderr at most 4096 bytes and strict ASCII stdout. Source bytes/hash remain
+unchanged. These comparisons did not invoke any executable a second time.
+
+Root's prior read-only format-string observation is consistent with this new
+stdout, but the new diagnostic does not recover the first invocation's lost
+values or prove its exact failure cause. The earlier refusal and my corrected
+reporting error remain intact above.
+
+### Exact proposed source reservation, not an edit
+
+The concrete returned evidence warrants only this one-line change at
+`scripts/d01-confidential-browser-demo.py:41`:
+
+```diff
+-OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026"
++OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)"
+```
+
+This would retain exact full-text equality after `.strip()` and the existing
+path, regular-file/size, artifact hash, ASCII/length and timeout guards. It
+would also make the helper's provider-version evidence field contain the
+observed complete version text. No prefix match, normalization, alternate
+provider, hash relaxation, dependency or other source hunk is proposed. Root
+must reserve the source change separately; this turn makes no helper edit.
+
+### Capacity, bounded scope and handoff
+
+The authorized fresh read-only disk sample measured **11969429504 bytes /
+11.1474 GiB free**, above the 8.5 GiB launch margin. It is a point observation,
+not a continuous floor check or permission to start the fixture. No deletion
+or cache/artifact cleanup was performed here.
+
+An ancillary read-only `riwork orchestrator --help` request returned 2 because
+that subcommand is unsupported; no state changed. The explicit-project
+diagnostic/proposed-hunk handoff used the supported `orchestrator send`
+command and exited 0 before this append.
+
+No maintenance/server/CLI/helper, HTTP request, listener, browser, Driver,
+session, Cargo/build/test or whole-fixture runtime ran. No fixture reservation
+was acquired or released in this diagnostic phase. There was no second native
+provider invocation, source correction, guide/product/D05 edit, merge/reset,
+main/push/status change, new worker/task/worktree/shell or other-worker contact.
+RiWork Cua.ai Driver remains the sole future desktop provider. Root alone
+reserves any source correction and a new fixture release and decides D01/D05
+completion; accepted O06/I10/R05 DONE rows and prior dated evidence remain
+unchanged. The only tracked change is this report append.
+
+Evidence checks passed: all 48637 bytes of prior report commit `9364376` remain
+an exact prefix; helper bytes/SHA-256 and the private metadata bytes/hash/mode
+are unchanged. The pending diff contains only this report, Markdown fences
+and final newline pass, and `git diff --check` passed. These checks repeated
+no native invocation or fixture activity.
