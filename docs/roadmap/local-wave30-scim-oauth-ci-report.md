@@ -217,3 +217,90 @@ No build, test, service, browser or desktop work was done. Nothing was merged,
 reset, written to main or pushed, and no task status changed. The earlier CI
 failures and local-only results in the other wave 30 reports stand as written.
 This report does not claim CI is green or that Linux is fixed.
+
+## Source phase (approved by root; runtime still held)
+
+Root read the report above and the pinned `deliver`, `step` and
+`staff_removal_at_group_step` source with both callers. It then approved
+`wave30_CI_scim_oauth_fixture` for **source only**, in `tests/scim_oauth.rs`:
+
+- the six unserved-router insertions in the named test bodies;
+- the holder retained in `staff_removal_at_group_step`, with its `Router` return
+  type and tuple;
+- exactly two caller bindings.
+
+The sections above are kept as written.
+
+### Fixture commit
+
+Commit `20dd4eed2985ecb1017e95f12836e2da063566a7` changes only
+`tests/scim_oauth.rs`. The blob goes from
+`eea5290b7c4cb49ec60c76059919a5318f05c1f1` to
+`02ce939a673c500296a3bf7feb1154180f39a20e`, with 20 lines inserted and 4
+replaced:
+
+- **Six holders.** The comment plus
+  `let _source_router = riauth::api::router(f.core.clone());` were inserted
+  after the `let agent = provisioner(...)` line in:
+  - `controller_modes_bind_plans_and_stop_at_removal_review_floor`;
+  - `completed_job_history_is_compact_and_bounded`;
+  - `client_credentials_provision_an_independent_scim_server`;
+  - `uncertain_patch_response_is_reconciled_without_a_second_patch`;
+  - `secret_rotation_and_static_token_rotation_apply_on_next_acquisition`;
+  - `reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch`.
+- **The helper.** In `staff_removal_at_group_step`:
+  - the return type gains `Router`;
+  - the comment plus
+    `let source_router = riauth::api::router(f.core.clone());` follow its
+    `provisioner` line;
+  - it returns `(f, dir, agent, name, id, source_router)`.
+- **Two callers.** In
+  `reviewed_last_group_member_removal_requires_complete_remote_membership` and
+  `reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback`,
+  the binding is now
+  `let (f, _dir, agent, name, id, _source_router) =` followed by the unchanged
+  `staff_removal_at_group_step(&scim, scim_url).await;`. rustfmt wrapped it
+  onto two lines.
+
+The holder therefore lives through each caller's remaining steps. `Router` was
+already imported (line 15).
+
+### Exact-scope proof
+
+Start from the committed file. Remove exactly the six `_source_router` holder
+blocks and the one `source_router` block, each two lines. Restore the helper's
+return type and return tuple, and the two caller bindings to their original
+single lines. The result is byte-identical to `tests/scim_oauth.rs` at fixed
+`9a81931`: `cmp` passes, and `git hash-object` gives `eea5290`.
+
+Nothing else in the file changed:
+
+- assertions and counts;
+- operations, due-time writes and step and retry counts;
+- the review and removal floor, uncertain PATCH, rotation and offboarding
+  checks.
+
+No global helper, general fixture, production file, admission, lease, clock,
+sleep, probe, raw deletion or other test changed. No context, header or
+receipt rule was weakened.
+
+### Static checks
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` (rustfmt only) | clean after `cargo fmt` wrapped the two caller bindings |
+| `git diff --check` | clean |
+| Exact-scope reversal | identical to the `9a81931` blob `eea5290` |
+| `python3 scripts/check-docs.py` | passed |
+
+### Runtime: held
+
+Cargo, builds and runtime stay held behind the current A09 remote run
+`37016520583`. Root accepted one prospective run of the whole 24-test
+`scim_oauth` target, single-threaded, as the bounded verification plan, but has
+**not released it**. The narrower command for the 8 tests will not be run.
+
+There was no baseline run, repeat, compiler run, test run or cache deletion.
+The historical Linux result stands as recorded: 8 failed at `9a81931`, with
+earlier CI reach of this target unknown. This report does not claim CI is
+green.
