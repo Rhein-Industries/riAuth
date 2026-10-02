@@ -2766,3 +2766,50 @@ The proposal containing both corrections is ready for **root review first**. The
 No actual workflow/helper/source edit, metadata query/download/dispatch, proposed library/native/PostgreSQL/helper/Cargo/service/runtime, archive execution/extraction, desktop, new worker/task/worktree/shell, main/push/status or worker contact occurred. This report adds no artifact/run/capacity/tool/cleanup/E→P→E/release credit. A09 remains open, with `official_release: false`, prior `shared_full_gate: not_run`, proposed `full_shared_gate: not_certified`, all accepted protection contracts and existing platform/shared-gate limits preserved. Materialization/transport/PostgreSQL/helper/runtime remain HELD. RiWork Cua.ai Driver preference persists.
 
 Final repository static evidence for F2: docs checker exit 0; staged whitespace/scope checks exit 0; tracked-file hygiene exit 0 (963 files). Only this report append is staged, with zero deletions; both historical prefixes, the F1 variant, protected source files and absent-workflow boundary remain intact. These checks grant no workflow materialization or runtime acceptance.
+
+## Phase L — exact corrected launcher materialization, source only (2026-10-02)
+
+Reservation `wave30_A09_corrected_shared_launcher_materialization` owns only the **new** `.github/workflows/check-local-shared-handoff.yml` and an append to this existing report for project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing A09 `506e3979-a590-4af3-8fa8-ee90d3a517f2` / WT `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. The complete `ab993268b7d4ffefb42957228107d30f0ef9070d` report remains byte-exact: **206,172 bytes / 2,768 lines**, SHA-256 `748ce732c062527dc4f2cc5631211a689bd65238ce5c8651ac352f42c6668a54`. All original 47c/82e/ab993 proposal, failed authoring/HTTP-422/invalid-push and actual historical result phases remain intact.
+
+### Immutable source-only result
+
+| Materialized object | Exact pin |
+| --- | --- |
+| Source-only commit | `502d500931a8c300e785e3fe78c073d3655f21cb` |
+| Source commit parent | `ab993268b7d4ffefb42957228107d30f0ef9070d` |
+| Source tree | `e1473e2866ea9feb45682512fd916c4f5239ee90` |
+| Sole new source path | [check-local-shared-handoff.yml](../../.github/workflows/check-local-shared-handoff.yml) |
+| Git mode / complete source | **100644**, **73,380 bytes / 1,279 lines**, terminal newline preserved |
+| Git blob | `a47187df6d2374310471138b07a930c481877655` |
+| Whole workflow SHA-256 | `0de9c7be9b380bd32c748a19699739e8ed7dacb2313d1a366bb000f701e15037` |
+| Extracted inline controller | **59,472 bytes**, SHA-256 `b84868ddce285e3c2979318b778bbb4d522ca0d212a1310c59d25c12bbd8f9e3` |
+| Extracted bootstrap string | **1,506 bytes**, unchanged SHA-256 `1adc47c2b81f78c75f1f2122aabff7f08f48786fafd840880f3106418326e4de` |
+| Source commit delta | One new workflow, **1,279 insertions / zero deletions**; report unchanged at source commit |
+
+Materialization reconstructed the immutable 47c complete workflow fence, applied exactly the retained 82e **F1 line-501** hunk and ab993 **F2 line-570** hunk, and checked each intermediate/full SHA. Reversing each hunk restored the complete previous virtual file. The resulting file was created exclusively at the approved new path and compared byte for byte with the reviewed two-fix variant, both in the filesystem and the source commit Git blob. No third change, action/pin/trigger/context/threshold/runner/transport/cleanup/authority alteration, helper edit or alignment occurred.
+
+F1 still binds artifact metadata run head to `FIXED["build_workflow_sha"]` (`036a392656b4b5070cc86a11d5ca3258b7b868d2`), preserving separate product `9a819317efb3a13fa27cd86f884be2be00898fc0`/tree/input/archive/binary verification. F2 still publishes the full validator SHA only when the exact lowercase-40 regex matches and otherwise publishes `None`; original raw-input refusal remains before checkout/source-role/transport. These are the two reviewed changes already recorded above, not new behavior added during materialization.
+
+### Actual static checks
+
+Source-only checks passed with exit 0 before the source commit:
+
+- Exact fence/two-hunk reconstruction, every intermediate SHA, whole reverse equality, materialized length/line/mode/SHA and committed-blob equality.
+- Installed **Psych** safe YAML parsing; **Bash -n** on exactly three run blocks; complete inline controller/bootstrap **Python AST** parsing. No workflow block, controller/constructor/import/main, bootstrap or helper was executed.
+- Explicit manual-only input/trigger, `contents: read` + `actions: read`, one `ubuntu-24.04-arm` job/20-minute cap, fixed concurrency/no auto-cancel, exact checkout/upload action pins and five-step scope.
+- Context placement: job env references the inputs context; token references the github context only in the initial step env; actual `RUNNER_TEMP` is read by that shell step; literal `printf` exports `A09_ROOT` through `GITHUB_ENV`; later upload paths use the env context. No job-level runner expression is present.
+- Exact static private guards: 30-GiB initial/10-GiB stop/8-GiB floor, intended 2-second/maximum 6-second-gap monitor, bounded immutable artifact/ZIP/18-member/five-archive identities, private finite capture, original 600-second helper and 60-second cleanup reserve, retained owned fixture, verified subreaper source, PID ownership and fixed four sanitized upload paths. These are inspected source controls, **not** measured host capacity or exercised cleanup.
+- F1 comparator/F2 public initializer AST equality, original full-input refusal order, all five protected helper/import byte hashes and the old build workflow hash unchanged.
+- Docs checker exit 0; staged whitespace/scope checks exit 0; tracked-file hygiene exit 0 (**964 files**). Precommit scope was only the new workflow, no other tracked/untracked change; the complete report was still original ab993 bytes. The source commit then left a clean tree.
+
+A validator-orchestration draft failed JavaScript parsing once with **`SyntaxError: Unexpected token '.'`**, before invoking any nested tool/check, because its static assertion strings contained unescaped GitHub expression interpolation. Only checker orchestration quoting was corrected; materialized workflow bytes remained exact and no proposed block was run. The subsequent static checks above passed. This was an authoring failure, not a GitHub/workflow/runtime test result; no repository checker was changed.
+
+### Root review and held runtime
+
+The new workflow now exists as immutable source; earlier dated “absent” phases remain historical and unchanged. This materialization grants **no** shared-gate, capacity, availability, PostgreSQL-tool, transport/ZIP, cleanup, native test or release credit. Prior root-observed build/native-smoke results stay attached to their original product/build/run/artifact pins, not this source-only commit.
+
+The corrected-source independent review is active in WTa130. No contact, completed review, endorsement or receipt is inferred here. Root joins the immutable source and independent report before any separate integration/publication and runtime release. A future actual runner still must satisfy every declared native/source/tool/resource/transport/ownership condition; the root-selected published validator source remains distinct from product/workflow/run identities.
+
+Actual dispatch/query/download/runner/PostgreSQL/native/helper/Cargo/build/services and all proposed workflow blocks remain **HELD** and were not executed. No other existing source/helper/workflow/guide, main/push/status/task/worker/worktree/terminal session, cache deletion or contact was changed/performed. A09 stays open; `official_release: false`, prior `shared_full_gate: not_run` and proposed `full_shared_gate: not_certified` persist with all platform/shared-sample and accepted permission/review/receipt/header/PAM/removal/audit/credential/Group/input/non-renewed-60-second protections. RiWork Cua.ai Driver preference persists; no desktop operation occurred.
+
+Final report static evidence: docs checker exit 0; staged whitespace/scope checks exit 0; tracked-file hygiene exit 0 (964 files). This separate evidence delta contains only the report append with zero deletions; exact workflow/controller/bootstrap pins and the complete ab993 prefix remain unchanged. Materialization is source-only; independent source review/integration/publication and every runtime release remain root-owned and held.
