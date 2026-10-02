@@ -536,7 +536,46 @@ jobs:
           tempfile.TemporaryDirectory = RetainedFixture
           sys.argv = [str(helper), "--artifacts", str(artifacts), "--evidence", str(private / "helper.json"),
                       "--source-revision", sys.argv[4]]
-          runpy.run_path(str(helper), run_name="__main__")
+          def failure_source(error):
+              names = ("check-local-edition-transition-postgres.py", "check-exact-edition-matrix.py",
+                       "check-installed-release-gate.py", "check-local-encrypted-edition-transition.py",
+                       "spdx_sbom.py")
+              trusted = {str(root / "bootstrap.py"): "bootstrap.py",
+                         str(helper): "check-local-edition-transition-postgres.py"}
+              trusted.update({str(helper.resolve().parent / name): name for name in names})
+              classes = {AssertionError: "AssertionError", RuntimeError: "RuntimeError",
+                         ValueError: "ValueError", TypeError: "TypeError", KeyError: "KeyError",
+                         IndexError: "IndexError", NameError: "NameError", ImportError: "ImportError",
+                         ModuleNotFoundError: "ModuleNotFoundError", OSError: "OSError",
+                         FileNotFoundError: "FileNotFoundError", PermissionError: "PermissionError",
+                         SyntaxError: "SyntaxError", SystemExit: "SystemExit",
+                         KeyboardInterrupt: "KeyboardInterrupt"}
+              frames, examined, tb = [], 0, error.__traceback__
+              while tb is not None and examined < 64:
+                  name = trusted.get(tb.tb_frame.f_code.co_filename)
+                  line = tb.tb_lineno
+                  if name is not None and type(line) is int and 1 <= line <= 4096:
+                      frames.append({"file": name, "line": line})
+                      frames = frames[-8:]
+                  tb, examined = tb.tb_next, examined + 1
+              value = {"exception_class": classes.get(type(error), "Other"), "frames": frames}
+              payload = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+              if len(payload) <= 2048:
+                  fd = os.open(private / "helper-failure-source.json",
+                               os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                  with os.fdopen(fd, "wb") as out:
+                      out.write(payload)
+          try:
+              runpy.run_path(str(helper), run_name="__main__")
+          except BaseException as error:
+              try:
+                  if type(error) is not SystemExit or not (
+                      error.code is None or type(error.code) in (int, bool) and error.code == 0
+                  ):
+                      failure_source(error)
+              except BaseException:
+                  pass  # Observation must not replace the original failure or exit.
+              raise
           '''
 
 
@@ -923,9 +962,29 @@ jobs:
                   bootstrap.chmod(0o600)
                   env["A09_ROOT"] = str(ROOT)
                   helper = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "scripts" / HELPER
-                  self.command("focused-shared-helper",
-                               [sys.executable, "-I", "-B", str(bootstrap), str(helper), str(installed),
-                                FIXED["imports"][HELPER], FIXED["product_sha"]], 600, env)
+                  try:
+                      self.command("focused-shared-helper",
+                                   [sys.executable, "-I", "-B", str(bootstrap), str(helper), str(installed),
+                                    FIXED["imports"][HELPER], FIXED["product_sha"]], 600, env)
+                  except Refusal:
+                      try:
+                          value = read_json(PRIVATE / "helper-failure-source.json", 2048)
+                          classes = {"AssertionError", "RuntimeError", "ValueError", "TypeError", "KeyError",
+                                     "IndexError", "NameError", "ImportError", "ModuleNotFoundError", "OSError",
+                                     "FileNotFoundError", "PermissionError", "SyntaxError", "SystemExit",
+                                     "KeyboardInterrupt", "Other"}
+                          require(type(value) is dict and set(value) == {"exception_class", "frames"} and
+                                  type(value["exception_class"]) is str and value["exception_class"] in classes and
+                                  type(value["frames"]) is list and len(value["frames"]) <= 8 and
+                                  all(type(frame) is dict and set(frame) == {"file", "line"} and
+                                      type(frame["file"]) is str and frame["file"] in set(FIXED["imports"]) | {"bootstrap.py"} and
+                                      type(frame["line"]) is int and 1 <= frame["line"] <= 4096
+                                      for frame in value["frames"]), "helper_failure_source_shape")
+                          self.data["helper_failure_source"] = value
+                          self.save()
+                      except Exception:
+                          pass  # Missing or malformed diagnostics preserve phase_exit and cleanup.
+                      raise
                   report = read_json(PRIVATE / "helper.json", 64 * 1024)
                   booleans = ("other_client_refused", "issuer_and_authentication_preserved", "all_effective_rates_preserved",
                               "active_capabilities_switched", "edition_and_version_metadata_coordinated")
