@@ -216,3 +216,240 @@ immutable hash. Root owns the proposed single-line source reservation and any
 independently reviewed observer-aware bounded release. I recommend holding the
 observer's claimed fixed shape for F1. Source-preservation checks passed
 independently of that new diagnostic's unexecuted behavior.
+
+## Descriptor fix and memory design — independent source review
+
+Date: 2026-10-02. Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`.
+Reservation: `wave30_D01_descriptor_memory_independent_review`; same existing
+WT/branch. Entry HEAD is `a770027d009172a96e4776aa5504500b66678520`.
+This appendix preserves all 17,324 prior bytes, SHA-256
+`ca7a6be40a1e0aaa03ff924a64dee59a922bdb6f83dfc09b93ece72eec78455d`.
+The dated F1 finding and earlier HOLD recommendation are retained above.
+
+**Recommendation: accept the descriptor correction and prospective envelope
+by source inspection for root's separately released ONE bounded memory
+invocation. No new concrete source blocker was found.** The exact published
+built-in descriptor change addresses F1's subclass-accessor mechanism. This
+does not claim an executed observer/privacy/fallback/capture test, approve a
+browser release, reinterpret an old failure or change any original row status.
+No further source hunk is proposed by this review.
+
+### Exact inputs and what was actually read
+
+| Input | Immutable identity and review extent |
+| --- | --- |
+| Corrected helper | `f4ef05d8428b235511e81277ba6b4b72d5ec08ba:scripts/d01-confidential-browser-demo.py`: all 757 lines read, 35,749 bytes, SHA-256 `75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1`. All parser, flow, reply, catch, main, writer and cleanup bodies were read, not only the descriptor line. |
+| Published helper | `58155aad7d80a0a73c0bf3902e146a6aa07ef675`: whole helper bytes equal f4ef05d and the supplied SHA. Identity check only; no moving main/worktree import or alignment. |
+| Reviewed design | `0ec651d6f7b30e320a8840683bd1e2d2bab0e484:docs/roadmap/local-wave30-d01-unexpected-failure-plan.md`: whole document 410,731 bytes/6,488 lines, SHA-256 `9530a35876c00d4fd6e949bb51ab56b12b36e0d829358a1d3e8672273ca670bb`. The entire new descriptor-aware prose, both scoped diffs and every readable child/controller body were read. |
+| Design's prior prefix | `a88c2ba82615190d477ebfbc7155cb7c4d5c4908`: all 119,102 preceding bytes/2,207 lines preserved, SHA-256 `88b376467f3893a61e8f16c8209402eb7d8fee7f2b6f9b336fa46b4a75c87f9e`. Whole prefix comparison, not a claim of rereading every prior prose line in this slice. |
+| Readable child | All 629 lines, document lines 2387–3015, 30,840 bytes, SHA-256 `8bf973998f0e327d9ac7fbfa7bcbd7bb3e93c8c3debe9c1a2d8251e9fd840046`. Read in complete 1–210/211–420/421–629 chunks. |
+| Readable controller | All 348 lines, document lines 3024–3371, 15,981 bytes, SHA-256 `0e93e11f71f794770a60700760510f9d2893fa2bdfd044d09a5cb4c20ef555de`. Both complete halves read. |
+| Unchanged legacy logic | All 461 readable lines, document lines 611–1071. Removing only the documented display space in `new["handle_error"] (` restores 24,210 bytes/SHA-256 `98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb`. Its original guard/sink assertions and tail were read; no tail or definition was executed. |
+| Complete serialized payload | All 161,014 decoded bytes/633 physical lines statically reconstructed, SHA-256 `b10cf8376edbb80b00c051305f31643b04714494260c4a49576a354361048779`. Base64 fence: all 217,513 ASCII bytes/2,825 lines consumed and strictly decoded in memory, SHA-256 `abfd936ec4445320901131449c1f3df271bf2eaf68c115f91b093709e639c53c`. Encoded archive identity/assembly is distinct from semantic body reading. |
+
+The complete 148-line child diff and 55-line controller diff were read. Their
+exact 7,343/3,457-byte SHA-256 values are respectively
+`e493cfa6290798a9c334a240c4d7fbdf44f647972d4cd42a35f8a78d0814792b` and
+`8f66e15a77481361006ce632187b7cc2aff51e25c2a1a400d3237cee3ca45151`.
+Both were independently regenerated, then applied forward and in reverse as
+string diffs; complete old/new fence equality passed. The old readable child
+and controller were AST/byte-comparison inputs; unchanged bodies are also
+present in the completely read corrected sources. No mutable author files,
+private protocol/receipt input or new execution result was inspected.
+
+### F1 correction and preserved production behavior
+
+Corrected helper line 254 reads
+`BaseException.__traceback__.__get__(error, BaseException)` directly. It avoids
+the subclass's normal `__traceback__` getter and obtains the native traceback
+slot; native traceback/frame/line access closes F1's counterfeit-frame and
+changing-line route. It keeps exact exception class identities, the first
+latch, ten code-object identities, 64-link scan, 1..1024 exact-int check and
+null-on-over-cap behavior. The observer contains no exception message/args,
+str/repr, class-name, trace text, filename, locals/globals, header/query/token/
+cookie/Origin/sender read or formatting sink. All three outer BaseException
+fallbacks and the inner fallback remain unchanged.
+
+Actual byte reversal of this one-line change reconstructs the entire 35,711-byte
+3c9 helper. Removing the same seven 62-line observer insertions from the fixed
+helper reconstructs every original 32,723 byte of 470690ca. Therefore all
+accepted/refused request predicates, four-refusal counter and strict postflow
+gate, phase/pending deadlines, cryptographic/verifier/provider pins, original
+first-failure assignments, replies, cleanup and evidence precedence are exact
+old source. This is source preservation, not execution evidence.
+
+Static literal schema enumeration gives a maximum 126-byte diagnostic and
+160-byte complete holder. The class/site/function labels and native line
+integer/null provide that finite alphabet; the observer's real three callers
+pass literal sites and owned holders. This is not a generic guarantee for
+arbitrarily substituted module globals/callers. The memory design checks the
+holder's closed keys, exact bool/int bounds, label enums, paired null fields,
+160-byte cap and sentinel absence before its fixed result is constructed.
+Ready/final public stdout and generic responses still omit the diagnostic.
+
+### Genuine capture and descriptor cases, all prospective
+
+Child lines 147–189 explicitly obtain genuine `TracebackType` and `FrameType`
+objects. The first capture calls only the selected unbound `Handler.reply`
+body using memory header/write/budget sinks; a one-shot memory write raises
+OSError. The bounded scan selects the actual reply frame and lasti by identity.
+The second capture executes a `FunctionType` clone made with `code.replace()`:
+its code is asserted equal but distinct, without replacing the trusted code.
+The third captures only the fixture's own SentinelError frame. Actual native
+type and identity assertions are present; **none was evaluated here**.
+
+`native_trace` constructs native traceback links from those captured frames
+and actual lasti. Supplied line annotations 1/1024/0/1025 and lengths 64/65 are
+synthetic native chains, often repeating one frame. They are not natural
+execution-line or recursive-stack evidence. The clone and untrusted frame
+must yield null own fields. `observe` installs the chain through the built-in
+descriptor's setter inside an active exception handler, then calls the fixed
+observer. No custom trace/frame-shaped object is accepted in the new path.
+
+The changing and raising subclass getters at child lines 39–54 are distinct
+adversarial cases. Lines 216–224 require the exact native Handler.reply/line1
+projection, fixed `other` label, unchanged formatting counters, traceback
+getter count zero and no sentinel in the holder. Thus a future invocation
+checks that both getters are never called, rather than treating a swallowed
+getter error as a successful diagnostic. No subclass instance, native frame,
+traceback, sentinel sink or capture path was constructed by this review.
+
+Holder read/latch/storage failure cases retain the intended false/null or
+latched true/null state and refuse a later overwrite. First-latch/secondary
+reply failure compares unchanged outcomes. Six real selected-body site cases
+cover parser, dispatch, reply, send_error, server process/error and copied main
+generic-except body; main itself is never called, so that copied frame expects
+null own-function. Known Failure/Halt/success stays unobserved. Missing function/
+field and outer BaseException injections preserve terminal/failure/reply
+assertions. Writer-tail cases copy the exact tail into a controlled wrapper,
+compare old/new fixed public outputs and keep original failure/stage despite
+an injected evidence-write failure; they do not open a real helper evidence FD.
+
+### Case accounting and unchanged oracles
+
+| Observer group | Named cases, statically counted only |
+| --- | ---: |
+| Exact builtins/subclasses/private other | 11 |
+| Native identity/clone/untrusted/line/cap | 8 |
+| Hostile traceback getters | 2 |
+| Holder/latch/storage/invalid-site/no-active-error | 5 |
+| First-only/secondary failure | 2 |
+| Unexpected selected-body sites | 6 |
+| Known Failure/Halt/success | 3 |
+| Missing observer/field/BaseException/legacy fallback | 10 |
+| Formatting/private-writer/public-output | 3 |
+| Total observer names | 50 |
+
+AST literal accounting verifies 50 unique cases and exact controller name/group
+allowlists. Forty-eight case descriptors are identical to the old unexecuted
+design. Two impossible counterfeit-trace fault cases are replaced by the two
+meaningful getter cases; no padded case is added. The three native captures
+have a separate `native_capture` phase and three counters incremented only
+after successful capture; they are setup witnesses, not three more cases.
+
+All 461 normalized legacy logic lines and original definition/assertion nodes
+are retained. Original imports/timer/output/exit tail are excluded by the
+definition-only selector; the new child supplies the corrected helper and
+same ac3 baseline. The unchanged 78-name/controller allowlist and 12 groups
+match. Independent source counting of the run body's finite lists/loops yields
+78 cases, 44 baseline calls and 80 candidate calls; this is not an actual count
+receipt. Planned legacy oracles still require one injected write failure and
+one response timeout. Their selector omits the observer, so even a future
+legacy pass alone would not prove the new observer.
+
+AST comparison against the old design finds 24 identical shared definitions;
+only observe/trace_case/fault_case/first_case change. FakeError/FrameTrap/
+fake_trace are removed; six native/hostile definitions are added. Existing
+site, known, fallback, writer, privacy and normalized flow/body/header/budget
+comparisons remain exact. No arbitrary exception contents become case names,
+labels, counts or fixed JSON values.
+
+### Controller retention, bounds and truthful failure handling
+
+All 348 controller lines were reviewed. There is one possible Popen, using
+the current interpreter with `-I -B -`, the exact in-memory payload, a fresh
+same-owner 0700 empty directory and exclusive/no-follow 0600 stdout/stderr
+captures. Child-only RLIMIT_FSIZE is 16KiB; private reads enforce regular file,
+owner/mode/nlink/size and a 16KiB cap. The child's fixed result is capped at
+8KiB. No source file, main/server constructor, provider/native command or
+listener is entered along the reviewed selected-body paths. The controller
+defines an API and makes no module-level invocation.
+
+The child arms a 30-second alarm; the controller uses a monotonic 33-second
+communicate stop and 35-second envelope, then kills/reaps only its own child
+with the remaining budget and records the actual numeric poll result (or null
+when unproved). Guards can absorb BaseException, and OS/filesystem scheduling
+can stall; these timers are not an unconditional real-time proof. Success
+still requires child elapsed <=30, whole controller <=35, child exit0/reaped,
+no stderr/cleanup failures and exact completed oracles. No timing/kill/reap
+actually happened here. No unrelated process, directory or cache is deleted.
+
+Controller lines 184–218 structurally validate closed v2 result keys, fixed
+enums/names, exact integer/bool types, bounded counts, finite nonnegative elapsed
+and lowercase 64-hex hash shape. Missing/malformed output is marked unavailable,
+never fabricated. It preserves a prior controller failure over later result
+unavailability. At lines 265–288 the actual exit, bounded capture byte counts/
+hashes and complete structurally valid child JSON are put into the retention
+record, written/flush/fsynced through exclusive save **before** lines 299–322
+check success/exit/count/timing or returned helper/archive hash equality.
+Input payload hash equality is a pre-spawn integrity check, separate from
+those post-retention result-pin expectations. No raw stdout/stderr, exception
+text, filenames, private input or locals are printed or copied into fixed JSON.
+
+Retention failure returns truthful failure/unavailable evidence. Expectation
+failure preserves any earlier first failure. The reviewed save uses an earlier
+timing sample; lines 340–348 explicitly return the final post-save sample and
+can demote a late result to failed. Root's separate invocation must retain
+that final returned sample as well as the files, and select/review its fresh
+directory/interpreter/environment/resource preflight. No current runtime
+command, resource observation, whole-bound or cleanup proof is invented here.
+
+### Actual static checks and remaining release boundary
+
+EXIT0 source-only utilities independently checked the complete four-assignment
+assembly (130,174-byte prefix), all payload/archive/controller hashes and lengths,
+strict base64 decode/equality, complete a88 prefix and published/fixed helper
+equality. They reconstructed the original 91,163-byte ce79 archive with SHA
+`ce79aeb99fafaaeb265d6b7bff55f415e91825d83e9c650eed412825a5a9525f`.
+AST parsing passed for the full payload, logic, controller, fixed helper,
+unchanged legacy and original archive. Both scoped diffs passed whole forward/
+reverse application. Case/group/definition/one-Popen/no-direct-main-or-server-
+constructor and observer private-attribute checks passed. Only our static
+data utilities ran: no candidate compile, import, exec, definition/case,
+constructor, stub, observer, helper or controller execution occurred.
+
+Original prepared180 actual `unexpected_failure` cause, original Authorization
+sender and true first cleanup start remain UNKNOWN. The failed 61-of-76 attempt,
+historical corrected 78-case legacy pass, all earlier unexecuted designs and
+actual GUI/fixture failures retain their dated outcomes and limits. None is
+observer-aware evidence. The F1 correction is a source fact; all 128 planned
+cases, three captures and fullJSON/exit/timing/reap oracles for this descriptor-
+aware envelope remain UNEXECUTED.
+Real browser remains HELD. Closed rows, primary assignments and task/board
+statuses are unchanged; no completion credit is recommended from this report.
+
+Only this report was appended. No source/controller/other report import/edit,
+alignment/merge/main/push, author/worker/orchestrator contact, new task/worker/
+WT/managed shell, runtime slot, native/provider/product-CLI/network/socket/
+listener/HTTPServer constructor/Driver/Cargo/PG/browser/helper execution or
+deletion occurred. RiWork Cua.ai Driver MCP-only preference remains in force.
+Final report-prefix, documentation, whitespace, scope and clean-state checks
+are recorded below after validation; root owns any separate bounded release.
+
+### Report-only validation receipt
+
+Actual `python3 scripts/check-docs.py` EXIT0: Markdown links and build-directory
+layout checked. Actual `python3 scripts/check-repo-hygiene.py` EXIT0: 945 tracked
+files checked. `git diff --check` and `git diff --cached --check` EXIT0 with no
+whitespace errors. Own static prefix/scope utility proved all 17,324 a770 bytes
+and their SHA unchanged, only this reserved report appended, no other staged/
+unstaged/untracked path, final newline/trailing whitespace correct and helper
+still absent from the own branch. All source/data utilities exited0; none
+constructed candidate frames/exceptions or evaluated archived code. No static
+check failed or required a correction in this review.
+
+The report-only commit and subsequent clean-state receipt provide the immutable
+handoff. Recommend only the separately reviewed/released single memory
+invocation anchored to b10cf837 payload and 0e93e11f controller, with full
+retention and final timing sample. No invocation or broader campaign is
+authorized or performed by this report; root owns release and disposition.
