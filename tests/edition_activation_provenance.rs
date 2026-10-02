@@ -66,14 +66,30 @@ fn platform_activation_retains_dependency_after_configuration_changes() {
                 .any(|item| { item["resource"] == resource })
         );
     }
-    assert_eq!(
-        Store::inspect(&candidate, |_, tx| tx.unwrap().snapshot()).unwrap(),
-        before
+    assert!(
+        Store::inspect(&candidate, |_, tx| tx.unwrap().snapshot()).unwrap() == before,
+        "read-only preflight changed instance records"
     );
 
-    // Reopening Platform with the reduced configuration cannot erase evidence.
-    drop(Core::open(candidate.clone()).unwrap());
-    let retained: Value = Store::inspect(&candidate, |_, tx| {
+    // Removing recorded rates and capability choices must refuse startup, not
+    // adopt a different agreement or erase the retained edition evidence.
+    let error = Core::open(candidate.clone())
+        .err()
+        .expect("reduced configuration must fail the initialized security agreement");
+    assert!(
+        error
+            .message
+            .contains("Configured active capabilities do not match the initialized instance"),
+        "{error}"
+    );
+    assert!(
+        Store::inspect(&candidate, |_, tx| tx.unwrap().snapshot()).unwrap() == before,
+        "refused startup changed instance records"
+    );
+
+    // Reopening with the original agreed policy preserves the provenance.
+    drop(Core::open(config.clone()).unwrap());
+    let retained: Value = Store::inspect(&config, |_, tx| {
         tx.unwrap().get("meta", "edition_provenance")
     })
     .unwrap()
