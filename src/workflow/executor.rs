@@ -40,8 +40,8 @@ pub(crate) use version::{
 use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
     RunBinding, RunState, SourceRegistrationBinding, StagePermission, Target, Validated, builtin,
-    configured_environment, configured_password_path, configured_source_first_passkey_enrollment,
-    configured_source_totp_authentication,
+    configured_conditional_passkey_enrollment, configured_environment, configured_password_path,
+    configured_source_first_passkey_enrollment, configured_source_totp_authentication,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     extension_gate, supported_configured_consent, supported_configured_extension_password,
     supported_configured_passkey, supported_configured_passkey_consent,
@@ -1467,7 +1467,8 @@ impl Core {
                 checked.definition().id.as_str(),
                 PASSKEY_WORKFLOW | PASSKEY_ENROLLMENT
             ) || configured_passkey
-                || configured_enrollment
+                || (configured_enrollment
+                    && !configured_conditional_passkey_enrollment(checked.definition()))
                 || configured_totp_enrollment
                 || configured_totp_replacement
                 || configured_removal
