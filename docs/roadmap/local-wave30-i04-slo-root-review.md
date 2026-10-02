@@ -138,3 +138,26 @@ processing, session retirement, response confirmation and consumed-replay checks
 were not reached. No signature bypass or expected-code correction is established.
 Cargo released immediately before reporting. No repeat is authorized by this
 review; a finite status/stage/code observation must precede any concrete correction.
+
+## Finite refusal projection: source only
+
+Root fully read bf7c394150141f8dda6b41c6c0644dd6a9a7d870 and the161-line
+static appendix328228552f3b07240482bbf3dd70c8d60242221c. Only the appended
+ignored function changes. Numeric exit/signal and an optional tuple of one of
+11 static C-stage literals plus canonical i32 are added to the failed assertion;
+no raw stderr/message/path/protocol/name/index is printed. C/helper/library are
+unchanged. Missing, malformed, unknown or multiple failure-family lines yield
+unclassified None. The boolean exit1-and-contains(-111) remains exact.
+
+Root removed the local projector, reversed the local import and failure-message
+arguments, and reconstructed the entire e028 test37798 bytes exactly, retaining
+the19341-byte original prefix. New source SHA-256 is
+862564f9154cd1de98378bc853e47948a731b994d22a1cf8d5be94083a1f52da.
+This is not a changed refusal oracle or an explanation of the prior failure.
+The diagnostic remains uncompiled/unrun at review. Its same ignored warm-cache
+filter stays held while I02 owns Cargo. A later release requires fresh source/
+helper/library/cache/settings and capacity review, without C rebuild, additional
+filter, blind retry, threshold reduction or deletion. The earlier cold-build
+13GiB planning condition is not an immutable peak measurement; unchanged warm
+libraries may justify a separately reviewed smaller allowance. No reservation
+or execution is inferred merely from this source review.
