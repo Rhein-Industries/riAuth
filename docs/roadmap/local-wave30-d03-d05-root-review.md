@@ -118,3 +118,16 @@ review, JSON parse/deep preservation and Markdown prefix proof, focused commit
 scope checks and documentation/whitespace verification. Root ran no product
 runtime. Only reviewed deltas are integrated; no worker merge/stale stack is
 ported. Root alone publishes and applies the original status decisions.
+
+## Later I10 diagnostic follow-up
+
+The source-only original I10 disposition at
+`cae69dd2f31e98cb80b5a15b173cb1cbba37eb8f` found a concrete existing Entra
+certificate-mode operations selector defect: it inspects the required-empty
+client-secret path instead of the active private-key file. Root independently
+confirmed the operations arm, mutually exclusive configuration validation and
+actual 16384-byte signing-key reader. This concerns the supported-mode
+operational diagnostic, not a new missing recipe or tenant result. A narrow
+selector plus one focused regression is separately source-reserved; execution
+and unconditional I10 closure remain held. D03 does not credit that fix or
+close I10/I06. All dated earlier reviews retain their own inspected scope.
