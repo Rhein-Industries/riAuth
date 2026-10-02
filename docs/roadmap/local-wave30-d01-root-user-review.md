@@ -65,3 +65,10 @@ Root read the full `eb3229e13ed56fbee47f37974337b2a8657c45d2` actual appendix an
 Root independently read the installed CPython parser body: it normalizes leading network-path prefixes before the helper receives the target. The failing baseline expectation conflicts with that source order. This establishes a harness expectation defect, not a recovered actual response, sender, helper regression or product cause. The installed stdlib source hash is `b917e19d333ae8aa1995063c9bddf5a15391f8f7caf32e41a22067824d643429`.
 
 Root reserves only a source-first corrected harness design/report: actual-parser old/new normalized routing parity, its bounded Authorization refusal and distinct controlled parser-result tests of the unchanged netloc guard. All other cases and the exact helper remain unchanged. Execution requires a separate release after complete harness review; the real confidential browser fixture remains held. All prior failures, lost values and reporting corrections remain dated evidence.
+
+
+## Corrected complete controlled verification: immediate result
+
+Root read every line of the complete `ab3fbace55465e9725ad230ff9eca160cdcc2856` corrected harness logic, its prose and five-hunk diff. Reconstructing the two immutable source strings plus archived logic produced exactly 91,163 bytes, SHA-256 `ce79aeb99fafaaeb265d6b7bff55f415e91825d83e9c650eed412825a5a9525f`; root parsed it without executing it. Root then released one bounded memory verification.
+
+The worker immediately reports exit 0, all 78 cases completed, 44 baseline and 80 candidate calls, one injected write failure and one injected response timeout, with no failed or unreached case. Child elapsed was 0.021527 seconds, bounded outer elapsed 0.06402 seconds; the child was reaped. Its complete result was retained before comparisons. The prior 61-of-76 attempt remains failed and unchanged. Root accepts the immediate controlled result pending full actual-appendix review; no browser, native crypto, callback, consent or application success is inferred. The real fixture remains held.
