@@ -11,17 +11,22 @@
  */
 #include <lasso/lasso.h>
 #include <lasso/id-ff/identity.h>
+#include <lasso/id-ff/logout.h>
 #include <lasso/id-ff/session.h>
 #include <lasso/saml-2.0/saml2_helper.h>
 #include <lasso/xml/saml-2.0/saml2_name_id.h>
 #include <lasso/xml/saml-2.0/saml2_strings.h>
 #include <lasso/xml/saml-2.0/samlp2_authn_request.h>
+#include <lasso/xml/saml-2.0/samlp2_logout_request.h>
 
 #include <errno.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 static const char *const RELAY = "lasso-relay";
@@ -355,6 +360,256 @@ static void accept_mode(int argc, char **argv) {
     lasso_shutdown();
 }
 
+/* New SLO modes use exclusive owned files, finite status output and a real
+ * process deadline. The original request/accept modes above are unchanged. */
+enum { SLO_FILE_LIMIT = 128 * 1024 };
+
+static _Noreturn void slo_error(const char *stage) {
+    fprintf(stderr, "lasso slo: %s\n", stage);
+    exit(1);
+}
+
+static void slo_limits(void) {
+    const struct rlimit output_limit = { SLO_FILE_LIMIT, SLO_FILE_LIMIT };
+    if (setrlimit(RLIMIT_FSIZE, &output_limit) != 0 || signal(SIGALRM, SIG_DFL) == SIG_ERR) {
+        slo_error("limits");
+    }
+    alarm(15);
+}
+
+static char *slo_read(const char *path) {
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+    struct stat st;
+    char *data;
+    size_t used = 0;
+    char extra;
+    if (fd < 0 || fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
+        (st.st_mode & 0777) != 0600 || st.st_nlink != 1 || st.st_size <= 0 ||
+        st.st_size > SLO_FILE_LIMIT) {
+        slo_error("private input");
+    }
+    data = malloc((size_t)st.st_size + 1);
+    if (data == NULL) {
+        slo_error("allocation");
+    }
+    while (used < (size_t)st.st_size) {
+        ssize_t n = read(fd, data + used, (size_t)st.st_size - used);
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        if (n <= 0) {
+            slo_error("input length");
+        }
+        used += (size_t)n;
+    }
+    if (read(fd, &extra, 1) != 0 || close(fd) != 0 || memchr(data, '\0', used) != NULL) {
+        slo_error("input framing");
+    }
+    data[used] = '\0';
+    return data;
+}
+
+static void slo_write(const char *path, const char *data) {
+    size_t length = data == NULL ? 0 : strnlen(data, SLO_FILE_LIMIT + 1);
+    int fd;
+    struct stat st;
+    size_t used = 0;
+    if (length == 0 || length > SLO_FILE_LIMIT) {
+        slo_error("output length");
+    }
+    fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+    if (fd < 0 || fchmod(fd, 0600) != 0 || fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) ||
+        st.st_uid != geteuid() || (st.st_mode & 0777) != 0600 || st.st_nlink != 1) {
+        slo_error("private output");
+    }
+    while (used < length) {
+        ssize_t n = write(fd, data + used, length - used);
+        if (n < 0 && errno == EINTR) {
+            continue;
+        }
+        if (n <= 0) {
+            slo_error("output write");
+        }
+        used += (size_t)n;
+    }
+    if (close(fd) != 0) {
+        slo_error("output close");
+    }
+}
+
+static LassoServer *slo_server(char **argv) {
+    int i;
+    slo_limits();
+    for (i = 2; i <= 5; i++) {
+        char *input = slo_read(argv[i]);
+        free(input);
+    }
+    if (strnlen(argv[6], 1025) > 1024) {
+        slo_error("provider length");
+    }
+    return open_server(argv[2], argv[3], argv[4], argv[5], argv[6]);
+}
+
+static void slo_accept_state(int argc, char **argv) {
+    LassoServer *server;
+    LassoLogin *login;
+    LassoProfile *profile;
+    char *dump;
+    char *response;
+    char *identity_dump;
+    char *session_dump;
+    if (argc != 12) {
+        slo_error("accept-state arguments");
+    }
+    server = slo_server(argv);
+    dump = slo_read(argv[7]);
+    login = lasso_login_new_from_dump(server, dump);
+    free(dump);
+    if (login == NULL) {
+        fail("lasso_login_new_from_dump", LASSO_ERROR_UNDEFINED);
+    }
+    profile = LASSO_PROFILE(login);
+    lasso_profile_set_signature_hint(profile, LASSO_PROFILE_SIGNATURE_HINT_FORCE);
+    lasso_profile_set_signature_verify_hint(profile, LASSO_PROFILE_SIGNATURE_VERIFY_HINT_FORCE);
+    prime_empty_identity(login);
+    if (profile->session == NULL) {
+        profile->session = lasso_session_new();
+        if (profile->session == NULL) {
+            fail("lasso_session_new", LASSO_ERROR_UNDEFINED);
+        }
+    }
+    response = slo_read(argv[8]);
+    trim_trailing(response);
+    require_line(response, "response");
+    if (strnlen(argv[9], 81) > 80 || profile->msg_relayState == NULL ||
+        strcmp(profile->msg_relayState, argv[9]) != 0) {
+        slo_error("login relay");
+    }
+    check("lasso_login_process_authn_response_msg", lasso_login_process_authn_response_msg(login, response));
+    free(response);
+    require_assertion_conditions(login, server);
+    check("lasso_login_accept_sso", lasso_login_accept_sso(login));
+    if (lasso_profile_get_identity(profile) == NULL || lasso_profile_get_session(profile) == NULL ||
+        !LASSO_IS_SAML2_NAME_ID(profile->nameIdentifier) ||
+        LASSO_SAML2_NAME_ID(profile->nameIdentifier)->Format == NULL ||
+        strcmp(LASSO_SAML2_NAME_ID(profile->nameIdentifier)->Format,
+               LASSO_SAML2_NAME_IDENTIFIER_FORMAT_PERSISTENT) != 0) {
+        slo_error("accepted state");
+    }
+    identity_dump = lasso_identity_dump(lasso_profile_get_identity(profile));
+    session_dump = lasso_session_dump(lasso_profile_get_session(profile));
+    slo_write(argv[10], identity_dump);
+    slo_write(argv[11], session_dump);
+    g_free(identity_dump);
+    g_free(session_dump);
+    printf("accepted: true\npersisted: true\n");
+    lasso_login_destroy(login);
+    lasso_server_destroy(server);
+    lasso_shutdown();
+}
+
+static LassoLogout *slo_restore(LassoServer *server, const char *identity, const char *session) {
+    LassoLogout *logout = lasso_logout_new(server);
+    LassoProfile *profile;
+    char *dump;
+    if (logout == NULL) {
+        fail("lasso_logout_new", LASSO_ERROR_UNDEFINED);
+    }
+    profile = LASSO_PROFILE(logout);
+    lasso_profile_set_signature_hint(profile, LASSO_PROFILE_SIGNATURE_HINT_FORCE);
+    lasso_profile_set_signature_verify_hint(profile, LASSO_PROFILE_SIGNATURE_VERIFY_HINT_FORCE);
+    dump = slo_read(identity);
+    check("lasso_profile_set_identity_from_dump", lasso_profile_set_identity_from_dump(profile, dump));
+    free(dump);
+    dump = slo_read(session);
+    check("lasso_profile_set_session_from_dump", lasso_profile_set_session_from_dump(profile, dump));
+    free(dump);
+    if (profile->session == NULL) {
+        slo_error("restored session");
+    }
+    return logout;
+}
+
+static void slo_session_state(int argc, char **argv) {
+    LassoServer *server;
+    LassoLogout *logout;
+    LassoSession *session;
+    GList *names;
+    GList *indices;
+    if (argc != 9) {
+        slo_error("session-state arguments");
+    }
+    server = slo_server(argv);
+    logout = slo_restore(server, argv[7], argv[8]);
+    session = LASSO_PROFILE(logout)->session;
+    names = lasso_session_get_name_ids(session, argv[6]);
+    indices = lasso_session_get_session_indexes(session, argv[6], NULL);
+    printf("assertion: %s\nnames: %u\nindices: %u\nempty: %s\n",
+           lasso_session_get_assertion(session, argv[6]) == NULL ? "absent" : "present",
+           g_list_length(names), g_list_length(indices), lasso_session_is_empty(session) ? "true" : "false");
+    g_list_free_full(names, g_object_unref);
+    g_list_free_full(indices, g_free);
+    lasso_logout_destroy(logout);
+    lasso_server_destroy(server);
+    lasso_shutdown();
+}
+
+static void slo_receive_logout(int argc, char **argv) {
+    LassoServer *server;
+    LassoLogout *logout;
+    LassoProfile *profile;
+    LassoSamlp2LogoutRequest *request;
+    GList *indices;
+    char *query;
+    char *session_dump;
+    if (argc != 12) {
+        slo_error("logout arguments");
+    }
+    server = slo_server(argv);
+    logout = slo_restore(server, argv[7], argv[8]);
+    profile = LASSO_PROFILE(logout);
+    query = slo_read(argv[9]);
+    trim_trailing(query);
+    require_line(query, "request");
+    check("lasso_logout_process_request_msg", lasso_logout_process_request_msg(logout, query));
+    free(query);
+    check("lasso_profile_get_signature_status", lasso_profile_get_signature_status(profile));
+    if (profile->http_request_method != LASSO_HTTP_METHOD_REDIRECT ||
+        !LASSO_IS_SAMLP2_LOGOUT_REQUEST(profile->request) || profile->remote_providerID == NULL ||
+        strcmp(profile->remote_providerID, argv[6]) != 0) {
+        slo_error("signed request binding");
+    }
+    request = LASSO_SAMLP2_LOGOUT_REQUEST(profile->request);
+    if (request->NameID == NULL || request->SessionIndex == NULL ||
+        lasso_session_get_assertion(profile->session, argv[6]) == NULL) {
+        slo_error("issued session binding");
+    }
+    indices = lasso_session_get_session_indexes(profile->session, argv[6], LASSO_NODE(request->NameID));
+    if (g_list_length(indices) != 1 || strcmp(indices->data, request->SessionIndex) != 0) {
+        slo_error("issued index mismatch");
+    }
+    g_list_free_full(indices, g_free);
+    check("lasso_logout_validate_request", lasso_logout_validate_request(logout));
+    indices = lasso_session_get_session_indexes(profile->session, argv[6], NULL);
+    if (indices != NULL || lasso_session_get_assertion(profile->session, argv[6]) != NULL ||
+        !lasso_session_is_empty(profile->session)) {
+        slo_error("session retained");
+    }
+    check("lasso_logout_build_response_msg", lasso_logout_build_response_msg(logout));
+    require_line(profile->msg_url, "logout response");
+    /* lasso_session_dump deliberately returns an empty string for an empty
+     * session. Serialize the actual emptied object with Lasso's generic dump,
+     * so the next process can restore and independently inspect that state. */
+    session_dump = lasso_node_dump(LASSO_NODE(profile->session));
+    slo_write(argv[10], profile->msg_url);
+    slo_write(argv[11], session_dump);
+    g_free(session_dump);
+    printf("signature: lasso\nmatched_indices: 1\nassertion_after: absent\nindices_after: 0\nempty_after: true\n");
+    lasso_logout_destroy(logout);
+    lasso_server_destroy(server);
+    lasso_shutdown();
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "usage: lasso-saml-sp request|accept ...\n");
@@ -366,6 +621,18 @@ int main(int argc, char **argv) {
     }
     if (strcmp(argv[1], "accept") == 0) {
         accept_mode(argc, argv);
+        return 0;
+    }
+    if (strcmp(argv[1], "accept-state") == 0) {
+        slo_accept_state(argc, argv);
+        return 0;
+    }
+    if (strcmp(argv[1], "session-state") == 0) {
+        slo_session_state(argc, argv);
+        return 0;
+    }
+    if (strcmp(argv[1], "logout") == 0) {
+        slo_receive_logout(argc, argv);
         return 0;
     }
     fprintf(stderr, "usage: lasso-saml-sp request|accept ...\n");
