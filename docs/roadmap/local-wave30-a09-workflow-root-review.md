@@ -118,3 +118,11 @@ workflow-definition commit must be recorded separately. No automatic retry,
 capacity-threshold reduction, larger-runner substitution or cache deletion is
 authorized. The rejected dispatch and invalid-workflow metadata above remain
 part of the evidence.
+
+## Closed native Linux architecture selection: root source review
+
+Root read the complete `3c211369856b1e4c54b2ba8d39404635ccfddaea` workflow diff and the full `3df43b15f4af90211ed0f8ec1718a6a8e4e7c2c5` static appendix. The manual input is a closed arm64(default)/x86_64 choice; exact native hosted machine/token/triple, ELF two-byte machine field, capability metadata and archive/smoke paths are derived from that map. No arbitrary runner/triple is accepted. Legacy serialization, commands, private targets, source/action/provenance checks, 30GiB start/10GiB stop/8GiB floor and finite cleanup are unchanged. New workflow 19,487 bytes has SHA256 `62c378975021066d62d5b32d0eee2c87de8501d01ded1ae0fae8147e920e58d7`.
+
+Root independently parsed both YAML files and four Bash blocks per revision, parsed the full driver AST, checked both closed map entries and all eight unchanged function bodies, and normalized the complete default-ARM driver and workflow to the original. Exact two-byte ELF equality preserves rejection of a truncated one-byte field. Root's first AST normalizer omitted adjacent string-suffix folding and refused equality; correcting the normalizer passed on unchanged source. Installed Psych represents YAML1.1 `on` as a boolean key; a later checker lookup initially refused, then used the same representation in both files and proved full workflow equality. These are source-check corrections, not workflow/native runs. The [official context table](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability) permits inputs in job runs-on/env and step-with; the shell-local RUNNER_TEMP correction remains intact.
+
+The source is ready for publication and one separately owned x86_64 manual build of the reviewed published Rust/input tree. No x86 capacity, products, dependencies, duration or container gate is credited by this review. The existing focused five-archive checker remains unchanged; full shared-gate and official-release assertions remain false.
