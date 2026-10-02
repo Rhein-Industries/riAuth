@@ -2607,3 +2607,208 @@ remains an exact prefix. Original166178-byte design prefix, historical actual
 PASS/two failures and first-native-unknown remain unchanged. Native compilation,
 Rust type-checking and new peer/receiver execution are still pending independent
 root review and explicit separate releases; no original I04 closure is claimed.
+
+## Actual single compiler step — wave30_I04_lasso_idp_single_compiler
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`; original I04
+`dae9c528-9e32-462c-947f-661a571f136b`. Root released exactly the single compiler
+preparation, not Cargo, native helper/library/version or protocol execution.
+Source/report HEAD at invocation was
+**`3330d50c05232cf926639e54d934b755f1f47e70`**. The original primary assignment,
+other rows and all previous failed/PASS receipts are unchanged. Independent
+review remains root-owned; no publication or completion is asserted here.
+
+### Pre-invocation source, wrapper and capacity evidence
+
+Final C remained34120 bytes, SHA-256
+`1b23f51314038ff15caa3aeb8c31acccb8bcd26d6fb702115767d0f68e4dc186`;
+final new Rust remained39498 bytes, SHA-256
+`0a5991d7c17cc921b3a13fdc0e49a2df10d45568aebbafc86e93cf27a2a9f85b`.
+Source and tracked working tree were clean. All347 tracked protected
+production/config paths—whole `src/`, `crates/`, manifests/lock/toolchain and
+tracked build configuration—equal reviewed
+`ae8937800254a1ad4296ea257de1eccc4780e45b` by modes/object IDs. Whole comparison
+with `b619fe25269ccc150e473bbcde47cdb3623ef810` additionally identified exactly
+five later browser/API paths: `src/api.rs`, `src/portal.rs`,
+`src/portal/source-stage.html`, `src/portal/source-stage.js`, and
+`src/portal/source_stage.rs`. The reviewed owned ae baseline was retained;
+no alignment or history import occurred. Previously compared selected source
+SAML hooks and all manifests/toolchain equal b619 too. This compiler builds the
+separate C helper, not those Rust browser/API paths.
+
+Selected primary Lasso archive SHA-256
+`63816c8219df48cdefeccb1acb35e04014ca6395b5263c70aacd5470ea95c351`,
+Lasso2.9.0_4 pc359 bytes/SHA
+`b33a6d16197865beda424287def683acd372026239b1725f08cbc06f3b6a452e`,
+and selected dylib501600 bytes/SHA
+`0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde`
+were freshly rehashed before execution. Seven public installed headers again
+matched their primary archive members whole-byte. Cache inspection was metadata
+only: default Platform riAuth fingerprint SHA
+`78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af`
+(profile12672335563272108896/features default,essentials,platform) and the
+separate test-support/fuzzing fingerprint were read without invocation. This
+does not establish future Cargo cache reuse. Process-name-only `ps` inspection
+found no matching Cargo/rustc/clang/pkg-config/Lasso helper process; no other
+worker was contacted or waited upon.
+
+The existing target was a real nonsymlink effective-UID501-owned directory
+resolving inside this exact worktree. New approved
+`target/i04-lasso-idp-source-design-v1` was absent; old SP/SLO directory was
+inventoried by file metadata/hashes only. Fresh initial capacity was
+22617133056 bytes (~21.06GiB); immediate invocation preflight was
+**22605606912 bytes**, above the explicitly required13GiB prerequisite.
+No deletion or alternate cache/target was used.
+
+Before invocation, the actual adapted wrapper and static control evidence were
+archived as exclusive owned regular nonsymlink nlink1 mode0600 files inside the
+existing private target (no extra directory):
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `target/i04-lasso-idp-source-design-v1.compiler-wrapper.py` | 8279 | `264562357120219ae9872d3eca96492ac502fd2188b63fadb502120c42113fbb` |
+| `target/i04-lasso-idp-source-design-v1.compiler-controls.json` | 6335 | `69949a028fead2ebcd4ac0bbc7c352df002970faa314289f32a8e064d3108360` |
+| `target/i04-lasso-idp-source-design-v1.compiler-preflight.json` | 2630 | `f8893473e7be6eee049c189b62cdb895a5e3ef3fe0a753e8aa5d924600b6ab77` |
+
+The inline bounded wrapper was taken from immutable `020a324` report text.
+Literal adaptation/reversal pairs are archived in the controls manifest. Their
+inverse reconstructs the **entire original inline Python byte-exact**, and its
+AST equals the original AST. Removing only the adaptation/instrumentation
+scaffolding from the executable run body reconstructs the adapted core AST.
+Static AST inspection confirmed two once-call sites, metadata5s then compiler60s,
+one Popen implementation, unchanged successful-metadata gate before compilation,
+exact selected PKG_CONFIG_PATH,9GiB stop and13GiB fresh preflight. Adaptation
+changes the output directory, makes the C argument absolute, and adds bounded
+numeric outcome/capture/hash/minimum-disk journaling and owned-group absence/
+cleanup proof. Captured output is retained before rc expectations are applied.
+The original private captures128KiB/child file-size16MiB limits remain;
+owned TERM/KILL cleanup is bounded by one10s deadline. It does not execute or
+probe the resulting helper. No alternate flags, retry or source correction is
+present.
+
+### Exact command, actual exits and owned cleanup
+
+One invocation of the archived wrapper:
+
+```sh
+python3 target/i04-lasso-idp-source-design-v1.compiler-wrapper.py
+```
+
+It issued exactly one top-level metadata child:
+`pkg-config --cflags --libs lasso gobject-2.0`, with
+`PKG_CONFIG_PATH=/opt/homebrew/Cellar/lasso/2.9.0_4/lib/pkgconfig`, then, only
+after rc0 and bounded flag parsing, one compiler child:
+
+```text
+/usr/bin/cc -O2 -o $PWD/target/i04-lasso-idp-source-design-v1/lasso-saml-sp $PWD/scripts/lasso-saml-sp.c <shlex-split actual selected flags>
+```
+
+The917-byte actual metadata stdout exactly equals the previously reviewed
+selected flag capture, SHA
+`8d8f51e95d756bdacbfaf1c3fb287970cb580ef1061c9f0c4207761950451a92`.
+It was used directly; no flags were substituted or regenerated by another
+command. Compiler environment retained the old wrapper behavior with only
+that explicit PKG_CONFIG_PATH override; no environment values were printed.
+No private key, credential or protocol input is involved in compilation.
+
+| Captured top-level child | PID / PGID | Deadline | Actual rc | Elapsed through reap/cleanup | Outcome |
+| --- | --- | ---: | ---: | ---: | --- |
+| pkg-config | 95134 / 95134 | 5s | 0 | 0.038939042s | Reaped; group absent; no termination |
+| `/usr/bin/cc` | 95135 / 95135 | 60s | 0 | 0.491839875s | Reaped; group absent; no termination |
+
+Wrapper actual exit **0**, status **compiled**, elapsed **0.537892209s**;
+UTC interval2026-10-02T19:10:24.843090+00:00 through
+2026-10-02T19:10:25.381166+00:00. Captured compiler stdout and stderr were each
+**0 bytes**. Metadata stderr was also0 bytes. The numbers above describe the
+two captured group leaders; no invented count of compiler-internal descendants
+is claimed. Each leader's wait completed and group absence was checked.
+Post-exit process-table inspection found both owned groups95134/95135 empty.
+TERM/KILL was not needed; cleanup checks took approximately6 microseconds per
+leader. No compiler/fixture/native failure or automatic repeat occurred.
+
+Wrapper-monitored minimum free was22606462976 bytes; preflight and immediate
+post-result observation were22605606912 and22605500416 bytes respectively.
+All observed values remained above21.05GiB;9GiB stop/8GiB floor were not
+approached. Host free space can vary independently, so these are observed
+samples, not a capacity reservation or exact continuous peak. The wrapper
+checked disk/captures during bounded waits (≤0.1s), at exit and during evidence
+finalization. Approved new directory is retained mode0700 with binary/captures;
+cleanup here means owned child/group termination/reaping, not evidence deletion.
+The original SP/SLO binary and all four old capture files were rehashed after
+execution and exactly match the preflight inventory. No old evidence was changed.
+
+**EXCLUSIVE PREPARATION RELEASED** was reported immediately after actual exit,
+artifact/cleanup readback and before this appendix. This is a preparation-slot
+release, not a Cargo release. Cargo/filter/helper/native-version/library/protocol
+execution remains **HELD** pending root review and a later explicit reservation.
+No desktop or listener operation occurred.
+
+### Artifact and dependencies — binary reads only
+
+New `target/i04-lasso-idp-source-design-v1/lasso-saml-sp` is an owned UID501,
+regular nonsymlink nlink1 executable, mode0755 inside the own0700 directory:
+**40880 bytes**, SHA-256
+**`951465d744c1bf99e7ed91fc414337d00e960c24a1715977cce0e14535794bff`**.
+Pure binary reads decoded its Mach-O64 header as arm64 executable and its load
+commands. No executable, dynamic loader, version or helper mode was invoked.
+There were no RPATH commands. Recorded load-dylib names:
+
+- `/opt/homebrew/opt/lasso/lib/liblasso.3.dylib`
+- `/opt/homebrew/opt/glib/lib/libgobject-2.0.0.dylib`
+- `/opt/homebrew/opt/glib/lib/libglib-2.0.0.dylib`
+- `/opt/homebrew/opt/gettext/lib/libintl.8.dylib`
+- `/usr/lib/libSystem.B.dylib`
+
+Read-only alias resolution and hashes of ordinary dependency files:
+
+| Resolved dependency | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `/opt/homebrew/Cellar/lasso/2.9.0_4/lib/liblasso.3.dylib` | 501600 | `0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde` |
+| `/opt/homebrew/Cellar/glib/2.90.0/lib/libgobject-2.0.0.dylib` | 399616 | `771a6eae9e2798f218efbdaff9fb3b515bce84617a1b9bdee9b093b42d8b81a6` |
+| `/opt/homebrew/Cellar/glib/2.90.0/lib/libglib-2.0.0.dylib` | 1362864 | `e23a6acee2d81c533320953756b9d5151201b762d6fd12a332b1bd8acc110d14` |
+| `/opt/homebrew/Cellar/gettext/1.0/lib/libintl.8.dylib` | 228800 | `0c6d618e75fea85cc3d631e164a71766fba9341d19ce1f723300c52e63037c51` |
+
+The system load-command name has no ordinary file at that path on this host;
+no system-cache extraction or dynamic execution was attempted. These are current
+file/read identities and linked install names, not runtime resolution or a
+protocol success claim. Original compiled SP/SLO helper18f148c remains untouched.
+
+Private new evidence, all owned regular nlink1 mode0600, under the new0700 dir:
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `compiler-result.json` | 1635 | `3fc97215f63d520a6aaaed9dc0ac49537e49f2c772d2a0419a3a5b4d85f33ad8` |
+| `pkg-config.stdout` | 917 | `8d8f51e95d756bdacbfaf1c3fb287970cb580ef1061c9f0c4207761950451a92` |
+| `pkg-config.stderr` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `cc.stdout` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `cc.stderr` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `compiler-artifact.json` | 663 | `e9e0b07800233d76f8f063d0de764a1364c266f5bcdff5cca815dc7e81bc6f3e` |
+| `compiler-dependencies.json` | 1206 | `07609a91f22d31ce9e4ca0c1253d0082f49256b143e2565c4a3c696edd50e13f` |
+
+### Evidence limit and append-only handoff
+
+The released native compile/link step succeeded against the selected local
+headers/libraries. It does not type-check the new Rust target or execute IdP
+request verification, either native signature, federation reload, Core callback,
+link/unlink, trust retirement, replay or any receiver lifecycle oracle. All
+those remain prospective definitions. Root's independent review and later
+compiler-output acceptance/filter release are outstanding; no wait/contact or
+whole-I04/Linux/Windows/tenant/browser/release/deployed completion is inferred.
+No Cargo slot was taken. No automatic repeat, alternative peer/flags/source fix,
+capacity deletion, provider or service was used.
+
+The whole `3330d50c05232cf926639e54d934b755f1f47e70` report is preserved as the
+exact186493-byte prefix, SHA-256
+`6cff38ba929d515f934ece93ddb588fa92474738f23efe7b3eff5c6d61589740`.
+All previous source/preparation/failures/native SLO PASS, unknown first failure,
+old native artifact and full report prefixes remain intact. Only this reserved
+report is appended in the tracked tree; no source, old test/helper, dependency,
+configuration, writer, primary assignment, main/accepted branch, board or other
+row was edited. Root alone reviews/imports/publishes/statuses this evidence.
+
+Actual final documentation verification: `python3 scripts/check-docs.py`
+exited0; `git diff --check` passed. Prefix, reserved report-only diff, unchanged
+final C/Rust/manifests/toolchain and all retained old artifact/capture hashes
+were checked. These are documentation/source checks after the one compile,
+not additional native or protocol runs.
