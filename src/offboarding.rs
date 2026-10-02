@@ -466,13 +466,14 @@ fn job_status_name(status: Status) -> &'static str {
 /// Seconds since a non-terminal job became due, when that is more than
 /// [`OVERDUE_GRACE_SECONDS`] at `at`. A `scheduled` job is due at
 /// `max(execute_at, next_attempt)`, the instant a claim would accept it. A
-/// `running` job is due again when its lease expires (`lease_until`), the
-/// instant a claim would take it over. Stored local times only; a due time
-/// in the future is never overdue. Terminal jobs are never overdue.
+/// `running` job is due again at `max(lease_until, next_attempt)`, the instant
+/// a claim would take it over or finalize it; a claim sets both to the lease
+/// expiry. Stored local times only; a due time in the future is never overdue.
+/// Terminal jobs are never overdue.
 fn overdue_seconds(job: &Job, at: u64) -> Option<u64> {
     let due = match job.status {
         Status::Scheduled => job.execute_at.max(job.next_attempt),
-        Status::Running => job.lease_until,
+        Status::Running => job.lease_until.max(job.next_attempt),
         Status::Done | Status::Cancelled | Status::Failed => return None,
     };
     (due.saturating_add(OVERDUE_GRACE_SECONDS) < at).then(|| at.saturating_sub(due))
@@ -596,6 +597,10 @@ struct DiagnosticCounts {
 
 struct ListedItem {
     rank: u8,
+    /// Seconds past due for an overdue job. Within a rank, overdue jobs sort
+    /// first, oldest first, so accumulated failed jobs cannot push them past
+    /// the row cap.
+    late: Option<u64>,
     id: String,
     body: Value,
 }
@@ -653,6 +658,7 @@ fn attention_item(job: &Job, rollup: Option<&DownstreamRollup>, late: Option<u64
         .collect();
     ListedItem {
         rank: attention_rank(job, rollup, late.is_some()),
+        late,
         id: job.id.clone(),
         body: json!({
             "id": job.id,
@@ -816,6 +822,7 @@ fn deactivation_item(
     };
     ListedItem {
         rank,
+        late: None,
         id: row.id.clone(),
         body,
     }
@@ -1073,6 +1080,7 @@ impl Core {
             listed.sort_by(|left, right| {
                 left.rank
                     .cmp(&right.rank)
+                    .then_with(|| right.late.cmp(&left.late))
                     .then_with(|| left.id.cmp(&right.id))
             });
             let truncated = listed.len() > DIAGNOSTIC_ITEMS;
