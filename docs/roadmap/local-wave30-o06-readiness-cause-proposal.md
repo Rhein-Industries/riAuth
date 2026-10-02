@@ -2,14 +2,15 @@
 
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original O06 task
 `9899f8e6-05ff-4e11-b9a0-b9ca184221a6`, owned by diagnostics worktree
-`f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. Read-only support investigation in
+`f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. Bounded support implementation in
 existing worktree `7c85f5ef-3fac-4f72-aaed-08474d7fb454`, on 2026-10-02.
 M03 remains DONE. Root reviews/integrates the received controller slice.
 
-**Implemented under root's exact reservation; the focused target is uncompiled
-and unrun, awaiting root's Cargo release.** Code/test commit is `b7bc6ef`.
-Accepted proposal checkpoint `b76578e` remains historical evidence; actual
-implementation/static evidence is recorded below in a separate report commit.
+**The focused target passed after two disclosed fixture failures and two small
+test corrections; the sole Cargo slot was explicitly released.** Production
+code remains `b7bc6ef`. Accepted proposal `b76578e` and static evidence `2e4205d`
+remain historical checkpoints. Actual attempts and correction pins are recorded
+separately below; O06 remains open for root review/integration.
 
 ## Immutable source and verified gap
 
@@ -188,7 +189,7 @@ success/failure oscillation can create new episodes; no time-based rate-limit
 or false stability claim is introduced. State resets when App is constructed
 and is neither durable audit evidence nor exported public status.
 
-## One focused verification target, awaiting runtime
+## One focused verification target
 
 The guarded, doc-hidden `ReadinessProbeTest` harness is re-exported only with
 the existing `test-support` feature. It wraps an existing App clone and exposes
@@ -229,14 +230,17 @@ values without dumping fixture snapshots or errors. Planned evidence:
   issuer to readiness success. These are handler/fixture checks, not a
   service/browser/remote-peer coverage claim.
 
-Queued command, **not executed or runtime-authorized**:
+At static checkpoint `2e4205d`, this command was queued and unexecuted. Root
+subsequently released it, and the exact command was used for all three attempts
+recorded below:
 
 ```sh
 env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test o06_readiness_cause_signal readiness_causes_are_redacted_bounded_observations -- --exact --test-threads=1
 ```
 
-Root alone allocates this runtime. Keep the private target in this existing
-worktree and the 8 GiB free-space floor. No existing CI-owned target is queued.
+Root alone allocated this runtime and each corrected repeat. The private target
+stayed in this existing worktree with an observed 8 GiB free-space floor. No
+existing CI-owned target was executed by this lane.
 
 ## Historical proposal checks
 
@@ -253,7 +257,7 @@ observability, config, state, workflow,
 diagnostic API, service, desktop, main, push, task/status or ownership-ledger
 edit occurred. No other worker was contacted or created.
 
-## Actual implementation and static evidence
+## Implementation and historical static evidence
 
 Code/test commit: `b7bc6efe0f10419e419cdbc16e7d2792b72777cb`, exactly these
 three files:
@@ -286,7 +290,8 @@ foreground permits do not prevent its Store callback, while generic worker
 failure/success bodies and issuer omission remain exact. The collector filters
 only the new event, checks its seven fields plus the fixed message, and rejects
 inherited request spans or synthetic private/error material. These are
-**unexecuted test assertions**, not credited product results.
+unexecuted test assertions at static checkpoint `2e4205d`; the actual product
+result is recorded in the runtime section below.
 
 Executed static checks, all passed:
 
@@ -310,19 +315,101 @@ Executed static checks, all passed:
   documentation validation uses `python3 scripts/check-docs.py`; evidence is
   committed separately from code/test.
 
-Native rustfmt verifies parsing and formatting, not type checking. No Cargo,
-rustc, product test, new dependency/feature, database/remote service, browser or
-desktop run occurred for this readiness slice. The source commit and these
-scope proofs were sent through the explicit project orchestrator before any
-runtime. The exact new command remains queued after gauge and pagination;
-root's runtime_released value remains false.
+Native rustfmt verifies parsing and formatting, not type checking. At static
+checkpoint `2e4205d`, no Cargo, rustc or product test had run. The source commit
+and scope proofs were sent through the explicit project orchestrator before
+runtime. The command was queued after gauge and pagination, and the ledger's
+runtime_released value was false **at that historical checkpoint**.
+
+## Actual runtime attempts and corrections
+
+On 2026-10-02, root released the sole Cargo slot after pagination exited. The
+ledger's runtime_released value was verified true before attempt 1. After each
+failed exit this lane immediately sent the exit and explicit slot release
+through the project orchestrator; root then recorded a specific sole-slot
+reservation for the next identical-target correction repeat. No extra target,
+feature, dependency, product setting or production-source correction was used.
+
+All attempts used exactly the command shown above, with the same private
+`target/wave30-o06-readiness`, jobs 1, incremental 0 and dev/test debug 0. The
+target and parent were checked for symlinks. Each invocation started from a
+clean worktree. Attempt 1 HEAD was report-only descendant `2e4205d`; all three
+tested code files matched `b7bc6ef` byte-for-byte. Later attempts changed only
+the two test fixture lines described below. App/probes bytes remained identical
+to `b7bc6efe0f10419e419cdbc16e7d2792b72777cb` throughout.
+
+| Attempt | Tested HEAD | Exit and actual result | Reported duration |
+| --- | --- | --- | --- |
+| 1 | `2e4205d0dfb6cbfb8033d31ba0edcc24a7c3176f` | 101; compiler E0277, no test executed | No completed profile/test duration reported |
+| 2 | `ffc7f17f194e16c609a2a9b4f9047a71d01fa2c1` | 101; 0 passed, 1 failed, 0 ignored/measured/filtered | Build 8.46s; test 3.44s |
+| 3 | `9c6160cb12381bb1a581e495151ce0a1c95ee0d7` | **0; 1 passed, 0 failed, 0 ignored/measured/filtered** | Build 4.61s; test 3.10s |
+
+Attempt 1 failed at `tests/o06_readiness_cause_signal.rs:229` because
+`tracing::subscriber::with_default` requires a Subscriber, while the fixture
+passed `&Dispatch`. One-line correction commit
+`ffc7f17f194e16c609a2a9b4f9047a71d01fa2c1` selects
+`tracing::dispatcher::with_default`. The locked tracing-core source confirms
+that function accepts `&Dispatch`. Test blob after this correction:
+`bf03b08eeec0fd25722e0b0f312b11b46d3c6d22`.
+
+Attempt 2 compiled and reached the final worker-role fixture, then failed at
+line 633 on Config validation: worker roles require `browser_ui = false`.
+One-line addition commit `9c6160cb12381bb1a581e495151ce0a1c95ee0d7` sets that
+flag on the synthetic worker-role Core clone before validation. This preserves
+the existing product validation rule; no configuration source or live process
+setting was changed. Final tested fixture blob:
+`cd56c12ce00c777cc0b406c5b89afce0d47a84cd`. Both corrections passed native
+rustfmt and staged file-scope/whitespace checks before their reserved repeats.
+
+Attempt 2 output also showed the intentional, fixed nonprivate
+`synthetic readiness join failure` panic from the blocking callback. That
+injection is the expected join-failure case; the unexpected target failure
+was worker fixture validation. Attempts 2 and 3 output contained the linker
+warning that the `riauth` binary's `__eh_frame` section exceeded the 16 MB
+compact-unwind encoding limit, which may affect exception-handling performance.
+The warning was retained in the evidence; no build settings were changed.
+
+Final actual test output:
+
+```text
+running 1 test
+test readiness_causes_are_redacted_bounded_observations ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.10s
+```
+
+| Attempt | Free bytes before execution | Available KiB at completion |
+| --- | --- | --- |
+| 1 | 17,569,734,656 | 15,843,596 |
+| 2 | 16,229,429,248 | 15,454,772 |
+| 3 | 15,802,195,968 | 15,430,832 |
+
+Disk was monitored while the cold build ran and at each repeat; every observed
+value exceeded 8 GiB. The minimum reported completion value was
+15,430,832 KiB. No cache or target was deleted. Only this exact target command
+ran, three times for the two concrete corrections. Cargo's normal dependencies
+and server binary compilation are part of that integration-test command.
+
+Immediately after attempt 3 exited 0, an explicit `Cargo slot RELEASED` message
+with the result, both prior failures/corrections and disk observations was sent
+using `riwork orchestrator send --project 891e7443-8dac-4c1b-897f-9e53cb59c7ee`;
+delivery exited 0. No further Cargo workload is pending in this lane. This
+runtime evidence is committed separately from original source, static evidence
+and both fixture corrections.
+
+The passing result verifies the local synthetic redb, actual readiness/live
+handlers, controlled injected checks and tracing collector. It establishes no
+live PostgreSQL, connector, browser, deployment, HA, remote-lag measurement or
+runtime policy-reload evidence. PostgreSQL-category cases remain synthetic
+Error inputs. Existing lower-level logs remain outside the new event's
+suppression state.
 
 ## Remaining scope
 
-Implementation and static scope evidence are complete within the reservation.
-Compilation and the one focused test require root's runtime release; later
-actual results/failures must be appended separately. Root review/integration
-remains. O06 stays open and M03 stays done. No other worker/task/worktree was
+Implementation, compilation and the one focused test are complete within this
+reservation, with both fixture failures/corrections disclosed above. Root
+review/integration remains. O06 stays open and M03 stays done. No other
+worker/task/worktree was
 created or contacted. No observability/metrics, Store/schema, policy, config,
 state, workflow, permission/resource, main, push, service, status or ownership
 record was edited. `Store::ready`, its activation/recovery checks, and their
