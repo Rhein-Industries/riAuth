@@ -701,3 +701,134 @@ this separate append. The complete preceding report, including the actual
 The changed fixture has **no fresh runtime result**. A whole-24 repeat needs
 root's immutable source review and separate sole-slot release. No task was
 reopened or marked complete, and nothing was merged/pushed to main.
+
+## One released due-fixture repeat: actual 22-pass/2-fail receipt
+
+Root independently reviewed and ported immutable fixture `f89b219` and
+static report `3e4fd938`, including whole-file reversal and the protected
+production trace, then explicitly released one whole-target repeat to
+this existing Sol worktree. This phase preserves the preceding historical
+Linux 16/8, native 22/2 and source-only proof phases without rewriting them.
+
+**Fresh preflight.** The worktree was clean at exact HEAD
+`3e4fd938277191100d4aafb37c5762d85b72edac`, whose parent is reviewed source
+`f89b219390be3eeb7446a14793424f503604cd6a`. The fixture hash was still
+`ba09a980b248ce1be742d60a3f82a4f3f5fbea81`; reversing the four additions
+again produced the entire original `02ce939a` fixture. Every production,
+crate, manifest, lockfile and toolchain input remained fixed9b-equivalent.
+The report before runtime had blob `2fbe4e24335ad18cc9f568b402112e0ae490623a`.
+No applicable `AGENTS.md` or competing Cargo/rustc process was found.
+
+The existing private nonsymlink `.target-wave27` contained matching
+requested-feature library and SCIM test fingerprints. The prior test
+executable's SHA-256 was independently verified as
+`e409dcbbb96247b0a43f6dfba7f317107cbe9ba96e870e486641191801342d7e`.
+Fresh free disk was 11,691,184,128 bytes (10.888 GiB), providing 1.888 GiB
+above the 9 GiB stop threshold. The unchanged production and warm target,
+four-line-only fixture rebuild and previous approximately 0.20 GiB observed
+disk drop supported the conservative transient estimate below 1.5 GiB.
+No files were deleted, no cache was substituted and no baseline was run.
+
+**Only authorized repeat**, started at `2026-10-02T15:21:31Z`:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test scim_oauth -- --test-threads=1
+```
+
+Host/tool versions remain Darwin 25.2.0 arm64,
+`rustc 1.98.1 (48a229cea 2026-09-01)` and
+`cargo 1.98.1 (797e8a9bc 2026-08-05)`. Compile completed in 4.64 s with
+the native linker compact-unwind warning. Actual whole-target outcome:
+**EXIT 101; 22 passed, 2 failed, 0 ignored, 0 measured, 0 filtered out;
+tests 28.64 s, wrapper 34.881536 s.**
+
+| Test | Actual repeat result |
+| --- | --- |
+| `ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link` | PASS |
+| `cached_token_serves_overlapping_callers_until_forced_expiry` | PASS |
+| `client_credentials_provision_an_independent_scim_server` | FAIL |
+| `completed_job_history_is_compact_and_bounded` | PASS |
+| `controller_modes_bind_plans_and_stop_at_removal_review_floor` | PASS |
+| `final_scim_plan_and_apply_read_only_reviewed_links` | PASS |
+| `jwt_scope_and_audience_claims_must_cover_configuration` | PASS |
+| `legacy_token_file_config_stays_exclusive_with_oauth` | PASS |
+| `missing_expires_in_is_cached_briefly` | PASS |
+| `paged_scim_snapshot_resumes_and_refuses_a_link_added_behind_its_cursor` | PASS |
+| `plans_supersede_pending_snapshots_and_bound_historical_links` | PASS |
+| `reconcile_stales_incompatible_backoff_jobs_and_replans_without_dispatch` | PASS |
+| `refresh_token_grant_is_reread_and_not_written_back` | PASS |
+| `reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback` | PASS |
+| `reviewed_last_group_member_removal_requires_complete_remote_membership` | FAIL |
+| `reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch` | PASS |
+| `scim_apply_binds_reviewed_content_authority_and_previous_links` | PASS |
+| `scim_unauthorized_acquires_once_more_then_stops` | PASS |
+| `scim_user_cursor_ignores_login_but_restarts_on_projection_change` | PASS |
+| `secret_rotation_and_static_token_rotation_apply_on_next_acquisition` | PASS |
+| `shared_freshness_invalidates_local_cache_and_fences_late_publication` | PASS |
+| `token_endpoint_failure_retries_once_then_can_succeed` | PASS |
+| `uncertain_patch_response_is_reconciled_without_a_second_patch` | PASS |
+| `wrong_secret_server_errors_and_rejected_tokens_do_not_call_scim` | PASS |
+
+**Reviewed cases now reached their final assertions.** The bounded-history
+fixture passed its 65-job loop, public idempotent reapply and final 64-row
+compact/terminal retention assertions. The lost-PATCH fixture passed both
+completion and final PATCH-count-equals-one assertions. These are actual
+passes in this single native repeat, rather than fresh historical results
+or a determinism claim.
+
+**Exact remaining failures, with unchanged fixture bodies.**
+`client_credentials_provision_an_independent_scim_server` failed at
+`tests/scim_oauth.rs:1101:5`: `completed["completed"]` was `false`, expected
+`true`, after applying its second plan for the 204 PATCH case and making
+one existing step. The earlier initial create, OAuth grant/cache and
+redaction assertions had passed. The subsequent remote display-name and
+HTTP-count assertions were not reached.
+
+`reviewed_last_group_member_removal_requires_complete_remote_membership`
+failed inside the shared `staff_removal_at_group_step` setup at
+`tests/scim_oauth.rs:2404:5`: the initial seed job's idempotent
+`provisioning_apply` view reported `completed = false`, expected `true`,
+after the helper's existing three steps. This precedes the remote membership
+assertion and removal-plan creation/confirmation. The named test's removal
+refusal and remote membership assertions were not reached. Its other helper
+caller passed in this same run.
+
+Both failing bodies/helper remain byte-identical to the reviewed `02ce`
+fixture after reversal of the two approved unrelated additions. Both named
+cases passed in the previous native invocation, so this receipt preserves
+the changed failure locations explicitly. Neither log contains cursor,
+due-time or job-error snapshots at these assertions; no underlying cause
+or production regression is inferred. No corrective source change or
+additional invocation followed this failure.
+
+**Containment and immediate release.** Invocation free disk was
+11,725,832,192 bytes (10.921 GiB); minimum was 11,713,105,920 bytes
+(10.908 GiB), and completion free disk was 11,713,187,840 bytes.
+Nineteen samples used the requested 2 s interval, with maximum observed
+gap 2.104789 s. The 9 GiB stop threshold and 8 GiB floor were not reached;
+no signal was needed. Owned Cargo PID `41398` was reaped; observed children
+`41400`, `41431` and `41460` and the owned process group were absent on
+independent readback. The worktree remained clean with the exact reviewed
+fixture hash. **CARGO SLOT RELEASED** was sent immediately at completion,
+before this append, through the explicit-project orchestrator; send exited 0.
+
+Private evidence was exclusively created with mode 0600 and independently
+rehashed. It is retained in this worktree's `.target-wave27`; the prior
+native raw log `e2dc6ca9...` also rehashed unchanged. The executed repeat
+binary is regular mode 0755, 211,639,456 bytes; its fingerprint has
+`default,essentials,fuzzing,platform,test-support`.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `scim-oauth-wave30-due-repeat-20261002T152131Z.log` (3,249 bytes) | `94839820dedfc0bf516850c556a79f182263858235f39eb8b89391f6f516daff` |
+| `scim-oauth-wave30-due-repeat-20261002T152131Z.observation.json` | `b0839e8ebbbc1e4b8d8ce89bee3d10e0d0d1f281e4b3f3793d96cbc050b34179` |
+| `scim-oauth-wave30-due-repeat-20261002T152131Z.verification.json` | `b6426444c6944eb8e1cdab2a4cdae418fd1aef551b7ab3a1ba7b67d9619b16f6` |
+| `debug/deps/scim_oauth-951d26c550be29f2` | `6ce722e908e6918b388c4cb044bfd9263f5f712740532cb1e2925489f6536cea` |
+
+Static checks for this separate report append: `python3 scripts/check-docs.py`,
+`git diff --check`, exact prior-report prefix preservation and report-only
+changed-path/source-equality checks. No fixture/product change, other target,
+automatic retry, deletion, external provider, other-worker contact or task
+status mutation occurred. This is a failed native target run, not Linux or
+full-suite success. I10/R05/W02/W05 remain DONE; further diagnosis/correction
+and runtime require a separate root reservation and release.
