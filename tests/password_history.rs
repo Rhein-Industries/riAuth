@@ -298,7 +298,35 @@ fn history_retention_import_preview_and_concurrent_writes() {
         }]
     }))
     .unwrap();
-    apply_manifest(&f, disabled, vec![]).unwrap();
+    let disabled_plan = f.core.plan_state(&f.admin, disabled).unwrap();
+    assert_eq!(disabled_plan.removal_impact.disabled_passwords, 1);
+    assert!(disabled_plan.removal_impact.review_required);
+    assert_eq!(disabled_plan.changes.len(), 1);
+    let change = &disabled_plan.changes[0];
+    assert_eq!(change.resource, "user/capped");
+    assert!(change.credential_change);
+    assert_eq!(change.before["password_disabled"], false);
+    assert_eq!(change.after["password_disabled"], true);
+    let disable_request = || ApplyRequest {
+        plan: disabled_plan.clone(),
+        secrets: Default::default(),
+        run_id: None,
+    };
+    let before_disable = f.snapshot().unwrap();
+    let unconfirmed = f.core.apply_state(&f.admin, disable_request()).unwrap_err();
+    assert_eq!(unconfirmed.status.as_u16(), 409);
+    assert_eq!(unconfirmed.code, "conflict");
+    assert_eq!(
+        unconfirmed.message,
+        "Connector removals require explicit review; confirm this exact plan ID after inspecting removal_impact and changes"
+    );
+    f.assert_snapshot(&before_disable);
+    let disabled_result = f
+        .core
+        .apply_state_confirmed(&f.admin, disable_request(), Some(&disabled_plan.plan_id))
+        .unwrap();
+    assert_eq!(disabled_result["plan_id"], disabled_plan.plan_id);
+    assert_eq!(disabled_result["applied"], true);
     let cleared: User = f
         .core
         .store
