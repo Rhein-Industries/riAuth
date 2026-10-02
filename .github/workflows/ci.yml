@@ -89,6 +89,16 @@ jobs:
           if missing:
               raise SystemExit(f'riauthctl base dependencies missing from release notices: {missing}')
           PY
+      - name: Check standalone client against the real server binaries
+        run: |
+          CARGO_TARGET_DIR="$GITHUB_WORKSPACE/target" cargo build --manifest-path crates/riauthctl/Cargo.toml --no-default-features --locked --bin riauthctl
+          cargo test --features test-support --locked \
+            --test m03_reviewed_grants_e2e --test m03_agent_e2e \
+            --test m03_registration_e2e --test m03_windows_device_e2e \
+            --test m03_pam_e2e --test m03_state_removal_e2e \
+            --test m03_workflow_approval_e2e --test m03_backup_e2e \
+            -- --ignored --test-threads=1
+          cargo test --features test-support --locked --test m03_riauthctl_backends_postgres redb_backends -- --ignored --test-threads=1
       - name: Check documentation, notices, and delivery scripts
         run: |
           python3 scripts/check-docs.py
