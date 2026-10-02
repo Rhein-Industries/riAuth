@@ -1,0 +1,40 @@
+{
+  "schema": "riauth.wave30-ci-selected-root-review/v1",
+  "run_id": 37037991415,
+  "source_sha": "b5dcfa9dbb14e953d12edac6a6a1133ecb61033e",
+  "overall_conclusion": "failure",
+  "check_job": 110940834919,
+  "check_conclusion": "failure",
+  "check_log": {
+    "bytes": 818157,
+    "sha256": "54b582c1af19299c38a06b77d4aa1e8918f2ffc3ad16f4d7979915c2284e0a5f",
+    "local_mode": "0600"
+  },
+  "all_targets_test_step": "success",
+  "selected_scim_oauth": {
+    "passed": 24,
+    "failed": 0,
+    "ignored": 0,
+    "filtered": 0,
+    "seconds": 25.27
+  },
+  "selected_source_stage_name": "browser_source_stage_transport_binds_factor_and_renders_both_response_modes",
+  "selected_source_stage_outcome": "passed",
+  "lasso_tests": "two ignored, not Linux runtime evidence",
+  "later_failure": "THIRD_PARTY_NOTICES.md is stale",
+  "release_build": "skipped",
+  "integration": {
+    "job": 110940835076,
+    "conclusion": "success",
+    "raw_bytes": 448955,
+    "raw_sha256": "980a781ca9afe5fb1083a9be20f5797c934de2d0e7c98a16323bb6993ec96424"
+  },
+  "audit": {
+    "job": 110940835496,
+    "conclusion": "success",
+    "raw_bytes": 116632,
+    "raw_sha256": "f237538799048c57a9a202ee2f900825f0fde96f8f8e5c33bf1c812c30e0e865",
+    "warning": "one allowed warning in each of three scans"
+  },
+  "limits": "selected actual outcomes only; prior failures remain dated; no whole current CI/release/deployment or unrun Lasso Linux claim"
+}
