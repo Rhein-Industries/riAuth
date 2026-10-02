@@ -3,18 +3,16 @@
 
 use super::{App, bearer, credential_floor};
 use crate::{
-    core::Core,
-    crypto::digest,
     error::{Error, Result},
     workflow::{
-        approval::{self, Activation},
+        approval,
         executor::{PasskeyChallenge, RecoveryChallenge, SourceStart, TotpChallenge, View},
     },
 };
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     routing::{get, post},
 };
 use serde::Deserialize;
@@ -585,7 +583,13 @@ async fn approval_activate(
     let token = bearer(&headers)?;
     app.run(move |core| {
         bounded(&input.plan_id, "plan_id")?;
-        activate_command(core, &token, &input.plan_id).map(Json)
+        approval::activate_command(
+            core,
+            &token,
+            &input.plan_id,
+            approval::RetryHeaders::Required,
+        )
+        .map(Json)
     })
     .await
 }
@@ -623,69 +627,4 @@ fn bounded(value: &str, name: &str) -> Result<()> {
         return Err(Error::bad(format!("Invalid {name}")));
     }
     Ok(())
-}
-
-/// The bearer envelope around one activation. Like review and revocation it
-/// never answers from a stored receipt: a receipt only proves that this key and
-/// request were seen, and every retry is revalidated against the live selection
-/// by the shared hook, in the one writer that also holds the receipt.
-///
-/// - A human administrator is required before any receipt work (403).
-/// - `Idempotency-Key` and `If-Match` are required (428).
-/// - A matching receipt is validated for expiry, request and permissions, and
-///   its stored result is never returned.
-/// - `If-Match` is compared only before a first activation, and before any write.
-/// - A first activation stores its receipt in the same transaction.
-/// - A valid retry returns the current approval view with no new audit entry,
-///   revision, approval, or receipt.
-/// - A stale selection seals its open runs, commits that, and returns 409.
-fn activate_command(core: &Core, token: &str, plan_id: &str) -> Result<Value> {
-    let precondition = || {
-        Error::new(
-            StatusCode::PRECONDITION_REQUIRED,
-            "precondition_required",
-            "Workflow approval requires Idempotency-Key and If-Match with the current revision",
-        )
-    };
-    core.store.write(|tx| {
-        let actor = core.principal(tx, token)?;
-        if actor.agent || actor.delegated {
-            return Err(Error::forbidden());
-        }
-        let context = crate::context::current().ok_or_else(precondition)?;
-        let (Some(key), Some(revision)) = (context.idempotency_key.clone(), context.revision)
-        else {
-            return Err(precondition());
-        };
-        let receipt_key = digest(&format!("{}\0{key}", actor.id));
-        let permissions = crate::context::management_permissions(tx, &actor)?;
-        let matched =
-            crate::context::replay_receipt(tx, &receipt_key, &context.fingerprint, &permissions)?
-                .is_some();
-        match approval::activate_or_replay_in(core, tx, token, plan_id, |tx| {
-            if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
-                return Err(Error::conflict("Configuration revision changed"));
-            }
-            Ok(())
-        })? {
-            Activation::Activated(view) => {
-                if matched {
-                    // A receipt with no approval behind it is inconsistent.
-                    return Err(Error::conflict(
-                        "Idempotency receipt exists for an activation that is not recorded",
-                    ));
-                }
-                crate::context::save_receipt(
-                    tx,
-                    &receipt_key,
-                    context.fingerprint.clone(),
-                    permissions,
-                    &view,
-                )?;
-                Ok(Ok(view))
-            }
-            Activation::Replayed(view) => Ok(Ok(view)),
-            Activation::Stale(error) => Ok(Err(error)),
-        }
-    })?
 }

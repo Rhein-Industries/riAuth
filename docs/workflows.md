@@ -1505,9 +1505,9 @@ changed URI, body or validator is a different-request conflict, even if the new
 validator names the current revision. Cross-route reuse of one actor/key also
 conflicts. Receipt expiry and exact permissions remain enforced.
 
-Review and targeted revocation share one writer for human authority, receipt
-validation, live domain checks, first-only guards, mutation, audit and receipt
-save. A receipt never supplies their outcome. Review replay checks the exact
+Review, activation and targeted revocation each use their shared service and
+one writer for human authority, receipt validation, live domain checks,
+first-only guards, mutation, audit and receipt save. A receipt never supplies their outcome. Review replay checks the exact
 plan/decision, author and saved reviewer authority, configuration and current
 dependencies before returning the decision view. The decision does not claim an
 active selection: it may still validate after retirement or replacement, while

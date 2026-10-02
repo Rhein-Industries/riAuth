@@ -1769,6 +1769,7 @@ async fn r1_submit(
                 ),
                 None => core.revoke_workflow_approval(token, body["workflow_id"].as_str().unwrap()),
             },
+            ACTIVATE => core.activate_workflow(token, body["plan_id"].as_str().unwrap()),
             _ => unreachable!(),
         });
         return match result {
@@ -1785,6 +1786,7 @@ async fn r1_submit(
     let path = match path {
         REVIEW => "/api/admin/workflows/review",
         REVOKE => "/api/admin/workflows/revoke",
+        ACTIVATE => "/api/admin/workflows/activate",
         _ => unreachable!(),
     };
     let mut request = Request::post(path)
@@ -2487,5 +2489,362 @@ async fn r1_refusal_replay_does_not_repeat_catalog_rollback_or_first_guards() {
             a.f.assert_http_mutation_snapshot(&before);
         }
         assert!(receipt(&a.f.core, "reviewer", "refusal-new").is_none());
+    }
+}
+
+// ---- A1 browser/Core optional activation headers ----
+
+fn a1_receipts(core: &Core) -> usize {
+    core.store.list::<Value>("receipts").unwrap().len()
+}
+
+fn a1_key(key: &str) -> (&'static str, String) {
+    ("idempotency-key", key.into())
+}
+
+fn a1_match(revision: u64) -> (&'static str, String) {
+    ("if-match", format!("\"{revision}\""))
+}
+
+const A1_DIFFERENT: &str = "Idempotency key was used for a different request";
+const A1_STALE: &str = "Configuration revision changed";
+
+/// An approved, not yet activated plan. A later mutation made `stale` obsolete
+/// before the plan was made, so it is a past revision, never the current one.
+struct A1 {
+    f: Fixture,
+    executor: String,
+    executor_cookie: String,
+    alice: String,
+    plan_id: String,
+    stale: u64,
+    /// The current revision, the only If-Match a first activation may carry.
+    at: u64,
+}
+
+impl A1 {
+    fn new() -> Self {
+        let f = Fixture::new();
+        let reviewer = administrator(&f.core, &f.admin, "reviewer");
+        let executor = administrator(&f.core, &f.admin, "executor");
+        let alice = member(&f.core, &f.admin, "alice");
+        let executor_cookie = r1_cookie(&f.core, &executor);
+        let stale = revision(&f.core);
+        member(&f.core, &f.admin, "bob");
+        let planned = plan(&f.core, &f.admin, "environment-password");
+        f.core
+            .review_workflow(&reviewer, &planned.plan_id, "approve")
+            .unwrap();
+        let at = revision(&f.core);
+        assert_ne!(stale, at);
+        Self {
+            f,
+            executor,
+            executor_cookie,
+            alice,
+            plan_id: planned.plan_id,
+            stale,
+            at,
+        }
+    }
+
+    async fn activate_plan(
+        &self,
+        mode: &str,
+        plan_id: &str,
+        headers: &[(&str, String)],
+    ) -> (StatusCode, Value) {
+        r1_submit(
+            &self.f.core,
+            mode,
+            &self.executor,
+            &self.executor_cookie,
+            ACTIVATE,
+            headers,
+            &json!({"plan_id": plan_id}),
+        )
+        .await
+    }
+
+    async fn activate(&self, mode: &str, headers: &[(&str, String)]) -> (StatusCode, Value) {
+        self.activate_plan(mode, &self.plan_id, headers).await
+    }
+
+    fn probe(&self, key: &str) -> Value {
+        probe(&self.f.core, &self.f.admin, &self.plan_id, key)
+    }
+
+    /// The first activation, sent with the current revision.
+    async fn first(&self, mode: &str, key: &str) -> Value {
+        let (status, view) = self.activate(mode, &context(key, self.at)).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+        view
+    }
+}
+
+#[tokio::test]
+async fn a1_a_supplied_stale_if_match_is_refused_before_any_write() {
+    for mode in ["browser", "core", "bearer"] {
+        let a = A1::new();
+        let snapshot = a.f.snapshot().unwrap();
+        let before = a.probe("first");
+        assert!(before["pointer"].is_null(), "{mode}: {before}");
+        assert_eq!(before["approvals"], 0, "{mode}: {before}");
+        assert!(before["approval_plans"].is_null(), "{mode}: {before}");
+        assert!(before["receipt"].is_null(), "{mode}: {before}");
+        let receipts = a1_receipts(&a.f.core);
+        // The bearer envelope needs both headers; browser/Core honor either one.
+        let mut attempts = vec![vec![a1_key("first"), a1_match(a.stale)]];
+        if mode != "bearer" {
+            attempts.push(vec![a1_match(a.stale)]);
+        }
+        for headers in attempts {
+            let (status, value) = a.activate(mode, &headers).await;
+            assert_eq!(status, StatusCode::CONFLICT, "{mode}: {value}");
+            assert_eq!(value["error_description"], A1_STALE, "{mode}: {value}");
+            a.f.assert_http_mutation_snapshot(&snapshot);
+            assert_eq!(a.probe("first"), before, "{mode}");
+            assert_eq!(a1_receipts(&a.f.core), receipts, "{mode}");
+        }
+        // The same key with the current revision is not blocked by the refusals.
+        let (status, view) = a.activate(mode, &context("first", a.at)).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+        let stored = receipt(&a.f.core, "executor", "first").unwrap();
+        assert_eq!(stored["result"], view, "{mode}: {stored}");
+        assert_eq!(a1_receipts(&a.f.core), receipts + 1, "{mode}");
+        assert_eq!(
+            audits(&a.f.core, &a.f.admin, "workflow.activate"),
+            1,
+            "{mode}"
+        );
+        assert_eq!(a.probe("first")["approvals"], 1, "{mode}");
+    }
+}
+
+#[tokio::test]
+async fn a1_a_supplied_key_retry_returns_the_live_view_and_guards_only_the_first_activation() {
+    for mode in ["browser", "core"] {
+        let a = A1::new();
+        let first = a.first(mode, "first").await;
+        r1_corrupt_receipt(
+            &a.f.core,
+            "executor",
+            "first",
+            "result",
+            json!({"historical": "must-not-return"}),
+        );
+        let settled = a.f.snapshot().unwrap();
+        // The exact retry, with its now stale If-Match.
+        assert_ne!(a.at, revision(&a.f.core), "{mode}");
+        let (status, view) = a.activate(mode, &context("first", a.at)).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+        assert_eq!(view, first, "{mode}: {view}");
+        a.f.assert_http_mutation_snapshot(&settled);
+        assert_eq!(
+            audits(&a.f.core, &a.f.admin, "workflow.activate"),
+            1,
+            "{mode}"
+        );
+        // A new key with that stale revision is not a first activation.
+        let (status, view) = a.activate(mode, &context("second", a.at)).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+        assert_eq!(view, first, "{mode}: {view}");
+        assert!(receipt(&a.f.core, "executor", "second").is_none(), "{mode}");
+        a.f.assert_http_mutation_snapshot(&settled);
+        assert_eq!(
+            audits(&a.f.core, &a.f.admin, "workflow.activate"),
+            1,
+            "{mode}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a1_a_key_reused_for_a_different_activation_request_conflicts_and_changes_nothing() {
+    for mode in ["browser", "core"] {
+        let a = A1::new();
+        a.first(mode, "first").await;
+        let other = plan(&a.f.core, &a.f.admin, "other-workflow");
+        let before = a.probe("first");
+        let snapshot = a.f.snapshot().unwrap();
+        // Another plan, same key and headers.
+        let (status, value) = a
+            .activate_plan(mode, &other.plan_id, &context("first", a.at))
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{mode}: {value}");
+        assert_eq!(value["error_description"], A1_DIFFERENT, "{mode}: {value}");
+        // The same plan with a refreshed If-Match is a different request too.
+        let (status, value) = a
+            .activate(mode, &context("first", revision(&a.f.core)))
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{mode}: {value}");
+        assert_eq!(value["error_description"], A1_DIFFERENT, "{mode}: {value}");
+        assert_eq!(a.probe("first"), before, "{mode}");
+        a.f.assert_http_mutation_snapshot(&snapshot);
+    }
+}
+
+#[tokio::test]
+async fn a1_an_activation_without_headers_keeps_the_optional_policy_and_stores_no_receipt() {
+    for mode in ["browser", "core"] {
+        let a = A1::new();
+        let receipts = a1_receipts(&a.f.core);
+        let (status, first) = a.activate(mode, &[]).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {first}");
+        assert_eq!(a1_receipts(&a.f.core), receipts, "{mode}");
+        assert_eq!(
+            audits(&a.f.core, &a.f.admin, "workflow.activate"),
+            1,
+            "{mode}"
+        );
+        let settled = a.f.snapshot().unwrap();
+        let (status, view) = a.activate(mode, &[]).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+        assert_eq!(view, first, "{mode}: {view}");
+        a.f.assert_http_mutation_snapshot(&settled);
+        assert_eq!(
+            audits(&a.f.core, &a.f.admin, "workflow.activate"),
+            1,
+            "{mode}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a1_an_idempotency_key_alone_activates_stores_its_receipt_and_binds_the_request() {
+    for mode in ["browser", "core"] {
+        let a = A1::new();
+        let receipts = a1_receipts(&a.f.core);
+        // No If-Match: no 428, and no revision to compare.
+        let (status, first) = a.activate(mode, &[a1_key("key-only")]).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {first}");
+        let stored = receipt(&a.f.core, "executor", "key-only").unwrap();
+        assert_eq!(stored["result"], first, "{mode}: {stored}");
+        assert_eq!(a1_receipts(&a.f.core), receipts + 1, "{mode}");
+        assert_eq!(
+            audits(&a.f.core, &a.f.admin, "workflow.activate"),
+            1,
+            "{mode}"
+        );
+        let settled = a.f.snapshot().unwrap();
+        let (status, view) = a.activate(mode, &[a1_key("key-only")]).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+        assert_eq!(view, first, "{mode}: {view}");
+        a.f.assert_http_mutation_snapshot(&settled);
+        // The same key with an If-Match is another request.
+        let (status, value) = a
+            .activate(mode, &[a1_key("key-only"), a1_match(a.at)])
+            .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{mode}: {value}");
+        assert_eq!(value["error_description"], A1_DIFFERENT, "{mode}: {value}");
+        a.f.assert_http_mutation_snapshot(&settled);
+    }
+}
+
+#[tokio::test]
+async fn a1_an_if_match_alone_guards_the_first_activation_and_stores_no_receipt() {
+    for mode in ["browser", "core"] {
+        let a = A1::new();
+        let receipts = a1_receipts(&a.f.core);
+        let snapshot = a.f.snapshot().unwrap();
+        let (status, value) = a.activate(mode, &[a1_match(a.stale)]).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{mode}: {value}");
+        assert_eq!(value["error_description"], A1_STALE, "{mode}: {value}");
+        a.f.assert_http_mutation_snapshot(&snapshot);
+        let (status, first) = a.activate(mode, &[a1_match(a.at)]).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {first}");
+        assert_eq!(a1_receipts(&a.f.core), receipts, "{mode}");
+        assert_eq!(
+            audits(&a.f.core, &a.f.admin, "workflow.activate"),
+            1,
+            "{mode}"
+        );
+        let settled = a.f.snapshot().unwrap();
+        // Its revision is stale now, and a retry is not a first activation.
+        assert_ne!(a.at, revision(&a.f.core), "{mode}");
+        let (status, view) = a.activate(mode, &[a1_match(a.at)]).await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+        assert_eq!(view, first, "{mode}: {view}");
+        a.f.assert_http_mutation_snapshot(&settled);
+    }
+}
+
+/// A retry that finds the selection stale seals its runs, and that sealing is
+/// committed with the 409 whether the key is the receipt's or a new one.
+#[tokio::test]
+async fn a1_a_stale_live_replay_seals_open_runs_and_commits_only_the_sealing() {
+    for mode in ["browser", "core"] {
+        for key in ["first", "fresh-key"] {
+            let a = A1::new();
+            a.first(mode, "first").await;
+            let run =
+                a.f.core
+                    .workflow_configured_start(&a.alice, "environment-password")
+                    .unwrap();
+            assert_open(&a.f.core, &run.id);
+            a.f.core
+                .update_user(
+                    &a.f.admin,
+                    "reviewer",
+                    UserPatch {
+                        enabled: Some(false),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            assert_open(&a.f.core, &run.id);
+            let before = a.probe("first");
+            assert!(!before["receipt"].is_null(), "{mode}: {before}");
+            let (status, value) = a.activate(mode, &context(key, a.at)).await;
+            assert_not_active(status, &value);
+            assert_denied(&a.f.core, &run.id);
+            // The sealing committed with the error and nothing else did.
+            assert_eq!(a.probe("first"), before, "{mode} {key}");
+            assert_eq!(a.probe("first")["approvals"], 1, "{mode} {key}");
+            if key != "first" {
+                assert!(
+                    receipt(&a.f.core, "executor", key).is_none(),
+                    "{mode} {key}"
+                );
+            }
+        }
+    }
+}
+
+/// A receipt for this exact request with no approval behind it is inconsistent.
+/// The first activation it would repeat is rolled back, never committed.
+#[tokio::test]
+async fn a1_a_receipt_without_an_approval_rolls_back_the_supplied_key_activation() {
+    for mode in ["browser", "core"] {
+        let a = A1::new();
+        a.first(mode, "first").await;
+        let stored = receipt(&a.f.core, "executor", "first").unwrap();
+        a.f.core
+            .store
+            .write(|tx| {
+                let approval = tx
+                    .get::<String>("workflow_approval_plans", &a.plan_id)?
+                    .unwrap();
+                tx.delete("workflow_approvals", &approval)?;
+                tx.delete("workflow_approval_plans", &a.plan_id)?;
+                tx.delete("workflow_activation", "environment-password")?;
+                tx.delete("workflow_reviewed", "environment-password")?;
+                tx.put("meta", "revision", &a.at)
+            })
+            .unwrap();
+        let before = a.probe("first");
+        assert_eq!(before["approvals"], 0, "{mode}: {before}");
+        assert_eq!(before["receipt"], stored, "{mode}: {before}");
+        let snapshot = a.f.snapshot().unwrap();
+        let (status, value) = a.activate(mode, &context("first", a.at)).await;
+        assert_eq!(status, StatusCode::CONFLICT, "{mode}: {value}");
+        assert_eq!(
+            value["error_description"],
+            "Idempotency receipt exists for an activation that is not recorded",
+            "{mode}: {value}"
+        );
+        // Rolled back: no approval, pointer, pin, audit, or revision change.
+        assert_eq!(a.probe("first"), before, "{mode}");
+        a.f.assert_http_mutation_snapshot(&snapshot);
     }
 }

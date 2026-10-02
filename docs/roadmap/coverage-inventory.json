@@ -1173,7 +1173,7 @@
       ],
       "label": "extend",
       "journey": "partial",
-      "current_state": "Update at 93999d15f7681ff918f986a341c48b5556bee24f: desired state covers users, groups, clients, sources/source_links, workflows, delegated_grants (roles), four connector definition families plus retirement, and SSF streams through versioned APIs/manifests. Dedicated-API and operator-only resources are documented; no declarative GUI-only state was found.",
+      "current_state": "Update after reviewed activation source 1a21871b477d5e58d89cd82130f8e9c5b63a07d6 on published base9d3b79a: versioned APIs/manifests cover workflows, delegated grants, connector definitions/retirement, SSF, users, groups, clients and sources/links. Shared activation honors supplied optional headers. Dedicated-API and operator-only resources are documented; no declarative GUI-only state was found. Root accepts the original M07 outcome, with status changed only after publication.",
       "implementation": [
         "src/state.rs",
         "src/schema.rs",
@@ -1199,7 +1199,7 @@
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
-        "Shared activation optional-header parity remains open before the interface-outcome gate; applicable connector-peer, runtime and released-artifact evidence remains separately qualified."
+        "Applicable live connector-peer, deployed multi-node and released-artifact evidence remains separately qualified; no new such evidence in this acceptance."
       ],
       "unverified": []
     },
