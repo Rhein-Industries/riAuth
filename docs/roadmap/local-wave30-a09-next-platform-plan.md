@@ -1259,3 +1259,8 @@ Markdown fence/no-new-relative-link/whitespace checks and `git diff --check`
 root build directories: `target-wave29-source`, `target-wave28-scim`,
 `target-wave28-portal`, `target-wave28`, `target-wave27`; **no Markdown-link
 errors**. No directory deletion/checker change, no runtime retry or release.
+
+
+### Root review and ARM tool prerequisite supplied
+
+Root read all308 lines of `ef41fb2ba18533a11401261d9d1ec9b7de69c5cc`. Its append conflict was resolved by retaining the entire existing report and exact author appendix. The subsequently published `b71b7b0041a549793233e8c7a81bbb61797e20f3` includes the hash-linked2261-byte ARM BuildKit manifest receipt and exact config digest in [the ARM source record](evidence/wave30-container-buildkit-arm64-source-pin.json). This supplies the named source prerequisite without layer/runtime credit. Root reserves the two-file architecture map/receipt adapter implementation using b71 as ARM review checkout, unchanged66c as x86 review checkout, and all protected control/fixture/cleanup mechanisms. ARM execution remains held; root's already-dispatched x86 source56bd run remains distinct and its outcome is still pending at this entry.
