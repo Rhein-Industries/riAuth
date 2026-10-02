@@ -4357,6 +4357,10 @@ async fn browser_source_stage_transport_binds_factor_and_renders_both_response_m
         charged
             .get_mut(&format!("source_logins/{login_key}"))
             .unwrap()["attempts"] = json!(1);
+        // Bad-factor charging also commits the stage's authentication binding.
+        charged
+            .get_mut(&format!("source_logins/{login_key}"))
+            .unwrap()["authentication"] = stage_record["transaction"].clone();
         f.assert_http_mutation_snapshot(&charged);
         assert!(codes(&f).is_empty());
         assert_eq!(audit_count(&f), 0);
