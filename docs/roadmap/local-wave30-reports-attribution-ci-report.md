@@ -157,3 +157,42 @@ There would be no baseline rerun, no other target and no retry campaign.
 
 No build, test or service was run, and no browser or desktop work was done.
 Nothing was written to main or pushed, and no task status changed.
+
+## Released run: not started (resource blocker)
+
+Root reviewed `5fe8ee7` and this report, then released one invocation of the
+command above. The rule was to start only with at least 9 GiB free plus a
+credible margin for the build, and to stop this run's own Cargo at 9 GiB. The
+run was **not started**, because the preflight did not meet that rule.
+
+**Preflight.** At HEAD `e51f6ed`, with a clean tree, product bytes equal to
+`5fe8ee7` and `tests/reports.rs` at blob `7f969bb`, free disk was 9.89-9.90 GiB.
+That is about 0.9 GiB above the stop, and other workers sharing the volume were
+slowly lowering it.
+
+**The build would not be warm.** `src/background.rs` changed at 12:16Z in
+`934fcf1`, after the last `test-support,fuzzing` library build at 11:45Z. So
+this run would:
+
+- recompile `libriauth` (the rlib is about 400 MB, overwritten in place, plus
+  temporary codegen objects);
+- relink the `riauth` binary (about 248 MB);
+- write a new `reports` test binary (about 200 MB). The existing
+  `reports-7a486fff` belongs to an older feature set.
+
+**Expected peak.** The comparable library test build earlier went from 11 to
+10 GiB free, read every 10 seconds. The expected peak of about 0.5-1.2 GiB
+would likely have crossed the 9 GiB stop partway through the build.
+
+**What happened.** Nothing was built. No cache was deleted. The slot was
+released to root unused.
+
+**Options for root.**
+
+- Free shared disk to about 11 GiB or more, then release the run again.
+- Or explicitly authorize pruning stale artifacts in this worktree's own
+  private `target/wave27`. These would be early-session binaries built for
+  other targets or feature sets.
+
+The fixture, its context and every assertion are unchanged, and nothing was
+retried or substituted.
