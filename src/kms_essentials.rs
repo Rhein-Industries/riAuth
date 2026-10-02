@@ -31,6 +31,11 @@ impl crate::core::Core {
                 .telemetry()
                 .signing_errors
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if key.remote.is_some() {
+                self.store.telemetry().remote_signing_failed(
+                    crate::telemetry::RemoteSigningFailure::EditionUnsupported,
+                );
+            }
         }
         result
     }
