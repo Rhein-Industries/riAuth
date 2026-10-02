@@ -258,6 +258,7 @@ impl Drop for OwnedChild {
     }
 }
 struct NativeResult {
+    deadline: Instant,
     status: ExitStatus,
     stdout: Vec<u8>,
     diagnostic: Option<(&'static str, i32)>,
@@ -405,6 +406,7 @@ impl NativePeer {
         );
         (
             NativeResult {
+                deadline,
                 status,
                 stdout,
                 diagnostic: projection(&stderr),
@@ -426,6 +428,10 @@ impl NativePeer {
             let bytes = private_read(path, self.uid, true);
             assert!(!bytes.contains(&0), "native private framing");
         }
+        assert!(
+            Instant::now() < result.deadline,
+            "native deadline after output validation"
+        );
         live(self.budget);
         output
     }
