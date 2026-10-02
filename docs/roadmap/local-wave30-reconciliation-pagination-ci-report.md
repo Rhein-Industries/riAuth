@@ -307,12 +307,12 @@ source-comparison manifest is retained at
 The baseline is the precise fixed source with the disclosed unrelated S04
 exceptions, not a claim that the entire historical binary was reproduced.
 
-Root's published `d23dabbf9c8a9c150987e18f4f416bf93f52562a` S04 Clippy correction
+Root's accepted `d23dabbf9c8a9c150987e18f4f416bf93f52562a` S04 Clippy correction
 was inspected: one needless `&token` borrow becomes `token` inside the appended
 S04 workload. This lane did not replace that test file wholesale, edit it or
 recast/re-execute its measurement. It retained the original authorized own
 S04 bytes for both pagination runs; that ignored workload is not this test target.
-Root's accepted published correction remains intact for integration. No main
+Root's accepted correction remains intact for integration. No main
 alignment or whole-stack import changed this controlled comparison.
 
 ### Exact command and actual results
@@ -384,4 +384,4 @@ passing-correction evidence. Corrected Linux CI, full all-target check, other
 features/backends and fault-injected cleanup are not claimed. Root alone owns
 review, additive integration with O06's disjoint diagnostics, publication and any
 status decision. S04/O03 stay DONE; their accepted source/history/measurement and
-the published Clippy correction are not reopened or replaced.
+the accepted Clippy correction are not reopened or replaced.
