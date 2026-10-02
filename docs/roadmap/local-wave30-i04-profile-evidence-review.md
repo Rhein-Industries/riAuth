@@ -912,3 +912,156 @@ four capture hashes/permissions/nlink/owner and exact output-file list matched.
 Fresh disk at2026-10-02T15:34:09.227827+00:00 measured14562205696 bytes /
 13.5621GiB. Staged/post-commit checks verify one append-only report path.
 These additional checks did not execute the helper/library or Cargo.
+
+
+## Released one ignored filter: actual failure at the pinned-signature oracle
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; same I04 supporting worktree.
+Root released **one exact ignored filter only**, following independent review
+of the compiler result and helper. Source report HEAD was
+`f481938a999cf3c95e953f0c1ddd402be9706364`; C/Rust remain byte-exact to
+`e028106c3d7c9a236056730ad500aad876616540`, production/config remains exactly
+reviewed `ae8937800254a1ad4296ea257de1eccc4780e45b`. There was no source edit,
+alignment, C rebuild, retry, alternative target/peer/feature, metadata/clock
+override, deletion or configuration change.
+
+**Result: Rust compilation succeeded; the one ignored function failed.**
+Cargo exited101. The public failure is `pinned signature refusal` at
+`tests/saml_sp_peer.rs:897:5`. The **SOLE CARGO SLOT RELEASED** exit/result was
+sent to the explicit project orchestrator immediately after owned-group cleanup,
+before this append. No subsequent Cargo/helper/protocol invocation ran. This
+failure and all earlier report/failure prefixes remain preserved.
+
+### Exact command, preflight and supervised execution
+
+Exactly this command ran once, with default Platform and no extra features:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  RIAUTH_TEST_LASSO_SP="$PWD/target/i04-lasso-slo-e028106/lasso-saml-sp" \
+  cargo test --locked --test saml_sp_peer \
+  lasso_idp_initiated_redirect_logout_revokes_only_bound_session_and_consumes_response_once \
+  -- --exact --ignored --test-threads=1
+```
+
+Preflight freshly rechecked clean HEAD, exact C/Rust hashes, reviewed production,
+source Cargo/lock/toolchain pins, private target/output ownership/readability,
+helper39472-byte SHA
+`18f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c`,
+Lasso `.pc`/receipt/headers/dylib pins and selected dynamic dependency paths.
+Preflight free space at2026-10-02T15:38:30.154996+00:00 was14570266624 bytes /
+13.5696GiB; launch remeasured14565322752 bytes /13.5650GiB, satisfying the
+13GiB planning requirement. No version probe was run.
+
+The captured Cargo child used its own session/process group, PID/PGID63914,
+parent supervisor PID63886. The supervisor applied one1800-second outer
+budget,2-second disk/owned-process metadata sampling,9GiB disk stop/8GiB floor,
+exclusive0600 pipe-drained log capped at16MiB, null stdin, and joined-parent/
+IO/deadline postchecks. It recorded only own-group executable names, PID/PPID/PGID,
+not other-worker records, arguments, environment or protocol values. No fixture
+source/60-second operation/20-second runner/15-second C limits changed.
+
+| Actual observation | Result |
+| --- | --- |
+| Start/end UTC | 2026-10-02T15:45:35.651748+00:00 → 2026-10-02T15:46:35.338080+00:00 |
+| Overall elapsed | 59.686627 seconds |
+| Compile | `Finished test profile [unoptimized] target(s) in56.22s`; no Rust compiler error headers observed |
+| Exact ignored function | **0 passed,1 failed,0 ignored,0 measured,1 filtered**,2.58 seconds; old authentication function was filtered, not rerun |
+| Cargo/supervisor outcome | Cargo101; supervisor1; reason `cargo_or_fixture_nonzero`, stage `ignored_fixture` |
+| Disk observations | 30 samples; minimum13705166848 bytes /12.7639GiB; after13705756672 bytes /12.7645GiB; no9GiB threshold/floor refusal |
+| Owned cleanup | Cargo joined; final exact PG63914 had zero remaining members; no TERM/KILL signals needed; process metadata checks had no errors |
+| Test fixture cleanup limit | Native child joins/TempDir cleanup are in the reviewed fixture; private fixture directories and short-lived helper PIDs were not separately enumerated. No manual deletion/cleanup command was issued. |
+
+The metadata samples observed Cargo63914, rustc63937/64657/64735, clang64769,
+ld64773 and test executable64805 in PG63914. These are sampled process names,
+not a claim to observe every short-lived helper. Cargo/rustc actual executable
+paths were under `/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin`.
+Cargo's cached compiler metadata before/after remained SHA
+`27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4`,
+recording rustc1.98.1, commit48a229ceaefd4985c50990b14116b6d856af0985,
+hostaarch64-apple-darwin, LLVM22.1.8. No standalone version command ran. Cargo's
+internal Rust linking invoked clang/ld; the already pinned C helper was not rebuilt.
+
+### Precise failed boundary and evidence limit
+
+At committed Rust lines891–900, the helper receives a substituted IdP metadata
+certificate. The failed expression combines:
+`status.code() == Some(1) && stderr.contains("(-111)")`.
+Its only printed public diagnostic is `pinned signature refusal`. Therefore the
+record **does not identify which conjunct failed, the actual native exit/signal,
+or the actual finite Lasso operation/error code**. Private native captures were
+not promoted into persistent evidence by this assertion. No raw stderr/protocol
+was printed or reconstructed; no native error code is invented here.
+
+Reaching that assertion confirms completion of preceding assertions in this
+one run: normal approval/resume produced an issued NameID/SessionIndex; actual
+Lasso `accept-state` succeeded and persisted accepted state; a fresh
+`session-state` helper observed assertion present,1 name/index and nonempty;
+local bound bearer was refused before peer delivery while unrelated bearer
+remained valid; pending request retry was identical; emitted Redirect target,
+RSA-SHA256/relay and exact NameID/single SessionIndex matched the issued values.
+The substituted-certificate helper was invoked, but its composite result was
+not accepted by the test.
+
+Negative no-output/unchanged-saved-state postconditions at901–903 were **not
+reached**. Positive pinned SLO processing, independently reloaded matched-session
+absence, spent request refusal, correlated response confirmation, consumed
+response retry/full snapshot/audit and final unrelated-user assertions at905+
+were **not reached**. Those outcomes remain definitions, not executed proof.
+Neither signature bypass nor a stale expected error-code diagnosis nor a
+production security defect is established by this composite assertion alone.
+
+The helper's immutable C lines574/576 check `process_request_msg` and signature
+status before bindings/validation. The smallest further observation, if root
+reserves it separately, is a diagnostic in **this one appended fixture** exposing
+only numeric native exit/signal plus an allowlisted fixed helper stage and integer
+Lasso code, retaining the refusal oracle and never raw stderr/private values.
+No such change, classifier relaxation, native reprobe or test repeat occurred;
+root alone determines the next exact source/runtime reservation.
+
+### Private retained artifacts, hashes and residuals
+
+The private log and redacted process/source/result evidence were created
+exclusively in the existing own target, regular/nonsymlink/nlink1/UID501/mode0600:
+
+| Artifact | Bytes | SHA-256 |
+| --- | --- | --- |
+| `target/i04-lasso-slo-f481938-filter.log` | 1304 | `a253f09fb45a4641d8373eb9318ca66bf11ff237e7570b490b24d02d6c2b4f03` |
+| `target/i04-lasso-slo-f481938-filter-evidence.json` | 7006 | `22104b9b038bf784a28d51e5d05b360715be17a11a2f60544296225ad9eed2d6` |
+
+The evidence stores exact command/settings/source/helper pins, timestamps,
+outer budget/cap, samples, PID/group/cleanup and public result/panic locations.
+It records no raw private protocol fields or native process arguments. The full
+Cargo log remains private; this report reads/exposes only its fixed public
+failure/result/compile labels. The new failed-run test executable is preserved
+as evidence, with no cleanup/deletion proposal:
+`target/debug/deps/saml_sp_peer-e2230a555b53761c`, regular/nonsymlink/nlink1/
+UID501/mode0755,68254672 bytes, mtime2026-10-02T15:46:29.249722+00:00,
+SHA-256 `7d22940e2ae52ac52d47ab480d577f3b569f5bf8df9823d1c768a08102ef5c7c`.
+Its fingerprint
+`target/debug/.fingerprint/riauth-e2230a555b53761c/test-integration-test-saml_sp_peer.json`
+has SHA-256 `d6cd11f3231f7f0f97056b6fe396f6755040b37345f5e4d872a42e5c254dca45`,
+features `default, essentials, platform`, profile11094973624911973823,
+rustc fingerprint17329007180185699724.
+
+Post-run file reads confirmed unchanged original C/Rust/helper bytes and the
+selected Lasso2.9.0_4 dylib SHA. Fresh free space at
+2026-10-02T15:52:04.765353+00:00 was13687803904 bytes /12.7478GiB: it no longer
+meets13GiB for a new invocation. Any later release needs fresh capacity and a
+new exact root reservation; no automatic retry/cache deletion is authorized.
+This is partial local library lifecycle evidence with one actual refusal-oracle
+failure, not a completed SLO receiver lifecycle, remote peer/browser/tenant,
+Linux/Windows/release/profile or whole-I04 closure claim. Original primary,
+completed rows/O07 blocker and protected product contracts remain untouched.
+
+Post-run report verification: documentation checker exited0 and
+`git diff --check` passed. The complete prior `f481938` report remains the exact
+70552-byte prefix, SHA-256
+`60b3d5eb305cfbb00f692d186b9be89ab8864f6551ef1dcd2980de2365ec6218`.
+Protected C/Rust/helper and reviewed production equality, retained private
+log/evidence hashes/mode/nlink/owner/ignored status and stored Cargo101/empty
+group outcome were rechecked. Fresh free capacity at
+2026-10-02T15:57:16.529866+00:00 was13685735424 bytes /12.7458GiB.
+Staged/post-commit scope and whitespace checks cover this one append-only report.
+None of those follow-up checks invokes another filter/helper or changes source.
