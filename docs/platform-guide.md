@@ -145,8 +145,8 @@ riAuth process and verify a pre-upgrade backup before running
 with the matching-edition maintenance binary. Add `--adopt-missing-agreement`
 only for a deliberately reviewed missing-row adoption; it cannot bypass a
 present incompatible row. A conflicting format 3 policy cannot be overwritten
-by this command. Older binaries refuse format 3; rollback requires the
-compatible pre-command backup. This is not a step for a fresh small install.
+by this command. Binaries that support only agreement formats 1 or 2 refuse
+format 3; rollback to those binaries requires the compatible pre-command backup. This is not a step for a fresh small install.
 
 The [product contracts](roadmap/product-contracts.md) describe the desired
 split. They are a target contract. They are not evidence that every Platform
