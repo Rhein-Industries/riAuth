@@ -150,3 +150,42 @@ wrapper correction, not another CI run or product failure. Two root JavaScript t
 before any shell command ran; corrected quoting preserved the same inputs.
 Subsequent USB/client/docs/release steps were skipped. The distinct manual ARM
 run remains in progress. No full-green claim is made.
+
+## Later CI observation and I02 guarded transport approval
+
+CI37017294522 at published ae893780 completed failure. Audit and integration
+succeeded; formatting and clippy succeeded; the all-targets check again stopped
+at the uncorrected SCIM fixture: 16 passed, 8 failed, 18.80 seconds. Root retained
+312498 raw log bytes, SHA-256
+4f7e5c4a636b0e7c5fca5879f2076d6c96c00a105c21b534c0c798727362351e,
+and inspected the target block/eight panic locations. This predates the fixture
+publication9b8956f; its newer CI result is pending. No all-green inference.
+
+The first released local whole-target request did not launch Cargo: the existing
+CI shell returned login expired. Root did not operate login or reuse its unused
+reservation concurrently. One invocation was reassigned to the existing Sol
+workflow worker, with exact9b8956f tree alignment and fresh capacity preflight.
+Its actual result will be recorded separately. No further pruning is authorized.
+
+Root read the complete I02 design0569450afc67d1de01223bf42f39742193347722,
+then independently read the current cookie guard, private browser interaction,
+authorize_state/status, source-stage wrapper/runtime and callback renderer.
+The approved source-only adapter keeps its page and guarded JSON mutations below
+the original return-cookie path. The native original resume navigation retains
+query/form_post delivery; no fetch follows an RP redirect and no CSP is widened.
+The existing Core resume commits charged inner factor errors and rolls back
+outer failures; the adapter must translate only the returned result without
+introducing a writer. Binding, expiry, used-state, exact scope and closed outcome
+checks remain mandatory. Legacy JSON GET/POST/cancel behavior is protected.
+
+Only the API handoff/rate/route hunk, one additive portal module declaration,
+three new portal adapter/page/script files, one appended focused transport
+function and the existing report append are reserved. Implementation aligns by
+history-preserving merge to9b8956f. Source review, byte preservation and static
+checks precede a separate runtime release. No browser/factor/HTTP execution or
+I02 completion follows from this design approval. Base-relative JS paths must
+also work under a non-root issuer without duplicating its base.
+
+One root documentation patch attempt used an absent context and was refused
+before any file change. The subsequent append is additive; no prior review text
+was replaced by that failed verification wrapper.
