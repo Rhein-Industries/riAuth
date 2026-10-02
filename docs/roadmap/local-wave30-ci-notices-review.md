@@ -187,3 +187,222 @@ validation release, integration and CI interpretation. The completed
 historical check job failed; whole CI is not claimed green and the current
 `b619` counterpart is not assigned an observed failure. I10/R05/W02/W05
 remain DONE.
+
+## Append-only generator preparation — runtime remains held
+
+2026-10-02. Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, reservation
+`wave30_CI_notices_generator_preparation`, same WT/branch, clean starting
+HEAD `138468ef4afcee569af560ea9af472d3470d1006`. The preceding 189 lines /
+11,525 bytes, SHA-256
+`754b522b57ffbc36927fe7e1716c0051f9d40623f97db8608b7bf636cba1869a`,
+are preserved exactly, including the historical CI failure and prospective
+hashes. **No manual notice-field edit is authorized or proposed for
+execution.** Only the unmodified generator may produce the future notice
+refresh, after root separately reserves/releases its serialized metadata
+lane. Root's native-host run `37046857550` owns the preparation/Cargo lane;
+no run-state query or contact occurred here.
+
+### Effective homes, source pins and installed toolchain metadata
+
+Selective in-process inspection found neither `CARGO_HOME` nor
+`RUSTUP_HOME` explicitly selected; standard home fallbacks are
+`/Users/dominik/.cargo` and `/Users/dominik/.rustup`, respectively. Both are
+nonsymlink directories, UID 501/mode 0755/device 16777234. The selected Cargo
+path from executable-path lookup is `/Users/dominik/.cargo/bin/cargo`; it
+was not executed. No `RUSTUP_TOOLCHAIN` override is set; no applicable
+directory override appears in Rustup settings. The default setting names
+`stable-aarch64-apple-darwin`, while this repository's exact toolchain file
+pins 1.98.1. No ancestor/home `.cargo/config` or `.cargo/config.toml` was
+found. No registry/source environment override is present. These are
+relevant selector/configuration observations, not a dump of environment,
+credentials or unrelated Rustup overrides.
+
+Static install metadata exists at
+`/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/lib/rustlib/`:
+
+| Metadata file | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `multirust-channel-manifest.toml` | 1,034,029 | `bad8e4235676d1dbabfa01186c008d8b89e35d4ba7eaadd41a485c4eb1fde5f7` |
+| `multirust-config.toml` | 548 | `550fe97786f4afeeb12dcaee4d74dcba219418864b5c31d32cd7bdd465422a26` |
+| `components` | 191 | `4e9ff0968db121f4b7f1fddbe52ef0f93498696f219ee4e9f3c5576d6407042a` |
+
+The channel manifest is dated 2026-09-03 and declares Rust/rustc
+`1.98.1 (48a229cea 2026-09-01)` and Cargo
+`0.99.0 (797e8a9bc 2026-08-05)`. Installed-component metadata includes host
+Cargo/rustc/rust-std, rustfmt/clippy and x86_64 Linux rust-std. Cargo/rustc
+binary paths exist with executable mode; only stat was used on them. This
+does not verify binary content or execute a version/compiler command.
+
+The seven generator-facing source files (script, both locks, both manifests,
+notices, toolchain file) plus all 14 override/source-list files are currently
+byte-identical in this own WT to both `b5dcfa9` and `b619`: 21 inputs.
+Therefore no alignment merge is needed for this proposed command's inputs.
+Whole product equivalence or current main/CI state is not claimed. Fresh
+identity/clean-source checks remain required immediately before any release.
+
+### Locked full metadata and selected-release cache audit
+
+The server lock contains 432 registry packages plus its local root; the
+client lock contains 288 plus its local root. Their union is **470 distinct
+registry name/version inputs**, all crates.io, with equal checksums for
+overlapping entries. This conservatively covers the target-independent
+metadata input set, including development/optional/non-Linux entries that
+the 328-row selected release inventory excludes. No manual feature solver
+or lock-only replacement for Cargo's actual graph was used.
+
+| Cached registry family | Locked package manifests | Matching locked-version index records | Matching index/lock checksums | Cached `.crate` files |
+| --- | ---: | ---: | ---: | ---: |
+| `index.crates.io-1949cf8c6b5b557f` (sparse) | 470/470 | 470/470 | 470/470 | 470/470 |
+| `index.crates.io-6f17d22bba15001f` (older family) | 0/470 | 267/470 | 267/267 found | 2/470 |
+
+The sparse family's 470 complete TOML manifests have the expected package
+name/version; all have `.cargo-ok` extraction markers. Local cached index
+package records exist for every locked version and their checksums match
+both locks. All 470 compressed archives exist by stat, totaling 85,484,831
+logical bytes; their bodies were not read or hash-verified. Index metadata
+read totals 29,705,005 bytes across distinct crate records; package manifests
+total 1,277,289 bytes. No missing crate/version input was found in this
+family. The older family is incomplete; the future environment explicitly
+selects **sparse** and must not silently fall back to it.
+
+Target-independent coverage explicitly includes all **39 Windows-related
+name/version entries** (Windows target/platform crates, WinAPI and
+`anstyle-wincon`), including all locked architecture/version variants.
+Examples include `windows-sys` 0.48.0/0.52.0/0.61.2, `windows-targets`
+0.48.5/0.52.6, `windows-link` 0.2.1, `windows` 0.41.0 and all listed
+`windows_*` architecture variants. Each has its manifest, extraction marker,
+matching index/checksum and archive. Android, Apple, WASI and WebAssembly
+packages were included in the same full-lock audit rather than omitted
+because the notice target is Linux. The downloaded Windows/non-Linux inputs
+in the earlier CI log therefore are not identified as missing here.
+
+An initial inspection assumed `.cargo-checksum.json` would accompany each
+registry extraction. It is absent in all 470 sparse source directories;
+that assumption cannot establish corrupt packages. The subsequent inspection
+used actual package identities, `.cargo-ok` presence and cached index/lock
+checksums. Four sampled extraction markers contain `{"v":1}`. No cache
+repair or fabricated checksum file was attempted. This is metadata evidence,
+not a proof that all source/archive bodies are intact or that offline Cargo
+resolution has executed successfully.
+
+For the 328 recorded selected-release packages, manifest license expressions
+match the recorded inventory. Static inspection of the generator-declared
+license inputs found no missing files and matched every recorded text
+reference: 554 root license/notice files, 7 bundled extra files, 22 override
+uses across 12 unique override files, and the CMS README license section.
+The selected manifests total 884,163 bytes; license bytes read total
+2,970,699 with repeated override uses, largest file 20,338 bytes. The first
+static comparison appended CMS's README section after its override; that
+reported one ordering difference. Applying the generator's declared label
+sort puts the README before the HTTPS override and matches both existing
+IDs. This was an inspection correction, not a generator/product defect or
+runtime test. No generator function was imported or invoked.
+
+Cached VCS metadata for Wasmi's four 0.40.0 packages names
+`f384f288a149625dc7fc29bcd686f8bca3ee71c0`; wasmparser 0.221.3 names
+`1b2c8585415dde926134e57b0d1e6a4c9438abe3`, matching the reviewed override
+URLs. License-reference equality supports the expected digest-only refresh,
+while actual target/feature selection and host parity still require the held
+generator run. No upstream fetch/provider verification is inferred.
+
+### Measured capacity and bounded future invocation
+
+Read-only stat accounting for only these locked sparse-cache inputs:
+27,526 source files, 764,895,229 logical bytes / 831,492,096 allocated bytes
+(0.774387 GiB); archives use 86,425,600 allocated bytes. Source bodies were
+not read by this allocation walk. This is existing occupancy, not proposed
+reclamation or guaranteed APFS reclaimable space. There is no cache deletion,
+extraction, movement or cleanup in this preparation.
+
+| Actual UTC snapshot | Free bytes | Free GiB |
+| --- | ---: | ---: |
+| 2026-10-02T18:27:03.296128Z | 23,011,164,160 | 21.430817 |
+| 2026-10-02T18:31:04.158504Z | 23,008,624,640 | 21.428452 |
+
+These fresh snapshots supersede neither the earlier incident evidence nor
+root's lane hold; the cause of recovered capacity was not investigated.
+At the second snapshot, margin above a proposed 11 GiB start is 10.428452
+GiB, above a 9 GiB stop is 12.428452 GiB, and above the 8 GiB floor is
+13.428452 GiB. This proposes a conservative **fresh minimum 11 GiB start,
+9 GiB stop, 8 GiB mandatory floor**, retaining at least 2 GiB start-to-stop
+margin. No compilation/extraction/download is expected with the present
+cache, but allocation/peak memory/time remain unmeasured and shared free
+space can change. Root must remeasure immediately before a serialized
+release; this snapshot alone is not runtime authorization.
+
+Proposed **one sequential pair**, from this exact own WT, with no shell
+variable expansion, no generator-code/flags change and no compilation/test.
+The normal Cargo offline environment applies to every generator child;
+explicit homes/toolchain/protocol avoid accidental selection changes. The
+private target/jobs/incremental/debug environment preserves existing lane
+constraints even though no build subcommand is requested.
+
+First refresh (future only):
+
+```sh
+env CARGO_HOME=/Users/dominik/.cargo RUSTUP_HOME=/Users/dominik/.rustup RUSTUP_TOOLCHAIN=1.98.1-aarch64-apple-darwin CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/Users/dominik/orca/projects/riAuth-public-preview-local-workflow-safety-wave27/.target-wave27 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 python3 scripts/generate-third-party-notices.py
+```
+
+Then the same environment and original check, only after successful refresh
+and the exact-diff inspection below (future only):
+
+```sh
+env CARGO_HOME=/Users/dominik/.cargo RUSTUP_HOME=/Users/dominik/.rustup RUSTUP_TOOLCHAIN=1.98.1-aarch64-apple-darwin CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse CARGO_NET_OFFLINE=true CARGO_TARGET_DIR=/Users/dominik/orca/projects/riAuth-public-preview-local-workflow-safety-wave27/.target-wave27 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 python3 scripts/generate-third-party-notices.py --check
+```
+
+This preserves the script's internal four locked Cargo invocations per pass:
+server/client `metadata --format-version 1` and `tree --target
+x86_64-unknown-linux-gnu --edges normal --prefix none --format {p}`,
+with their unchanged manifest/edition options. Two generator passes imply
+eight metadata/tree calls. Cargo may query compiler target information as
+part of metadata/tree; no independent compiler/version probe, product binary,
+build/test/native helper/service is proposed. No Python import of this
+generator or substitute hand-renderer is authorized.
+
+Reservation envelope proposed for root review: **300 seconds total, at most
+120 seconds for either generator invocation**, finite private exclusive-0600
+raw logs (8 MiB cap per invocation), own PID/process-group tracking and
+reaping on every exit, disk samples at most 2 seconds apart and stop of only
+that exact owned group at 9 GiB. No global kill, cleanup, download, automatic
+retry, fallback protocol/toolchain or additional command/filter is included.
+Source/cache identity and capacity must be rechecked before launch; any
+missing manifest/index/version/archive/license input remains a blocker,
+never permission to fetch. No new supervisor/helper/file is written here;
+the bounded envelope requires root's later explicit release.
+
+The generator itself computes all content before its final direct file
+write. A future timeout/interrupted write or extra diff must be preserved and
+reported without commit/reset/manual notice repair or automatic rerun.
+After successful refresh, the entire generated notice must equal the
+prospective 752,651-byte output / SHA-256
+`8a92f38f2a648d08aa21f415f9ad34b966ee7df6bbf6ba89ddd926ef8833efa2`
+and differ from the baseline **only** in the existing client digest field.
+Any graph/license/text/other-header/lock/source delta: **STOP before commit
+and before the check**, report exact difference to root. An empty refresh
+diff against the current stale baseline cannot establish correction and
+also requires refusal/reporting. On the allowed exact delta, `--check` must
+exit 0 and leave the refreshed notices/source/locks unchanged: this is the
+required safe **empty second-pass diff**. An exit 0 alone without those
+identity checks is insufficient. Historical all-target results are not rerun
+or recast as fresh evidence.
+
+### Preparation result and unchanged limits
+
+**Offline preparation is feasible from observed static sparse-cache and
+toolchain inputs; no missing crate/license input was identified.** This is
+not a completed metadata resolution, generated output, successful check,
+cross-host parity result or whole-CI success. Root's metadata/preparation
+lane remains occupied/held; no Cargo slot was acquired or consumed.
+
+Actual operations were selective configuration/toolchain/cache metadata
+reads, cached manifests and relevant license input/source hashes, cached
+package-index metadata inspection, locked-input stat/disk snapshots, Git
+source identity and append-only report/Markdown/whitespace checks. No Cargo
+metadata/tree/generator/compiler/native version/runtime/build/test,
+network/query/install, existing notice/source/workflow/helper/lock/manifest
+edit, cache cleanup/deletion/move, contact/new worker/task/WT/shell,
+merge/reset/task-status/main/push action occurred. The original report
+prefix and capacity report `717cc58` remain unchanged. Root owns release,
+generated-diff review, integration and CI interpretation. I10/R05/W02/W05/I02
+remain DONE; the independently running `b619` CI has no newly observed
+outcome in this preparation.
