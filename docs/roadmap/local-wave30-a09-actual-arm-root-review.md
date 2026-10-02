@@ -45,3 +45,25 @@ which refused before Cargo because its login expired. Root did not operate that
 login. The same single target was reassigned to an existing Sol worker with a
 history-preserving fixed-source alignment and fresh capacity preflight.
 That local result is separate from this remote artifact receipt.
+
+## Actual worker appendix and next source-only helper
+
+Root read all294 appended lines of f0796af897425b43a258b0d30214741beb238a32,
+including the exact proposed plaintext PostgreSQL validator diff, and read the
+complete original helper plus encrypted live_identity_and_grant, CLI and serving
+primitives. Worker compressed/log/input/resource checks corroborate the exact
+root actual receipt; worker did not execute binaries or open archives.
+Root supplied API-reported artifact name riauth-local-arm64-37016520583-1
+and full digest fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30.
+Neither side retained/rehashed the outer upload ZIP; future transport must do so.
+
+Root approves only scripts/check-local-edition-transition-postgres.py and report
+append for source implementation of the exact proposed format3/full16-rate
+agreement checks, ordinary password-ID-group-auditor permission/user-admin
+refusal/revoked-session sample across E→P→E, shared config plan/start refusal,
+and strict unchanged nontransition row set. The encrypted helper itself remains
+unchanged; only its existing live fixture is reused. Full public outputs must
+exclude transient session IDs/expiry from cross-edition equality. No native
+execution follows this approval. Fresh ARM artifact transport/launcher/PG tool
+setup/resource/cleanup source and runtime remain separately held. A09 remains
+open; current x86/container/full release/shared-distribution limits are retained.

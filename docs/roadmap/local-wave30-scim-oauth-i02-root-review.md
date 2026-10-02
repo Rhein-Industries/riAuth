@@ -189,3 +189,59 @@ also work under a non-root issuer without duplicating its base.
 One root documentation patch attempt used an absent context and was refused
 before any file change. The subsequent append is additive; no prior review text
 was replaced by that failed verification wrapper.
+
+## Local whole-target failure and frozen-cohort follow-up
+
+The reassigned Sol invocation at exact published9b8956f production and fixture
+02ce939a exited101: 22 passed, 2 failed, 28.22 seconds. Root fully read the
+154-line actual appendix aba4981a and independently rehashed its private0600
+raw log e2dc6ca95deb2667af47886d046ec96ebef9ded3b7ae57a1db4cea289c2919eb
+and observation559839950bd834ecc6b37dc9c58f8e5c4ad9d119fc7c1b08c5a1b3a4a21ed719.
+History's next apply refused an unfinished predecessor; lost-PATCH's job remained
+incomplete after the existing wait/step. Six historical failures passed locally.
+No cursor/admission state was logged, so their original interleaving is unmeasured.
+
+Root independently read connector_due, claim/step and exact queued admission
+release bodies. A stored cutoff excludes a sole newly due row; exhaustion deletes
+the cursor transactionally, and the next explicit pass uses a current cutoff.
+Terminal rows leave the due index atomically. These two isolated fixtures have
+one pending job; the empty-resource history job finishes without HTTP, and the
+uncertain PATCH retry reads back the already applied fields before considering
+another write. This establishes bounded source sufficiency, not retrospective
+measurement or a competing-workload proof.
+
+Source f89b219390be3eeb7446a14793424f503604cd6a adds two direct scheduling calls
+and two comments only. Root removed those exact additions and reconstructed
+the entire02ce939a fixture; production/crates/manifests/toolchain equal9b8956f.
+All assertions, holders and the old three-second wait remain unchanged. Root
+fully read static3e4fd938277191100d4aafb37c5762d85b72edac and released ONE
+whole-24 repeat in the same private Sol cache with2s disk sampling,9GiB own-group
+stop/8GiB floor and no deletion or retry. The changed fixture is unmeasured at
+this source review; its actual result must be appended separately.
+
+CI37022804623 at9b8956f has successful integration/audit/fmt/clippy jobs or steps
+as observed2026-10-02; the all-targets check remains running. No full-green claim.
+
+## Subsequent repeat and published Linux check
+
+The one f89b219 repeat exited101:22passed2failed28.64 seconds. Root fully read
+bee4b5f7f53f192feb61727f0a106b1c79e8ff90 and rehashed all3249 raw log bytes
+94839820dedfc0bf516850c556a79f182263858235f39eb8b89391f6f516daff.
+History and uncertain-PATCH now reached their unchanged final assertions.
+Client-credentials' second plan and the last-member helper's initial seed
+remained incomplete; no cursor/job-error metadata was captured. Those two
+cases had passed in the previous run. This is no all-green or determinism proof.
+Root reserved read-only analysis of a private step-helper restart ONLY after
+measured cursor exhaustion, with at most one extra pass and no successful
+first-dispatch advancement. A concrete protected source proposal must precede
+implementation; no such helper change is accepted or run at this review.
+
+Published9b8956f CI37022804623 completed failure: audit/integration/fmt/clippy
+succeeded; check110890070823 stopped at SCIM21passed3failed25.41 seconds.
+Root downloaded588141 bytes to private0600 storage, SHA-256
+f4a0dc82a546d23cbb849938a53349680599a1c21ff8bb8ded283f5fe494e077,
+and read the exact24-test block. History had unfinished predecessor409,
+last-member helper cursor was1 instead of2, and uncertain-PATCH completion
+wasfalse. This publication contained20dd holders, preceding f89's two passes.
+Later USB/client/docs/release steps were not reached. The local repeat's
+different failure set and this Linux result are both retained.

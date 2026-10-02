@@ -66,3 +66,48 @@ source reconstruction, selected primary-library reads, immutable source/input
 comparison, documentation and whitespace checks. No root native/product runtime
 was executed. The worker's corrected literal-ignore annotation checker is a
 static verification correction, not a product failure.
+
+## Own cache inventory and continuing capacity hold
+
+Root fully read b02e9dea2c819b3d8ba9a0abc2603e653b3f8d60. Its only change is
+a148-line report append; source/test and all earlier report prefixes remain
+unchanged. The private600 inventory contains an EMPTY cleanup allowlist and
+zero proposed relief. All six integration binaries have accepted execution
+citations; absence of a historical executed-file hash cannot prove nonexecution.
+Their combined0.8577GiB would also not provide the requested2GiB relief. Fresh
+lsof/ps metadata snapshots show no current use, not historical nonexecution.
+No deletion is authorized by this review.
+
+Fresh reported free space10.8849GiB remains below the proposed13GiB planning
+start for the estimated4GiB upper transient allowance above9GiB stop. Compiler
+and ignored Cargo test remain held, with no helper/native/runtime evidence.
+The unrelated later SCIM repeat owns the serialized Cargo lane. This resource
+hold does not establish a product or protocol defect, and I04 remains open.
+
+## Separately reviewed root cache relief and compiler release
+
+Root subsequently reviewed14 further unused regenerable CI-prewarm executables
+in the other private cache, using its immutable64-candidate inventory. Root
+revalidated exact parent, nonsymlink regular identity, UID, single link,755 mode,
+size/mtime/SHA and matching old test-support-without-fuzzing fingerprints.
+Fresh14-path lsof and ps comm snapshots had no reference, and accepted tracked
+docs/planning contained none of their basenames/hashes. The historical
+never-executed classification is attributed to the prior CI worker inventory.
+No cited run artifact, product, helper, library, fingerprint, archive or log
+was removed. The exact new root allowance was exhausted by one14-path removal.
+
+The [prune receipt](evidence/wave30-root-unused-prewarm-prune.json) retains
+all14 identities,2835757632 bytes, rm exit0/all absent, deps2043→2029, and
+free bytes11712270336→14548258816. The original inventory is unchanged.
+A first root verification guard used the executable basename for a Cargo
+fingerprint directory and failed before mutation; using actual riauth-hash
+directories passed. Earlier TSV header/filter wrapper mistakes likewise
+changed nothing. I04's own empty allowlist remains empty.
+
+With about13.55GiB observed free and SCIM released, root separately released
+ONE bounded pkg-config5s plus compiler60s preparation step per020a324.
+No helper/protocol or Cargo invocation is included. Fresh source/library
+identity and disk preflight, private capped captures,9GiB stop/8floor and owned
+process-group cleanup are required. Compile failure stops without correction
+or retry. The ignored Rust filter stays held pending actual compile success
+and fresh capacity; this source decision adds no interoperability result.
