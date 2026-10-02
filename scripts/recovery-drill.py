@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 import secrets
+import signal
 import socket
 import subprocess
 import sys
@@ -348,6 +349,16 @@ def main():
                                    "missing configured secret files", "Vault Transit and other external services",
                                    "PostgreSQL PITR and multi-node failover",
                                    "deployed external OIDC or SAML relying party"]}
+    interrupted = False
+
+    def interrupt(signum, frame):
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise DrillFailure("drill interrupted")
+
+    previous_handlers = {signum: signal.signal(signum, interrupt)
+                         for signum in (signal.SIGINT, signal.SIGTERM)}
     try:
         evidence["observed_source"] = source_provenance()
         run(binary, evidence, oidc)
@@ -359,6 +370,9 @@ def main():
         message = (str(error) if isinstance(error, (DrillFailure, oidc.DrillFailure))
                    else "drill operation failed; private exception details suppressed")
         evidence["failure"] = {"type": type(error).__name__, "message": message}
+    finally:
+        for signum, previous in previous_handlers.items():
+            signal.signal(signum, previous)
     evidence["finished_at"] = datetime.now(timezone.utc).isoformat()
     write_evidence(args.evidence, evidence)
     print(json.dumps({"result": evidence["result"], "checks": len(evidence["checks"]),
