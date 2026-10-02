@@ -4,23 +4,30 @@ Project: `891e7443-8dac-4c1b-897f-9e53cb59c7ee`
 
 Worktree: `e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`, branch `roadmap/local-extension-isolation-wave27`.
 
-**Bounded implementation committed; focused runtime verification remains HELD.** No Cargo, build, test, service, provider, or PostgreSQL execution is claimed. This is not whole O06 closure, and it does not reopen the already completed M03/W02/W05/O03/M07/A03 rows.
+**Bounded implementation and the one exact focused target passed at `92b94984c5dcfacf0870abe63a58790ac14d3c3e`: exit 0, 1 passed, 0 failed.** The first attempt's concrete malformed-input fixture failure and correction are retained below. Both exits were immediately reported with `CARGO SLOT RELEASED`. This is not whole O06 closure, and it does not reopen the already completed M03/W02/W05/O03/M07/A03 rows.
 
 ## Reservation and immutable baseline
 
-Root approved `wave30_O06_resolution_gauge` in project planning `local-wave29-ownership-approvals.json`. The recorded claim reserves only the maintenance failed predicate plus index version, one new exact test target, and this report. Its runtime release flag was false when inspected; the user's explicit runtime hold remains in effect.
+Root approved `wave30_O06_resolution_gauge` in project planning `local-wave29-ownership-approvals.json`. The recorded claim reserves only the maintenance failed predicate plus index version, one new exact test target, and this report. Runtime was initially held. Root subsequently explicitly released the slot, requested the conservative uncertainty-scalar correction, and authorized repeats only for concrete corrections. The first run exposed the fixture status mismatch. The only repeat used the same exact command after its source-confirmed fixture correction; it passed. Each exit was immediately reported with `CARGO SLOT RELEASED` before report work.
 
 Fixed published baseline: `da5ff7dcfc3442c302955344229168872911b0ec`.
 
 History-preserving own-branch alignment: `87a8bde818055d2ab14813289604ff186185da92`, with first parent `70fe6f8d7fef792287999fc56d54d79b0cb236f3` and second parent the fixed published baseline. The merge had no conflicts. All source and existing test files at that merge were byte-equivalent to pinned main. No reset, main edit, push, or wholesale stale source replacement occurred.
 
-Code commit for bounded review/integration: **`4cd518c3a44d9f358823920cf367e5e533f92d93`**. The alignment merge is history bookkeeping, not an additional product slice to port.
+Code commits for bounded review/integration:
+
+- `4cd518c3a44d9f358823920cf367e5e533f92d93`: original predicate, index bump, and one target.
+- `b130e811c94ad0e78064acefb9ff7477fab9aa0d`: conservative present uncertainty values and explicit invalid-scalar oracle; first compiled/tested pin, which failed the fixture status oracle.
+- `92b94984c5dcfacf0870abe63a58790ac14d3c3e`: correction of the same function's precise locked-parser rejection statuses. **This is the final source pin actually compiled and tested successfully.** Production code is byte-identical to `b130e81`.
+
+These corrections belong to the cumulative slice; do not port the original predicate without the uncertainty correction. The alignment merge is history bookkeeping, not an additional product slice to port.
 
 | Code file | Pinned/reviewable blob | Scope |
 | --- | --- | --- |
 | `src/store/maintenance.rs` at baseline | `f7f75a6f6dfa15a967fc6ddc59903257519d4e18` | Original version-8 predicate/counter/rebuild behavior. |
-| `src/store/maintenance.rs` at code commit | `956b625686e261035867444e82ec02787f87e2c8` | Canonical satisfied-resolution exclusion from failed only; `INDEX_VERSION` 8 to 9. |
-| New `tests/o06_resolved_deactivation_gauge.rs` | `087cc39429a79d9f30f668b4b4ec6a4557fac5c3` | One exact test function, using existing locked dependencies and shared helpers without modifying them. |
+| `src/store/maintenance.rs` at tested/current commits | `6d6999eaba0eacecfc5587dcc1e94dd8a69e5f3e` | Canonical satisfied-resolution exclusion from failed only, conservative uncertainty, and `INDEX_VERSION` 8 to 9. |
+| New target at tested `b130e81` | `b4c1c063fd55a78de4365061d17c32e23d1b5431` | One exact function; failed the malformed-input status oracle before resolution/rebuild assertions. |
+| New target at corrected/passed `92b9498` | `db8742b19e2e63779c45598dbe89f0844dc7eb22` | Same function and dependencies/helpers; precise null-enum 400 versus data-error 422 expectations. Exact target passed. |
 
 ## Source-derived defect and correction
 
@@ -30,13 +37,13 @@ The existing public `Core::provisioning_deactivation_resolve` in `src/provisioni
 
 The old maintenance classifier considered every `failed` or `stale` deactivation failed, including those now publicly resolved. Both the before and after classification stayed failed, so `update_queue_indexes` retained the failed counter after the operator's remedy. Both authorized JSON metrics and the existing Prometheus failed gauge consume that maintained counter through `queue_stats`.
 
-The new predicate changes only the failed boolean for this queue. It decodes the small `resolution` projection into the existing canonical `Resolution`, then calls `satisfied`. It never clones or decodes the entire `Deactivation`. An absent, null, unknown-observation, or malformed required-field projection does not decode successfully and therefore cannot clear failure. A true `uncertain` flag short-circuits that exclusion and keeps failure visible.
+The new predicate changes only the failed boolean for this queue. It decodes the small `resolution` projection into the existing canonical `Resolution`, then calls `satisfied`. It never clones or decodes the entire `Deactivation`. An absent, null, unknown-observation, or malformed required-field projection does not decode successfully and therefore cannot clear failure. Every present `uncertain` value other than boolean false short-circuits that exclusion and keeps failure visible. Missing uncertainty retains the actual model's `#[serde(default)] pub uncertain: bool` compatibility; present nonboolean values do not borrow that missing-field default.
 
 | Retained failed/stale row | New failed classification | Retained meaning |
 | --- | --- | --- |
-| Canonical `applied` or `absent`; uncertainty not true | False | Operator-resolved evidence; no verified remote delivery claim. |
+| Canonical `applied` or `absent`; uncertainty missing or boolean false | False | Operator-resolved evidence; no verified remote delivery claim. |
 | Canonical `not_applied` | True | Still an unresolved downstream obligation. |
-| Uncertain, even with canonical satisfied evidence | True | Ambiguity takes precedence. |
+| Uncertainty true or any present nonboolean, even with canonical satisfied evidence | True | Ambiguity or invalid uncertainty cannot hide failure. |
 | Missing/null resolution, unknown observation, missing required field, or invalid required field type | True | Conservative failure; malformed evidence cannot hide attention. |
 
 Normal row updates still change source records and derived counters within the same transaction. Pending, due, age, admission, membership/Group, other queue classifications, telemetry, writer authorization, receipt, audit and raw history behavior are unchanged. No public schema or resolution semantics were changed, and no failed offboarding history was deleted, acknowledged or reclassified. That separate design issue remains outside this reservation.
@@ -49,7 +56,7 @@ The unchanged `Core::open_store` invokes the accepted `upgrade::migrate` path. A
 
 **Stop older writers and take a backup before this index upgrade.** An index-format bump is a reader/writer compatibility boundary; this change does not authorize a mixed older/newer writer deployment. The proposed fixture recreates coherent version-8 markers and counters using the current binary, then actually closes/reopens the native file. It does not run an older executable, establish a deployed migration, or constitute an official artifact or PostgreSQL migration proof.
 
-## Focused test definition, not runtime evidence
+## Focused target and coverage limits
 
 The only test function is:
 
@@ -58,32 +65,39 @@ The only test function is:
 Its definition uses a disposable plain-redb fixture and the actual resolve HTTP router with bearer authorization, current `If-Match`, and an idempotency key. No remote provider is configured or called. It defines these assertions:
 
 - Failed and stale rows each receive `applied`, `absent`, and `not_applied` operator observations. Successful responses keep their original status and all raw fields except uncertainty/resolution; delivered timestamp and outcome remain null. Satisfied observations decrement the maintained failed count; both `not_applied` rows remain failed. Each accepted operation writes one audit and receipt.
-- Removing each required write/target-read/account-read scope returns forbidden and leaves the full snapshot unchanged. Unsupported, null, or missing input observations return unprocessable and likewise leave the snapshot and counters unchanged.
-- A complete satisfied attestation with retained uncertainty remains ambiguous and failed. Null, boolean, array, unknown observation, missing `by`, and invalid `at` persisted projections remain failed.
+- Removing each required write/target-read/account-read scope returns forbidden and leaves the full snapshot unchanged. Unsupported string or missing input observations return 422; null enum input returns 400 under the locked parser. All refusal cases retain the full snapshot and counters, with `invalid_request` for malformed input.
+- A complete satisfied attestation with retained uncertainty remains ambiguous and failed. An explicit string `"false"` uncertainty with a valid satisfied resolution must remain failed and be rejected by canonical `Deactivation` decoding. Null, boolean, array, unknown observation, missing `by`, and invalid `at` persisted resolution projections remain failed.
 - Authorized JSON metrics and the actual Prometheus failed-gauge line agree with the maintained count. A metrics-only scraper does not receive storage allocation.
 - After ordinary startup provenance is settled, the fixture sets both index and activation markers to 8 and reproduces the old retained-status counter. A real close/open must rebuild to version 9 and repair that counter. The expected full snapshot permits only the accepted migration revision/activation changes and the existing rebuild's two empty count-index materializations; raw history, source records, audit, receipts and all other index contents stay equal. A subsequent reopen must preserve the full snapshot without another rebuild.
 
-The definition is intended to fail the old predicate at the first satisfied public resolution. That expectation is source-derived; no baseline test failure has been executed or observed. The new target has been parsed by standalone rustfmt but has not been type-checked or run.
+The definition is intended to fail the old predicate at the first satisfied public resolution. That expectation is source-derived; no pre-fix baseline test failure has been executed or observed. At `b130e81`, execution passed the initial six-row queue/JSON/Prometheus checks and the preceding three forbidden-scope snapshot/counter checks, then stopped at the malformed-input status assertion. The remaining assertions receive no runtime credit from that first attempt. At corrected `92b9498`, the same exact function passed in full: public resolution/counter outcomes, all refused-request snapshots, invalid uncertainty and malformed stored projections, real JSON/Prometheus gauges, actual native version-8 to version-9 reopen repair, complete expected content preservation and subsequent reopen stability.
+
+The failed run reported `left: 400`, `right: 422` at test line 246, without printing the request index/body. Static inspection of the actual locked primary dependency source explains the null-enum case: `serde_json 1.0.151`'s enum deserializer returns `ExpectedSomeValue` for null; its error classifier categorizes that as syntax. `axum 0.8.9`'s `Json::from_bytes` maps syntax errors to `JsonSyntaxError` (400), and data errors to `JsonDataError` (422). The accepted `src/api.rs::protect` preserves that rejection status while returning `invalid_request`. The fixture correction keeps exact statuses per case; it does not accept an arbitrary 4xx or relax rollback. No product defect was demonstrated by this failure.
 
 ## Actual checks and queued runtime
 
 | Check actually performed | Result |
 | --- | --- |
 | Read pinned resolution/delivery semantics, public writer and route, maintained counter, migration and rebuild source | Static inspection completed. |
-| Read recorded reservation and runtime hold | Exact claim approved; runtime not released. |
+| Read recorded reservation and subsequent root release | Exact claim approved; root released the one exact runtime after requiring the uncertainty correction. |
 | Own history-preserving alignment to fixed main | Conflict-free; source/existing tests matched pinned main before the change. |
 | Reverse the added predicate and version bump, compare entire maintenance source to pinned main | Exact byte equality; unrelated code preserved. |
 | Standalone rustfmt of a temporary maintenance copy; compare only the added predicate block | Match; unrelated existing maintenance formatting retained. |
 | `rustfmt --edition 2024 --config skip_children=true --check tests/o06_resolved_deactivation_gauge.rs` | Passed; shared modules not formatted or edited. |
-| Exact target/scope inspection and staged `git diff --check` | Passed; one test function and only the two reserved code files. |
-| Cargo compile, baseline run, final focused run | **NOT RUN: runtime held.** |
+| Exact target/scope inspection and staged `git diff --check` | Passed; one test function and only the two reserved code files. Correction commits and target formatting/whitespace also passed. |
+| Cargo compile at `b130e811c94ad0e78064acefb9ff7477fab9aa0d` | Succeeded; test profile finished in 3m 45s. One nonfatal macOS linker compact-unwind size warning for the server binary. |
+| Exact focused run at the same pin | Exit 101: 0 passed, 1 failed, 0 ignored/measured/filtered; 1.67s. Failure was the malformed-input status oracle, 400 versus 422. |
+| Same command at corrected `92b94984c5dcfacf0870abe63a58790ac14d3c3e` | **Exit 0: 1 passed, 0 failed, 0 ignored/measured/filtered.** Test profile finished in 4.98s; function completed in 2.14s. The existing nonfatal server linker warning remained. |
+| Pre-fix baseline run; other Cargo commands/targets | **NOT RUN.** Exactly two invocations of the one approved command, with one concrete fixture correction between them. |
 
-The sole reserved runtime command, to run only after root explicitly releases the slot:
+The sole runtime command, executed at `b130e81` and repeated only at the concrete corrected pin `92b9498`:
 
 ```sh
 CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test o06_resolved_deactivation_gauge operator_resolution_updates_failed_gauge_and_rebuilds_legacy_indexes -- --exact --test-threads=1
 ```
 
-The existing target resolves to `/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target`, is not a symlink, and is inside this worktree. The last implementation-time free-space check was 19.25 GiB. Recheck before runtime and stop the build if free space approaches the 8 GiB floor. No accepted target is used.
+The existing target resolves to `/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target`, is not a symlink, and is inside this worktree. Free-space checks were 17.50 GiB before the first runtime, 17.39/16.91/16.69 GiB during compilation, and 15.73 GiB on its exit; the floor was never approached. Before and after the corrected run, free disk was 15.67 GiB. No accepted target was used, and no build was stopped for disk pressure.
 
-Remaining evidence is the held focused compile/runtime result and root's independent integration review. No broad suite, PostgreSQL, deployed system, remote tenant, older executable, release artifact, desktop, or external evidence is claimed. No whole-task closure, board/status change, or publication was performed. Only the code commit above and this separate report belong to this handoff; all prior history and private output remain preserved.
+The complete final compile/test output chunks and exact source/exit pins are preserved in this worktree's ignored private `target/o06-gauge-b130e81-result.log` and `target/o06-gauge-92b9498-result.log`; earlier routine dependency progress is omitted. Both commands exited and their slot releases were reported immediately. No other Cargo target was run, and there is no active Cargo process from either invocation.
+
+The bounded runtime checks are complete; root's independent integration review and the root-owned settlement CI reconciliation remain separate. Evidence is limited to this one local plain-redb/in-process-router function using synthetic failure records and operator attestations. No broad suite, PostgreSQL, deployed system, remote tenant, older executable, release artifact, desktop, or external evidence is claimed. No whole-task closure, board/status change, or publication was performed. Only the cumulative code commits above and this separate report belong to this handoff; all prior history and private output remain preserved.
