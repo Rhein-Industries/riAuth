@@ -1186,3 +1186,115 @@ report prefix and all three prior failed-run evidence hashes unchanged. LF/fence
 sole-report append and whitespace checks passed. Docs checker exited1 only for
 the same five pre-existing target-wave directory-layout violations, with zero
 missing Markdown links. No directory/checker/evidence change or runtime replay.
+
+## Separately released corrected same-filter run — PASS
+
+Root reviewed immutable90b6e8d/b729 and reported its independent source review
+of the earlier snapshots, then separately released exactly one same-filter run.
+Executed on clean `b729b661aaa85fd11338365e2f9573f8133fdae7`, with exact test
+`90b6e8d832174df676d12395452e525de827f9e8` and production/manifests unchanged
+from `196ac2096f79e5cc3c7d53ffa990ccdeba11a439`. This is a new authorized run,
+not an automatic retry or a reinterpretation of the prior failed execution.
+
+### Source, command and actual outcome
+
+Preflight rechecked the clean pin, all five production file hashes, corrected
+test/shared snapshot helper and three manifest hashes. Test SHA256 remains
+`5c1e1fe5975e91ac284f6b7637f7b4024f83c9b43eff59a857c7c32c48af1236`.
+The nonsymlink own cache retained the matching four features/profiles/native
+settings, with no new Cargo config/flags/wrappers or competing Cargo/rustc.
+`rustc -vV` again reported1.98.1, commit
+`48a229ceaefd4985c50990b14116b6d856af0985`, host aarch64-apple-darwin. Free disk
+exceeded12GiB both at preflight and immediately before launch.
+
+The exact previously printed locked/offline command ran once: same existing
+target-wave27/cargo, jobs1/incremental0/dev+testdebug0, same named source_stage
+filter with --exact and --test-threads=1. No new target, profile, flag or filter.
+
+| Actual result | Recorded outcome |
+| --- | --- |
+| Compilation | Finished test profile [unoptimized] in5.44s; only riauth compiled, no third-party rebuild |
+| Named selected test | browser_source_stage_transport_binds_factor_and_renders_both_response_modes: ok |
+| Harness summary | 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out;12.00s |
+| Cargo exit | 0; total supervised19.288s; Running-to-finally interval13.664s |
+| Failure/stop flags | No compiler error, failure location/collection, timeout, disk/budget/shared-drain stop or supervisor exception |
+
+A linker compact-unwind warning and Cargo's generated-one-warning summary
+were recorded; they did not prevent compilation or the test pass. No additional
+test, compiler command, source correction or runtime retry followed this run.
+
+The complete selected function passed with both query/root and
+form_post/non-root `/identity` rows. Its existing assertions exercise deliberate
+HTML/JSON negotiation, protected headers/origin/query-factor refusals, bound
+stage/authorization/cookie and exact subject, invalid-factor charging plus exact
+authentication binding, factor consumption, one-use code/continuation, cancellation,
+expiry/replay and unchanged native query/form_post delivery. The configured
+non-root callback assertion is part of that executed fixture. This credits the
+named **local HTTP/rendering regression**, with signed in-process/local HTTP
+upstream fixtures; it is not a real tenant, frontend-JavaScript/browser-driver,
+hardware or released-artifact execution.23 filtered tests were not run.
+
+The previous failed1322-byte run, its0-pass/1-fail result and unrecorded caller/
+row/actual-value limit remain intact. This pass checks the corrected expectation
+in this new execution; it cannot retroactively locate the old failure. Neither
+the full snapshot oracle nor any collection exemption was weakened.
+
+### Private evidence, disk and owned-group cleanup
+
+Evidence directory, created privately with mode0700:
+`target-wave27/evidence/i02-focused-binding-20261002T165044Z-261d3ada/`.
+Each file was created exclusively at0600; capped raw output stayed below32MiB,
+with no opaque record IDs/values emitted in progress or handoff summaries:
+
+| File | Bytes | SHA256 |
+| --- | --- | --- |
+| cargo.log | 757, not truncated | 62a6a3d17d5ef8aaa630e9bde8c2a62a2ed968669a6a798816ddc4736e4426be |
+| disk-process-samples.jsonl | 2483 | adcc45c4c2ae14c85605b527e68329610a6305de2b7250a0d104179546ef78d8 |
+| result.json | 2080 | a51eda5e0b779b6ab731b22dfe2e7f7c7639aa16a6d4253387d7898eaec9c121 |
+
+Start/end UTC:2026-10-02 16:50:44.557334 /16:51:03.846178. Free bytes were
+13381668864 initially (12.462650GiB),13375266816 minimum (12.456688GiB), and
+13380366336 finally (12.461437GiB).10 nominal2-second samples were recorded,
+maximum observed interval2.001s. Target allocation started2670510080 bytes and
+peaked2676895744, growth6385664 bytes (0.005947GiB). The3GiB prospective budget,
+9GiB own-stop margin and8GiB floor were retained; neither threshold was approached.
+Outer1800s/selected-fixture1200s bounds were active and not reached.
+
+Executed generated source_stage-51034130e831fdee is207422528 bytes, SHA256
+`0113f53c6c31cc012df622167735e327f59f8b287829e1fcd3f8805bc78c1616`.
+Its fingerprint JSON retains SHA256
+`e4d87ed9b2b6d2c151e8f9ba46bf23ed3206327cc140480f5172c7ed4beff63f`,
+features default/essentials/platform/test-support, profile11094973624911973823,
+rustc17329007180185699724, config9396254390672932401, empty rustflags/native
+kind0. The JSON describes settings; source/binary hashes plus actual Cargo log
+bind this new execution, rather than treating an unchanged settings hash as a
+current-source pass by itself.
+
+Owned PID/PGID27192 was waited/reaped. Finally group members were empty before
+cleanup and afterward; a separate post-run process-table check also found zero
+members. No other group was signaled. The selected test's in-process listeners
+ended with its process; no separate service or browser was launched. Explicit
+project RiWork handoff exited0 and **released the sole Cargo slot immediately,
+before this appendix**, reporting actual exit/count/hash/disk/cleanup. The
+tracked tree remained clean on b729 until this sole report append.
+
+### Updated verification disposition
+
+The concrete selected regression now passes, resolving its prior local
+verification blocker with the reviewed expected-memory correction. Only this
+new selected check changes from unrun/failed to passed; all historical pins,
+other source-only definitions, failures and evidence limitations retain their
+original scope. Original I02 setup/linking/assurance/browser/rotation acceptance
+and any final completion interpretation remain root's decision; no status,
+main integration/publication or whole-row closure was performed here. No new
+browser/tenant/hardware/release gate or extra execution is introduced by this
+report. Primary WT and receipt/header/PAM/Group/live-authority/credential/one-use/
+60s protections and Driver-only preference remain unchanged.
+
+Report preparation verified the entire92842-byte b729 prefix unchanged, sole
+report append, exact source/helper/manifest identity and the passing result,
+private modes/evidence hashes/cleanup plus executed binary hash. All three prior
+failed-run files also retain their recorded hashes. LF/fence/scope/whitespace
+checks passed. Docs checker exited1 only for the same five pre-existing
+target-wave directory-layout violations, with zero missing Markdown links.
+These static report checks performed no additional compile/test/runtime.
