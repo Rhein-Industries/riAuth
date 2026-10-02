@@ -115,6 +115,68 @@ fn assert_closed(report: &Value, fixture: &BackendFixture) {
     );
 }
 
+/// Public output requires the additive pressure diagnosis; the raw Store
+/// document still passes the original closed schema assertion above.
+fn without_pressure(report: &Value) -> Value {
+    let mut raw = report.clone();
+    let pressure = raw
+        .as_object_mut()
+        .unwrap()
+        .remove("pressure")
+        .expect("public allocation must diagnose unavailable pressure");
+    assert_eq!(
+        fields(&pressure),
+        [
+            "affects_readiness",
+            "component",
+            "level",
+            "next_action",
+            "remedy",
+            "safety",
+            "schema_version",
+            "status",
+            "unavailable_reasons"
+        ]
+    );
+    assert_eq!(pressure["schema_version"], "riauth.storage-pressure/v1");
+    assert_eq!(pressure["component"], "storage");
+    assert_eq!(pressure["status"], "unavailable");
+    assert!(pressure["level"].is_null());
+    assert_eq!(pressure["affects_readiness"], false);
+    assert_eq!(pressure["safety"]["capacity_verified"], false);
+    assert_eq!(pressure["safety"]["diagnostic_only"], true);
+    let mut reasons = vec!["capacity_not_measured"];
+    if report["status"] != "available" {
+        reasons.push("allocation_unavailable");
+    } else if report["freshness"] == "stale" {
+        reasons.push("allocation_sample_stale");
+    }
+    assert_eq!(pressure["unavailable_reasons"], json!(reasons));
+    let capacity_action = match report["backend"].as_str().unwrap() {
+        "redb" => "verify_local_filesystem_capacity",
+        "postgresql" => "verify_database_host_capacity",
+        backend => panic!("unexpected allocation backend {backend}"),
+    };
+    assert_eq!(pressure["remedy"]["capacity_action"], capacity_action);
+    assert_eq!(
+        pressure["next_action"],
+        if report["status"] == "available" {
+            capacity_action
+        } else {
+            "inspect_allocation_availability"
+        }
+    );
+    raw
+}
+
+fn assert_public(report: &Value, fixture: &BackendFixture) {
+    assert_closed(&without_pressure(report), fixture);
+}
+
+fn assert_cached_public(report: &Value, fixture: &BackendFixture) -> Cached {
+    assert_cached(&without_pressure(report), fixture)
+}
+
 fn available(report: &Value, scope: &str) -> u64 {
     assert_eq!(report["status"], "available");
     assert!(report["unavailable_reason"].is_null());
@@ -402,7 +464,7 @@ fn grow_allocation(fixture: &BackendFixture, scope: &str, before_bytes: u64) -> 
             .write(|tx| tx.put("allocation_probe", &plant_key(n), &value))
             .unwrap();
         let grown = fixture.core.storage_allocation(&fixture.admin).unwrap();
-        assert_closed(&grown, fixture);
+        assert_public(&grown, fixture);
         assert_eq!(scans(&fixture.core), scans_before);
         let grown_bytes = available(&grown, scope);
         if fixture.core.store.backend() == "redb" {
@@ -475,7 +537,7 @@ fn allocation_case(mut fixture: BackendFixture) {
     let before_scans = scans(&fixture.core);
     let before = fixture.core.storage_allocation(&fixture.admin).unwrap();
     assert_eq!(scans(&fixture.core), before_scans);
-    assert_closed(&before, &fixture);
+    assert_public(&before, &fixture);
     let before_bytes = available(&before, scope);
     if fixture.core.store.backend() == "redb" {
         assert_eq!(
@@ -499,7 +561,7 @@ fn allocation_case(mut fixture: BackendFixture) {
     let after_scans = scans(&fixture.core);
     let after = fixture.core.storage_allocation(&fixture.admin).unwrap();
     assert_eq!(scans(&fixture.core), after_scans);
-    assert_closed(&after, &fixture);
+    assert_public(&after, &fixture);
     let after_bytes = available(&after, scope);
     let mut logical_after = None;
     if fixture.core.store.backend() == "redb" {
@@ -535,7 +597,7 @@ fn allocation_case(mut fixture: BackendFixture) {
         "/api/operations/storage",
     );
     assert_eq!(http_status, StatusCode::OK);
-    assert_closed(&http_body, &fixture);
+    assert_public(&http_body, &fixture);
     same_size(&fixture, available(&http_body, scope), after_bytes);
     // The metrics routes serve a cached sample. Every read above was the direct
     // read, which neither fills nor consults the cache, so the cache is cold: the
@@ -569,7 +631,7 @@ fn allocation_case(mut fixture: BackendFixture) {
     assert!(warm_text.contains("can be up to 300 seconds old"));
     let sample = &warm_json["storage_allocation"];
     assert_eq!(available(sample, scope), cached_bytes);
-    let view = assert_cached(sample, &fixture);
+    let view = assert_cached_public(sample, &fixture);
     assert_eq!(view.freshness, "fresh");
     assert!(view.age.unwrap() < TTL);
     assert!(!view.in_progress);
@@ -618,7 +680,7 @@ fn allocation_case(mut fixture: BackendFixture) {
         "/api/operations/storage",
     );
     assert_eq!(agent_status, StatusCode::OK);
-    assert_closed(&agent_body, &fixture);
+    assert_public(&agent_body, &fixture);
     same_size(&fixture, available(&agent_body, scope), current);
     // `operations/storage` alone is not a metrics grant.
     for path in ["/api/operations/metrics", "/api/operations/prometheus"] {
@@ -743,7 +805,7 @@ fn redb_permission(fixture: &BackendFixture, scope: &str) -> &'static str {
     };
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o000)).unwrap();
     let report = fixture.core.storage_allocation(&fixture.admin).unwrap();
-    assert_closed(&report, fixture);
+    assert_public(&report, fixture);
     unavailable(&report, "permission");
     assert_eq!(report["scope"], scope);
     let (status, body) = http(
@@ -773,7 +835,7 @@ fn cached_failure(fixture: &BackendFixture, scope: &str, reason: &str) {
         let sample = &json["storage_allocation"];
         unavailable(sample, reason);
         assert_eq!(sample["scope"], scope);
-        let view = assert_cached(sample, fixture);
+        let view = assert_cached_public(sample, fixture);
         assert_eq!(view.freshness, "fresh");
         assert!(view.age.is_some() && !view.in_progress);
     }
@@ -786,7 +848,7 @@ fn cached_failure(fixture: &BackendFixture, scope: &str, reason: &str) {
 fn redb_missing(fixture: &BackendFixture, scope: &str) -> &'static str {
     fs::remove_file(redb_file(fixture)).unwrap();
     let report = fixture.core.storage_allocation(&fixture.admin).unwrap();
-    assert_closed(&report, fixture);
+    assert_public(&report, fixture);
     unavailable(&report, "missing");
     assert_eq!(report["scope"], scope);
     let (status, body) = http(
@@ -809,7 +871,7 @@ fn postgres_timeout(fixture: &mut BackendFixture, scope: &str) -> &'static str {
     let report = fixture.core.storage_allocation(&fixture.admin).unwrap();
     let elapsed = started.elapsed();
     drop(holder);
-    assert_closed(&report, fixture);
+    assert_public(&report, fixture);
     unavailable(&report, "timeout");
     assert_eq!(report["scope"], scope);
     assert!(
@@ -879,7 +941,7 @@ fn postgres_permission(fixture: &mut BackendFixture, scope: &str) -> &'static st
         };
         fixture.core.store.discard_idle_postgres_connections();
         let report = fixture.core.storage_allocation(&fixture.admin).unwrap();
-        assert_closed(&report, fixture);
+        assert_public(&report, fixture);
         unavailable(&report, "permission");
         assert_eq!(report["scope"], scope);
         let (status, body) = http(
@@ -1349,7 +1411,7 @@ fn postgres_metrics_do_not_wait_for_a_locked_catalog() {
         assert!(started.elapsed() < Duration::from_secs(2));
         let sample = &json["storage_allocation"];
         assert_eq!(available(sample, scope), warm);
-        let view = assert_cached(sample, &fixture);
+        let view = assert_cached_public(sample, &fixture);
         assert_eq!(view.freshness, "stale");
         assert!(view.in_progress);
     }
@@ -1364,7 +1426,7 @@ fn postgres_metrics_do_not_wait_for_a_locked_catalog() {
         assert!(!text.contains("riauth_storage_alloc"), "{text}");
         let sample = &json["storage_allocation"];
         unavailable(sample, "timeout");
-        let view = assert_cached(sample, &fixture);
+        let view = assert_cached_public(sample, &fixture);
         assert_eq!(view.freshness, "fresh");
         assert!(view.age.unwrap() < 60.0 && !view.in_progress);
     }

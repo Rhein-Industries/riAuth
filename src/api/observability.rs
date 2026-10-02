@@ -375,7 +375,14 @@ pub(super) async fn metrics(State(app): State<App>, headers: HeaderMap) -> Resul
                     actor.allows("operations.read", "operations/storage"),
                 ))
             })?;
-            Ok((queues, storage.then(|| core.store.cached_allocation())))
+            Ok((
+                queues,
+                storage.then(|| {
+                    crate::operations::storage_diagnostics::with_pressure(
+                        core.store.cached_allocation(),
+                    )
+                }),
+            ))
         })
         .await?;
     use std::sync::atomic::Ordering::Relaxed;

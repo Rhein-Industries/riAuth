@@ -872,7 +872,7 @@
       ],
       "label": "extend",
       "journey": "partial",
-      "current_state": "Playwright specs run axe (WCAG 2.1 AA tags), a keyboard-only journey, a 390px viewport, and 200% text. The cargo portal browser test checks 320\u20131440px layout. Only existing sign-in and portal pages are covered; the U02\u2013U09 journeys do not exist yet.",
+      "current_state": "Playwright specs run axe (WCAG 2.1 AA tags), a keyboard-only journey, a 390px viewport, and 200% text. The cargo portal browser test checks 320–1440px layout. Only existing sign-in and portal pages are covered; the U02–U09 journeys do not exist yet.",
       "implementation": [
         "tools/browser/signin.spec.js",
         "tools/browser/portal.spec.js",
@@ -993,7 +993,7 @@
       ],
       "label": "extend",
       "journey": "partial",
-      "current_state": "Remote CLI commands go through HTTP to `Core`. Imperative writes share `Core::mutation` (principal, idempotency receipt, If-Match revision, audit), and desired state uses `state.rs` plan/apply. But there are several write engines (imperative, state, LDAP/cloud directory, outbound SCIM, SCIM inbound), and local CLI commands (`recover-admin`, `restore`, `init`, `migrate-postgres`) bypass the API.",
+      "current_state": "Current-state correction 2026-10-02 at published da5ff7dcfc3442c302955344229168872911b0ec: browser, Core, bearer and remote CLI offered administrator changes share canonical domain authorization/validation/transaction/audit writers and accepted receipt contracts. Shared workflow retry and activation services honor optional supplied Core/browser headers and required bearer headers. Root accepted the original M03 outcome after two independent fixed-pin reviews; RiWork status is done. Local offline setup/recovery/restore retain separate operator contracts.",
       "implementation": [
         "src/context.rs",
         "src/core.rs",
@@ -1022,14 +1022,21 @@
       "tests_run_in_this_task": [],
       "documentation": [
         "docs/agent.md",
-        "docs/api.md"
+        "docs/api.md",
+        "docs/roadmap/local-wave30-m03-root-disposition.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
-      "gaps": [
-        "No single management service; multiple plan/apply implementations",
-        "GUI does not exist, so GUI/CLI/API parity is untestable"
+      "gaps": [],
+      "unverified": [
+        "This acceptance adds no runtime, overall green CI, official released-artifact or deployed-peer claim; owning rows retain their actual evidence gates."
       ],
-      "unverified": []
+      "current_acceptance": {
+        "date": "2026-10-02",
+        "status": "done",
+        "main": "da5ff7dcfc3442c302955344229168872911b0ec",
+        "root_review": "docs/roadmap/local-wave30-m03-root-disposition.md",
+        "historical_labels_retained": true
+      }
     },
     {
       "id": "M04",
@@ -4015,7 +4022,7 @@
       ],
       "released_artifact_evidence": "No released artifact applies.",
       "gaps": [
-        "Parameterized contract harness (backend \u00d7 edition \u00d7 interface)"
+        "Parameterized contract harness (backend × edition × interface)"
       ],
       "unverified": []
     },
