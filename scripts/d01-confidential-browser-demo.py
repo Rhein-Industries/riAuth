@@ -251,7 +251,7 @@ def observe_unexpected_failure(holder, site):
             (Handler.reply.__code__, "Handler.reply"),
             (main.__code__, "main"),
         )
-        trace = error.__traceback__ if isinstance(error, BaseException) else None
+        trace = BaseException.__traceback__.__get__(error, BaseException) if isinstance(error, BaseException) else None
         for _ in range(64):
             if trace is None:
                 break
