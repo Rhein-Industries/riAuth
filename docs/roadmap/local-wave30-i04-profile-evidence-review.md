@@ -788,3 +788,127 @@ its exclusive write; the proposed compiler output directory remains absent.
 Fresh free capacity at2026-10-02T15:08:03.145410+00:00 was11690553344 bytes /
 10.8877GiB. Staged/post-commit checks verify this one append-only report path;
 no source/runtime/deletion/cleanup claim is added by those checks.
+
+
+## Released compiler step: actual local compile/link only, Cargo still held
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, I04 supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. Root explicitly released **one compiler
+step only**, following its separate exhausted cleanup allowlist in another
+private cache and the SCIM owner's exit/release. This worktree did not perform,
+observe or claim that other-cache deletion; the preceding empty own allowlist
+remains correct. Source branch pin on entry:
+`b02e9dea2c819b3d8ba9a0abc2603e653b3f8d60`.
+
+The **EXCLUSIVE PREPARATION SLOT RELEASED** result was sent to the explicit
+project orchestrator immediately after exit and before writing this separate
+report append. No Cargo slot was taken or released. The ignored filter remains
+held until root assigns its separate exact runtime; sufficient observed disk
+space is not permission to start it.
+
+### Exact preflight and executed compiler command
+
+Preflight at2026-10-02T15:27:39.947070+00:00 measured14547554304 bytes /
+13.5485GiB free. Branch was clean; no alignment, source correction, reset,
+other-worker read/contact or deletion was performed. Existing own target was
+regular-directory/nonsymlink/UID501, resolved to this worktree. The one proposed
+output directory was absent before setup.
+
+- C helper matched `e028106` byte-exact: 23856 bytes, blob
+  `ce0a928adb22a4d00a612cf3fb7a113125303e48`, SHA-256
+  `c3d3a8f7d1d2d472e8b877a89ea2807d534921d88638661e8b251e2365906563`.
+- Rust fixture matched `e028106` byte-exact: 37798 bytes, blob
+  `917364806b5be106d9e102bd5d30ba93455a8f0f`, SHA-256
+  `b8596b050db87d921f83e6f0b03ebf76bb6fecd74a99e191adfef6b6c7b32c86`.
+- All production `src/`, `crates/`, Cargo/toolchain/build-config paths still
+  equal reviewed `ae8937800254a1ad4296ea257de1eccc4780e45b`; no new source delta.
+- Selected Lasso2.9.0_4 `.pc`, receipt, logout/session/profile headers and dylib
+  were rehashed by file reads and matched their earlier pins. In particular
+  `.pc` SHA-256 remains
+  `b33a6d16197865beda424287def683acd372026239b1725f08cbc06f3b6a452e`
+  and selected dylib remains
+  `0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde`.
+
+The inline compiler command was extracted **byte-exact** from immutable
+`020a32429863d2ca656b794d634efe3b8d91e70f` report section
+“Revised finite compiler proposal”; Python body SHA-256
+`29ba586850b6d9f7004feb3c2031d622888080f6c9e77e655a52354cadb96c2f`.
+An outer Python caller recorded elapsed time/endpoints and inspected artifact
+metadata after the command; it did not change the reviewed wrapper. Exactly
+one `pkg-config --cflags --libs lasso gobject-2.0` metadata child ran (5-second
+limit), followed by exactly one `/usr/bin/cc -O2` child (60-second limit) with
+those flags and the reviewed C file. There was no compiler correction/retry,
+version probe, helper execution, protocol/library invocation or Cargo.
+
+The reviewed wrapper exclusively created
+`target/i04-lasso-slo-e028106`, UID501/mode0700, with exclusive0600 captures,
+16MiB child file-size bound, 128KiB parent capture checks, owned child process
+groups, joined-IO/deadline postchecks and9GiB disk stop. No other target or
+execution directory was created; prior logs/manifests/evidence were retained.
+
+### Actual exits, capacity, output and dependencies
+
+| Observation | Actual result |
+| --- | --- |
+| Metadata child | Exit0; private stdout917 bytes, stderr0 bytes |
+| Native compiler | Exit0; stdout0 bytes, stderr0 bytes; no compiler warning/error observed |
+| Inline wrapper | Exit0; elapsed0.356856 seconds; one invocation only |
+| Immediate wrapper disk endpoints | Before14560317440 bytes; after14560235520 bytes at2026-10-02T15:30:29.318221+00:00; both about13.56GiB |
+| Fresh release-time capacity | 14557188096 bytes /13.5574GiB; measured again before orchestrator handoff |
+| Deadline/capture/disk guards | Passed; no abort or threshold refusal;9GiB stop/8GiB floor retained. No independently recorded continuous peak/minimum is claimed. |
+| Owned-child cleanup | Both approved children joined normally through the reviewed wait/finally. No TERM/KILL cleanup branch was needed; outputs retained. No separate live descendant-group audit was performed or claimed. |
+
+Artifact literal path:
+`/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/i04-lasso-slo-e028106/lasso-saml-sp`.
+It is regular, nonsymlink, nlink1, UID501, mode0755 under the private0700
+directory, **39472 bytes**, SHA-256
+`18f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c`.
+Reading its Mach-O header/load-command bytes established a64-bit arm64
+executable (CPU16777228, filetype2,21 load commands). It was **not executed**.
+The direct dependency load names and current file-resolution observations are:
+
+| Mach-O direct dependency | Current resolved path, observed by file metadata only |
+| --- | --- |
+| `/opt/homebrew/opt/lasso/lib/liblasso.3.dylib` | `/opt/homebrew/Cellar/lasso/2.9.0_4/lib/liblasso.3.dylib` |
+| `/opt/homebrew/opt/glib/lib/libgobject-2.0.0.dylib` | `/opt/homebrew/Cellar/glib/2.90.0/lib/libgobject-2.0.0.dylib` |
+| `/opt/homebrew/opt/glib/lib/libglib-2.0.0.dylib` | `/opt/homebrew/Cellar/glib/2.90.0/lib/libglib-2.0.0.dylib` |
+| `/opt/homebrew/opt/gettext/lib/libintl.8.dylib` | `/opt/homebrew/Cellar/gettext/1.0/lib/libintl.8.dylib` |
+| `/usr/lib/libSystem.B.dylib` | `/usr/lib/libSystem.B.dylib` load name; no on-disk system-library availability or dyld loading claim |
+
+Dependency names/current symlink resolution and successful link are not a runtime
+loader/ABI/session/logout interoperability result. Transitive dependencies were
+not independently enumerated or exercised. Root must reverify selected dynamic
+pins before any later helper execution.
+
+All four retained captures are regular, nonsymlink, nlink1, UID501/mode0600 in
+the above owned directory; no raw flags/captures or private protocol values were
+printed or added to this report:
+
+| Capture | Bytes | SHA-256 |
+| --- | --- | --- |
+| `pkg-config.stdout` | 917 | `8d8f51e95d756bdacbfaf1c3fb287970cb580ef1061c9f0c4207761950451a92` |
+| `pkg-config.stderr` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `cc.stdout` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `cc.stderr` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+This successful step establishes the selected native C helper's compile/link
+compatibility only. Rust type checking, actual accepted identity/session dump
+restore, Lasso signature/index retirement observations, local-before-peer
+revocation, unrelated-user preservation and response consumption/audit/retry
+oracles remain **unexecuted**. The one ignored Cargo filter documented above is
+still the exact pending proposal, with private target/jobs1/incremental0/dev+
+testdebug0, fresh13GiB planning capacity check,9GiB stop and8GiB floor. No
+automatic test, alternative feature/peer, pin repair or broader campaign is
+authorized by this compiler result. No browser, tenant/profile completion,
+Windows/Linux or whole-I04 closure is implied; original primary ownership,
+completed rows and O07 blocker remain unchanged.
+
+Post-compiler report checks actually run: documentation checker exited0;
+`git diff --check` passed; the whole prior `b02e9de` report remains the exact
+62736-byte prefix, SHA-256
+`badb7b5e1070c8130b2b40906b5c9b0b82c43750abeecb42b8adc5c56c290d90`.
+Protected C/Rust and reviewed production equality were rechecked; artifact and
+four capture hashes/permissions/nlink/owner and exact output-file list matched.
+Fresh disk at2026-10-02T15:34:09.227827+00:00 measured14562205696 bytes /
+13.5621GiB. Staged/post-commit checks verify one append-only report path.
+These additional checks did not execute the helper/library or Cargo.
