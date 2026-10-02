@@ -2649,3 +2649,51 @@ No actual GitHub query/dispatch/download, controller/adapter/helper import or ex
 A09 original supported-platform/artifact/shared-distribution gate remains open. `official_release: false`, prior `shared_full_gate: not_run`, proposed helper/controller `full_shared_gate: not_certified`, Linux x86-64/container/TLS/passkey/device/full-client/encrypted/full-shared/physical/tenant/escrow/paused-IO limits remain explicit. The accepted receipt-secret, route-specific header, PAM, permission/review/removal/audit/credential/Group/input/non-renewed-60-second protections remain unchanged. Root alone decides later source ownership, actual runtime/resources, review/integration/publication/status. RiWork Cua.ai Driver preference persists; no desktop operation is needed.
 
 Final repository static evidence (2026-10-02): docs checker exit 0; staged whitespace/scope checks exit 0 with only this report and no deletions; tracked-file hygiene exit 0 (963 files). The complete embedded workflow/controller/adapter hashes above and all protected source bytes remain unchanged. These checks grant no runtime or artifact acceptance.
+
+## Phase J — artifact run-head identity correction, report only (2026-10-02)
+
+Reservation `wave30_A09_launcher_artifact_run_identity` owns only an append to this report for project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing A09 `506e3979-a590-4af3-8fa8-ee90d3a517f2` / WT `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. The entire immutable `47c28516df7508d4839a0705d55cd284d5c6a30a` report/proposal remains the dated prefix: **190,883 bytes / 2,651 lines**, SHA-256 `2c5eeaa8edf5b16156de6df3e70bf3e7dbae862dbfd50dced7fd87d90355bfc3`. Its original 1,279-line workflow fence is preserved, including the F1 defect and earlier static-check results. It is not replaced or silently corrected.
+
+### F1 finding and factual source
+
+I incorrectly compared artifact metadata `workflow_run.head_sha` to the separately checked-out product source. Root's exact read-only API observation supplied with this reservation reports artifact ID `11232871527`, name `riauth-local-arm64-37016520583-1`, run ID `37016520583`, **head SHA `036a392656b4b5070cc86a11d5ca3258b7b868d2`**, digest `sha256:fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30`, size **49,177,062 bytes**, and `expired: false`. These are root-supplied facts at the observation time, not a new worker API query, ZIP hash or current availability claim. Root retains `planning/evidence/wave30-a09-artifact-metadata-review.json`; no independent receipt-file hash is credited here.
+
+The already downloaded exact evidence JSON was reread locally and its complete SHA-256 reconfirmed as `fd8280125b38e6afbe13970be4617df8fdbe72e7280a4e6dedb2f2a84e4c9ab1`. It independently contains `GITHUB_SHA == GITHUB_WORKFLOW_SHA == 036a392656b4b5070cc86a11d5ca3258b7b868d2`, while `source_sha == 9a819317efb3a13fa27cd86f884be2be00898fc0` and `source_tree == 1528b61ba463d9262d6252d54174748a176f313b`. Its input hashes and five product records also match the unchanged fixed constants. No archive was opened or executed.
+
+Therefore the original line-501 metadata predicate would reject this correct artifact before ZIP download. Prior YAML/Bash/AST checks did not catch this semantic identity error; those checks were not native/transport acceptance. The sole proposed correction binds artifact run head to the **build workflow source**, preserving product identity verification through the exact digest-pinned build evidence/source tree/input/product/binary checks. It does not relax artifact identity, digest, expiration, size, run ID or any other condition.
+
+### Exact zero-context virtual-file diff against the immutable 47c fence
+
+This is a proposed patch to the fenced new-file text, not an applied workflow edit. All indentation, terminal newlines and other workflow/controller/bootstrap bytes are unchanged.
+
+```diff
+--- a/.github/workflows/check-local-shared-handoff.yml
++++ b/.github/workflows/check-local-shared-handoff.yml
+@@ -501 +501 @@
+-                          run.get("head_sha") == FIXED["product_sha"], "artifact_metadata_mismatch")
++                          run.get("head_sha") == FIXED["build_workflow_sha"], "artifact_metadata_mismatch")
+```
+
+| Complete proposed object | Original bytes / SHA-256 at 47c | Corrected bytes / SHA-256 |
+| --- | --- | --- |
+| Workflow, all 1,279 lines and terminal newline | 73,279 / `0bad3f22ac0c1534e64f12b5454efd686bac8bb260919f7d16753f968bb518b4` | **73,286** / `cf2365e64376a7a227a2d057995e81242f286d25a877a2bb0455b55c8c516f21` |
+| Shell-created controller, all 1,203 lines and terminal newline | 59,371 / `8018cd2119e9763aa1832664d03ca28732739f2c4749d2b2a2cfcdb266e5a6b4` | **59,378** / `4acc7d31ea08ca1b5466b9bdc8c5f7b2d35699aea8488cb2703e3e2401c8c2b0` |
+| Private bootstrap string | 1,506 / `1adc47c2b81f78c75f1f2122aabff7f08f48786fafd840880f3106418326e4de` | **Unchanged**, same complete hash |
+
+The seven additional bytes are solely `product_sha` → `build_workflow_sha` in the unique `run.get("head_sha")` equality comparator. The full corrected workflow is defined by applying exactly this one replacement to the exact 47c fence; no second full-file variant or source patch is introduced.
+
+### Actual source-only proofs
+
+Actual exit-0 checks parsed both original/corrected YAML with installed Psych, ran Bash `-n` on all three run blocks in each, and parsed both complete controller/inline bootstrap ASTs. No controller/helper/bootstrap import or execution occurred. Whole corrected-workflow reversal equals all 73,279 original bytes; whole corrected-controller reversal equals all 59,371 original bytes. The bootstrap string remains byte-identical.
+
+AST inspection finds exactly one `Compare` with left `run.get("head_sha")`, unchanged equality operator, and right `FIXED` subscript. The original key is `product_sha`; the corrected key is `build_workflow_sha`. Replacing only that corrected key back to `product_sha` in a copied AST yields complete normalized `ast.dump(..., include_attributes=False)` equality with the original controller. Reversing the one run-block predicate also yields equality of the entire parsed YAML document. This proves that permissions/manual trigger/action/context/resource/transport/extraction/capture/cleanup controls and all fixed data are untouched.
+
+Source inspection reconfirmed the unchanged product-source/tree/input/product/archive/binary predicates and fixed hashes. All five protected helper/import files and the old build workflow remain byte-exact; the new `.github/workflows/check-local-shared-handoff.yml` still does not exist. No production/helper/workflow/source file is edited.
+
+### Review boundaries and held work
+
+This corrected proposal is ready for **root review first**. WTa130 is independently reviewing **original 47c**; this append claims no contact, receipt, agreement or endorsement from that reviewer. Root alone can decide whether to materialize the corrected new workflow and later reserve/dispatch transport/PostgreSQL/helper runtime after publication.
+
+No remote query/dispatch/download, proposed library/native-artifact/helper/PostgreSQL/Cargo/build/service, archive extraction, desktop, new worker/task/worktree/shell, source/main/push/status or contact occurred. This append grants no new artifact, run, capacity, tool, cleanup, E→P→E or release credit. Previous HTTP 422/invalid-push/authoring failures and all original gates/limits remain intact. A09 stays open; `official_release: false`, prior `shared_full_gate: not_run` and proposed `full_shared_gate: not_certified` remain unchanged. Accepted security/permission/review/receipt/header/PAM/removal/audit/credential/Group/input/non-renewed-60-second protections and the RiWork Cua.ai Driver preference persist.
+
+Final repository static checks for this correction: docs checker exit 0; staged whitespace/scope checks exit 0; tracked-file hygiene exit 0 (963 files). The sole delta is this report append, with zero deletions; no other file is edited. These checks do not grant materialization, transport or runtime acceptance.
