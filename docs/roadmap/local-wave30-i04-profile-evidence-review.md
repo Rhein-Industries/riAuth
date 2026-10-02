@@ -640,3 +640,151 @@ read at2026-10-02T14:46:51.857858+00:00 reported11953029120 bytes /11.1321GiB
 free. No compiler/helper/Cargo execution, listener, new target directory or
 runtime result occurred. Final report-only staged/post-commit scope and whitespace
 checks are part of the handoff; all checks here are static/source preparation.
+
+
+## Approved own-target inventory: no eligible executable cleanup candidate
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original I04 support in the same
+existing worktree. This follow-up authorizes metadata/hash/live-use inventory
+and one private ignored manifest only. It authorizes **no deletion** and no
+compiler/helper/library/Cargo execution. Source HEAD before this append is
+`020a32429863d2ca656b794d634efe3b8d91e70f`; accepted evidence references were
+read from fixed published `9b8956f7b2a9961b14e313fa57c0f5214a136772`, not another
+worker's files. Previous source, preparation, failed observations and report
+prefixes remain intact. No merge/alignment or source change occurred here.
+
+**Recommendation: empty cleanup allowlist, 0 bytes proposed relief.** There is
+no defensible never-executed **and** never-cited integration-test executable in
+this inventory. All six integration-test targets present in the private target
+are cited in accepted actual execution reports for this same worktree/cache.
+The reports do not attest the current executable SHA at each historical run;
+that limitation is a reason to preserve the stored artifact, not evidence that
+it was never executed. An old mtime, different feature set, unused descriptor
+or absent current process does not establish historical nonexecution.
+
+The six integration executables together occupy only **920947568 logical bytes /
+920961024 allocated bytes / 0.8577 GiB**. Even including all six contrary to the
+evidence exclusions would not provide the requested2GiB relief. No broader
+native/server/library/cache deletion is proposed to bridge the difference.
+
+### Exact excluded integration executable records
+
+All six paths below were checked individually: regular, nonsymlink, no symlink
+in their path to this worktree, effective-user-owned UID501, nlink1, mode0755.
+Each resolved parent equals its literal parent inside this worktree's private
+target. Hash reads checked dev/inode/size/mtime again afterward; no file change
+was observed across hashing. No binary was executed. Literal paths:
+
+- E1: `/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/wave29-workflow-retry/debug/deps/workflow_approval_api-be7eb35d17248f42`
+- E2: `/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/wave29-workflow-retry/debug/deps/workflow_approval-f4610ae194ee42cc`
+- E3: `/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/wave29-workflow-retry/debug/deps/identity-0a3dab03190e6e69`
+- E4: `/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/wave29-workflow-retry/debug/deps/identity_boundary-daba31a221c5f052`
+- E5: `/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/wave29-workflow-retry/debug/deps/m03_parity_workflow-797256b406b7ca3e`
+- E6: `/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/debug/deps/o06_resolved_deactivation_gauge-b18eae65435f6fd2`
+
+E1–E5 resolved parent:
+`/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/wave29-workflow-retry/debug/deps`.
+E6 resolved parent:
+`/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/debug/deps`.
+
+| Record | Logical / allocated bytes | mtime UTC | Executable SHA-256 | Decision/reason |
+| --- | --- | --- | --- | --- |
+| E1 | 200697168 / 200699904 | 2026-10-02T01:39:48.699358+00:00 | `de8f1f42fa24f9b81f84beab0ced01cd13637c6d4290d30e3ac0840df9a9d31f` | EXCLUDE: accepted executed/cited API retry target |
+| E2 | 200427504 / 200429568 | 2026-10-02T01:35:57.053184+00:00 | `1babd7b6e7b21c4d2a2766b070a0a288f06f19d6db9dc0d71c5d42f17bfb30d5` | EXCLUDE: accepted executed/cited approval floor target |
+| E3 | 250164960 / 250167296 | 2026-10-02T02:06:28.480019+00:00 | `0b7efe00c8df2fb70eb295d8855d03dcd4f6ad458338c77885f484b3c29c2b5b` | EXCLUDE: accepted executed/cited four operations fixtures |
+| E4 | 67493040 / 67493888 | 2026-10-02T02:55:29.479895+00:00 | `f25dc79a33acb5d7c1f9997559e6d57fa5efa18e393cad3ec9e3ea1a8eb69789` | EXCLUDE: accepted executed/cited receipt baseline/final fixture |
+| E5 | 1857568 / 1859584 | 2026-10-02T01:31:57.794605+00:00 | `084b3c4e4c9fef9e0c881ed1f4c04626e085379cbc6541cbae97d594ddb9dd8d` | EXCLUDE: accepted executed/cited six client mock cases |
+| E6 | 200307328 / 200310784 | 2026-10-02T10:43:28.156363+00:00 | `fb93dc46d8c8945288291ae49da8ea003cd10cec56820e262661ea871ceb851a` | EXCLUDE: accepted executed/cited gauge failure/corrected result; also current cache |
+
+Fingerprint JSON was read as build metadata only. All six record test profile
+`11094973624911973823` and rustc fingerprint`17329007180185699724`; neither
+number is an attestation of a current source commit. Features below are the
+literal feature lists decoded from their Cargo JSON strings. Each fingerprint
+path is relative to the exact own worktree root specified above; the private
+manifest also records its full absolute literal path.
+
+| Record | Fingerprint metadata path | Features | Fingerprint-file SHA-256 |
+| --- | --- | --- | --- |
+| E1 | `target/wave29-workflow-retry/debug/.fingerprint/riauth-be7eb35d17248f42/test-integration-test-workflow_approval_api.json` | `default, essentials, platform` | `6dd33d11ed5ff8b7f54e37422fe0ba67e96390babae0cee48d360d4a47fd6a25` |
+| E2 | `target/wave29-workflow-retry/debug/.fingerprint/riauth-f4610ae194ee42cc/test-integration-test-workflow_approval.json` | `default, essentials, platform` | `5b0835d10ba0ec9b979a3eca58f78afb66838c5abc7304da07620e500538362b` |
+| E3 | `target/wave29-workflow-retry/debug/.fingerprint/riauth-0a3dab03190e6e69/test-integration-test-identity.json` | `default, essentials, fuzzing, platform, test-support` | `934d5e4f272cac7babf26653b4a089c02c56456ba8a58585a25764e3d562eea4` |
+| E4 | `target/wave29-workflow-retry/debug/.fingerprint/riauth-daba31a221c5f052/test-integration-test-identity_boundary.json` | `default, essentials, fuzzing, platform, test-support` | `11925a04a7cd4f3795a79a84843072dc4238848a7552f1f52307c7d4875d03b7` |
+| E5 | `target/wave29-workflow-retry/debug/.fingerprint/riauthctl-797256b406b7ca3e/test-integration-test-m03_parity_workflow.json` | `default` | `c6bbae248e4ca99001241ada75d6e34dde83d925ed7f5a238ef13a378b9f6c70` |
+| E6 | `target/debug/.fingerprint/riauth-b18eae65435f6fd2/test-integration-test-o06_resolved_deactivation_gauge.json` | `default, essentials, fuzzing, platform, test-support` | `4b4a727d6aa4e7c890d995806d2d70eef89ff6fb9d29470db5868048f51c83b4` |
+
+Exact accepted source-derived disqualifiers at published9b8956f:
+
+- E1/E2/E5: [retry implementation evidence](local-wave29-workflow-retry-parity-implementation-report.md), lines140–152, explicitly selects this worktree's `target/wave29-workflow-retry` and records actual API/floor/client runs. E5's6/6 result excludes it despite its small size.
+- E3: [four operations fixture evidence](local-wave29-identity-operations-ci-report.md), lines54–63, records this same private target and four exact functions executed once each.
+- E4: [receipt fixture evidence](local-wave29-identity-boundary-receipt-ci-report.md), lines63–76, records the same target, actual failed baseline and passing final run across both formats. Failed evidence is retained too.
+- E6: [gauge evidence](local-wave30-o06-resolved-deactivation-gauge.md), lines88–103, records this own target, first concrete failure, corrected pass and retained result logs.
+
+No private result log, protocol/session data, archive or evidence content was
+read for this follow-up. Public committed reports were sufficient to disqualify
+every integration-test artifact; no historical nonexecution was inferred from
+absence of a filename in a search result.
+
+### Live metadata checks and exact private manifest
+
+At2026-10-02T15:03:09.814078+00:00, `/usr/sbin/lsof -nP -Fpcfn --` with the six
+**literal absolute paths** returned exit1, stdout0 bytes, stderr0 bytes: no
+matching open file was observed. `/bin/ps -axo pid=,ppid=,comm=` returned exit0,
+1553 process-name records, and zero literal-path or exact-basename matches.
+Process arguments/environment were not requested or read. The manifest stores
+only matching process records (none), not the other workers' process inventory.
+These are point-in-time checks; they neither promise future nonuse nor prove
+that any artifact was never executed historically.
+
+The ONE authorized manifest was created exclusively, without symlink following,
+inside the existing own target; it is regular, nlink1, owned UID501, mode0600
+and `git check-ignore` confirms it is ignored:
+`/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/i04-slo-executable-inventory-020a324.json`.
+12849 bytes, SHA-256
+`5baaad8e85b1be75126f5d5b015f0b59e7f994b46fe269cb4d36314f8238e6ae`.
+It contains the full literal paths, resolved parents, sizes/mtime/mode/nlink/
+owner, SHA/features/
+fingerprints, live checks, reasons, and **`cleanup_allowlist: []`** /
+**`proposed_relief_bytes: 0`**. No new target directory was created, and no
+existing manifest/output was overwritten. The dev/inode/size/mtime stability
+comparison during hashing was separately checked by the inventory command;
+device/inode identifiers themselves are not fields in the manifest.
+
+The broader executable metadata walk observed15 `deps` executables: these six
+integration tests plus native server/maintenance/client/unit-test artifacts,
+all excluded. It also identified9 non-`deps` native/probe copies, excluded;
+274 dependency build-script/tool executable records, excluded; and95 executable
+noncandidate dependency/nonbinary records, excluded. The broad walk read only
+regular metadata and, for executable classification in `deps`, four Mach-O magic
+bytes; it did not hash native evidence copies or read private protocol contents.
+Current source/filter/default-feature cache, accepted helpers/native server/
+maintenance/client/test evidence binaries, **every** log/evidence/archive/rlib/
+rmeta/dylib/dependency/fingerprint/build-script artifact, and other-worker
+targets remain excluded. No existing target artifact was removed, pruned or
+rewritten, and no inventoried executable or protocol helper was executed.
+
+### Capacity remains insufficiently reserved; runtime remains held
+
+Inventory manifest free space at2026-10-02T15:03:09.814226+00:00:
+**11699761152 bytes /10.896 GiB**. Fresh metadata-only measurement at
+2026-10-02T15:04:40.666486+00:00: **11694329856 bytes /10.8912 GiB**.
+Host free capacity can change while other serialized work runs; these snapshots
+are not an after-SCIM completion measurement or a reservation. This branch's
+only new target write is the tiny exclusive manifest above.
+
+The last observation leaves about1.8912GiB above the9GiB stop point, less than
+the4GiB upper planning allowance. Root still needs a fresh after-SCIM capacity
+measurement, ideally13GiB free for that allowance. There is no eligible own
+executable cleanup proposal; no deletion permission was given or consumed.
+The earlier compiler/filter proposals remain held and were not executed.
+Root alone may assign exact later cleanup/compile/runtime, integration and
+status changes. Original primary ownership and the D04/O06/I10/R05 completed
+states, O07 blocker and protected contracts are unchanged.
+
+Inventory static checks: `python3 scripts/check-docs.py` exited0 and
+`git diff --check` passed. The complete original1e2/source199/preparation020
+report prefixes remain byte-exact; both reserved C/Rust files still equal
+`e028106`. Manifest hash/mode/nlink/owner and empty allowlist were checked after
+its exclusive write; the proposed compiler output directory remains absent.
+Fresh free capacity at2026-10-02T15:08:03.145410+00:00 was11690553344 bytes /
+10.8877GiB. Staged/post-commit checks verify this one append-only report path;
+no source/runtime/deletion/cleanup claim is added by those checks.
