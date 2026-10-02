@@ -206,3 +206,41 @@ All implementation/test/documentation blobs below are at `caf7fe02807f8363dbde01
 | `docs/operations.md` | `02e986b827419c091f6e6c936b657c3f73e77885` |
 
 The implementation and runtime-readiness handoff was sent through `riwork orchestrator send --project 891e7443-8dac-4c1b-897f-9e53cb59c7ee`. Source is ready for root review at this fixed object; runtime acceptance and any original O06 disposition remain pending root coordination and actual focused results.
+
+## Actual allocation-budget runtime — released exact target passed
+
+Root subsequently released the sole Cargo slot after the signer Essentials check exited zero, following review of all production hunks and all six authored cases at `caf7fe02807f8363dbde01780c1456704244e6c8`. The ownership ledger then recorded `runtime_released: true` and the exact permitted command. The preceding queued report at `806390b1cab12de201064fa0450c3ca86413e26c` remains unchanged; this append supplies the later actual result.
+
+Before launch, every production/test/operator-doc file was byte-compared with the reviewed source commit. The checkout was clean at `806390b1cab12de201064fa0450c3ca86413e26c`, differing from that source commit only by the preceding report append. Initial sampled free space was 14.441692 GiB. The target was the private, non-symlink `target/` in this worktree.
+
+Exactly one Cargo invocation ran, with no compiler or fixture correction and no retry:
+
+```text
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --lib operations::storage_diagnostics::tests
+```
+
+| Actual result | Value |
+| --- | --- |
+| Cargo exit | 0 |
+| Focused cases | 6 passed, 0 failed, 0 ignored, 0 measured, 131 filtered out |
+| Cargo build time reported in log | 1m 04s |
+| Test time reported in log | 1.92 s |
+| Monitor/runner wall time | 70.11 s |
+| Minimum sampled free space | 12.768623 GiB (13,710,204,928 bytes) |
+| Resource monitor | Every 2 seconds; 8 GiB floor, stop threshold 8.25 GiB before that floor |
+| Stopped for floor | No |
+
+The native macOS linker emitted the existing `__eh_frame` compact-unwind warning. Cargo completed successfully; there was no compile failure, assertion failure, runtime failure, hidden correction or additional target. The runner sent the explicit project orchestrator a slot-release receipt immediately after process exit; the receipt command exited zero. No further Cargo was started.
+
+All six cases named in the preceding authored-case table actually passed. They cover exact unconfigured-v1 serialization, typed/default/positive/full-`u64` TOML and JSON handling, exact integer thresholds despite rounded displays, null comparisons for invalid/scope/sample/freshness failures, actual disposable local-redb dedicated and cached readers with permissions/redaction/nonmutation/readiness, and budget-only reopening with unchanged format-3 agreement and records. The scoped reopen case also confirmed that the existing read-only Platform edition-plan token changes with the full candidate config. No edition artifact was built or activated, and no edition algorithm or writer was edited.
+
+This is local macOS/redb evidence with the default Platform features and `test-support`. PostgreSQL scope comparisons in the pure case use supplied arithmetic inputs, not a live PostgreSQL measurement. No PostgreSQL, Essentials artifact, cloud, HA, browser/desktop, physical disk-pressure or host-capacity target ran. The display ratio and available configured-budget level still establish no filesystem free space, physical headroom, all-storage health or guaranteed write safety.
+
+| Private artifact under this worktree's `target/` | SHA-256 |
+| --- | --- |
+| `o06-storage-budget-platform.log` | `517f76240a29d64c2e8cecc098ab7c4126f980e3e35984aba9df7e7fe76941bc` |
+| `o06-storage-budget-platform-result.json` | `5b7cc1c2b2a1fa81ca14bab75888891d22d2561283c2b74e8fbfdd92f4e94ba5` |
+
+The log was created exclusively and retained without rewriting. The result metadata records the exact command, tested source, checkout head, exit code, monitor interval/floor/stop threshold, initial/minimum sampled bytes and measured runner duration. Its log hash was independently rechecked after exit. Every reviewed production/test/operator-doc file still matched `caf7fe02807f8363dbde01780c1456704244e6c8` after the run; the worktree was clean before this evidence-only append. Existing client-creation receipt/secret, route-header, PAM, removal/audit/credential, admission, readiness and agreement protections remain unchanged.
+
+The permitted focused runtime is complete and the sole slot is released. Root alone owns independent review, integration, publication and the original O06 disposition; this worker has not pushed or changed any task status. The report is appended separately, preserving all previous accepted and queued evidence.
