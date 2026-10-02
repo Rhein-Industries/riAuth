@@ -2571,3 +2571,39 @@ receiver lifecycle execution and original I04 disposition remain pending root.
 No Linux/Windows/tenant/browser/profile/release/whole-I04 completion is claimed.
 No other file, task, worker, primary assignment, main branch or accepted branch
 was edited; no merge/reset/push/status/contact/provider/desktop operation occurred.
+
+### Final static deadline refinement — no runtime invocation
+
+After the initial source/report commits, final static inspection found one
+acceptance-bound detail within the same reserved new target: validation of the
+three private native output files should remain inside the individual child
+budget, as well as the whole60s budget. Additional focused source commit
+**`561022078b500466712a67a2e9a0e1144977858c`** adds six lines only in
+`tests/saml_source_peer.rs`: retain the existing child deadline in NativeResult
+and check it after all native output-file validation, before acceptance. This
+does not alter the profile, oracle, native invocation count/inputs, old helper,
+C mode, whole-test budget or any production API. No source/runtime failure or
+native result was newly observed.
+
+The final cumulative Rust pin is **39498 bytes**, SHA-256
+**`0a5991d7c17cc921b3a13fdc0e49a2df10d45568aebbafc86e93cf27a2a9f85b`**.
+The earlier39321-byte hash above identifies the initial `fd89dc7` definition,
+not the final prospective runtime source. C remains34120 bytes/SHA
+`1b23f51314038ff15caa3aeb8c31acccb8bcd26d6fb702115767d0f68e4dc186`.
+Bounded source port is the two code commits `fd89dc76be2d2eab92fd252925d0cbb7b4e3b18b`
+and `561022078b500466712a67a2e9a0e1144977858c`, restricted to additive C/new test;
+report history must not be mistaken for product history to import wholesale.
+Future compile/filter proposals and all HELD prerequisites above are unchanged,
+with the final Rust hash required in their preflight. No slot acquired/released.
+
+Actual final static checks: direct rustfmt formatting/check exited0; whitespace
+check exited0; docs check exited0. The six-line deadline-only diff and final
+source hashes were checked; old C whole-byte reversal, old SAML test/helper,
+protected source equality and sole reserved report append remain verified.
+The full prior184158-byte report (including the initial static implementation
+appendix), SHA-256
+`0b6638183f6e7ff87821c3355ab2c6d1a96a76a39bda0f241297d485b0d61e19`,
+remains an exact prefix. Original166178-byte design prefix, historical actual
+PASS/two failures and first-native-unknown remain unchanged. Native compilation,
+Rust type-checking and new peer/receiver execution are still pending independent
+root review and explicit separate releases; no original I04 closure is claimed.
