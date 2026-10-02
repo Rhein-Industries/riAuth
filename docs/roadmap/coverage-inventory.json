@@ -872,7 +872,7 @@
       ],
       "label": "extend",
       "journey": "partial",
-      "current_state": "Playwright specs run axe (WCAG 2.1 AA tags), a keyboard-only journey, a 390px viewport, and 200% text. The cargo portal browser test checks 320–1440px layout. Only existing sign-in and portal pages are covered; the U02–U09 journeys do not exist yet.",
+      "current_state": "Playwright specs run axe (WCAG 2.1 AA tags), a keyboard-only journey, a 390px viewport, and 200% text. The cargo portal browser test checks 320\u20131440px layout. Only existing sign-in and portal pages are covered; the U02\u2013U09 journeys do not exist yet.",
       "implementation": [
         "tools/browser/signin.spec.js",
         "tools/browser/portal.spec.js",
@@ -1244,37 +1244,80 @@
       ],
       "label": "build",
       "journey": "none",
-      "current_state": "No executor. Source-stage suspend/resume/expiry/cancel is the nearest precedent.",
+      "current_state": "Reviewed update at published ebaae3d plus fixture24a09d: durable server executor implements bounded retries, expiry, cancellation, resume and explicit transitions. Conditional password/current-TOTP authentication and exact conditional session/UV-passkey enrollment execute; source/current-TOTP Core and HTTP adapter are delivered. Corrected old enrollment fixture proves durable drift retirement and fresh restart completion. Root accepts the original W02 outcome after publication.",
       "implementation": [
-        "src/source.rs",
-        "src/browser.rs"
+        "src/workflow/executor.rs",
+        "src/workflow/executor/version.rs",
+        "src/workflow/validate.rs",
+        "src/workflow/evidence.rs",
+        "src/workflow/essentials.rs"
       ],
       "tests_existing": [
         {
-          "ref": "tests/source_stage.rs::suspend_then_resume_completes_the_original_request_and_replay_fails",
+          "ref": "tests/workflow_model.rs",
           "kind": "rust",
           "ci": "ci-check"
         },
         {
-          "ref": "tests/source_stage.rs::expired_stage_is_rejected_without_a_code",
+          "ref": "tests/workflow_executor.rs",
           "kind": "rust",
           "ci": "ci-check"
         },
         {
-          "ref": "tests/source_stage.rs::cancel_fails_the_authorization_without_a_code",
+          "ref": "tests/workflow_configured.rs",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_configured_conditional_totp.rs",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_configured_conditional_enrollment.rs",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_configured_enrollment.rs::configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restart",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_configured_source_totp.rs",
+          "kind": "rust",
+          "ci": "ci-check"
+        },
+        {
+          "ref": "tests/workflow_configured_source_totp_api.rs",
           "kind": "rust",
           "ci": "ci-check"
         }
       ],
       "tests_run_in_this_task": [],
       "documentation": [
-        "docs/enterprise/ENT-11.md"
+        "docs/workflows.md",
+        "docs/roadmap/local-wave29-w02-final-disposition.md",
+        "docs/roadmap/local-wave29-w02-conditional-enrollment-evidence.md",
+        "docs/roadmap/local-wave29-w02-enrollment-fixture-evidence.md",
+        "docs/roadmap/local-wave29-w02-closure-root-review.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
-      "gaps": [
-        "Executor with retries, resumable state, explicit transitions"
+      "gaps": [],
+      "unverified": [
+        "No fresh PostgreSQL/Linux/hardware/tenant/released-artifact execution in this bounded closure; exact local passes and historical evidence are separately attributed.",
+        "Arbitrary graphs, all protocol/verifier permutations and initial sign-in replacement remain outside this original row closure; full published CI is not claimed green."
       ],
-      "unverified": []
+      "reviewed_update": {
+        "date": "2026-10-02",
+        "published_base": "ebaae3d6521f5754d7fd12347f28409e9fa7142c",
+        "conditional_source": "69b9eda4939738d6a9ef8fdb10351991d336feeb",
+        "fixture_source": "24a09dff4cbb6adf9a385913b92ac82a7b0cf41e",
+        "closure_decision": "done after publication",
+        "journey": "complete-local",
+        "label_and_journey_counts": "Original inventory labels/journeys/counts remain historical at base96e23e2; this explicit update records current original-row disposition.",
+        "test_execution": "Earlier new conditional target6passes; separate exact corrected compatibility1pass. No root Rust runtime, no full suite claim."
+      }
     },
     {
       "id": "W03",
@@ -3972,7 +4015,7 @@
       ],
       "released_artifact_evidence": "No released artifact applies.",
       "gaps": [
-        "Parameterized contract harness (backend × edition × interface)"
+        "Parameterized contract harness (backend \u00d7 edition \u00d7 interface)"
       ],
       "unverified": []
     },

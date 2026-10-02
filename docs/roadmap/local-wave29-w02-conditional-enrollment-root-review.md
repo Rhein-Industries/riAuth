@@ -53,6 +53,10 @@ positive restart path. No relaxation of production sealing is authorized.
 W02 remains in progress pending that correction and root closure review.
 W05 and M07 remain done.
 
+Subsequent review: the exact corrected compatibility fixture passed. The
+[W02 closure review](local-wave29-w02-closure-root-review.md) resolves this
+pending disposition and accepts the original W02 outcome after publication.
+
 ## Supporting browser diagnosis
 
 The [browser diagnosis](local-wave29-browser-start-ci-diagnosis.md) is ported as
