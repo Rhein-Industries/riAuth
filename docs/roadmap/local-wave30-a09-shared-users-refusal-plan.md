@@ -495,3 +495,9 @@ main/import/harness, native product, PostgreSQL/HTTP/Cargo, remote query,
 download/dispatch, service/browser, cleanup/deletion, worker/contact or
 task/board/main/push action occurred. No runtime slot was acquired or released.
 Original A09 shared full gate remains open; I02/I10/R05/W02/W05 remain DONE.
+
+## Root immutable implementation review and one hosted reservation
+
+Root fully read the original 344-line proposal, exact two-file source diff and 91-line actual static appendix. Accepted validator source `bfe0ade02fdddb75c572c648866c7c16e6cb2735` contains the corrected 23,518-byte helper SHA256 d86d9a99c9e09e29eb43af52f409332e11a70caaed90b5545bf132df1f2a1982 and all four other fixed imports. The workflow changes only that fixed helper digest. Independent whole-byte reversals, helper AST comparison, archived-patch identity and unchanged public CLI/Core/delegation contracts support this exact correction. GET collection filtering is no longer credited as an administration refusal. The new valid public creation must return actual CLI exit 4, HTTP 403/access_denied and leave the complete ordered Store row snapshot unchanged. These new runtime outcomes are pending.
+
+Root reviewed and preserves the baseline-preparation hold and all prior remote failures. Preparation commits are excluded from integration. After publishing this reviewed source, root reserves one build-free native ARM hosted shared check using this immutable validator, historical product9a and the separately published workflow. Product, validator and workflow provenance remain distinct. All fixed archive/import, PostgreSQL, finite-command, resource and owned-cleanup controls remain unchanged; no threshold reduction, retry or borrowed success is authorized. Original A09 stays open pending actual evidence and the independent container slice.
