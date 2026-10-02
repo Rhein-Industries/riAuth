@@ -1430,11 +1430,14 @@ impl Core {
         crate::recovery::require_serving(&self.store)?;
         self.sync_reconciliation_schedules()?;
         let owner = crypto::id();
-        let Some((job, _target)) = self.claim_reconciliation(&owner)? else {
+        let Some((job, target)) = self.claim_reconciliation(&owner)? else {
             return Ok(false);
         };
         let outcome = self.execute_reconciliation(&job, &owner);
         self.finish_reconciliation(&job.id, &owner, outcome)?;
+        if target.release().is_err() {
+            tracing::warn!("Connector admission settlement deferred");
+        }
         Ok(true)
     }
 
