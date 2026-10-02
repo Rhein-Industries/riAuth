@@ -105,3 +105,10 @@ Root read the complete append at authored `500b2b67ac5630a9feb10d21be6d97ab997ef
 The first-three refusal allowance did not complete a journey. Root retains the fourth-refusal terminal guard and every earlier failure; neither more refusals nor alternate credentials/provider/transport are authorized by this evidence. The confidential browser checkpoint remains unpassed; original D01/D05 statuses are unchanged.
 
 The shared-capacity report `717cc58fa154e6723f1eefe9f5c6e083cabd4992` predates root's exact34-file cleanup and capacity rebound. Its own no-safe-cleanup finding remains dated and intact; root's separate allowlist does not confer authorization or identify the external writer. Root's first append wrapper guessed an absent root-review filename and stopped before any write; using the actual existing report path corrected that static wrapper only.
+
+
+## Observer design and independent privacy finding (2026-10-02)
+
+Root read the complete new576-line observer logic and341-line controller plus all added prose at `de9bb9c4dbb3184af042e606d5c14a652700e4b1`. Static reconstruction independently matched the158155-byte payload SHA `b7bdeb6f9e24b8c537cfdca7506f570a6e2e180efa2f560dad2c6c1693aa0822`, legacy24210-byte archive and both controller/logic hashes. No payload, observer or collector was executed. This128-case design remains dated and unexecuted.
+
+Root then read all218 lines of independent `a770027d009172a96e4776aa5504500b66678520`. F1 identifies ordinary exception-subclass traceback dispatch plus repeated line reads as a path to storing an unchecked diagnostic value. Root accepts the concrete source finding and reserves exactly the proposed built-in BaseException traceback descriptor replacement; all other helper bytes and outcomes remain protected. The source worker may append static evidence only. The old fake-trace envelope needs a separately reviewed descriptor-aware design before any execution. No historical unexpected failure or sender is attributed to F1, and the real browser remains held.

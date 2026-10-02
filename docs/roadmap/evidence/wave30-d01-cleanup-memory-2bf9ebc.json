@@ -1,0 +1,368 @@
+{
+  "invocation": {
+    "source_report": "2bf9ebc2b1dfd1a00ce5c77b9c7489b60d407609",
+    "payload_sha256": "a06ab7b0783569f8f3778fffedda55dae0b0a824a8174533e77bb273ba702230",
+    "payload_bytes": 37738,
+    "argv": [
+      "node",
+      "--input-type=module"
+    ],
+    "exit": 0,
+    "elapsed_seconds": 0.15420270897448063,
+    "timeout": false,
+    "child_pid": 94785,
+    "child_reaped": true,
+    "stdout_bytes": 5621,
+    "stderr_bytes": 0,
+    "stdout_sha256": "91f8865ac7715c9a776c91b5a6645ac8bec7e58fc970067629a3f66d430a9776",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "utc": "2026-10-02T20:37:26.863085+00:00",
+    "memory_only_no_fixture_resource_slot": true
+  },
+  "fixed_stdout": {
+    "schema": "riauth.d01-cleanup-memory-envelope/v1",
+    "result": "passed",
+    "source": {
+      "cell_sha256": "0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e",
+      "logic_sha256": "b68ee1a0f88203ac57e9a41b957ef16ad2f15f11c0979c0d436c5e14779e9b50"
+    },
+    "planned": {
+      "cases": 18,
+      "tool_calls": 286,
+      "driver_calls": 78,
+      "controller_calls": 33,
+      "collector_calls": 175,
+      "clock": 127,
+      "stop": 16,
+      "readback": 16,
+      "persist": 16,
+      "cleanup_sequences": 16,
+      "outputs": 18
+    },
+    "attempted": 18,
+    "completed": 18,
+    "cases": [
+      {
+        "case": "ui_error",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": true,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "helper_failure",
+        "counts": {
+          "tool_calls": 16,
+          "driver_calls": 3,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "helper_failed",
+        "resource_release_proven": true,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "controller_completion",
+        "counts": {
+          "tool_calls": 14,
+          "driver_calls": 3,
+          "controller_calls": 1,
+          "collector_calls": 10,
+          "clock": 7,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "controller_completed_before_app_checkpoint",
+        "resource_release_proven": true,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "metadata_write_failure",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": true,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "driver_exception",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": true,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "driver_refusal",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": true,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "driver_late_return",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": true,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "missing_child_proof",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": false,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "missing_pid_proof",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": false,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "missing_window_proof",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": false,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "missing_session_proof",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": false,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "missing_port_proof",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": false,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "missing_lab_proof",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": false,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "partial_controller_json",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": true,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "join_failure",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": false,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "readback_projection_failure",
+        "counts": {
+          "tool_calls": 18,
+          "driver_calls": 5,
+          "controller_calls": 2,
+          "collector_calls": 11,
+          "clock": 8,
+          "stop": 1,
+          "readback": 1,
+          "persist": 1
+        },
+        "first_failure": "application_page_failed",
+        "resource_release_proven": false,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "missing_ownership",
+        "counts": {
+          "tool_calls": 0,
+          "driver_calls": 0,
+          "controller_calls": 0,
+          "collector_calls": 0,
+          "clock": 0,
+          "stop": 0,
+          "readback": 0,
+          "persist": 0
+        },
+        "first_failure": null,
+        "resource_release_proven": null,
+        "assertions_completed": true,
+        "assertion": null
+      },
+      {
+        "case": "application_confirmed",
+        "counts": {
+          "tool_calls": 4,
+          "driver_calls": 2,
+          "controller_calls": 2,
+          "collector_calls": 0,
+          "clock": 0,
+          "stop": 0,
+          "readback": 0,
+          "persist": 0
+        },
+        "first_failure": null,
+        "resource_release_proven": null,
+        "assertions_completed": true,
+        "assertion": null
+      }
+    ],
+    "first_failure": null,
+    "unreached": [],
+    "counts": {
+      "tool_calls": 286,
+      "driver_calls": 78,
+      "controller_calls": 33,
+      "collector_calls": 175,
+      "clock": 127,
+      "stop": 16,
+      "readback": 16,
+      "persist": 16
+    }
+  },
+  "fixed_stdout_sha256": "91f8865ac7715c9a776c91b5a6645ac8bec7e58fc970067629a3f66d430a9776",
+  "memory_only": true,
+  "whole_real_cleanup_or_journey_credit": false
+}

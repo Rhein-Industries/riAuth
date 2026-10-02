@@ -1,0 +1,82 @@
+{
+  "schema": "riauth.wave30-buildkit-arm64-source-pin/v1",
+  "utc": "2026-10-02T20:40:45.659513+00:00",
+  "official_release_source": "https://github.com/moby/buildkit/releases/tag/v0.33.1",
+  "official_driver_source": "https://docs.docker.com/build/builders/drivers/docker-container/",
+  "verified_parent_index_digest": "sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea",
+  "selected_descriptor": {
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "digest": "sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768",
+    "size": 2261,
+    "platform": {
+      "architecture": "arm64",
+      "os": "linux"
+    }
+  },
+  "response_bytes": 2261,
+  "response_sha256": "3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768",
+  "response_digest_header": "sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768",
+  "linux_arm64_manifest": {
+    "schemaVersion": 2,
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "config": {
+      "mediaType": "application/vnd.oci.image.config.v1+json",
+      "digest": "sha256:f27f9c00a3aca2c219642d1500610eade3ddcb6b873ea8847852ab156663d32f",
+      "size": 2668
+    },
+    "layers": [
+      {
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "digest": "sha256:ace1621be7ff15b54252f68393ac33181df7f3e095e36a5d9a9892031b357d31",
+        "size": 4186056
+      },
+      {
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "digest": "sha256:287a0e84a5f44e5669ec0294152b27512ac41708b8921706a397fbdb72a3a1d9",
+        "size": 14784673
+      },
+      {
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "digest": "sha256:c4a13c8af0cd6623b1ac7465dbd7f8ed7ed636a0cbebdb295bd7cec8d3e78279",
+        "size": 941
+      },
+      {
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "digest": "sha256:6aa6e8f5b44fe848755421635f1211467fd4ece67a3848a69904b95d5ad656a2",
+        "size": 170
+      },
+      {
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "digest": "sha256:9bc7dea43d4c429603022ace475bf690f42eb991160c80bbf4e9b98a943af0a7",
+        "size": 87557307
+      },
+      {
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "digest": "sha256:e2ccd3c0fac7ace63dc3fca3b07b0909ca194ce8bcf089106d419d38b6040727",
+        "size": 609
+      },
+      {
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+        "digest": "sha256:b3818decc085a414daa522f1a0fc3eb046961c57327ecb41c4676cd131bd43d3",
+        "size": 267
+      }
+    ],
+    "annotations": {
+      "org.opencontainers.image.created": "2026-09-30T15:13:44.534Z",
+      "org.opencontainers.image.description": "concurrent, cache-efficient, and Dockerfile-agnostic builder toolkit",
+      "org.opencontainers.image.licenses": "Apache-2.0",
+      "org.opencontainers.image.revision": "8c91502cf280bd70a0c50912ce251c46a8881d9f",
+      "org.opencontainers.image.source": "https://github.com/moby/buildkit",
+      "org.opencontainers.image.title": "BuildKit",
+      "org.opencontainers.image.url": "https://github.com/moby/buildkit",
+      "org.opencontainers.image.vendor": "Moby",
+      "org.opencontainers.image.version": "v0.33.1"
+    }
+  },
+  "linux_arm64_config_digest": "sha256:f27f9c00a3aca2c219642d1500610eade3ddcb6b873ea8847852ab156663d32f",
+  "source_reference": "docker.io/moby/buildkit@sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768",
+  "registry_read_only": true,
+  "public_auth_token_retained": false,
+  "layers_downloaded": false,
+  "native_image_executed": false
+}

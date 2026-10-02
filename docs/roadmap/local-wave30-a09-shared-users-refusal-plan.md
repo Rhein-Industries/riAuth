@@ -507,3 +507,203 @@ Root reviewed and preserves the baseline-preparation hold and all prior remote f
 The [actual root receipt](evidence/wave30-a09-shared-37060776569.json) records manual run37060776569/job111016616062 at workflowa4824600f03053d4218460992cb29295bfb11d6d, validatorbfe0ade02fdddb75c572c648866c7c16e6cb2735 and historical product9a819317efb3a13fa27cd86f884be2be00898fc0. Immutable transport, five products and PostgreSQL16.15 tool checks completed. The focused helper exited1 in3.204601s. Fixed AssertionError frames397/283/177/matrix79 identify the complete Store-equality assertion. The preceding valid public create refusal predicates CLI4/HTTP403/access_denied passed; nonrenewal and all later handoff checks were not reached. No changed row/key/value or actual cause was retained, so no bookkeeping/product diagnosis is established. The pending helper-redacted placeholder is not a completed sample result.
 
 Root fully read controller14,035B SHA8fff25430be48b1666819ac98c634121af222a6bd582d2f94d5888859b684946, cleanup294B SHAd3b6f9bc7107fa540408dbf195a74b00919943f8555481969ea6ccf4fdbe35e3 and all six resources1,757B SHAdc8af457dc6fb13cf08b020d176cd04928f79f6b762c2afa77db463674a35988. Minimum115577208832B/maxgap2.000573s met unchanged margins. Cleanup failures[]/remaining0, owned fixture/private scratch gone and one owned supervisor child reaped; the serialized runtime lane was released immediately after that proof, before further review. Artifact11250204873 name/digest are API/upload reported; decoded members were retained and rehashed, outer ZIP was not retained/rehashed. Earlier failures remain unchanged. No automatic repeat or source correction occurred. A read-only exact-source diagnosis is separately reserved; A09 remains open.
+
+## Corrected hosted refusal: snapshot failure and source diagnosis, 2026-10-02
+
+Reservation: `wave30_A09_user_create_snapshot_source_diagnosis`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing worktree
+`a1303b57-4a34-487e-9c63-a841f05b51a0`. This phase appends only this report.
+Its starting HEAD is `baaeb94d13257d6ed9a6325cd01e14e91f8eb18b`; no alignment,
+source edit or new runtime was performed. All earlier failures, preparation
+holds, proposals and static implementation evidence above remain dated evidence.
+
+### Actual finite observation
+
+Root published the corrected source at workflow/main
+`a4824600f03053d4218460992cb29295bfb11d6d`. The separately selected validator
+is `bfe0ade02fdddb75c572c648866c7c16e6cb2735`; product remains
+`9a819317efb3a13fa27cd86f884be2be00898fc0`. Hosted run `37060776569`, job
+`111016616062`, failed in `focused-shared-helper` with exit 1 after
+3.204601 seconds. The fixed observer records `AssertionError` at helper
+397 / 283 / 177 and matrix 79, with bootstrap 60. Helper 283 is the first
+Essentials shared probe, so this attempt did not complete the later E-P-E
+probes or full shared gate.
+
+The exact helper's public user-create refusal at 173–176 completed before
+the equality assertion at 177 failed: the public CLI returned actual exit 4
+and its envelope asserted HTTP 403 / `access_denied` / exit 4. This failure
+is different from the earlier collection-GET permission assumption. No row
+diff, changed key, value, collection, timestamp or writer origin was retained.
+The observed failure is therefore **complete Store byte inequality after a
+successful refusal**, with its actual changed rows and cause still unmeasured.
+
+I read all four authorized finite files in full and recomputed their hashes.
+Their common retained directory is
+`/tmp/riauth-wave30-a09-corrected-shared-37060776569/members/riauth-local-shared-arm64-37060776569-1/`.
+
+| File | Bytes | SHA-256 |
+| --- | --- | --- |
+| controller.json | 14,035 | `8fff25430be48b1666819ac98c634121af222a6bd582d2f94d5888859b684946` |
+| cleanup.json | 294 | `d3b6f9bc7107fa540408dbf195a74b00919943f8555481969ea6ccf4fdbe35e3` |
+| resources.jsonl | 1,757 | `dc8af457dc6fb13cf08b020d176cd04928f79f6b762c2afa77db463674a35988` |
+| helper-redacted.json | 70 | `ea7793e91dfdf9fc5f1d08bacad8429368cd69cd2131927da2ccf74b330c8f08` |
+
+`helper-redacted.json` is the pending `not_run` placeholder, not a completed
+helper report. Controller records `sample_result=not_run`,
+`full_shared_gate=not_certified`, `official_release=false`. The private
+stderr's recorded size/hash is 1,128 bytes /
+`3aad71af3e7f1d3a78e18ba44471b284c4fe4f4119d59eb4d1713abed89a9be1`;
+I did not open its body or any database rows/private logs. The retained
+controller identity is
+`1d1419c6b726bfd015712a25cc129ee54951e7ac76fb9c4a25891fef040278a7`.
+
+Resource records contain six samples from
+`2026-10-02T20:28:22.238610` through `20:28:32.181952` UTC, maximum gap
+2.000572659999989 seconds, and minimum free space 115,577,208,832 bytes
+across the sampled paths. Cleanup reports `failures=[]`, zero remaining
+processes, one reaped process, and fixture/private directories gone.
+`postgres_pid_file_verified=false` with `no_live_owned_postgres` does not
+establish a live-cluster PID-file verification. These are the retained
+observer's historical measurements, not a new local cleanup or runtime pass.
+
+### Complete relevant source bodies and transaction boundaries
+
+Git-object inspection confirms the exact helper is 23,518 bytes /
+`d86d9a99c9e09e29eb43af52f409332e11a70caaed90b5545bf132df1f2a1982`
+at the validator pin; the workflow is 77,543 bytes /
+`5290d7a5d9e15eaeaa19169523668e9658b0341d4eb76ca47695c532e7aa27b2`
+at the workflow pin. Both equal the unchanged own source. The complete
+helper, gate CLI/remote/serving bodies, encrypted fixture context, matrix
+assertion, and workflow failure-observer/forwarding bodies were read.
+The complete product bodies listed below were traced at product `9a81931`;
+this does not claim an audit of every unrelated body in those large files.
+
+| Pinned body | Source consequence |
+| --- | --- |
+| Helper `shared_probe` 135–194; first call 283 | Delegate login, whoami, audit read and revision read precede the first full snapshot. Between the two snapshots the helper explicitly makes one user-create CLI call with fresh revision/key and password on stdin. SQL remains the complete ordered `records_v1` key/value hex capture; no exclusions. Later sleep/logout/admin/grant/group traffic is after the failing comparison. |
+| `src/cli/local.rs::from_legacy` 208–218; `src/cli.rs::run`, `run_user` 2593–2623; complete `src/cli/transport.rs` | User creation uses the public remote path, not local maintenance dispatch. The create arm performs one explicit authenticated POST; transport validates the session, disables redirects, carries the original headers and sends the request. There is no explicit create retry/relogin/discovery call in this path. |
+| `src/api.rs::protect` 872–1202; protected router 625–638 | Before reaching the handler, a PostgreSQL HTTP request executes a separate shared rate-limit writer. POST `/api/users` uses category `general`. The source comment at 1117–1118 explicitly places completion of this transaction before authorization. The redb branch instead uses an in-memory rate table. |
+| `src/store.rs::shared_rate_limit[_within]` 736–770 | `Store::write` reads `http_rates/K`, then puts `(start, count.saturating_add(1))`, including requests which are admitted and later denied by authorization. This is an independently committed writer, not part of the denied Core mutation. Capacity handling can reclaim/evict rate records; occurrence in this run is unmeasured. |
+| `src/store/maintenance.rs::update_indexes` 203–219; `index_key` 112–114 | A rate put removes/recreates the exact rate expiry index and conditionally updates the exact `index_counts/http_rates` row if collection membership changes. It does not authorize a general index-count exemption. |
+| `src/api.rs::create_user` 2467–2475; `src/core.rs::create_user` 524–538, `mutation[_checked]` 38–110; `src/management.rs::create_user` 1643–1679 | The thin handler calls ordinary Core `run`, not connector admission. The mutation resolves the current principal, replay/authority and revision fences. Management requires `user.write` for the user resource before user construction, password/history/index/audit/provenance work. A failing closure does not reach successful receipt saving. |
+| `src/store.rs::write`, `postgres_write` 1047–1135; `Tx::put/import_record/raw_put/delete` 1477–1585 | PostgreSQL writers acquire the shared advisory transaction lock and commit only after their closure returns success. The denied creation closure cannot commit its mutation transaction. That rollback cannot undo the preceding HTTP middleware transaction. |
+| `src/agent.rs::principal` 153–201; `Core::session/identity_user` 1045–1080; `src/delegation.rs::active` 282 onward; `src/context.rs::management_permissions` 55–63 | Current session/account/grant authority is checked from Store state; these read paths do not supply a denied user-creation receipt or identity mutation. The completed 403 also distinguishes this attempt from missing-header 428. |
+| `src/store.rs::record_change` 1332–1388; `src/core.rs::audit_with_details` 1130–1189; assembly/identity transition bodies | Rate bookkeeping is outside the identity change categories and does not call the management audit/revision path. Protected audit, receipt, credential, identity and revision rows remain part of the full comparator. |
+| `src/api.rs::App::run/admission`, server `start_background/start_role`, `src/process_role.rs`, background `execute/spawn/cadence` | Worker admission telemetry/semaphores for this handler are process-local. The default integrated server also launches maintenance and other workers. Maintenance cadence is 60 seconds, with the interval's initial tick able to run at startup; no retained evidence identifies an interleaving here. |
+| `Core::cleanup` 912–1044; lifecycle cleanup 1217–1254; `maintenance_page` 675–703 | Background cleanup can modify expired records and its own `maintenance_cursors`/`maintenance_bounds` in separate writers. No such write is recorded in this failure. Their possibility cannot justify suppressing proof/session/receipt/audit changes or every maintenance-associated row. |
+| Complete readiness route/probe bodies and router composition | Health probes are merged outside `protect`; readiness waits occur before the refusal snapshot. Source does not show a helper-created parallel HTTP polling loop between these two snapshots. This does not rule out independently scheduled background work. |
+
+Exact rate record derivation is source-backed, not an observed changed key:
+`K = crypto::digest(grouped_peer_ip + NUL + "general")`, where
+`rate_key` preserves IPv4 and groups IPv6 as in `src/api.rs` 2958–2966.
+`crypto::digest` at `src/crypto.rs` 62–64 is URL-safe unpadded base64 SHA-256,
+not hexadecimal. `record_key` at `src/store.rs` 1139–1141 stores
+`bucket + "/" + key`. The possible rate bookkeeping namespaces are therefore
+`http_rates/`, `index_expiry_http_rates/`, and the single exact record
+`index_counts/http_rates`. The expiry id is the source's 20-digit expiry
+followed by `/` and `digest(K)`. No key, peer, counter or expiry from this
+run was inspected or retained.
+
+The independently committed rate writer is a concrete source explanation
+for why **Core refusal rollback does not promise an HTTP request makes zero
+durable Store writes**. It is not evidence that these were the actual changed
+rows, that they were the only changes, or that the shared gate passed. A
+production authorization/rollback defect is not established. Original A09's
+shared gate is not silently redefined as blanket storage-write-free; the
+current strict snapshot assertion remains unchanged pending root review.
+
+### One proposed next slice: retain counts without changing the comparator
+
+Recommend one bounded diagnostic data flow, separately reserved and reviewed
+before implementation/runtime. No comparator exclusions or production
+correction are proposed in this phase.
+
+1. In the existing helper's `shared_probe` refusal block, retain the already
+   required second `refusal_rows()` result in a local variable. Compare its
+   complete bytes to `before_refusal` with the same assertion/message. On
+   that exact `AssertionError`, derive an optional fixed count projection
+   from these two in-memory captures, attach it to the exception, and re-raise
+   the original exception. No new SQL, request, retry, sleep or clock adjustment.
+2. In workflow `BOOTSTRAP.failure_source` 539–567, optionally copy only this
+   validated count projection into the existing finite observer. In
+   `Controller.helper` 969–987, validate and retain the same optional field
+   in `controller.json` alongside the existing class/frames. Update only the
+   helper's fixed import digest after its exact reviewed source is selected.
+   The four other imports, product/artifact roles, upload allowlist,
+   refusal/cleanup/resource boundaries remain protected.
+
+The proposed optional field is `store_snapshot_counts`, with exactly these
+six fixed labels. These predicates classify diagnostics only; **none filters
+the full comparison or grants permission for a write**.
+
+| Fixed label | Internal decoded Store-key predicate |
+| --- | --- |
+| http_rates | Starts with exact bytes `http_rates/` |
+| http_rate_expiry | Starts with exact bytes `index_expiry_http_rates/` |
+| http_rate_count | Equals exact bytes `index_counts/http_rates` |
+| maintenance_cursors | Starts with exact bytes `maintenance_cursors/` |
+| maintenance_bounds | Starts with exact bytes `maintenance_bounds/` |
+| protected_or_other | Every remaining row, including all identity, credential, configuration, revision, receipt, audit and other index rows |
+
+Each label has exactly five integer fields: `before`, `after`, `added`,
+`changed`, `removed`. Added/removed mean key presence changes; changed means
+the same key has different complete captured value bytes. Internal parsing
+must reject malformed hex/rows, duplicate keys or over-limit counts without
+emitting their content. Public values must be true integers, not booleans,
+within 0–1,000,000. All six labels partition the complete snapshots; no raw
+key/id, key digest, value/value digest, subject, timestamp, URI, credential,
+private path, exception message or arbitrary collection name is emitted.
+Parser/projection failure must omit the optional field and preserve the
+original full equality failure; a byte mismatch with zero projected row
+differences must also remain a failure, not be normalized away.
+
+The bootstrap/controller must accept only the exact optional schema and only
+for the exact `AssertionError`; malformed/missing optional data falls back to
+the original fixed class/frames observation. Keep the existing 2,048-byte
+packet limit, 64 examined / 8 retained trusted-frame bounds, exclusive 0600
+private observer creation and original exception/phase exit. If the optional
+data cannot fit, retain the original observer without it. A helper-only print
+or success-report field would be insufficient: the failure path currently
+retains only class/frames, and the success helper report is not read after
+the command exits nonzero. No new public artifact or success claim is needed.
+
+This diagnostic would identify collections and counts, not establish writer
+origin, exact key predicates or authorization safety. Any later exception
+would require its own exact source-created row/value predicate and proof;
+all protected rows remain fully compared now. A further hosted run, helper
+source ownership and workflow materialization are root-controlled decisions,
+not authorized by this report.
+
+### Scope and limits of this phase
+
+Only Git/static source reads and the four authorized finite documents were
+used. No helper import/execution, native product, PostgreSQL/HTTP, Cargo,
+remote query/download/dispatch, provider/browser, secret row/private log
+inspection, cleanup/deletion, contact, merge/reset/main/push or task/status
+action occurred. No runtime slot was acquired or released. This append does
+not alter the earlier source hashes, interpreted failure boundaries or
+I02/I10/R05/W02/W05 DONE statuses. Earlier failures without an inner cause
+remain unknown; the newest retained equality failure remains unmeasured at
+row level. Original A09 shared full gate remains open.
+
+Static checks actually completed in this diagnosis phase:
+
+* `python3 scripts/check-docs.py` and `git diff --check` exited 0.
+* Explicit byte assertions preserved the complete 29,373-byte previous
+  report prefix (SHA-256
+  `4dd666b76cae578911d247c133a12246ff6fd0a77d3259636da1f8eb3dd32e76`),
+  verified all four authorized evidence identities, and proved the helper
+  and workflow remain byte-equal to their exact validator/workflow pins
+  and starting own HEAD. Only this report appears in the diff.
+* A standalone standard-library JSON size calculation, using six fixed
+  categories, all thirty counts at 1,000,000 and eight longest trusted-file
+  frame labels at line 4096, produced 1,246 bytes within the 2,048-byte
+  observer cap. This evaluates no helper/controller function and proves
+  only the prospective fixed packet's capacity, not an implementation,
+  observed counts, redaction enforcement or runtime compatibility.
+
+
+### Root review of snapshot diagnosis
+
+Root read the complete195-line `5c9776ed18a0148aa7bfb0c663fbe4f8cc7d0e3d` appendix and the exact retained failure boundary. The public user-create refusal passed; complete Store equality failed. The separately committed PostgreSQL rate writer supplies a source-backed distinction between HTTP bookkeeping and Core mutation rollback, without identifying the actual changed rows. Root reserves only an exact source-first diagnostic design for the existing full comparison: fixed collection/count projection propagated through both finite observer stages, no comparator exclusion or new request. Source ownership and any hosted repeat remain separately held. The report cherry-pick had an append conflict with root's prior receipt; concatenating the entire existing report and the exact195-line author appendix preserved both in full.
