@@ -9,6 +9,7 @@ pub mod local;
 mod memberships;
 mod transport;
 mod usb;
+mod workflows;
 use transport::{Remote, SavedSession};
 
 use crate::{
@@ -399,6 +400,11 @@ pub enum Command {
     Logout,
     /// Show the current identity and groups
     Whoami,
+    /// Review, activate, or revoke the exact-content approval of a configured workflow
+    Workflow {
+        #[command(subcommand)]
+        command: workflows::WorkflowCommand,
+    },
     /// Manage users
     User {
         #[command(subcommand)]
@@ -2073,6 +2079,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             }
         },
         Command::Grants { command } => grants::run(&remote, command).await?,
+        Command::Workflow { command } => workflows::run(&remote, command).await?,
         Command::User { command } => run_user(&remote, command).await?,
         Command::Offboard { command } => run_offboard(&remote, command).await?,
         Command::Ssf { command } => run_ssf(&remote, command).await?,

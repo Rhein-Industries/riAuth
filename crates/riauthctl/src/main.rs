@@ -20,6 +20,7 @@ mod ssf;
 mod transport;
 mod usb;
 mod windows_device;
+mod workflow;
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -180,6 +181,11 @@ enum Command {
     Directory {
         #[command(subcommand)]
         command: directory::DirectoryCommand,
+    },
+    /// Review, activate and revoke the approval of a stored workflow plan.
+    Workflow {
+        #[command(subcommand)]
+        command: workflow::WorkflowCommand,
     },
     /// Plan and apply SCIM provisioning, and resolve its jobs and deactivations.
     Provision {
@@ -476,6 +482,7 @@ async fn run(cli: Cli) -> Result<Value> {
             directory::run(&remote, command, cli.run_id.as_deref()).await
         }
         Command::Provision { command } => provision::run(&remote, command, &mutation).await,
+        Command::Workflow { command } => workflow::run(&remote, command, &mutation).await,
         Command::Agent { command } => agent::run(&remote, command, &mutation).await,
         Command::Grants { command } => review::grants(&remote, command, &mutation).await,
         Command::Group { command } => admin::group(&remote, command, &mutation).await,

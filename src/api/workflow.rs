@@ -1,22 +1,33 @@
-//! Platform endpoints for durable workflow runs and explicit mail-proof reset.
+//! Platform endpoints for durable workflow runs, explicit mail-proof reset, and
+//! the bearer form of exact-content workflow approval.
 
 use super::{App, bearer, credential_floor};
 use crate::{
-    error::Result,
-    workflow::executor::{PasskeyChallenge, RecoveryChallenge, SourceStart, TotpChallenge, View},
+    core::Core,
+    crypto::digest,
+    error::{Error, Result},
+    store::Tx,
+    workflow::{
+        approval::{self, Activation},
+        executor::{PasskeyChallenge, RecoveryChallenge, SourceStart, TotpChallenge, View},
+    },
 };
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
 use serde::Deserialize;
+use serde_json::Value;
 use std::time::Instant;
 use webauthn_rs::prelude::PublicKeyCredential;
 
 pub(super) fn routes() -> Router<App> {
     Router::new()
+        .route("/api/workflow-approvals/review", post(approval_review))
+        .route("/api/workflow-approvals/activate", post(approval_activate))
+        .route("/api/workflow-approvals/revoke", post(approval_revoke))
         .route("/api/workflows/password", post(start))
         .route(
             "/api/workflows/configured/{workflow}",
@@ -499,4 +510,188 @@ async fn password(
     // committed, so apply the same timing floor to every password submission.
     credential_floor(started, true).await;
     result.map(Json)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovalReview {
+    plan_id: String,
+    decision: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovalActivate {
+    plan_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovalRevoke {
+    workflow_id: String,
+}
+
+/// Review the stored plan of one workflow. The same service as the portal.
+async fn approval_review(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<ApprovalReview>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        bounded(&input.plan_id, "plan_id")?;
+        if input.decision != "approve" && input.decision != "refuse" {
+            return Err(Error::bad(
+                "Workflow review decision must approve or refuse",
+            ));
+        }
+        approval_command(core, &token, |tx| {
+            approval::review_in(core, tx, &token, &input.plan_id, &input.decision)
+        })
+        .map(Json)
+    })
+    .await
+}
+
+/// Commit the reviewed definition as the selection. The same service as the portal.
+async fn approval_activate(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<ApprovalActivate>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        bounded(&input.plan_id, "plan_id")?;
+        activate_command(core, &token, &input.plan_id).map(Json)
+    })
+    .await
+}
+
+/// Retire the current approval of one workflow. The same service as the portal.
+async fn approval_revoke(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<ApprovalRevoke>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        bounded(&input.workflow_id, "workflow_id")?;
+        approval_command(core, &token, |tx| {
+            approval::revoke_in(core, tx, &token, &input.workflow_id)
+        })
+        .map(Json)
+    })
+    .await
+}
+
+/// The portal service's own bounds on an identifier.
+fn bounded(value: &str, name: &str) -> Result<()> {
+    if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
+        return Err(Error::bad(format!("Invalid {name}")));
+    }
+    Ok(())
+}
+
+/// The bearer envelope around one review or revocation: a human administrator,
+/// an `Idempotency-Key`, and an `If-Match` naming the current management
+/// revision, like other administrator writes. The receipt replay, the revision
+/// comparison, the operation and the receipt all share one store transaction,
+/// so an exact retry returns the recorded outcome (before the revision is
+/// compared) and a failed operation leaves no receipt behind. The operation is
+/// the portal's own, unchanged. Activation does not use this envelope, because
+/// a stored receipt must never answer for a selection that may have gone stale:
+/// see `activate_command`.
+fn approval_command(
+    core: &Core,
+    token: &str,
+    run: impl FnOnce(&Tx<'_>) -> Result<Value>,
+) -> Result<Value> {
+    core.mutation_checked(
+        token,
+        |tx, actor, context| {
+            let (Some(_), Some(revision)) = (
+                context.and_then(|context| context.idempotency_key.as_ref()),
+                context.and_then(|context| context.revision),
+            ) else {
+                return Err(Error::new(
+                    StatusCode::PRECONDITION_REQUIRED,
+                    "precondition_required",
+                    "Workflow approval requires Idempotency-Key and If-Match with the current revision",
+                ));
+            };
+            if actor.agent || actor.delegated {
+                return Err(Error::forbidden());
+            }
+            if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
+                return Err(Error::conflict("Configuration revision changed"));
+            }
+            Ok(())
+        },
+        run,
+    )
+}
+
+/// The bearer envelope around one activation. Unlike review and revocation it
+/// never answers from a stored receipt: a receipt only proves that this key and
+/// request were seen, and every retry is revalidated against the live selection
+/// by the shared hook, in the one writer that also holds the receipt.
+///
+/// - A human administrator is required before any receipt work (403).
+/// - `Idempotency-Key` and `If-Match` are required (428).
+/// - A matching receipt is validated for expiry, request and permissions, and
+///   its stored result is never returned.
+/// - `If-Match` is compared only before a first activation, and before any write.
+/// - A first activation stores its receipt in the same transaction.
+/// - A valid retry returns the current approval view with no new audit entry,
+///   revision, approval, or receipt.
+/// - A stale selection seals its open runs, commits that, and returns 409.
+fn activate_command(core: &Core, token: &str, plan_id: &str) -> Result<Value> {
+    let precondition = || {
+        Error::new(
+            StatusCode::PRECONDITION_REQUIRED,
+            "precondition_required",
+            "Workflow approval requires Idempotency-Key and If-Match with the current revision",
+        )
+    };
+    core.store.write(|tx| {
+        let actor = core.principal(tx, token)?;
+        if actor.agent || actor.delegated {
+            return Err(Error::forbidden());
+        }
+        let context = crate::context::current().ok_or_else(precondition)?;
+        let (Some(key), Some(revision)) = (context.idempotency_key.clone(), context.revision)
+        else {
+            return Err(precondition());
+        };
+        let receipt_key = digest(&format!("{}\0{key}", actor.id));
+        let permissions = crate::context::management_permissions(tx, &actor)?;
+        let matched =
+            crate::context::replay_receipt(tx, &receipt_key, &context.fingerprint, &permissions)?
+                .is_some();
+        match approval::activate_or_replay_in(core, tx, token, plan_id, |tx| {
+            if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
+                return Err(Error::conflict("Configuration revision changed"));
+            }
+            Ok(())
+        })? {
+            Activation::Activated(view) => {
+                if matched {
+                    // A receipt with no approval behind it is inconsistent.
+                    return Err(Error::conflict(
+                        "Idempotency receipt exists for an activation that is not recorded",
+                    ));
+                }
+                crate::context::save_receipt(
+                    tx,
+                    &receipt_key,
+                    context.fingerprint.clone(),
+                    permissions,
+                    &view,
+                )?;
+                Ok(Ok(view))
+            }
+            Activation::Replayed(view) => Ok(Ok(view)),
+            Activation::Stale(error) => Ok(Err(error)),
+        }
+    })?
 }
