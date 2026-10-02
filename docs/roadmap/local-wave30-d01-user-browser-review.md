@@ -1724,3 +1724,278 @@ and the 177-line body parses without execution. Committed helper and all five
 historical metadata files retain their bytes/hash/mode. Scope is this report
 only; Markdown fences/final newline and `git diff --check` pass. No source or
 proposed observer was written/executed and no runtime was acquired/released.
+
+## 2026-10-02: source-only preflow Authorization rejection design
+
+Reservation: wave30_D01_preflow_authorization_rejection_design. This phase owns
+only an append to this report. The candidate below exists only in memory and
+as a reviewable diff in this report. Disk helper/controller are unchanged; no
+helper import/execution, request, provider invocation, CLI fixture, listener,
+Driver/browser action, Cargo or runtime acquisition/release occurred. The
+timestamp-only candidate in the prior phase is not implemented or proposed for
+release. Root must review this immutable report before separately reserving
+source ownership or runtime.
+
+Recommendation: this narrow candidate is suitable for source review. A bounded,
+otherwise structurally valid Authorization-bearing request during strict
+preflow is still refused with fixed 403; only termination of the listening demo
+is deferred for the first three such refusals. The fourth 403 is terminal with
+the existing fixed request_invalid failure tag. This deliberately interprets
+**at most four refusals across the entire fixture** as three nonterminal
+refusals plus a fourth terminal refusal; it does not permit four continuations
+and a fifth refusal. This policy is explicit for root's review.
+
+There is no new accepted Authorization-bearing request. A rejected request
+cannot dispatch to login, callback or protected access, read an application
+credential/cookie value, create a redirect/cookie/form, or satisfy a journey
+check. Reject any implementation allowing those paths or treating a 403 as
+journey success.
+
+### Immutable inputs and prior failures
+
+The complete helper was read from disk and matched source commit
+7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238, helper blob
+62460c2f4515a325bb65fc430649b904e8bb2c10, SHA-256
+ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd,
+31162 bytes / 671 lines. This is the source published at fixed main
+d5b60bc12aaafa258daddd64b40879afacb87bc1; no main update/merge occurred.
+Report parent is 3221600b1f1f89194118d07c30d25c24dc6e81fc, blob
+851a98844b720ee8a666aa22be2ef4731920d4a6, SHA-256
+f75ff6c5b851d66c4599675aae35418316d9459b0bf2fb4528fcb29486554236,
+111511 bytes / 1726 lines.
+
+The prior report's retained executed controller payload remains unchanged:
+SHA-256 ab0a9c5d8f8fb1c4f5fb5db8b3c396e4dfbdf56bb5a7f0f7e7178b485d77040e;
+177-line Python body SHA-256
+a3748aaa8aee61fa302050daa78867b1a251fca6cd1294047c43808db71486da.
+This phase does not execute/change that controller. Previously reviewed source
+possibilities are not proof of the actual request origin.
+
+The actual diagnostic fixture remains failed before browser activity:
+request_invalid, stage request, first fixed reason authorization, helper exit 1,
+all later journey checks false and their HTTP-status entries null. Sender,
+Authorization value and exact first-request timing remain UNKNOWN. There is
+no auto-probe/external-origin assertion or product failure/pass inference.
+The first fixture's unclassified request refusal, lost first provider-version
+output, initial incorrect reporting and later correction remain preserved.
+This design creates no actual fixture observation and closes no D01/D05 gate.
+
+### Exact proposed helper diff
+
+In-memory candidate SHA-256 7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0,
+32723 bytes / 695 lines.
+No candidate helper file was written. The only prospective source file is
+scripts/d01-confidential-browser-demo.py; no controller/product/guide/D05/config
+or existing test file is proposed for change. The six hunks add the private
+integer's initialization/record/final-copy, a local control-flow exception,
+and the one rejection branch/catch.
+
+```diff
+--- a/scripts/d01-confidential-browser-demo.py
++++ b/scripts/d01-confidential-browser-demo.py
+@@ -234,0 +235 @@
++        self.preflow_authorization_refusals = 0
+@@ -381,0 +383,4 @@
++class PreflowAuthorizationRefusal(Exception):
++    pass
++
++
+@@ -422,0 +428,14 @@
++                if (self.headers.get_all("Authorization") is not None
++                        and demo.attempted is False and demo.pending is None
++                        and demo.cookie is None and demo.subject is None
++                        and demo.preflow_authorization_refusals < 4):
++                    self.record_request_reason("authorization")
++                    self.require_request(self.headers.get_all("Transfer-Encoding") is None, "transfer_encoding")
++                    self.require_request(self.headers.get_all("Expect") is None, "expect")
++                    self.require_request(self.headers.get_all("Content-Length") in (None, ["0"]), "content_length")
++                    target = urllib.parse.urlsplit(self.path)
++                    self.require_request(not target.scheme, "target_scheme")
++                    self.require_request(not target.netloc, "target_netloc")
++                    self.require_request(not target.fragment, "target_fragment")
++                    demo.preflow_authorization_refusals += 1
++                    raise PreflowAuthorizationRefusal
+@@ -444,0 +464,4 @@
++        except PreflowAuthorizationRefusal:
++            if demo.preflow_authorization_refusals == 4:
++                demo.failure, demo.done = "request_invalid", True
++            self.reply(403, "Local demo could not complete this request.")
+@@ -536 +559 @@
+-              "request_invalid_reason": None,
++              "request_invalid_reason": None, "preflow_authorization_refusals": 0,
+@@ -623,0 +647 @@
++            record["preflow_authorization_refusals"] = demo.preflow_authorization_refusals
+```
+
+### Request and lifecycle invariants
+
+1. Existing request-line/header byte, line and count limits, parser error
+   handling, request deadline, connection close and exact Host check execute
+   before the new branch. Authorization presence uses the old get_all(...)
+   is None distinction: empty and duplicate Authorization headers are present
+   and cannot pass the old header-free guard. No Authorization value is
+   examined, formatted, logged or retained.
+2. Strict eligibility requires attempted is False, pending is None, cookie
+   is None, subject is None, and count below four. No state is reset to
+   manufacture eligibility. The counter is initialized once per Demo and
+   never reset by flow/response/cleanup.
+3. Before a nonterminal refusal, the exact old Transfer-Encoding, Expect,
+   Content-Length and target scheme/netloc/fragment guards are copied into
+   this branch. Bodies remain unread; only absent Content-Length or exactly
+   one 0 remains structurally valid. A failed parser/Host/body/target bound
+   is terminal through existing handlers and receives no continuation/count.
+   Parser/Host and malformed-input responses retain their failure handling
+   rather than being advertised as valid 403 continuation cases. The first
+   authorization reason is recorded before the additional bounds and cannot
+   be overwritten by their rejection. No method/path/Origin/cookie can gain
+   accepted routing from this branch.
+4. For a bounded eligible request count increases once in range 1..4, then
+   the private exception leaves the request budget and bypasses all dispatch.
+   Its handler sends only reply(403, "Local demo could not complete this
+   request."). No kwargs enable a start form, Location, Set-Cookie or flow-cookie
+   clearing. The old fixed response header/body writer is byte-exact. Neither
+   cookies(), Cookie-header lookup, credential/subject lookup, begin(),
+   callback, token, userinfo or protected check is called by branch/catch.
+   Testing required demo.cookie is None is not reading a submitted cookie.
+5. Counts 1..3 leave failure, done, attempted, pending, cookie, subject, every
+   journey check and every recorded HTTP status unchanged. Existing stage
+   assignment to request and first reason recording are diagnostic effects.
+   Count 4 sets only failure="request_invalid" and done=True before its same
+   403. The unchanged listening loop stops and raises that failure before
+   the all-checks success gate. No fifth eligible continuation is possible.
+6. Any Authorization-bearing request with one of the four required preflow
+   state conditions false falls through to the byte-exact old Authorization
+   guard. It remains terminal request_invalid with existing 400. An
+   artificially invoked request at count 4 fails that unchanged guard too.
+   Header-free requests retain exact old guard order, routing, cookie and
+   failure behavior; the extra presence/state test cannot enter this branch.
+7. First reason recording is byte-exact and first-only within the finite
+   whitelist. The only new retained datum is private integer
+   preflow_authorization_refusals (initial 0, maximum 4), copied before clear()
+   alongside the old first reason. No sender/raw header/Host/path/query/method/
+   Origin/cookie/error is retained. Response/cleanup cannot overwrite the
+   reason or reset count. Count records a refusal decision, not proof that
+   a peer read the response if a write/deadline failure occurred.
+8. The new catch is outside the five-second request budget, so it calls the
+   unchanged five-second response budget after unwinding, as the existing
+   failure reply does. Response failure or Halt remains failure; no exception
+   is suppressed/retried. The 600-second maximum, 180-second pending deadline,
+   one-second disk checks, 8.5 GiB stop margin, native/HTTP/CLI budgets, Host/
+   ports, confidential exchange, verifier/provider guards and outer 840+60
+   plan are unchanged.
+
+### Outcome versus authentication acceptance
+
+The private reason/count describe refused traffic. After 1..3 such 403s a
+later separate, header-free browser journey could pass only by satisfying
+every unchanged check: pre-cookie protected 403, actual password sign-in and
+consent, state/issuer/flow-cookie validation, confidential S256 exchange,
+native RS256/JWKS issuer/audience/nonce/time/access-hash verification, matching
+userinfo and fresh protected-cookie 200. A success record could therefore
+contain first reason authorization and count 1..3 alongside no failure tag;
+that describes historical refusal, not accepted Authorization traffic.
+Consumers must keep that distinction explicit. No refusal writes a journey
+check or recorded HTTP status, and require(all(record["checks"].values()), ...)
+remains necessary for success.
+
+There is no observation that the UNKNOWN sender will recur or that this
+design will enable the real checkpoint to complete. It defers automatic
+teardown for a bounded refused preflow request; it does not authenticate that
+request or prove a user task. Physical passkey, tenant, invitation, ordinary
+nonadmin and all-category gates remain outside this design; dated evidence
+stays dated.
+
+### Static proof actually performed
+
+Python-stdlib source analysis read the pinned helper/report, applied the six
+unique replacements to an in-memory string, parsed its AST, and compiled an
+in-memory code object with dont_inherit=True. It did not import/execute the
+helper/candidate/controller. Reversing all six unique replacements reproduced
+the **entire original 31162-byte helper**, with the entire location-free AST
+equal too, including every guard/constant/accepted-refused predicate/crypto/
+native/deadline/output/cleanup/main entry point outside the additions.
+
+Source-segment comparison of every original function found only Demo.__init__,
+Handler.handle_one_request and main changed. These other
+31 original functions were byte-exact:
+
+Failure.__init__, Halt.__init__, require, private_directory, private_bytes, load_verifier, client_secret, Budget.__init__, Budget.__enter__, Budget.interrupt, Budget.tick, Budget.limit, Budget.close, Demo.invoke, Demo.setup, Demo.begin, Demo.callback, Demo.clear, HeaderReader.__init__, HeaderReader.readline, DemoServer.__init__, DemoServer.process_request, DemoServer.handle_error, Handler.log_message, Handler.record_request_reason, Handler.require_request, Handler.send_error, Handler.cookies, Handler.get, Handler.reply, QuietParser.error.
+
+The original Authorization guard and entire original body/target block remain
+byte-exact. The copied branch block is exactly the old block with one extra
+indentation level. AST assertions verified the branch's final statement raises
+the private exception, the catch has only the fourth-count failure assignment
+and fixed 403 reply without keywords, and neither calls route/cookie/flow/
+credential methods. The branch's only assignments are bounded target parsing
+and integer increment; it has no check/status/flow assignment. This is source
+control-flow proof, not executed protocol validation.
+
+The static analysis exited 0. An initial report-orchestration string had a
+JavaScript syntax error before any nested tool/file operation; corrected
+quoting generated this append. The first append's static whitespace assertion
+then failed on three blank unified-diff context lines containing a single
+space; the diff was regenerated with zero context, keeping the exact candidate
+and prior report bytes unchanged. These are actual tooling/check failures,
+not helper/runtime observations.
+The full diff/hash above is reproducible from the six unique replacements.
+Complete report prefix and five historical private metadata files were
+hash/byte/mode checked without printing their bodies; identity checks are
+not added body reviews or runtime evidence.
+
+### Exact future validation and release conditions
+
+Source ownership is HELD. Root should review the strict four-total policy,
+new fixed 403 lifecycle and precise six-hunk diff/hash. If separately reserved,
+implementation should match this candidate byte-exact, repeat full reversal/
+AST/function/guard proofs, and commit source/evidence separately without
+changing controller/guide/product/limits.
+
+Before any real fixture, separately reserve ONE focused Python-stdlib
+lifecycle check (no dependency/native/provider/CLI/IdP/browser/network call).
+Use controlled request input and a stub reply sink; inspect only fixed
+statuses/labels/counts/boolean state, never print input values. Verify:
+
+- Bounded Authorization-bearing GET/POST under strict preflow produce fixed
+  403 without Location, Set-Cookie or form; no dispatch/cookie/credential/
+  protected spy fires. Cover absent versus empty/duplicate Authorization
+  presence without logging synthetic values.
+- From count 0, refusals 1, 2 and 3 keep all prior flow/check/status snapshots
+  identical and the fixture live. Refusal 4 ends with request_invalid, first
+  reason authorization and count 4, without journey credit. Counter survives
+  connections without reset.
+- Each of attempted True, non-None pending/cookie/subject and count already
+  4 retains old terminal Authorization rejection. Header-free GET/login/
+  callback/protected and invalid method/POST target/Origin/type/cookie cases
+  retain the original control-flow/guard outcomes.
+- Request-line/header/parser/Host limits and Transfer-Encoding/Expect/nonzero
+  or duplicate Content-Length/absolute or fragmented targets fail closed.
+  Invalid target parsing fails closed too; no malformed request continues.
+  First reason survives response/cleanup failure. Count stays bounded;
+  403 write failure/timeout is not success and is not ignored.
+- Unchanged reply construction supplies no form/Location/Set-Cookie for a
+  bare 403. All checks false remains failure; only the full unchanged journey
+  gate can pass. Four-refusal failure cannot pass. Any in-memory fake success
+  is check logic, not browser evidence.
+- Count survives final private record copying/cleanup. No raw request/error/
+  value fields, extra stdout or undocumented flow are introduced.
+
+None of those future cases ran here and no test-file reservation is inferred.
+After source review and separately released validation, root may consider
+exactly ONE freshly bounded real Driver-only confidential fixture: mandatory
+c01 artifacts/verifier/full provider identity and retained metadata, private
+lab/XDG, port/PID ownership; pre-cookie 403 then actual browser password/
+consent/callback/fresh protected 200; unchanged 900s/840+60/600s limits, disk
+floor and owned cleanup. Add no readiness HTTP probe or manufactured
+Authorization request to enable that fixture. Unexpected failure stops
+without rerun/fallback. Historical failures remain failed and root alone
+interprets D01/D05 gates. This design releases no runtime.
+
+
+Final design-phase readback: the 111511-byte parent report remains an exact
+prefix; extracted zero-context candidate diff matches its generated diff;
+disk helper remains ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd;
+all five historical private metadata files retain their recorded byte counts,
+SHA-256 and 0600 modes. Final AST/in-memory compile/reconstruction/control-flow
+and report-only scope checks exited 0; Markdown fence/final-newline/whitespace
+and git diff --check passed. No source/helper/controller implementation or
+runtime occurred; source/fixture remain HELD pending root review/reservation.
