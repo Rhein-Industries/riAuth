@@ -166,3 +166,27 @@ verbs, PostgreSQL parity in CI and released-artifact evidence. M07 still has
 this port's review and integration, its CI coverage, the restart-only
 activation and operator-only controller limits, and external connector
 evidence.
+
+## Root integration reconciliation
+
+Root reviewed the cumulative client status code and three new test definitions,
+verified that all existing operations fixtures remain an unchanged prefix, and
+matched the LDAP fixture byte-for-byte to `4cf53d2`. Protected port `1df219b`
+includes only the five claimed client/documentation/fixture files. Preparation
+merge `a355cdd` and the unclaimed boundary/body tests were excluded. No root
+Rust build or runtime test was run; the four focused passes above are source
+worker evidence. The selected real-binary CI step now includes the LDAP fixture;
+that addition is not a passing CI result or live-directory acceptance.
+
+The session already accepted retaining the three existing contracts concerning
+reviewed credential issuance, per-route header requirements and PAM fallback.
+The source mapping's requests for new decisions on those contracts are historical
+proposals; they do not reopen those decisions or authorize changes. Their current
+behavior is preserved by this port.
+
+Independent [activation review](local-wave29-activation-adapter-review.md) R1
+identifies a separate, concrete M03 gap: bearer review/revoke receipts may return
+a historical outcome where browser/raw-service retries revalidate or conflict.
+Root has assigned a focused shared-service proposal. The mapping's workflow
+“none known for this lane” is limited to this worker's scope and does not resolve
+R1. M03 and M07 remain in progress; no reduced-scope completion is recorded.
