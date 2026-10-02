@@ -17,3 +17,8 @@ Six samples had minimum 115,575,992,320 bytes and maximum gap 2.000640 seconds. 
 ## Retained evidence and next review
 
 The [first receipt](evidence/wave30-a09-shared-37042000805.json) and [second receipt](evidence/wave30-a09-shared-37043196924.json) embed the fixed sanitized public documents and their byte hashes. Source-only materialization `502d500` and its separate 47-line actual-static appendix `7ae3355` are accepted. Earlier HTTP422 and invalid-workflow failures remain recorded. An independent read-only source/failure review is reserved; no correction or retrospective cause is assumed. A09 remains in progress.
+
+
+## Failure observer source review (2026-10-02)
+
+Root read the complete independent report `6ed52573c3b3f0db34583040ce7022807eebcc1e` and exact two-hunk proposal. No justified product/helper correction was found. A prospective failure-only observer emits fixed trusted basenames, bounded line integers and a fixed exception class, with no exception text/raw trace/locals/SQL/paths/protocol values. It preserves child refusal, original exception, first failure, helper success oracles, resource bounds and cleanup. Implementation requires a separate exact reservation; no third hosted invocation is released by this review.
