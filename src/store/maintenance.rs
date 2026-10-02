@@ -3,7 +3,7 @@
 use super::*;
 
 pub const PAGE: usize = 128;
-pub const INDEX_VERSION: u32 = 8;
+pub const INDEX_VERSION: u32 = 9;
 pub const QUEUES: [&str; 6] = [
     "logout_deliveries",
     "mail_deliveries",
@@ -55,6 +55,19 @@ fn queue_state(bucket: &str, value: &Value) -> (bool, bool, u64, u64) {
     }
     if bucket == "provisioning_deactivations" {
         let running = value["status"] == "running";
+        // An attestation resolves attention, never the recorded remote outcome.
+        // Uncertainty and malformed resolutions must keep failure visible.
+        let failed = (value["status"] == "failed" || value["status"] == "stale")
+            && (value["uncertain"] == true
+                || !value
+                    .get("resolution")
+                    .and_then(|resolution| {
+                        serde_json::from_value::<crate::identity::downstream::Resolution>(
+                            resolution.clone(),
+                        )
+                        .ok()
+                    })
+                    .is_some_and(|resolution| resolution.satisfied()));
         let due = value["next_attempt"].as_u64().unwrap_or(0).max(if running {
             value["lease_until"].as_u64().unwrap_or(0)
         } else {
@@ -62,7 +75,7 @@ fn queue_state(bucket: &str, value: &Value) -> (bool, bool, u64, u64) {
         });
         return (
             running || value["status"] == "pending",
-            value["status"] == "failed" || value["status"] == "stale",
+            failed,
             due,
             value["created_at"].as_u64().unwrap_or(0),
         );
