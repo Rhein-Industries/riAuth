@@ -589,3 +589,115 @@ and production/test/manifests/toolchain equality against fixed9b. No source
 or fixture correction, retry, other target, external provider, desktop,
 full-suite gate or I10 reopening occurred. The two failures need root's
 separate source/fixture ownership and runtime release before further work.
+
+## Frozen due-cohort fixture correction: source review only
+
+Root approved the exact two-call fixture seam
+`wave30_CI_scim_oauth_due_fixture` after reviewing the preceding raw 22/2
+receipt and both bodies. This phase uses the same project and existing
+worktree. Cargo remains FREE and unused. No test, typecheck, service or
+provider invocation was authorized or performed for the changed bytes.
+
+Fixture commit: `f89b219390be3eeb7446a14793424f503604cd6a`, parent
+`aba4981a42f12526303b72e8abf885450094fff2`. Its only changed path is
+`tests/scim_oauth.rs`, with four additive lines and resulting blob
+`ba09a980b248ce1be742d60a3f82a4f3f5fbea81`:
+
+- In `completed_job_history_is_compact_and_bounded`, one additional direct
+  `f.core.provisioning_step().unwrap()` follows the existing call inside
+  the unchanged 65-job loop, with a one-line frozen prior-cohort comment.
+- In `uncertain_patch_response_is_reconciled_without_a_second_patch`, one
+  additional `step(&f.core).await` follows the existing three-second wait
+  and step, before the unchanged job read and final assertions, with a
+  one-line frozen pre-retry-cohort comment.
+
+The comments describe a scheduling pass rather than an operation retry. No
+new loop, polling, sleep, clock manipulation, due-index write or helper was
+added. The existing three-second wait, retained 20dd router holders and all
+assertions/events/counts remain unchanged. No production file changed.
+
+**Independently traced fixed source.** The production inputs below remain
+byte-equivalent to published `9b8956f7b2a9961b14e313fa57c0f5214a136772`:
+
+| Source | Blob | Relevant body |
+| --- | --- | --- |
+| `src/store/maintenance.rs` | `6d6999eaba0eacecfc5587dcc1e94dd8a69e5f3e` | `queue_state`, `update_queue_indexes`, `connector_due` |
+| `src/store.rs` | `8e78d889220c9e956fe00a4f7a69b603063d3ebf` | `Store::write`, `Tx::put`, `scan_direction` |
+| `src/provisioning.rs` | `e572dfb0462f36302e672951b735a634b45fddbf` | apply, claim, step, error/backoff and finish |
+| `src/background/targets.rs` | `d1537a7a3592c8bc4a2c3b5440ce640f287843db` | `try_target_in`, `TargetPermit::drop` |
+| `src/background.rs` | `a3fe1ffe5322a14c38db67ad6c430a1e24aecdd0` | `Background::shared` |
+| `tests/common/mod.rs` | `9a40464e4ca311c7c37fe7cee7d5616aeefb73c7` | isolated fresh fixture construction |
+
+The source trace establishes the following bounded invariants:
+
+1. `connector_due` at `src/store/maintenance.rs:610` reads the stored
+   `(key, cutoff)` and freezes the cutoff at `min(stored_cutoff, at)`.
+   `scan_direction` at `src/store.rs:1605` scans strictly after the key.
+   If no due row is inspected, one wrap starts at the index head under
+   that same cutoff. A sole row newer than the cutoff is not claimed on
+   either scan; the function deletes the cursor and returns `None`.
+   This deletion commits through `claim_provisioning`'s `Store::write`.
+   `provisioning_step` then legitimately returns `Ok(())` without progress.
+2. The next explicit pass has no stored cursor and uses the current cutoff
+   from the index head. A sole already-due row is now offered to the normal
+   claim path. There is no second newer row or 16-row page boundary in these
+   fixtures. If the first pass already completed the job, the second pass
+   only exhausts the empty index and clears cursor metadata.
+3. `queue_state` at `src/store/maintenance.rs:85` excludes completed/stale
+   jobs from pending work. `Tx::put` calls the queue-index update in the
+   same writer; `update_queue_indexes` at line 495 removes the previous
+   due entry before adding an entry only for a still-pending record.
+   `finish_provisioning` at `src/provisioning.rs:1923` therefore removes a
+   terminal job from the due index atomically. Retained history rows do not
+   add due work. Apply at line 1221 refuses a prior unfinished job, and
+   creates only one new job with `next_attempt = now()`.
+4. The accepted unserved router retains the shared executor through each
+   fixture. `TargetPermit::drop` frees its local slot and queues the exact
+   owner/generation release. `try_target_in` at
+   `src/background/targets.rs:80` settles those queued releases in the next
+   claim writer before checking admission. This requires no asynchronous
+   cleanup worker or extra sleep, and does not weaken lease authority.
+
+**History case.** The selected group has no members, `export_groups` is
+false, and each plan has zero resources. Only one newly applied job can be
+pending; previous completed rows are absent from the due index. A claim
+therefore immediately reaches the no-resource branch and terminal finish,
+with no HTTP operation. If a previous cursor excludes the new job's due
+time, the first pass clears it and the second pass completes that job.
+The added call also clears a parked cursor when the first call already
+finished. The public idempotent first-job reapply and final 64-row retention
+assertions are preserved.
+
+**Lost-PATCH case.** The private peer applies the PATCH then returns 503
+once. The first claim on this new job has `attempts = 1`; the unchanged
+error path records `next_attempt = now() + 2` and clears its job lease.
+After the existing three-second wait, that sole retry is due but newer
+than the cutoff saved by its previous claim. A pass can exhaust that old
+cohort without claiming; the next pass admits the current cohort. The
+unchanged dispatch path reads the remote row before considering a write.
+Its already-applied fields compare equal, so it skips another PATCH and
+finishes through the existing review/binding/authority checks. If the
+first pass has already done this, the additional pass finds no pending
+row. The exact one-PATCH and completion assertions are untouched.
+
+This is source-backed sufficiency for the two isolated single-pending-job
+fixture sequences under their existing clock, authority and peer assumptions.
+The earlier raw log did not record cursor or due-time metadata, so this
+phase does not retroactively measure that state or prove that this was the
+only possible cause of either failure. Competing jobs, unavailable admission,
+clock rollback or new peer failures are not covered by the two-pass argument.
+
+**Static evidence.** `rustfmt --edition 2024 --check --config skip_children=true
+tests/scim_oauth.rs` and `git diff --check` exited 0. Removing exactly the
+two comment-and-call additions reconstructs the entire immutable fixture
+blob `02ce939a673c500296a3bf7feb1154180f39a20e` byte for byte, including all
+imports, helpers, holders, assertions and operation ordering. Changed-path
+inspection confirms the fixture commit contains only this test file;
+all production/manifests/toolchain inputs remain fixed9b-equivalent.
+`python3 scripts/check-docs.py`, report-prefix and whitespace checks cover
+this separate append. The complete preceding report, including the actual
+22/2 failures and older Linux 16/8 result and prune receipt, is retained.
+
+The changed fixture has **no fresh runtime result**. A whole-24 repeat needs
+root's immutable source review and separate sole-slot release. No task was
+reopened or marked complete, and nothing was merged/pushed to main.
