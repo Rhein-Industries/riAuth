@@ -1,4 +1,4 @@
-# O06 readiness-cause signal proposal
+# O06 readiness-cause signal proposal and implementation evidence
 
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original O06 task
 `9899f8e6-05ff-4e11-b9a0-b9ca184221a6`, owned by diagnostics worktree
@@ -6,16 +6,18 @@ Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original O06 task
 existing worktree `7c85f5ef-3fac-4f72-aaed-08474d7fb454`, on 2026-10-02.
 M03 remains DONE. Root reviews/integrates the received controller slice.
 
-**Proposal only: no readiness implementation or test execution.** This report
-is the sole new file. Root must reserve the concrete source/test seams below
-before implementation and separately release the queued runtime.
+**Implemented under root's exact reservation; the focused target is uncompiled
+and unrun, awaiting root's Cargo release.** Code/test commit is `b7bc6ef`.
+Accepted proposal checkpoint `b76578e` remains historical evidence; actual
+implementation/static evidence is recorded below in a separate report commit.
 
 ## Immutable source and verified gap
 
-Every source observation below uses fixed published main
+The original readiness/storage observations use fixed published main
 `755a7763e0e2aa7e4d5c92d18c432ebc0c8a3e87` through Git object reads. The own
-branch remains at runtime-evidence commit `27b04e7`; no alignment merge or reset
-is required to make this proposal.
+branch was at runtime-evidence commit `27b04e7` when the proposal was made.
+Own App/probes inputs matched these fixed source blobs exactly before edits;
+no alignment merge or reset was required for this implementation.
 
 | Fixed source | Git blob | Relevant span |
 | --- | --- | --- |
@@ -63,9 +65,13 @@ operator metrics. The existing tracing subscriber in `src/cli.rs:1372-1379`
 writes to stderr with the default `riauth=info` filter. A fixed operator event
 therefore uses the existing restricted log channel across process roles.
 
-## Exact proposed reservation
+## Exact approved reservation
 
-Reserve only these four files, with code/test and evidence separate:
+Root approved exactly proposal `b76578e113dc3b12e6c7b1ab10c85c6663b82e63`
+and recorded `wave30_O06_readiness_cause` for shell
+`7a798ec7-bad2-4d52-8bea-afbe1f8e8d2a` in this worktree. The ledger was read
+before edits: approved true, runtime_released false. This lane never edits it.
+Only these four files are reserved, with code/test and evidence separate:
 
 1. `src/api.rs`: one private shared field
    `readiness: Arc<probes::ReadinessSignal>` alongside `probes`, and one
@@ -182,7 +188,7 @@ success/failure oscillation can create new episodes; no time-based rate-limit
 or false stability claim is introduced. State resets when App is constructed
 and is neither durable audit evidence nor exported public status.
 
-## One focused verification target, awaiting reservation
+## One focused verification target, awaiting runtime
 
 The guarded, doc-hidden `ReadinessProbeTest` harness is re-exported only with
 the existing `test-support` feature. It wraps an existing App clone and exposes
@@ -223,7 +229,7 @@ values without dumping fixture snapshots or errors. Planned evidence:
   issuer to readiness success. These are handler/fixture checks, not a
   service/browser/remote-peer coverage claim.
 
-Proposed queued command, **not executed or runtime-authorized**:
+Queued command, **not executed or runtime-authorized**:
 
 ```sh
 env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test o06_readiness_cause_signal readiness_causes_are_redacted_bounded_observations -- --exact --test-threads=1
@@ -232,7 +238,7 @@ env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO
 Root alone allocates this runtime. Keep the private target in this existing
 worktree and the 8 GiB free-space floor. No existing CI-owned target is queued.
 
-## Scope and actual proposal checks
+## Historical proposal checks
 
 Original O06 row/current ownership and local instructions were read. No local
 or fixed-tree AGENTS.md was found. CONTRIBUTING's general full-check advice is
@@ -242,13 +248,85 @@ runtime result. Fixed blob pins and target absence were verified. Exact
 whitelist source literals, the twelve emitted cause rows, report-only staged
 scope/whitespace, and `python3 scripts/check-docs.py` were checked successfully.
 
-No Rust source/test, Cargo input, observability, config, state, workflow,
+At proposal checkpoint `b76578e`, no Rust source/test, Cargo input,
+observability, config, state, workflow,
 diagnostic API, service, desktop, main, push, task/status or ownership-ledger
-edit occurred. No other worker was contacted or created. The proposed runner
-preserves role branching, public responses, the two-second timeout, and permit
-retention. `Store::ready`, its activation/recovery checks, and all reads remain
-unchanged. Runtime security-agreement/policy reload or all-setting agreement
-is outside this observation seam. O06 remains open; implementation and the one
-focused runtime remain contingent on root's exact reservation/release.
+edit occurred. No other worker was contacted or created.
+
+## Actual implementation and static evidence
+
+Code/test commit: `b7bc6efe0f10419e419cdbc16e7d2792b72777cb`, exactly these
+three files:
+
+| File | Implemented blob |
+| --- | --- |
+| `src/api.rs` | `b2097b0aeeb5a5e12d6586628fe2d84a6dd9ed72` |
+| `src/api/probes.rs` | `c1404fd4ada77604f74f4ddf1a5a19bafbcf712b` |
+| `tests/o06_readiness_cause_signal.rs` | `03cec60161c51d95f7f5e3001e675cd2c0baa79e` |
+
+The code implements the exact fixed fields/whitelist and observation state
+above. The runner's production caller supplies `|core| core.store.ready()`.
+The guarded harness wraps the same runner; no production selector, injected
+check storage, timeout override, extra route or public cause body exists.
+Late detached check completion returns only to the dropped join handle and
+cannot change observation state. Existing lower-level logs retain their prior
+behavior; the new signal does not infer unwritable storage from an internal
+error or establish that all logging is suppressed/redacted.
+
+The one focused function is present with these deterministic fixture oracles:
+all sixteen whitelist/fallback inputs receive fresh episodes so suppression
+cannot mask classifier errors; a complete failing episode observes all eleven
+categories once, including returning categories, then resets on observed
+success. A real redb compatibility refusal uses the actual production callback
+and checks full stored snapshots by changed keys only. Two latch-controlled
+blocking checks exercise the unchanged two-second deadline, retained permits,
+capacity refusal, channel release and no late recovery. A fixed nonprivate
+panic supplies join failure. A validated worker-role Core clone proves occupied
+foreground permits do not prevent its Store callback, while generic worker
+failure/success bodies and issuer omission remain exact. The collector filters
+only the new event, checks its seven fields plus the fixed message, and rejects
+inherited request spans or synthetic private/error material. These are
+**unexecuted test assertions**, not credited product results.
+
+Executed static checks, all passed:
+
+- Native formatting/syntax check:
+  `rustfmt --edition 2024 --config skip_children=true --check src/api.rs src/api/probes.rs tests/o06_readiness_cause_signal.rs`.
+  The skip_children setting prevents formatting unreserved child modules.
+- Removing the exact guarded export, private field and constructor addition
+  reconstructs the entire fixed App source byte-for-byte. Its routes,
+  authentication, admission, credentials, background and Stats code is untouched.
+- The entire probes prefix before `ready` and the complete existing
+  `#[cfg(test)] mod tests` tail are byte-identical to fixed main. This includes
+  `live`, `unavailable`, `probe_ok` and the existing CI-owned test.
+- Static assertions confirm the production Store callback, single real
+  two-second timeout, permit binding inside the blocking task, guarded harness
+  struct/impl/export, two explicit `parent: None` events, and exactly one new
+  focused test function.
+- All twelve four-field cause/component/safety/remedy tuples match the accepted
+  proposal table exactly. The seven exact storage literals and two stable pool
+  codes remain the bounded classifier input contracts.
+- Code-only staged file scope and `git diff --cached --check` passed. Report
+  documentation validation uses `python3 scripts/check-docs.py`; evidence is
+  committed separately from code/test.
+
+Native rustfmt verifies parsing and formatting, not type checking. No Cargo,
+rustc, product test, new dependency/feature, database/remote service, browser or
+desktop run occurred for this readiness slice. The source commit and these
+scope proofs were sent through the explicit project orchestrator before any
+runtime. The exact new command remains queued after gauge and pagination;
+root's runtime_released value remains false.
+
+## Remaining scope
+
+Implementation and static scope evidence are complete within the reservation.
+Compilation and the one focused test require root's runtime release; later
+actual results/failures must be appended separately. Root review/integration
+remains. O06 stays open and M03 stays done. No other worker/task/worktree was
+created or contacted. No observability/metrics, Store/schema, policy, config,
+state, workflow, permission/resource, main, push, service, status or ownership
+record was edited. `Store::ready`, its activation/recovery checks, and their
+reads remain unchanged. Runtime security-agreement/policy reload or all-setting
+agreement is outside this observation seam.
 Desktop preference remains RiWork Cua.ai Driver, descriptions/current state
 first; no desktop interaction is needed.
