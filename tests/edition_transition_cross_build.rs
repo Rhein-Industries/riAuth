@@ -212,7 +212,7 @@ fn marked_compatible_transition_cross_build() {
                 match mutation {
                     "absent" => return tx.delete("meta", "node_security"),
                     "legacy" => changed["format"] = json!(1),
-                    "future" => changed["format"] = json!(3),
+                    "future" => changed["format"] = json!(4),
                     "policy" => changed["authentication"]["session_ttl"] = json!(1),
                     "active" => changed["active_capabilities"] = json!([]),
                     _ => unreachable!(),

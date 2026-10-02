@@ -132,3 +132,13 @@ Trusted-proxy identity policy and file-backed trust/credentials remain local;
 the rate map does not establish equality of every security setting or prove
 that differing binaries classify routes identically. Operator review of the
 participating releases and local security configuration remains required.
+
+## Root integration review
+
+Root preserved the already accepted O06 forward-auth descriptions when resolving
+two documentation conflicts; all O03 agreement procedures were retained.
+Static review found the cross-build `future` fault still assigned format 3, now
+valid. Root changed only that fixture to format 4, matching the sibling probe.
+Neither cross-build target was executed during this integration; the change
+preserves its unsupported-format refusal assertion. No production correction
+was needed.
