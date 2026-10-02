@@ -1757,12 +1757,14 @@ impl Upstream {
         let issuer = format!("http://{}", listener.local_addr().unwrap());
         let codes: UpstreamCodes = Default::default();
         let records = codes.clone();
+        let callback = f.core.source_callback_url("upstream");
         let app = Router::new().route(
             "/token",
             post(
                 move |headers: axum::http::HeaderMap,
                       Form(form): Form<std::collections::HashMap<String, String>>| {
                     let records = records.clone();
+                    let callback = callback.clone();
                     async move {
                         assert_eq!(
                             headers["authorization"],
@@ -1772,10 +1774,7 @@ impl Upstream {
                             )
                         );
                         assert_eq!(form["grant_type"], "authorization_code");
-                        assert_eq!(
-                            form["redirect_uri"],
-                            "http://localhost:9000/oauth/sources/upstream/callback"
-                        );
+                        assert_eq!(form["redirect_uri"], callback);
                         let (challenge, tokens) =
                             records.lock().unwrap().remove(&form["code"]).unwrap();
                         assert_eq!(digest(&form["code_verifier"]), challenge);
