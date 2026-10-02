@@ -2812,3 +2812,273 @@ exited0; `git diff --check` passed. Prefix, reserved report-only diff, unchanged
 final C/Rust/manifests/toolchain and all retained old artifact/capture hashes
 were checked. These are documentation/source checks after the one compile,
 not additional native or protocol runs.
+
+## Released one IdP source filter — actual Rust compilation failure
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original I04
+`dae9c528-9e32-462c-947f-661a571f136b`; same supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. Root accepted the40880-byte compiled
+native helper and released exactly one default-Platform ignored filter, with
+fresh13GiB prerequisite, conservative4GiB planning allowance above9GiB stop/
+8GiB floor,2s monitoring,1800s outer budget,16MiB private capture and owned-group
+cleanup. This appendix records that one invocation and its failure; no source
+correction, retry, C rebuild, alternate flags/features/peer or standalone
+helper/library/version/protocol probe ran.
+
+**Actual result: Cargo101/supervisor101 during Rust test compilation.** Two
+`E0308` diagnostics point to the certificate fixture helper. No test-result
+line, panic location/label or finite native exit/signal/stage/code projection was
+emitted. The ignored function did not execute; no new request-verification,
+double-signature, federation, callback/link/unlink/trust/replay/denial-audit
+oracle passed or failed at runtime. This is a fixture compilation blocker,
+not evidence of a production or native interoperability defect.
+
+### Exact source, warm preflight and single invocation
+
+Invocation HEAD was clean
+**`ac869dff2f931a5bfbaa6d4c7563991f9c7c5f0d`**. All347 protected production/
+configuration paths, including whole src/crates/manifests/lock/toolchain/build
+configuration, still equal reviewed
+`ae8937800254a1ad4296ea257de1eccc4780e45b`. Selected called SAML hooks and
+manifests equal b619; the five documented later unrelated browser/API paths
+remain different. No alignment or source history import occurred.
+
+Fresh source/artifact hashes before and after are unchanged:
+
+| Artifact | Bytes / SHA-256 |
+| --- | --- |
+| `scripts/lasso-saml-sp.c` | 34120 / `1b23f51314038ff15caa3aeb8c31acccb8bcd26d6fb702115767d0f68e4dc186` |
+| `tests/saml_source_peer.rs` | 39498 / `0a5991d7c17cc921b3a13fdc0e49a2df10d45568aebbafc86e93cf27a2a9f85b` |
+| Accepted new native helper | 40880 / `951465d744c1bf99e7ed91fc414337d00e960c24a1715977cce0e14535794bff` |
+| Old compiled SP/SLO helper | 39472 / `18f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c` |
+| Selected Lasso2.9.0_4 dylib | 501600 / `0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde` |
+
+The accepted new helper remained readable/executable own UID501, regular
+nonsymlink nlink1/mode0755 inside own0700 directory. Existing target was real,
+owned and resolved inside this exact worktree. New run log/evidence paths were
+absent before exclusive creation. Both old failed-native receipts, the prior
+SLO PASS captures and old/new compiler directory files were rehashed before/
+after and preserved. No private protocol content was reported.
+
+Warm default library metadata was inspected without version/probe invocation:
+features default,essentials,platform; profile12672335563272108896;
+rustc fingerprint17329007180185699724. Library fingerprint SHA
+`78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af`,
+409471184-byte rlib SHA
+`05b5eba724e86dce72c1383f7285220641486ab879b05d6745f3b8b05743a13f`,
+and46276739-byte rmeta SHA
+`74653db21fa6164eff22072722090fbe9be2a10621c99db73cfac464975ad9c9`
+were unchanged. Size/mtime/inode were monitored, and final exact hashes passed.
+Cached toolchain metadata SHA
+`27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4`
+remained unchanged. No competing Cargo/rustc/rustdoc process was observed before
+launch. Cache identity and >13GiB capacity made this one new target's proposed
+4GiB allowance credible; neither estimate nor cache reuse was claimed as a
+guarantee. No deletion, alternative cache or additional target was used.
+
+Immediate pre-invocation capacity was22575157248 bytes (~21.03GiB); launch
+supervisor measured22575091712 bytes, above13GiB. The private archived supervisor
+was AST-parsed and pinned before invocation. It uses exactly one Cargo Popen,
+empty stdin, the reviewed owned process-group/pipe-EOF cleanup pattern,2s disk/
+warm-cache metadata checks,9GiB stop/8GiB floor,4GiB host-drain guard and16MiB
+exclusive0600 bounded combined stdout/stderr log. It reports only finite public
+compiler codes/locations, fixed allowlisted panic labels and exact optional
+native stage/integer projection; raw protocol/values/stderr are not echoed.
+
+Exactly this requested command ran once via that supervisor, default Platform
+with no extra features:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  RIAUTH_TEST_LASSO_IDP="$PWD/target/i04-lasso-idp-source-design-v1/lasso-saml-sp" \
+  cargo test --locked --test saml_source_peer \
+  lasso_idp_redirect_post_source_lifecycle_replays_and_live_trust \
+  -- --exact --ignored --test-threads=1
+```
+
+No environment values beyond these explicitly assigned public control paths/
+settings were printed. Native helper execution was authorized only inside this
+filter; because Rust compilation failed, the native path was not reached.
+
+### Actual finite failure boundary and owned cleanup
+
+| Observation | Actual result |
+| --- | --- |
+| UTC start/end | 2026-10-02T19:28:36.646595+00:00 → 2026-10-02T19:28:38.714957+00:00 |
+| Supervised elapsed | 2.068145708s |
+| Cargo / supervisor exit | 101 / 101 |
+| Compile package header | riauth only; no finished profile duration |
+| Public error codes / locations | Two E0308 mismatches at tests/saml_source_peer.rs:178:35 and :182:34; generic must definition reference at :56:4 |
+| Named test counts | None emitted; fixture not run |
+| Native exit/signal/stage/code | None emitted; helper/lifecycle not run |
+| Safety stop / supervisor exception | null / null |
+| Disk launch / sampled minimum / after | 22575091712 / 22575079424 / 22575144960 bytes |
+| Parent / owned Cargo PID and PGID | Supervisor15870 / Cargo15903 / PGID15903 |
+| Cleanup | Joined/reaped Cargo; pipe EOF; empty owned group; no TERM/KILL;0.057196542s |
+| Metadata checks | All pins preserved; no ps metadata errors; no warm-library metadata guard fired |
+
+The two2s-periodic disk samples occurred at0.008807125s and2.012430125s; sampled
+free remained above21.02GiB. Host capacity increased slightly afterward, so
+these values are observations, not an attributed own peak. Process metadata
+observed the Cargo leader at
+`/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/cargo` and an
+empty group by the second sample. Short compiler/helper PIDs were not separately
+enumerated; no test/helper subprocess success is inferred. A subsequent
+process-table check again found PGID15903 empty. No forced cleanup was needed.
+
+**SOLE CARGO SLOT RELEASED** was sent immediately after joined exit/empty owned
+group and before this evidence append. No further invocation is authorized or
+scheduled. All failure log bytes, numeric outcomes and metadata were retained
+before result interpretation; no source or oracle was corrected to turn this
+receipt into a pass.
+
+The finite compiler projection identifies the exact source seam:
+`certificate()` passes `&must(Asn1Time::days_from_now(...), ...)` directly to
+`set_not_before` and `set_not_after` at178/182. Compiler diagnostics show expected
+`Result<Asn1TimeRef, _>` but found `Result<Asn1Time, ErrorStack>`; the borrow's
+expected target drives generic `must` inference. This is not an observed
+wrong-pin or verification refusal. For a **future separately reserved source
+phase**, the smallest proposed correction is confined to that new fixture helper:
+materialize each owned Asn1Time result first, then borrow it for the X509 validity
+setter, retaining both bounds and the same synthetic certificate. That proposal
+was neither edited, type-checked nor rerun here. Root alone decides the next
+exact source/runtime reservation.
+
+### Exclusive evidence and preparation scope exception
+
+| Own private ignored artifact | Bytes / mode / SHA-256 |
+| --- | --- |
+| `target/i04-lasso-idp-ac869-filter-supervisor.py` | 15033 /0600 /`a63edfb5021666c8636579eaae49579a22d5037dbf95892966d32dfa7f0a3c1f` |
+| `target/i04-lasso-idp-ac869-filter.log` | 1735 /0600 /`380ebe9e2f4ef43d173a8e1affa929a77235dd024b125fbe18c7b11e8d5bbe5f` |
+| `target/i04-lasso-idp-ac869-filter-evidence.json` | 10919 /0600 /`952f4d7ec8eaeb5f95fa9558f921f998546ab3a12d68fc4a9f13dd3bcda67a82` |
+
+These are regular nonsymlink own UID501/nlink1 files, with exclusive/nofollow
+creation and capped/drained log, joined parent and observed EOF/group absence.
+The supervisor was archived and parsed before execution, not retrospectively
+changed. Only the source-package compile header, E0308/type/location projection
+and numeric metadata are reported; full raw private output remains captured.
+
+Preparation had one disclosed scope exception: an unintended empty file was
+written at `/tmp/i04-cargo-supervisor-source.txt` (resolved
+`/private/tmp/i04-cargo-supervisor-source.txt`). It was not used by the supervisor
+or Cargo, and was not deleted. Its prior existence was not checked. The resulting
+observed file is0 bytes, UID501, nlink1, mode0644, SHA-256
+`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+No content or native execution is attributed to it; the actual archived
+supervisor/log/evidence were created only under the owned target. This exception
+is retained explicitly rather than hidden by cleanup or a no-other-file claim.
+
+### Append-only disposition
+
+This new receipt remains **failed compilation**. Earlier selected SLO PASS,
+two historical failed-native receipts (first native cause unknown), successful
+IdP helper compile and all source/preparation reports remain unchanged. There
+is no new local IdP-to-riAuth lifecycle evidence yet, no whole-I04/tenant/
+Linux/Windows/browser/profile/release/deployed completion, and no task/status or
+primary-assignment change. Root owns integration and future disposition.
+
+The full accepted `ac869dff2f931a5bfbaa6d4c7563991f9c7c5f0d` report is preserved
+as the exact198726-byte prefix, SHA-256
+`0fdba86a6b30758251bdce179ddfe9d48af4d2fa05f140d33a6d1af75e92ece1`.
+Only this reserved report is appended in Git. No product/test/helper/dependency/
+configuration/writer/other-document source, old captures, accepted/main branch,
+board, worker, task/worktree/managed shell or service was edited or launched.
+No extra runtime, native library/version probe, alignment, push/merge, browser,
+provider, external contact, capacity deletion or automatic retry occurred.
+
+Actual final documentation checks: `python3 scripts/check-docs.py` exited0;
+`git diff --check` passed. Exact prior prefix, sole tracked report diff,
+unchanged source/native/default-cache/old evidence pins and new capture metadata
+were verified. Documentation checks do not execute the failed fixture.
+
+## Source-only certificate validity ownership correction after 9ec96bc8
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original I04 task
+`dae9c528-9e32-462c-947f-661a571f136b`; supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`, branch
+`roadmap/local-extension-isolation-wave27`. This is the root-reserved two-local
+source correction only. Original primary `a2dff16a` and task disposition remain
+root-owned. No runtime reservation was acquired or released in this slice;
+Cargo remains free/unused and the ignored filter remains held.
+
+### Independently read pinned public signatures
+
+Before editing, the cached OpenSSL public source was read at
+`/Users/dominik/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/openssl-0.10.81`.
+The locked version is `0.10.81`, with package checksum
+`77823a27f0babb03091cb9ed9ef80af3b39dbc82f97e8fa530374b7dafd87a45`.
+The cached 311187-byte `openssl-0.10.81.crate` archive was read and hashed to
+that exact checksum; its two source members equal the installed cached files
+byte for byte. No archive extraction, crate execution or network access occurred.
+An initial lookup for the cached `.cargo-checksum.json` found it absent; the
+locked archive comparison supplies the source provenance instead.
+
+| Public source | Signature / provenance |
+| --- | --- |
+| `src/asn1.rs:336` | `pub fn days_from_now(days: u32) -> Result<Asn1Time, ErrorStack>`; 32934 bytes, SHA-256 `8f0976fb4cd7eda7b600561b80345a78de91bac359ba72546c0d54e2f721f787` |
+| `src/x509/mod.rs:233` | `pub fn set_not_before(&mut self, not_before: &Asn1TimeRef) -> Result<(), ErrorStack>` |
+| `src/x509/mod.rs:227` | `pub fn set_not_after(&mut self, not_after: &Asn1TimeRef) -> Result<(), ErrorStack>`; both setters in the same 87174-byte file, SHA-256 `92ae710cf03f71fe190b7ccf12fd87898347fb5d06a414fdb886250f7d6ae27f` |
+
+This supports materializing each owned result before borrowing it. It does not
+constitute a Rust type-check or establish that the later lifecycle test passes.
+
+### Exact source change and reversal
+
+Source-only commit: `24c0dc921703432ff04a5cab7cc771c0c9d7df3e`.
+Only `certificate()` in `tests/saml_source_peer.rs` changed: `not_before` and
+`not_after` are owned locals, borrowed by their existing setters. The sequence
+remains `days_from_now(0)` / start setter, then `days_from_now(1)` / end setter.
+All four `must` labels remain exact: `not before`, `certificate validity start`,
+`not after`, `certificate validity end`. Rustfmt collapsed only the end setter
+call to one line. Certificate fields, signing/crypto, every other fixture
+assertion/operation/input and native runner/cap/deadline are unchanged.
+
+The source commit is one file, four inserted and five deleted lines. Its test
+Git blob is `bc127dbe6b6060f1e490cb59bea63fa9e7ee201d`; the whole test is
+39539 bytes, SHA-256
+`b196cba1eea40a67c7d70c6b463ae50ec6897d68c5d81052e33eb3bec2ae5894`.
+An exact literal replacement of this single certificate block reconstructs the
+entire test from `561022078b500466712a67a2e9a0e1144977858c`: 39498 bytes,
+SHA-256 `0a5991d7c17cc921b3a13fdc0e49a2df10d45568aebbafc86e93cf27a2a9f85b`.
+The forward replacement was also checked against the complete new file; both
+directions passed, so no other test bytes changed.
+
+Protected production, crates, manifests, toolchain and build configuration have
+zero diff from `9ec96bc8beaa45fd58bd1d15f5aaffb753658f48`. No alignment or merge
+was performed. The C source remains 34120 bytes / SHA-256
+`1b23f51314038ff15caa3aeb8c31acccb8bcd26d6fb702115767d0f68e4dc186`;
+the earlier `tests/saml_sp_peer.rs` remains 39541 bytes / SHA-256
+`897e778c2c53d6bc5ea943aefde46812a80cb73bafad82d1702a7529779ea20f`.
+The already compiled IdP helper remains 40880 bytes / SHA-256
+`951465d744c1bf99e7ed91fc414337d00e960c24a1715977cce0e14535794bff`;
+it was hashed by reading only and was neither rebuilt nor invoked.
+
+### Actual checks and preserved failed evidence
+
+Static checks only: direct `rustfmt --edition 2024 tests/saml_source_peer.rs`,
+then `rustfmt --edition 2024 --check tests/saml_source_peer.rs`, exact
+bidirectional whole-file reversal/scope proofs and `git diff --check` passed.
+`python3 scripts/check-docs.py` exited0; the exact full report-prefix and
+two-reserved-path scope checks passed. Rustfmt parses/formats the
+file; no Cargo, Rust type-check, compiler, native library/helper, protocol,
+version probe, service or alternate filter was executed.
+
+The prior Cargo exit101 remains failed compilation with two E0308 locations;
+no ignored test or native oracle ran in that invocation. The original failed
+raw evidence was rehashed without printing its content and remains unchanged:
+
+| Preserved own target file | Bytes / SHA-256 |
+| --- | --- |
+| `target/i04-lasso-idp-ac869-filter.log` | 1735 / `380ebe9e2f4ef43d173a8e1affa929a77235dd024b125fbe18c7b11e8d5bbe5f` |
+| `target/i04-lasso-idp-ac869-filter-evidence.json` | 10919 / `952f4d7ec8eaeb5f95fa9558f921f998546ab3a12d68fc4a9f13dd3bcda67a82` |
+| `target/i04-lasso-idp-ac869-filter-supervisor.py` | 15033 / `a63edfb5021666c8636579eaae49579a22d5037dbf95892966d32dfa7f0a3c1f` |
+
+The complete report at `9ec96bc8beaa45fd58bd1d15f5aaffb753658f48` remains the
+exact 209560-byte prefix, SHA-256
+`4084addbdddba1b8b81eeed8a8ddcf93aed9cfd2bc2ee21d554fad223b6366e7`.
+This preserves every earlier actual PASS, failed receipt, unknown historical
+native cause, source/preparation pin and disclosed scope exception. Source-ready
+does not authorize another invocation; root must independently review these
+immutable commits and separately release any later exact filter. There is no
+new I04 completion, profile/tenant/platform/release claim or status change.

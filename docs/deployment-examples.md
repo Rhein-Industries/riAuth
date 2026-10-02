@@ -187,8 +187,8 @@ load-balancer availability is required.
 Every process runs the HTTP listener and its built-in reconciliation,
 provisioning, mail, logout, SSF and maintenance workers. These files provide no
 worker-only or scheduler-only role and do not disable workers on a second
-node. PostgreSQL shares core session, replay, rate-limit and delivery state;
-the forward-auth limit remains per node. Platform connector, device,
+node. PostgreSQL shares core session, replay, rate-limit and delivery state,
+including the `forward_auth` counter under the agreed effective rate limits. Platform connector, device,
 certificate, offboarding and other newer enterprise flows need separate
 multi-node acceptance; this example does not establish their distributed
 behavior. See [availability](availability.md) and [limitations](limitations.md).
