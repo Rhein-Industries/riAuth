@@ -50,3 +50,9 @@ own evidence requirements. O06 and other accepted closures remain closed.
 Root checks: full report read, exact guide/artifact hash comparisons, report-only
 scope review, documentation link/layout checker and Git whitespace. No root
 Cargo, tests, build, server, GUI action or task-status change was performed.
+
+## Bounded preflow refusal design reviewed; source and controlled checks reserved
+
+Root read the full `2d2baa58f9a56b6d0370a30597bb7981b61df46d` design appendix and exact six-hunk candidate diff. Authorization-bearing traffic remains refused. Only otherwise structurally bounded strict-preflow requests get stateless 403: first three leave the listener live; the fourth sets the existing terminal failure. No route, cookie, credential, flow, journey check or HTTP-status evidence is dispatched or credited. Existing parser/Host/body/target bounds and post-flow terminal Authorization refusal remain intact. Sender and historical timing remain unknown.
+
+Root reserved exact source materialization of candidate SHA-256 `7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0` in the sole demo helper, plus its report. One bounded standard-library in-memory lifecycle check with stub request/reply/dispatch sinks is explicitly released; it may not invoke a listener, network, native provider, CLI, Driver, browser or module main. The complete real confidential browser fixture remains held. Source/check results are pending; no journey pass or status change is inferred.

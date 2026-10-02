@@ -353,3 +353,9 @@ independent reviewer is reserved for read-only diagnosis and a smallest exact
 expected-record proposal; no snapshot exclusions, writer changes or source/
 runtime correction are approved yet. Accepted staging remains unpublished while
 this concrete new fixture failure is unresolved. I02 remains open.
+
+## I02 charged-factor expectation: independent source review and one release
+
+Root read the complete four-line `90b6e8d832174df676d12395452e525de827f9e8` diff, its `b729b661aaa85fd11338365e2f9573f8133fdae7` appendix and the full independent `2356a312b6ee2cba30f207ec63f7532662af834d` trace. The unchanged writer binds the stage transaction before the invalid-factor branch persists the whole pending login and charges attempts. The expected-memory clone modeled the charge but omitted that binding. The correction derives the exact value from the previously captured stage record and retains the complete snapshot, operations, refusals and assertions. No stored record or production behavior is changed.
+
+The first failed run did not record its caller or response-mode iteration. This source proof does not retrospectively identify them. The independent review accounted for all twenty earlier snapshot call sites and found no competing concrete omission. Root released exactly one same offline focused filter on clean corrected source, warm existing target, fresh at least 12 GiB launch, two-second samples, owned-group 9 GiB stop and 8 GiB floor. Actual outcome remains pending at this entry; publication stays held until this new fixture is verified. No broader test, browser or provider gate is credited.
