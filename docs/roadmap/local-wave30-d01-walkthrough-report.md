@@ -425,3 +425,158 @@ canceled U10, whole-graph, vendor-conformance or release gates.
 The concrete hunk summary and plan were sent through `riwork orchestrator send
 --project 891e7443-8dac-4c1b-897f-9e53cb59c7ee` before any guide edit/runtime.
 Runtime reservation remains pending; no task status was changed.
+
+## Approved guide corrections and build proposal — 2026-10-02
+
+This section updates the initial read-only audit above. Root authorized exactly
+its proposed guide hunks; the ledger `wave30_D01_guide_corrections` was read from
+the project's `planning/local-wave29-ownership-approvals.json`: `approved: true`,
+`runtime_released: false`, D01's exact UUID and these three allowed paths.
+The live original D01 row was reread and remains `in_progress`. No task status
+was changed. The original independent-user/operator gate and canceled U10 scope
+remain unchanged.
+
+**The concrete guide corrections are now committed; runtime is still held.**
+Guide-only commit: `6a5879f3877b1d780052f91fcafcf0a8933e38a7`.
+It changes only `docs/essentials-guide.md` and `docs/platform-guide.md`,
+109 inserted / 19 removed lines. It applies the approved direct-create
+credential-already-issued/inspect-and-rotate guidance and preserves the separate
+reviewed-creation recovery-receipt exception; adds fresh server CLI login after
+passkey epoch revocation and restart/readiness of the **original** configuration
+after the offline restored-store checkpoint; clarifies optional task routing,
+confirmed format-3 offline upgrade without adoption bypass, and historical
+device/browser evidence limits. Online backup, restore commands, pending recovery
+attestation, headers, PAM fallback and all other printed commands remain intact.
+
+### History alignment
+
+No current matching Essentials artifact was found in the inspected locations.
+The branch lacked 24 accepted runtime/client paths at the published pin, so
+alignment was necessary for the proposed current-source build. History-preserving
+merge `1a2bdedca89c7b43690d05f3b018cde05946024e` has both parents:
+`46a3311f1773920a102d22dfb7098d13263f72ac` and
+`c01c39ab4e092423d5522bedc50fff87656d8c0a`.
+There was no reset, rebase, main edit or push.
+
+Exactly two old report add/add conflicts contained empty own-side sections
+against already accepted **additive root notes**. Removing the conflict markers
+retained those notes and every original report line:
+`local-wave29-a03-final-disposition.md` (root closure decision) and
+`local-wave30-remaining-task-actionability.md` (dated historical-inventory note).
+The resolved files are byte-identical to published `c01c39a`. Original report
+commits and `46a3311` remain ancestors. There was no production conflict or new
+implementation in this merge. This alignment and its narrow resolutions were
+reported to the explicit project orchestrator.
+
+All `src/`, `crates/riauthctl/`, server manifests/lock and toolchain inputs now
+match `c01c39a`; the D01 commits change documentation only. No stale source file
+was substituted and no other lane's accepted source was rewritten.
+
+### Exact static verification performed
+
+The approved proposals were read from immutable report commit `46a3311`,
+checked, then applied only to the two allowed guide paths. The final files were
+independently reconstructed in memory from the published guide blobs and each
+approved patch hunk, with exact old/new line counts and old-context assertions.
+
+| Static check | Actual result |
+| --- | --- |
+| Both resulting guide files equal the bytes reconstructed from the approved proposal | Passed, exact equality. |
+| Reverse `git apply --check` of each approved proposal on the resulting file | Passed for both. |
+| Original fenced blocks as an unchanged ordered subsequence | Essentials **27/27**, Platform **42/42**. This includes original shell commands and JSON/TOML records. |
+| Additional fenced shell blocks | Exactly three per guide: `riauth ... login admin`, original-lab `riauth --config ... serve`, and loopback `curl ... /readyz`. No other command block was inserted or modified. |
+| New offline-upgrade Markdown target and fragment | `docs/operations.md` exists and contains `## Rate limits and admission`. |
+| Reviewed-creation receipt exception reference | Existing client README and its explicit reviewed-creation exception text verified; direct marker/refusal remains in `src/management.rs`. |
+| Canceled blanket device/manual gate language | `manual gates` absent from both resulting guides; historical unexecuted-device evidence remains. |
+| Whitespace and commit scope | `git diff --check` and `git diff --cached --check` passed; staged guide commit contained exactly the two approved paths. |
+| Accepted runtime preservation after merge | `git diff --quiet c01c39a HEAD -- src crates/riauthctl Cargo.toml Cargo.lock rust-toolchain.toml` passed. Both conflict-resolved reports match the accepted pin. |
+| Five build manifest/lock/toolchain inputs | Byte equality to `c01c39a` verified; no build performed. |
+
+Resulting guide object evidence:
+
+| Guide | Git blob | SHA-256 |
+| --- | --- | --- |
+| Essentials | `be68580333ad5f2238ac1966d164bf0fbf80aca1` | `ac1b10ddf08158a5286c6de0c3233e51f5e0402d76579984c5b3595edacaa4c4` |
+| Platform | `934d1bf1d7150a546101319661bab2a05ade4a11` | `2b8c1d222d1b2fb38090ecaed3cd725182729863446b9280a9bf83a8de0e7c4f` |
+
+### Existing binary provenance inspection — no execution
+
+The inspection covered executable filenames in this worktree's private targets,
+known `/tmp/riauth-*` snapshots, the known `~/.cache/riauth-cargo` build caches,
+project planning records and tracked historical artifact records. It excluded
+deployment-private credentials. No `riauth`, maintenance or client binary was
+executed, and no existing store/session/password was read. This is a bounded
+inventory, not a claim to have searched every installed executable on the host.
+
+| Candidate inspected | Actual metadata/hash result | Why it is not a current matching Essentials artifact |
+| --- | --- | --- |
+| Own `target-wave27/cargo/debug/riauth` | 255814720 bytes; SHA `694d314c0aeb8a0266e11c4123783789005693f500dd2b29bf0fb0e25374876f`. Associated `bin-riauth.json` records `default, essentials, platform, test-support`. | Platform/test-support feature set; no current Essentials-only provenance. |
+| Own sibling maintenance | 67010608 bytes; SHA `83ccc6663221a148bf7d925929267d827a4ae05fedc2b7cad040e755fbde9e9f`. Associated maintenance fingerprint has the same four features. | Same feature mismatch. |
+| `q09-essentials-6ca4779-kept/riauth` | 205063032 bytes; freshly read SHA `c6f0ba061663393c0d7874e1dac19ccd2bca48d781555e86a7717b4653a8a7dd`, matching the historical reference. | Kept historical candidate, not evidence of a current `c01c39a` build; its filename alone is not compiler/source provenance. |
+| `q09-8x8-47aa248/kept/essentials-debug/riauth` | 202086936 bytes; freshly read SHA `e36a139ae67559dd221ca28798999e8ad55e0ab7868a573f363e44371aac5d25`, matching the tracked Q09 record at `47aa248ce1c68284773746bbb5fd59c6098afdea`. | Explicit historical source/build, not current source. |
+| Temporary snapshots | Inventory includes the older Platform `58357fd`, tools `f430c2f` and other historical targets; no current source-pinned Essentials server/maintenance pair was identified. | Neither a directory name nor a version string establishes current edition/source equivalence. |
+
+The new hash reads above are static artifact inspection in this approved
+follow-up; they do not change the initial audit's statement that it had not
+recomputed historical hashes. No accepted target was used for building.
+
+### One exact private locked Essentials build proposal
+
+**Proposal only — not run.** Root schedules this after the existing O06/CI slot.
+Working directory: this assigned worktree. Source inputs: published
+`c01c39ab4e092423d5522bedc50fff87656d8c0a`, retained by merge, with only D01
+documentation changes on top. Host observed with `uname -sm`: Darwin arm64.
+Toolchain is the repository's pinned Rust 1.98.1. Edition/features:
+Essentials only, default features disabled, no Platform/test-support/fuzzing/USB.
+Build precisely the server and matching maintenance executables:
+
+```sh
+env CARGO_TARGET_DIR='/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/target/d01-essentials-c01c39a' CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo build --locked --manifest-path '/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/Cargo.toml' --no-default-features --features essentials --target aarch64-apple-darwin --bin riauth --bin riauth-maintenance
+```
+
+This is one Cargo invocation and a new private target under the assigned
+worktree. Its expected outputs are
+`target/d01-essentials-c01c39a/aarch64-apple-darwin/debug/riauth` and sibling
+`riauth-maintenance`. It does not install binaries, modify accepted/main,
+start a service or run tests. It does not build the independent client workspace:
+root's checkpoint reservation also identifies the base riauthctl artifact and
+its source/hash evidence. Do not silently substitute the old `f430c2f` client.
+
+Exact build-input SHA-256 values inspected:
+
+| Input | SHA-256 |
+| --- | --- |
+| Server Cargo.toml | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| Server Cargo.lock | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| rust-toolchain.toml | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+| Client Cargo.toml | `af385d4d989c53987396edfdfa684cd3902a603d1cf65dd31ac72da7f08de9ea` |
+| Client Cargo.lock | `2998555ddb2d00e8130a970fcacfed19dfee7a0b2e3305011ebd40746f67b4db` |
+
+Disk snapshot at **2026-10-02T11:13:23Z**, `df -k .`: **15430836 KiB
+available (about 14.72 GiB)**. Space declined while other authorized work ran,
+so this measurement is not permission to start a build. Root should remeasure
+immediately before the serialized slot and require at least **12 GiB** free,
+allowing a planning budget of **4 GiB** for this no-debug/incremental-off target.
+That budget is an estimate, not a measured build size. Monitor free space every
+two seconds during the owned Cargo process; stop the owned process at **9 GiB**
+to leave a margin above the mandatory **8 GiB** floor. If the budget/floor is
+unavailable, defer the build; do not delete existing evidence/backups or take
+another lane's target. Capture actual elapsed time, exit status, toolchain,
+source/features, produced binary hashes and disk observations when root releases
+the command. No monitor or build was launched here.
+
+The existing one 20-minute disposable CLI checkpoint remains the next runtime
+proposal, now against the root-selected current build rather than the historical
+snapshots. It still leaves restored recovery pending and excludes browser,
+application launch, extra fixtures, cloud operations and credential attestation.
+Current printed Essentials execution and user/browser evidence remain uncredited;
+D01 stays in_progress. The resolved docs gaps are no longer implementation
+blockers. No new artifact request is sent to the user: root owns build/artifact
+scheduling and the subsequent precise runtime release.
+
+Report verification: the original `46a3311` report is an unchanged byte prefix;
+there is one appended follow-up section, Markdown fences balance, both guide
+SHA-256 values still match the committed files, and the guide commit's exact
+scope is the two reserved paths. Report `git diff --check` passed. The separate
+report commit and final clean-tree check are supplied with the explicit-project
+handoff; no runtime/build result is claimed.
