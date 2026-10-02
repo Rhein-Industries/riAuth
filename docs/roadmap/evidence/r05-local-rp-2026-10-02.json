@@ -1,0 +1,222 @@
+{
+  "binary_sha256": "0f137475af5a8040d96a794b1ad331e7430be4467046b81b1312fb974b7e8a6a",
+  "checks": [
+    {
+      "id": "binary_capabilities",
+      "observed": {
+        "edition": "platform"
+      },
+      "result": "passed"
+    },
+    {
+      "id": "source_ready",
+      "observed": {
+        "http_status": 200,
+        "storage": "encrypted_redb"
+      },
+      "result": "passed"
+    },
+    {
+      "id": "backup_without_session_denied",
+      "observed": {
+        "error_code": "operation_failed",
+        "exit_code": 1,
+        "output_absent": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "representative_login_before_backup",
+      "observed": {
+        "login_kind": "identity_service",
+        "username": "drill-user"
+      },
+      "result": "passed"
+    },
+    {
+      "id": "local_rp_registered",
+      "observed": {
+        "exact_loopback_callback": true,
+        "openssl_sha256": "67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72",
+        "openssl_version": "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)",
+        "public_client": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "application_login_before_backup",
+      "observed": {
+        "access_hash_verified": true,
+        "authorization_http_status": 302,
+        "callback_http_status": 200,
+        "fresh_rp_session": true,
+        "issuer_audience_nonce_time_verified": true,
+        "pkce": "S256",
+        "protected_http_status": 200,
+        "signature_algorithm": "RS256",
+        "signature_verified": true,
+        "state_verified": true,
+        "subject_matches_source": null,
+        "token_exchange_http_status": 200,
+        "unauthenticated_protected_http_status": 403,
+        "userinfo_subject_verified": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "authenticated_backup",
+      "observed": {
+        "bytes": 23458,
+        "format": "riauth.backup/v3",
+        "verified": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "source_outage",
+      "observed": {
+        "login": {
+          "error_code": "operation_failed",
+          "exit_code": 1
+        },
+        "ready_http_status": null
+      },
+      "result": "passed"
+    },
+    {
+      "id": "wrong_backup_key_rejected",
+      "observed": {
+        "error_code": "invalid_request",
+        "exit_code": 2,
+        "output_absent": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "tampered_archive_rejected",
+      "observed": {
+        "error_code": "invalid_request",
+        "exit_code": 2,
+        "output_absent": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "existing_target_preserved",
+      "observed": {
+        "error_code": "conflict",
+        "exit_code": 5,
+        "marker_unchanged": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "restore_verified_and_gated",
+      "observed": {
+        "encrypted_at_rest": true,
+        "invalidated_sessions": 2,
+        "recovery_id": "6305b564-1b0e-4aaf-887a-3024a23bc6f5",
+        "serving_allowed": false,
+        "storage": "redb",
+        "verified": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "gated_serve_denied",
+      "observed": {
+        "exit_code": 5,
+        "listener_closed": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "wrong_recovery_id_denied",
+      "observed": {
+        "error_code": "conflict",
+        "exit_code": 5,
+        "gate_preserved": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "missing_reconciliation_attestation_denied",
+      "observed": {
+        "error_code": "invalid_request",
+        "exit_code": 2,
+        "gate_preserved": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "recovery_completed",
+      "observed": {
+        "serving_allowed": true,
+        "synthetic_credentials_reviewed": true
+      },
+      "result": "passed"
+    },
+    {
+      "id": "restored_session_rejected",
+      "observed": {
+        "error_code": "invalid_token",
+        "exit_code": 3
+      },
+      "result": "passed"
+    },
+    {
+      "id": "restored_service_and_login",
+      "observed": {
+        "discovery_http_status": 200,
+        "doctor_encrypted_at_rest": true,
+        "doctor_healthy": true,
+        "jwks_http_status": 200,
+        "jwks_key_count": 1,
+        "login_kind": "identity_service",
+        "ready_http_status": 200,
+        "username": "drill-user"
+      },
+      "result": "passed"
+    },
+    {
+      "id": "application_login_after_restore",
+      "observed": {
+        "access_hash_verified": true,
+        "authorization_http_status": 302,
+        "callback_http_status": 200,
+        "fresh_rp_session": true,
+        "issuer_audience_nonce_time_verified": true,
+        "pkce": "S256",
+        "protected_http_status": 200,
+        "signature_algorithm": "RS256",
+        "signature_verified": true,
+        "state_verified": true,
+        "subject_matches_source": true,
+        "token_exchange_http_status": 200,
+        "unauthenticated_protected_http_status": 403,
+        "userinfo_subject_verified": true
+      },
+      "result": "passed"
+    }
+  ],
+  "external_gates": [
+    "lost backup key",
+    "lost encrypted database key without archive",
+    "missing configured secret files",
+    "Vault Transit and other external services",
+    "PostgreSQL PITR and multi-node failover",
+    "deployed external OIDC or SAML relying party"
+  ],
+  "finished_at": "2026-10-02T11:55:10.231016+00:00",
+  "observed_source": {
+    "production_src_tree": "3adc2b59c3547d22bff202daccfd8ad97f1e78ab",
+    "repository_head": "b5cea614c4f46d82aff2380c052bd2dffc760f9e",
+    "tracked_tree_clean": true
+  },
+  "oidc_helper_sha256": "f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d",
+  "result": "passed",
+  "schema_version": "riauth.recovery-drill/v1",
+  "scope": "disposable localhost redb, real CLI/HTTP service and synthetic local OIDC RP",
+  "script_sha256": "7de1728211621a9bfb2e32d6712fac3960d91b4c31abaf0bab02d68dc85c2437",
+  "started_at": "2026-10-02T11:55:03.815161+00:00"
+}
