@@ -959,6 +959,8 @@ fn completed_job_history_is_compact_and_bounded() {
         }
         f.core.provisioning_apply(&agent, &id).unwrap();
         f.core.provisioning_step().unwrap();
+        // The first pass may only retire a frozen prior due cohort.
+        f.core.provisioning_step().unwrap();
         if index == 0 {
             first_job_id = Some(id);
         }
@@ -1164,6 +1166,8 @@ async fn uncertain_patch_response_is_reconciled_without_a_second_patch() {
     );
 
     tokio::time::sleep(Duration::from_secs(3)).await;
+    step(&f.core).await;
+    // The first pass may only retire the frozen pre-retry due cohort.
     step(&f.core).await;
     let jobs = f.core.provisioning_jobs(&agent).unwrap();
     let completed = jobs
