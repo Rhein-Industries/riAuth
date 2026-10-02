@@ -62,3 +62,59 @@ checks or official assets exist from this source-only phase. Prior historical
 products retain their exact provenance. No artifact success is inferred from
 YAML/static checks. Root alone integrates/publishes/dispatches and decides status.
 See [the full proposal and earlier artifact matrix](local-wave30-a09-artifact-plan.md).
+
+## First actual dispatch was rejected before execution
+
+After source publication `3a57affd9023a48c32085d6bcfb1d17ca4feb901`, root
+invoked exactly one manual dispatch with product source `9a819317...`. GitHub
+returned HTTP 422: line27/column17, unrecognized `runner` context in the
+job-level `A09_ROOT: runner.temp` expression. No manual run, runner, tool setup,
+resource measurement or Cargo build was allocated. The sole runtime slot is
+released. Static YAML/bash/AST parsing, including root's checks, missed this
+GitHub context restriction; their earlier passes are not platform acceptance.
+
+Two automatic invalid-workflow metadata records on publication are also
+retained: `37014464740` (main3a57aff) and `37014464605` (accepteda9279cc),
+both event=push/status=completed/conclusion=failure/jobs=[] as actually queried.
+They are parse failures, not successful manual dispatches or builds, despite
+the intended manual-only trigger. They supply no native resource/artifact proof.
+
+Root checked [GitHub's context availability reference](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability):
+job env excludes runner. A separately reserved minimal correction computes
+A09_ROOT from actual RUNNER_TEMP/run IDs inside the first shell step and writes
+it to GITHUB_ENV for subsequent steps; all driver/actions/guards/build logic
+remain fixed. One corrected dispatch requires another root source review and
+publication; no automatic repeat or resource-policy relaxation is authorized.
+
+### Environment correction independently reviewed
+
+Worker source `84c498a76f034d721e95c9d9e1979bdc178e15c3` changes only the
+initial environment seam (two insertions, one deletion). Root accepted port
+`bf1e862` removes the unsupported job-level `runner.temp` expression and exports
+`A09_ROOT` from the runner shell after `umask`, before creating the private
+folder. Writing the fixed environment name to `GITHUB_ENV` makes it available
+to later steps. The full corrected workflow is 18,186 bytes, SHA-256
+`0a98865e5ee25d2f94b745b32602949553bf4f4e3b83d8bd302fade98eafd948`.
+
+Root independently checked the exact complete-file transformation, parsed the
+YAML and all four Bash blocks, and parsed the unchanged Python driver without
+running it. The first root YAML guard used `Psych.unsafe_load`, unavailable in
+the installed Ruby; it stopped before any mutation. Replacing that guard with
+the installed `YAML.load` API passed on the identical workflow bytes. This is a
+static-check correction, not a second dispatch or product execution.
+
+The [official context table](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability)
+allows `runner` in step execution but excludes it from job-level `env`.
+[Environment-file persistence](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#setting-an-environment-variable)
+covers subsequent steps. All inline Python bytes, later steps, action pins,
+manual trigger, provenance checks, resource guards and artifact checks remain
+unchanged. This review does not claim GitHub parser acceptance or available
+native capacity.
+
+After publication and the already released I10 focused test returns the sole
+Cargo slot, root authorizes one corrected manual dispatch using the same
+reviewed product source `9a819317efb3a13fa27cd86f884be2be00898fc0`. Its new
+workflow-definition commit must be recorded separately. No automatic retry,
+capacity-threshold reduction, larger-runner substitution or cache deletion is
+authorized. The rejected dispatch and invalid-workflow metadata above remain
+part of the evidence.
