@@ -147,8 +147,35 @@ def shared_probe(server, config, base, scratch, revoked_token=None):
         token = json.loads(session.read_text())["token"]
         matrix.require(authenticated_status(base, "/api/audit?limit=1", token) == 200,
                        "active auditor grant stopped authorizing audit read")
-        matrix.require(authenticated_status(base, "/api/users", token) == 403,
+        # Collection reads filter visible users; creation is the administration boundary.
+        connection = config.parent / tomllib.loads(config.read_text())["postgres"]["connection_file"]
+        target = re.fullmatch(r"host=127\.0\.0\.1 port=([0-9]+) dbname=riauth_transition "
+                              r"user=riauth_test sslmode=disable", connection.read_text().strip())
+        matrix.require(target is not None and 0 < int(target[1]) <= 65535,
+                       "unexpected user-create refusal snapshot target")
+
+        def refusal_rows():
+            result = subprocess.run([
+                "psql", "-h", "127.0.0.1", "-p", target[1], "-U", "riauth_test", "-d", "riauth_transition",
+                "-X", "--no-password", "-v", "ON_ERROR_STOP=1", "-At", "-F", "|", "-c",
+                "SELECT encode(key,'hex'),encode(value,'hex') FROM riauth_store.records_v1 ORDER BY key",
+            ], capture_output=True, timeout=5)
+            matrix.require(result.returncode == 0 and result.stdout,
+                           "full user-create refusal snapshot unavailable")
+            return result.stdout
+
+        revision = gate.remote(server, base, session, "revision")["revision"]
+        before_refusal = refusal_rows()
+        denied = gate.remote(server, base, session, "--if-revision", revision,
+                             "--idempotency-key", os.urandom(16).hex(),
+                             "user", "create", "shared-refused-user", "--password-stdin",
+                             input="q08-refused-disposable-password\n", expected=4)
+        matrix.require(denied["error"]["http_status"] == 403
+                       and denied["error"]["code"] == "access_denied"
+                       and denied["exit_code"] == 4,
                        "ordinary auditor gained user administration")
+        matrix.require(refusal_rows() == before_refusal,
+                       "refused user creation changed durable records")
         time.sleep(0.2)
         again = gate.remote(server, base, session, "whoami")
         matrix.require(again["expires_at"] == me["expires_at"], "session expiry was renewed")
