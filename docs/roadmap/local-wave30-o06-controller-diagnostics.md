@@ -6,9 +6,9 @@ worktree `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. This support work is in existin
 worktree `7c85f5ef-3fac-4f72-aaed-08474d7fb454`, branch
 `roadmap/sol-management-wave30`, on 2026-10-02. M03 remains DONE.
 
-**Implemented and ready for review; the focused product test awaits root's
-explicit runtime release.** No Cargo or product test has run in this support
-lane. Root's recorded runtime hold remains in effect after the code reservation.
+**Implemented; the one approved focused product test passed, and the sole Cargo
+slot was explicitly released.** Runtime evidence below supersedes the pending
+validation status recorded in static report commit `0787d12`.
 
 ## Fixed source and concrete gap
 
@@ -58,8 +58,9 @@ Reserved files:
 - This separate evidence report.
 
 Code/test commit: `286bd4ddb5e2a84dd63598fe68f9a3f86ed1f0ff` (only the first
-two files). This static evidence report is committed separately; runtime results
-must be appended after the queued check actually runs.
+two files). Static evidence report commit:
+`0787d12c0cfe205db22ca3b31724bdf4f2ea3903`. Actual runtime evidence is recorded
+in a separate follow-up report commit; no code or test correction was needed.
 
 ## Implemented behavior
 
@@ -121,15 +122,15 @@ No worker is started and no connector request is made. Schedule/job records used
 to exercise coexistence and priority are seeded test fixtures, not executed
 dispatches or external evidence.
 
-Executed before runtime release: changed-file
+At static checkpoint `0787d12`, executed before runtime release: changed-file
 `rustfmt --edition 2024 --check src/reconciliation.rs tests/o06_unscheduled_controller_diagnostics.rs`
 and `git diff --check` passed. Static byte comparisons prove that the original
 scheduler/dispatch/lease/execution tail and existing job/domain helpers are
 unchanged. Removing precisely the reserved count/helper/reader additions also
 reconstructs the entire fixed reconciliation source byte-for-byte. The test file
 has exactly one test function. Staged code scope/whitespace and
-`python3 scripts/check-docs.py` passed. New product-test execution is **pending
-the root runtime release**.
+`python3 scripts/check-docs.py` passed. Product-test execution was pending root's
+runtime release at that checkpoint; it was not credited as executed or passed.
 
 The reserved command is:
 
@@ -139,15 +140,56 @@ cargo test --locked --features test-support --test o06_unscheduled_controller_di
 
 It must use this worktree's private `target/wave30-o06-controller`, jobs 1,
 incremental 0, dev/test debug 0, and an observed free-space floor of 8 GiB.
-No Cargo command has run in this support lane at this draft checkpoint.
+No Cargo command had run in this support lane at that static checkpoint.
+
+## Actual approved runtime result
+
+On 2026-10-02, root explicitly released the sole Cargo slot after the S04
+workload exited 0. The ownership record's `runtime_released` value was verified
+as true before launching the one approved command in this existing worktree:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave30-o06-controller" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test o06_unscheduled_controller_diagnostics configured_controllers_without_stored_schedules_need_operator_attention -- --exact --test-threads=1
+```
+
+Execution used clean HEAD `0787d12c0cfe205db22ca3b31724bdf4f2ea3903`, with
+code/test commit `286bd4d` unchanged. Exact source blobs were
+`3ea8cdf7169dac7f28117b43bd3b9283f24b2195` for `src/reconciliation.rs` and
+`985cee62610f08ff5f410f77d5966ee885ac2662` for the focused test. The private
+target was not a symlink. Free space was 20,945,637,376 bytes before execution
+and 18,615,580 KiB at completion; all observed checks stayed above the 8 GiB
+floor. No other target or Cargo command was run.
+
+The command exited **0**, with this actual test result:
+
+```text
+running 1 test
+test configured_controllers_without_stored_schedules_need_operator_attention ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.06s
+```
+
+The cold build finished in 3m 47s. The linker emitted one warning for the
+`riauth` binary: its `__eh_frame` section exceeded the 16 MB compact-unwind
+encoding limit, which may affect exception-handling performance. There were no
+compile or test failures, corrections, retries, or additional tests.
+
+Immediately after completion, an explicit `Cargo slot RELEASED` message with
+exit 0, the exact result, source commits and disk observations was sent through
+`riwork orchestrator send --project 891e7443-8dac-4c1b-897f-9e53cb59c7ee`;
+delivery exited 0. No further Cargo workload is pending in this lane.
+
+This verifies the local synthetic redb/Core/public HTTP fixture described
+above. It supplies no live connector, browser, PostgreSQL, HA, remote-lag,
+background-worker execution or release evidence.
 
 ## Remaining scope and handoff
 
-The immutable code and separate static evidence are available for root review.
-The sole pending validation is the queued exact product test; it is not credited
-as executed or passed. This is one O06 support slice, not O06 closure or a
-release/deployment claim. O06 storage/key diagnostics and S04 runtime remain
-with their owners. No other workers were contacted, and no new task, worktree,
+The immutable code, separate static evidence and actual targeted runtime result
+are available for root review. The authorized implementation and focused
+validation for this support slice are complete. O06 remains open; root review
+and integration remain. O06 storage/key diagnostics and S04 remain with their
+owners. No other workers were contacted, and no new task, worktree,
 worker, service, main edit, push or status change occurred. Operations,
 observability, shared API, configuration, state, node, workflow and key source
 files were not edited. Root alone reviews, integrates, publishes and statuses.
