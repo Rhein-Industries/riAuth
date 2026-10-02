@@ -2677,3 +2677,257 @@ fn plan_persistence_checks_dependencies_across_interleaved_writes() {
     f.assert_snapshot(after_write.as_ref().unwrap());
     assert!(f.core.store.list::<Value>("plans").unwrap().is_empty());
 }
+
+/// The two client metadata callers share issuer ownership dependencies, not
+/// unrelated providers' issuers. Every refusal preserves the entire snapshot.
+#[cfg(feature = "test-support")]
+#[test]
+fn client_metadata_plans_track_only_competing_issuer_ownership() {
+    const CUSTOM_ISSUER: &str = "https://id.example.test/portal";
+
+    fn setup(issuer: &str) -> Fixture {
+        let f = Fixture::new();
+        let issuer = match issuer {
+            "omitted" => None,
+            "primary" => Some(f.core.config.issuer.clone()),
+            "custom" => Some(CUSTOM_ISSUER.into()),
+            _ => unreachable!(),
+        };
+        f.client_with_settings(
+            "portal",
+            false,
+            riauth::model::ProviderSettings {
+                issuer,
+                ..Default::default()
+            },
+        );
+        f.client("reporting", false);
+        f
+    }
+
+    fn desired(f: &Fixture, family: &str) -> Manifest {
+        match family {
+            "client" => client_manifest(f, "portal", "Renamed portal", None),
+            "description" => described_manifest(f, "portal", "Operator catalogue"),
+            _ => unreachable!(),
+        }
+    }
+
+    fn set_reporting_issuer(f: &Fixture, issuer: &str) -> riauth::error::Result<Value> {
+        let mut settings = client_record(f, "reporting").settings;
+        settings.issuer = Some(issuer.into());
+        f.core.update_client(
+            &f.admin,
+            "reporting",
+            riauth::model::ClientPatch {
+                settings: Some(settings),
+                ..Default::default()
+            },
+        )
+    }
+
+    fn planner(f: &Fixture) -> String {
+        f.core
+            .create_agent(
+                &f.admin,
+                NewAgent {
+                    id: "issuer-planner".into(),
+                    ttl: 3600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "client.write".into(),
+                        resource: "client/portal".into(),
+                    }],
+                },
+            )
+            .unwrap()["credential"]["token"]
+            .as_str()
+            .unwrap()
+            .into()
+    }
+
+    fn drift(f: &Fixture, kind: &str) {
+        let before = revision(f);
+        f.core
+            .store
+            .write(|tx| {
+                match kind {
+                    "enabled_contender" | "disabled_contender" => {
+                        // Normal writers reject this collision. Raw drift models
+                        // a stale/restored row without relying on meta.revision.
+                        let mut other: riauth::model::Client =
+                            tx.get("clients", "reporting")?.unwrap();
+                        other.settings.issuer = Some(CUSTOM_ISSUER.into());
+                        other.enabled = kind == "enabled_contender";
+                        tx.put("clients", "reporting", &other)?;
+                    }
+                    "issuer" => {
+                        let mut client: riauth::model::Client =
+                            tx.get("clients", "portal")?.unwrap();
+                        client.settings.issuer = Some("https://id.example.test/changed".into());
+                        tx.put("clients", "portal", &client)?;
+                    }
+                    "keys" => {
+                        let mut keys: riauth::crypto::Keys = tx.get("meta", "keys")?.unwrap();
+                        keys.active.kid.push_str("-changed");
+                        tx.put("meta", "keys", &keys)?;
+                    }
+                    "authority" => {
+                        let mut agent: Agent = tx.get("agents", "issuer-planner")?.unwrap();
+                        agent.permissions.clear();
+                        tx.put("agents", "issuer-planner", &agent)?;
+                    }
+                    _ => unreachable!(),
+                }
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(revision(f), before, "{kind}");
+    }
+
+    for family in ["client", "description"] {
+        for issuer in ["omitted", "primary", "custom"] {
+            let f = setup(issuer);
+            let input = desired(&f, family);
+            let pending = f.core.plan_state(&f.admin, input.clone()).unwrap();
+            assert_scoped(&pending, family);
+            let client_before = client_record(&f, "portal");
+            set_reporting_issuer(&f, "https://id.example.test/reporting-one").unwrap();
+            assert!(revision(&f) > pending.base_revision);
+            let before_reuse = f.snapshot().unwrap();
+            let reused = f.core.state_reconcile(&f.admin, input.clone()).unwrap();
+            assert_eq!(
+                reused["plan"]["plan_id"], pending.plan_id,
+                "{family}/{issuer}: unrelated issuer invalidated matching reuse"
+            );
+            f.assert_snapshot(&before_reuse);
+
+            let plan_count = f.core.store.list::<Value>("plans").unwrap().len();
+            let base = revision(&f);
+            let before_preview = f.snapshot().unwrap();
+            let persisted = f
+                .core
+                .plan_state_interleaved_for_test(&f.admin, input, || {
+                    f.assert_snapshot(&before_preview);
+                    let unrelated = if issuer == "custom" {
+                        "https://id.example.test/reporting-two"
+                    } else {
+                        // The shared primary issuer has no unique owner, even
+                        // when both clients spell it explicitly.
+                        &f.core.config.issuer
+                    };
+                    set_reporting_issuer(&f, unrelated).unwrap();
+                    assert!(revision(&f) > base);
+                })
+                .unwrap();
+            assert_scoped(&persisted, family);
+            assert_eq!(persisted.base_revision, base);
+            assert_eq!(
+                f.core.store.list::<Value>("plans").unwrap().len(),
+                plan_count + 1
+            );
+            assert_eq!(json!(client_record(&f, "portal")), json!(client_before));
+
+            let reconciles = audits(&f, "client.reconcile");
+            let applies = audits(&f, "state.apply");
+            let receipt_count = receipts(&f);
+            let apply = || {
+                context::scope(
+                    Some(RequestContext {
+                        idempotency_key: Some("issuer-metadata-apply".into()),
+                        fingerprint: format!("{family}/{issuer}"),
+                        ..Default::default()
+                    }),
+                    || f.core.apply_state(&f.admin, request(&persisted)),
+                )
+            };
+            let applied = apply().unwrap();
+            assert_eq!(applied["applied"], true);
+            assert_eq!(audits(&f, "client.reconcile"), reconciles + 1);
+            assert_eq!(audits(&f, "state.apply"), applies + 1);
+            assert_eq!(receipts(&f), receipt_count + 1);
+            let client = client_record(&f, "portal");
+            if family == "client" {
+                assert_eq!(client.name, "Renamed portal");
+            } else {
+                assert_eq!(
+                    client.settings.app.unwrap().description,
+                    "Operator catalogue"
+                );
+            }
+            let after_apply = f.snapshot().unwrap();
+            assert_eq!(apply().unwrap(), applied);
+            f.assert_snapshot(&after_apply);
+        }
+
+        for kind in [
+            "enabled_contender",
+            "disabled_contender",
+            "issuer",
+            "keys",
+            "authority",
+        ] {
+            let f = setup("custom");
+            let token = planner(&f);
+            let input = desired(&f, family);
+            let pending = f.core.plan_state(&token, input.clone()).unwrap();
+            assert_scoped(&pending, family);
+            if kind.ends_with("contender") {
+                refused(
+                    &f,
+                    || set_reporting_issuer(&f, CUSTOM_ISSUER),
+                    "Provider issuer already belongs to another client",
+                );
+            }
+            drift(&f, kind);
+            let conflict = if kind == "authority" {
+                "Connector plan content or authority changed; create and review a new plan"
+            } else if family == "client" {
+                "Desired-state client name dependencies changed"
+            } else {
+                "Desired-state client description dependencies changed"
+            };
+            refused(
+                &f,
+                || {
+                    context::scope(
+                        Some(RequestContext {
+                            idempotency_key: Some("refused-issuer-metadata".into()),
+                            fingerprint: format!("{family}/{kind}"),
+                            ..Default::default()
+                        }),
+                        || f.core.apply_state(&token, request(&pending)),
+                    )
+                },
+                conflict,
+            );
+            if kind.ends_with("contender") {
+                refused(
+                    &f,
+                    || f.core.state_reconcile(&token, input),
+                    "Provider issuer already belongs to another client",
+                );
+            }
+
+            let f = setup("custom");
+            let token = planner(&f);
+            let before_preview = f.snapshot().unwrap();
+            let mut after_write = None;
+            let planned =
+                f.core
+                    .plan_state_interleaved_for_test(&token, desired(&f, family), || {
+                        f.assert_snapshot(&before_preview);
+                        drift(&f, kind);
+                        after_write = Some(f.snapshot().unwrap());
+                    });
+            let error = planned.err().unwrap();
+            assert_eq!(error.code, "conflict", "{family}/{kind}: {error}");
+            assert_eq!(
+                error.message,
+                "Instance or plan authority changed during planning; plan again"
+            );
+            f.assert_snapshot(after_write.as_ref().unwrap());
+            assert!(f.core.store.list::<Value>("plans").unwrap().is_empty());
+        }
+    }
+}
