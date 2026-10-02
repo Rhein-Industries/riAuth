@@ -294,3 +294,101 @@ Corrections applied:
 **Not measured.** The reviewer estimated the Prometheus body at about 25 KB
 against the 32 KB cap in `tests/identity/http.rs:402`. Observed-only
 rendering adds nothing there.
+
+## Implementation and runtime evidence
+
+Root reserved the seven files in the table above
+(`wave30_O06_remote_signer_attribution`), reviewed the cumulative delta, and
+released one runtime slot for the new target only.
+
+| Commit | Content |
+| --- | --- |
+| `dec83785b2e7f0934ecf3665af044174d95b2854` | History-preserving merge of main `755a7763e0e2aa7e4d5c92d18c432ebc0c8a3e87`. The only conflict, `docs/availability.md`, took main's accepted wording. |
+| `9ea682d612425bd639d2b0802fa20554aef69786` | The seven reserved files. |
+| `552fb42f01d11d9bd91d4e02331aebb0710eb197` | Review fixes. A compile-time guard ties `COUNT` to the last variant. The `docs/kms.md` wording now says only a bind whose test signature fails is counted, and `credential_read` also covers a token file that cannot be read as text. |
+
+### As implemented
+
+- **Telemetry:**
+  - an 18-label `RemoteSigningFailure` enum with a `COUNT` guard;
+  - `remote_signing_failures` counters;
+  - `Telemetry::remote_signing_failed`, which logs
+    `tracing::warn!(parent: None, reason = label, "remote signing failed")`;
+  - a runtime JSON field listing every label;
+  - Prometheus with an always-present `# TYPE` line and observed-only
+    reason series.
+- **Errors:** every failure site keeps its old `Error` value at the same
+  point. Local-key errors are unlabelled. Essentials records
+  `edition_unsupported`.
+
+### Runtime
+
+The released command was run exactly as given, on committed `552fb42` with a
+clean tree. `CARGO_TARGET_DIR` was this worktree's `target/wave27`.
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test o06_remote_signing_attribution -- --test-threads=1
+```
+
+| Item | Result |
+| --- | --- |
+| Exit | 0 |
+| Tests | 1 passed, 0 failed, 0 ignored, 0 filtered out (`every_remote_signing_failure_keeps_its_public_error_and_adds_one_fixed_reason`), 2.16 s |
+| Build | `Compiling riauth v0.1.1`, `Finished test profile in 1m 04s`. The wall time from 2026-10-02T11:14:26Z to 11:15:34Z includes it. |
+| Warnings | One existing macOS linker note for the `riauth` binary (`__eh_frame section too large`). No compiler warning came from the library or the test. |
+| Log | 14 lines, SHA-256 `7ff0f0a1ff5f95c441ec14d14392a5f010399477b2eb5e698744c26a898f0fe8`, kept in the session scratchpad |
+| Disk | Free space stayed at 14 GiB or more, against the 8 GiB floor, with a 20-second monitor. No cache was deleted. |
+| Tree | Unchanged after the run, and equal to `552fb42` |
+
+That one test passed every case listed under "One focused test target"
+above:
+
+- a failed bind (`http_5xx`) with an unchanged snapshot;
+- each Transit answer case;
+- the closed port; the three token-file cases; the two CA cases;
+- the configuration binding, signer configuration and stored-key cases;
+- the parentless reason-only warning, captured inside a marked span, with no
+  marker, token, name, address or status;
+- Prometheus observed-only series and runtime JSON with all 18 labels.
+
+Each failure case checked the exact public error, one label delta, one
+`signing_errors` delta, an unchanged full store snapshot, and a successful
+retry of the same exchange.
+
+### Protected files at `552fb42`
+
+| Git blob | SHA-256 | File |
+| --- | --- | --- |
+| `3a6f02efcef7fff5e50065285570901e8616715b` | `d23e9a03f2129601a1a37ace5ad80b0473bbc63a6ddb47be75728882fb0e12fd` | `src/telemetry.rs` |
+| `9fd987eda0df672aa3e58ee3ad7cfddda1d3b699` | `33c28b5e0fc65d4cecf7b0669f4d07ec9b4ce24d5f48b131529689dc2f904879` | `src/kms.rs` |
+| `3acb4be056709fe284f5f16dfd858e8c1af9f975` | `3a4b53f68700bb2545c640367bd057ccfa7819b7541d17b2a075f6dad50ce433` | `src/kms_essentials.rs` |
+| `31b687fa545edce4ba244a5393e596d347813a1f` | `e223982d230a48ba28c45b08464fbb5163e3b3831586a53c6fdfa49075a0b927` | `tests/o06_remote_signing_attribution.rs` |
+| `c9e373afc02d4564aa3bb5866677d6e2781bdbe2` | `86a602010279837251b2dd84fb56f89728a540a2aed73aee75f46a505038e940` | `docs/kms.md` |
+| `309e26e3870b9a2154449f7acf2657bcae0c34d7` | `cd76a44dfa0a9d9e22cd61ba37f3e9646b1e1c4421f38c4f8e3f14f0656d4218` | `docs/connector-incidents.md` |
+| `6b1d668f95493ebbea983e458195304856ccaa6b` | `1ad31625b1417a708460090cf121eca01129351cd8c104a817203bfa70f688ec` | `docs/operations.md` |
+
+### Static checks and review
+
+- **Before runtime:** `cargo fmt --all -- --check`,
+  `scripts/check-docs.py`, `scripts/check-grafana-dashboard.py` and
+  `git diff --check` passed.
+- **Review:** a read-only Sonnet review of `9ea682d` (reported
+  `claude-sonnet-5-5`, nothing compiled) found no blocking defect. Its
+  24-site public-error equivalence table was all equal. Its three low
+  findings are fixed in `552fb42`.
+
+### Not run, and remaining gates
+
+Root has not yet released these:
+
+- the Essentials library check for the `kms_essentials.rs` hunk and the
+  `reqwest::StatusCode` use in `telemetry.rs`;
+- clippy with `-D warnings`;
+- `tests/operations.rs` `alert_webhook`;
+- `tests/contention.rs`.
+
+The test target does not cover `edition_unsupported`, `http_other` or
+`encoding`, nor that local-key errors stay unlabelled; those rest on code
+reading. Nothing here touches a real Vault.
+
+O06 stays open.
