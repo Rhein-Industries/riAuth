@@ -2112,3 +2112,96 @@ Historical cause, sender and true cleanup start remain UNKNOWN. Source c0c022,
 prepared180/START+840 inclusive900 and the real browser HELD gate are unchanged.
 One report-only commit is the handoff; root owns full review and any later
 exact bounded-memory release.
+
+## Built-in traceback descriptor — source-only correction
+
+Date: 2026-10-02. Reservation:
+`wave30_D01_builtin_traceback_descriptor`. Existing WT f2e8500e only.
+This appendix preserves the entire de9bb9c report:113555B/2114 lines, SHA-256
+`6659902907691170d51690c410943987a93bc2e366d363b4939ab5e72553eeaa`.
+All earlier proposals, failed/static phases, archived logic and historical
+results remain dated records. The de9 memory design is **UNEXECUTED and HELD**;
+this source correction does not authorize its unchanged payload.
+
+### Review read and exact source change
+
+Read all218 lines of the immutable independent report at
+`a770027d009172a96e4776aa5504500b66678520`, path
+`docs/roadmap/local-wave30-d01-observer-independent-review.md`.
+Its F1 witness is source-derived: ordinary exception-subclass traceback
+attribute dispatch can supply a counterfeit trace with changing line accessors,
+allowing an unchecked final value into the intended finite diagnostic.
+No observer, subclass accessor, fake traceback or reproduction was executed.
+F1 is not attributed to the earlier real request failure or original sender.
+
+Applied exactly the root-approved line254 replacement to c0c022. Dedicated
+source commit is `f4ef05d8428b235511e81277ba6b4b72d5ec08ba`, parent
+`de9bb9c4dbb3184af042e606d5c14a652700e4b1`. Its only path is
+`scripts/d01-confidential-browser-demo.py`, exactly one deletion/one insertion:
+
+```diff
+@@ -254 +254 @@
+-        trace = error.__traceback__ if isinstance(error, BaseException) else None
++        trace = BaseException.__traceback__.__get__(error, BaseException) if isinstance(error, BaseException) else None
+```
+
+Corrected helper identity:35749B/757 lines, mode100644, Git blob
+`a01b1f3f81f0978eb0a02ed339c7248cae485350`, SHA-256
+`75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1`.
+This explicit built-in descriptor selection reads the native traceback rather
+than dispatching the exception subclass's overridden accessor. The existing
+isinstance guard and else None are unchanged. Every other observer/helper byte
+is exact c0c022: first latch, eight exact class identities plus other, ten code
+identities, line1..1024 check,64-link scan, inner/outer BaseException catches,
+private holder/evidence wiring, replies, failure precedence and original
+acceptance/refusal/cleanup predicates. No import or dependency was added.
+
+### Actual static proof and checks
+
+The original line occurs once at254 in the pinned3c9 helper; the new line occurs
+once at254 in the corrected file. Whole-file replacement equality passed.
+Reversing precisely that new line reconstructs all35711 c0c022 bytes, including
+the final newline. AST parse and in-memory compile passed without evaluating
+the code object. The exact new assignment RHS equals the approved expression;
+its guard/else AST nodes equal the old nodes. Restoring only that RHS yields
+whole normalized AST equality to c0c022, with location attributes excluded.
+Thus all other definitions, statements, branches and call order are unchanged.
+
+Source-stage `python3 scripts/check-docs.py` exited0 (Markdown links and
+build-directory layout checked), `git diff --check HEAD` and
+`git diff --cached --check` exited0. Staged scope was exactly the helper's1/1
+delta; the complete de9 report was unchanged at source commit. Entry was clean;
+no untracked files or unrelated staged/unstaged paths were present. An AGENTS
+file enumeration returned1 because there were no matches; ancestor/local
+guidance checks found no applicable AGENTS file. No source/static proof or docs
+checker failed. Final append-prefix/scope/docs/whitespace checks are performed
+before the separate report-only commit and clean handoff.
+
+### Memory and actual-fixture boundaries
+
+The full de9 child logic/controller remain archived unchanged above, with
+payload b7bdeb/158155B and controller ba20f8/15438B. Their c0c022 source pin is
+historical; neither archive is a corrected-source envelope. Their custom
+FakeError/accessor and fake trace/frame cases depend on the old attribute
+dispatch and require a subsequent descriptor-aware design review. In
+particular, their fake code/line/count and accessor-failure expectations cannot
+be credited against this descriptor selection. No revised selector, case,
+payload, controller, harness file or validation count is designed/materialized
+by this correction. No inferred pass/fail or retrospective cause is claimed.
+
+No observer/helper/harness import or execution, module main, server constructor,
+native/provider/HTTP/network/CLI/Driver/browser/Cargo/CC operation occurred.
+No runtime slot was acquired or released. Historic cause, original sender and
+true cleanup start remain UNKNOWN; all actual failures and old78 results retain
+their original boundaries. Prepared180/START+840 inclusive900 and the real
+browser HELD gate remain unchanged. No source alignment, other path, task,
+worker, WT, managed shell, main/push/status mutation or contact occurred.
+RiWork Cua.ai Driver preference persists. Root separately owns corrected finite
+envelope review, integration/publication and any bounded-memory/real-fixture
+release; this source-only change grants no runtime or completion credit.
+
+Final report-phase checks actually passed: whole de9 prefix equality,
+corrected-source byte/AST reversal, docs checker EXIT0 and whitespace EXIT0.
+The report delta is append-only and its only staged path is this report;
+source f4ef05d remains exact. The post-commit handoff separately checks clean
+tracked/staged/untracked scope and supplies the immutable report commit.
