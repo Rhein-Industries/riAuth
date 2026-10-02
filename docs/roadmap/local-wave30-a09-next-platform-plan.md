@@ -1453,3 +1453,21 @@ Markdown fence/no-new-relative-link/whitespace and `git diff --check` **PASS**.
 directories (`target-wave29-source`, `target-wave28-scim`, `target-wave28-portal`,
 `target-wave28`, `target-wave27`), **no Markdown-link errors**. No deletion or
 checker change; these static checks do not release native/container execution.
+
+
+## Root source and design review, 2026-10-02
+
+Root read the complete d84d753 two-file diff and d21c0bc report append. Independent
+whole-file reverse application restores both original source files; all39
+protected methods remain exact. ARM choice and fixed native/tool receipts are
+accepted as source only. The actual x86 container archive refusal in37061329815
+remains failed; no ARM dispatch or container fixture success is credited.
+
+Root also read the entire05187aa377-line archive diagnosis/design and
+eae9415748-line snapshot-count design, including complete changed bodies.
+The latter two-file prospective patches reconstruct and reverse the complete
+current baselines. Its count-only source implementation is reserved; its full
+Store comparison remains unchanged. Archive correction ownership and validation
+remain separately reserved. D01 descriptor-aware0ec651d logic/controller and
+complete payload reconstruction were read and checked without evaluation;
+independent review remains pending before one bounded memory invocation.
