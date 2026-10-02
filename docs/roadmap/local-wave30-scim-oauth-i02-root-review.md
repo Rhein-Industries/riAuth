@@ -270,3 +270,58 @@ the new nonroot /identity case reuses an upstream token helper asserting the
 root callback URL. Production source_callback_url includes the issuer base path.
 The exact protected helper correction needs its own reservation; no production
 defect or runtime result is inferred from this static finding.
+
+## Guarded helper: fresh native pass and separate published Linux failure
+
+Root fully read source199980044994d74adcb429bed70ff386399445d8 and its static
+receipt7d63aca0d81c6c3fd965f831a92f6253e53059e7. Replacing only the private
+step helper with its original body reconstructs the entire f89 fixture.
+The guarded second pass requires an existing cursor before and no cursor after
+one successful first call; errors propagate. This isolated sequential-fixture
+proof does not establish concurrent scheduler behavior or change production.
+
+Root fully read actual2414b5d83bc1ebbe31ffc99684ef7e4896e9d1d1 and all2401
+private0600 raw log bytes, SHA-256
+aba681faef060b4a920b684a2e12475a7da8b1f378e9d714577aa1fcccf3589f,
+plus the9366-byte0600 supervisor record
+b76f6df3dc549ba30e92a550a42d27c79e48ac0d5d073c4c0f0ac7555178953a.
+The one whole-target Darwin run exited0:24passed0failed0ignored0filtered,
+compile4.22 seconds/test29.23 seconds/wrapper35.137593 seconds. All24 named
+raw pass lines were read. Owned group84412 was reaped and empty; observed
+children were absent. Minimum13683351552 bytes exceeded9GiB stop/8GiB floor;
+no stop, deletion or repeat occurred. Slot released before the separate report.
+The executed211639968-byte test had private mode0700, not the older755 mode.
+A supplemental test-name extraction retained a trailing delimiter; corrected
+supplementv2 and original are both retained without changing log or invocation.
+
+Separately, published d5b60bc12aaafa258daddd64b40879afacb87bc1 CI37027444516
+completed failure. Audit110905570995 and integration110905571524 succeeded;
+fmt/clippy passed. Check110905571536 stopped at SCIM23passed1failed25.51
+seconds: reviewed_last_group_member_removal_requires_complete_remote_membership
+at tests/scim_oauth.rs2404, unchanged initial seed incomplete. Root downloaded
+and read the exact test/failure block in585959 private0600 bytes, SHA-256
+234a6c4d8f955265c6f83bb1e0ed84af839908deadfeb31e543df3a2e0f04ecf.
+That published fixture contains f89's explicit passes, not1999800's guarded
+helper. Later USB/client/docs/release steps were not reached. Earlier running
+observations and all prior failures remain historical; local24pass is not a
+Linux-fixed or whole-CI-green claim.
+
+## I02 corrected fixture and focused private-cache release
+
+Root fully read independent7df439a1a258eaaddba7dde5fad67e0e07aea53e:
+its concrete F1 is the configured nonroot callback compared to a root-only
+mock assertion, with no other identified production/security defect by inspection.
+Source196ac2096f79e5cc3c7d53ffa990ccdeba11a439 captures and clones the configured
+callback and retains exact equality. Root reversed all three substitutions and
+reconstructed the entire36ccc64 test; the complete appended browser test is
+unchanged. The callback correction is not an HTTP/form_post pass.
+
+Root fully read cd17c3bcffeba750d7827a54fdcf8d6a7470edba resource appendix.
+Existing own target-wave27/cargo has matching native1.98.1/default+test-support
+profiles/dependencies, while changed production and the new test still require
+rebuild. Estimated additional2–3GiB is not measured peak. Root released only
+one offline named source_stage filter to that existing cache after a fresh
+at-least12GiB preflight, jobs1/inc0/dev+testdebug0,2s samples/owned9GiB stop/
+8GiB floor/private capped0600 captures and bounded owned-group cleanup.
+I02 owns the serialized Cargo lane. No runtime result is available at this
+release; no browser, provider, extra target, retry or cache deletion is authorized.
