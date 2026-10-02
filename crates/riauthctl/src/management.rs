@@ -99,12 +99,116 @@ pub(crate) async fn export(remote: &Remote, out: &Path, run_id: Option<&str>) ->
     {
         bail!("Export manifest contains a delivery authorization field");
     }
+    // A full human administrator also learns which stored connector definitions
+    // this server process has loaded and which wait for a restart.
+    let connectors = connector_status(&result)?;
     session::write_private(out, &serialized, false, false)?;
-    Ok(json!({
+    let mut summary = json!({
         "manifest_file": manifest_file,
         "revision": result["revision"],
         "secrets_included": false,
-    }))
+    });
+    if let Some(connectors) = connectors {
+        summary["connectors"] = connectors;
+    }
+    Ok(summary)
+}
+
+/// The connector kinds the server stores.
+const CONNECTOR_KINDS: [&str; 4] = ["ldap", "workspace", "entra", "scim"];
+/// At most this many definitions are accepted from one export.
+const MAX_CONNECTOR_DEFINITIONS: usize = 1024;
+
+/// The server's digest form: unpadded base64url of a SHA-256, 43 characters.
+fn is_digest(value: &str) -> bool {
+    value.len() == 43
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+/// The connector activation state of an export. The server reports it only to
+/// a full human administrator, and only once a definition is stored or the
+/// operator set `connector_secret_dir`.
+///
+/// Every field is validated and then copied by name; nothing else in the
+/// status, a row or a definition is ever printed. A kind outside the four the
+/// server stores, an id that breaks the server's name rule, a digest that is
+/// not the server's form, a revision that is neither an integer nor null, a
+/// flag that is not a boolean, a missing field, or more than 1024 rows makes
+/// the whole status malformed, with one fixed error that echoes nothing.
+/// The caller checks it before the manifest file is written.
+fn connector_status(result: &Value) -> Result<Option<Value>> {
+    let Some(status) = result.get("connectors") else {
+        return Ok(None);
+    };
+    let malformed = || anyhow::anyhow!("Export connector status is malformed");
+    let enabled = status
+        .get("connector_secret_dir")
+        .and_then(Value::as_bool)
+        .ok_or_else(malformed)?;
+    let rows = status
+        .get("definitions")
+        .and_then(Value::as_array)
+        .filter(|rows| rows.len() <= MAX_CONNECTOR_DEFINITIONS)
+        .ok_or_else(malformed)?;
+    let mut definitions = Vec::with_capacity(rows.len());
+    for row in rows {
+        let field = |name: &str| row.get(name).ok_or_else(malformed);
+        let kind = field("kind")?
+            .as_str()
+            .filter(|kind| CONNECTOR_KINDS.contains(kind))
+            .ok_or_else(malformed)?;
+        let id = field("id")?
+            .as_str()
+            .and_then(|id| crate::admin::segment(id).ok())
+            .ok_or_else(malformed)?;
+        // An integer or null: a revision that has no row, or a definition this
+        // process has not loaded.
+        let revision = |name: &str| -> Result<Value> {
+            match field(name)? {
+                Value::Null => Ok(Value::Null),
+                value => value.as_u64().map(Value::from).ok_or_else(malformed),
+            }
+        };
+        // A digest or null; an absent optional digest is simply not copied.
+        let digest = |value: &Value| -> Result<Value> {
+            match value {
+                Value::Null => Ok(Value::Null),
+                Value::String(text) if is_digest(text) => Ok(value.clone()),
+                _ => Err(malformed()),
+            }
+        };
+        let flag = |name: &str| field(name)?.as_bool().ok_or_else(malformed);
+        let mut definition = json!({
+            "kind": kind,
+            "id": id,
+            "revision": revision("revision")?,
+            "digest": digest(field("digest")?)?,
+            "loaded_in_this_process": flag("loaded_in_this_process")?,
+            "loaded_revision": revision("loaded_revision")?,
+            "restart_required": flag("restart_required")?,
+        });
+        // A definition retired while this process still runs it also names the
+        // digest of what is running, as the server CLI prints it.
+        if let Some(loaded_digest) = row.get("loaded_digest") {
+            definition["loaded_digest"] = digest(loaded_digest)?;
+        }
+        match row.get("retired") {
+            None => {}
+            Some(Value::Bool(retired)) => {
+                if *retired {
+                    definition["retired"] = Value::Bool(true);
+                }
+            }
+            Some(_) => return Err(malformed()),
+        }
+        definitions.push(definition);
+    }
+    Ok(Some(json!({
+        "connector_secret_dir": enabled,
+        "definitions": definitions,
+    })))
 }
 
 pub(crate) async fn apply(

@@ -265,7 +265,7 @@ compares one selected sequence on redb, encrypted redb, plain and encrypted
 PostgreSQL through source-built binaries and a disposable loopback cluster.
 The ignored [`tests/m03_workflow_approval_e2e.rs`](../tests/m03_workflow_approval_e2e.rs)
 also defines a three-administrator approval/revocation journey through these
-source-built binaries. These local fixtures do not establish official-artifact
+source-built binaries, and the ignored [`tests/m03_connector_ldap_e2e.rs`](../tests/m03_connector_ldap_e2e.rs) covers a stored LDAP connector definition (pinned credential, restart, import against an in-process loopback LDAP peer) through source-built loopback binaries, where `riauthctl export` reports the connectors' activation state from an allowlisted, validated copy of the server's status. These local fixtures do not establish official-artifact
 or external-tenant acceptance. The operations port adds their definitions without running them.
 The check job is written to run that suite without default features. The
 client cannot activate a capability the server build omitted.
