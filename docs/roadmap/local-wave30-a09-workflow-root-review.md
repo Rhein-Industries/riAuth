@@ -62,3 +62,26 @@ checks or official assets exist from this source-only phase. Prior historical
 products retain their exact provenance. No artifact success is inferred from
 YAML/static checks. Root alone integrates/publishes/dispatches and decides status.
 See [the full proposal and earlier artifact matrix](local-wave30-a09-artifact-plan.md).
+
+## First actual dispatch was rejected before execution
+
+After source publication `3a57affd9023a48c32085d6bcfb1d17ca4feb901`, root
+invoked exactly one manual dispatch with product source `9a819317...`. GitHub
+returned HTTP 422: line27/column17, unrecognized `runner` context in the
+job-level `A09_ROOT: runner.temp` expression. No manual run, runner, tool setup,
+resource measurement or Cargo build was allocated. The sole runtime slot is
+released. Static YAML/bash/AST parsing, including root's checks, missed this
+GitHub context restriction; their earlier passes are not platform acceptance.
+
+Two automatic invalid-workflow metadata records on publication are also
+retained: `37014464740` (main3a57aff) and `37014464605` (accepteda9279cc),
+both event=push/status=completed/conclusion=failure/jobs=[] as actually queried.
+They are parse failures, not successful manual dispatches or builds, despite
+the intended manual-only trigger. They supply no native resource/artifact proof.
+
+Root checked [GitHub's context availability reference](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability):
+job env excludes runner. A separately reserved minimal correction computes
+A09_ROOT from actual RUNNER_TEMP/run IDs inside the first shell step and writes
+it to GITHUB_ENV for subsequent steps; all driver/actions/guards/build logic
+remain fixed. One corrected dispatch requires another root source review and
+publication; no automatic repeat or resource-policy relaxation is authorized.
