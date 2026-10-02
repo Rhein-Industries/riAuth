@@ -1753,3 +1753,420 @@ not archive validation, process-supervision evidence or a runtime release.
 ## Root retained-archive design review (2026-10-03)
 
 Root fully read cbf4560 payload25305B/f6a57790 and supervisor16622B/af65db87. The first actual-retained-archive check and independent pinned-member oracle precede the42-case synthetic/archive checks; no archive was opened or case run in this source phase. Scope keeps59f validator methods isolated, no constructor/Docker/native/build path, exclusive private captures and owner WNOWAIT cleanup. Root found a final post-persistence clock gap: an earlier deadline check cannot alone accept completion after the125-second bound. One narrow final-clock source design is separately reserved, with independent archive-design review active. No runtime/staging release follows from this report integration; historical image_tar_unreferenced_member failure remains failed.
+
+## Final post-save clock design correction (source text only)
+
+Reservation `wave30_A09_archive_final_clock_design`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. This appendix preserves every byte
+of the complete cbf4560d3ea097e122a092c0686ec3a424724311 report:112120 bytes,
+SHA-256 `fe32d99b55042f272bc7e4077ec254e8151b73b51ca6849407c738b2b2f13095`.
+It supersedes only that appendix's supervisor listing for future review and
+staging. The payload remains25305 bytes,
+SHA-256 `f6a57790e77e85153c0a2fa84f03c257fa80931621004a53d67946aa1c0db9e3`;
+all42 literal case oracles, candidate source59f5c6b, input identities, captures,
+resource thresholds, process ownership and invocation proposal remain exact.
+No design listing was installed, imported, compiled or executed.
+
+The prior supervisor could decide `okay`, then stall in decision-journal
+write/flush/fsync/close, and still print a successful result after OUTER_END.
+The smallest correction samples `time.monotonic()` after that journal closes
+(or after its absent-journal branch). At `final_clock >= OUTER_END`, it sets
+`okay = False` and the existing fixed reason `outer_deadline`, so the closed
+stdout result is `failed_or_refused` and the normal return is1. The added
+numeric `final_elapsed_seconds` is the unrounded measured difference between
+that final clock sample and START. Equality with the deadline refuses.
+
+The joined observation and decision journal rows are retained unchanged as
+pre-final observations. A fsynced decision row saying `passed` does not itself
+establish final acceptance: it precedes the new deadline admission check.
+A late final stdout result takes precedence, including when its
+`outer_deadline` reason supersedes an earlier reason retained in the journal.
+No evidence/log/regular-file write, flush, fsync, close, read, or new child
+operation occurs after the final clock sample. Only the required closed JSON
+stdout stream is emitted before the return; the unchanged exceptional wrapper
+can emit its fixed stderr refusal and exit97. There is no later receipt rewrite
+that could itself reopen the finalization gap.
+
+This is a final admission check after saving the receipts, not a hard kernel-I/O
+quota. A blocked kernel save/close may delay reaching the check; if it eventually
+completes late, the check refuses. The required final stdout stream and process
+exit can themselves be delayed after the sample. No guarantee of wall-clock
+termination by125 seconds, interruption of uninterruptible I/O, or delivery of
+a final receipt from an indefinitely blocked operation is made. The existing
+120-second child limit and125-second outer controls remain the same, including
+the documented limitations of user-space supervision.
+
+### Exact supervisor delta and static reversal
+
+The previous supervisor listing is16622 bytes,
+SHA-256 `af65db878cda7d529acfe2e4af1c46c3018e7bb9e3e2f42d0601460996b04385`.
+The complete replacement listing below is16833 bytes,
+SHA-256 `4b6ca88c509feeb0b0331c6e1ac970ac1e07d81fde2650e3685c8a86af8cb1bd`. Counts/hashes include its first comment and final newline,
+excluding Markdown fences. Its exact unified text diff is:
+
+```diff
+--- cbf4560-supervisor-design
++++ final-clock-supervisor-design
+@@ -250,2 +250,6 @@
+             okay = False
++        final_clock = time.monotonic()
++        if final_clock >= OUTER_END:
++            okay = False
++            reason = "outer_deadline"
+         # Only closed results; no captured output, dynamic member names, paths or exception strings.
+@@ -253,3 +257,4 @@
+                           "count": child_count, "first_failure": first_failure, "first_outcome": first_outcome,
+-                          "reaped": reaped, "group_empty": empty, "stop_reason": reason}, sort_keys=True))
++                          "reaped": reaped, "group_empty": empty, "stop_reason": reason,
++                          "final_elapsed_seconds": final_clock - START}, sort_keys=True))
+     return 0 if okay else 1
+```
+
+Actual static checks in this reservation parsed both supervisor listings and
+the unchanged payload as AST text only. Removing the four inserted clock/guard
+lines and reversing the final output-field change reconstructs the complete
+old16622-byte supervisor exactly. Separately removing the inserted assignment
+and conditional AST nodes and the final JSON key/value reconstructs its entire
+AST exactly (excluding parser location attributes). The payload remains
+byte/hash exact, and all three ASTs contain the identical42-entry CASE_ORDER.
+No prospective function or case was called to obtain those checks.
+
+The structural control-flow check found exactly one final-clock assignment in
+main's finalization block, immediately after the journal-present/absent branch.
+The journal-present branch ends with `journal.close()`; the absent branch sets
+`okay = False`. The post-sample conditional is precisely `final_clock >=
+OUTER_END`, with only `okay = False` and `reason = "outer_deadline"` in its body.
+After it, the only function calls in that finalization block are `print` and
+`json.dumps`; no file operation or new observation is performed. The final
+stdout `result` and normal return both use the resulting `okay`; no intervening
+assignment can restore it. The return remains `0 if okay else 1`. All preceding
+observations, receipt ordering, WNOWAIT/owned-group signals and reaping, caps,
+case comparisons, signal handling and the fixed exceptional exit97 are exact
+under whole-byte and whole-AST reversal.
+
+One initial documentation assembly attempt stopped at its pre-write
+trailing-whitespace assertion: the default three-line unified diff context
+represented an empty context line by a single space. No report bytes changed
+in that attempt. The displayed diff uses one context line and passes that
+check; this is a diff-format correction only, with identical supervisor bytes.
+
+### Complete corrected supervisor design listing
+
+```python
+# DESIGN ONLY: one future owned child; this supervisor has not run.
+import hashlib, json, os, pathlib, selectors, shutil, signal, stat, subprocess, sys, time
+
+WT = pathlib.Path("/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27")
+ROOT = WT / "target/a09-v28-legacy-build-free-59f5c6b-v1"
+PUBLIC = pathlib.Path("/tmp/riauth-wave30-container-37061329815")
+PAYLOAD_SHA = "f6a57790e77e85153c0a2fa84f03c257fa80931621004a53d67946aa1c0db9e3"
+MARKER = b"891e7443-8dac-4c1b-897f-9e53cb59c7ee:59f5c6b:build-free-v1\n"
+G = 1024 ** 3
+START = time.monotonic()
+CHILD_END = START + 120
+OUTER_END = START + 125
+CANCELLED = False
+CASE_ORDER = (
+    'retained_archive', 'retained_derived_six', 'tiny_baseline', 'extra_correctly_hashed',
+    'wrong_metadata_digest_path', 'altered_under_old_path', 'rehash_id', 'rehash_parent',
+    'rehash_created', 'rehash_os', 'rehash_config', 'rehash_unknown',
+    'duplicate_json_keys', 'malformed_metadata', 'scalar_metadata', 'missing_metadata',
+    'duplicate_member', 'nonregular_member', 'path_member', 'manifest_layer_order',
+    'streamed_layer_mismatch', 'rootfs_layer_order', 'rootfs_duplicate', 'rootfs_schema',
+    'bool_as_int', 'top_unknown_schema', 'invalid_calendar', 'noncanonical_time',
+    'layer_count_129', 'compressed_stat_cap', 'expanded_header_cap', 'small_payload_cap',
+    'truncated_payload', 'wrong_tag', 'wrong_config_image', 'wrong_oci_config',
+    'wrong_oci_index', 'wrong_oci_reference', 'missing_oci_payload', 'unsupported_daemon_with_legacy',
+    'original_blob_digest_loop', 'original_resource_budget',
+)
+CASE_NAMES = frozenset(CASE_ORDER)
+SETUP_NAMES = frozenset(("setup", "transport", "assembly", "metadata_read", "synthetic_setup"))
+REFUSALS = frozenset((
+    "image_archive_size", "image_tar_member", "image_tar_expanded_cap", "image_tar_truncated",
+    "docker_archive_manifest", "image_tar_exact_tag", "image_tar_config_layers", "saved_config_identity",
+    "saved_oci_index", "oci_manifest_digest", "oci_manifest_payload", "oci_image_manifest_binding",
+    "image_tar_unreferenced_member", "image_blob_digest", "image_legacy_profile", "image_legacy_rootfs",
+    "image_legacy_layers", "image_legacy_config", "image_legacy_created", "image_legacy_metadata_binding",
+    "resource_monitor_refused", "controller_deadline", "fixture_deadline"))
+OUTCOMES = REFUSALS | {"pass", "tar_read_error", "json_decode_error", "unclassified_exception", "unclassified_refusal", "driver_deadline", "driver_disk_floor"}
+
+
+def cancel(signum, frame):
+    global CANCELLED
+    CANCELLED = True
+
+
+def owned_read(path, cap, private=False):
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as f:
+        s = os.fstat(f.fileno())
+        if not stat.S_ISREG(s.st_mode) or s.st_uid != os.getuid() or s.st_nlink != 1 or s.st_size > cap or (private and stat.S_IMODE(s.st_mode) != 0o600):
+            raise RuntimeError("closed owned input")
+        b = f.read(cap + 1)
+        if len(b) != s.st_size:
+            raise RuntimeError("closed changing input")
+        return b
+
+
+def create(name):
+    return os.fdopen(os.open(ROOT / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb")
+
+
+def free():
+    return min(shutil.disk_usage(ROOT).free, shutil.disk_usage(PUBLIC).free)
+
+
+def main():
+    proc = None; journal = None; logs = []; selector = selectors.DefaultSelector()
+    reason = None; code = None; reaped = False; empty = False; minimum = None; status = None
+    child_count = None; first_failure = None; first_outcome = None; phase = "preflight"
+    try:
+        if ROOT.resolve() != ROOT or pathlib.Path(__file__).resolve().parent != ROOT:
+            raise RuntimeError("closed root")
+        s = ROOT.lstat()
+        if not stat.S_ISDIR(s.st_mode) or s.st_uid != os.getuid() or stat.S_IMODE(s.st_mode) != 0o700:
+            raise RuntimeError("closed root ownership")
+        if owned_read(ROOT / ".marker", len(MARKER), private=True) != MARKER:
+            raise RuntimeError("closed marker")
+        if tuple(sys.version_info[:3]) != (3, 14, 6):
+            raise RuntimeError("closed reviewed Python version")
+        if not all(hasattr(os, x) for x in ("waitid", "WNOWAIT", "WEXITED", "WNOHANG", "getpgid", "getsid")):
+            raise RuntimeError("closed wait support")
+        minimum = free()
+        if minimum < 10 * G:
+            raise RuntimeError("closed capacity preflight")
+        for name in ("actual.outer.jsonl", "stdout.log", "stderr.log", "controller.txt", "receipt.json", "small.json",
+                     "inner.docker.tar.gz", "case.tar.gz", "actual.child.jsonl", "actual.child.json"):
+            if (ROOT / name).exists() or (ROOT / name).is_symlink():
+                raise RuntimeError("closed existing output")
+        journal = create("actual.outer.jsonl")
+        def note(data):
+            b = (json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            if journal.tell() + len(b) > 32 * 1024:
+                raise RuntimeError("closed outer journal cap")
+            journal.write(b); journal.flush(); os.fsync(journal.fileno())
+        note({"kind": "preflight", "free_bytes": minimum})
+        payload = owned_read(ROOT / "payload.py", 64 * 1024, private=True)
+        note({"kind": "pin", "input": "payload", "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
+        if hashlib.sha256(payload).hexdigest() != PAYLOAD_SHA:
+            raise RuntimeError("closed payload pin")
+        for src, name, size, sha in (
+            (WT / "scripts/check-local-container-cohort.py", "controller.txt", 99566, "c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837"),
+            (PUBLIC / "container-cohort.json", "receipt.json", 16872, "ab7c5ce7b87e672db255edc4393ccb27348cb777b14f5f7880f87a68a986ab7d"),
+            (PUBLIC / "essentials-small-metadata.json", "small.json", 17651, "430471f20c63eb533003415c19c3d19c8f83b542af7acb75621cfe150040e5b4")):
+            b = owned_read(src, size)
+            note({"kind": "pin", "input": name, "bytes": len(b), "sha256": hashlib.sha256(b).hexdigest()})
+            if len(b) != size or hashlib.sha256(b).hexdigest() != sha:
+                raise RuntimeError("closed source data pin")
+            with create(name) as out:
+                out.write(b); out.flush(); os.fsync(out.fileno())
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, cancel)
+        if CANCELLED or time.monotonic() >= CHILD_END or free() < 10 * G:
+            raise RuntimeError("closed prelaunch refusal")
+        logs = [create("stdout.log"), create("stderr.log")]
+        phase = "child"
+        proc = subprocess.Popen([sys.executable, "-I", "-S", "-B", str(ROOT / "payload.py"), str(CHILD_END)],
+            cwd=ROOT, env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1"},
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+            raise RuntimeError("closed child identity")
+        note({"kind": "launch", "pid": proc.pid, "pgid": proc.pid})
+        for stream, log in zip((proc.stdout, proc.stderr), logs):
+            os.set_blocking(stream.fileno(), False); selector.register(stream, selectors.EVENT_READ, log)
+        next_disk = time.monotonic(); terminated = None; killed = False
+        while True:
+            now = time.monotonic()
+            if now >= next_disk:
+                minimum = min(minimum, free()); next_disk = now + 2
+                if minimum < 8 * G:
+                    reason = "disk_floor"
+            if CANCELLED:
+                reason = "cancelled"
+            if now >= CHILD_END and reason is None:
+                reason = "child_deadline"
+            if reason is not None and terminated is None:
+                if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                    raise RuntimeError("closed cleanup identity")
+                os.killpg(proc.pid, signal.SIGTERM); terminated = now
+            if terminated is not None and now >= terminated + 1 and not killed:
+                if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                    raise RuntimeError("closed cleanup identity")
+                os.killpg(proc.pid, signal.SIGKILL); killed = True
+            for key, events in selector.select(timeout=0.05):
+                block = os.read(key.fileobj.fileno(), 65536)
+                if not block:
+                    selector.unregister(key.fileobj); key.fileobj.close(); continue
+                log = key.data
+                if log.tell() + len(block) > 64 * 1024:
+                    reason = "capture_cap"; block = block[:max(0, 64 * 1024 - log.tell())]
+                log.write(block)
+            status = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if status is not None and not selector.get_map():
+                break
+            if now >= OUTER_END - 1:
+                reason = reason or "outer_deadline"
+                break
+        phase = "join"
+    except BaseException:
+        reason = reason or "setup_or_supervisor_refusal"
+    finally:
+        # Never poll/wait/reap the leader before any required group signal; its PID pins ownership.
+        if proc is not None:
+            try:
+                status = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                if status is None:
+                    if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                        raise RuntimeError("closed cleanup identity")
+                    os.killpg(proc.pid, signal.SIGKILL)
+                code = proc.wait(timeout=max(0.01, OUTER_END - time.monotonic())); reaped = True
+                try:
+                    os.killpg(proc.pid, 0)
+                except ProcessLookupError:
+                    empty = True
+                if not empty:
+                    reason = reason or "owned_group_empty_not_proven"
+            except BaseException:
+                reason = reason or "join_or_group_refusal"
+            for stream in (proc.stdout, proc.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+        selector.close()
+        captures = []
+        for log in logs:
+            log.flush(); os.fsync(log.fileno()); captures.append(log.tell()); log.close()
+        observed = {"kind": "joined", "child_exit": code, "child_signal": -code if type(code) is int and code < 0 else None,
+                    "child_reaped": reaped, "owned_group_empty": empty, "minimum_free_bytes": minimum,
+                    "elapsed_seconds": round(time.monotonic() - START, 3), "capture_bytes": captures, "stop_reason": reason}
+        if journal is not None:
+            note(observed)  # observed numeric exit/cleanup fsynced before completion oracle comparisons
+            okay = False
+            try:
+                final = json.loads(owned_read(ROOT / "actual.child.json", 16 * 1024, private=True))
+                raw_rows = owned_read(ROOT / "actual.child.jsonl", 128 * 1024, private=True).splitlines()
+                if len(raw_rows) > 512:
+                    raise RuntimeError("closed child row count")
+                case_rows = []
+                for raw in raw_rows:
+                    row = json.loads(raw)
+                    if type(row) is not dict or "kind" not in row:
+                        raise RuntimeError("closed child row schema")
+                    kind = row["kind"]
+                    if kind == "case":
+                        if set(row) != {"kind", "case", "actual"} or row["case"] not in CASE_NAMES or row["actual"] not in OUTCOMES:
+                            raise RuntimeError("closed child case schema")
+                        case_rows.append(row)
+                    elif kind == "pin":
+                        if (set(row) != {"kind", "input", "bytes", "sha256"}
+                                or row["input"] not in {"controller.txt", "receipt.json", "small.json", "outer_zip", "inner_archive"}
+                                or type(row["bytes"]) is not int or not 0 <= row["bytes"] <= 49206215
+                                or type(row["sha256"]) is not str or len(row["sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed child pin schema")
+                    elif kind == "synthetic_input":
+                        if (set(row) != {"kind", "bytes", "sha256"} or type(row["bytes"]) is not int
+                                or not 0 <= row["bytes"] <= 1024 * 1024 or type(row["sha256"]) is not str
+                                or len(row["sha256"]) != 64 or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed synthetic row schema")
+                    elif kind == "metadata_pin":
+                        if (set(row) != {"kind", "ordinal", "bytes", "sha256"} or type(row["ordinal"]) is not int
+                                or not 0 <= row["ordinal"] < 12 or type(row["bytes"]) is not int or not 0 <= row["bytes"] <= 8 * 1024 ** 2
+                                or type(row["sha256"]) is not str or len(row["sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed metadata pin row")
+                    elif kind == "witness":
+                        if (set(row) != {"kind", "derived_count", "derived_set_sha256"}
+                                or type(row["derived_count"]) is not int or not 0 <= row["derived_count"] <= 128
+                                or type(row["derived_set_sha256"]) is not str or len(row["derived_set_sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["derived_set_sha256"])):
+                            raise RuntimeError("closed witness schema")
+                    elif kind == "stop":
+                        if (set(row) != {"kind", "phase", "reason"} or row["phase"] not in CASE_NAMES | SETUP_NAMES
+                                or row["reason"] != "first_unexpected_or_setup_refusal"):
+                            raise RuntimeError("closed stop schema")
+                    else:
+                        raise RuntimeError("closed unknown row kind")
+                if (type(final) is not dict or set(final) != {"schema", "count", "first_failure", "requested_exit"}
+                        or final["schema"] != "riauth.a09.build-free-child/v1" or type(final["count"]) is not int
+                        or final["count"] != len(case_rows) or final["first_failure"] not in CASE_NAMES | SETUP_NAMES | {None}
+                        or type(final["requested_exit"]) is not int or final["requested_exit"] not in {0, 2}
+                        or tuple(row["case"] for row in case_rows) != CASE_ORDER[:len(case_rows)]):
+                    raise RuntimeError("closed child completion schema")
+                child_count = final["count"]; first_failure = final["first_failure"]
+                if first_failure in CASE_NAMES:
+                    first_outcome = case_rows[-1]["actual"] if case_rows and case_rows[-1]["case"] == first_failure else "unclassified_exception"
+                okay = (reason is None and code == 0 and reaped and empty and first_failure is None
+                        and child_count == len(CASE_ORDER) and final["requested_exit"] == 0)
+            except BaseException:
+                reason = reason or "closed_child_envelope_refusal"
+            note({"kind": "decision", "result": "passed" if okay else "failed_or_refused", "count": child_count,
+                  "first_failure": first_failure, "first_outcome": first_outcome, "stop_reason": reason})
+            journal.close()
+        else:
+            okay = False
+        final_clock = time.monotonic()
+        if final_clock >= OUTER_END:
+            okay = False
+            reason = "outer_deadline"
+        # Only closed results; no captured output, dynamic member names, paths or exception strings.
+        print(json.dumps({"result": "passed" if okay else "failed_or_refused", "exit": code,
+                          "count": child_count, "first_failure": first_failure, "first_outcome": first_outcome,
+                          "reaped": reaped, "group_empty": empty, "stop_reason": reason,
+                          "final_elapsed_seconds": final_clock - START}, sort_keys=True))
+    return 0 if okay else 1
+
+
+if __name__ == "__main__":
+    try:
+        result = main()
+    except BaseException:
+        os.write(2, b"closed_supervisor_finalization_refusal\n"); result = 97
+    sys.exit(result)
+```
+
+### Scope, checks and held execution
+
+The future staging/review must use this corrected supervisor hash rather than
+the old `af65db87` listing, alongside the unchanged `f6a57790` payload. The
+single proposed invocation, marker, private0700 directory/exclusive0600 files,
+10GiB start/8GiB floor,120-second child/125-second outer, capture bounds,
+ordered receipts, owned-group cleanup and all pinned archive/source inputs are
+unchanged. They remain a proposal; no staging directory or files were created
+and no archive, layer, validator, synthetic case, driver, helper, native tool,
+Docker, Cargo or prospective process supervisor was invoked here.
+
+Candidate helper remains99566 bytes,
+SHA-256 `c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837`;
+workflow remains4573 bytes,
+SHA-256 `9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4`.
+The source59f5c6b recipe, protected production and architecture handling are
+unchanged. Root's independent source/body reviews are separately attributed;
+this appendix does not claim to have performed that independent review or any
+future runtime. Documentation and whitespace checks are run before the
+report-only commit; exact prefix, text/AST reversal, pins and changed-file scope
+are checked again from the final report.
+
+The one future build-free invocation remains HELD pending root's final immutable
+source/design review and fresh capacity. Actual cohort37061329815 remains FAILED
+at `image_tar_unreferenced_member`; UID and fixture gates remain unreached.
+No new source/runtime success, ARM evidence, image execution, whole A09 closure,
+O07 remedy or task disposition is inferred. All earlier failure receipts and
+closed I04/other rows remain untouched. No runtime/preparation slot was acquired
+or released. Root alone owns integration, publication and task status.
+
+Actual final documentation check: `python3 scripts/check-docs.py` exited0 with
+"Markdown links and build-directory layout checked". `git diff --check` exited0.
+A readback of the persisted report passed exact112120-byte prefix preservation,
+both listing hashes, byte/AST reversal, exact displayed diff, final-clock
+control-flow and unchanged helper/workflow pins; the only changed tracked path
+was this report and the index was empty. No archive/case/supervisor runtime was
+performed. Staged whitespace and report-only scope are checked before commit,
+then the committed prefix/source pins and clean worktree are verified.
+
+
+## Root final-clock source review (2026-10-03)
+
+Root read complete511b32a prose/diff and independently reversed the entire16833B corrected supervisor4b6ca88c to the previously fully read16622B af65db87. Only the final post-journal clock/closed elapsed field changes; no regular-file operation follows that check. The unchanged25305B f6a57790 payload and42-case registry remain source-only. Saved observations precede final acceptance; a late final stdout refusal overrides an earlier saved pass decision. User-space checks do not impose a hard kernel/output exit deadline. Independent archive review and exact fresh capacity/staging still precede any separate release.
+
+An initial root reversal used an absent extraction filename block1 rather than actual block-1 and failed before writes; the corrected read completed the full inverse above. The no-op commit attempt made no history change. No candidate or runtime execution occurred.
