@@ -7,6 +7,13 @@ Audited published source: `60437b59933cadd40a1f5fbbb91ba153aee56456`.
 Own starting HEAD: `6e1e1a9a9f206bc98bb03da38bbee3f27ee32425`.
 Date: 2026-10-02.
 
+Reading note: the initial audit below describes the report-only `46a3311`
+phase. The later approval/build-proposal section records `6a5879f` / `551a3be`
+checks as performed then. Applied proposals are now mapped to their immutable
+commits rather than embedded; the final checker-correction section records
+this update. Earlier unchanged-prefix claims describe the earlier report,
+not this replacement. Runtime and original acceptance evidence remain pending.
+
 **Recommend retaining D01 in_progress.** The separate guides and the small
 edition-specific setup exist. Three concrete printed-step corrections are
 needed, and the printed Essentials chain still lacks walkthrough evidence.
@@ -121,252 +128,51 @@ local source-built results support primitives, not execution of the printed
 Essentials tasks at the current pin or proof of an official release.
 No `cargo install` walkthrough is established by those build records.
 
-## Exact proposed guide hunks — not applied
+## Applied guide hunks and immutable proposal provenance
 
-These are generated against the exact published blobs:
+The exact proposals, including their original guide-relative links and then
+unqualified older-binary statement, remain immutable in
+`46a3311f1773920a102d22dfb7098d13263f72ac:docs/roadmap/local-wave30-d01-walkthrough-report.md`.
+The applied guide commit is `6a5879f3877b1d780052f91fcafcf0a8933e38a7`;
+the embedded patch blocks are replaced here because the docs checker scans
+links inside fences relative to this report's directory.
 
-- Essentials: `2b8408f90d82bb35d49fc1ebd3512d9a1a853962`.
-- Platform: `46f41f11fe211343be9059966253118401ffb4a0`.
+The proposals were generated against these exact published blobs:
+
+- [Essentials guide](../essentials-guide.md): `2b8408f90d82bb35d49fc1ebd3512d9a1a853962`.
+- [Platform guide](../platform-guide.md): `46f41f11fe211343be9059966253118401ffb4a0`.
 - Historical walkthrough: `ef367ba40fdec9b26e6bef462d9a07de830e0d3b`.
+
+The table accounts for every applied zero-context hunk in `6a5879f`:
+nine Essentials hunks and ten Platform hunks. Coordinates are the exact
+old/new ranges from `git show --format= --unified=0 6a5879f`, not current
+guide line numbers after later accepted changes.
+
+| Applied change | Essentials old/new hunk | Platform old/new hunk |
+| --- | --- | --- |
+| Small-install route and optional external facets | `-5,0 +6,6` | `-5,0 +6,6` |
+| Fresh-store distinction; offline agreement recording with both confirmations and no adoption bypass | `-55,0 +62,12` | `-132,0 +139,12` |
+| Renew expired or revoked standalone-client sessions | `-84 +102` | `-163 +181` |
+| Direct-create exact retry refuses secret recovery; inspect/rotate; separate reviewed-creation recovery receipt | `-265,3 +283,7` | `-406,3 +424,7` |
+| Prompt refers to recorded device/browser limits | `-332 +354` | `-497 +519` |
+| Fresh server-CLI administrator login before backup after epoch revocation | `-367,0 +390,7` | `-572,0 +595,7` |
+| Restart original lab/readiness; restored store stays pending; renew client session | `-444,2 +473,17` | `-701,2 +730,17` |
+| Device/browser limits heading | `-905 +949` | `-2299 +2343` |
+| Recorded gaps are not required manual steps; keep unexecuted evidence | `-918 +962,2` | `-2312 +2356,2` |
+| Explicitly unexercised physical/synced/mobile/screen-reader coverage | No additional hunk | `-2318 +2363` |
+
+Root's subsequent accepted qualification is
+`fd6d8c8af6b65c2dbe47afb385289b26e2c1e643`, inspected directly: **binaries
+that support only agreement formats 1 or 2 refuse format 3; rollback to
+those binaries needs a compatible pre-command backup**. The historical
+proposal's blanket older-binary assertion is superseded, not current guidance.
+This correction does not edit either guide or replace that accepted wording.
 
 The first client-create command remains simple: riauthctl fills its required
 revision/key envelope. Group writes retain their printed exact revision/key
 pairs. Plan/removal confirmation semantics are unchanged. The reviewed-creation
 secret receipt, per-route optional/required headers and PAM revision fallback
 remain accepted contracts. No credential, Group or remote-IO behavior is changed.
-
-````diff
---- a/docs/essentials-guide.md
-+++ b/docs/essentials-guide.md
-@@ -3,4 +3,10 @@
- Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
- `a96a1977-3210-4284-8f7d-645793369301`.
-+
-+For a small install, start with sections 1 through 3. Section 4 is the
-+user’s passkey task; section 5 is the operator’s backup task. Groups, claims
-+and audit are sections 6 through 8. Add sections 9 through 11 only when you
-+have an LDAP directory, a SCIM target or invitation mail to configure. None
-+of those external systems is required for the first local sign-in.
-
- This is the Essentials task guide through its second slice, plus the
-@@ -54,4 +60,16 @@
- instance stays Essentials. `keygen` does not open a store.
-
-+This first-install path uses a new store and matching current binaries.
-+Existing stores from older binaries need the separate [offline upgrade
-+procedure](operations.md#rate-limits-and-admission). Startup refuses old or
-+missing security agreements and never adopts them automatically. Stop every
-+riAuth process and verify a pre-upgrade backup before running
-+`security-agreement-record --confirm-authentication-policy --confirm-rate-limits`
-+with the matching-edition maintenance binary. Add `--adopt-missing-agreement`
-+only for a deliberately reviewed missing-row adoption; it cannot bypass a
-+present incompatible row. A conflicting format 3 policy cannot be overwritten
-+by this command. Older binaries refuse format 3; rollback requires the
-+compatible pre-command backup. This is not a step for a fresh small install.
-+
- The [product contracts](roadmap/product-contracts.md) describe the desired
- Essentials and Platform split. They are a target contract. They are not
-@@ -82,5 +100,5 @@
- cookie. It does not write either CLI session file.
-
--Sections 6 and 7 sign the riauthctl session in again if it has expired, then
-+Sections 6 and 7 sign the riauthctl session in again if it is expired or revoked, then
- change groups and the `local-demo` client. `explain`, `audit`, `report`,
- `directory`, and `provision` use the server CLI session from section 2.
-@@ -263,7 +281,11 @@
- that already exists. The client reserves that file before the request and
- writes the one-time secret there. Standard output names `credential_file` and
--omits the secret. Repeating the command needs the same `--idempotency-key`
--and a new secret-file path; the details are in the
--[riauthctl README](../crates/riauthctl/README.md).
-+omits the secret. Direct creation stores no secret in its retry receipt:
-+an exact same-key, same-revision retry returns `409 credential_already_issued`.
-+If creation committed but credential delivery failed, inspect `local-demo`
-+and rotate its secret with a new key, the current revision and a new
-+`--secret-file`; repeating creation does not recover it. Reviewed creation
-+has a separate secret-recovery receipt contract. Both paths are described in
-+the [riauthctl README](../crates/riauthctl/README.md).
-
- If `--scope` is omitted, a non-service client asks for
-@@ -330,5 +352,5 @@
- The dialog text says to pick this device, another device, or a security key
- in the browser prompt. Synced passkeys, phones, and physical keys are part of
--the manual accessibility and authenticator gates below. This slice does not
-+the recorded device and browser limits below. This slice does not
- record a result for them.
-
-@@ -365,4 +387,11 @@
- backup key is still required. Keep `backup.key` outside the host you are
- willing to lose.
-+
-+Section 4’s passkey changes revoke this account’s CLI sessions too. Before
-+backup, sign the server CLI in again as the password administrator from `init`:
-+
-+```sh
-+riauth --server http://localhost:9000 login admin
-+```
-
- ```sh
-@@ -442,6 +471,21 @@
- ## 6. Create a group and add the administrator
-
--The operator does this with `riauthctl` while `riauth serve` is still running.
--Sign in again when the riauthctl session is missing:
-+If you followed section 5, `serve` is stopped. Restart the **original** lab
-+configuration and leave it running:
-+
-+```sh
-+riauth --config deployment-private/essentials-lab/riauth.toml serve
-+```
-+
-+In another terminal, check readiness:
-+
-+```sh
-+curl --fail http://127.0.0.1:9000/readyz
-+```
-+
-+Do not start the restored configuration merely to continue this guide; it is
-+a separate recovery exercise and stays closed while reconciliation is pending.
-+The operator now uses `riauthctl` against the original running server. Sign in
-+again when that session is missing, expired or revoked by a passkey change:
-
- ```sh
-@@ -903,5 +947,5 @@
- | `riauth capabilities` | Artifact catalog for the binary on `PATH`. | `usable` is null until a configured instance reports runtime state. The catalog is not a peer or authenticator test. |
-
--## Manual accessibility gates
-+## Recorded device and browser limits
-
- [accessibility-journeys.spec.js](../tools/browser/accessibility-journeys.spec.js)
-@@ -916,5 +960,6 @@
- - a spoken screen reader (VoiceOver, TalkBack, or NVDA)
-
--Those five are manual gates. This task did not run the Playwright spec, a
-+These are limits of the recorded runs, not required steps for this local
-+walkthrough. This task did not run the Playwright spec, a
- desktop browser, or a screen reader. [Passkeys](passkeys.md) also says
- physical hardware and platform compatibility still need testing on the
-````
-
-````diff
---- a/docs/platform-guide.md
-+++ b/docs/platform-guide.md
-@@ -3,4 +3,10 @@
- Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
- `a96a1977-3210-4284-8f7d-645793369301`.
-+
-+Start with the shared local tasks in sections 1 through 8. Add directory
-+import or outbound SCIM in sections 9 and 10 only when needed. Sections 11
-+through 13 are optional configured-workflow, SAML and LDAP-listener tasks;
-+section 14 needs invitation mail. None is required to start the small
-+Platform instance or sign in to it.
-
- This is the Platform task guide through its third slice, plus the
-@@ -131,4 +137,16 @@
- That handoff is not a step in this slice.
-
-+This first-install path uses a new store and matching current binaries.
-+Existing stores from older binaries need the separate [offline upgrade
-+procedure](operations.md#rate-limits-and-admission). Startup refuses old or
-+missing security agreements and never adopts them automatically. Stop every
-+riAuth process and verify a pre-upgrade backup before running
-+`security-agreement-record --confirm-authentication-policy --confirm-rate-limits`
-+with the matching-edition maintenance binary. Add `--adopt-missing-agreement`
-+only for a deliberately reviewed missing-row adoption; it cannot bypass a
-+present incompatible row. A conflicting format 3 policy cannot be overwritten
-+by this command. Older binaries refuse format 3; rollback requires the
-+compatible pre-command backup. This is not a step for a fresh small install.
-+
- The [product contracts](roadmap/product-contracts.md) describe the desired
- split. They are a target contract. They are not evidence that every Platform
-@@ -161,5 +179,5 @@
- cookie. It does not write either CLI session file.
-
--Sections 6 and 7 sign the riauthctl session in again if it has expired, then
-+Sections 6 and 7 sign the riauthctl session in again if it is expired or revoked, then
- change groups and the `local-demo` client. `explain`, `audit`, `report`,
- `directory`, and `provision` use the server CLI session from section 2.
-@@ -404,7 +422,11 @@
- that already exists. The client reserves that file before the request and
- writes the one-time secret there. Standard output names `credential_file` and
--omits the secret. Repeating the command needs the same `--idempotency-key`
--and a new secret-file path; the details are in the
--[riauthctl README](../crates/riauthctl/README.md).
-+omits the secret. Direct creation stores no secret in its retry receipt:
-+an exact same-key, same-revision retry returns `409 credential_already_issued`.
-+If creation committed but credential delivery failed, inspect `local-demo`
-+and rotate its secret with a new key, the current revision and a new
-+`--secret-file`; repeating creation does not recover it. Reviewed creation
-+has a separate secret-recovery receipt contract. Both paths are described in
-+the [riauthctl README](../crates/riauthctl/README.md).
-
- `riauth client create` is the server CLI, a separate command. Without both
-@@ -495,5 +517,5 @@
- The dialog text says to pick this device, another device, or a security key
- in the browser prompt. Synced passkeys, phones, and physical keys are part of
--the manual accessibility and authenticator gates below. This slice does not
-+the recorded device and browser limits below. This slice does not
- record a result for them.
-
-@@ -571,4 +593,11 @@
- willing to lose.
-
-+Section 4’s passkey changes revoke this account’s CLI sessions too. Before
-+backup, sign the server CLI in again as the password administrator from `init`:
-+
-+```sh
-+riauth --server http://localhost:9000 login admin
-+```
-+
- ```sh
- riauth-maintenance keygen --out deployment-private/platform-lab/backup.key
-@@ -699,6 +728,21 @@
- ## 6. Create a group and add the administrator
-
--The operator does this with `riauthctl` while `riauth serve` is still running.
--Sign in again when the riauthctl session is missing:
-+If you followed section 5, `serve` is stopped. Restart the **original** lab
-+configuration and leave it running:
-+
-+```sh
-+riauth --config deployment-private/platform-lab/riauth.toml serve
-+```
-+
-+In another terminal, check readiness:
-+
-+```sh
-+curl --fail http://127.0.0.1:9000/readyz
-+```
-+
-+Do not start the restored configuration merely to continue this guide; it is
-+a separate recovery exercise and stays closed while reconciliation is pending.
-+The operator now uses `riauthctl` against the original running server. Sign in
-+again when that session is missing, expired or revoked by a passkey change:
-
- ```sh
-@@ -2297,5 +2341,5 @@
- | `riauth capabilities` | Artifact catalog for the binary on `PATH`. | The first loopback record's `edition` was `essentials`, with `usable` null on every entry. The Platform-catalog record's `edition` was `platform`, `build_features` was `["essentials", "platform"]`, and `usable` was null on every entry. A configured instance's runtime report is a different document. Compiled Platform features are not configured features. |
-
--## Manual accessibility gates
-+## Recorded device and browser limits
-
- [accessibility-journeys.spec.js](../tools/browser/accessibility-journeys.spec.js)
-@@ -2310,5 +2354,6 @@
- - a spoken screen reader (VoiceOver, TalkBack, or NVDA)
-
--Those five are manual gates. This task did not run the Playwright spec or a
-+These are limits of the recorded runs, not required steps for this local
-+walkthrough. This task did not run the Playwright spec or a
- spoken screen reader. Section 4 records one isolated desktop browser on
- loopback. That browser signed in at `/apps` and cancelled the passkey prompt
-@@ -2316,5 +2361,5 @@
- browser that accepted an invitation password and did not start a passkey
- ceremony. Physical keys, synced passkeys, phones, and
--spoken screen readers remain manual gates. [Passkeys](passkeys.md) also says
-+spoken screen readers were not exercised. [Passkeys](passkeys.md) also says
- physical hardware and platform compatibility still need testing on the
- intended devices. The cancelled prompt in section 4 is one loopback
-````
 
 ## One bounded executable plan for root reservation
 
@@ -580,3 +386,39 @@ SHA-256 values still match the committed files, and the guide commit's exact
 scope is the two reserved paths. Report `git diff --check` passed. The separate
 report commit and final clean-tree check are supplied with the explicit-project
 handoff; no runtime/build result is claimed.
+
+## Docs-checker correction — 2026-10-02
+
+Root requested this report-only correction after reviewing the guide commits.
+The two applied embedded diff blocks are replaced by the exact commit/hunk
+mapping above; original proposal text remains at immutable `46a3311`, not
+silently corrected or lost. The original acceptance, findings, historical
+executed results, refusals and unexecuted limits are unchanged. Every byte from
+the bounded-plan section through the former end of report `551a3be` is retained
+unchanged before this appended section (SHA-256
+`63d14495e0cbfc161ea67d88ae5861a66196059a2d4ccae5b6a73524ee2a9f0d`).
+Root's subsequent `fd6d8c8` formats-1/2 refusal/rollback qualification is recorded
+above; neither guide nor the global checker is modified by this correction.
+
+Actual checks performed:
+
+- Before correction, `python3 scripts/check-docs.py` exited **1**: eleven
+  guide-relative missing-link entries in the embedded patches, plus five
+  existing build-directory layout errors.
+- After correction, the same checker exited **1** with **no Markdown link
+  errors**. Its only errors are the pre-existing `target-wave29-source`,
+  `target-wave28-scim`, `target-wave28-portal`, `target-wave28` and
+  `target-wave27` directories. They are preserved; no artifact/evidence was
+  removed or moved to obtain a passing result. This is not a full-check pass.
+- Static comparison against `git show --format= --unified=0 6a5879f` verified
+  **19/19** exact applied hunk coordinates in the map. All report-local Markdown
+  link destinations exist. Original acceptance/findings/historical evidence
+  and all later evidence were compared byte-for-byte as described above.
+- `git diff --check` passed. Changed scope is this report only; staged
+  whitespace/scope and final commit/clean-tree results accompany the handoff.
+
+Build and runtime remain held until root releases the signer/budget slot.
+No Cargo, executable walkthrough, installation, service, browser, desktop,
+source/guide edit, merge, push or task-status mutation occurred in this phase.
+D01 remains in_progress; its original independent-user/operator gate is not
+replaced by the link check. Root owns integration and closure.
