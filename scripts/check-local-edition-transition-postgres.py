@@ -18,6 +18,9 @@ import re
 import subprocess
 import tempfile
 import time
+import tomllib
+import urllib.error
+import urllib.request
 
 
 def load(name, path):
@@ -30,6 +33,11 @@ def load(name, path):
 ROOT = pathlib.Path(__file__).resolve().parent
 matrix = load("exact_matrix", ROOT / "check-exact-edition-matrix.py")
 gate = load("installed_gate", ROOT / "check-installed-release-gate.py")
+encrypted_fixture = load("encrypted_fixture", ROOT / "check-local-encrypted-edition-transition.py")
+RATE_NAMES = frozenset(("portal_start", "portal_approve", "login", "passkey", "account",
+                        "source_start", "source_callback", "saml", "mfa", "device_start",
+                        "device_verify", "browser_decision", "browser_state",
+                        "forward_auth", "outpost_start", "general"))
 EXCLUDED = {
     "meta/revision", "meta/version_activation", "meta/edition_provenance",
     "meta/node_security",
@@ -68,15 +76,19 @@ def transition_metadata(programs, port, database):
         if name in TRANSITION_METADATA:
             result[name] = json.loads(bytes.fromhex(value_hex))
     matrix.require(set(result) == TRANSITION_METADATA, "transition metadata is incomplete")
-    matrix.require(result["meta/node_security"]["format"] == 2,
-                   "transition requires a current security agreement")
+    matrix.require(result["meta/node_security"]["format"] == 3,
+                   "transition requires a current format-3 security agreement")
+    rates = result["meta/node_security"]["effective_rate_limits"]
+    matrix.require(set(rates) == RATE_NAMES and
+                   all(type(value) is int and 1 <= value <= 100_000 for value in rates.values()),
+                   "format-3 effective rate map is incomplete or invalid")
     return result
 
 
 def require_target_metadata(before, after, target):
     matrix.require(after["meta/issuer"] == before["meta/issuer"],
                    "transition changed the issuer")
-    for field in ("issuer", "authentication"):
+    for field in ("issuer", "authentication", "effective_rate_limits"):
         matrix.require(after["meta/node_security"][field] == before["meta/node_security"][field],
                        f"transition changed security agreement {field}")
     matrix.require(after["meta/node_security"]["active_capabilities"] !=
@@ -88,8 +100,112 @@ def require_target_metadata(before, after, target):
 
 
 def require_preserved(before, after, direction):
-    changed = sorted(key for key, value in before.items() if after.get(key) != value)
+    changed = sorted(set(before).symmetric_difference(after) |
+                     {key for key, value in before.items() if after.get(key) != value})
     matrix.require(not changed, f"{direction} changed or removed stored rows: {changed}")
+
+
+def authenticated_status(base, path, token):
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(base + path, headers={"Authorization": "Bearer " + token})
+    try:
+        with opener.open(request, timeout=5) as response:
+            response.read()
+            return response.status
+    except urllib.error.HTTPError as error:
+        error.read()
+        return error.code
+
+
+def ordinary_fixture(server, config, base, scratch):
+    # Reuse only the live fixture; never the historical format-2 metadata/run/probe.
+    encrypted_fixture.live_identity_and_grant(server, config, base, scratch)
+    session = scratch / "group-admin-session.json"
+    with gate.serving(server, config, base, scratch / "group-fixture.log"):
+        gate.remote(server, base, session, "login", "admin", "--password-stdin",
+                    input="q08-disposable-password\n")
+        for command in (("group", "create", "shared-fixture"),
+                        ("group", "add-member", "shared-fixture", "delegate")):
+            revision = gate.remote(server, base, session, "revision")["revision"]
+            gate.cli(server, "--server", base, "--session-file", session, "--non-interactive",
+                     "--if-revision", revision, "--idempotency-key", os.urandom(16).hex(), *command)
+        gate.remote(server, base, session, "logout")
+
+
+def shared_probe(server, config, base, scratch, revoked_token=None):
+    session = scratch / f"delegate-{time.monotonic_ns()}.json"
+    admin = scratch / f"admin-{time.monotonic_ns()}.json"
+    with gate.serving(server, config, base, scratch / f"shared-{time.monotonic_ns()}.log"):
+        if revoked_token is not None:
+            matrix.require(authenticated_status(base, "/api/me", revoked_token) == 401,
+                           "previously logged-out session became valid")
+        gate.remote(server, base, session, "login", "delegate", "--password-stdin",
+                    input="q08-delegate-disposable-password\n")
+        me = gate.remote(server, base, session, "whoami")
+        matrix.require(me["user"]["username"] == "delegate" and not me["user"]["admin"],
+                       "ordinary credential did not identify the same non-admin user")
+        token = json.loads(session.read_text())["token"]
+        matrix.require(authenticated_status(base, "/api/audit?limit=1", token) == 200,
+                       "active auditor grant stopped authorizing audit read")
+        matrix.require(authenticated_status(base, "/api/users", token) == 403,
+                       "ordinary auditor gained user administration")
+        time.sleep(0.2)
+        again = gate.remote(server, base, session, "whoami")
+        matrix.require(again["expires_at"] == me["expires_at"], "session expiry was renewed")
+        gate.remote(server, base, session, "logout")
+        matrix.require(authenticated_status(base, "/api/me", token) == 401,
+                       "logout failed to revoke the session")
+        gate.remote(server, base, admin, "login", "admin", "--password-stdin",
+                    input="q08-disposable-password\n")
+        grants = gate.remote(server, base, admin, "grants", "get", "delegate")
+        matrix.require(grants["grants"] == [{"role": "auditor", "scope": "audit/events",
+                                            "target_id": "events"}], "auditor grant changed")
+        group = gate.remote(server, base, admin, "get", "group", "shared-fixture")
+        matrix.require(me["groups"], "ordinary membership missing")
+        gate.remote(server, base, admin, "logout")
+        return {"user": me["user"], "groups": me["groups"], "group": group,
+                "grants": grants, "audit_status": 200, "users_status": 403}, token
+
+
+def shared_config_refusals(programs, port, database, server, maintenance, config, base, scratch):
+    original = config.read_text()
+    parsed = tomllib.loads(original)
+    baseline = rows(programs, port, database)
+    metadata = transition_metadata(programs, port, database)
+    candidates = {}
+    authentication, count = re.subn(r"(?m)^(session_ttl\s*=\s*)\d+$",
+                                   lambda m: m[1] + str(parsed["session_ttl"] + 1), original)
+    matrix.require(count == 1, "session_ttl configuration field missing")
+    candidates["authentication"] = (authentication, "Configured token lifetimes or password policy")
+    value = metadata["meta/node_security"]["effective_rate_limits"]["general"] + 1
+    if "general" in parsed.get("rate_limits", {}):
+        rate, count = re.subn(r"(?m)^(general\s*=\s*)\d+$", lambda m: m[1] + str(value), original)
+        matrix.require(count == 1, "general rate configuration field missing")
+    elif re.search(r"(?m)^\[rate_limits\]\s*$", original):
+        rate, count = re.subn(r"(?m)^\[rate_limits\]\s*$",
+                             lambda m: m[0] + f"\ngeneral = {value}", original)
+        matrix.require(count == 1, "duplicate rate_limits table")
+    else:
+        rate = original + f"\n[rate_limits]\ngeneral = {value}\n"
+    matrix.require(tomllib.loads(rate)["rate_limits"]["general"] == value, "rate fixture invalid")
+    candidates["rate"] = (rate, "Configured HTTP rate limit for general")
+    for label, (text, message) in candidates.items():
+        candidate = scratch / f"refuse-{label}.toml"
+        candidate.write_text(text)
+        blocked = gate.cli(maintenance, "--config", candidate,
+                           "transition-plan", "--target", "platform", expected=5)
+        matrix.require(any(item["resource"] == "meta/node_security"
+                           for item in blocked["data"]["blockers"]), "shared configuration was ignored")
+        refused = gate.cli(server, "--config", candidate, "serve", expected=None)
+        matrix.require(message in refused["error"]["message"], "shared configuration startup refusal changed")
+        matrix.require(rows(programs, port, database) == baseline and
+                       transition_metadata(programs, port, database) == metadata,
+                       "configuration refusal changed stored rows or security agreement")
+        try:
+            status = gate.get_status(base + "/readyz")
+        except OSError:
+            status = None
+        matrix.require(status != 200, "refused process left a serving listener")
 
 
 def main():
@@ -136,6 +252,10 @@ def main():
             config, base = matrix.init_instance(essentials / "riauth-maintenance",
                                                 root / "config", pg_config)
             first = matrix.serve(essentials / "riauth", config, base)
+            ordinary_fixture(essentials / "riauth", config, base, scratch)
+            shared_before, revoked_token = shared_probe(essentials / "riauth", config, base, scratch)
+            shared_config_refusals(programs, port, database, essentials / "riauth",
+                                   platform_bins / "riauth-maintenance", config, base, scratch)
             before = rows(programs, port, database)
             before_metadata = transition_metadata(programs, port, database)
             matrix.require(any(key.startswith("users/") for key in before), "no identities stored")
@@ -168,7 +288,11 @@ def main():
                                "connected client did not block activation")
             finally:
                 connected.terminate()
-                connected.wait(timeout=5)
+                try:
+                    connected.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    connected.kill()
+                    connected.wait(timeout=5)
             for _ in range(200):
                 remaining = subprocess.check_output([
                     programs["psql"], "-h", "127.0.0.1", "-p", str(port), "-U", "riauth_test",
@@ -188,6 +312,8 @@ def main():
             upgraded_metadata = transition_metadata(programs, port, database)
             require_target_metadata(before_metadata, upgraded_metadata, "platform")
             second = matrix.serve(platform_bins / "riauth", config, base)
+            shared_platform, _ = shared_probe(platform_bins / "riauth", config, base, scratch, revoked_token)
+            matrix.require(shared_platform == shared_before, "upgrade changed shared identity/authorization")
             refused = gate.cli(essentials / "riauth", "--config", config, "serve", expected=None)
             matrix.require("Platform" in refused["error"]["message"] or
                            "compiled capability" in refused["error"]["message"],
@@ -207,6 +333,8 @@ def main():
                            before_metadata["meta/node_security"]["active_capabilities"],
                            "Essentials active capabilities were not restored")
             third = matrix.serve(essentials / "riauth", config, base)
+            shared_return, _ = shared_probe(essentials / "riauth", config, base, scratch, revoked_token)
+            matrix.require(shared_return == shared_before, "downgrade changed shared identity/authorization")
             report = {"schema": "riauth.local-native-postgres-transition/v1",
                       "release_gate_result": False, "architecture": "linux/aarch64",
                       "backend": "postgresql", "postgres_version": subprocess.check_output(
@@ -219,6 +347,12 @@ def main():
                       "downgrade_preserved_rows": len(before_down),
                       "other_client_refused": True,
                       "issuer_and_authentication_preserved": True,
+                      "agreement_format": 3, "all_effective_rates_preserved": True,
+                      "shared_configuration_refusals": ["authentication", "general_rate"],
+                      "shared_identity_authorization_sample": "passed",
+                      "shared_sample_sha256": hashlib.sha256(json.dumps(
+                          shared_before, sort_keys=True).encode()).hexdigest(),
+                      "full_shared_gate": "not_certified",
                       "active_capabilities_switched": True,
                       "edition_and_version_metadata_coordinated": True,
                       "editions": [first["edition"], second["edition"], third["edition"]]}
