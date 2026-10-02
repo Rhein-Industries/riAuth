@@ -1,14 +1,22 @@
+mod access;
 mod admin;
 mod agent;
 mod approval;
+mod archive;
+mod backup;
 mod certificates;
+mod directory;
 mod invitation;
 mod keys;
 mod management;
+mod offboard;
+mod plans;
+mod provision;
 mod registration;
 mod review;
 mod session;
 mod source;
+mod ssf;
 mod transport;
 mod usb;
 mod windows_device;
@@ -138,6 +146,46 @@ enum Command {
         #[command(subcommand)]
         command: source::SourceCommand,
     },
+    /// Create, list and delete Shared Signals streams (Platform).
+    Ssf {
+        #[command(subcommand)]
+        command: ssf::SsfCommand,
+    },
+    /// Take a consistent encrypted backup of the running instance.
+    ///
+    /// Streams a riauth.backup/v3 archive into a new private file and publishes it under --out
+    /// only after the whole archive authenticates with the backup key. For this command
+    /// --request-timeout bounds each wait for data, not the whole transfer.
+    Backup {
+        /// Private file holding the backup key (32 random bytes, base64url), as `riauth keygen` writes it.
+        #[arg(long)]
+        key_file: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// Largest archive to accept, in bytes; the server's own quota also applies.
+        #[arg(long, default_value_t = archive::MAX_ARCHIVE_BYTES, value_parser = clap::value_parser!(u64).range(32..=4_294_967_296))]
+        max_bytes: u64,
+    },
+    /// Request, approve, deny and revoke temporary group access.
+    Access {
+        #[command(subcommand)]
+        command: access::AccessCommand,
+    },
+    /// Schedule, reschedule and cancel offboarding, and read its jobs.
+    Offboard {
+        #[command(subcommand)]
+        command: offboard::OffboardCommand,
+    },
+    /// Plan and apply LDAP, Google Workspace and Microsoft Entra directory syncs.
+    Directory {
+        #[command(subcommand)]
+        command: directory::DirectoryCommand,
+    },
+    /// Plan and apply SCIM provisioning, and resolve its jobs and deactivations.
+    Provision {
+        #[command(subcommand)]
+        command: provision::ProvisionCommand,
+    },
     /// Create, rotate, revoke and list scoped agent credentials.
     Agent {
         #[command(subcommand)]
@@ -198,6 +246,10 @@ enum Command {
     Apply {
         #[arg(long)]
         plan: PathBuf,
+        /// The exact plan_id of a plan whose removals you reviewed. Sent only when
+        /// given; a plan that removes access cannot be applied without it.
+        #[arg(long, allow_hyphen_values = true)]
+        confirm_removals: Option<String>,
     },
     /// Save the non-secret desired-state manifest. Delivery secrets stay on the server.
     Export {
@@ -273,6 +325,21 @@ async fn run(cli: Cli) -> Result<Value> {
         key.is_empty() || key.len() > 128 || !key.bytes().all(|byte| byte.is_ascii_graphic())
     }) {
         bail!("Idempotency key must contain 1–128 printable ASCII characters without spaces");
+    }
+    // Plans are bound by their own id and the server checks the revision they
+    // were made at; these commands send neither header. A flag that would be
+    // ignored is refused instead, so nobody believes a precondition was sent.
+    if (cli.if_revision.is_some() || cli.idempotency_key.is_some())
+        && match &cli.command {
+            Command::Plan { .. } | Command::Apply { .. } => true,
+            Command::Directory { command } => directory::plan_bound(command),
+            Command::Provision { command } => provision::plan_bound(command),
+            _ => false,
+        }
+    {
+        bail!(
+            "This command does not send a revision or request key; the server binds the plan itself. Remove --if-revision and --idempotency-key"
+        );
     }
     let remote = Remote::new(
         cli.server
@@ -397,6 +464,18 @@ async fn run(cli: Cli) -> Result<Value> {
         }
         Command::Radius { command } => certificates::radius(&remote, command, &mutation).await,
         Command::Source { command } => source::run(&remote, command, &mutation).await,
+        Command::Ssf { command } => ssf::run(&remote, command, &mutation).await,
+        Command::Backup {
+            key_file,
+            out,
+            max_bytes,
+        } => backup::run(&remote, &key_file, &out, max_bytes, cli.run_id.as_deref()).await,
+        Command::Access { command } => access::run(&remote, command, &mutation).await,
+        Command::Offboard { command } => offboard::run(&remote, command, &mutation).await,
+        Command::Directory { command } => {
+            directory::run(&remote, command, cli.run_id.as_deref()).await
+        }
+        Command::Provision { command } => provision::run(&remote, command, &mutation).await,
         Command::Agent { command } => agent::run(&remote, command, &mutation).await,
         Command::Grants { command } => review::grants(&remote, command, &mutation).await,
         Command::Group { command } => admin::group(&remote, command, &mutation).await,
@@ -429,7 +508,18 @@ async fn run(cli: Cli) -> Result<Value> {
         Command::Plan { file, out } => {
             management::plan(&remote, &file, &out, cli.run_id.as_deref()).await
         }
-        Command::Apply { plan } => management::apply(&remote, &plan, cli.run_id.as_deref()).await,
+        Command::Apply {
+            plan,
+            confirm_removals,
+        } => {
+            management::apply(
+                &remote,
+                &plan,
+                cli.run_id.as_deref(),
+                confirm_removals.as_deref(),
+            )
+            .await
+        }
         Command::Export { out } => management::export(&remote, &out, cli.run_id.as_deref()).await,
         Command::Passkey { command } => {
             if remote.is_agent() {

@@ -225,12 +225,10 @@ impl Core {
         // Stored connector definitions join this process's configuration here,
         // read-only, before the agreement check and before any worker starts.
         let (config, connectors) = crate::connector_definitions::merge(config, &store)?;
-        // An existing agreement is compared before any startup write. A missing
-        // row is recorded only after the read-only edition and capability gates,
-        // so a refused build does not become canonical.
+        // Compare the complete agreement before any startup write. Old or missing
+        // rows require explicit offline recording, never automatic adoption.
         crate::node_security::enforce(&config, &store)?;
         crate::capability::validate_store(&config, &store)?;
-        crate::node_security::adopt_if_absent(&config, &store)?;
         crate::upgrade::migrate(&store)?;
         crate::recovery::verify_lineage(&store)?;
         crate::context::scrub_legacy_issuance_receipts_on_open(&store)?;

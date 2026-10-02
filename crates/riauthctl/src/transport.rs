@@ -17,6 +17,9 @@ const MAX_CA_BYTES: u64 = 1024 * 1024;
 pub(crate) struct Remote {
     pub(crate) issuer: String,
     http: Client,
+    /// For one large streamed response: no total deadline, only a bound on
+    /// the connection and on each wait for the next bytes.
+    streaming: Client,
     session_file: PathBuf,
     agent_file: Option<PathBuf>,
     private_default_dir: bool,
@@ -40,6 +43,9 @@ struct RequestHeaders<'a> {
     bearer: Option<&'a str>,
     run_id: Option<&'a str>,
     mutation: Option<&'a MutationHeaders>,
+    /// The exact plan id whose removals the caller confirmed, sent as the two
+    /// confirmation headers the server CLI sends.
+    confirm_removals: Option<&'a str>,
 }
 
 pub(crate) enum Credential {
@@ -77,28 +83,40 @@ impl Remote {
         request_timeout: u64,
     ) -> Result<Self> {
         validate_server_url(issuer)?;
-        let mut builder = Client::builder()
-            .timeout(Duration::from_secs(request_timeout))
-            .redirect(reqwest::redirect::Policy::none())
-            .no_proxy();
-        if let Some(path) = ca_cert {
-            let file = fs::File::open(path).context("Cannot read CA certificate")?;
-            let metadata = file.metadata()?;
-            if !metadata.is_file() || metadata.len() > MAX_CA_BYTES {
-                bail!("CA certificate must be a bounded regular file");
+        let ca = match ca_cert {
+            Some(path) => {
+                let file = fs::File::open(path).context("Cannot read CA certificate")?;
+                let metadata = file.metadata()?;
+                if !metadata.is_file() || metadata.len() > MAX_CA_BYTES {
+                    bail!("CA certificate must be a bounded regular file");
+                }
+                let mut pem = Vec::new();
+                file.take(MAX_CA_BYTES + 1).read_to_end(&mut pem)?;
+                if pem.len() as u64 > MAX_CA_BYTES {
+                    bail!("CA certificate exceeds its size limit");
+                }
+                Some(reqwest::Certificate::from_pem(&pem)?)
             }
-            let mut pem = Vec::new();
-            file.take(MAX_CA_BYTES + 1).read_to_end(&mut pem)?;
-            if pem.len() as u64 > MAX_CA_BYTES {
-                bail!("CA certificate exceeds its size limit");
+            None => None,
+        };
+        let build = |builder: reqwest::ClientBuilder| -> Result<Client> {
+            let mut builder = builder
+                .redirect(reqwest::redirect::Policy::none())
+                .no_proxy();
+            if let Some(certificate) = &ca {
+                builder = builder.add_root_certificate(certificate.clone());
             }
-            builder = builder.add_root_certificate(reqwest::Certificate::from_pem(&pem)?);
-        }
+            Ok(builder.build()?)
+        };
+        let wait = Duration::from_secs(request_timeout);
+        let http = build(Client::builder().timeout(wait))?;
+        let streaming = build(Client::builder().connect_timeout(wait).read_timeout(wait))?;
         let private_default_dir = session_file.is_none();
         let session_file = session_file.map(Ok).unwrap_or_else(session::default_path)?;
         Ok(Self {
             issuer: issuer.into(),
-            http: builder.build()?,
+            http,
+            streaming,
             session_file,
             agent_file,
             private_default_dir,
@@ -130,6 +148,7 @@ impl Remote {
                     bearer: None,
                     run_id: None,
                     mutation: None,
+                    confirm_removals: None,
                 },
             )
             .await?;
@@ -263,6 +282,7 @@ impl Remote {
                 bearer,
                 run_id,
                 mutation: None,
+                confirm_removals: None,
             },
         )
         .await
@@ -291,6 +311,7 @@ impl Remote {
                 bearer: Some(bearer),
                 run_id,
                 mutation: Some(&mutation),
+                confirm_removals: None,
             },
         )
         .await
@@ -364,26 +385,91 @@ impl Remote {
         if_revision: Option<u64>,
         idempotency_key: Option<&str>,
     ) -> Result<Value> {
+        self.mutate_with(
+            method,
+            path,
+            body,
+            run_id,
+            if_revision,
+            idempotency_key,
+            false,
+        )
+        .await
+    }
+
+    /// Like `mutate`, for self-service decisions such as temporary access: a
+    /// principal that may not read the configuration revision (a configured
+    /// approver without `state.read`) still sends its `Idempotency-Key`, and the
+    /// revision only when `--if-revision` supplies it. The server accepts that
+    /// for these routes; any other revision failure is still an error.
+    pub(crate) async fn mutate_optional_revision<T: Serialize + ?Sized>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&T>,
+        run_id: Option<&str>,
+        if_revision: Option<u64>,
+        idempotency_key: Option<&str>,
+    ) -> Result<Value> {
+        self.mutate_with(
+            method,
+            path,
+            body,
+            run_id,
+            if_revision,
+            idempotency_key,
+            true,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn mutate_with<T: Serialize + ?Sized>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&T>,
+        run_id: Option<&str>,
+        if_revision: Option<u64>,
+        idempotency_key: Option<&str>,
+        revision_optional: bool,
+    ) -> Result<Value> {
         let verified = self.verify_issuer().await?;
         let credential = self.credential(&verified)?;
         let revision = match if_revision {
-            Some(revision) => revision,
-            None => self
-                .request_api(
-                    &verified,
-                    Method::GET,
-                    "/api/state/revision",
-                    None::<&()>,
-                    Some(credential.token()),
-                    run_id,
-                )
-                .await?
-                .get("revision")
-                .and_then(Value::as_u64)
-                .context("Revision response is missing a numeric revision")?,
+            Some(revision) => Some(revision),
+            None => {
+                let read = self
+                    .request_api(
+                        &verified,
+                        Method::GET,
+                        "/api/state/revision",
+                        None::<&()>,
+                        Some(credential.token()),
+                        run_id,
+                    )
+                    .await;
+                match read {
+                    Ok(value) => Some(
+                        value
+                            .get("revision")
+                            .and_then(Value::as_u64)
+                            .context("Revision response is missing a numeric revision")?,
+                    ),
+                    Err(error)
+                        if revision_optional
+                            && error
+                                .downcast_ref::<HttpFailure>()
+                                .is_some_and(|failure| failure.status == 403) =>
+                    {
+                        None
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
         };
         let headers = MutationHeaders {
-            revision: Some(revision),
+            revision,
             idempotency_key: idempotency_key
                 .map(str::to_owned)
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
@@ -397,6 +483,92 @@ impl Remote {
                 bearer: Some(credential.token()),
                 run_id,
                 mutation: Some(&headers),
+                confirm_removals: None,
+            },
+        )
+        .await
+    }
+
+    /// A connector or provisioning plan request. It carries no revision or
+    /// request key, as the server CLI sends none for these: a plan is bound by
+    /// its exact id, and a repeated page request must not replay an old page.
+    /// `confirm_removals` names the plan whose removals the caller confirmed.
+    /// POST a JSON body and hand back the successful response unread, for a
+    /// body too large to buffer. A failure status is decoded like any other
+    /// request, so only a safe error code reaches the caller.
+    pub(crate) async fn open_stream<T: Serialize + ?Sized>(
+        &self,
+        path: &str,
+        body: &T,
+        run_id: Option<&str>,
+    ) -> Result<Response> {
+        if !path.starts_with('/') || path.starts_with("//") || path.contains('#') {
+            bail!("Invalid API path");
+        }
+        let verified = self.verify_issuer().await?;
+        let credential = self.credential(&verified)?;
+        let url = format!("{}{}", verified.api_base.trim_end_matches('/'), path);
+        let mut request = self
+            .streaming
+            .post(url)
+            .bearer_auth(credential.token())
+            .json(body);
+        if let Some(run_id) = run_id {
+            request = request.header("x-riauth-run-id", run_id);
+        }
+        let response = request.send().await?;
+        if response.status().is_success() {
+            return Ok(response);
+        }
+        decode_response(response).await?;
+        bail!("Unexpected response")
+    }
+
+    pub(crate) async fn plan_request<T: Serialize + ?Sized>(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&T>,
+        run_id: Option<&str>,
+        confirm_removals: Option<&str>,
+    ) -> Result<Value> {
+        let verified = self.verify_issuer().await?;
+        let credential = self.credential(&verified)?;
+        self.request_api_confirmed(
+            &verified,
+            method,
+            path,
+            body,
+            credential.token(),
+            run_id,
+            confirm_removals,
+        )
+        .await
+    }
+
+    /// A request on an already verified issuer that may carry the removal
+    /// confirmation: the exact plan id in both headers, only when given.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn request_api_confirmed<T: Serialize + ?Sized>(
+        &self,
+        verified: &VerifiedIssuer,
+        method: Method,
+        path: &str,
+        body: Option<&T>,
+        bearer: &str,
+        run_id: Option<&str>,
+        confirm_removals: Option<&str>,
+    ) -> Result<Value> {
+        self.request_at(
+            &verified.api_base,
+            method,
+            path,
+            body,
+            RequestHeaders {
+                bearer: Some(bearer),
+                run_id,
+                mutation: None,
+                confirm_removals,
             },
         )
         .await
@@ -423,6 +595,11 @@ impl Remote {
         }
         if let Some(run_id) = headers.run_id {
             request = request.header("x-riauth-run-id", run_id);
+        }
+        if let Some(plan_id) = headers.confirm_removals {
+            request = request
+                .header("x-riauth-confirm-removals", plan_id)
+                .header("x-riauth-confirm-cloud-removals", plan_id);
         }
         if let Some(mutation) = headers.mutation {
             if let Some(revision) = mutation.revision {

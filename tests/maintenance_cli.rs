@@ -47,6 +47,119 @@ fn path(path: &Path) -> &str {
 }
 
 #[test]
+fn rate_agreement_upgrade_and_missing_adoption_require_explicit_flags() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = Config {
+        data_dir: dir.path().join("data"),
+        ..Default::default()
+    };
+    let file = dir.path().join("riauth.toml");
+    write_private(
+        &file,
+        toml::to_string_pretty(&config).unwrap().as_bytes(),
+        false,
+    )
+    .unwrap();
+    let core = Core::initialize(
+        config.clone(),
+        riauth::model::NewUser {
+            username: "admin".into(),
+            password: "maintenance-fixture-password".into(),
+            display_name: "Administrator".into(),
+            email: None,
+            admin: true,
+        },
+    )
+    .unwrap();
+    let mut old = core
+        .store
+        .get::<Value>("meta", "node_security")
+        .unwrap()
+        .unwrap();
+    old["format"] = serde_json::json!(2);
+    old.as_object_mut().unwrap().remove("effective_rate_limits");
+    core.store
+        .write(|tx| tx.put("meta", "node_security", &old))
+        .unwrap();
+    drop(core);
+    let snapshot = || {
+        riauth::store::Store::from_config(&config)
+            .unwrap()
+            .read(|tx| tx.snapshot())
+            .unwrap()
+    };
+    let same = |before: &std::collections::BTreeMap<String, Value>| {
+        let after = snapshot();
+        // Keys only: snapshot values include credential material.
+        let changes: std::collections::BTreeSet<_> = before
+            .keys()
+            .chain(after.keys())
+            .filter(|key| before.get(*key) != after.get(*key))
+            .collect();
+        assert!(changes.is_empty(), "Unexpected changed keys: {changes:?}");
+    };
+    let run = |flags: &[&str]| {
+        let mut args = vec![
+            "--config",
+            path(&file),
+            "--json",
+            "security-agreement-record",
+        ];
+        args.extend_from_slice(flags);
+        maintenance(&args, None)
+    };
+    let before = snapshot();
+    for flags in [
+        vec![],
+        vec!["--confirm-authentication-policy"],
+        vec!["--confirm-rate-limits"],
+    ] {
+        assert_eq!(run(&flags).status.code(), Some(2));
+        same(&before);
+    }
+    let confirmed = ["--confirm-authentication-policy", "--confirm-rate-limits"];
+    let recorded = data(run(&confirmed));
+    assert_eq!(recorded["recorded"], true);
+    assert_eq!(recorded["format"], 3);
+    assert_eq!(
+        recorded["effective_rate_limits"].as_object().unwrap().len(),
+        16
+    );
+    let after = snapshot();
+    let changed: std::collections::BTreeSet<_> = before
+        .keys()
+        .chain(after.keys())
+        .filter(|key| before.get(*key) != after.get(*key))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        changed,
+        std::collections::BTreeSet::from(["meta/node_security"])
+    );
+    assert_eq!(data(run(&confirmed))["recorded"], false);
+    same(&after);
+    let store = riauth::store::Store::from_config(&config).unwrap();
+    store
+        .write(|tx| tx.delete("meta", "node_security"))
+        .unwrap();
+    drop(store);
+    let missing = snapshot();
+    assert_eq!(run(&confirmed).status.code(), Some(2));
+    same(&missing);
+    let adopted = data(run(&[
+        "--confirm-authentication-policy",
+        "--confirm-rate-limits",
+        "--adopt-missing-agreement",
+    ]));
+    assert_eq!(adopted["recorded"], true);
+    assert_eq!(adopted["format"], 3);
+    assert_eq!(
+        snapshot()["meta/node_security"],
+        after["meta/node_security"]
+    );
+}
+
+#[test]
 fn help_exposes_only_offline_commands_and_remote_input_has_no_effect() {
     let help = maintenance(&["--help"], None);
     assert!(help.status.success());

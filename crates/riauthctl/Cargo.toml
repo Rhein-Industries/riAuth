@@ -16,12 +16,14 @@ terminal-usb = ["dep:webauthn-authenticator-rs", "dep:futures-util"]
 
 [dependencies]
 anyhow = "1"
+aws-lc-rs = { version = "1.18.1", default-features = false, features = ["aws-lc-sys"] }
+base64 = "0.23"
 clap = { version = "4.6", features = ["derive", "env"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls"] }
 rpassword = "7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }
 url = "2.5"
 uuid = { version = "1", features = ["v4"] }
 zeroize = "1.9"

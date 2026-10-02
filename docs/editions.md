@@ -57,7 +57,16 @@ referenced records.
 
 For a marked Platform store with no Platform dependency, the Platform
 maintenance binary can perform an explicit Essentials handoff. Stop every
-riAuth writer and use the exact target configuration for both commands:
+riAuth writer.
+
+First complete any explicit security-agreement upgrade with the source-edition
+maintenance binary and a verified backup; old or missing agreements are not
+adopted by an edition transition. The format-3 agreement's all-16 effective HTTP
+rates must match the candidate configuration and are preserved across the
+handoff, alongside authentication policy. See the
+[offline agreement procedure](operations.md#rate-limits-and-admission).
+
+Use the exact target configuration for both commands:
 
 ```sh
 riauth-maintenance --config /etc/riauth/riauth.toml --json transition-plan --target essentials
