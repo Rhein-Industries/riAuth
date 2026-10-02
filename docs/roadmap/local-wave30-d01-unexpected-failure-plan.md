@@ -377,3 +377,104 @@ this WT. No pre-existing docs/build-layout error remained in these checks.
 Report source is ready for immutable root review; proposed helper ownership,
 source materialization, memory execution and real fixture remain separate
 HELD decisions. Failure cause/sender and true cleanup-start bound remain unknown.
+
+## Approved observer materialization — actual source-only receipt
+
+Date: 2026-10-02. Reservation:
+`wave30_D01_unexpected_failure_observer_materialization`.
+Root fully reviewed the preceding immutable1e50d3e plan and exact seven-hunk
+candidate. This phase materializes that approved source only. No observer,
+helper, old78-case/new memory harness, module main, native/provider/CLI/HTTP/
+socket/listener/Driver/browser/Cargo or runtime operation was performed.
+No runtime slot was taken or released; no runtime/cause result is inferred.
+
+### Three separate commit roles
+
+1. BASELINE-ONLY preparation commit
+   `bf2aff3f00d3adb02b7b900ac5aeb4279dd8579e` imports only the formerly absent
+   `scripts/d01-confidential-browser-demo.py` from published
+   `69f46cf75390cde70a992eb528c7ee5f769aeeca`.
+   Its entire32723 bytes/695 lines match7fbc SHA-256 exactly; Git mode100644,
+   baseline blob `3d3379399126423a6a5588a6bd55ea4ac1723ebd`.
+   This matches both fixed94054b3 and accepted470 full helper bytes too.
+   Root must NOT integrate this preparation commit. No other published path
+   or tree was imported, and branch/history were not aligned.
+2. Source-only commit
+   `3c9c63bb217bfc20614e62ef7116e6e2abad0170` contains precisely the seven
+   reviewed insertions, one file/62 added lines, no deletions or other delta.
+   Helper35711 bytes/757 lines, mode100644, blob
+   `d980f87959b6a14126c52c07a24bf859ccd26766`, SHA-256
+   `c0c022ecd91d92c19058b31d413864c980fe6b0ddfbd1303a45be629afd900e9`.
+   Its parent is the local preparation commit, but its additive source delta
+   is the root integration unit against the already-published baseline.
+3. A separate report-only evidence commit appends this receipt. Its immutable
+   hash is returned in the handoff after committing. Integrate only the
+   source/evidence deltas if root approves, preserving other accepted docs.
+
+The existing plan is retained as a complete24372-byte/379-line prefix,
+SHA-256 `85409506c980b1cd41eae70d300fdbdc5d95e51de12c6753b21b46b1bb4c7988`.
+Its earlier helper-absent/source-proposed statements are dated design evidence;
+this appendix records actual materialization, not a retroactive runtime pass.
+Every old failure, unknown cause/sender, source-phase inspection error and
+cleanup first-event limitation remains intact.
+
+### Actual preservation and finite source checks
+
+The implementation was reconstructed only from the exact reviewed immutable
+zero-context fence, SHA-256
+`68c4c00de5e5945b6205ee7e377f28af9645bfc4523fb098acb7333e354ce891`.
+Actual final spans224–270 (47 lines),283 (1),428–431 (4),524–527 (4),616 (1),
+657 (1),680–683 (4) match the approved seven additions and total62 lines.
+Removing those spans reconstructs the entire local/published32723-byte baseline,
+including all695 original lines, every old function/branch and final newline.
+No replaced/deleted baseline line or mode change exists.
+
+AST parse/in-memory code-object compile passed for the actual baseline and
+materialized candidate, without executing/importing either. Normalization
+removed exactly one new observer definition, three exact guarded observation
+calls, two holder/shared-record assignments and one record dict field.
+The resulting full AST equals the complete old AST with locations excluded,
+including all35 original functions and every original short-circuit predicate,
+exception header, assignment/call order and finally/cleanup branch.
+
+Thus firstfail/failure tags, terminaldone, replies/send_error, request parser,
+strict Host/body/cookie/target guards, first-three403/fourth-terminal refusal,
+postflow400 Authorization refusal, credential short circuit, crypto/verifier
+pins, printed issuer and all original budgets/deadlines remain exact old nodes.
+This is byte/source preservation proof, not execution of those predicates.
+Only the explicitly approved private observation holder/calls are additive.
+
+Actual observer AST checks confirm three guarded call sites, no observer import/
+raise/I/O/print/str/repr/exec/eval/compile, no error arguments/cause/context,
+locals/path/filename read into output, one range64 scan and ten closed own
+function labels. Frame matching uses explicit code-object is; maximum640 fixed
+comparisons. Literal enum/schema calculation confirms at most160 ASCII JSON
+bytes in the holder, within the reviewed256-byte planning bound. No projection
+truth table or candidate function was executed. First-only latch/projection-
+write-failure behavior remains to be checked by a separately reviewed finite
+memory envelope; source checking does not award it an actual behavioral pass.
+
+Actual source-stage repository checks all EXIT0: docs link/build-layout checker,
+tracked hygiene (967 files), Git staged whitespace and sole-helper staged scope.
+Source commit's exact file/hash/mode/parent were checked; it was clean before
+this report appendix. No current-phase static command failed. No pre-existing
+docs/build-layout error remained. Final report-stage docs/hygiene/whitespace
+checks also EXIT0 (967 files); full-prefix, sole-report append, unchanged
+committed source and no-unstaged/untracked scope checks passed.
+
+### Remaining authority and evidence boundaries
+
+No validation harness was implemented or executed. A future observer-aware
+finite envelope still needs its complete exact design, immutable source review
+and separate runtime release; the unchanged archived78-case source is not
+redefined or newly run. Prepared180 controller/source, original inclusive
+START/840 active/900 total and all cleanup thresholds/ordering remain unchanged.
+This source materialization does not cure an unknown request, recover an
+exception class/trace, identify a sender or prove true historic cleanup start.
+Cause, sender and that original whole-cleanup bound remain UNKNOWN.
+
+The other worker's cleanup design/report lane is not contacted or duplicated.
+No product/verifier/controller/guide/D05/workflow/other file was edited; no
+worker/task/worktree/managed shell, merge/main/push/status or desktop action.
+Original gates, root publication/integration authority and closed rows remain
+unchanged. RiWork Cua.ai Driver preference persists; no desktop was used.
