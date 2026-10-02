@@ -205,3 +205,86 @@ result.
 No build, test or service was run, and no desktop work was done. No product
 or test file changed. Nothing was written to main or pushed, and no task
 status changed.
+
+## Applied correction and released run
+
+This section was added after root approved the seam. The sections above stay
+as written: they describe the state before the change and the diagnosis it
+rests on.
+
+### Baseline check
+
+Before the edit, this branch matched published main `6b4db4f` in the parts
+the build uses:
+
+- `src/`, `crates/`, `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` were
+  identical to `6b4db4f`;
+- `src/background.rs` was the reviewed blob
+  `3c6a2e2d2a12af6ad2e8e24c24cdeaa9e1929ec9`.
+
+The only file on the branch and not on main is the unclaimed
+`tests/connector_workflow_boundary.rs`, which the library build does not
+compile. No alignment merge was needed, and no accepted file was
+overwritten.
+
+### Fixture commit
+
+Commit `934fcf14bf7c0ebeb1a0bf88087601a3a90ec20e` changes only
+`src/background.rs` (new blob `a3fe1ffe5322a14c38db67ad6c430a1e24aecdd0`).
+It adds exactly the 12 approved lines:
+
+- the comment;
+- `let lane = &background.lanes[job.lane()];`;
+- a 3-second `timeout` around
+  `lane.slots.clone().acquire_many_owned(lane.spec.1 as u32)`;
+- `drop(lane_slots);`.
+
+They sit inside the final loop of
+`overload_and_deadlines_keep_foreground_and_maintenance_capacity`, after the
+existing `failed` assertion and before the unchanged `run`.
+
+Unchanged:
+
+- every other line of the test, including all assertions and their order,
+  the 500 ms deadline and the single blocking thread;
+- the shared `drained`, `stalled` and `fixture` helpers;
+- every other test;
+- all production code.
+
+`cargo fmt --all -- --check` and `git diff --check` were clean.
+
+### The one released run
+
+The exact command root released was run once, on committed `934fcf1` with a
+clean tree, in this worktree's private `target/wave27`.
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --lib background::tests::overload_and_deadlines_keep_foreground_and_maintenance_capacity -- --exact --test-threads=1
+```
+
+| Item | Result |
+| --- | --- |
+| Exit | 0 |
+| Test | `background::tests::overload_and_deadlines_keep_foreground_and_maintenance_capacity ... ok`; 1 passed, 0 failed, 138 filtered out (3.04 s) |
+| Build | `Compiling riauth v0.1.1`, `Finished test profile in 1m 06s`, from 2026-10-02T12:17:05Z to 12:18:16Z |
+| Warnings | Only the existing macOS linker note (`__eh_frame section too large`), here on the library test binary |
+| Log | 14 lines, SHA-256 `f0c82ebb68fb3248f2bc319569b92bbc389aa9b76c74d4b4ad838a67f5f306b0`, kept in the session scratchpad |
+| Disk | Preflight 11 GiB free. The lowest reading was 10 GiB, checked every 10 seconds. The 9 GiB stop for this run's own Cargo was not needed. No cache was deleted. |
+| Tree | Unchanged after the run |
+
+The slot was released to root as soon as the run exited, before this append.
+
+### What this shows, and what it does not
+
+- **Compile and regression only.** The local pass shows the corrected test
+  compiles and still passes, with every assertion unchanged.
+- **The logic rests on source order.** The release order of `Running`, the job
+  permit and the lane permit, together with the barrier's full-lane wait, is
+  what supports the fix. One local pass cannot prove a fix for a rare
+  cross-thread race.
+- **The CI interleaving is inferred.** The log of run `37003702884` never
+  identified the failing loop iteration or the interleaving that caused it.
+- **No Linux claim.** Nothing here says Linux CI is fixed or that the run is
+  now all green. The published CI run will show the Linux result.
+- **Nothing else ran.** There was no baseline run, no race campaign, no other
+  target, and no change to main, a push or a task status.
