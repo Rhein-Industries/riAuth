@@ -6928,3 +6928,506 @@ observer/controller/product/guide/D05/test/config edit, extra file, actual
 provider/collector/CLI/HTTP/listener/browser/Driver/Cargo/filecleanup invocation,
 worker/task/WT/shell/main/push/status or contact occurs. No runtime slot is
 acquired or released; original D01/D05 disposition remains root-owned.
+
+## Dated design correction: resource absence versus cleanup budget, 2026-10-02
+
+Reservation wave30_D01_cleanup_absence_vs_budget_envelope_correction owns ONLY
+this append. Root explicitly corrected the overstrict assignment wording:
+resource RELEASE means complete independent ownership/absence/join/session/
+window/port/lab proofs, even when a Driver operation failed or returned late.
+The Driver error and budget result remain separate and failed; whole60 is
+never proven by this cell. Missing any actual ownership/absence/join proof
+still prevents a release claim.
+
+This is a requirement/expectation correction, not a product bug, source repair
+or executed failure. The prior strict01f249c design, its five-line-different
+logic/full payload and source-derived case5 failure prediction remain dated
+and byte-preserved. That prediction was NEVER an actual memory result and is
+not silently relabelled as one. c88's real generic failure, zeroAuth, no journey
+and119s delayed absence readback remain unchanged. The old first-event/whole60
+unknown limits are retained; no retrospective cleanup pass is claimed.
+
+### Exactly five harness-only edits
+
+Only these release expectations change false to true:
+driver_exception, driver_refusal, driver_late_return.
+Their stubs still model complete independent resource absence. Existing
+driver_operation_unconfirmed assertions for exception/refusal and the
+driver_operation_over_budget/elapsed>30000 assertion for late return stay
+byte-exact and occur BEFORE the release comparison. First-failure/clock/error
+retention and always-false first-event/whole60 assertions are unchanged.
+
+Only the two misleading strict-gate comments are also corrected. No other
+logic/payload header/cell/collector/controller/helper source or assertion is
+changed. In particular, the six missing-proof cases, failed join, invalid
+readback, partial controller JSON, missing ownership and application-confirmed
+journey_credit false behavior remain unchanged.
+
+Exact zero-context, two-hunk/five-line readable-logic diff:
+
+```diff
+--- original readable logic e3d39dc4
++++ corrected readable logic b68ee1a0
+@@ -13,3 +13,3 @@
+-  {name:"driver_exception",first:"application_page_failed",release:false,tools:18},
+-  {name:"driver_refusal",first:"application_page_failed",release:false,tools:18},
+-  {name:"driver_late_return",first:"application_page_failed",release:false,tools:18},
++  {name:"driver_exception",first:"application_page_failed",release:true,tools:18},
++  {name:"driver_refusal",first:"application_page_failed",release:true,tools:18},
++  {name:"driver_late_return",first:"application_page_failed",release:true,tools:18},
+@@ -280,2 +280,2 @@
+-    // Strong requested gate: Driver exception/refusal/late return also withhold release.
+-    // No source correction or expectation relaxation is applied to the immutable cell.
++    // Resource release uses independent absence proofs; Driver errors remain recorded.
++    // The immutable cell and all error, elapsed and always false whole60 assertions stay unchanged.
+```
+
+The corrected readable logic remains exactly322 lines. Both old and corrected whole logic have the same line count;
+changed line numbers are13,14,15,280,281. Reversing those five literal edits
+reconstructs the ENTIRE old17528-byte logic/SHA
+e3d39dc4a38a48ef9a1ace4d232544bcb0c70172b9822a5531072bed9387bb9d.
+There are no intervening whitespace/comment/source changes outside those five
+lines.
+
+The standalone payload retains all imports/wrapper/output/exit code lines
+and exact CELL string. Its ONLY changed line is the JSON-encoded LOGIC string.
+Replace that corrected encoded string with the reconstructed original LOGIC
+string to recover the ENTIRE old37730-byte payload/SHA
+21ff02d7affa22017651be01fbc4072acc70265c6bf8191e55e2d40a1dab7719.
+This is full-byte surgical reversal, not a matching-prefix or function-only
+claim. No candidate is evaluated while proving that identity.
+
+### Unchanged counts, bounds and held execution
+
+All18 cases and every planned count remain unchanged:
+286 stub tool calls;78 Driver,33 controller,175 collector;
+127 clock,16 stop,16 readback,16 persist;16 cleanup sequences and18 outputs.
+Store/date/assertion bookkeeping remains outside tool-call counts.
+These are prospective counts, not results. Zero memory cases have executed.
+No green run, full-gate result or exact elapsed time is inferred from parsing.
+
+The first-failure/failed-case-count retention and fail-fast stopping rule stay
+unchanged. Any future unexpected assertion still records attempted versus
+completed, actual counts, first assertion and unreached cases, then stops
+without correction/retry. The three corrected cases now permit resource
+release only because every independent proof is present, while still requiring
+their separate Driver error/over-allocation record. The always-false whole60
+flag cannot turn true through this correction.
+
+Existing finite bounds remain:18 invocations,32 stub tools/512 stores/128
+Date.now reads per case, at most2 controller polls, bounded65536-character
+synthetic command parsing, immediately settled stub promises, fixed virtual
+time and the same synchronous VM evaluation timeout1000ms. No real timer,
+MCP timeout, cancellation or asynchronous time guarantee is added. Actual
+Driver call duration is not measured by the memory model.
+
+The prospective standalone payload remains intended for ONE separately
+released bounded memory invocation, proposed outer<=30s as already recorded.
+Root must review the immutable corrected archive and exact host invocation
+before release. No VM/mock/harness/module body, Python collector, helper,
+native/provider, application/process fixture, network/HTTP, Driver/browser,
+Cargo or filesystem cleanup is executed here. Only static parsing/identity
+checks run. No runtime slot is acquired or released.
+
+The real browser remains HELD while the distinct observer-aware memory design
+and cleanup composition validation complete under root ownership. No mutable
+observer/helper partial work is inspected or contacted. Original D01/D05
+disposition and all closed/accepted rows stay root-owned and unchanged.
+
+### Corrected pins and unchanged embedded source
+
+| Source | Bytes | Lines | SHA256 |
+| --- | --- | --- | --- |
+| cell | 18091 | 284 | 0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e |
+| logic | 17536 | 322 | b68ee1a0f88203ac57e9a41b957ef16ad2f15f11c0979c0d436c5e14779e9b50 |
+| payload | 37738 | 16 | a06ab7b0783569f8f3778fffedda55dae0b0a824a8174533e77bb273ba702230 |
+
+The exact284-line cell18091 bytes/SHA0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e
+is embedded unchanged. All four entire encoded Python constants are unchanged,
+not recompiled/executed as collectors or altered by this correction:
+CLOCK cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d;
+STOP ccc2702c4e10209952d8e5489c2974a09a7f4d6c47a3705dc89d5bb028ec3ffb;
+READBACK95c6fe05f0016ef302dd9c63533b95141b09ea71a661ab390c112c9e6c13ccb3;
+PERSIST819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30.
+
+The193-line controller remains exact command SHA
+6662bdbb168bf0ba6ec5ff24b6f3b88dc15b54b4dfc3b800fdaca1cbee403bbb,
+and helper470 remains SHA
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0.
+START+840/inclusive900/preparation180/helper600/pending180/refusal4/
+8.5stop8floor and every route/crypto/security behavior stay unchanged.
+No source/controller/helper file is materialized or edited.
+
+Complete corrected readable logic, NOT executed:
+
+```js
+const CELL_PIN="0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e";
+const PYTHON_PINS={
+  CLOCK:"cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d",
+  STOP:"ccc2702c4e10209952d8e5489c2974a09a7f4d6c47a3705dc89d5bb028ec3ffb",
+  READBACK:"95c6fe05f0016ef302dd9c63533b95141b09ea71a661ab390c112c9e6c13ccb3",
+  PERSIST:"819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30"
+};
+const CASES=[
+  {name:"ui_error",first:"application_page_failed",release:true,tools:18},
+  {name:"helper_failure",first:"helper_failed",release:true,tools:16},
+  {name:"controller_completion",first:"controller_completed_before_app_checkpoint",release:true,tools:14},
+  {name:"metadata_write_failure",first:"application_page_failed",release:true,tools:18},
+  {name:"driver_exception",first:"application_page_failed",release:true,tools:18},
+  {name:"driver_refusal",first:"application_page_failed",release:true,tools:18},
+  {name:"driver_late_return",first:"application_page_failed",release:true,tools:18},
+  {name:"missing_child_proof",first:"application_page_failed",release:false,tools:18},
+  {name:"missing_pid_proof",first:"application_page_failed",release:false,tools:18},
+  {name:"missing_window_proof",first:"application_page_failed",release:false,tools:18},
+  {name:"missing_session_proof",first:"application_page_failed",release:false,tools:18},
+  {name:"missing_port_proof",first:"application_page_failed",release:false,tools:18},
+  {name:"missing_lab_proof",first:"application_page_failed",release:false,tools:18},
+  {name:"partial_controller_json",first:"application_page_failed",release:true,tools:18},
+  {name:"join_failure",first:"application_page_failed",release:false,tools:18},
+  {name:"readback_projection_failure",first:"application_page_failed",release:false,tools:18},
+  {name:"missing_ownership",first:null,release:null,tools:0},
+  {name:"application_confirmed",first:null,release:null,tools:4}
+];
+const PLAN={cases:18,tool_calls:286,driver_calls:78,controller_calls:33,
+  collector_calls:175,clock:127,stop:16,readback:16,persist:16,
+  cleanup_sequences:16,outputs:18};
+const clone=v=>JSON.parse(JSON.stringify(v));
+function ensure(ok,label){if(!ok)throw {envelope_assertion:label};}
+function shellWords(command){
+  ensure(typeof command==="string"&&command.length<65536,"command_bounds");
+  const words=[];let word="",quoted=false,started=false;
+  for(let i=0;i<command.length;i++){
+    const c=command[i];
+    if(quoted){if(c==="'")quoted=false;else word+=c;continue;}
+    if(c==="'"){quoted=true;started=true;continue;}
+    if(c==="\\"){ensure(i+1<command.length,"command_escape");word+=command[++i];started=true;continue;}
+    if(/\s/.test(c)){if(started){words.push(word);word="";started=false;}continue;}
+    word+=c;started=true;
+  }
+  ensure(!quoted,"command_quote");
+  if(started)words.push(word);
+  return words;
+}
+function sources(cell){
+  const result={};
+  for(const name of Object.keys(PYTHON_PINS)){
+    const line=cell.split("\n").find(v=>v.startsWith("const "+name+"="));
+    ensure(typeof line==="string","embedded_source_missing");
+    result[name]=JSON.parse(line.slice(("const "+name+"=").length,-1));
+    ensure(sha(result[name])===PYTHON_PINS[name],"embedded_source_hash");
+  }
+  return result;
+}
+function ownContext(){
+  return {runtime_release:true,driver_owned:true,exact_bound:true,single_controller:true,
+    fixture_ready:true,listener_pid_proof:true,fresh_paths_preflight:true,
+    workspace:"/synthetic/d01",guard_pid:101,server_pid:102,helper_pid:103,browser_pid:104,
+    exec_session:901,session:"synthetic-session",target_id:"synthetic-target",tab_id:"synthetic-tab",
+    lab:"/synthetic/lab",outer_out:"/synthetic/outer",event_out:"/synthetic/event",
+    cleanup_out:"/synthetic/cleanup",start_epoch_ms:1700000000000};
+}
+async function oneCase(spec,cell,py){
+  const own=ownContext();
+  if(spec.name==="missing_ownership")own.exact_bound=false;
+  const memory=new Map(),trace=[],outputs=[],counts={
+    tool_calls:0,driver_calls:0,controller_calls:0,collector_calls:0,
+    clock:0,stop:0,readback:0,persist:0
+  };
+  let tick=1000,stores=0,dateCalls=0,polls=0,firstLatch=null,retainedFirst=null;
+  let cleanupRecord=null,stopRequested=false,exitSeen=false;
+  const EXIT={synthetic_exit:true};
+  const push=(kind,label)=>trace.push({kind,label,tick});
+  const now=()=>{ensure(++dateCalls<=128,"date_bound");return own.start_epoch_ms+tick;};
+  const clock=()=>({monotonic_ns:String(1000000000000n+BigInt(tick)*1000000n),
+    wall_epoch_ns:String(BigInt(own.start_epoch_ms+tick)*1000000n)});
+  function call(label,domain,cleanup){
+    ensure(++counts.tool_calls<=32,"tool_bound");
+    counts[domain]++;
+    push("tool",label);tick+=10;
+    if(cleanup){
+      const r=memory.get("d01_immediate_observation_record");
+      ensure(firstLatch!==null&&r?.first_failure===spec.first,"latch_before_cleanup");
+      ensure(outputs.length===0,"no_output_before_cleanup");
+    }
+  }
+  const toolResult=v=>({exit_code:0,output:JSON.stringify(v)+"\n"});
+  const children=()=>["helper","whoami","discovery","confidential_client_create",
+    "operator_login","server","maintenance_init"].map((name,i)=>({
+      name,pid:name==="helper"?103:name==="server"?102:200+i,exit:name==="helper"?1:0}));
+  const tools={
+    exec_command:async args=>{
+      ensure(args.workdir===own.workspace&&args.yield_time_ms===10000,"collector_shape");
+      const words=shellWords(args.cmd);
+      ensure(words[0]==="python3"&&words[1]==="-c","collector_command");
+      const name=Object.keys(py).find(n=>py[n]===words[2]);
+      ensure(name!==undefined,"collector_source_identity");
+      call(name.toLowerCase(),"collector_calls",true);counts[name.toLowerCase()]++;
+      if(name==="CLOCK"){
+        ensure(words.length===3,"clock_arguments");
+        return toolResult(clock());
+      }
+      if(name==="STOP"){
+        ensure(words.length===4,"stop_arguments");
+        const c=JSON.parse(words[3]);
+        ensure(c.lab===own.lab&&c.event_out===own.event_out&&c.first_failure===spec.first,
+          "stop_owned_arguments");
+        ensure(c.first_observation_wall_ms===retainedFirst,"stop_received_clock");
+        push("marker","original_stop_requested");stopRequested=true;
+        return toolResult({clock:clock(),event_state:spec.name==="metadata_write_failure"?
+          "write_unconfirmed":"written",marker_state:"stop_requested"});
+      }
+      if(name==="READBACK"){
+        ensure(words.length===4,"readback_arguments");
+        const c=JSON.parse(words[3]);
+        ensure(JSON.stringify(c.owned_pids)===JSON.stringify([101,102,103,104])&&
+          c.lab===own.lab&&c.outer_out===own.outer_out&&c.helper_pid===103&&c.server_pid===102,
+          "readback_owned_arguments");
+        if(spec.name==="readback_projection_failure")return {exit_code:0,output:"{"};
+        const unknown=spec.name==="missing_pid_proof";
+        return toolResult({clock:clock(),owned_pids:Object.fromEntries(
+          [101,102,103,104].map(p=>[String(p),unknown?null:true])),
+          ports:{"9000":true,"3000":spec.name==="missing_port_proof"?null:true},
+          lab_absent:spec.name==="missing_lab_proof"?null:true,
+          owned_child_exits:spec.name==="missing_child_proof"?null:children()});
+      }
+      ensure(name==="PERSIST"&&words.length===5&&words[3]===own.cleanup_out,"persist_arguments");
+      cleanupRecord=JSON.parse(words[4]);
+      push("persist","exclusive_cleanup_projection");
+      return {exit_code:0,output:'{"written_exclusive":true}\n'};
+    },
+    write_stdin:async args=>{
+      ensure(args.session_id===901&&args.chars===""&&args.yield_time_ms===5000,
+        "controller_owned_arguments");
+      call("controller_poll","controller_calls",polls>0&&spec.name!=="application_confirmed");
+      polls++;
+      ensure(polls<=2,"controller_poll_bound");
+      if(polls===1){
+        if(spec.name==="helper_failure")return {session_id:901,
+          output:'{"helper_completed":true,"exit":1}\n'};
+        if(spec.name==="controller_completion")return {exit_code:1,
+          output:'{"fixture_finished":true}\n'};
+        if(spec.name==="partial_controller_json")return {session_id:901,
+          output:'{"helper_completed":'};
+        return {session_id:901,output:""};
+      }
+      if(spec.name==="application_confirmed")return {session_id:901,output:""};
+      if(spec.name==="join_failure")throw {synthetic_failure:true};
+      if(spec.name==="partial_controller_json")return {exit_code:1,
+        output:'true,"exit":1}\n'};
+      return {exit_code:1,output:'{"fixture_finished":true}\n'};
+    },
+    mcp__cua_driver__browser_navigate:async args=>{
+      ensure(args.session===own.session&&args.target_id===own.target_id&&
+        args.tab_id===own.tab_id&&args.url==="http://localhost:3000/","navigation_binding");
+      call("browser_navigate","driver_calls",false);
+      return {content:[{type:"text",text:"synthetic navigation returned"}]};
+    },
+    mcp__cua_driver__get_browser_state:async args=>{
+      ensure(args.session===own.session&&args.target_id===own.target_id&&
+        args.tab_id===own.tab_id&&args.snapshot_format==="semantic_v2"&&
+        args.include_screenshot===false,"snapshot_binding");
+      call("browser_snapshot","driver_calls",false);
+      const good=spec.name==="application_confirmed";
+      const content_refs=[{role:"heading",name:"Local demo",actions:[],frame:"main"}];
+      if(!good)content_refs.push({role:"statictext",
+        name:"Local demo could not complete this request.",actions:[],frame:"main"});
+      return {structuredContent:{status:"ok",mode:"snapshot",
+        snapshot:{complete:true,format:"semantic_v2",id:"synthetic-snapshot"},
+        content_refs,refs:good?[{role:"button",name:"synthetic action",
+          ref:"synthetic-snapshot:1",actions:["click"],frame:"main"}]:[]}};
+    },
+    mcp__cua_driver__kill_app:async args=>{
+      ensure(args.pid===104&&Object.keys(args).length===1,"kill_owned_arguments");
+      call("kill_app","driver_calls",true);
+      if(spec.name==="driver_exception")throw {synthetic_failure:true};
+      if(spec.name==="driver_refusal")return {isError:true,
+        content:[{type:"text",text:"synthetic refusal"}]};
+      if(spec.name==="driver_late_return")tick+=31000;
+      return {content:[{type:"text",text:"synthetic kill returned"}]};
+    },
+    mcp__cua_driver__end_session:async args=>{
+      ensure(args.session===own.session,"end_owned_arguments");
+      call("end_session","driver_calls",true);
+      if(spec.name==="missing_session_proof")return {content:[]};
+      return {structuredContent:{active:false,session:own.session}};
+    },
+    mcp__cua_driver__list_windows:async args=>{
+      ensure(args.pid===104,"windows_owned_arguments");
+      call("list_windows","driver_calls",true);
+      return spec.name==="missing_window_proof"?{content:[]}:
+        {structuredContent:{current_space_id:1,windows:[]}};
+    }
+  };
+  const sandbox={
+    tools,Date:class {static now(){return now();}},
+    load:key=>{ensure(key==="d01_immediate_owned_handles","load_key");return clone(own);},
+    store:(key,value)=>{
+      ensure(++stores<=512,"store_bound");
+      ensure(["d01_immediate_observation_record","d01_immediate_snapshot_flags"].includes(key),
+        "store_key");
+      const copy=clone(value);memory.set(key,copy);
+      if(key==="d01_immediate_observation_record"&&copy.first_failure!==null){
+        if(firstLatch===null){
+          firstLatch=trace.length;retainedFirst=copy.first_observation_wall_ms;
+          push("latch",copy.first_failure);
+        }
+        ensure(copy.first_failure===spec.first,"first_failure_immutable");
+      }
+    },
+    text:value=>{
+      push("output","fixed_result");outputs.push(clone(value));
+      ensure(outputs.length===1,"output_bound");
+    },
+    notify:()=>{throw {envelope_assertion:"notification_forbidden"};},
+    yield_control:()=>{throw {envelope_assertion:"model_yield_forbidden"};},
+    exit:()=>{exitSeen=true;throw EXIT;}
+  };
+  let cellError=null;
+  try{
+    const script=new vm.Script("(async()=>{\n"+cell+"\n})()",{filename:"immutable-cell"});
+    const promise=script.runInNewContext(sandbox,{timeout:1000});
+    await promise;
+  }catch(error){if(error!==EXIT)cellError=error;}
+  // Retain complete fixed outcome/counts BEFORE any verification assertion.
+  const item={case:spec.name,counts:clone(counts),first_failure:outputs[0]?.first_failure??null,
+    resource_release_proven:outputs[0]?.resource_release_proven??null,
+    assertions_completed:false,assertion:null};
+  try {
+  ensure(cellError===null,"immutable_cell_exception");
+  ensure(counts.tool_calls===spec.tools,"planned_tool_count");
+  ensure(outputs.length===1,"exact_output_count");
+  const result=outputs[0];
+  if(spec.name==="missing_ownership"){
+    ensure(exitSeen&&counts.tool_calls===0&&firstLatch===null&&
+      result.proposal_refused==="fresh_owned_context_required","ownership_refuses_before_tools");
+  }else if(spec.name==="application_confirmed"){
+    ensure(result.result==="application_checkpoint_observed_only"&&result.journey_credit===false&&
+      firstLatch===null&&counts.collector_calls===0&&counts.driver_calls===2,
+      "confirmed_not_journey_or_cleanup");
+  }else{
+    const record=memory.get("d01_immediate_observation_record");
+    ensure(result.result==="failed"&&result.first_failure===spec.first&&
+      record.first_failure===spec.first,"failure_preserved");
+    ensure(record.first_observation_wall_ms===retainedFirst,"first_clock_preserved");
+    ensure(record.first_event_proven===false&&record.whole_cleanup_within60_proven===false&&
+      result.whole_cleanup_within60_proven===false,"no_actual_anchor_or_timing_credit");
+    ensure(stopRequested&&counts.stop===1&&counts.persist===1&&cleanupRecord!==null,
+      "original_stop_and_exclusive_projection");
+    const order=["stop","kill_app","end_session","list_windows","readback","persist"];
+    const positions=order.map(label=>trace.findIndex(v=>v.kind==="tool"&&v.label===label));
+    ensure(positions.every(p=>p>firstLatch)&&positions.every((p,i)=>i===0||p>positions[i-1]),
+      "latch_then_cleanup_order");
+    ensure(trace.at(-1).kind==="output","no_output_until_cleanup_returned");
+    ensure(!trace.some(v=>v.kind==="tool"&&["browser_navigate","browser_snapshot"].includes(v.label)&&
+      trace.indexOf(v)>firstLatch),"no_journey_after_failure");
+    ensure(record.actions.length===4&&record.actions[0].label==="kill_app"&&
+      record.actions[1].label==="end_session"&&record.actions[2].label==="list_windows"&&
+      record.actions[3].label==="owned_join_readback","exact_action_projection");
+    if(spec.name==="metadata_write_failure")
+      ensure(record.cleanup_errors.includes("observation_metadata_write_unconfirmed"),
+        "metadata_failure_separate");
+    if(["driver_exception","driver_refusal"].includes(spec.name))
+      ensure(record.cleanup_errors.includes("driver_operation_unconfirmed"),"driver_failure_recorded");
+    if(spec.name==="driver_late_return")
+      ensure(record.cleanup_errors.includes("driver_operation_over_budget")&&
+        record.actions[0].elapsed_ms>30000,"late_return_observed_only");
+    if(spec.name==="partial_controller_json")
+      ensure(record.controller_observations.at(-1).helper_completed===true&&
+        record.controller_observations.at(-1).helper_exit===1,"partial_json_preserves_failure");
+    if(spec.name==="join_failure")
+      ensure(record.cleanup_errors.includes("controller_join_unconfirmed")&&polls===2,
+        "join_failure_no_retry");
+    if(spec.name==="readback_projection_failure")
+      ensure(record.cleanup_errors.includes("owned_readback_unavailable"),
+        "projection_failure_separate");
+    // Resource release uses independent absence proofs; Driver errors remain recorded.
+    // The immutable cell and all error, elapsed and always false whole60 assertions stay unchanged.
+    ensure(result.resource_release_proven===spec.release,"resource_release_failclosed");
+  }
+  item.assertions_completed=true;
+  }catch(error){
+    item.assertion=typeof error?.envelope_assertion==="string"?error.envelope_assertion:
+      "envelope_unexpected_failure";
+  }
+  return item;
+}
+async function runEnvelope(cell,source){
+  const result={schema:"riauth.d01-cleanup-memory-envelope/v1",result:"failed",
+    source,planned:PLAN,attempted:0,completed:0,cases:[],first_failure:null,
+    unreached:CASES.map(v=>v.name),counts:{tool_calls:0,driver_calls:0,controller_calls:0,
+      collector_calls:0,clock:0,stop:0,readback:0,persist:0}};
+  ensure(sha(cell)===CELL_PIN,"immutable_cell_hash");
+  const py=sources(cell);
+  for(const spec of CASES){
+    result.attempted++;
+    try{
+      const item=await oneCase(spec,cell,py);
+      result.cases.push(item);
+      for(const key of Object.keys(result.counts))result.counts[key]+=item.counts[key];
+      result.unreached=CASES.slice(result.attempted).map(v=>v.name);
+      if(!item.assertions_completed){
+        result.first_failure={case:spec.name,assertion:item.assertion};
+        return result;
+      }
+      result.completed++;
+    }catch(error){
+      result.first_failure={case:spec.name,
+        assertion:typeof error?.envelope_assertion==="string"?error.envelope_assertion:
+          "envelope_unexpected_failure"};
+      result.unreached=CASES.slice(result.attempted).map(v=>v.name);
+      return result;
+    }
+  }
+  ensure(result.completed===PLAN.cases,"planned_cases");
+  for(const key of Object.keys(result.counts))ensure(result.counts[key]===PLAN[key],"planned_total");
+  result.result="passed";
+  return result;
+}
+```
+
+Complete corrected exact standalone payload, NOT executed:
+
+```js
+import vm from "node:vm";
+import {createHash} from "node:crypto";
+const CELL="// Prospective ONE functions.exec cell; NOT executed in this design phase.\nconst CLOCK=\"import json,time\\nprint(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))\\n\";\nconst STOP=\"import json,os,pathlib,stat,sys,time\\nc=json.loads(sys.argv[1])\\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\\nevent_state='write_unconfirmed'\\ntry:\\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\\n    with os.fdopen(fd,'w',encoding='ascii') as f:\\n        f.write(json.dumps(record,sort_keys=True)+'\\\\n');f.flush();os.fsync(f.fileno())\\n    event_state='written'\\nexcept OSError:pass\\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\\n# A metadata error does not prevent the original essential stop protocol.\\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\\ntry:\\n    if lab.exists():\\n        info=lab.lstat()\\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\\n            marker_state='ownership_unknown'\\n        else:\\n            marker_state='stop_requested'\\n            for name in ('ui-failure','stop'):\\n                try:\\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\\n                    os.close(fd)\\n                except FileNotFoundError:marker_state='lab_absent'\\n                except FileExistsError:pass\\nexcept OSError:marker_state='stop_unconfirmed'\\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\\n\";\nconst READBACK=\"import json,pathlib,subprocess,sys,time\\nc=json.loads(sys.argv[1])\\npids=c['owned_pids']\\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\\nports={}\\nfor port in (9000,3000):\\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\\nchildren=None\\nouter=pathlib.Path(c['outer_out'])\\nif outer.is_file():\\n    # This is the unchanged controller's fixed redacted evidence, not app data.\\n    data=json.loads(outer.read_bytes())\\n    allowed={'helper','whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\\n    raw=data.get('owned_child_exits')\\n    if isinstance(raw,list) and len(raw)==7 and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==7 and next(v['pid'] for v in raw if v['name']=='helper')==c['helper_pid'] and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid']:\\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children}))\\n\";\nconst PERSIST=\"import json,os,pathlib,sys\\npath=pathlib.Path(sys.argv[1])\\nrecord=json.loads(sys.argv[2])\\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\\ndef clocks(value):\\n    if isinstance(value,dict):\\n        for k,v in list(value.items()):\\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\\n                value[k]=int(v)\\n            else:clocks(v)\\n    elif isinstance(value,list):\\n        for v in value:clocks(v)\\nclocks(record)\\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\\nwith os.fdopen(fd,'w',encoding='ascii') as f:\\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\\\n');f.flush();os.fsync(f.fileno())\\nprint(json.dumps({'written_exclusive':True}))\\n\";\nconst own=load(\"d01_immediate_owned_handles\");\nconst OBSKEY=\"d01_immediate_observation_record\";\nif (!own || own.runtime_release!==true || own.driver_owned!==true ||\n    own.exact_bound!==true || own.single_controller!==true ||\n    own.fixture_ready!==true || own.listener_pid_proof!==true ||\n    own.fresh_paths_preflight!==true ||\n    !Number.isSafeInteger(own.start_epoch_ms) || typeof own.workspace!==\"string\" ||\n    new Set([own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid]).size!==4 ||\n    ![own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid,own.exec_session]\n       .every(v=>Number.isSafeInteger(v)&&v>0) ||\n    ![own.session,own.target_id,own.tab_id,own.lab,own.outer_out,\n       own.event_out,own.cleanup_out].every(v=>typeof v===\"string\"&&v.length>0)) {\n  text({proposal_refused:\"fresh_owned_context_required\"});exit();\n}\nconst record={\n  schema:\"riauth.d01-immediate-observation-cleanup/v1\",\n  first_failure:null,first_observation_wall_ms:null,\n  first_event_proven:false,whole_cleanup_within60_proven:false,\n  first_clock:null,observation_receipts:[],controller_observations:[],local_tool_receipts:[],actions:[],cleanup_errors:[],\n  final_absence:null,owned_child_exits:null,controller_exit:null,\n  first_observation_to_final_wall_ms:null,latch_to_absence_ms:null\n};\nconst sq=s=>\"'\"+String(s).replace(/'/g,\"'\\\\''\")+\"'\";\nconst retain=()=>store(OBSKEY,record);\nconst cleanupError=label=>{\n  if(!record.cleanup_errors.includes(label))record.cleanup_errors.push(label);\n  retain();\n};\nconst local=async(source,arg)=>{\n  const cmd=\"python3 -c \"+sq(source)+(arg===undefined?\"\":\" \"+sq(JSON.stringify(arg)));\n  const r=await tools.exec_command({cmd,workdir:own.workspace,\n    yield_time_ms:10000,max_output_tokens:2000});\n  record.local_tool_receipts.push({\n    label:source===CLOCK?\"clock\":source===STOP?\"stop\":source===READBACK?\"readback\":\"unknown\",\n    exit:typeof r.exit_code===\"number\"?r.exit_code:null,\n    session_id:typeof r.session_id===\"number\"?r.session_id:null\n  });retain(); // Numeric collector receipt BEFORE comparisons.\n  if(r.session_id!==undefined) {\n    cleanupError(\"owned_local_command_unjoined\");throw new Error(\"local_pending\");\n  }\n  if(r.exit_code!==0)throw new Error(\"local_failed\");\n  return JSON.parse(r.output);\n};\nconst ns=c=>BigInt(c.monotonic_ns);\nconst getClock=()=>local(CLOCK);\nlet controllerJoined=false;\nlet controllerPollAvailable=true;\nlet controllerBuffer=\"\";\nlet cleanupStarted=false;\nlet lastSnapshotFlags=null;\nfunction latch(label,receivedWall) {\n  if(record.first_failure===null) {\n    record.first_failure=label;\n    record.first_observation_wall_ms=receivedWall;\n    retain(); // Synchronous first-failure/wall latch BEFORE any new await/output.\n  }\n}\nfunction observeController(r,receivedWall) {\n  const observation={received_wall_ms:receivedWall,\n    exit:typeof r.exit_code===\"number\"?r.exit_code:null,\n    helper_completed:false,helper_exit:null,fixture_finished:false};\n  // Complete numeric result projection is retained BEFORE comparisons.\n  record.controller_observations.push(observation);retain();\n  if(typeof r.exit_code===\"number\") {\n    controllerJoined=true;record.controller_exit=r.exit_code;retain();\n  }\n  controllerBuffer+=typeof r.output===\"string\"?r.output:\"\";\n  if(controllerBuffer.length>16384) {\n    latch(\"controller_observation_invalid\",receivedWall);controllerBuffer=\"\";return;\n  }\n  let cut;\n  while((cut=controllerBuffer.indexOf(\"\\n\"))>=0) {\n    const line=controllerBuffer.slice(0,cut);controllerBuffer=controllerBuffer.slice(cut+1);\n    if(!line.trim())continue;\n    let event;\n    try{event=JSON.parse(line);}catch{\n      latch(\"controller_observation_invalid\",receivedWall);continue;\n    }\n    if(event.helper_completed===true) {\n      observation.helper_completed=true;\n      observation.helper_exit=typeof event.exit===\"number\"?event.exit:null;\n      retain();\n      if(event.exit!==0)latch(\"helper_failed\",receivedWall);\n      else if(!cleanupStarted)latch(\"helper_completed_before_app_checkpoint\",receivedWall);\n    }\n    if(event.fixture_finished===true) {\n      observation.fixture_finished=true;retain();\n      if(!cleanupStarted)latch(\"controller_completed_before_app_checkpoint\",receivedWall);\n    }\n  }\n  if(controllerJoined&&!cleanupStarted)\n    latch(\"controller_completed_before_app_checkpoint\",receivedWall);\n}\nasync function pollController() {\n  if(controllerJoined||!controllerPollAvailable)return;\n  try {\n    const r=await tools.write_stdin({session_id:own.exec_session,\n      chars:\"\",yield_time_ms:5000,max_output_tokens:2000});\n    const receivedWall=Date.now();\n    observeController(r,receivedWall);\n  } catch {\n    controllerPollAvailable=false;\n    latch(\"controller_observation_unavailable\",Date.now());\n    if(cleanupStarted)cleanupError(\"controller_join_unconfirmed\");\n  }\n}\nasync function timedDriver(label,allocation,operation,project) {\n  let start=null,end=null,result=null,state=\"unknown\";\n  try{start=await getClock();}catch{cleanupError(\"clock_unavailable\");}\n  const action={label,start_clock:start,end_clock:null,allowed_ms:allocation,\n    result_state:\"unknown\",elapsed_ms:null,over_budget:null};\n  record.actions.push(action);retain(); // Start retained BEFORE entering Driver call.\n  try {\n    result=await operation();\n    state=result?.isError===true?\"refused\":\"returned\";\n  } catch {state=\"exception\";}\n  try{end=await getClock();}catch{cleanupError(\"clock_unavailable\");}\n  action.end_clock=end;action.result_state=state;\n  retain(); // End/result retained BEFORE budget comparison.\n  if(start&&end) {\n    const d=ns(end)-ns(start);\n    if(d>=0n) {\n      action.elapsed_ms=Number(d/1000000n);\n      action.over_budget=action.elapsed_ms>allocation;\n    } else cleanupError(\"clock_invalid\");\n  }\n  if(action.over_budget)cleanupError(\"driver_operation_over_budget\");\n  if(state!==\"returned\")cleanupError(\"driver_operation_unconfirmed\");\n  if(project)project(result,state);\n  retain();\n}\nasync function cleanup() {\n  if(cleanupStarted)return;\n  cleanupStarted=true;\n  try {\n    const r=await local(STOP,{\n      lab:own.lab,event_out:own.event_out,\n      first_failure:record.first_failure,\n      first_observation_wall_ms:record.first_observation_wall_ms\n    });\n    record.first_clock=r.clock;record.stop_state=r.marker_state;retain();\n    if(r.event_state!==\"written\")cleanupError(\"observation_metadata_write_unconfirmed\");\n    if(r.marker_state===\"stop_unconfirmed\")cleanupError(\"stop_unconfirmed\");\n    if(r.marker_state===\"ownership_unknown\")cleanupError(\"ownership_unknown\");\n  } catch {cleanupError(\"stop_or_clock_record_unavailable\");}\n  // No outstanding Driver call exists here: all page calls above were awaited.\n  // Original stop protocol already causes the controller's owned-child finally.\n  await timedDriver(\"kill_app\",30000,\n    ()=>tools.mcp__cua_driver__kill_app({pid:own.browser_pid}));\n  await timedDriver(\"end_session\",15000,\n    ()=>tools.mcp__cua_driver__end_session({session:own.session}),(r,state)=>{\n      record.session_ended=state===\"returned\"&&\n        r?.structuredContent?.active===false&&r.structuredContent.session===own.session;\n      retain();\n    });\n  await timedDriver(\"list_windows\",5000,\n    ()=>tools.mcp__cua_driver__list_windows({pid:own.browser_pid}),(r,state)=>{\n      const windows=r?.structuredContent?.windows;\n      record.window_count=state===\"returned\"&&Array.isArray(windows)?windows.length:null;\n      retain();\n    });\n  let readStart=null;\n  try{readStart=await getClock();}catch{cleanupError(\"clock_unavailable\");}\n  const action={label:\"owned_join_readback\",start_clock:readStart,end_clock:null,\n    allowed_ms:null,elapsed_ms:null,over_budget:null,result_state:\"unknown\"};\n  record.actions.push(action);retain();\n  if(readStart&&record.first_clock) {\n    action.allowed_ms=Math.max(0,60000-Number((ns(readStart)-ns(record.first_clock))/1000000n));\n    retain();\n  }\n  // Continue essential join after60s if late; never claim that deadline enforced.\n  // Do not poll another exec session or send a manual process signal.\n  while(!controllerJoined&&controllerPollAvailable&&Date.now()<own.start_epoch_ms+900000) {\n    await pollController();\n    if(record.first_clock) {\n      try {\n        const c=await getClock();record.last_join_clock=c;retain();\n        if(ns(c)-ns(record.first_clock)>60000000000n)\n          cleanupError(\"cleanup_budget_exceeded\");\n      } catch{cleanupError(\"clock_unavailable\");}\n    }\n  }\n  if(!controllerJoined)cleanupError(\"child_reap_incomplete\");\n  try {\n    const r=await local(READBACK,{\n      owned_pids:[own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid],\n      lab:own.lab,outer_out:own.outer_out,helper_pid:own.helper_pid,server_pid:own.server_pid\n    });\n    action.end_clock=r.clock;action.result_state=\"returned\";\n    record.owned_child_exits=r.owned_child_exits;\n    record.final_absence={owned_pids:r.owned_pids,ports:r.ports,\n      lab:r.lab_absent,window_count:record.window_count??null,\n      session_ended:record.session_ended===true};\n    record.first_observation_to_final_wall_ms=Date.now()-record.first_observation_wall_ms;\n    retain(); // Full fixed readback/exits/clock BEFORE comparisons.\n    if(readStart) {\n      action.elapsed_ms=Number((ns(r.clock)-ns(readStart))/1000000n);\n      action.over_budget=action.allowed_ms===null?null:action.elapsed_ms>action.allowed_ms;\n    }\n    if(record.first_clock)\n      record.latch_to_absence_ms=Number((ns(r.clock)-ns(record.first_clock))/1000000n);\n    if(action.over_budget)cleanupError(\"cleanup_budget_exceeded\");\n    const a=record.final_absence;\n    if(!controllerJoined||!Array.isArray(record.owned_child_exits)||\n       record.owned_child_exits.length!==7)cleanupError(\"child_reap_incomplete\");\n    if(!Object.values(a.owned_pids).every(v=>v===true)||\n       !Object.values(a.ports).every(v=>v===true)||a.lab!==true||\n       a.window_count!==0||a.session_ended!==true)\n      cleanupError(\"owned_resource_absence_unproven\");\n  } catch {action.result_state=\"exception\";cleanupError(\"owned_readback_unavailable\");}\n  cleanupError(\"first_event_unproven\");\n  record.whole_cleanup_within60_proven=false;retain();\n  // Exclusive new file only; existing outer/helper/provider evidence untouched.\n  try {\n    const cmd=\"python3 -c \"+sq(PERSIST)+\" \"+sq(own.cleanup_out)+\" \"+sq(JSON.stringify(record));\n    const r=await tools.exec_command({cmd,workdir:own.workspace,\n      yield_time_ms:10000,max_output_tokens:500});\n    record.local_tool_receipts.push({label:\"persist\",\n      exit:typeof r.exit_code===\"number\"?r.exit_code:null,\n      session_id:typeof r.session_id===\"number\"?r.session_id:null});retain();\n    if(r.session_id!==undefined)cleanupError(\"owned_local_command_unjoined\");\n    if(r.session_id!==undefined||r.exit_code!==0)\n      cleanupError(\"cleanup_metadata_write_unconfirmed\");\n  } catch {cleanupError(\"cleanup_metadata_write_unconfirmed\");}\n  controllerBuffer=\"\";\n}\nawait pollController();\nif(record.first_failure===null) {\n  try {\n    const r=await tools.mcp__cua_driver__browser_navigate({\n      session:own.session,target_id:own.target_id,tab_id:own.tab_id,\n      url:\"http://localhost:3000/\"});\n    const receivedWall=Date.now();\n    record.observation_receipts.push({kind:\"browser_navigation\",received_wall_ms:receivedWall});\n    retain(); // Received clock BEFORE navigation outcome comparison.\n    if(r?.isError===true)latch(\"driver_navigation_refused\",receivedWall);\n  } catch {latch(\"driver_navigation_exception\",Date.now());}\n}\nif(record.first_failure===null) {\n  try {\n    const r=await tools.mcp__cua_driver__get_browser_state({\n      session:own.session,target_id:own.target_id,tab_id:own.tab_id,\n      snapshot_format:\"semantic_v2\",include_screenshot:false});\n    const receivedWall=Date.now();\n    record.observation_receipts.push({kind:\"browser_snapshot\",received_wall_ms:receivedWall});\n    retain(); // Received clock BEFORE any page predicate comparison.\n    const s=r?.structuredContent;\n    const nodes=Array.isArray(s?.content_refs)?s.content_refs:[];\n    lastSnapshotFlags={\n      received_wall_ms:receivedWall,\n      status_ok:r?.isError!==true&&s?.status===\"ok\",\n      complete:s?.snapshot?.complete===true,\n      heading_match:nodes.some(n=>n.role===\"heading\"&&n.name===\"Local demo\"),\n      error_match:nodes.some(n=>n.name===\"Local demo could not complete this request.\"),\n      interactive_ref_present:Array.isArray(s?.refs)&&\n        s.refs.some(n=>Array.isArray(n.actions)&&n.actions.includes(\"click\"))\n    };\n    store(\"d01_immediate_snapshot_flags\",lastSnapshotFlags);\n    // Finite booleans only; no outline/URL/name/value/subject/token is persisted.\n    if(lastSnapshotFlags.error_match)latch(\"application_page_failed\",receivedWall);\n    else if(!lastSnapshotFlags.status_ok||!lastSnapshotFlags.complete||\n            !lastSnapshotFlags.heading_match||!lastSnapshotFlags.interactive_ref_present)\n      latch(\"application_snapshot_unconfirmed\",receivedWall);\n  } catch {latch(\"driver_snapshot_exception\",Date.now());}\n}\nif(record.first_failure===null)await pollController();\nif(record.first_failure!==null) {\n  await cleanup(); // NO text/notify/yield_control/model turn before essential cleanup.\n  text({result:\"failed\",first_failure:record.first_failure,\n    cleanup_errors:record.cleanup_errors,final_absence:record.final_absence,\n    controller_exit:record.controller_exit,whole_cleanup_within60_proven:false,\n    resource_release_proven:record.final_absence!==null&&\n      !record.cleanup_errors.some(v=>[\n        \"child_reap_incomplete\",\"owned_resource_absence_unproven\",\n        \"owned_readback_unavailable\",\"owned_local_command_unjoined\"].includes(v))});\n} else {\n  text({result:\"application_checkpoint_observed_only\",\n    snapshot_flags:lastSnapshotFlags,journey_credit:false});\n}\n";
+const LOGIC="const CELL_PIN=\"0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e\";\nconst PYTHON_PINS={\n  CLOCK:\"cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d\",\n  STOP:\"ccc2702c4e10209952d8e5489c2974a09a7f4d6c47a3705dc89d5bb028ec3ffb\",\n  READBACK:\"95c6fe05f0016ef302dd9c63533b95141b09ea71a661ab390c112c9e6c13ccb3\",\n  PERSIST:\"819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30\"\n};\nconst CASES=[\n  {name:\"ui_error\",first:\"application_page_failed\",release:true,tools:18},\n  {name:\"helper_failure\",first:\"helper_failed\",release:true,tools:16},\n  {name:\"controller_completion\",first:\"controller_completed_before_app_checkpoint\",release:true,tools:14},\n  {name:\"metadata_write_failure\",first:\"application_page_failed\",release:true,tools:18},\n  {name:\"driver_exception\",first:\"application_page_failed\",release:true,tools:18},\n  {name:\"driver_refusal\",first:\"application_page_failed\",release:true,tools:18},\n  {name:\"driver_late_return\",first:\"application_page_failed\",release:true,tools:18},\n  {name:\"missing_child_proof\",first:\"application_page_failed\",release:false,tools:18},\n  {name:\"missing_pid_proof\",first:\"application_page_failed\",release:false,tools:18},\n  {name:\"missing_window_proof\",first:\"application_page_failed\",release:false,tools:18},\n  {name:\"missing_session_proof\",first:\"application_page_failed\",release:false,tools:18},\n  {name:\"missing_port_proof\",first:\"application_page_failed\",release:false,tools:18},\n  {name:\"missing_lab_proof\",first:\"application_page_failed\",release:false,tools:18},\n  {name:\"partial_controller_json\",first:\"application_page_failed\",release:true,tools:18},\n  {name:\"join_failure\",first:\"application_page_failed\",release:false,tools:18},\n  {name:\"readback_projection_failure\",first:\"application_page_failed\",release:false,tools:18},\n  {name:\"missing_ownership\",first:null,release:null,tools:0},\n  {name:\"application_confirmed\",first:null,release:null,tools:4}\n];\nconst PLAN={cases:18,tool_calls:286,driver_calls:78,controller_calls:33,\n  collector_calls:175,clock:127,stop:16,readback:16,persist:16,\n  cleanup_sequences:16,outputs:18};\nconst clone=v=>JSON.parse(JSON.stringify(v));\nfunction ensure(ok,label){if(!ok)throw {envelope_assertion:label};}\nfunction shellWords(command){\n  ensure(typeof command===\"string\"&&command.length<65536,\"command_bounds\");\n  const words=[];let word=\"\",quoted=false,started=false;\n  for(let i=0;i<command.length;i++){\n    const c=command[i];\n    if(quoted){if(c===\"'\")quoted=false;else word+=c;continue;}\n    if(c===\"'\"){quoted=true;started=true;continue;}\n    if(c===\"\\\\\"){ensure(i+1<command.length,\"command_escape\");word+=command[++i];started=true;continue;}\n    if(/\\s/.test(c)){if(started){words.push(word);word=\"\";started=false;}continue;}\n    word+=c;started=true;\n  }\n  ensure(!quoted,\"command_quote\");\n  if(started)words.push(word);\n  return words;\n}\nfunction sources(cell){\n  const result={};\n  for(const name of Object.keys(PYTHON_PINS)){\n    const line=cell.split(\"\\n\").find(v=>v.startsWith(\"const \"+name+\"=\"));\n    ensure(typeof line===\"string\",\"embedded_source_missing\");\n    result[name]=JSON.parse(line.slice((\"const \"+name+\"=\").length,-1));\n    ensure(sha(result[name])===PYTHON_PINS[name],\"embedded_source_hash\");\n  }\n  return result;\n}\nfunction ownContext(){\n  return {runtime_release:true,driver_owned:true,exact_bound:true,single_controller:true,\n    fixture_ready:true,listener_pid_proof:true,fresh_paths_preflight:true,\n    workspace:\"/synthetic/d01\",guard_pid:101,server_pid:102,helper_pid:103,browser_pid:104,\n    exec_session:901,session:\"synthetic-session\",target_id:\"synthetic-target\",tab_id:\"synthetic-tab\",\n    lab:\"/synthetic/lab\",outer_out:\"/synthetic/outer\",event_out:\"/synthetic/event\",\n    cleanup_out:\"/synthetic/cleanup\",start_epoch_ms:1700000000000};\n}\nasync function oneCase(spec,cell,py){\n  const own=ownContext();\n  if(spec.name===\"missing_ownership\")own.exact_bound=false;\n  const memory=new Map(),trace=[],outputs=[],counts={\n    tool_calls:0,driver_calls:0,controller_calls:0,collector_calls:0,\n    clock:0,stop:0,readback:0,persist:0\n  };\n  let tick=1000,stores=0,dateCalls=0,polls=0,firstLatch=null,retainedFirst=null;\n  let cleanupRecord=null,stopRequested=false,exitSeen=false;\n  const EXIT={synthetic_exit:true};\n  const push=(kind,label)=>trace.push({kind,label,tick});\n  const now=()=>{ensure(++dateCalls<=128,\"date_bound\");return own.start_epoch_ms+tick;};\n  const clock=()=>({monotonic_ns:String(1000000000000n+BigInt(tick)*1000000n),\n    wall_epoch_ns:String(BigInt(own.start_epoch_ms+tick)*1000000n)});\n  function call(label,domain,cleanup){\n    ensure(++counts.tool_calls<=32,\"tool_bound\");\n    counts[domain]++;\n    push(\"tool\",label);tick+=10;\n    if(cleanup){\n      const r=memory.get(\"d01_immediate_observation_record\");\n      ensure(firstLatch!==null&&r?.first_failure===spec.first,\"latch_before_cleanup\");\n      ensure(outputs.length===0,\"no_output_before_cleanup\");\n    }\n  }\n  const toolResult=v=>({exit_code:0,output:JSON.stringify(v)+\"\\n\"});\n  const children=()=>[\"helper\",\"whoami\",\"discovery\",\"confidential_client_create\",\n    \"operator_login\",\"server\",\"maintenance_init\"].map((name,i)=>({\n      name,pid:name===\"helper\"?103:name===\"server\"?102:200+i,exit:name===\"helper\"?1:0}));\n  const tools={\n    exec_command:async args=>{\n      ensure(args.workdir===own.workspace&&args.yield_time_ms===10000,\"collector_shape\");\n      const words=shellWords(args.cmd);\n      ensure(words[0]===\"python3\"&&words[1]===\"-c\",\"collector_command\");\n      const name=Object.keys(py).find(n=>py[n]===words[2]);\n      ensure(name!==undefined,\"collector_source_identity\");\n      call(name.toLowerCase(),\"collector_calls\",true);counts[name.toLowerCase()]++;\n      if(name===\"CLOCK\"){\n        ensure(words.length===3,\"clock_arguments\");\n        return toolResult(clock());\n      }\n      if(name===\"STOP\"){\n        ensure(words.length===4,\"stop_arguments\");\n        const c=JSON.parse(words[3]);\n        ensure(c.lab===own.lab&&c.event_out===own.event_out&&c.first_failure===spec.first,\n          \"stop_owned_arguments\");\n        ensure(c.first_observation_wall_ms===retainedFirst,\"stop_received_clock\");\n        push(\"marker\",\"original_stop_requested\");stopRequested=true;\n        return toolResult({clock:clock(),event_state:spec.name===\"metadata_write_failure\"?\n          \"write_unconfirmed\":\"written\",marker_state:\"stop_requested\"});\n      }\n      if(name===\"READBACK\"){\n        ensure(words.length===4,\"readback_arguments\");\n        const c=JSON.parse(words[3]);\n        ensure(JSON.stringify(c.owned_pids)===JSON.stringify([101,102,103,104])&&\n          c.lab===own.lab&&c.outer_out===own.outer_out&&c.helper_pid===103&&c.server_pid===102,\n          \"readback_owned_arguments\");\n        if(spec.name===\"readback_projection_failure\")return {exit_code:0,output:\"{\"};\n        const unknown=spec.name===\"missing_pid_proof\";\n        return toolResult({clock:clock(),owned_pids:Object.fromEntries(\n          [101,102,103,104].map(p=>[String(p),unknown?null:true])),\n          ports:{\"9000\":true,\"3000\":spec.name===\"missing_port_proof\"?null:true},\n          lab_absent:spec.name===\"missing_lab_proof\"?null:true,\n          owned_child_exits:spec.name===\"missing_child_proof\"?null:children()});\n      }\n      ensure(name===\"PERSIST\"&&words.length===5&&words[3]===own.cleanup_out,\"persist_arguments\");\n      cleanupRecord=JSON.parse(words[4]);\n      push(\"persist\",\"exclusive_cleanup_projection\");\n      return {exit_code:0,output:'{\"written_exclusive\":true}\\n'};\n    },\n    write_stdin:async args=>{\n      ensure(args.session_id===901&&args.chars===\"\"&&args.yield_time_ms===5000,\n        \"controller_owned_arguments\");\n      call(\"controller_poll\",\"controller_calls\",polls>0&&spec.name!==\"application_confirmed\");\n      polls++;\n      ensure(polls<=2,\"controller_poll_bound\");\n      if(polls===1){\n        if(spec.name===\"helper_failure\")return {session_id:901,\n          output:'{\"helper_completed\":true,\"exit\":1}\\n'};\n        if(spec.name===\"controller_completion\")return {exit_code:1,\n          output:'{\"fixture_finished\":true}\\n'};\n        if(spec.name===\"partial_controller_json\")return {session_id:901,\n          output:'{\"helper_completed\":'};\n        return {session_id:901,output:\"\"};\n      }\n      if(spec.name===\"application_confirmed\")return {session_id:901,output:\"\"};\n      if(spec.name===\"join_failure\")throw {synthetic_failure:true};\n      if(spec.name===\"partial_controller_json\")return {exit_code:1,\n        output:'true,\"exit\":1}\\n'};\n      return {exit_code:1,output:'{\"fixture_finished\":true}\\n'};\n    },\n    mcp__cua_driver__browser_navigate:async args=>{\n      ensure(args.session===own.session&&args.target_id===own.target_id&&\n        args.tab_id===own.tab_id&&args.url===\"http://localhost:3000/\",\"navigation_binding\");\n      call(\"browser_navigate\",\"driver_calls\",false);\n      return {content:[{type:\"text\",text:\"synthetic navigation returned\"}]};\n    },\n    mcp__cua_driver__get_browser_state:async args=>{\n      ensure(args.session===own.session&&args.target_id===own.target_id&&\n        args.tab_id===own.tab_id&&args.snapshot_format===\"semantic_v2\"&&\n        args.include_screenshot===false,\"snapshot_binding\");\n      call(\"browser_snapshot\",\"driver_calls\",false);\n      const good=spec.name===\"application_confirmed\";\n      const content_refs=[{role:\"heading\",name:\"Local demo\",actions:[],frame:\"main\"}];\n      if(!good)content_refs.push({role:\"statictext\",\n        name:\"Local demo could not complete this request.\",actions:[],frame:\"main\"});\n      return {structuredContent:{status:\"ok\",mode:\"snapshot\",\n        snapshot:{complete:true,format:\"semantic_v2\",id:\"synthetic-snapshot\"},\n        content_refs,refs:good?[{role:\"button\",name:\"synthetic action\",\n          ref:\"synthetic-snapshot:1\",actions:[\"click\"],frame:\"main\"}]:[]}};\n    },\n    mcp__cua_driver__kill_app:async args=>{\n      ensure(args.pid===104&&Object.keys(args).length===1,\"kill_owned_arguments\");\n      call(\"kill_app\",\"driver_calls\",true);\n      if(spec.name===\"driver_exception\")throw {synthetic_failure:true};\n      if(spec.name===\"driver_refusal\")return {isError:true,\n        content:[{type:\"text\",text:\"synthetic refusal\"}]};\n      if(spec.name===\"driver_late_return\")tick+=31000;\n      return {content:[{type:\"text\",text:\"synthetic kill returned\"}]};\n    },\n    mcp__cua_driver__end_session:async args=>{\n      ensure(args.session===own.session,\"end_owned_arguments\");\n      call(\"end_session\",\"driver_calls\",true);\n      if(spec.name===\"missing_session_proof\")return {content:[]};\n      return {structuredContent:{active:false,session:own.session}};\n    },\n    mcp__cua_driver__list_windows:async args=>{\n      ensure(args.pid===104,\"windows_owned_arguments\");\n      call(\"list_windows\",\"driver_calls\",true);\n      return spec.name===\"missing_window_proof\"?{content:[]}:\n        {structuredContent:{current_space_id:1,windows:[]}};\n    }\n  };\n  const sandbox={\n    tools,Date:class {static now(){return now();}},\n    load:key=>{ensure(key===\"d01_immediate_owned_handles\",\"load_key\");return clone(own);},\n    store:(key,value)=>{\n      ensure(++stores<=512,\"store_bound\");\n      ensure([\"d01_immediate_observation_record\",\"d01_immediate_snapshot_flags\"].includes(key),\n        \"store_key\");\n      const copy=clone(value);memory.set(key,copy);\n      if(key===\"d01_immediate_observation_record\"&&copy.first_failure!==null){\n        if(firstLatch===null){\n          firstLatch=trace.length;retainedFirst=copy.first_observation_wall_ms;\n          push(\"latch\",copy.first_failure);\n        }\n        ensure(copy.first_failure===spec.first,\"first_failure_immutable\");\n      }\n    },\n    text:value=>{\n      push(\"output\",\"fixed_result\");outputs.push(clone(value));\n      ensure(outputs.length===1,\"output_bound\");\n    },\n    notify:()=>{throw {envelope_assertion:\"notification_forbidden\"};},\n    yield_control:()=>{throw {envelope_assertion:\"model_yield_forbidden\"};},\n    exit:()=>{exitSeen=true;throw EXIT;}\n  };\n  let cellError=null;\n  try{\n    const script=new vm.Script(\"(async()=>{\\n\"+cell+\"\\n})()\",{filename:\"immutable-cell\"});\n    const promise=script.runInNewContext(sandbox,{timeout:1000});\n    await promise;\n  }catch(error){if(error!==EXIT)cellError=error;}\n  // Retain complete fixed outcome/counts BEFORE any verification assertion.\n  const item={case:spec.name,counts:clone(counts),first_failure:outputs[0]?.first_failure??null,\n    resource_release_proven:outputs[0]?.resource_release_proven??null,\n    assertions_completed:false,assertion:null};\n  try {\n  ensure(cellError===null,\"immutable_cell_exception\");\n  ensure(counts.tool_calls===spec.tools,\"planned_tool_count\");\n  ensure(outputs.length===1,\"exact_output_count\");\n  const result=outputs[0];\n  if(spec.name===\"missing_ownership\"){\n    ensure(exitSeen&&counts.tool_calls===0&&firstLatch===null&&\n      result.proposal_refused===\"fresh_owned_context_required\",\"ownership_refuses_before_tools\");\n  }else if(spec.name===\"application_confirmed\"){\n    ensure(result.result===\"application_checkpoint_observed_only\"&&result.journey_credit===false&&\n      firstLatch===null&&counts.collector_calls===0&&counts.driver_calls===2,\n      \"confirmed_not_journey_or_cleanup\");\n  }else{\n    const record=memory.get(\"d01_immediate_observation_record\");\n    ensure(result.result===\"failed\"&&result.first_failure===spec.first&&\n      record.first_failure===spec.first,\"failure_preserved\");\n    ensure(record.first_observation_wall_ms===retainedFirst,\"first_clock_preserved\");\n    ensure(record.first_event_proven===false&&record.whole_cleanup_within60_proven===false&&\n      result.whole_cleanup_within60_proven===false,\"no_actual_anchor_or_timing_credit\");\n    ensure(stopRequested&&counts.stop===1&&counts.persist===1&&cleanupRecord!==null,\n      \"original_stop_and_exclusive_projection\");\n    const order=[\"stop\",\"kill_app\",\"end_session\",\"list_windows\",\"readback\",\"persist\"];\n    const positions=order.map(label=>trace.findIndex(v=>v.kind===\"tool\"&&v.label===label));\n    ensure(positions.every(p=>p>firstLatch)&&positions.every((p,i)=>i===0||p>positions[i-1]),\n      \"latch_then_cleanup_order\");\n    ensure(trace.at(-1).kind===\"output\",\"no_output_until_cleanup_returned\");\n    ensure(!trace.some(v=>v.kind===\"tool\"&&[\"browser_navigate\",\"browser_snapshot\"].includes(v.label)&&\n      trace.indexOf(v)>firstLatch),\"no_journey_after_failure\");\n    ensure(record.actions.length===4&&record.actions[0].label===\"kill_app\"&&\n      record.actions[1].label===\"end_session\"&&record.actions[2].label===\"list_windows\"&&\n      record.actions[3].label===\"owned_join_readback\",\"exact_action_projection\");\n    if(spec.name===\"metadata_write_failure\")\n      ensure(record.cleanup_errors.includes(\"observation_metadata_write_unconfirmed\"),\n        \"metadata_failure_separate\");\n    if([\"driver_exception\",\"driver_refusal\"].includes(spec.name))\n      ensure(record.cleanup_errors.includes(\"driver_operation_unconfirmed\"),\"driver_failure_recorded\");\n    if(spec.name===\"driver_late_return\")\n      ensure(record.cleanup_errors.includes(\"driver_operation_over_budget\")&&\n        record.actions[0].elapsed_ms>30000,\"late_return_observed_only\");\n    if(spec.name===\"partial_controller_json\")\n      ensure(record.controller_observations.at(-1).helper_completed===true&&\n        record.controller_observations.at(-1).helper_exit===1,\"partial_json_preserves_failure\");\n    if(spec.name===\"join_failure\")\n      ensure(record.cleanup_errors.includes(\"controller_join_unconfirmed\")&&polls===2,\n        \"join_failure_no_retry\");\n    if(spec.name===\"readback_projection_failure\")\n      ensure(record.cleanup_errors.includes(\"owned_readback_unavailable\"),\n        \"projection_failure_separate\");\n    // Resource release uses independent absence proofs; Driver errors remain recorded.\n    // The immutable cell and all error, elapsed and always false whole60 assertions stay unchanged.\n    ensure(result.resource_release_proven===spec.release,\"resource_release_failclosed\");\n  }\n  item.assertions_completed=true;\n  }catch(error){\n    item.assertion=typeof error?.envelope_assertion===\"string\"?error.envelope_assertion:\n      \"envelope_unexpected_failure\";\n  }\n  return item;\n}\nasync function runEnvelope(cell,source){\n  const result={schema:\"riauth.d01-cleanup-memory-envelope/v1\",result:\"failed\",\n    source,planned:PLAN,attempted:0,completed:0,cases:[],first_failure:null,\n    unreached:CASES.map(v=>v.name),counts:{tool_calls:0,driver_calls:0,controller_calls:0,\n      collector_calls:0,clock:0,stop:0,readback:0,persist:0}};\n  ensure(sha(cell)===CELL_PIN,\"immutable_cell_hash\");\n  const py=sources(cell);\n  for(const spec of CASES){\n    result.attempted++;\n    try{\n      const item=await oneCase(spec,cell,py);\n      result.cases.push(item);\n      for(const key of Object.keys(result.counts))result.counts[key]+=item.counts[key];\n      result.unreached=CASES.slice(result.attempted).map(v=>v.name);\n      if(!item.assertions_completed){\n        result.first_failure={case:spec.name,assertion:item.assertion};\n        return result;\n      }\n      result.completed++;\n    }catch(error){\n      result.first_failure={case:spec.name,\n        assertion:typeof error?.envelope_assertion===\"string\"?error.envelope_assertion:\n          \"envelope_unexpected_failure\"};\n      result.unreached=CASES.slice(result.attempted).map(v=>v.name);\n      return result;\n    }\n  }\n  ensure(result.completed===PLAN.cases,\"planned_cases\");\n  for(const key of Object.keys(result.counts))ensure(result.counts[key]===PLAN[key],\"planned_total\");\n  result.result=\"passed\";\n  return result;\n}\n";
+const sha=s=>createHash("sha256").update(s).digest("hex");
+const source={cell_sha256:sha(CELL),logic_sha256:sha(LOGIC)};
+let result;
+try {
+  const script=new vm.Script(LOGIC+"\nrunEnvelope(CELL,source);",{filename:"finite-envelope"});
+  result=await script.runInNewContext({vm,sha,CELL,source},{timeout:1000});
+} catch {
+  result={schema:"riauth.d01-cleanup-memory-envelope/v1",result:"failed",source,
+    first_failure:{case:null,assertion:"envelope_preflight_or_totals_failed"}};
+}
+process.stdout.write(JSON.stringify(result)+"\n");
+process.exitCode=result.result==="passed"?0:1;
+```
+
+### Actual static checks and prefix preservation
+
+Actually performed: node --input-type=module --check on corrected readable
+logic and complete payload, each exit0; exact original284-line cell/four
+collector string identity; full five-edit logic reversal; complete payload
+reversal; exactly five changed readable-logic lines; exact CELL/LOGIC JSON
+reconstruction;18-case/286-call static count; retained Driver-error/elapsed/
+whole60 assertion identity; helper/controller identity; all twelve metadata
+mode/byte/hash checks; report-only prefix/archive/fence/final-newline/
+whitespace/diff checks. No mocked cell or harness evaluates any assertion.
+Parser acceptance is only syntax evidence.
+
+The entire454006-byte01f249c report prefix/SHA
+7d505fed30c2fc21576f8938dacf96e9a11b195d4cdc91dd27c0cad4e0914a20
+is byte-exact. Nine historical0600 metadata files and three c88 files retain
+their full bytes/hashes/modes. All original failures, lost values/reporting
+correction, senderUNKNOWN, failed61/76 and dated78 memory limits, and the old
+strict unexecuted design/prediction remain dated. No prior phase is overwritten
+or presented as a current test.
+
+Only this existing report is appended in one immutable report-only commit.
+No other file, product/guide/D05/config/test/workflow/approval/state edit,
+main/push/status, worker/task/WT/shell/contact or runtime slot operation occurs.
+A future memory run requires a separate explicit root release after review;
+no pass, resource-release receipt or browser closure is claimed by this phase.
