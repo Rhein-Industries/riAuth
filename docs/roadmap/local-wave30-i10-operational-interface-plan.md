@@ -686,3 +686,220 @@ orchestrator before this append. Report-only prefix/scope assertions,
 There is no Cargo/test/runtime/provider/desktop action, no source/test/other-doc
 edit, merge/reset, new worker/task/worktree, main/push or board/status action.
 Every preceding report phase and private runtime artifact is preserved.
+
+## Approved Entra diagnostic selector implementation — runtime held
+
+Root independently confirmed the preceding Entra certificate-mode wrong-file
+trace and approved ledger `wave30_I10_entra_certificate_diagnostics` for this
+existing I10 task/worktree. Production reservation is only the Entra credential
+selector in `src/assembly/cloud_operations.rs`, one appended exact test in
+`tests/cloud_directory.rs`, and this separate append-only report. I10 remains
+open; root owns review, runtime release, integration and task disposition.
+
+Published reference is `9a819317efb3a13fa27cd86f884be2be00898fc0`. Preflight
+found a clean own branch at disposition
+`cae69dd2f31e98cb80b5a15b173cb1cbba37eb8f`. Published assembly/helper/cloud token/
+config/test blobs already matched this worktree exactly, so no alignment,
+merge, reset or stale-file import was necessary or performed. Ancestor and
+repository/assembly/tests/docs guidance checks found no applicable AGENTS.md.
+The explicit narrow source assignment governs the checks; no general campaign
+was started.
+
+Source/test commit is **`ef80983e13fa5923ae5c2a29b520e415e1205240`**:
+
+| Reserved file | Immutable Git blob | Exact change |
+| --- | --- | --- |
+| `src/assembly/cloud_operations.rs` | `2a4b21475d377f2227dd273e886a6e766321b4c8` | Replace only the Entra private-file selector, 13 added lines/1 removed. |
+| `tests/cloud_directory.rs` | `796ad459470e95fbba562fce378ee5be1d1e8d35` | Append exactly `cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted`, 202 lines; every prior test byte retained. |
+
+### Selector behavior and protected contracts
+
+An empty shared-secret path plus both nonempty configured certificate and
+private-key paths selects the existing private-key status helper with bound
+16,384, matching token acquisition. All other cases retain the existing
+shared-secret path/helper/bound 4,096. This only chooses which configured private
+file the existing diagnostic observes; it changes no credential validation,
+signing, token request, retry, mapping, writer or provider behavior.
+
+`credential_status` remains byte-equivalent. Its shape, permission/bounded
+regular-file checks, time/modified metadata, `reload: next_token_request` and
+`provider_verified: false` remain unchanged. A readable private key does not
+prove a valid PEM/certificate pair or accepted provider credential. The existing
+structural validation result remains separate. The authority checks before
+configuration/file lookup and after assembling the result are preserved, as
+are every Workspace arm and all other operations bytes. No certificate body,
+private key, path or provider status is exposed or inferred by this selector.
+
+Portal/API/config/token/helper/writer/dependency spans remain unchanged. There
+is no new schema, receipt, audit, admission, job, identity or credential writer.
+M03/M07/P06/P08/O03/O06 authorization/removal/receipt contracts, optional/required
+headers, accepted OAuth metadata exceptions and PAM fallback remain intact.
+No other lane's source or helper is changed.
+
+### One appended regression definition — uncompiled and unrun
+
+The test uses the existing local peer/configuration/agent/certificate helpers,
+with two genuine generated certificate/private-key pairs in owner-only files.
+The certificate target omits its shared-secret path and validates normally; a
+second shared-secret target proves that arm's behavior remains equivalent.
+Private-key modification times are set and checked with `FileTimes`, first
+`1_700_000_000` and then plus 60s. Actual certificate/key replacement changes
+the observed private-key timestamp deterministically without sleeps.
+
+Queued assertions cover:
+
+- Correct configured private-file state and exact modified metadata before/
+  after actual pair replacement; fixed five-field credential shape, current
+  check time, unchanged reload and `provider_verified: false`.
+- Private key at exactly 16,384 bytes remains file-readable; 16,385 bytes is
+  unavailable. The boundary fixture retains the actual PEM plus newline
+  padding, and claims only file readability. Shared-secret 4,097 bytes remains
+  unavailable and restoration recovers its existing status.
+- Missing key, nonregular key path and Unix mode 0644 are unavailable, with
+  null modified metadata; restoring an owner-only key restores readability.
+  Permission coverage is Unix-scoped exactly as the protected helper is;
+  portable shape/size/missing/rotation/scope cases are not skipped.
+- Wrong connector-kind scope and invalid token are refused despite a missing
+  key; a reader for the configured target is refused before an absent-target
+  lookup. Static unchanged-body ordering proves authority precedes the file
+  selector. The test does not claim instrumented file-open observations.
+- No credential contents/PEM marker, credential-field names or private paths
+  escape; no connection result/provider-health inference is added. Every
+  observation compares the complete durable snapshot with no exceptions.
+- Existing private-peer token/directory/path counters remain zero, and no
+  saved connection check, schedule or job is fabricated. The existing fixture
+  worker cleanup is reused; no listener was started in this source-only phase.
+
+This single function is a definition awaiting compilation and explicit runtime
+release. No passing result, test execution or provider health is claimed here.
+The previous eight SCIM passes and older LDAP/cloud evidence retain their
+original pins and scope.
+
+### Actual static checks and queued exact command
+
+`rustfmt --edition 2024 --config skip_children=true src/assembly/cloud_operations.rs tests/cloud_directory.rs`
+exited 0, followed by the corresponding `--check`, exit 0. These are parsing/
+formatting checks, not a compiler run. Working/staged `git diff --check` passed.
+An in-memory reconstruction replaced exactly the new selector with the old
+single `credential_status(&directory.client_secret_file, 4096)` line and
+reproduced the complete published assembly blob. The complete original test
+file is a byte-identical prefix, followed by exactly one new test definition.
+Helper/config/token/portal/API/provisioning/manifests/dependencies and every
+other tracked file remained unchanged. Source-only commit scope and clean
+branch checks passed. No static/compiler/runtime failure occurred or was
+invented. Immutable source/test hashes and these proofs were sent to the
+explicit project orchestrator before this report delta.
+
+The one proposed command has been sent to root and remains **HELD**, with no
+Cargo, listener or runtime invocation:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test cloud_directory cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted -- --exact --test-threads=1
+```
+
+Only after immutable source review and explicit sole-slot release may this
+exact one-test filter run. Keep the existing private cache, jobs1/inc0/debug0
+and disk floor; no other target, edition or automatic repeat is proposed.
+
+For this separate report append, `python3 scripts/check-docs.py`, report-prefix/
+scope/source-byte assertions and working/staged whitespace checks pass. All
+prior report phases and private evidence remain intact. No Cargo/provider/
+desktop/listener/service, other source/test/doc change, alignment, new worker/
+task/worktree, main/push/status or external message occurs. Internal handoff
+uses the explicit project orchestrator.
+
+The named local diagnostic seam is corrected in committed source, pending the
+focused compile/runtime review. Original I10 completion remains root-owned;
+tenant/deployment/Groups/full-crawl/provider/release prerequisites are still
+distinct and unmeasured here. W02/W05/R05 remain closed.
+
+## Explicitly released Entra diagnostic regression — 2026-10-02
+
+Root independently reviewed immutable source/test
+`ef80983e13fa5923ae5c2a29b520e415e1205240`, the exact production reconstruction
+and original-test prefix, then marked the reserved ledger runtime released and
+assigned the sole Cargo slot to this lane. This section records that subsequent
+execution. Prior proposal, disposition, source-only phases, historical failures
+and actual SCIM evidence remain byte-for-byte intact.
+
+Actual run HEAD was `0e0d658f1f148d16db50c7f9efa6e78f6b8e6502`; its source/test/
+manifest bytes match the reviewed implementation. Preflight was clean and
+confirmed 11,901,898,752 bytes free (11.085 GiB). The existing private target
+occupied 6,356,312 KiB, had 18 integration fingerprints and three compiled
+riAuth libraries, with largest library 408,663,032 bytes. This particular
+integration target still required compilation/linking. Launch free disk was
+11.072 GiB; the requested near-eleven-GiB margin was met. No deletion or
+unrelated build was used to create headroom.
+
+The one actual command, launched as argv with the private path resolved from
+the current worktree, was exactly the released filter:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test cloud_directory cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted -- --exact --test-threads=1
+```
+
+Native environment was Darwin 25.2.0/arm64, `rustc 1.98.1 (48a229cea 2026-09-01)`
+and `cargo 1.98.1 (797e8a9bc 2026-08-05)`. Compilation succeeded in the recorded
+**1m 06s**. The exact function passed: **1 passed, 0 failed, 0 ignored,
+0 measured, 47 filtered out**, finished in **2.12s**. The monitored invocation
+exited **0** after **72.178s**. No other function/filter/target/edition, separate
+build, correction or automatic repeat was run. The 47 filtered functions were
+compiled as part of their target and were not executed.
+
+The same native linker warning appeared for Cargo's automatically built
+`riauth` binary: `__eh_frame` exceeded the compact-unwind encoding limit, with
+possible exception-handling performance impact. There was no compile/test
+error and no extra action for that warning.
+
+### Actual evidence and immediate slot release
+
+Exclusive private mode-0600 evidence was retained and independently hashed and
+permission-checked after exit:
+
+| Evidence | SHA-256 |
+| --- | --- |
+| `.target-wave27/i10-wave30-entra-diagnostics-20261002T135449Z.log` | `8561bc484c37c18e7589924c5e4b84d18d86e5a77b9734dfdc9cfdd264468502` |
+| `.target-wave27/i10-wave30-entra-diagnostics-20261002T135449Z.json` | `11d09656ca2681b3600dd6260ce4852ed7c38401462b811b837f428b0e531a48` |
+
+The observation retains exact command/HEAD/source, host/tools, owned Cargo PID
+50974, exit/time/counts, log hash and 37 disk samples. Sampling was every two
+seconds; maximum observed interval was 2.006s. Minimum free disk was
+10,429,796,352 bytes (**9.714 GiB**), and completion free disk was
+10,688,733,184 bytes (**9.955 GiB**). The nine-GiB stop threshold and mandatory
+eight-GiB floor were not breached. No signal or cache/evidence deletion was
+needed. Cargo was reaped and its exact owned process group was subsequently
+confirmed absent. The test reused existing private-loopback fixture cleanup;
+the test completed and its peer worker/listener lifetime ended with that
+fixture. No external service/provider was used.
+
+The result, source, counts/time, hashes, warning and disk were sent to the
+explicit project orchestrator immediately at completion with **CARGO SLOT
+RELEASED**, before this append. The lane retains no slot. Post-run assertions
+verified exactly the one passing function, log/observation hashes and mode,
+sample intervals/floor, clean worktree, unchanged reviewed source/manifests and
+absent owned process group. Report-prefix/source-byte/scope assertions,
+`python3 scripts/check-docs.py` and working/staged whitespace checks pass for
+this separate report delta. Only the existing report is appended.
+
+### What this observed pass proves and disposition limit
+
+The actual function now verifies readable active Entra certificate private-file
+status, exact modified metadata through actual pair rotation, 16-KiB boundary/
+oversize, missing/nonregular/Unix permission refusal, restored readability,
+unchanged 4-KiB shared-secret behavior, fixed redaction/unverified output,
+scoped refusal and full durable snapshot preservation. Its peer token/directory
+counters and paths remain empty: file status contacts no provider and does not
+fabricate a connection check, job or schedule. Readability still asserts no PEM
+or certificate-pair validity and no provider acceptance. The earlier static
+authority-before-selector proof and protected byte-equivalence remain intact.
+
+The last demonstrated local diagnostic residual now has its approved source
+correction and focused passing evidence. Together with the preceding seven-
+facet mapping, accepted historical lifecycle checks and eight fresh SCIM cases,
+this supports root's original local-completion review. Root alone interprets
+the all-advertised integration gate, integrates and changes I10 status. No
+tenant, Linux, Groups/full-crawl, real remote delivery, multi-node deployment
+or released-artifact evidence is invented or substituted; other original
+protocol/tenant rows keep their own gates. There was no production change
+after review, broad campaign, new worker/task/worktree, main/push/status or
+external contact. W02/W05/R05 remain closed.

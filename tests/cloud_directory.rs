@@ -5335,3 +5335,205 @@ fn repeated_pages_and_inconsistent_totals_cannot_plan_or_apply_removals() {
         }
     }
 }
+
+#[test]
+fn cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted() {
+    use std::{
+        collections::BTreeSet,
+        fs::{File, FileTimes},
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    let directory = serve("entra", Vec::new(), SECRET);
+    let mut fixture = Fixture::new();
+    configure(&mut fixture, "entra", "corp", &directory, "");
+    configure(&mut fixture, "entra", "shared", &directory, "");
+    fixture.core.create_group(&fixture.admin, "staff").unwrap();
+    let shared_path = secret_path(&fixture, "entra", "shared");
+    let cert_path = fixture._dir.path().join("diagnostic-entra-cert.pem");
+    let key_path = fixture._dir.path().join("diagnostic-entra-key.pem");
+    let (first_cert, _, first_key) = certificate_pair();
+    let (rotated_cert, _, rotated_key) = certificate_pair();
+    write_private(&cert_path, &first_cert, false).unwrap();
+    write_private(&key_path, &first_key, false).unwrap();
+    let configured = fixture
+        .core
+        .config
+        .entra_directories
+        .get_mut("corp")
+        .unwrap();
+    configured.client_secret_file = PathBuf::new();
+    configured.certificate_file = Some(cert_path.clone());
+    configured.private_key_file = Some(key_path.clone());
+    fixture.core.config.validate().unwrap();
+    let reader = agent_token(
+        &fixture,
+        "entra-private-file-reader",
+        vec![
+            permission("directory.read", "entra/corp"),
+            permission("directory.read", "entra/shared"),
+        ],
+    );
+    let outside = agent_token(
+        &fixture,
+        "entra-private-file-outsider",
+        vec![permission("directory.read", "workspace/corp")],
+    );
+    let before = fixture.snapshot().unwrap();
+
+    // Set exact times to distinguish rotation without wall-clock sleeps.
+    let set_modified = |path: &std::path::Path, seconds: u64| {
+        File::open(path)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(UNIX_EPOCH + Duration::from_secs(seconds)))
+            .unwrap();
+        assert_eq!(
+            std::fs::metadata(path)
+                .unwrap()
+                .modified()
+                .unwrap()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            seconds
+        );
+    };
+    let first_time = 1_700_000_000;
+    let rotated_time = first_time + 60;
+    set_modified(&key_path, first_time);
+    set_modified(&shared_path, first_time);
+
+    let observe = |id: &str, readable: bool, modified: Option<u64>| {
+        let checked_before = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let report = fixture.core.cloud_operations(&reader, "entra", id).unwrap();
+        let checked_after = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let status = &report["credential"];
+        assert_eq!(report["validation"]["valid"], true);
+        assert_eq!(
+            status
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([
+                "state",
+                "checked_at",
+                "modified_at",
+                "reload",
+                "provider_verified"
+            ])
+        );
+        assert_eq!(
+            status["state"],
+            if readable {
+                "file_readable"
+            } else {
+                "file_unavailable"
+            }
+        );
+        assert_eq!(status["modified_at"], json!(modified));
+        let checked_at = status["checked_at"].as_u64().unwrap();
+        assert!((checked_before..=checked_after).contains(&checked_at));
+        assert_eq!(status["reload"], "next_token_request");
+        assert_eq!(status["provider_verified"], false);
+        assert!(status.get("connected").is_none());
+        assert!(report["last_connection_check"].is_null());
+        assert!(report["schedule"].is_null());
+        assert_eq!(report["jobs"], json!([]));
+        let encoded = report.to_string();
+        for private in [
+            SECRET,
+            TOKEN,
+            "-----BEGIN",
+            "client_secret_file",
+            "private_key_file",
+            "certificate_file",
+        ] {
+            assert!(
+                !encoded.contains(private),
+                "Private credential information escaped"
+            );
+        }
+        assert!(
+            !encoded.contains(fixture._dir.path().to_str().unwrap()),
+            "Private fixture path escaped"
+        );
+        assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+        assert_eq!(directory.state.directory_hits.load(Ordering::Relaxed), 0);
+        assert!(directory.state.paths.lock().unwrap().is_empty());
+        fixture.assert_snapshot(&before);
+    };
+    observe("corp", true, Some(first_time));
+    observe("shared", true, Some(first_time));
+
+    write_private(&cert_path, &rotated_cert, true).unwrap();
+    write_private(&key_path, &rotated_key, true).unwrap();
+    set_modified(&key_path, rotated_time);
+    observe("corp", true, Some(rotated_time));
+
+    // File readability uses the same 16-KiB private-key bound as token signing,
+    // and never claims PEM/pair validity or provider acceptance.
+    let mut at_limit = rotated_key.clone();
+    at_limit.resize(16_384, b'\n');
+    write_private(&key_path, &at_limit, true).unwrap();
+    set_modified(&key_path, rotated_time);
+    observe("corp", true, Some(rotated_time));
+    at_limit.push(b'\n');
+    write_private(&key_path, &at_limit, true).unwrap();
+    observe("corp", false, None);
+
+    write_private(&key_path, &rotated_key, true).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        observe("corp", false, None);
+        std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    std::fs::remove_file(&key_path).unwrap();
+    observe("corp", false, None);
+    std::fs::create_dir(&key_path).unwrap();
+    observe("corp", false, None);
+    std::fs::remove_dir(&key_path).unwrap();
+
+    // Refusal wins even with no readable private key, and before an absent
+    // connector lookup. Exact scope for Workspace does not grant Entra reads.
+    for (token, target, expected) in [
+        (outside.as_str(), "corp", "access_denied"),
+        (reader.as_str(), "absent", "access_denied"),
+        ("invalid", "corp", "invalid_token"),
+    ] {
+        let error = fixture
+            .core
+            .cloud_operations(token, "entra", target)
+            .unwrap_err();
+        assert_eq!(error.code, expected);
+        assert!(
+            !error
+                .message
+                .contains(fixture._dir.path().to_str().unwrap())
+        );
+        fixture.assert_snapshot(&before);
+    }
+    write_private(&key_path, &rotated_key, false).unwrap();
+    set_modified(&key_path, rotated_time);
+    observe("corp", true, Some(rotated_time));
+
+    // The unchanged shared-secret arm still enforces its separate 4-KiB bound.
+    write_private(&shared_path, &vec![b'x'; 4097], true).unwrap();
+    observe("shared", false, None);
+    write_private(&shared_path, SECRET.as_bytes(), true).unwrap();
+    set_modified(&shared_path, rotated_time);
+    observe("shared", true, Some(rotated_time));
+    assert_eq!(directory.state.token_hits.load(Ordering::Relaxed), 0);
+    assert_eq!(directory.state.directory_hits.load(Ordering::Relaxed), 0);
+    fixture.assert_snapshot(&before);
+}

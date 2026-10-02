@@ -465,3 +465,142 @@ and three commit object types, confirmed both prospective/unmaterialized helpers
 absent and only this report changed, and checked balanced fences/final newline.
 `git diff --check` passed. These are document/source-identity checks, not helper,
 protocol, desktop or product-runtime evidence.
+
+## Reserved confidential demo implementation: source-only evidence — 2026-10-02
+
+Root explicitly reserved `wave30_D01_confidential_browser_helper`: exactly one
+new `scripts/d01-confidential-browser-demo.py`, plus append-only evidence here,
+in the same project/worktree. **Source is implemented; all execution remains
+HELD pending root source review and a separate explicit runtime release.**
+No helper import/execution, CLI setup, listener, native provider, Driver, Cargo
+or product test was invoked. No runtime/desktop slot was acquired or released.
+
+The implementation is committed separately from this evidence append:
+
+| Source artifact | Exact identity |
+| --- | --- |
+| Source commit, parent `9e0f0dbeff260d674187ddd23399bcb413498904` | `0b0d15cda6e6c61388ce40338de707f84851989f` |
+| Sole added file | `scripts/d01-confidential-browser-demo.py`, mode `100644`, 651 lines, 29933 bytes |
+| Source blob | `cbbaaea8afa667112546c5ee6b85e945d6f306bd` |
+| Source SHA-256 | `d8446bfdf22f2a345b019673fe93828d5f75024a87b530b100eb6c027da9a863` |
+| Imported verifier, unchanged fixed Git object | Commit `9cefe7a56425bb73c17753e8766d92320b77da3b`, blob `3be747d03146f1bcaa3ec012ee8d173b61fa737d`, SHA-256 `f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d` |
+
+The existing recovery helper is absent from this older worktree and was not
+materialized, imported or edited. The new script checks private file mode and
+the exact verifier hash before compiling/executing those verified bytes **at
+future runtime**; it does not reread arbitrary code or create bytecode files.
+Only `LocalRelyingParty.discovery`, `callback_fields` and `verify_id_token`
+are delegated with the minimal context they require. Neither its constructor,
+public-client callback nor service-session `login` is called. Native RS256
+verification and JWK conversion remain in that pinned, previously checked
+module; no custom signature implementation or dependency was added.
+
+### Implemented source behavior, not observed runtime results
+
+- Fixed issuer/client/origin/callback/scopes and confidential POST match the
+  accepted plan. The 0600, owner-only, regular, no-follow CLI credential file
+  is bounded to 256 KiB, parsed with the pinned duplicate-key guard, and
+  validated against the direct `{client, client_secret}` response schema.
+  The secret is used only in token POST data, never argv, environment, HTML,
+  output or evidence. Existing creation receipts/headers are untouched.
+- One same-origin empty form POST produces the browser authorization redirect
+  with fresh state, nonce, S256 and a browser flow cookie. One callback consumes
+  that pending state before exchange and requires the matching flow cookie,
+  exact issuer and state. The code exchange includes the confidential secret,
+  exact callback and verifier. There is no API/session/terminal approval path.
+- Discovery endpoints and algorithm/auth-method advertisements are checked.
+  The pinned method verifies JWKS/public RSA/RS256, scalar audience, issuer,
+  nonce, issuance/expiry, subject and access-token hash; userinfo subject must
+  agree. Only then is the fresh app cookie created. The response clears the
+  flow cookie and redirects to query-free `/protected`.
+- `/protected` responds 403 without a valid app cookie and 200 only with the
+  verified app session. Its fixed HTML exposes no identity/token data. Own
+  cookie duplicates are rejected; unrelated localhost IdP cookies are ignored.
+  The final pass condition requires the before-cookie refusal, authorization
+  redirect, exchange/validation/userinfo and after-cookie acceptance. Numeric
+  HTTP observations are stored separately from boolean checks. They initialize
+  to null/false and are updated only after the corresponding future action.
+- Request line, header total, header line/count, cookie size/count, body and
+  query limits are explicit; only bodyless GET and the exact empty form POST
+  are accepted. Host is exact, authorization/transfer/expect headers are
+  refused, Origin is exact for POST, and callback parsing is the pinned bounded
+  singleton parser. Unknown auxiliary paths get fixed 404 HTML without starting
+  another flow. HTTP request/error logging is silent, and HTML/headers use
+  no-store/no-referrer/CSP with no external assets or raw request interpolation.
+- One synchronous HTTP server binds only `127.0.0.1:3000`, with no alternate
+  port or retry. A POSIX main-thread alarm samples disk at intervals of at most
+  one scheduled second, enforcing the 8.5 GiB stop margin, overall helper cap
+  of 600 seconds, pending cap of 180 seconds and operation deadlines. Header
+  input/response, provider/discovery/token/userinfo and **combined JWKS/native
+  signature verification** each have a five-real-second alarm; the delegated
+  module's existing socket/OpenSSL caps remain. Nested operations retain the
+  earlier deadline. No new thread, external service or browser controller exists.
+- Fixed failure tags and controlled stages replace raw exceptions. The original
+  failure is retained if cleanup/evidence writing also fails, with separate
+  cleanup/evidence failure fields. Finally closes the active connection and
+  listener, restores owned alarms, clears private references and checks the
+  initially empty verification workspace for leftover temporaries. No Python
+  memory erasure is claimed. A new exclusive 0600 result file contains public
+  source/provider hashes, fixed status/check metadata and resource observations;
+  stdout contains only readiness PID/port and finite result fields.
+
+### Actual static checks and limits
+
+All assigned source checks passed. Python read the new file as bytes and used
+`ast.parse` plus in-memory `compile` on the AST; **the resulting code object was
+never executed**, and the target module was never imported. Checks verified
+stdlib-only imports, fixed issuer/client/origin/cookie/bounds/provider/verifier
+literals, the guarded entry, the three permitted native-method references,
+absence of RP construction/service-session approval paths, and the pinned
+verifier Git-object SHA-256. The preceding report exactly matched the complete
+`9e0f0db` input before this append. `git diff --cached --check` passed, and
+the source commit's sole path is the added helper. No static check failed;
+draft refinements to deadline nesting, combined verification bounds, cleanup,
+first-failure retention and argument matching were made before that commit.
+
+These are source/identity/scope checks, not evidence that native verification,
+signals, token exchange, any browser transition, refusal, cleanup or timing
+has executed successfully. The earlier seven whole-file identity checks and
+the historical R05/D01 outcomes retain their dates and scope. No current
+whole-CI, installation, release, non-admin, invitation, physical-passkey,
+tenant, all-workflow or independent verification of this worker's own actions
+is inferred from this implementation.
+
+Root's source review should assess these concrete limits before runtime:
+
+1. Python 3.11+, a fresh 0700 lab/empty RP workspace, POSIX alarms on the main
+   thread and the exact native OpenSSL path/hash/version are required. A changed
+   provider, occupied port, invalid private input or expired/duplicate flow
+   fails closed; there is no compatibility/dependency/provider fallback.
+2. Verification deliberately uses the existing fixture's strict RS256/JWT,
+   scalar audience, RSA key-size/exponent and `at_hash` checks, rather than a
+   general OIDC library for arbitrary issuers or token profiles. The combined
+   five-second verification cap is more restrictive than allowing two successive
+   five-second calls. None of this has been exercised with the new adapter yet.
+3. Helper metadata proves only its future HTTP/verification observations.
+   Actual password entry and consent cannot be inferred from those booleans:
+   the separately released **RiWork Cua.ai Driver MCP-only** trace must observe
+   them on the exact isolated target. Driver descriptions/current state remain
+   deferred to that release; no GUI provider or permission was accessed here.
+4. The external owner still owns IdP/browser processes, the fresh lab/XDG and
+   the inclusive 900-second fixture deadline with the 840-second active stop
+   and 60-second cleanup reserve. The helper closes its own socket and clears
+   references; it does not delete the caller's lab, stop IdP/personal browsers
+   or prove a vanished listener/PID tree. Its elapsed field is sampled after
+   socket cleanup, before final evidence writing; whole-fixture timing and
+   final listener/process/lab readbacks belong to the parent guard.
+
+The exact argv and matching c01 artifact hashes in the prior proposal remain
+the runtime request, with source commit/hash above added to preflight. Root
+must separately review this implementation and explicitly release that one
+fixture; this source reservation grants no execution. Existing guide/D05
+artifacts, product/config/state/approval/workflow/tests and accepted contracts
+remain unchanged. Root alone integrates/pushes/statuses and decides D01/D05
+original gates; O06 remains closed. No new worker/task/worktree/shell, other
+worker contact, main mutation or merge/reset occurred.
+
+Evidence-append checks actually passed: all 31296 bytes of the prior plan/report
+and all 11586 original browser bytes remain unchanged; balanced Markdown fences,
+final newline, unchanged committed source SHA-256/blob and single-report pending
+diff were verified. `git diff --check` passed. No link/build/test or helper
+runtime was substituted for these static checks.
