@@ -1772,6 +1772,8 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
             interval_seconds: 3600,
         },
     );
+    // Retain queued releases until the admitted plan operation settles them.
+    let _source_router = riauth::api::router(f.core.clone());
     let operator = agent(
         &f,
         "payroll-operator",
@@ -1951,7 +1953,24 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
         .unwrap();
 
     // Stopping a reviewed job does not bypass its durable dispatch fence.
-    let plan = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
+    // Use the same plan operation through normal admission before the real reopen.
+    let plan = runtime.block_on(async {
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/provisioning/targets/payroll/plan")
+            .header("authorization", format!("Bearer {}", f.admin))
+            .header("if-match", format!("\"{}\"", revision(&f.core)))
+            .header("idempotency-key", "dismiss-dispatch-plan")
+            .body(Body::empty())
+            .unwrap();
+        let response = _source_router.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let plan: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(plan["target"], "payroll");
+        assert!(plan["id"].as_str().is_some_and(|id| !id.is_empty()));
+        plan
+    });
     let job = text(&plan, "id");
     f.core
         .provisioning_apply_confirmed(&f.admin, &job, Some(&job))
@@ -2060,7 +2079,10 @@ fn operator_dismissal_preserves_ambiguous_intent_and_requires_scoped_review() {
 
     // next_attempt=1 is beyond ordinary retention. Restart and cleanup retain
     // this exact intent, which no longer consumes a delivery queue slot.
+    drop(_source_router);
     f = f.reopen_with(|_| {});
+    // The reopened store has its own executor; never retain the old redb owner.
+    let _source_router = riauth::api::router(f.core.clone());
     f.core.cleanup().unwrap();
     assert_eq!(deliveries(&f.core), vec![expected]);
     assert!(!f.core.deactivation_step().unwrap());
