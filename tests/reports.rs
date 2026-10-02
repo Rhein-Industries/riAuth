@@ -314,6 +314,16 @@ fn admin_can_filter_paginate_and_attribute_changes() {
         Some(RequestContext {
             request_id: "req-report".into(),
             run_id: Some("run-report".into()),
+            // A bound request carries its retry key and the current revision.
+            idempotency_key: Some("report-create-alice".into()),
+            fingerprint: "report-create-alice".into(),
+            revision: Some(
+                f.core
+                    .store
+                    .get::<u64>("meta", "revision")
+                    .unwrap()
+                    .unwrap_or(0),
+            ),
             ..Default::default()
         }),
         || {

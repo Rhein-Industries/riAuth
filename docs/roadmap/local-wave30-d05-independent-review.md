@@ -192,3 +192,205 @@ paused-before-I/O and provider/old-worker-quiescence limits remain intact, as do
 receipt-secret, route-specific headers, PAM fallback and permission/review/
 receipt/removal/audit/credential protections. Desktop preference remains RiWork
 Cua.ai Driver, descriptions/current state first; none was needed.
+
+---
+
+## Current-evidence addendum and proposed refresh — 2026-10-02
+
+This is a later, report-only phase of original D05 support in the same project,
+task and worktree. The entire preceding `09398ada2f8e01fe08ef50c4bbae4830ba906bac`
+report remains a **dated prior phase**, including its then-current gate language,
+limits and checker failure. Its 17493 bytes, blob
+`bafe944aff8778de4eb39b7c6ac430eb8e9292d2`, SHA-256
+`2fbd2550d375f1d7a5ebfebbc00673001db532abf78d27002f9c0fc3ac2c2430`,
+are preserved as the exact byte prefix. This addendum supersedes only the earlier
+absence claims identified below. No existing D05 JSON/Markdown artifact was edited.
+
+The original RiWork D05 row was reread with explicit project ID. It requires
+evaluation of the ten named categories, documentation of completed user/operator
+tasks, and that a new user and new operator can independently complete the
+documented workflows. Its proposed prerequisite list is not a new rule that every
+category target, tenant, device or release must pass before an honest evaluation
+can finish. The current row remains `in_progress`; this worker changes no status.
+The fresh `wave30_D05_current_workflow_addendum` ownership reservation permits
+only an append to this report and holds all runtime.
+
+### Finding and one concrete local gap
+
+**The operator-command, password-browser and actual local recovery-RP absence
+claims are now resolved within their exact scopes. No missing category assessment
+or two-artifact integrity error was found. One concrete remaining local documented
+workflow gap is the Essentials section 3 browser application journey.**
+
+The printed guide says to start the application at `http://localhost:3000/callback`
+and use its sign-in action, then complete riAuth browser sign-in/consent and return
+to that callback. Operator evidence stops after registering confidential
+`local-demo` and checking discovery/identity. The password browser fixture had no
+application and an empty catalogue. R05 executed a genuine scripted **public**
+OIDC RP before/after restore, with service authentication as its prerequisite;
+it did not execute that guide's confidential-client browser task. Combining their
+counts cannot establish one independently completed browser application workflow.
+
+This is the prioritized local evidence gap for root's original-gate interpretation,
+not a demand to pass all category targets or an assertion that every other guide
+task has run. The other invitation, factor, ordinary-nonadmin, integration and
+deployment limits remain individually labeled. Physical passkeys, optional mail,
+LDAP/SCIM tenants, installation/release artifacts, an inexperienced-human study,
+universal browser administration and HA are not added as universal D05 gates.
+
+Recommendation: accept the three bounded current evidence additions and adjudicate
+that one printed application-flow gap with D01's owner. Do not infer full original
+workflow completion from the existing records or rewrite all unmet inputs as
+failures. If root reserves a next checkpoint, its exact scope should be the printed
+section 3 application sign-in/consent/callback and fresh protected application
+access with matching artifacts and explicit disposable application setup. This
+report authorizes no such setup or runtime and makes no product-correction claim.
+
+### Fixed publication, accepted staging and exact records
+
+Fixed published input is **`88790deb62d32c84fa17dceb12cd93a727224e94`**.
+Operator/R05 author commits need not be its ancestors: their report bytes are
+present there unchanged. Root D01 browser staging/review is deliberately separate
+and later; its report is absent at that fixed published pin.
+
+| Proposed stable ID | Class; actual current-outcome delta | Exact authored/accepted provenance |
+| --- | --- | --- |
+| `E-D01-OPERATOR` | `executed local fixture`; 27 printed CLI/probe commands exited 0 and two original-config servers exited 0, 607.862s. Essentials §§2/3/5/6–8 init, distinct sessions, doctor, confidential client/discovery, online backup, closed offline restore, original restart, groups, claims simulation and correlated audit/CSV are executed. Restored store remained pending and was never served/attested. | Author `9cde81dd93ff171fa54194b2ed514142451484d9`; identical report at fixed published88790deb. c01-equivalent production, execution HEAD `950fc6ecb14fcbafd4587f95987b9231984994c2`; printed guide blob `be68580333ad5f2238ac1966d164bf0fbf80aca1`. Root's published remaining-gates review read all 34 redacted records; that is root verification, not a new read of the private JSONL here. |
+| `E-D01-BROWSER` | `executed local fixture`; actual fresh password administrator browser sign-in with empty code, signed-in identity/empty catalogue, security-panel open/close, logout, password relogin and final logout. RiWork Driver MCP0.30.4, isolated profile/exact returned binding, explicit DOM clicks followed by fresh snapshots. No app, passkey, invitation or ordinary-nonadmin browser journey is credited. | Author `6837b745576552b0917b3bd1f1424515621a0a85`; identical blob at accepted root staging `937d0da38a52ff1e2e4a510b61e79f22087a94f1`; root review `1711b531f720b57c22bed8e59a9657faaa6370bc`. Guide pin `6b4db4f0317e4427c187f55e063989ccba124217`; production c01. Accepted staging is not publication88790deb. |
+| `E-R05-RP` | `executed local fixture`; one invocation exited 0, 19 unique passed checks, including actual pre-backup/post-restore callback, S256 exchange, native RS256/JWKS and claims verification, userinfo, new RP cookie and protected access403/200; gated restore, explicit synthetic reconciliation and old-session denial. This resolves the actual local representative-RP gap, not deployment escrow or browser usability. | Author `0cc3515eb54a3bcbef83e7fbe03a00ddbcea6cbc`; original disposition `dcd6882c510b6380e828882e1ebadf558fe86f8b` and exact tracked JSON at fixed published88790deb. Runtime HEAD `b5cea614c4f46d82aff2380c052bd2dffc760f9e`, Platform binary, c01-equivalent `src` tree `3adc2b59c3547d22bff202daccfd8ad97f1e78ab`. R05 remains accepted DONE; no reopening. |
+
+Stable IDs above do not collide with the existing seventeen. The operator's 27
+commands are not 27 tests, its two server exits are not additional command passes,
+and R05's 19 checks are not added to its older sixteen-check runs. Browser
+transitions are observations, not a new CI suite count.
+
+I authored/performed `E-D01-BROWSER` and am the reviewer writing this addendum.
+Rereading/hashing my own report is **not independent verification of my actions**.
+The separate root review accepts the recorded observations and recomputed hashes;
+it explicitly did not replay GUI actions. Operator/R05 records are other authored
+evidence plus root-reviewed records, not runs performed or replayed by me here.
+
+The D01 server and maintenance hashes are respectively
+`7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606` and
+`86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95`;
+operator base client is `bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf`.
+R05 binary is `0f137475af5a8040d96a794b1ad331e7430be4467046b81b1312fb974b7e8a6a`.
+These runtime artifact hashes are credited from the exact accepted records,
+including my preceding browser phase's actual rehash; no binary was opened or
+rehashed anew in this read-only phase. They are not current-main/released binaries.
+
+The proposed evidence references should use these exact Git identities:
+
+| Pin/path | Git blob | Content SHA-256 |
+| --- | --- | --- |
+| published88790deb, `docs/roadmap/local-wave30-d01-walkthrough-report.md` | `92f85d5f4c242e221fded43635754f8f961ac294` | `9d8dc3d135013efd88e91759d416effb7119eba0458524aec89494fc70481236` |
+| worker6837b745 / staging937d0da, `docs/roadmap/local-wave30-d01-user-browser-review.md` | `0beaceecb32b3fda2b6f06ff5bac2c26d6c3aee5` | `68f4b61ed388d9a6ec980bc93a28eb6964c0ca75d36ac64ee4bd9108d837ffd4` |
+| review1711b53, `docs/roadmap/local-wave30-d01-root-user-review.md` | `100d3b5924c92a387fed1416366fa5a265f44965` | `af64815f3b6370a3e11f663dc2809abc48a1ed4e1a207419d38b0d8ce0f506e7` |
+| published88790deb, `docs/roadmap/local-wave30-r05-drill-plan.md` | `e07cba637b9108aff0c146b9d58e7135feb51a55` | `8d86e5ac504c650f8f2880f36183ccf200859e70f22fa9ce41b4dd38a4f3a313` |
+| published88790deb, `docs/roadmap/local-wave30-r05-root-disposition.md` | `01b7ffe1c012663c5eefdf2508d869165289a821` | `098cfb40cb7f27453455f72a58c013449e9a4cb5dda9609e91ee57e6ef3070a5` |
+| published88790deb, `docs/roadmap/evidence/r05-local-rp-2026-10-02.json` | `215c719d05f581fc95278e9013aa6e85b54aee5e` | `5498bbf1f089224947ef3f0cbc7e163c4aa35683eb8d0256943100f49012df41` |
+| published88790deb, `docs/essentials-guide.md` | `e48371d3a34a7b6441cbcfce700daf954aa5f2ae` | `9df3c2861984751d48b28d284cfb47c07801fd3934072e2ccb829edeb35579a0` |
+| published88790deb, `docs/roadmap/recovery-drill-r05.md` | `5f6b5582faed4368cfc38f3495f7b987a387ef14` | `bc2000c3059e72bd11ec9180a72a512fc68e64aa125f3572dd0616b93d68309b` |
+| runtimeb5cea614, `scripts/recovery-drill.py` | `ada2dfa93ccac1ec132cc15fb4a2b5a042fad878` | `7de1728211621a9bfb2e32d6712fac3960d91b4c31abaf0bab02d68dc85c2437` |
+| runtimeb5cea614, `scripts/recovery-drill-oidc.py` | `3be747d03146f1bcaa3ec012ee8d173b61fa737d` | `f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d` |
+
+For the operator record, retain the exact 27 redacted argv strings from its
+actual-outcome table, including its disclosed `--password-stdin` and
+`--non-interactive` substitutions; do not relabel it interactive browser setup.
+For the browser record, list Driver actions/snapshot transitions rather than
+inventing an HTTP/CLI authentication command. For R05 retain exactly
+`python3 scripts/recovery-drill.py --binary "$PWD/.target-wave27/debug/riauth" --evidence "$PWD/.target-wave27/r05-wave30-local-rp.json"`
+as its historical runtime command, with the reviewed script/helper pins above.
+All three new records should say `runtime_run_by_this_slice: false` and carry
+verification labels limited to authored/root records and tracked result JSON.
+Private JSONL/log/observer hashes remain reported provenance, not newly checked
+external raw files or fields to silently copy into a passing verifier claim.
+
+### Exact minimal two-artifact delta proposed for owner review
+
+This is a proposal only; only the reserved report is written now.
+
+1. Preserve every existing field/value in the dated c01 assessment, including
+   `prior_snapshots[0].snapshot`, complete prior Markdown, old ten-slice prefix,
+   original seventeen evidence records, all 27 existing slices, dated board,
+   source/CI observations, failure history and preserved-boundary text. At fixed
+   published88790deb both artifact bytes still equal reviewed eb1412aa; their
+   prior-phase blob/SHA pins above remain unchanged.
+2. Append exactly the three stable records above to `evidence_records` and
+   three corresponding `newer_slices`: 17→20 IDs, 27→30 slices. Use existing
+   reference/class/summary/verification/recorded-command fields. Operator/R05
+   `accepted_published_pin` is fixed88790deb. Browser's published pin is null;
+   add explicit `accepted_staging_pin`937d0da and `root_review_pin`1711b53,
+   plus authored/runtime/guide provenance, instead of falsely calling it published.
+3. Add one `current_evidence_addendum` object with read date2026-10-02,
+   fixed publication88790deb, the separate browser staging/review pins,
+   `new_evidence_ids`, the ten-row category delta below, resolved bounded gaps,
+   and `remaining_local_workflow: Essentials section3 browser application sign-in/consent/callback`.
+   This object labels the previous current language as its dated prior assessment.
+   Do not change top-level task status, `d05_passed`, category target booleans or
+   gate outcome without root's exact classification decision. If adopted as
+   proposed, record the independent workflow gate as partially evidenced with
+   that local gap; a ten-category evaluation can remain evaluated-with-gaps.
+4. Append one matching dated current-evidence section to the Markdown twin:
+   exact three summaries/classes/IDs/references/commands/counts/failures, this
+   ten-category delta, and the single current local gap. Keep all earlier text
+   byte-for-byte. Match JSON/Markdown current fields; historical sections remain
+   dated rather than silently rewriting O06/R05 or c01 observations.
+
+| Category | Proposed current IDs and bounded change | Remaining claim-specific limit |
+| --- | --- | --- |
+| Usability | `E-D01-BROWSER`: replace blanket absence of actual password browser completion with accepted sign-in/navigation/logout/relogin evidence. | Application browser journey is the one local gap above; ordinary-nonadmin, factor/invitation/device/accessibility claims are not supplied. |
+| Workflows | `E-D01-OPERATOR`: document the executed built-in Essentials setup/management sequence. | It is not a configured Platform graph/operator browser-authoring journey; do not reopen accepted W rows or invent arbitrary-graph gates. |
+| Administration | `E-D01-OPERATOR`: client/group/claim/audit commands and exact authority/revision/idempotency/secret-file behavior are actual tasks. Current context acknowledges accepted O06 DONE. | No People/Security browser ceremony or universal browser resource coverage is inferred; retain accepted M03/receipt/header/PAM decisions. |
+| Interoperability | `E-R05-RP`: actual local synthetic OIDC application callback/exchange/verification/protected-access evidence. | A public local RP is not the guide's confidential browser task, a named third-party tenant or family certification. |
+| Footprint | No new ID or measurement assertion. Artifact hashes identify the executed binaries only. | Existing native/RSS/release-size/install limits remain. |
+| Performance | No new ID or benchmark assertion. | 607.862s/186.997s are bounded checkpoint intervals; R05's 19 checks are not load/latency/throughput evidence. |
+| Availability | `E-R05-RP`: actual stopped-source outage/refusal and restored local service access. Current context acknowledges O06 DONE. | No deployed HA/failback/fleet health or old-worker quiescence inference. |
+| Recovery | `E-D01-OPERATOR`, `E-R05-RP`: online backup/closed offline restore plus separate completed synthetic redb recovery and fresh real local application access. Current R05 original acceptance is DONE. | Do not merge the independent labs or relabel the pending operator restore/older physical/PITR observations as completed deployment reconciliation. |
+| Migration | No new ID or migration-completion assertion. | R05's stable subject within one recovery lineage is not Authentik export/cutover/G05 or older-binary route rollback. |
+| Security | All three IDs: scoped secret-file handling, actual password browser session transitions and actual restore/refusal/signature/protected-access controls. | Keep source/native fixture, software/device, release/independent review and deployment claims distinct. |
+
+### What was actually checked in this phase
+
+Fresh identity inventory: fourteen fixed `(pin,path)` references, thirteen
+distinct blobs, all actual blob types and SHA-256 values checked. This includes
+the two unchanged D05 artifacts and prior report, worker/staging duplicate
+browser identity, exact current records/guide and two runtime script identities.
+Publication-presence comparisons additionally confirm operator/R05 author bodies
+equal their fixed-main bodies. The c01 and R05 runtime `src` tree hashes agree;
+that whole-tree identity is not a complete source-body review or new execution.
+The tracked R05 JSON was parsed: 19 distinct IDs, all results passed, actual
+application observations and limits read. No binary/log/fixture was executed.
+
+Body reads: the prior D05 report, own browser report, D01 root user review,
+R05 root disposition and published remaining-gates root review were read in full.
+The entire operator128-line and R05 actual148-line appendices were read, not
+their complete earlier report bodies. All ten category target/scope/unmet/limit
+records and the D05 Markdown gate/table were reread; guide intro/application/
+passkey-entry and recovery-guide sections received selected inspection. Script
+identities were hashed without semantic body review. These counts are separate
+from the prior phase's 77 hashes/twelve review bodies and are not added to them.
+
+A nonmutating identity helper initially guessed `scripts/recovery-oidc.py` and
+reported that path absent. Pinned script-tree inspection found the actual
+`scripts/recovery-drill-oidc.py`; its blob/hash matches the authored evidence.
+This reviewer lookup error exposed no artifact/product failure and changed no
+source. RiWork's unsupported `task --help` query also exited2; the subsequent
+explicit-project JSON task read succeeded. Existing operator handoff exit2
+(terminal input/copy mode), earlier build/checker/harness failures, skips and
+historical recovery blind spots remain in their records and this preserved phase.
+
+Only this report is appended. No Cargo/test/runtime/browser/desktop/build,
+merge/reset, product/guide/evidence-artifact edit, worker/task/worktree creation,
+other-worker contact, main/push or status mutation occurred. Runtime remains
+closed. Root alone reviews/classifies/integrates/publishes/statuses. All accepted
+credential, permission/review/receipt/removal/audit, header, PAM, held Group,
+nonrenewed60s/paused-I/O and provider preferences remain intact. RiWork Cua.ai
+Driver remains the sole allowed desktop provider; no driver call was needed here.
+
+Actual addendum checks passed: immutable prefix17493 bytes/SHA, one reserved
+changed path, unchanged existing D05 artifact bytes, operator27 zero-exit table
+rows, tracked R05 nineteen unique passing checks, proposed noncolliding ID/count
+arithmetic and balanced fences. `python3 scripts/check-docs.py` exited0 with
+“Markdown links and build-directory layout checked”; Git whitespace passed.
+These are documentation/identity checks, not fresh product tests or gate changes.

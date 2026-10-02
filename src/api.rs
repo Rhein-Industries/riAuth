@@ -330,6 +330,10 @@ pub fn router(core: Core) -> Router {
         .route("/api/operations/mail", get(mail_deliveries))
         .route("/api/provisioning/targets", get(provisioning_targets))
         .route(
+            "/api/provisioning/targets/{id}/test-connection",
+            post(provisioning_test_connection),
+        )
+        .route(
             "/api/provisioning/targets/{id}/plan",
             post(provisioning_plan),
         )
@@ -3621,6 +3625,17 @@ async fn provisioning_deactivation_recover_dispatch(
     app.run(move |core| {
         core.provisioning_deactivation_recover_dispatch(&token, &id, input)
             .map(Json)
+    })
+    .await
+}
+async fn provisioning_test_connection(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run_connector(ConnectorWork::target("scim", &id), move |core| {
+        core.provisioning_test_connection(&token, &id).map(Json)
     })
     .await
 }
