@@ -1580,7 +1580,39 @@ async fn sign_in_pages_offer_password_recovery() {
         .unwrap()
         .to_bytes();
     let html = String::from_utf8(bytes.to_vec()).unwrap();
-    assert!(html.contains(r#"id="forgot-password" href="/account/reset""#));
+    let recovery: Vec<_> = html
+        .split('<')
+        .filter_map(|fragment| fragment.split_once('>').map(|(tag, _)| tag))
+        .filter(|tag| {
+            let mut attributes = tag.split_ascii_whitespace();
+            attributes.next() == Some("a")
+                && attributes.any(|attribute| attribute == r#"id="forgot-password""#)
+        })
+        .collect();
+    assert_eq!(
+        recovery.len(),
+        1,
+        "One recovery anchor must have this exact id"
+    );
+    for (name, expected) in [
+        ("id", r#"id="forgot-password""#),
+        ("href", r#"href="/account/reset""#),
+        (
+            "data-capability",
+            r#"data-capability="identity.email_password_reset""#,
+        ),
+    ] {
+        let actual: Vec<_> = recovery[0]
+            .split_ascii_whitespace()
+            .skip(1)
+            .filter(|attribute| {
+                attribute
+                    .split_once('=')
+                    .is_some_and(|(key, _)| key == name)
+            })
+            .collect();
+        assert_eq!(actual, [expected], "Recovery anchor's {name} attribute");
+    }
     for id in [
         "password-change",
         "password-current",
