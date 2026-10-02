@@ -134,3 +134,13 @@ Actual root checks at reviewed staging: docs checker exit0, repository hygiene
 exit0 (1,035 tracked files), cumulative whitespace exit0. The batch has no
 production src/crates/Cargo/toolchain change. No board status changed;
 root alone owns subsequent runtime, integration and original acceptance.
+
+## Review of O07 correction and newly retained failure boundaries
+
+Root fully read the307-line independent O07 review674af2c and92-line actual-static appendix9475ed0. The exact two-line guide correction35fb124 replaces the incorrect per-node PostgreSQL forward-auth claim with the shared counter under agreed effective rate limits. Reversal reconstructs the entire prior deployment guide, with every other byte preserved. Small-container mechanics remain unexecuted successfully and await the separate reviewed cohort; this paragraph alone does not close O07.
+
+Root fully read the735-line D01 actual appendixc88b297, including its exact193-line executed controller and complete fixed private result/cleanup documents. Protected-before403 passed; the next root page produced unexpected_failure with zero Authorization refusals. Password/consent/callback/crypto/protected200 were not reached. Owned resources are gone; final absence was observed about119s after controller completion, so the later5.165s contiguous cleanup sequence cannot prove whole60s cleanup. A separate finite failure-observer design and first-observation cleanup design are reserved; no blind real-browser repeat is released.
+
+Root fully read the179-line failed I04 compile receipt9ec96bc8 and91-line static correction4ed5b494. The one24c0dc9 certificate block introduces owned Asn1Time locals then borrows them. Reversing that block reproduces the entire39,498-byte previous target, and pinned cached OpenSSL0.10.81 public signatures support the ownership correction. Root rustfmt check passed. The old E0308 compilation remains failed, with no native/lifecycle execution. Exactly one separately released filtered run is pending; no outcome is credited here.
+
+The current shared-store observer receipt separately retains run37054511216 failure, fixed AssertionError source frame helper150, complete sanitized capture hashes/cleanup and source-backed collection-read expectation diagnosis. A genuine administration mutation refusal is being designed without production authority changes. Historical unknown failure causes remain unknown. All original task statuses and closed acceptance rows remain unchanged. Root documentation/hygiene/cumulative whitespace checks are required before publication; no Cargo/native/browser/container runtime is performed by root in this review.
