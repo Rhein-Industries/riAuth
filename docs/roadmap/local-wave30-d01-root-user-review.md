@@ -77,3 +77,8 @@ The worker immediately reports exit 0, all 78 cases completed, 44 baseline and 8
 ## Complete controlled result reviewed
 
 Root read all137 lines of `772c8cdbfd02e2bf3f28212884aebe5ef9f03849` and rehashed its exact741-byte retained JSON: `81c7a85c6b278bb60412be566a0bc07732fbc50c1ead9aa6030d07c14648dc5f`. All12 groups sum to78; calls are44/80, expected injected failure/timeout1/1, first failure null. The helper remains exactly470/7fbc. Root accepts this completed controlled verification and may publish the source. The next real browser invocation requires a separate explicit release; no GUI, protocol or crypto success is inferred from this memory result.
+
+
+## Report publication encoding correction
+
+The first root batch docs check exited1 because its link scanner interpreted the archived Python indexing call as a Markdown link. Root inserted one separating space in that report call and documented the exact reconstruction normalization. Removing that space restores the complete reviewed logic SHA `98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb`; whole-report reversal also passes. The checker and actual helper/payload/results are unchanged. Author prefix proofs remain statements about their immutable commits, before this explicit report-only publication encoding.
