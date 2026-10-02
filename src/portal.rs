@@ -5,6 +5,8 @@ pub mod admin;
 pub mod http;
 mod mfa;
 pub mod self_service;
+#[cfg(feature = "platform")]
+pub(crate) mod source_stage;
 pub mod sources;
 
 use crate::{

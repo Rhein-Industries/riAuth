@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="riauth-base" content="__BASE__">
+  <title>Continue signing in · riAuth</title>
+  <link rel="stylesheet" href="__BASE__portal/assets/app.css">
+  <link rel="stylesheet" href="__BASE__portal/assets/security.css">
+  <script src="__BASE__portal/assets/auth.js" defer></script>
+  <script src="__BASE__portal/assets/source-stage.js" defer></script>
+</head>
+<body>
+<main id="source-stage" class="standalone" data-authorization="__AUTHORIZATION__" data-stage="__STAGE__" data-resume="__RESUME__" data-cancel="__CANCEL__" data-continue="__CONTINUE__">
+  <div class="auth-panel">
+    <h1>Continue signing in</h1>
+    <p id="stage-status" role="status">Checking your provider sign-in…</p>
+    <form id="stage-form" novalidate>
+      <div id="stage-factor" class="field" hidden>
+        <label for="stage-otp">Authenticator or recovery code</label>
+        <input id="stage-otp" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="128">
+        <p>Your provider did not confirm a second factor. Enter your authenticator code or a recovery code.</p>
+      </div>
+      <p id="stage-error" role="alert" hidden></p>
+      <button id="stage-resume" type="button" class="button primary" hidden>Continue</button>
+      <button id="stage-recheck" type="button" class="button secondary" hidden>Check again</button>
+      <button id="stage-cancel" type="button" class="button secondary">Cancel</button>
+    </form>
+    <p id="stage-reload" hidden>The result may already be saved. <a href="">Reload this page</a> to check; your code will not be submitted again.</p>
+    <a href="__BASE__apps">Back to sign-in</a>
+    <noscript>JavaScript is needed to continue this sign-in.</noscript>
+  </div>
+</main>
+</body>
+</html>

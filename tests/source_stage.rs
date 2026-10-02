@@ -3796,3 +3796,1050 @@ async fn source_stage_browser_session_is_browser_owned() {
     let catalogue = f.core.portal_apps(Some(sso)).unwrap();
     assert_eq!(catalogue["user"]["id"], session.identity.user_id);
 }
+
+/// Rendering/HTTP transport only: the existing Core stage and browser writers own
+/// proof charging, authorization and native callback delivery in both response modes.
+#[cfg(all(feature = "platform", feature = "test-support"))]
+#[tokio::test]
+async fn browser_source_stage_transport_binds_factor_and_renders_both_response_modes() {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    const ORIGIN: &str = "http://localhost:9000";
+    let fixture = |prefix: &str| {
+        let dir = tempfile::tempdir().unwrap();
+        let core = riauth::core::Core::initialize(
+            riauth::config::Config {
+                data_dir: dir.path().into(),
+                issuer: format!("{ORIGIN}{prefix}"),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: common::PASSWORD.into(),
+                email: None,
+                display_name: "Admin".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let admin = text(
+            &core
+                .login("admin".into(), common::PASSWORD.into(), None)
+                .unwrap(),
+            "session_token",
+        );
+        Fixture {
+            _dir: dir,
+            core,
+            admin,
+        }
+    };
+    // Each independent request gets a fresh HTTP rate table, not a changed budget.
+    // These assertions test transport effects; rate accounting remains the shared middleware's job.
+    let send = |core: riauth::core::Core, request: Request<Body>| async move {
+        riauth::api::router(core).oneshot(request).await.unwrap()
+    };
+    let body = |response: axum::response::Response| async move {
+        String::from_utf8(
+            response
+                .into_body()
+                .collect()
+                .await
+                .unwrap()
+                .to_bytes()
+                .to_vec(),
+        )
+        .unwrap()
+    };
+    let get = |path: &str, accept: Option<&str>, cookie: Option<&str>| {
+        let mut request = Request::get(path);
+        if let Some(value) = accept {
+            request = request.header("accept", value);
+        }
+        if let Some(value) = cookie {
+            request = request.header("cookie", value);
+        }
+        request.body(Body::empty()).unwrap()
+    };
+    let post = |path: &str, cookie: &str, value: Value| {
+        Request::post(path)
+            .header("accept", "application/json")
+            .header("content-type", "application/json")
+            .header("origin", ORIGIN)
+            .header("x-riauth-portal", "1")
+            .header("sec-fetch-site", "same-origin")
+            .header("cookie", cookie)
+            .body(Body::from(value.to_string()))
+            .unwrap()
+    };
+    let link_alice = |f: &Fixture| {
+        let manifest = serde_json::from_value(json!({"api_version":"riauth/v1",
+            "source_links":[{"source":"upstream", "username":"alice", "subject":"subject-alice"}]}))
+        .unwrap();
+        let plan = f.core.plan_state(&f.admin, manifest).unwrap();
+        f.core
+            .apply_state_confirmed(
+                &f.admin,
+                riauth::state::ApplyRequest {
+                    plan: plan.clone(),
+                    secrets: Default::default(),
+                    run_id: None,
+                },
+                Some(&plan.plan_id),
+            )
+            .unwrap();
+    };
+    let audit_count = |f: &Fixture| {
+        f.core
+            .store
+            .list::<Value>("audit")
+            .unwrap()
+            .into_iter()
+            .filter(|(_, row)| row["action"] == "source.stage_resume")
+            .count()
+    };
+
+    for (mode, prefix) in [("query", ""), ("form_post", "/identity")] {
+        let f = fixture(prefix);
+        let upstream = Upstream::new(&f, false).await;
+        stage_client(&f, true);
+        let alice = f.user("alice");
+        let alice_id = text(&f.core.me(&alice).unwrap()["user"], "id");
+        link_alice(&f);
+        let links_before = f.core.store.list::<Value>("source_links").unwrap();
+        let link_id = links_before[0].0.clone();
+        // The scoped clock is synchronous setup only; no async worker inherits it.
+        // Recovery input makes the subsequent HTTP factor step independent of clock edges.
+        let at = (now() / 30 - 2) * 30;
+        let recovery = crypto::with_test_time(at, || {
+            let enrollment = f.core.mfa_begin(&alice).unwrap();
+            let totp = crypto::totp(&text(&enrollment, "secret"), "alice").unwrap();
+            f.core
+                .mfa_confirm(&alice, &totp.generate(at).to_string())
+                .unwrap();
+            crypto::with_test_time(at + 30, || {
+                let fresh = text(
+                    &f.core
+                        .login(
+                            "alice".into(),
+                            common::PASSWORD.into(),
+                            Some(totp.generate(at + 30).to_string()),
+                        )
+                        .unwrap(),
+                    "session_token",
+                );
+                f.core.recovery_codes(&fresh).unwrap()["recovery_codes"][0]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+        });
+        let (mut request, verifier) = authorization(&f, None, None);
+        request.response_mode = Some(mode.into());
+        request.state = Some("state <with> & \"quotes\"".into());
+        request.nonce = Some("original-rp-nonce".into());
+        let original = request.clone();
+        let browser = f.core.browser_start(request, None).unwrap();
+        let authorization = text(&browser.body, "authorization_id");
+        let stage = text(&browser.body, "stage_id");
+        let cookie = browser.cookies[0].split(';').next().unwrap().to_owned();
+        let base = format!("{prefix}/");
+        let native = format!("{base}oauth/resume/{authorization}");
+        let page = format!("{native}/source-stage/{stage}");
+        let resume = format!("{page}/resume");
+        let cancel = format!("{page}/cancel");
+        let legacy =
+            format!("{base}oauth/source-stages/{stage}/resume?authorization_id={authorization}");
+        assert!(browser.cookies[0].contains(&format!("Path={native};")));
+        let stage_record: Value = f.core.store.get("source_stages", &stage).unwrap().unwrap();
+        let login_key = text(&stage_record, "login_key");
+        let before = f.snapshot().unwrap();
+
+        let mut disabled = f.core.clone();
+        disabled.config.browser_ui = false;
+        let reply = send(disabled.clone(), get(&legacy, Some("text/html"), None)).await;
+        assert_eq!(reply.status(), StatusCode::OK);
+        assert_eq!(
+            serde_json::from_str::<Value>(&body(reply).await).unwrap()["status"],
+            "pending"
+        );
+        assert_eq!(
+            send(
+                disabled.clone(),
+                get(&page, Some("text/html"), Some(&cookie))
+            )
+            .await
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            send(disabled.clone(), post(&resume, &cookie, json!({})))
+                .await
+                .status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            send(
+                disabled,
+                get(&format!("{base}portal/assets/source-stage.js"), None, None)
+            )
+            .await
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+        f.assert_http_mutation_snapshot(&before);
+
+        for accept in [
+            None,
+            Some("application/json"),
+            Some("*/*"),
+            Some("text/html;q=0"),
+            Some("text/html;q=bogus"),
+            Some("text/html;q=1.001"),
+            Some("garbage, text/html"),
+            Some("text/html;q=0.0000"),
+            Some("text/html;x="),
+            Some("text/html, application/json;q=0.1"),
+        ] {
+            let reply = send(f.core.clone(), get(&legacy, accept, None)).await;
+            assert_eq!(reply.status(), StatusCode::OK);
+            assert_eq!(reply.headers()["vary"], "Accept");
+            let value: Value = serde_json::from_str(&body(reply).await).unwrap();
+            assert_eq!(value["status"], "pending");
+            f.assert_http_mutation_snapshot(&before);
+        }
+        let reply = send(f.core.clone(), get(&legacy, Some("text/html"), None)).await;
+        assert_eq!(reply.status(), StatusCode::SEE_OTHER);
+        assert!(reply.headers()["location"].to_str().unwrap() == format!("{ORIGIN}{page}"));
+        assert_eq!(reply.headers()["cache-control"], "no-store");
+        assert_eq!(reply.headers()["referrer-policy"], "no-referrer");
+        f.assert_http_mutation_snapshot(&before);
+        let reply = send(f.core.clone(), get(&page, Some("text/html"), Some(&cookie))).await;
+        assert_eq!(reply.status(), StatusCode::OK);
+        let policy = reply.headers()["content-security-policy"]
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert!(policy.contains("form-action 'none'") && policy.contains("script-src 'self'"));
+        assert_eq!(reply.headers()["cache-control"], "no-store");
+        let html = body(reply).await;
+        // RiAuth.post adds __BASE__; its data paths must not contain it again.
+        assert!(html.contains(&format!(
+            "data-resume=\"oauth/resume/{authorization}/source-stage/{stage}/resume\""
+        )));
+        assert!(html.contains(&format!("data-continue=\"{native}\"")));
+        assert!(html.contains(&format!("content=\"{base}\"")));
+        assert!(!html.contains("name=\"otp\"") && !html.contains("<script>"));
+        for private in [
+            cookie.as_str(),
+            recovery.as_str(),
+            original.state.as_deref().unwrap(),
+            original.nonce.as_deref().unwrap(),
+            browser.body["nonce"].as_str().unwrap(),
+            browser.body["authorization_url"].as_str().unwrap(),
+            browser.body["transaction_id"].as_str().unwrap(),
+        ] {
+            assert!(!html.contains(private));
+        }
+        f.assert_http_mutation_snapshot(&before);
+        let script = send(
+            f.core.clone(),
+            get(&format!("{base}portal/assets/source-stage.js"), None, None),
+        )
+        .await;
+        let script = body(script).await;
+        for expected in [
+            "RiAuth.post(path, body)",
+            "location.assign(continuation)",
+            "let busy = false",
+            "event.preventDefault()",
+            "RiAuth.guard",
+            "error.status >= 500",
+        ] {
+            assert!(script.contains(expected));
+        }
+        for forbidden in [
+            "fetch(",
+            "innerHTML",
+            "document.write",
+            "retry: true",
+            "setInterval(",
+        ] {
+            assert!(!script.contains(forbidden));
+        }
+        let auth_script = body(
+            send(
+                f.core.clone(),
+                get(&format!("{base}portal/assets/auth.js"), None, None),
+            )
+            .await,
+        )
+        .await;
+        for expected in [
+            "`${base}${path}`",
+            "redirect: \"error\"",
+            "credentials: \"same-origin\"",
+            "\"X-Riauth-Portal\": \"1\"",
+        ] {
+            assert!(auth_script.contains(expected));
+        }
+
+        // Fixture-only unsafe identifier, all original records restored afterwards.
+        let unsafe_id = "ri_stage_\"<& space";
+        let encoded = url::form_urlencoded::byte_serialize(unsafe_id.as_bytes())
+            .collect::<String>()
+            .replace('+', "%20");
+        let pending: Value = f
+            .core
+            .store
+            .get("browser_authorizations", &authorization)
+            .unwrap()
+            .unwrap();
+        let login: Value = f
+            .core
+            .store
+            .get("source_logins", &login_key)
+            .unwrap()
+            .unwrap();
+        f.core
+            .store
+            .write(|tx| {
+                let mut record = stage_record.clone();
+                record["id"] = json!(unsafe_id);
+                let mut p = pending.clone();
+                p["stage_id"] = json!(unsafe_id);
+                let mut l = login.clone();
+                l["stage"] = json!(unsafe_id);
+                tx.put("source_stages", unsafe_id, &record)?;
+                tx.put("browser_authorizations", &authorization, &p)?;
+                tx.put("source_logins", &login_key, &l)
+            })
+            .unwrap();
+        let unsafe_before = f.snapshot().unwrap();
+        let escaped = body(
+            send(
+                f.core.clone(),
+                get(
+                    &format!("{native}/source-stage/{encoded}"),
+                    Some("text/html"),
+                    Some(&cookie),
+                ),
+            )
+            .await,
+        )
+        .await;
+        assert!(escaped.contains("data-stage=\"ri_stage_&quot;&lt;&amp; space\""));
+        assert!(escaped.contains(&format!("/source-stage/{encoded}/resume\"")));
+        f.assert_http_mutation_snapshot(&unsafe_before);
+        f.core
+            .store
+            .write(|tx| {
+                tx.delete("source_stages", unsafe_id)?;
+                tx.put("browser_authorizations", &authorization, &pending)?;
+                tx.put("source_logins", &login_key, &login)
+            })
+            .unwrap();
+        f.assert_http_mutation_snapshot(&before);
+
+        let other = f
+            .core
+            .browser_start(crate::authorization(&f, None, None).0, None)
+            .unwrap();
+        let other_cookie = other.cookies[0].split(';').next().unwrap().to_owned();
+        let other_stage = text(&other.body, "stage_id");
+        let before_refusals = f.snapshot().unwrap();
+        let duplicate_cookie = format!("{cookie}; {cookie}");
+        for binding in [
+            None,
+            Some(other_cookie.as_str()),
+            Some(duplicate_cookie.as_str()),
+        ] {
+            let reply = send(f.core.clone(), get(&page, Some("text/html"), binding)).await;
+            assert_eq!(reply.status(), StatusCode::UNAUTHORIZED);
+            f.assert_http_mutation_snapshot(&before_refusals);
+            for route in [&resume, &cancel] {
+                let mut req = post(
+                    route,
+                    &cookie,
+                    if route == &resume {
+                        json!({"otp":recovery})
+                    } else {
+                        json!({})
+                    },
+                );
+                if let Some(value) = binding {
+                    req.headers_mut().insert("cookie", value.parse().unwrap());
+                } else {
+                    req.headers_mut().remove("cookie");
+                }
+                assert_eq!(
+                    send(f.core.clone(), req).await.status(),
+                    StatusCode::UNAUTHORIZED
+                );
+                f.assert_http_mutation_snapshot(&before_refusals);
+            }
+        }
+        let mixed = format!("{native}/source-stage/{other_stage}/resume");
+        let reply = send(
+            f.core.clone(),
+            post(&mixed, &cookie, json!({"otp":recovery})),
+        )
+        .await;
+        assert_eq!(reply.status(), StatusCode::FORBIDDEN);
+        f.assert_http_mutation_snapshot(&before_refusals);
+        for variant in 0..6 {
+            let mut req = post(&resume, &cookie, json!({"otp":recovery}));
+            match variant {
+                0 => {
+                    req.headers_mut().remove("origin");
+                }
+                1 => {
+                    req.headers_mut().append("origin", ORIGIN.parse().unwrap());
+                }
+                2 => {
+                    req.headers_mut().remove("x-riauth-portal");
+                }
+                3 => {
+                    req.headers_mut()
+                        .append("x-riauth-portal", "1".parse().unwrap());
+                }
+                4 => {
+                    req.headers_mut()
+                        .insert("origin", "https://other.example".parse().unwrap());
+                }
+                _ => {
+                    req.headers_mut()
+                        .insert("sec-fetch-site", "cross-site".parse().unwrap());
+                }
+            }
+            assert_eq!(
+                send(f.core.clone(), req).await.status(),
+                StatusCode::FORBIDDEN
+            );
+            f.assert_http_mutation_snapshot(&before_refusals);
+        }
+        for accept in [
+            "*/*",
+            "text/html",
+            "application/json;q=0",
+            "application/json;q=bad",
+        ] {
+            let mut req = post(&resume, &cookie, json!({"otp":recovery}));
+            req.headers_mut().insert("accept", accept.parse().unwrap());
+            assert_eq!(
+                send(f.core.clone(), req).await.status(),
+                StatusCode::NOT_ACCEPTABLE
+            );
+            f.assert_http_mutation_snapshot(&before_refusals);
+        }
+        for accept in [
+            None,
+            Some("*/*"),
+            Some("application/json"),
+            Some("text/html;q=0"),
+        ] {
+            assert_eq!(
+                send(f.core.clone(), get(&page, accept, Some(&cookie)))
+                    .await
+                    .status(),
+                StatusCode::NOT_ACCEPTABLE
+            );
+            f.assert_http_mutation_snapshot(&before_refusals);
+        }
+        let mut duplicate_accept = post(&resume, &cookie, json!({}));
+        duplicate_accept
+            .headers_mut()
+            .append("accept", "application/json".parse().unwrap());
+        assert_eq!(
+            send(f.core.clone(), duplicate_accept).await.status(),
+            StatusCode::NOT_ACCEPTABLE
+        );
+        f.assert_http_mutation_snapshot(&before_refusals);
+        let mut positive_json = post(&resume, &cookie, json!({}));
+        positive_json.headers_mut().insert(
+            "accept",
+            "text/html;q=1, application/json;q=0.2".parse().unwrap(),
+        );
+        let reply = send(f.core.clone(), positive_json).await;
+        assert_eq!(reply.status(), StatusCode::OK);
+        assert_eq!(
+            serde_json::from_str::<Value>(&body(reply).await).unwrap()["status"],
+            "pending"
+        );
+        f.assert_http_mutation_snapshot(&before_refusals);
+        for factor_query in ["otp=123456", "otp=", "%6ftp=private"] {
+            for (route, is_post) in [
+                (&legacy, false),
+                (&page, false),
+                (&resume, true),
+                (&cancel, true),
+            ] {
+                let separator = if route.contains('?') { '&' } else { '?' };
+                let route = format!("{route}{separator}{factor_query}");
+                let req = if is_post {
+                    post(&route, &cookie, json!({}))
+                } else {
+                    get(&route, Some("text/html"), Some(&cookie))
+                };
+                assert_eq!(
+                    send(f.core.clone(), req).await.status(),
+                    StatusCode::BAD_REQUEST
+                );
+                f.assert_http_mutation_snapshot(&before_refusals);
+            }
+        }
+        for value in [
+            json!({"authorization_id":authorization,"otp":recovery}),
+            json!({"request":{},"otp":recovery}),
+            json!({"redirect_uri":"https://other.example","otp":recovery}),
+        ] {
+            assert_eq!(
+                send(f.core.clone(), post(&resume, &cookie, value))
+                    .await
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+            f.assert_http_mutation_snapshot(&before_refusals);
+        }
+        assert_eq!(
+            send(
+                f.core.clone(),
+                post(&cancel, &cookie, json!({"otp":recovery}))
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+        for (header, value) in [("if-match", "unquoted"), ("idempotency-key", "bad key")] {
+            let mut req = post(&resume, &cookie, json!({"otp":recovery}));
+            req.headers_mut().insert(header, value.parse().unwrap());
+            assert_eq!(
+                send(f.core.clone(), req).await.status(),
+                StatusCode::BAD_REQUEST
+            );
+            f.assert_http_mutation_snapshot(&before_refusals);
+        }
+        let reply = send(f.core.clone(), post(&resume, &cookie, json!({}))).await;
+        let value: Value = serde_json::from_str(&body(reply).await).unwrap();
+        assert_eq!(value["status"], "pending");
+        f.assert_http_mutation_snapshot(&before_refusals);
+
+        upstream.callback(&f, &browser.body, "subject-alice").await;
+        let before_factor = f.snapshot().unwrap();
+        // A read-only prompt after callback still cannot authorize or consume any proof.
+        assert_eq!(
+            send(f.core.clone(), get(&page, Some("text/html"), Some(&cookie)))
+                .await
+                .status(),
+            StatusCode::OK
+        );
+        f.assert_http_mutation_snapshot(&before_factor);
+        let value: Value = serde_json::from_str(
+            &body(send(f.core.clone(), post(&resume, &cookie, json!({}))).await).await,
+        )
+        .unwrap();
+        assert_eq!(value["status"], "local_factor_required");
+        assert_eq!(value["code_issued"], false);
+        f.assert_http_mutation_snapshot(&before_factor);
+        let wrong = send(
+            f.core.clone(),
+            post(&resume, &cookie, json!({"otp":"bad-code"})),
+        )
+        .await;
+        assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(wrong.headers()["cache-control"], "no-store");
+        assert!(!body(wrong).await.contains("bad-code"));
+        let mut charged = before_factor.clone();
+        charged
+            .get_mut(&format!("source_logins/{login_key}"))
+            .unwrap()["attempts"] = json!(1);
+        f.assert_http_mutation_snapshot(&charged);
+        assert!(codes(&f).is_empty());
+        assert_eq!(audit_count(&f), 0);
+        let charged_stage: Value = f.core.store.get("source_stages", &stage).unwrap().unwrap();
+        assert_eq!(charged_stage["used"], false);
+
+        // Corrupt only fixture records, asserting outer rollback and no factor consumption.
+        for field in [
+            "nonce",
+            "request_hash",
+            "suspension_hash",
+            "browser_id",
+            "request_binding",
+            "expires_at",
+        ] {
+            f.core
+                .store
+                .write(|tx| {
+                    let mut broken = charged_stage.clone();
+                    match field {
+                        "request_binding" => broken["request"]["request_binding"] = json!("other"),
+                        "expires_at" => broken[field] = json!(0),
+                        _ => broken[field] = json!("wrong"),
+                    }
+                    tx.put("source_stages", &stage, &broken)
+                })
+                .unwrap();
+            let before = f.snapshot().unwrap();
+            assert!(
+                send(
+                    f.core.clone(),
+                    post(&resume, &cookie, json!({"otp":recovery}))
+                )
+                .await
+                .status()
+                .is_client_error()
+            );
+            f.assert_http_mutation_snapshot(&before);
+            f.core
+                .store
+                .write(|tx| tx.put("source_stages", &stage, &charged_stage))
+                .unwrap();
+        }
+        let live_login: Value = f
+            .core
+            .store
+            .get("source_logins", &login_key)
+            .unwrap()
+            .unwrap();
+        for field in ["stage", "nonce"] {
+            f.core
+                .store
+                .write(|tx| {
+                    let mut broken = live_login.clone();
+                    broken[field] = json!("wrong");
+                    tx.put("source_logins", &login_key, &broken)
+                })
+                .unwrap();
+            let before = f.snapshot().unwrap();
+            assert_eq!(
+                send(
+                    f.core.clone(),
+                    post(&resume, &cookie, json!({"otp":recovery}))
+                )
+                .await
+                .status(),
+                StatusCode::BAD_REQUEST
+            );
+            f.assert_http_mutation_snapshot(&before);
+            f.core
+                .store
+                .write(|tx| tx.put("source_logins", &login_key, &live_login))
+                .unwrap();
+        }
+        let live_pending: Value = f
+            .core
+            .store
+            .get("browser_authorizations", &authorization)
+            .unwrap()
+            .unwrap();
+        for removed in [false, true] {
+            f.core
+                .store
+                .write(|tx| {
+                    if removed {
+                        tx.delete("browser_authorizations", &authorization)
+                    } else {
+                        let mut p = live_pending.clone();
+                        p["expires_at"] = json!(0);
+                        tx.put("browser_authorizations", &authorization, &p)
+                    }
+                })
+                .unwrap();
+            let before = f.snapshot().unwrap();
+            assert_eq!(
+                send(
+                    f.core.clone(),
+                    post(&resume, &cookie, json!({"otp":recovery}))
+                )
+                .await
+                .status(),
+                StatusCode::NOT_FOUND
+            );
+            f.assert_http_mutation_snapshot(&before);
+            f.core
+                .store
+                .write(|tx| tx.put("browser_authorizations", &authorization, &live_pending))
+                .unwrap();
+        }
+
+        let done = send(
+            f.core.clone(),
+            post(&resume, &cookie, json!({"otp":recovery})),
+        )
+        .await;
+        assert_eq!(done.status(), StatusCode::OK);
+        assert!(done.headers().get("location").is_none());
+        let json = body(done).await;
+        assert!(
+            !json.contains("ri_code_")
+                && !json.contains("ri_session_")
+                && !json.contains(&recovery)
+        );
+        let value: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["status"], "complete");
+        assert_eq!(value["code_issued"], true);
+        assert!(value["continue"].as_str() == Some(native.as_str()));
+        let grants = codes(&f);
+        assert_eq!(grants.len(), 1);
+        let grant = &grants[0];
+        assert!(grant.identity.user_id == alice_id && grant.client_id == original.client_id);
+        assert!(
+            grant.challenge == digest(&verifier) && grant.redirect_uri == original.redirect_uri
+        );
+        assert!(grant.nonce == original.nonce);
+        assert!(grant.identity.mfa);
+        assert_eq!(
+            grant.identity.amr,
+            vec!["federated".to_owned(), "otp".to_owned()]
+        );
+        let provenance = grant.identity.source.as_ref().unwrap();
+        assert!(provenance.id == "upstream" && provenance.link == link_id);
+        assert!(
+            provenance.fingerprint
+                == charged[&format!("source_logins/{login_key}")]["fingerprint"]
+                    .as_str()
+                    .unwrap()
+        );
+        let user: User = f.core.store.get("users", &alice_id).unwrap().unwrap();
+        assert!(!user.recovery_codes.contains(&digest(&recovery)));
+        assert_eq!(audit_count(&f), 1);
+        let completed = f.snapshot().unwrap();
+        for route in [&resume, &cancel] {
+            assert!(
+                send(f.core.clone(), post(route, &cookie, json!({})))
+                    .await
+                    .status()
+                    .is_client_error()
+            );
+            f.assert_http_mutation_snapshot(&completed);
+        }
+        let ready = send(f.core.clone(), get(&page, Some("text/html"), Some(&cookie))).await;
+        assert_eq!(ready.status(), StatusCode::SEE_OTHER);
+        assert!(ready.headers()["location"].to_str().unwrap() == format!("{ORIGIN}{native}"));
+        f.assert_http_mutation_snapshot(&completed);
+        let foreign = send(
+            f.core.clone(),
+            get(&native, Some("text/html"), Some(&other_cookie)),
+        )
+        .await;
+        assert_eq!(foreign.status(), StatusCode::UNAUTHORIZED);
+        f.assert_http_mutation_snapshot(&completed);
+
+        let delivered = send(
+            f.core.clone(),
+            get(&native, Some("text/html"), Some(&cookie)),
+        )
+        .await;
+        let headers = delivered.headers().clone();
+        assert_eq!(headers["referrer-policy"], "no-referrer");
+        let set_cookies: Vec<_> = headers
+            .get_all("set-cookie")
+            .iter()
+            .map(|h| h.to_str().unwrap().to_owned())
+            .collect();
+        assert!(
+            set_cookies
+                .iter()
+                .any(|c| c.starts_with("riauth_return=;") && c.contains("Max-Age=0"))
+        );
+        let sso = set_cookies
+            .iter()
+            .find_map(|c| c.split(';').next()?.strip_prefix("riauth_sso="))
+            .unwrap();
+        assert!(
+            f.core.portal_apps(Some(sso)).unwrap()["user"]["id"].as_str()
+                == Some(alice_id.as_str())
+        );
+        let code = if mode == "query" {
+            assert_eq!(delivered.status(), StatusCode::FOUND);
+            let params = query(headers["location"].to_str().unwrap());
+            assert!(params["state"] == original.state.as_deref().unwrap());
+            assert!(params["iss"] == f.core.config.issuer);
+            params["code"].clone()
+        } else {
+            assert_eq!(delivered.status(), StatusCode::OK);
+            assert_eq!(headers["cache-control"], "no-store");
+            let html = body(delivered).await;
+            assert!(html.contains("action=\"http://localhost:7777/callback?existing=1\""));
+            assert!(html.contains(&format!(
+                "name=\"state\" value=\"{}\"",
+                riauth::response::escape(original.state.as_deref().unwrap())
+            )));
+            assert!(html.contains(&format!("name=\"iss\" value=\"{}\"", f.core.config.issuer)));
+            let nonce = html
+                .split("<script nonce=\"")
+                .nth(1)
+                .unwrap()
+                .split('"')
+                .next()
+                .unwrap();
+            let policy = headers["content-security-policy"].to_str().unwrap();
+            assert!(policy.contains(&format!("script-src 'nonce-{nonce}'")));
+            assert!(policy.contains("form-action http://localhost:7777;"));
+            html.split("name=\"code\" value=\"")
+                .nth(1)
+                .unwrap()
+                .split('"')
+                .next()
+                .unwrap()
+                .to_owned()
+        };
+        let stored: Code = f.core.store.get("codes", &digest(&code)).unwrap().unwrap();
+        assert!(
+            stored.identity.user_id == alice_id
+                && stored.identity.session_id == grant.identity.session_id
+        );
+        assert!(
+            f.core
+                .store
+                .get::<Value>("browser_authorizations", &authorization)
+                .unwrap()
+                .is_none()
+        );
+        let user_code = text(&browser.body, "user_code");
+        assert!(
+            f.core
+                .store
+                .get::<Value>(
+                    "authorization_codes",
+                    &digest(&crypto::normalize_code(&user_code).unwrap())
+                )
+                .unwrap()
+                .is_none()
+        );
+        let after_delivery = f.snapshot().unwrap();
+        for route in [&page, &native] {
+            assert_eq!(
+                send(f.core.clone(), get(route, Some("text/html"), Some(&cookie)))
+                    .await
+                    .status(),
+                StatusCode::NOT_FOUND
+            );
+            f.assert_http_mutation_snapshot(&after_delivery);
+        }
+        assert_eq!(
+            send(
+                f.core.clone(),
+                post(&resume, &cookie, json!({"otp":recovery}))
+            )
+            .await
+            .status(),
+            StatusCode::NOT_FOUND
+        );
+        f.assert_http_mutation_snapshot(&after_delivery);
+        let redemption = TokenRequest {
+            grant_type: "authorization_code".into(),
+            client_id: Some("app".into()),
+            code: Some(code.clone()),
+            code_verifier: Some(verifier),
+            redirect_uri: Some(original.redirect_uri.clone()),
+            ..Default::default()
+        };
+        let tokens = f.core.token(redemption.clone()).unwrap();
+        let jwks: riauth::jose::PublicJwks =
+            serde_json::from_value(f.core.jwks().unwrap()).unwrap();
+        let claims = jwks
+            .verify(&text(&tokens, "id_token"), &f.core.config.issuer, "app")
+            .unwrap();
+        let client: Client = f.core.store.get("clients", "app").unwrap().unwrap();
+        assert!(claims["sub"].as_str() == Some(riauth::claims::subject(&user, &client).as_str()));
+        let family = f
+            .core
+            .store
+            .get::<Code>("codes", &digest(&code))
+            .unwrap()
+            .unwrap()
+            .issued_family;
+        assert!(family.is_some());
+        assert_eq!(f.core.token(redemption).unwrap_err().code, "invalid_grant");
+        assert!(
+            f.core
+                .store
+                .get::<Code>("codes", &digest(&code))
+                .unwrap()
+                .unwrap()
+                .issued_family
+                == family
+        );
+        assert_eq!(codes(&f).len(), 1);
+        assert_eq!(audit_count(&f), 1);
+
+        // Separate fresh fixture covers native error delivery, rejection and legacy APIs.
+        let f = fixture(prefix);
+        let upstream = Upstream::new(&f, false).await;
+        stage_client(&f, false);
+        let _alice = f.user("alice");
+        let _bob = f.user("bob");
+        link_alice(&f);
+        let manifest = serde_json::from_value(json!({"api_version":"riauth/v1", "source_links":[
+            {"source":"upstream","username":"alice","subject":"subject-alice"},
+            {"source":"upstream","username":"bob","subject":"subject-bob"}]}))
+        .unwrap();
+        let plan = f.core.plan_state(&f.admin, manifest).unwrap();
+        f.core
+            .apply_state_confirmed(
+                &f.admin,
+                riauth::state::ApplyRequest {
+                    plan: plan.clone(),
+                    secrets: Default::default(),
+                    run_id: None,
+                },
+                Some(&plan.plan_id),
+            )
+            .unwrap();
+        let signed_in = f
+            .core
+            .portal_password(None, "alice".into(), common::PASSWORD.into(), None, false)
+            .unwrap();
+        let sso = signed_in
+            .cookies
+            .iter()
+            .find_map(|c| c.split(';').next()?.strip_prefix("riauth_sso="))
+            .unwrap();
+        for operation in ["cancel", "reject", "complete"] {
+            let (mut request, _) = crate::authorization(&f, None, None);
+            request.response_mode = Some(mode.into());
+            request.state = Some("original-error-state".into());
+            if operation == "reject" {
+                request.prompt = Some("login".into());
+            }
+            let browser = f
+                .core
+                .browser_start(
+                    request,
+                    if operation == "reject" {
+                        Some(sso)
+                    } else {
+                        None
+                    },
+                )
+                .unwrap();
+            let id = text(&browser.body, "authorization_id");
+            let stage = text(&browser.body, "stage_id");
+            let cookie = browser.cookies[0].split(';').next().unwrap();
+            let native = format!("{base}oauth/resume/{id}");
+            let page = format!("{native}/source-stage/{stage}");
+            if operation != "cancel" {
+                upstream
+                    .callback(
+                        &f,
+                        &browser.body,
+                        if operation == "reject" {
+                            "subject-bob"
+                        } else {
+                            "subject-alice"
+                        },
+                    )
+                    .await;
+            }
+            let before = f.snapshot().unwrap();
+            assert_eq!(
+                send(f.core.clone(), get(&page, Some("text/html"), Some(cookie)))
+                    .await
+                    .status(),
+                StatusCode::OK
+            );
+            f.assert_http_mutation_snapshot(&before);
+            let route = format!(
+                "{page}/{}",
+                if operation == "cancel" {
+                    "cancel"
+                } else {
+                    "resume"
+                }
+            );
+            let response = send(f.core.clone(), post(&route, cookie, json!({}))).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(response.headers().get("location").is_none());
+            let value: Value = serde_json::from_str(&body(response).await).unwrap();
+            let status = match operation {
+                "cancel" => "cancelled",
+                "reject" => "rejected",
+                _ => "complete",
+            };
+            assert_eq!(value["status"], status);
+            assert_eq!(value["code_issued"], operation == "complete");
+            assert!(value["continue"].as_str() == Some(native.as_str()));
+            let before = f.snapshot().unwrap();
+            assert!(
+                send(f.core.clone(), post(&route, cookie, json!({})))
+                    .await
+                    .status()
+                    .is_client_error()
+            );
+            f.assert_http_mutation_snapshot(&before);
+            let delivered = send(
+                f.core.clone(),
+                get(&native, Some("text/html"), Some(cookie)),
+            )
+            .await;
+            if operation == "complete" {
+                continue;
+            }
+            if mode == "query" {
+                assert_eq!(delivered.status(), StatusCode::FOUND);
+                let params = query(delivered.headers()["location"].to_str().unwrap());
+                assert_eq!(params["error"], "access_denied");
+                assert_eq!(params["state"], "original-error-state");
+                assert!(params["iss"] == f.core.config.issuer && !params.contains_key("code"));
+            } else {
+                assert_eq!(delivered.status(), StatusCode::OK);
+                let html = body(delivered).await;
+                assert!(html.contains("name=\"error\" value=\"access_denied\""));
+                assert!(html.contains("name=\"state\" value=\"original-error-state\""));
+                assert!(!html.contains("name=\"code\""));
+            }
+            assert!(codes(&f).is_empty());
+        }
+        for operation in ["get", "post", "cancel"] {
+            let (mut request, _) = crate::authorization(&f, None, None);
+            request.response_mode = Some(mode.into());
+            let prepared = f.core.authorization_prepare(None, request).unwrap();
+            let reference = &prepared["source_stage"];
+            let stage = text(reference, "stage_id");
+            let id = text(reference, "authorization_id");
+            if operation != "cancel" {
+                upstream.callback(&f, reference, "subject-alice").await;
+            }
+            let route = format!("{base}oauth/source-stages/{stage}");
+            let req = if operation == "get" {
+                // Non-browser stages deliberately retain even the legacy HTML GET result.
+                get(
+                    &format!("{route}/resume?authorization_id={id}"),
+                    Some("text/html"),
+                    None,
+                )
+            } else {
+                Request::post(format!(
+                    "{route}/{}",
+                    if operation == "cancel" {
+                        "cancel"
+                    } else {
+                        "resume"
+                    }
+                ))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"authorization_id":id}).to_string()))
+                .unwrap()
+            };
+            let reply = send(f.core.clone(), req).await;
+            if mode == "query" {
+                assert_eq!(reply.status(), StatusCode::FOUND);
+                let params = query(reply.headers()["location"].to_str().unwrap());
+                assert_eq!(params.contains_key("code"), operation != "cancel");
+                assert_eq!(params.contains_key("error"), operation == "cancel");
+            } else {
+                assert_eq!(reply.status(), StatusCode::OK);
+                let html = body(reply).await;
+                assert_eq!(html.contains("name=\"code\""), operation != "cancel");
+                assert_eq!(html.contains("name=\"error\""), operation == "cancel");
+            }
+        }
+    }
+}

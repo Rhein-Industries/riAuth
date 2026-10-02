@@ -810,6 +810,7 @@ fn platform_routes() -> Router<App> {
             "/oauth/source-stages/{id}/cancel",
             post(source_stage_cancel),
         )
+        .merge(crate::portal::source_stage::routes())
         .route(
             "/api/offboard/jobs",
             get(offboard_jobs).post(offboard_schedule),
@@ -1073,7 +1074,8 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
             "source_start"
         }
         path if path.starts_with("/oauth/sources/")
-            || path.starts_with("/oauth/source-stages/") =>
+            || path.starts_with("/oauth/source-stages/")
+            || (path.starts_with("/oauth/resume/") && path.contains("/source-stage/")) =>
         {
             "source_callback"
         }
@@ -2006,11 +2008,26 @@ async fn source_stage_resume(
     State(app): State<App>,
     Path(id): Path<String>,
     Query(query): Query<StageReference>,
+    headers: HeaderMap,
 ) -> Result<Response> {
-    app.run(move |core| {
-        stage_result(core.source_stage_resume(&id, &query.authorization_id, None)?)
-    })
-    .await
+    let html = app.core.config.browser_ui && crate::portal::source_stage::wants_html(&headers);
+    let page = app.clone();
+    let response = app
+        .run(move |core| {
+            if html
+                && let Some(path) =
+                    crate::portal::source_stage::page_path(core, &id, &query.authorization_id)?
+            {
+                let mut response = see_other(&page, &path, vec![])?;
+                response
+                    .headers_mut()
+                    .insert("cache-control", HeaderValue::from_static("no-store"));
+                return Ok(response);
+            }
+            stage_result(core.source_stage_resume(&id, &query.authorization_id, None)?)
+        })
+        .await?;
+    Ok(vary_accept(response))
 }
 #[cfg(feature = "platform")]
 async fn source_stage_resume_post(
