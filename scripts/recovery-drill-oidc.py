@@ -262,7 +262,12 @@ class LocalRelyingParty:
                                            kwargs={"poll_interval": 0.1}, daemon=True)
             self.thread.start()
         except Exception:
-            self.server.server_close()
+            try:
+                if hasattr(self, "thread") and self.thread.is_alive():
+                    self.server.shutdown()
+                    self.thread.join(timeout=1)
+            finally:
+                self.server.server_close()
             raise DrillFailure("rp_start_failed") from None
 
     def provider(self):

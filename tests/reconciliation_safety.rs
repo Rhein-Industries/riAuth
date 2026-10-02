@@ -376,6 +376,8 @@ fn expired_owner_cannot_enqueue_after_a_second_worker_reclaims_the_job() {
             interval_seconds: 3600,
         },
     );
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(fixture.core.clone());
     fixture
         .core
         .reconciliation_event(

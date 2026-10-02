@@ -200,3 +200,311 @@ scope checks passed. Staged `git diff --check` passed; the staged stat/name list
 contained only this report. No whole-repository documentation checker
 was run. These checks attribute no new product runtime result. Gauge runtime
 is finished and is not rerun.
+
+## Implementation handoff after root reservation, 2026-10-02
+
+This append supersedes the initial planning-snapshot status and proposal-only
+wording above; it preserves that historical audit verbatim. The live RiWork row
+was reread with `riwork task list --project 891e7443-8dac-4c1b-897f-9e53cb59c7ee
+--json`: O07 is **in_progress**, assigned to existing worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. The original outcome/gate remains
+unchanged. No board write was made. Root authorized the harness implementation
+and this append only; **image/container/service/runtime execution remains held
+pending immutable source review and exact release**.
+
+Code commit: `97a30bd292da85752da7e71646811a51fd070bac`.
+Only `scripts/check-deployment-small.py` is in that commit; Git blob
+`751842e79904c85bb375b4922a2ab3cd2f58f19f`, file SHA-256
+`3dd1ba816c116243b22b4d1746284ecc3c9f4e678a2f3e43d9053f946341e96c`.
+The existing branch/history, gauge commits and prior report remain intact.
+No alignment merge was necessary: the immutable small-template blob at published
+`c01c39ab4e092423d5522bedc50fff87656d8c0a` equals the selected `60437b5` blob
+`a75307cde81782907014e97fb607884c2d0e731b`. The harness verifies both objects;
+it does not consume a mutable template or copy a stale production file.
+
+Implemented interface and scope:
+
+- The exact image/source/edition/artifact-kind tuple above is required and pinned
+  to the tracked local manifest. No unresolved tag, alternate image, released
+  artifact claim or current-main binary equivalence is accepted. Evidence records
+  harness SHA-256/Git blob/execution HEAD, template revision/blob/digest, separate
+  image source revision/ID and manifest digest.
+- `--check-source` reads immutable objects and renders the pinned Compose file
+  plus the fixture overlay. It directs Docker at a nonexistent Unix socket and
+  removes context/TLS overrides, so successful rendering cannot depend on the
+  live engine. It creates no containers, services, volumes or networks, and emits
+  a source-only structural proof rather than runtime evidence.
+- Render comparison is whole-model equality against the original render with
+  only the allowed fixture bind source, loopback healthcheck URL, generated
+  project identity, ownership labels and pull-never policy applied. UID10001,
+  host networking, read-only root/config, no-new-privileges, `/tmp` policy, tools
+  profile, readiness healthcheck budgets, restart/stop policy and one named
+  volume are checked explicitly. The tools service keeps its original separate
+  default network; its generated network receives ownership labels and cleanup.
+  No tracked Compose file changed.
+- Runtime pins the user's current **local Unix-socket** endpoint, refusing remote
+  endpoints or conflicting overrides. It requires the installed Linux/arm64
+  images' exact IDs and app edition/revision/user/volume metadata. It refuses a
+  helper image declaring anonymous volumes. All launches use pull-never and the
+  service start uses no-build; no topology/daemon/provider fallback exists.
+- The sole Python helper bind is the freshly created, explicitly empty directory
+  during initial UID ownership setup, before any configuration/key/password is
+  written. That helper has no network. Subsequent HTTP/port helpers have **no
+  mounts**; no helper ever mounts a credential-bearing directory, store or Docker
+  socket. The declared application tools service alone retains the printed init
+  mounts. All generated credentials travel through bounded stdin, not argv/env;
+  the saved session lives in the application's tmpfs. Python zeroization is not
+  claimed.
+- The operations retain the proposed keygen/init, actual container health/probes,
+  discovery/JWKS, administrator login/authorized encrypted-redb doctor read,
+  second-owner `storage_owned` refusal, stopped-listener outage, missing-key
+  refusal with config/encrypted-store byte hashes unchanged, and same-volume
+  read-only restart/login assertions. A controller-host JWKS comparison must
+  match the engine-loopback probe, so an engine-only loopback success cannot
+  stand in for Desktop host visibility. Unsupported mapping/networking visibly
+  fails/refuses; no alternative topology is tried.
+- Inputs are capped at 64 KiB; combined child stdout/stderr at 256 KiB; HTTP
+  responses at 64 KiB. Selectors drain bounded pipes, every child has a shorter
+  deadline, and acceptance checks follow joined IO. Host HTTP probing also runs
+  as a bounded child, preventing slow response reads from escaping the parent
+  deadline. The 180-second overall budget reserves its last 20 seconds for
+  cleanup; a deadline/cancellation cannot produce a passing result. Host free
+  space is checked before non-cleanup child commands, and the Linux probe also
+  checks its filesystem against the 8 GiB floor.
+- Cleanup inventories only the random project/task/run labels, rechecks ownership
+  before removal and removes only created containers, the new volume and the
+  tools network. It does not prune Docker. Generated private files are removed
+  through the declared tools service; an empty directory's mode is relaxed only
+  inside its still-private parent so the controller can remove it. Unknown files,
+  timeout/uncertain remote commands, remaining resources or failed cleanup are
+  reported as failure; no forced-termination or atomic signal/publication
+  guarantee is claimed. SIGINT/SIGTERM are cooperative; SIGHUP remains untouched
+  for inherited `nohup` behavior. Durable JSON/stdout use selected nonsecret
+  fields only; child diagnostics/responses are never echoed.
+
+### Static evidence actually produced
+
+At code commit `97a30bd`, the exact proposed command with `--check-source`
+replacing `--evidence ...` exited **0**. It reported disabled engine endpoint,
+`engine_contacted: false`, `product_runtime_executed: false` and:
+
+| Proof | Exact value |
+| --- | --- |
+| Template SHA-256 | `2db9060a4bbd8dd895401f5e58f2653ca3b774abf8e1867b9a41a52c0ae0cea6` |
+| Manifest SHA-256 | `638822d3c437d06678d27d4fb68987ebd2f6a884dd36c5843e9addf7727b5c7e` |
+| Normalized rendered structural SHA-256 | `62574f39005fbdfcfaff892a215808998cbcae171d383c3151b16a38d1a25be5` |
+| Checked safety flags | host network, UID10001, read-only root/config, no-new-privileges, tools profile and one volume all preserved |
+
+The normalized fingerprint replaces only generated fixture path, project/run
+identity and loopback issuer. The preceding equality check still covers the
+unmodified complete models; normalization does not authorize more changes.
+Earlier working-tree source-only renders also passed. Before the final
+provenance-only additions to `source_proof`, three instrumented negative render
+checks changed the returned model to UID0, bridge networking or writable root;
+each raised `unapproved_rendered_change`, with the engine endpoint disabled.
+The final commit changes no render-guard behavior from those checks.
+
+Python AST parsing passed for the script and both embedded helpers. A duplicate
+JSON key carrying a private marker was rejected with the fixed
+`duplicate_json_key` identifier and no marker disclosure. Static checks found no
+`shell=True`; helper refusal/size/path checks do not depend on Python `assert`
+and remain effective under optimization. An all-zero unreserved image produced
+exit **2**, `unreserved_source_or_image`, before fixture/engine setup. Staged and
+committed Git whitespace checks passed. These are syntax/source/render guards,
+not executions of the product, signal cleanup, kernel/mount behavior or service
+assertions. There was no Cargo, image pull/build, Docker container/service or
+public-TLS/PG/HA run.
+
+The exact normal command in the earlier proposal is still the required runtime
+command, using these same two image IDs, `--timeout-seconds 180` and the new
+owner-only evidence path `target/o07-small-60437b5-f3aba63.json`. It is **not run**.
+The source/hash/static proof and command were sent to the existing project
+orchestrator with explicit project ID before this append. Root reviews and
+releases runtime separately; no further authorization is inferred from elapsed
+time or from source-only success.
+
+The old `f3aba63` local image can establish only observed small-template
+mechanics if that run later passes. It cannot prove the `c01c39a` executable,
+current/released artifacts, public TLS/Caddy behavior, other architectures or
+editions, distributed service hosts, database HA/fencing, deployed recovery or
+whole O07 acceptance. The original distributed/HA/recovery inputs and the
+component/safety/remedy table above remain open and named. Completed S04/O03/M03,
+accepted credential/header/PAM/admission contracts, source/main/status ownership
+and Cua.ai Driver preference remain unchanged.
+
+
+## One released mechanics run: failure retained, 2026-10-02
+
+Root explicitly released one normal 180-second command after reviewing immutable
+harness commit `97a30bd292da85752da7e71646811a51fd070bac`. This section supersedes
+only the preceding runtime-held/not-run wording; all earlier evidence remains
+historical. Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, O07 task
+`6c981199-62dd-464d-a12a-4ce4e27f428f`, existing worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7` and branch are unchanged. No board write,
+merge, reset, main edit or push was made. R05 owns the Cargo slot; this run used
+no Cargo and does not release or consume that slot.
+
+### Exact command and observed result
+
+The command ran once at clean HEAD
+`394a4623d7b77cdc8d483a30ec9863144999c525`:
+
+```sh
+python3 scripts/check-deployment-small.py \
+  --template-revision 60437b59933cadd40a1f5fbbb91ba153aee56456 \
+  --image sha256:ae84172a41d2dbe607a581d48fcde79cd1d293e00244994e257a757fd6def842 \
+  --image-source-revision f3aba63ac3b824843a40b99623f1619ef8edc19f \
+  --edition essentials --artifact-kind local-source \
+  --probe-image sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 \
+  --timeout-seconds 180 \
+  --evidence "$PWD/target/o07-small-60437b5-f3aba63.json"
+```
+
+Exit **1**; command-tool wall time **0.9044 seconds** (not a separately measured
+in-process elapsed field). Exact stdout:
+
+```json
+{"result": "failed", "checks": 1, "cleanup_ok": true, "evidence_written": true}
+```
+
+Only `installed_images_match_local_manifest` passed. The failure identifier was
+`uid_mapping_unsupported`, at the initial empty-directory ownership helper or its
+UID/GID/mode postcondition. The engine identified itself as Linux/arm64, version
+29.7.2, current context `desktop-linux`. No alternate endpoint/context/daemon
+settings, network topology or permissions were tried. Preflight and post-exit
+host free space were each **12.04 GiB**, above the 8 GiB floor. The one command
+was not repeated, and no additional Docker launch, image pull/build, service,
+Cargo, PostgreSQL or benchmark run followed it.
+
+The evidence file remains under this worktree's private target, mode **0600**,
+**1745 bytes**, SHA-256
+`308dfe8d3b424ff9a4e54369d809f560847b6aefda43a83ca229842b34068adc`.
+It was new before execution and was not rewritten afterward. The complete
+allowlisted, nonsecret JSON is preserved below so the failed observation does
+not depend solely on an ignored local target file:
+
+```json
+{
+  "checks": [
+    {
+      "id": "installed_images_match_local_manifest",
+      "observed": {},
+      "result": "passed"
+    }
+  ],
+  "cleanup": {
+    "failures": [],
+    "ok": true
+  },
+  "distributed_verified": false,
+  "engine": {
+    "arch": "arm64",
+    "context": "desktop-linux",
+    "host_visibility_test_required": true,
+    "os": "linux",
+    "version": "29.7.2"
+  },
+  "failure": "uid_mapping_unsupported",
+  "ha_verified": false,
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "public_tls_verified": false,
+  "result": "failed",
+  "schema": "riauth.deployment-small-local/v1",
+  "scope": "local-template-mechanics",
+  "source": {
+    "artifact_kind": "local-source",
+    "current_source_binary_verified": false,
+    "edition": "essentials",
+    "equivalent_revision": "c01c39ab4e092423d5522bedc50fff87656d8c0a",
+    "execution_head": "394a4623d7b77cdc8d483a30ec9863144999c525",
+    "harness_git_blob": "751842e79904c85bb375b4922a2ab3cd2f58f19f",
+    "harness_sha256": "3dd1ba816c116243b22b4d1746284ecc3c9f4e678a2f3e43d9053f946341e96c",
+    "image": "sha256:ae84172a41d2dbe607a581d48fcde79cd1d293e00244994e257a757fd6def842",
+    "image_source_revision": "f3aba63ac3b824843a40b99623f1619ef8edc19f",
+    "manifest_sha256": "638822d3c437d06678d27d4fb68987ebd2f6a884dd36c5843e9addf7727b5c7e",
+    "probe_image": "sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285",
+    "release_verified": false,
+    "template_blob": "a75307cde81782907014e97fb607884c2d0e731b",
+    "template_revision": "60437b59933cadd40a1f5fbbb91ba153aee56456",
+    "template_sha256": "2db9060a4bbd8dd895401f5e58f2653ca3b774abf8e1867b9a41a52c0ae0cea6"
+  },
+  "task": "6c981199-62dd-464d-a12a-4ce4e27f428f",
+  "whole_o07_complete": false
+}
+```
+
+### Cleanup and exact unexecuted boundary
+
+Actual harness cleanup evidence is `ok: true`, `failures: []`. Static inspection
+of the tested harness shows that this result required inventories filtered by
+this project's/task's/random-run ownership labels, ownership rechecks before
+any removal, a final owned-container inventory, and removal of the empty private
+configuration directory. Successful removal of that directory also triggers
+removal of the private fixture parent before evidence publication. There was no
+global prune/cache deletion. This is the harness's recorded cleanup proof, not a
+separate post-run engine inventory or an executed signal-cancellation test.
+The random run token/resource identifiers are not in the allowlisted evidence,
+so no independent resource-by-resource post-run attestation is claimed.
+
+`Deployment.run` orders the initial ownership helper before port selection,
+Compose rendering, key generation, application initialization and service
+startup. Thus this failure created no application volume, tools network or
+application service via that path, and generated no application credentials.
+The helper launch itself was attempted with a fresh empty bind directory,
+network none, read-only root, no-new-privileges, bounded memory/pids, pull-never,
+root only for ownership setup and the explicit CHOWN/FOWNER/DAC_OVERRIDE caps.
+Its return code and output are not in evidence, so this report does not assert
+that its container successfully started or that the ownership syscall ran.
+
+No live port/host-network visibility, init ownership/file modes, readiness,
+public HTTP/discovery/JWKS, administrator login/doctor, second-owner refusal,
+outage, missing-key refusal/content hashes or same-volume restart assertions
+were reached. The prior source-only rendered structural proof remains separately
+credited static evidence; this failed normal run contains no rendered-model
+proof. In particular, successful image metadata checks establish provenance of
+the installed old local images, not usable host mapping or host networking.
+
+### Source-derived diagnostic limitation and bounded correction proposal
+
+At tested blob `751842e79904c85bb375b4922a2ab3cd2f58f19f`,
+`Runner.success` (lines 166-169) maps every nonzero child status to
+`child_command_failed` and discards the numeric status. `Deployment.helper`
+(lines 400-403) maps that generic failure for the empty mount to
+`uid_mapping_unsupported`. `Deployment.run` (lines 478-479) uses the same code
+when the returned setup object does not equal the required UID/GID 10001 and
+mode 0700. `Runner.call` bounds/drains stderr but does not retain its contents.
+The JSON therefore does **not** distinguish a Docker/helper launch/setup error
+from an observed unsupported UID/GID/mode postcondition. No narrower root cause
+is proven by this run; no template or product defect is established.
+
+Smallest proposal for a separately reserved harness-only correction: retain a
+fixed setup-stage identifier and numeric child return code for this helper;
+distinguish nonzero ownership-helper failure from an actually observed mapping
+mismatch; optionally retain only type-validated numeric UID/GID/mode fields from
+a successful helper result. Do not print raw stdout/stderr, Docker endpoints,
+paths, credentials or arbitrary exceptions. Keep all image/template pins,
+security controls, empty-mount restriction, deadlines, ownership cleanup and
+fail-closed postcondition unchanged. A correction and any further run need root's
+specific review/release; neither was performed here, and the failed evidence
+must retain its original path/hash.
+
+### Disposition and report-only checks
+
+**Small-template mechanics remain unverified; whole O07 closure is not
+recommended.** The local-source `f3aba63` Essentials image does not prove current
+source, a released asset, public TLS/Caddy, other architectures/editions,
+distributed hosts or database HA/fencing/recovery responsibilities. The original
+distributed/TLS/two-host/PostgreSQL/recovery inputs and the existing
+component/evidence/safety/remedy gate remain named in the original audit. No
+healthy-capacity, deployed-recovery or independent runtime claim is added.
+Completed task dispositions and the credential/header/PAM/admission contracts
+remain untouched.
+
+Post-exit checks reread the preserved evidence and exact SHA-256/mode/size,
+confirmed the clean execution HEAD and read the immutable-equivalent local
+harness for static failure/cleanup attribution. This append's prior-report
+prefix, exact JSON/command/source pins, sole-file scope and Git whitespace are
+checked before its separate report commit. These checks run no product, engine
+fixture or additional test. The initial failure/cleanup/evidence hash was sent
+promptly to the existing explicit-project orchestrator; the report commit and
+bounded diagnostic proposal follow in a separate handoff.
