@@ -9,6 +9,9 @@ mod interaction;
 mod invitation;
 mod observability;
 mod probes;
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub use probes::ReadinessProbeTest;
 mod rates;
 #[cfg(feature = "platform")]
 mod workflow;
@@ -57,6 +60,7 @@ pub struct App {
     /// Forward-auth checks run on their own permits, so proxied page loads never starve the workers.
     forward: Arc<Semaphore>,
     probes: Arc<Semaphore>,
+    readiness: Arc<probes::ReadinessSignal>,
     /// One streamed backup export at a time; each pins a storage read snapshot.
     backups: Arc<Semaphore>,
     rates: Arc<Mutex<RateTable>>,
@@ -71,6 +75,7 @@ impl App {
             credentials: Arc::new(Semaphore::new(4)),
             forward: Arc::new(Semaphore::new(16)),
             probes: Arc::new(Semaphore::new(2)),
+            readiness: Arc::new(probes::ReadinessSignal::default()),
             backups: Arc::new(Semaphore::new(1)),
             rates: Arc::new(Mutex::new(RateTable::new(crate::store::RATE_WINDOWS))),
             stats: Arc::new(Stats::default()),
