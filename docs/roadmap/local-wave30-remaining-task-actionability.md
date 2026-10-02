@@ -1,0 +1,158 @@
+# Wave30 remaining-task actionability at fixed main
+
+This is the dated 2026-10-02 snapshot at `2dea9f5`, before M03 and S04 closure
+and before six final acceptance reviews were assigned. Its 33 todo count is
+historical. Root independently verified all 33 original detail hashes, 81 unique
+accepted commit ancestors and 115 pinned reference blobs. These metadata checks
+validate the inventory, not task completion or fresh runtime. Current board
+state is maintained in RiWork.
+
+There are **33 todo rows**, with six original-scope closure-review candidates and
+concrete local work that can proceed without cloud tenants or release publication.
+Prioritize **R05 restored-application login**, **O07 small-template verification**,
+then **D01 Essentials walkthrough**. These are proposed disjoint starts, not
+assignments, file reservations or whole-row completion claims.
+
+## Scope and original clauses
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; existing read-only worktree
+`42bb51c6-c198-4adb-bd92-0a5222853231`, branch
+`roadmap/local-module-boundaries-wave27`. Published source pin
+`2dea9f5df63583caee5cfa99794a5be2c796b9e4`, tree
+`55419aa2f50bb1f907ea5d3f33d65f2c0bcfcdf2`, was inspected through Git objects;
+no merge/reset or product change. Board observed at
+`2026-10-02T09:31:14.945722+00:00`: 58 done, 3 in_progress, 33 todo. A03 stays done.
+
+The [same-stem JSON](local-wave30-remaining-task-actionability.json) preserves all
+33 exact original UUIDs, titles, outcomes, prerequisites, workstream goals/gates,
+detail hashes and source/evidence pins. Original completion instruction:
+
+> Review the relevant implementation, tests, documentation, and released artifacts as applicable. Report verification actually performed, remaining gaps, and external prerequisites. Do not mark implementation complete from documentation or a worker report alone.
+
+Original gates remain attached to each row in JSON. In particular, provisioning
+requires immediate local disable and visible durable downstream work, not a false
+all-remote-complete claim; integrations require working setup/lifecycle/failure
+paths; performance requires equivalent security and concurrency invariants;
+operations require an identifiable failing component and safe remedy; migration
+requires an honest transfer/change/remaining-work report; documentation requires
+new user/operator completion. Quality evidence is category-specific. X01–X04
+explicitly require a named demand/security model/real peer and must not delay
+Essentials. Old leave-todo/no-launch scheduling text is superseded by the user's
+current finish-work authorization, while canceled accessibility and the current
+no-broad-campaign restriction still apply.
+
+**L** = local executable work; **C** = already-satisfied candidate requiring root
+review; **E** = named artifact/environment/operator prerequisite; **D** =
+canceled/deferred/conditional demand. Combined classes distinguish a local first
+step from remaining inputs. None asserts those inputs were inspected or are
+globally unavailable.
+
+## Exact 33-row matrix
+
+All source references refer to the fixed pin. Historical checks are credited
+without treating a source file, checker, fixture or archived report as a new run.
+
+| Row / exact original UUID | Original outcome (verbatim) | Disposition, accepted basis and smallest next step |
+| --- | --- | --- |
+| **A09** `506e3979-a590-4af3-8fa8-ee90d3a517f2` | Produce and test server, client, container, and maintenance artifacts for explicitly supported platforms, including Linux x86-64 and ARM64. | **L/E** — Packaging code exists; ARM64 source-built archives/images are historical. Produce a same-pin Linux x86-64/ARM64 server/client/maintenance/container set and run the existing scoped smoke. Needs selected Linux build/execution hosts and image tooling. Official publication is Q08/Q11, not an added A09 clause. Basis: `scripts/package-release.sh`, `docs/roadmap/q08-native-arm64-local-6ca4779.md`. |
+| **U10** `934531ec-3a80-497c-b931-0d86b298ead2` | Test complete journeys with keyboard navigation, assistive technology, small screens, and supported authenticators. | **D** — Accessibility work is explicitly canceled and remains excluded. Existing 320px headless fixes do not finish keyboard/assistive/mobile/authenticator journeys. Root needs an explicit scope change before that portion resumes. Basis: `tools/browser/signin.spec.js`, `docs/roadmap/local-wave28-task-closure-audit.md`. |
+| **W07** `63ab3917-0fe0-4d02-819e-fc0c09b72ca6` | Isolate exceptional custom logic with explicit permissions and bounded execution, data access, and network access. | **C** — Declared macOS guest has explicit admission, fuel/IPC/deadline bounds, default-deny filesystem/network confinement and reviewed 19-test native evidence. Other hosts refuse. Candidate for that advertised scope; arbitrary graphs and additional OS backends are not automatic original clauses. Root must adjudicate supported-host scope. Basis: `src/workflow/extension_gate/isolation.rs`, `docs/roadmap/local-wave27-extension-isolation-report.md`, `docs/workflows.md`. |
+| **P06** `179af025-34ab-454d-b8b2-768fdbbc30e7` | Implement the attributes, filters, updates, lifecycle behavior, and schema extensions required by supported clients. | **C** — Advertised core User/Group schema, filters, PATCH, projection, resource versions, ownership and deprovisioning have accepted code/checks. No specific missing client-required extension was identified. Root should map the published contract to those checks before closure; a new vendor requirement must be named, not invented. Basis: `docs/scim.md`, `src/scim_shared.rs`, `src/assembly/scim_runtime.rs`. |
+| **P08** `d0efa744-058e-42ef-b328-e03689094712` | Handle partial failure, retries, ambiguous remote responses, managed-attribute boundaries, and operator reconciliation. | **C** — Durable partial/retry/ambiguous state, managed-field read-back, downstream intent, audited settlement and operator reconciliation cover the named outcome. At-least-once and unresolved Create are explicit. Real-peer/multi-node deployment proof is separate from requiring honest delivery behavior; no exactly-once gate is added. Basis: `src/provisioning.rs`, `src/provisioning/dispatch_recovery.rs`, `docs/scim.md`. |
+| **I02** `cbe1e83d-b58c-4be7-ba6c-5fb8a73c9839` | Cover source setup, verified linking, assurance mapping, browser completion, and credential/key rotation. | **L/E** — Verified source/link/trust retirement and browser fixtures exist. Finish one exact source setup→link→assurance→browser→key-rotation lifecycle. Needs a selected supported upstream IdP and authorized operator configuration; an independent local IdP is possible. No source rewrite is justified merely by missing tenant evidence. Basis: `tests/identity/sources.rs`, `src/assembly/source_runtime.rs`, `docs/oidc-profiles.md`. |
+| **I04** `dae9c528-9e32-462c-947f-661a571f136b` | Test exact supported roles, bindings, methods, mappings, certificates, and revocation behavior against real peers. | **L/E** — Real local OpenLDAP, GNU Lasso/XMLsec and radclient evidence already counts for measured profiles. Run only remaining advertised role/binding/method/cert/revocation cases with selected peer versions; deployed NAS/AD/IdP credentials are prerequisites only for those profiles, not all testing. Basis: `scripts/test-saml-sp.sh`, `scripts/test-ldap-provider.sh`, `docs/testing.md`. |
+| **I05** `6e7724c5-3cdd-4a9c-abeb-bbd6e8eb00c9` | Make a token broker optional rather than an undocumented prerequisite. | **C** — Direct delegated service-account JWT grant, official endpoints, fixed read scopes and optional broker are implemented and documented; fake peer is test-support-only. Candidate for the original broker-optional outcome. A controlled Workspace tenant/super-admin delegation is still required for real-tenant rollout/Q04 claims. Basis: `src/cloud_directory.rs`, `docs/enterprise/ENT-03.md`. |
+| **I06** `f9eb300d-ed58-4f86-80b4-cab14611af1e` | Validate token acquisition, paging, group membership, identity mapping, removals, and credential rotation. | **E** — Token/certificate rotation, pagination, mapping, membership/removal and inconsistent-snapshot refusal have local checks. Remaining validation needs an authorized Entra tenant, application with approved Graph read scopes and administrator-controlled rotation/removal fixtures; no credential inspection by this audit. Basis: `tests/cloud_directory.rs`, `docs/enterprise/ENT-04.md`. |
+| **I07** `34688b10-fa4b-4b83-8070-adfb3e55dc41` | Verify signal provenance, freshness, and account/session/device binding against supported managed devices. | **E** — Verified Access v2 challenge/freshness/session/epoch/one-use bindings and failure tests exist. Supply managed Chrome/ChromeOS device enrollment, an authorized Verified Access project and trusted policy/identity fixtures to prove real signal provenance; mocks cannot manufacture that evidence. Basis: `tests/device_trust.rs`, `docs/enterprise/ENT-06.md`. |
+| **I08** `94a9dc76-3b23-4a01-aeca-e401d1c1f573` | Include installation, enrollment, signed updates, uninstallation, connectivity-loss behavior, revocation, and recovery. | **L/E** — Provider/device host and signed install/update/rollback-floor/journal scripts are accepted source. Finish Windows-native package and installed LogonUI lifecycle on an authorized Windows VM with SDK/build tooling, publisher trust/signing and recovery operator; macOS source review cannot establish it. Basis: `windows/RiAuth.CredentialProvider/CredentialProvider.cpp`, `windows/RECOVERY.md`, `docs/enterprise/ENT-13.md`. |
+| **I09** `7ece8e56-8a0a-4b40-b318-d9abbba1d953` | Cover browser requests/approvals, expiry, parent-owned agents, and device revocation without turning temporary access into permanent membership. | **C** — Browser temporary request/approval, expiry/revoke without durable membership, parent-owned agent revocation and device fences have accepted code/regressions. Legacy parent=None is explicit tested compatibility, not a newly invented issuer-field requirement. Windows installation/real-device acceptance remains I08/Q04; preserve PAM fallback. Basis: `tests/pam.rs`, `tests/agent_parent.rs`, `tests/windows_login.rs`, `src/identity/agent_credentials.rs`. |
+| **I10** `2d472504-3063-4554-b546-674e31d06661` | Include configuration validation, test connection, mappings, schedules, secret rotation, job history, and actionable errors. | **L/E** — Workspace/Entra operations expose seven operational facets. Map LDAP/outbound-SCIM CLI plan/job/config surfaces to the same original facets before claiming a gap: cloud-only test-connection HTTP routes alone are not a defect. Implement only a demonstrated missing facet; API/portal changes need M03 coordination. Cloud probe validation needs authorized tenants. Basis: `docs/cloud-directory-operations.md`, `src/api.rs`, `src/directory.rs`, `src/provisioning.rs`. |
+| **S02** `fdda2152-73a0-4dce-9e5e-aff4b232a6fd` | Reduce unnecessary scans and whole-dataset materialization while preserving consistent results. | **L** — Whole canonical Group values/writes/audit/full responses remain a real local scaling seam. Coordinate storage/management/protocol/recovery owners; choose a coherent measured improvement. Held v9 mirror is unaccepted and regressed. The Merkle/2MiB/4MiB proposal is not itself mandatory original acceptance; equivalent security and concurrency proof is. Basis: `src/store.rs`, `src/store/maintenance.rs`, `docs/roadmap/s02-authoritative-group-cutover.md`. |
+| **O07** `6c981199-62dd-464d-a12a-4ce4e27f428f` | Cover small installations and distributed setups, with clear database HA and recovery responsibilities. | **L/E** — Templates and HA/recovery responsibility docs exist but lack actual template execution. A bounded small-instance Compose harness is local code work; needs an operator-selected Linux image, Docker Compose and isolated TLS fixture. Two-host PostgreSQL/HA validation needs named service hosts, database/fencing and load-balancer owners. Basis: `deploy/compose-small.yml`, `deploy/compose-distributed.yml`, `docs/deployment-examples.md`. |
+| **R05** `8c477e5e-8055-4cbe-9f3d-0c69fb19a2e8` | Test successful and failed restores, outages, key/secret loss, and representative application login; record actual outcomes. | **L/E** — Accepted redb/encrypted PG drills now complete recovery, reject old sessions, exercise outages/wrong keys and allow fresh login. Remaining local gap: automate a real local RP authorization-code/PKCE login after restore, not just /api/login. Lost-secret escrow/referenced-file or physical/PITR deployment cases need their operator material/PG environment. Basis: `scripts/recovery-drill.py`, `scripts/recovery-drill-postgres.py`, `docs/roadmap/recovery-drill-r05.md`. |
+| **G02** `c3b6b41c-4472-4a16-9773-6e6f4ab6a8c4` | Handle subjects, issuers, groups, applications, credentials, and explicit source links deliberately. | **C** — Converter/report and target-bound plan/apply deliberately preserve or block issuer/subject/group/client/credential/source-link changes and ambiguous ownership. Accepted reimport/refusal checks support the original continuity rules. Actual private customer export/application cutover belongs to G05/Q04, not an automatic new G02 implementation requirement. Basis: `src/migration.rs`, `src/state.rs`, `docs/migration.md`. |
+| **G05** `eee83438-ed75-4709-adf9-6807514a6d18` | Test successful and denied access, claims, MFA, refresh, logout, recovery, and rollback. | **L/E** — Eight local reference-RP cases are accepted, explicitly synthetic; actual application rollback is not proved. Reuse that scaffold for one owner-supplied RP, authorized Authentik export and issuer/route/rollback plan; application operator and factor/recovery fixtures are named inputs. Basis: `tests/g05_reference_oidc.rs`, `docs/roadmap/g05-local-reference-oidc.md`. |
+| **Q03** `9561b552-d219-477c-bb73-80e62af45226` | Publish precisely scoped results and pursue appropriate certification for the profiles being claimed. | **D/E** — Broad conformance remains deferred. One scoped OIDF pilot can proceed after root supplies suite 440eec8bac7b12b7389d7ca9cbc459b53507a443, exact plan/variants, private config and authorized endpoint/token through protected setup. Runner/metadata fixtures are not suite results or certification. Basis: `scripts/run-conformance.py`, `docs/roadmap/q03-conformance-pilot.md`. |
+| **Q04** `fabb87c1-ccf8-4403-a106-3a1649b6b5d0` | Exercise supported applications, directories, proxies, cloud tenants, and network devices—not just mocks. | **L/E** — Count genuine local LDAP/Lasso/XMLsec/FreeRADIUS/proxy/PG peers already exercised. Remaining selected advertised applications/directories/cloud/network devices require named peer versions and authorized operators/tenants. Some peers can run locally; neither mocks nor generic endpoint availability close the matrix. Basis: `docs/testing.md`, `docs/roadmap/local-wave28-task-closure-audit.json`. |
+| **Q06** `393d3429-f554-497c-a543-f07727d9d039` | Include supported mobile/desktop environments, accessibility, and physical hardware where promised. | **D/E** — Headless browser/virtual-authenticator results are historical software evidence. Accessibility remains canceled; other promised real mobile/desktop/physical-authenticator journeys need selected devices, human presence and runtime approval. Desktop provider is RiWork Cua.ai Driver only. Basis: `tools/browser/playwright.config.js`, `docs/testing.md`. |
+| **Q08** `4f8fc732-549d-4202-b3d7-60288a9f690a` | Verify Essentials, Platform, supported backends/architectures, excluded capabilities, and incompatible-configuration rejection. | **E** — Local source-built native ARM64 plain/encrypted redb/PG results count but are not exact shipped bundles. Supply one real checked-tag asset set for each claimed architecture/backend/edition, its source/run provenance and execution host; use existing validators rather than regenerate synthetic release metadata. Basis: `scripts/check-edition-artifacts.py`, `scripts/check-release-bundle.py`, `docs/roadmap/evidence/a08-native-linux-arm64-2026-09-29/integration-review.json`. |
+| **Q09** `58a9602e-2449-42cf-82bc-635806c92176` | Compare equivalent functionality and security settings; measure whole-deployment cost, latency, successful throughput, errors, and background interference. | **D/E** — Broad benchmark campaign remains deferred. Four historical secure ARM64 scoped measurements are real but do not cover whole-deployment cost/background workloads. Root must select equivalent workload/security/resource envelope and reserve isolated Linux/PG measurement capacity before any narrow next run. Basis: `scripts/q09_benchmark_slice.py`, `docs/roadmap/q09-benchmark-slice.md`. |
+| **Q10** `5c0a8de3-c038-47f0-b32a-9d88bbd2e6bd` | Test installed artifacts, schema changes, build transitions, restore, maintenance tools, and supported rollback. | **E** — Installed gate already uses explicit offline build handoffs; later A08 native evidence supersedes the older direct-open failure. Needs exact current and supported previous installed artifacts/backups plus declared schema/rollback path. Same-version source-built restore is not previous-release rollback; no new source bug was found here. Basis: `scripts/check-installed-release-gate.py`, `docs/roadmap/q10-installed-release-gate.md`. |
+| **Q11** `420d4ebb-f42d-4052-9c14-9efe6afcc18f` | Sign artifacts, publish dependency inventories and provenance, document review scope, and maintain a vulnerability-response process. | **E** — Attestation/SPDX/checksum/provenance machinery, notices and SECURITY intake exist. Supply real signed package sets, corresponding GitHub run/certificate/attestation provenance, publication authority and scoped independent-review record. Source machinery and existing peer reviews must be credited without inventing a completed signed release. Basis: `scripts/check-release-attestation.py`, `scripts/check-release-evidence.py`, `docs/roadmap/q11-release-evidence.md`. |
+| **D01** `a96a1977-3210-4284-8f7d-645793369301` | Keep the small-install experience free of unnecessary advanced setup. | **L/E** — Both task guides exist; Essentials explicitly says its procedures were not executed. Finish the printed small-install/new-operator path and fix observed instructions, using a selected Essentials/server-maintenance/client set. Hardware/browser-presence inputs are needed only for promised factor steps, not for all guide work. Basis: `docs/essentials-guide.md`, `docs/platform-guide.md`, `docs/roadmap/d01-platform-cli-walkthrough.md`. |
+| **D03** `9961ab66-f582-4e70-a4eb-da62e51a9acf` | Include reusable configuration, expected results, permissions, failure checks, and API/CLI equivalents. | **L/E** — Reusable scoped recipes and real local LDAP/SCIM evidence exist. Finish printed permissions/success/failure/API-CLI walkthroughs for selected published recipes, incorporating accepted route-specific headers and receipt-secret rules. Untested SaaS/cloud recipes need named authorized peers; do not demand every hypothetical integration. Basis: `docs/recipes/ldap-import.md`, `docs/recipes/platform-inbound-scim.md`, `docs/recipes/platform-outbound-scim.md`. |
+| **D04** `ec76d0c5-2efe-4005-bb49-1f3b54878146` | Cover lockout, credential incidents, failed connectors, outages, key loss, restore, migration, and rollback. | **L/E** — Runbooks already cover incidents and actual key-loss/redb/PG dump/base-backup/PITR results. Local fresh-operator lockout/connector/outage/restore walkthrough and current agreement/header instruction reconciliation are executable. Escrow, physical PG promotion/fencing and real rollback require the declared deployment operator; logical recovery completion is no longer a blanket blocker. Basis: `docs/operational-recovery.md`, `docs/operations.md`, `docs/roadmap/evidence/d04-postgres-pitr-2026-09-29.json`. |
+| **D05** `6a2381ab-0f2f-48c6-adf9-8115b78cc143` | Evaluate usability, workflows, administration, interoperability, footprint, performance, availability, recovery, migration, and security evidence. | **L** — Refresh ten-category evaluation from its historical source snapshot to this pin, crediting accepted A03/A08/W02/W05/M07/O03 outcomes and measured evidence. Keep unmeasured categories explicit. Original outcome is evaluation against targets; do not fabricate passing results or add an undocumented universal all-rows/brand-new-run closure rule. Basis: `docs/roadmap/d05-acceptance-evidence.json`, `docs/roadmap/d05-acceptance-evidence.md`. |
+| **X01** `988578f4-8544-4604-a508-3c3c2e676f8b` | Evaluate artifact/SOAP/ECP and encrypted-NameID requirements against named target applications. | **D** — Demand-driven by original wording. No named artifact/SOAP/ECP/encrypted-NameID target requirement is recorded here. Root must obtain the application/profile, security model and real peer before scoping; do not invent another SAML implementation to clear a todo. |
+| **X02** `2175d198-8798-466a-8a46-867693552a0a` | Evaluate RADIUS accounting, CoA, PEAP/TTLS, and additional LDAP/SCIM write or schema behavior. | **D** — Demand-driven. Needs a named NAS/directory client's accounting/CoA/PEAP/TTLS/write/schema requirement and peer. Existing supported-profile acceptance remains I04/P06; do not automatically implement every listed possibility. |
+| **X03** `db2de8e7-889c-4345-ae4b-3ef5a1c9e798` | Scope polling, stream verification, subject management, and outbound cloud-directory connectors separately. | **D** — Demand-driven. Name the requested polling/verification/subject-management/outbound-cloud direction, tenant and permissions first. Existing SSF/provisioning support does not authorize arbitrary new cloud writes. |
+| **X04** `484beda3-9015-4f4c-9052-67d80d0defbe` | Consider managed gateways, additional proxies, constrained credential injection, and exceptional workflow integrations. | **D** — Demand-driven. Needs a named gateway/proxy/credential-injection/custom-workflow integration, security model and real peer. W07 macOS confinement is reusable evidence, not a reason to build unspecified extensions. |
+
+## Top three proposed starts
+
+Root must confirm ownership and reserve runtime before these workers execute.
+The wave30 plan currently reserves Cargo for the exact password-history CI lane.
+These proposed file sets are mutually disjoint and avoid the active M03
+management/API, S04 state/revision and O06 diagnostics files.
+
+| Priority / existing task | Proposed owner and concrete files | Small completion path and retained scope |
+| --- | --- | --- |
+| **1. R05** `8c477e5e-8055-4cbe-9f3d-0c69fb19a2e8` | Recovery drill lane: `scripts/recovery-drill.py`; `scripts/recovery-drill-postgres.py`; `scripts/recovery-drill-oidc.py (new helper if needed)`; `docs/roadmap/local-wave30-r05-application-login-report.md (new)` | Extend the existing isolated restore drill with one local relying-party callback and public authorization-code/S256-PKCE exchange, state/nonce/issuer/subject/JWKS verification before and after restore. Keep old-session denial and recovery attestation gates. Record sanitized outcomes and exact binary/source hashes; service login alone must not be labeled application login. No Core/API/credential writer edits. First bounded completion: redb application recovery path; reuse helper for existing logical PG drill when root provides/reserves PG runtime. Remaining physical/escrow/deployment cases stay explicit. |
+| **2. O07** `6c981199-62dd-464d-a12a-4ce4e27f428f` | Deployment templates lane: `scripts/check-deployment-small.py (new bounded harness)`; `deploy/compose-small.yml (only an observed correction)`; `docs/roadmap/local-wave30-o07-small-deployment-report.md (new)` | Implement opt-in isolated verification of the printed small template using an operator-selected exact image: verify image edition/revision/digest, generated UID10001 fixture/mounts, one owning redb volume, init/readiness/discovery/login, read-only restart and outage/refusal behavior, with scoped cleanup. Require actual observed success before calling the template tested. No distributed production cluster or shared API/state/diagnostics edits. Linux Docker Compose/image/TLS fixture is required for the one execution, not to write the harness. The two-host template and externally operated PG HA/fencing remain separate remaining O07 scope. |
+| **3. D01** `a96a1977-3210-4284-8f7d-645793369301` | Essentials operator guide lane: `docs/essentials-guide.md`; `docs/roadmap/local-wave30-d01-essentials-walkthrough.md (new)` | Walk the printed Essentials small-install/init/sign-in/client-registration/OIDC path from a clean private fixture with selected matching server/maintenance and standalone client, fixing only observed guide issues. Capture exact hashes/commands/actor outcomes and first-only confidential secret output; follow the printed backup/recovery path after R05 evidence is available. Documentation/evidence only; no Platform guide, shared recipe, API/portal or workflow edits. Finish the remaining guide sections explicitly rather than claiming whole D01 from the first path. Physical-authenticator steps need their selected device/operator; virtual fixtures remain labeled. |
+
+Do not implement speculative product fixes when a printed procedure or evidence
+run is the missing outcome.
+I10 needs original-facet mapping across its existing LDAP/SCIM CLI and cloud
+routes before claiming a gap; absence of a common browser probe is not itself a
+defect. Any demonstrated missing API/portal facet needs M03 coordination. S02's
+whole canonical Group materialization is a real local scaling seam, not an
+external blocker. A canonical Group redesign requires coherent storage/writer/audit/response/
+restore ordering; importing the held mirror or moving one stale file is unsafe.
+Neither is a disjoint quick parallel start today.
+
+## Accepted evidence and corrections to old holds
+
+The [wave28 audit](local-wave28-task-closure-audit.json) is a historical
+`32770ab73270901ec94a2d1249cbd8bb6052a415` observation. For the 29 matching rows,
+this audit verified all **81 distinct cited accepted commits** are ancestors of
+the fixed main and resolved **115 row/reference blobs** at the fixed pin.
+Those are Git provenance/path checks, not 115 independent behavior reviews.
+Selected current bodies, routes, guides and run records were read directly.
+X01–X04 have no supplied named requirement/accepted implementation evidence in
+that audit; their original conditional clauses control.
+
+| Evidence | Exact historical basis and limit |
+| --- | --- |
+| Native packaging / distribution / recovery | Earlier Linux ARM64 archives/images used `6ca4779b68cf41e29af490d2aca6ea3d59e1f2bd` and retained their failing direct-open/late-smoke results. Later native A08 product binaries at `f3aba63ac3b824843a40b99623f1619ef8edc19f`, validator `730d373078c4b128373d7afa5f3e278f63b065fd`, encrypted validator `9f8efaf0372e02b0bc0042251d591f1facc0f783` and recovery supplement `082563b362acb218f276e4dbcaf476e303b561b7` supply actual plain/encrypted redb/PG switch and logical recovery results. They supersede those old local blockers, not official shipped-artifact gates. |
+| Recovery completion | Tracked encrypted PG restore reports for both editions contain 16 passed checks, explicit reconciliation completion, old-session rejection and fresh user/admin login. Physical base-backup/PITR reports retain their pending operator reconciliation limits. R05's remaining application-flow distinction is explicit at `docs/roadmap/recovery-drill-r05.md:164`; this is a local testable gap, not a reason to rerun all recovery campaigns. |
+| Controlled extensions | Worker `6421a1e79392fe483130f727a365066cbdb88ee6` and accepted integration `afd7ad2d7e3299778cfad218d4610ba676c9573b` record 19 native macOS tests; subsequent accepted descriptor/portable-refusal corrections are retained. Current isolation code and docs declare macOS support and refuse other hosts. Full arbitrary graph support or every-OS sandbox is not silently added to the original bounded-extension clause. |
+| Delivery / temporary lifecycle / continuity | P08 accepted delivery/settlement commits, I09 `044a984caf208f85f2fef170c4ad7266507b4683` / `bc3c3248dfa55217845602f7f4ab9d5c6a331b8e`, and G02 `679f2927885d9dc4dcc1c881fd972bcade70e07a` / `3ddcab4d43cfa1ce41222b6253dedbed573c0c64` support the candidates. JSON retains full per-row commit lists. Current agent tests explicitly preserve legacy parent=None; no retrospective issuer-field migration is inferred. The old I09 pointer to ENT-14 now names an event-map guide, so it is not used as temporary-access evidence. |
+| Guides, peers and category evaluation | D01's partial Platform observations used server `58357fde77211e62dc51c14fb3fc216bdf143ceb`; Essentials guide explicitly withholds execution claims. Genuine local OpenLDAP/Lasso/XMLsec/FreeRADIUS results remain real peer evidence. Headless/virtual authenticator runs remain software fixtures. D05's all-not_passed flags and obsolete workflow/activation holds belong to its recorded historical snapshots, not an automatic present verdict. |
+
+A09's original produce-and-test clause does not itself require an official
+published GitHub release: local real artifacts can advance it. Q08 explicitly
+asks for shipped bundles, Q10 installed upgrade/rollback evidence, and Q11 signed
+publication/provenance/review. Keep those distinctions. No external lookup was
+performed and no statement here proves that a release or tenant does not exist.
+
+## Handoff and work actually performed
+
+Read all 33 current original task records using the explicit project ID; read
+CONTRIBUTING.md/SECURITY.md, applicable guidance (no ancestor/repository AGENTS.md
+found), the project wave30 assignment scopes, pinned source/route bodies and
+historical evidence. The current no-runtime audit scope overrides the contributor
+guide's general test campaign. Only this Markdown and optional same-stem JSON
+are written. Git whitespace/scope and JSON population/UUID consistency are
+document checks; no source edit, product build/test/benchmark, service/runtime,
+desktop, external lookup, secret inspection, board change, worker/task/worktree/
+managed-shell creation, main edit or push was performed.
+
+Root alone starts implementation, reviews/integrates/pushes and changes statuses.
+The candidates are review recommendations, not mutations. Preserve reviewed
+client-creation receipt-secret behavior, route-specific optional/required headers
+and PAM fallback, along with live permission/review/receipt/removal/audit/
+credential contracts. Future builds use private targets, jobs=1, incremental=0,
+dev/test debug=0 and stop below 8 GiB free. **Desktop preference to propagate:
+only RiWork Cua.ai Driver MCP; read descriptions/current state first, report
+missing setup/permissions and never switch providers.** No desktop was needed.

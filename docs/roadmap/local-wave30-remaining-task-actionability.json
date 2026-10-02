@@ -1,0 +1,1305 @@
+{
+  "schema": "riauth.remaining-task-actionability/v1",
+  "project_id": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "worktree_id": "42bb51c6-c198-4adb-bd92-0a5222853231",
+  "audited_main": "2dea9f5df63583caee5cfa99794a5be2c796b9e4",
+  "audited_tree": "55419aa2f50bb1f907ea5d3f33d65f2c0bcfcdf2",
+  "observed_at_utc": "2026-10-02T09:31:14.945722+00:00",
+  "board_counts": {
+    "done": 58,
+    "todo": 33,
+    "in_progress": 3
+  },
+  "A03_remains_done": true,
+  "board_mutated": false,
+  "product_edits": false,
+  "runtime_build_test_benchmark_desktop_external_performed": false,
+  "shared_original_completion_evidence": [
+    "Review the relevant implementation, tests, documentation, and released artifacts as applicable. Report verification actually performed, remaining gaps, and external prerequisites. Do not mark implementation complete from documentation or a worker report alone."
+  ],
+  "active_rows": [
+    {
+      "id": "3b9fbfa6-716a-4ce8-842a-2c953bab3d0f",
+      "code": "M03",
+      "worktree_id": "7c85f5ef-3fac-4f72-aaed-08474d7fb454"
+    },
+    {
+      "id": "43b4ad2e-5b7c-46db-98ff-148be042d6ac",
+      "code": "S04",
+      "worktree_id": "ed9ac424-59f4-4520-905b-919aea3521eb"
+    },
+    {
+      "id": "9899f8e6-05ff-4e11-b9a0-b9ca184221a6",
+      "code": "O06",
+      "worktree_id": "f2e8500e-2e56-47e3-b60e-9f81bbc8cff2"
+    }
+  ],
+  "classes": {
+    "L": "Local executable implementation or bounded acceptance work; no execution performed in this audit.",
+    "C": "Already-satisfied candidate under original scope; root adjudicates closure, no task mutation.",
+    "E": "Named artifact/tenant/Windows/PG/operator input or authorized execution environment.",
+    "D": "Explicitly canceled/deferred or conditional demand-driven scope, not a new implementation request."
+  },
+  "tasks": [
+    {
+      "id": "506e3979-a590-4af3-8fa8-ee90d3a517f2",
+      "code": "A09",
+      "title": "[P1] A09 — Package supported architectures",
+      "status": "todo",
+      "updated_at": 1790894717,
+      "original_outcome": "Produce and test server, client, container, and maintenance artifacts for explicitly supported platforms, including Linux x86-64 and ARM64.",
+      "original_workstream_goal": "Make riAuth modular without creating two identity implementations.",
+      "original_workstream_gate": "Switching distributions does not create different users, different authorization rules, or silently ignored configuration.",
+      "original_prerequisites": "A04, A05, A08, Q08",
+      "original_details_sha256": "6e78dadac79d4093bd9d0cab68e6421b7e2869a0bbe5d0dc515fd22bc40632d7",
+      "actionability": {
+        "class": "L/E",
+        "next": "Packaging code exists; ARM64 source-built archives/images are historical. Produce a same-pin Linux x86-64/ARM64 server/client/maintenance/container set and run the existing scoped smoke. Needs selected Linux build/execution hosts and image tooling. Official publication is Q08/Q11, not an added A09 clause.",
+        "refs": [
+          "scripts/package-release.sh",
+          "docs/roadmap/q08-native-arm64-local-6ca4779.md"
+        ]
+      }
+    },
+    {
+      "id": "934531ec-3a80-497c-b931-0d86b298ead2",
+      "code": "U10",
+      "title": "[P1] U10 — Validate accessibility and mobile usability",
+      "status": "todo",
+      "updated_at": 1790893653,
+      "original_outcome": "Test complete journeys with keyboard navigation, assistive technology, small screens, and supported authenticators.",
+      "original_workstream_goal": "Ordinary users never need the terminal to manage their accounts.",
+      "original_workstream_gate": "A nontechnical user can accept an invitation, enroll a passkey, access an application, manage factors and sessions, and recover access entirely in the browser.",
+      "original_prerequisites": "U01, U02, U03, U04, U05, U06, U07, U08, U09",
+      "original_details_sha256": "9d5346cd7564b9cbc40556213610c860582071dded4584744f2cae1c8082125e",
+      "actionability": {
+        "class": "D",
+        "next": "Accessibility work is explicitly canceled and remains excluded. Existing 320px headless fixes do not finish keyboard/assistive/mobile/authenticator journeys. Root needs an explicit scope change before that portion resumes.",
+        "refs": [
+          "tools/browser/signin.spec.js",
+          "docs/roadmap/local-wave28-task-closure-audit.md"
+        ]
+      }
+    },
+    {
+      "id": "63ab3917-0fe0-4d02-819e-fc0c09b72ca6",
+      "code": "W07",
+      "title": "[P2] W07 — Define controlled extensions",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Isolate exceptional custom logic with explicit permissions and bounded execution, data access, and network access.",
+      "original_workstream_goal": "Support complex identity behavior while keeping Essentials straightforward.",
+      "original_workstream_gate": "Platform can express conditional enrollment and authentication; Essentials still works without asking its administrator to design a workflow.",
+      "original_prerequisites": "W01, W03, Q01",
+      "original_details_sha256": "a782b202a06a9faf9dce7a61b77c9a388c1057841c63d8b263370c58a156622a",
+      "actionability": {
+        "class": "C",
+        "next": "Declared macOS guest has explicit admission, fuel/IPC/deadline bounds, default-deny filesystem/network confinement and reviewed 19-test native evidence. Other hosts refuse. Candidate for that advertised scope; arbitrary graphs and additional OS backends are not automatic original clauses. Root must adjudicate supported-host scope.",
+        "refs": [
+          "src/workflow/extension_gate/isolation.rs",
+          "docs/roadmap/local-wave27-extension-isolation-report.md",
+          "docs/workflows.md"
+        ]
+      }
+    },
+    {
+      "id": "179af025-34ab-454d-b8b2-768fdbbc30e7",
+      "code": "P06",
+      "title": "[P1] P06 — Complete the supported SCIM contract",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Implement the attributes, filters, updates, lifecycle behavior, and schema extensions required by supported clients.",
+      "original_workstream_goal": "Support both reviewed changes and dependable automatic synchronization.",
+      "original_workstream_gate": "Disabling a user produces immediate local action and visible, durable downstream work—without falsely reporting that every remote system has already completed it.",
+      "original_prerequisites": "A02, P05",
+      "original_details_sha256": "20f796b9df8c2d9e969250a468526c666e03a0b4019114be5a4e460481d642b5",
+      "actionability": {
+        "class": "C",
+        "next": "Advertised core User/Group schema, filters, PATCH, projection, resource versions, ownership and deprovisioning have accepted code/checks. No specific missing client-required extension was identified. Root should map the published contract to those checks before closure; a new vendor requirement must be named, not invented.",
+        "refs": [
+          "docs/scim.md",
+          "src/scim_shared.rs",
+          "src/assembly/scim_runtime.rs"
+        ]
+      }
+    },
+    {
+      "id": "d0efa744-058e-42ef-b328-e03689094712",
+      "code": "P08",
+      "title": "[P1] P08 — Expose reliable delivery outcomes",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Handle partial failure, retries, ambiguous remote responses, managed-attribute boundaries, and operator reconciliation.",
+      "original_workstream_goal": "Support both reviewed changes and dependable automatic synchronization.",
+      "original_workstream_gate": "Disabling a user produces immediate local action and visible, durable downstream work—without falsely reporting that every remote system has already completed it.",
+      "original_prerequisites": "P02, P04, P06",
+      "original_details_sha256": "02b419347a2b675b3f219dbecfed1a5ac92f30b4d47e7159e563cf19078f89de",
+      "actionability": {
+        "class": "C",
+        "next": "Durable partial/retry/ambiguous state, managed-field read-back, downstream intent, audited settlement and operator reconciliation cover the named outcome. At-least-once and unresolved Create are explicit. Real-peer/multi-node deployment proof is separate from requiring honest delivery behavior; no exactly-once gate is added.",
+        "refs": [
+          "src/provisioning.rs",
+          "src/provisioning/dispatch_recovery.rs",
+          "docs/scim.md"
+        ]
+      }
+    },
+    {
+      "id": "cbe1e83d-b58c-4be7-ba6c-5fb8a73c9839",
+      "code": "I02",
+      "title": "[P2] I02 — Finish federation and trust management",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Cover source setup, verified linking, assurance mapping, browser completion, and credential/key rotation.",
+      "original_workstream_goal": "Turn supported protocols into complete, tested integrations.",
+      "original_workstream_gate": "Every advertised integration has a working setup, lifecycle, and failure-handling path—not just an endpoint or protocol module.",
+      "original_prerequisites": "A06, Q01, Q02",
+      "original_details_sha256": "21b877c9842d3643896247deb924df08b89fc538097095e9e1241c040c4f642a",
+      "actionability": {
+        "class": "L/E",
+        "next": "Verified source/link/trust retirement and browser fixtures exist. Finish one exact source setup→link→assurance→browser→key-rotation lifecycle. Needs a selected supported upstream IdP and authorized operator configuration; an independent local IdP is possible. No source rewrite is justified merely by missing tenant evidence.",
+        "refs": [
+          "tests/identity/sources.rs",
+          "src/assembly/source_runtime.rs",
+          "docs/oidc-profiles.md"
+        ]
+      }
+    },
+    {
+      "id": "dae9c528-9e32-462c-947f-661a571f136b",
+      "code": "I04",
+      "title": "[P2] I04 — Verify SAML, LDAP, and RADIUS profiles",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Test exact supported roles, bindings, methods, mappings, certificates, and revocation behavior against real peers.",
+      "original_workstream_goal": "Turn supported protocols into complete, tested integrations.",
+      "original_workstream_gate": "Every advertised integration has a working setup, lifecycle, and failure-handling path—not just an endpoint or protocol module.",
+      "original_prerequisites": "A02, A06, Q02",
+      "original_details_sha256": "39ab786039d49fd1da9f6dac27234328ac515c486418a2a0bdcff151e65d311c",
+      "actionability": {
+        "class": "L/E",
+        "next": "Real local OpenLDAP, GNU Lasso/XMLsec and radclient evidence already counts for measured profiles. Run only remaining advertised role/binding/method/cert/revocation cases with selected peer versions; deployed NAS/AD/IdP credentials are prerequisites only for those profiles, not all testing.",
+        "refs": [
+          "scripts/test-saml-sp.sh",
+          "scripts/test-ldap-provider.sh",
+          "docs/testing.md"
+        ]
+      }
+    },
+    {
+      "id": "6e7724c5-3cdd-4a9c-abeb-bbd6e8eb00c9",
+      "code": "I05",
+      "title": "[P2] I05 — Add direct supported Google Workspace authorization",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Make a token broker optional rather than an undocumented prerequisite.",
+      "original_workstream_goal": "Turn supported protocols into complete, tested integrations.",
+      "original_workstream_gate": "Every advertised integration has a working setup, lifecycle, and failure-handling path—not just an endpoint or protocol module.",
+      "original_prerequisites": "A06, P01, Q01",
+      "original_details_sha256": "96c7451dd93a0b7b0951afd4ba1df5c5965a6259a92c561c927b2e5533d8ceb3",
+      "actionability": {
+        "class": "C",
+        "next": "Direct delegated service-account JWT grant, official endpoints, fixed read scopes and optional broker are implemented and documented; fake peer is test-support-only. Candidate for the original broker-optional outcome. A controlled Workspace tenant/super-admin delegation is still required for real-tenant rollout/Q04 claims.",
+        "refs": [
+          "src/cloud_directory.rs",
+          "docs/enterprise/ENT-03.md"
+        ]
+      }
+    },
+    {
+      "id": "f9eb300d-ed58-4f86-80b4-cab14611af1e",
+      "code": "I06",
+      "title": "[P2] I06 — Complete Microsoft Entra integration",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Validate token acquisition, paging, group membership, identity mapping, removals, and credential rotation.",
+      "original_workstream_goal": "Turn supported protocols into complete, tested integrations.",
+      "original_workstream_gate": "Every advertised integration has a working setup, lifecycle, and failure-handling path—not just an endpoint or protocol module.",
+      "original_prerequisites": "A06, P01, P03, Q01",
+      "original_details_sha256": "91a6c83b0766e3565206b345ebc8b6fd0f5b74d076842c063ea5a7bb3a9ce010",
+      "actionability": {
+        "class": "E",
+        "next": "Token/certificate rotation, pagination, mapping, membership/removal and inconsistent-snapshot refusal have local checks. Remaining validation needs an authorized Entra tenant, application with approved Graph read scopes and administrator-controlled rotation/removal fixtures; no credential inspection by this audit.",
+        "refs": [
+          "tests/cloud_directory.rs",
+          "docs/enterprise/ENT-04.md"
+        ]
+      }
+    },
+    {
+      "id": "34688b10-fa4b-4b83-8070-adfb3e55dc41",
+      "code": "I07",
+      "title": "[P2] I07 — Implement real device-trust integrations",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Verify signal provenance, freshness, and account/session/device binding against supported managed devices.",
+      "original_workstream_goal": "Turn supported protocols into complete, tested integrations.",
+      "original_workstream_gate": "Every advertised integration has a working setup, lifecycle, and failure-handling path—not just an endpoint or protocol module.",
+      "original_prerequisites": "A06, Q01, Q02",
+      "original_details_sha256": "6ae880e71daa404d0ea56dbc9319bad4d72ed28d6b0b7ee96f5d3d6717d46d17",
+      "actionability": {
+        "class": "E",
+        "next": "Verified Access v2 challenge/freshness/session/epoch/one-use bindings and failure tests exist. Supply managed Chrome/ChromeOS device enrollment, an authorized Verified Access project and trusted policy/identity fixtures to prove real signal provenance; mocks cannot manufacture that evidence.",
+        "refs": [
+          "tests/device_trust.rs",
+          "docs/enterprise/ENT-06.md"
+        ]
+      }
+    },
+    {
+      "id": "94a9dc76-3b23-4a01-aeca-e401d1c1f573",
+      "code": "I08",
+      "title": "[P2] I08 — Ship a complete Windows login component",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Include installation, enrollment, signed updates, uninstallation, connectivity-loss behavior, revocation, and recovery.",
+      "original_workstream_goal": "Turn supported protocols into complete, tested integrations.",
+      "original_workstream_gate": "Every advertised integration has a working setup, lifecycle, and failure-handling path—not just an endpoint or protocol module.",
+      "original_prerequisites": "I07, Q01, Q02",
+      "original_details_sha256": "1fec57bf6cdcdd89222ea8a6e0017b494750aaef17f0e2c1401d7b66652c93a6",
+      "actionability": {
+        "class": "L/E",
+        "next": "Provider/device host and signed install/update/rollback-floor/journal scripts are accepted source. Finish Windows-native package and installed LogonUI lifecycle on an authorized Windows VM with SDK/build tooling, publisher trust/signing and recovery operator; macOS source review cannot establish it.",
+        "refs": [
+          "windows/RiAuth.CredentialProvider/CredentialProvider.cpp",
+          "windows/RECOVERY.md",
+          "docs/enterprise/ENT-13.md"
+        ]
+      }
+    },
+    {
+      "id": "7ece8e56-8a0a-4b40-b318-d9abbba1d953",
+      "code": "I09",
+      "title": "[P2] I09 — Complete temporary-access and dependent-credential lifecycle",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Cover browser requests/approvals, expiry, parent-owned agents, and device revocation without turning temporary access into permanent membership.",
+      "original_workstream_goal": "Turn supported protocols into complete, tested integrations.",
+      "original_workstream_gate": "Every advertised integration has a working setup, lifecycle, and failure-handling path—not just an endpoint or protocol module.",
+      "original_prerequisites": "M03, M04, Q01, Q02",
+      "original_details_sha256": "2e3c8d877afc1c26d94a17a95906b725bd00641ca08c1366322368e016aa8488",
+      "actionability": {
+        "class": "C",
+        "next": "Browser temporary request/approval, expiry/revoke without durable membership, parent-owned agent revocation and device fences have accepted code/regressions. Legacy parent=None is explicit tested compatibility, not a newly invented issuer-field requirement. Windows installation/real-device acceptance remains I08/Q04; preserve PAM fallback.",
+        "refs": [
+          "tests/pam.rs",
+          "tests/agent_parent.rs",
+          "tests/windows_login.rs",
+          "src/identity/agent_credentials.rs"
+        ]
+      }
+    },
+    {
+      "id": "2d472504-3063-4554-b546-674e31d06661",
+      "code": "I10",
+      "title": "[P2] I10 — Give every connector an operational interface",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Include configuration validation, test connection, mappings, schedules, secret rotation, job history, and actionable errors.",
+      "original_workstream_goal": "Turn supported protocols into complete, tested integrations.",
+      "original_workstream_gate": "Every advertised integration has a working setup, lifecycle, and failure-handling path—not just an endpoint or protocol module.",
+      "original_prerequisites": "M03, P02, P08",
+      "original_details_sha256": "ed01a543d76a0509cda1b5a8441929f201b36b869c389c58198cd0b2fff76b58",
+      "actionability": {
+        "class": "L/E",
+        "next": "Workspace/Entra operations expose seven operational facets. Map LDAP/outbound-SCIM CLI plan/job/config surfaces to the same original facets before claiming a gap: cloud-only test-connection HTTP routes alone are not a defect. Implement only a demonstrated missing facet; API/portal changes need M03 coordination. Cloud probe validation needs authorized tenants.",
+        "refs": [
+          "docs/cloud-directory-operations.md",
+          "src/api.rs",
+          "src/directory.rs",
+          "src/provisioning.rs"
+        ]
+      }
+    },
+    {
+      "id": "fdda2152-73a0-4dce-9e5e-aff4b232a6fd",
+      "code": "S02",
+      "title": "[P2] S02 — Index and paginate expensive operations",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Reduce unnecessary scans and whole-dataset materialization while preserving consistent results.",
+      "original_workstream_goal": "Remove measured bottlenecks without removing correctness guarantees.",
+      "original_workstream_gate": "Performance improves under equivalent security settings, and concurrency tests still prove the identity invariants.",
+      "original_prerequisites": "S01, Q02",
+      "original_details_sha256": "6741ee0caf1ce6145f31cf3cd884dfa3aa8bdbec94a1f3df6dad733207f6d259",
+      "actionability": {
+        "class": "L",
+        "next": "Whole canonical Group values/writes/audit/full responses remain a real local scaling seam. Coordinate storage/management/protocol/recovery owners; choose a coherent measured improvement. Held v9 mirror is unaccepted and regressed. The Merkle/2MiB/4MiB proposal is not itself mandatory original acceptance; equivalent security and concurrency proof is.",
+        "refs": [
+          "src/store.rs",
+          "src/store/maintenance.rs",
+          "docs/roadmap/s02-authoritative-group-cutover.md"
+        ]
+      }
+    },
+    {
+      "id": "6c981199-62dd-464d-a12a-4ce4e27f428f",
+      "code": "O07",
+      "title": "[P2] O07 — Publish tested deployment configurations",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Cover small installations and distributed setups, with clear database HA and recovery responsibilities.",
+      "original_workstream_goal": "Remain easy to run small while supporting explicit, reliable distributed operation.",
+      "original_workstream_gate": "An operator can identify which component is failing, what remains safe, and what corrective action is required.",
+      "original_prerequisites": "O01, O03, O04, O05, R05",
+      "original_details_sha256": "83565e59c0861a3becc3054904da569525de730ecff81fb026ffce8e9ba2dbd8",
+      "actionability": {
+        "class": "L/E",
+        "next": "Templates and HA/recovery responsibility docs exist but lack actual template execution. A bounded small-instance Compose harness is local code work; needs an operator-selected Linux image, Docker Compose and isolated TLS fixture. Two-host PostgreSQL/HA validation needs named service hosts, database/fencing and load-balancer owners.",
+        "refs": [
+          "deploy/compose-small.yml",
+          "deploy/compose-distributed.yml",
+          "docs/deployment-examples.md"
+        ]
+      }
+    },
+    {
+      "id": "8c477e5e-8055-4cbe-9f3d-0c69fb19a2e8",
+      "code": "R05",
+      "title": "[P1] R05 — Automate recovery drills",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Test successful and failed restores, outages, key/secret loss, and representative application login; record actual outcomes.",
+      "original_workstream_goal": "Restore complete supported deployments without hidden prerequisites or small-instance assumptions.",
+      "original_workstream_gate": "A fresh operator can restore the deployment and verify access without relying on undocumented knowledge.",
+      "original_prerequisites": "R01, R02, R03, R04, I01",
+      "original_details_sha256": "5eed5ee3e6329de4353f047c75dd9fadfce77eaab96e4bccfde0a263a3fa2a7f",
+      "actionability": {
+        "class": "L/E",
+        "next": "Accepted redb/encrypted PG drills now complete recovery, reject old sessions, exercise outages/wrong keys and allow fresh login. Remaining local gap: automate a real local RP authorization-code/PKCE login after restore, not just /api/login. Lost-secret escrow/referenced-file or physical/PITR deployment cases need their operator material/PG environment.",
+        "refs": [
+          "scripts/recovery-drill.py",
+          "scripts/recovery-drill-postgres.py",
+          "docs/roadmap/recovery-drill-r05.md"
+        ]
+      }
+    },
+    {
+      "id": "c3b6b41c-4472-4a16-9773-6e6f4ab6a8c4",
+      "code": "G02",
+      "title": "[P2] G02 — Preserve verified identity continuity",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Handle subjects, issuers, groups, applications, credentials, and explicit source links deliberately.",
+      "original_workstream_goal": "Make cutover predictable without pretending every credential or custom policy is portable.",
+      "original_workstream_gate": "The migration report tells an administrator exactly what transfers, what changes, and what still needs work.",
+      "original_prerequisites": "G01, Q01, Q02",
+      "original_details_sha256": "1e0d6212530aee6045704795fd8534241984889b1deb92a5ff9f65e6bfd19b95",
+      "actionability": {
+        "class": "C",
+        "next": "Converter/report and target-bound plan/apply deliberately preserve or block issuer/subject/group/client/credential/source-link changes and ambiguous ownership. Accepted reimport/refusal checks support the original continuity rules. Actual private customer export/application cutover belongs to G05/Q04, not an automatic new G02 implementation requirement.",
+        "refs": [
+          "src/migration.rs",
+          "src/state.rs",
+          "docs/migration.md"
+        ]
+      }
+    },
+    {
+      "id": "eee83438-ed75-4709-adf9-6807514a6d18",
+      "code": "G05",
+      "title": "[P2] G05 — Rehearse staged cutover per application",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Test successful and denied access, claims, MFA, refresh, logout, recovery, and rollback.",
+      "original_workstream_goal": "Make cutover predictable without pretending every credential or custom policy is portable.",
+      "original_workstream_gate": "The migration report tells an administrator exactly what transfers, what changes, and what still needs work.",
+      "original_prerequisites": "G01, G02, G03, G04, R05",
+      "original_details_sha256": "8b87c6118bd0be9ef03a3896cf4f63b49133ce505faddcb66810ab4b8ff41802",
+      "actionability": {
+        "class": "L/E",
+        "next": "Eight local reference-RP cases are accepted, explicitly synthetic; actual application rollback is not proved. Reuse that scaffold for one owner-supplied RP, authorized Authentik export and issuer/route/rollback plan; application operator and factor/recovery fixtures are named inputs.",
+        "refs": [
+          "tests/g05_reference_oidc.rs",
+          "docs/roadmap/g05-local-reference-oidc.md"
+        ]
+      }
+    },
+    {
+      "id": "9561b552-d219-477c-bb73-80e62af45226",
+      "code": "Q03",
+      "title": "[P2] Q03 — Run relevant conformance suites",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Publish precisely scoped results and pursue appropriate certification for the profiles being claimed.",
+      "original_workstream_goal": "This work starts with the architecture changes and continues through every feature.",
+      "original_workstream_gate": "Claims about security, compatibility, speed, and recovery each have the appropriate evidence. Passing one category does not establish the others.",
+      "original_prerequisites": "A02, I01, I04",
+      "original_details_sha256": "b95f6beb7021d3667cd5426c78fc4ad8978f3abee6c660542ed22331fe73b258",
+      "actionability": {
+        "class": "D/E",
+        "next": "Broad conformance remains deferred. One scoped OIDF pilot can proceed after root supplies suite 440eec8bac7b12b7389d7ca9cbc459b53507a443, exact plan/variants, private config and authorized endpoint/token through protected setup. Runner/metadata fixtures are not suite results or certification.",
+        "refs": [
+          "scripts/run-conformance.py",
+          "docs/roadmap/q03-conformance-pilot.md"
+        ]
+      }
+    },
+    {
+      "id": "fabb87c1-ccf8-4403-a106-3a1649b6b5d0",
+      "code": "Q04",
+      "title": "[P2] Q04 — Test real peers",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Exercise supported applications, directories, proxies, cloud tenants, and network devices—not just mocks.",
+      "original_workstream_goal": "This work starts with the architecture changes and continues through every feature.",
+      "original_workstream_gate": "Claims about security, compatibility, speed, and recovery each have the appropriate evidence. Passing one category does not establish the others.",
+      "original_prerequisites": "A02, I01, I02, I03, I04, I05, I06, I07, I08, I09, I10",
+      "original_details_sha256": "0b3cbe7c51226d252968551da8a89df6539057f8b79cf27e605541700948c304",
+      "actionability": {
+        "class": "L/E",
+        "next": "Count genuine local LDAP/Lasso/XMLsec/FreeRADIUS/proxy/PG peers already exercised. Remaining selected advertised applications/directories/cloud/network devices require named peer versions and authorized operators/tenants. Some peers can run locally; neither mocks nor generic endpoint availability close the matrix.",
+        "refs": [
+          "docs/testing.md",
+          "docs/roadmap/local-wave28-task-closure-audit.json"
+        ]
+      }
+    },
+    {
+      "id": "393d3429-f554-497c-a543-f07727d9d039",
+      "code": "Q06",
+      "title": "[P1] Q06 — Test complete browser and authenticator journeys",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Include supported mobile/desktop environments, accessibility, and physical hardware where promised.",
+      "original_workstream_goal": "This work starts with the architecture changes and continues through every feature.",
+      "original_workstream_gate": "Claims about security, compatibility, speed, and recovery each have the appropriate evidence. Passing one category does not establish the others.",
+      "original_prerequisites": "U10, Q02",
+      "original_details_sha256": "f1a59b7ec491dce241c6dbcca755dade8c22cb871f2a223658433fd936f5ab3b",
+      "actionability": {
+        "class": "D/E",
+        "next": "Headless browser/virtual-authenticator results are historical software evidence. Accessibility remains canceled; other promised real mobile/desktop/physical-authenticator journeys need selected devices, human presence and runtime approval. Desktop provider is RiWork Cua.ai Driver only.",
+        "refs": [
+          "tools/browser/playwright.config.js",
+          "docs/testing.md"
+        ]
+      }
+    },
+    {
+      "id": "4f8fc732-549d-4202-b3d7-60288a9f690a",
+      "code": "Q08",
+      "title": "[P0] Q08 — Test exact shipped bundles",
+      "status": "todo",
+      "updated_at": 1790894718,
+      "original_outcome": "Verify Essentials, Platform, supported backends/architectures, excluded capabilities, and incompatible-configuration rejection.",
+      "original_workstream_goal": "This work starts with the architecture changes and continues through every feature.",
+      "original_workstream_gate": "Claims about security, compatibility, speed, and recovery each have the appropriate evidence. Passing one category does not establish the others.",
+      "original_prerequisites": "A05, A06, A08, S05, Q02",
+      "original_details_sha256": "3afa544e3de9aac3518215bc9534560ff768edf9890821f89f10e5afa3d77670",
+      "actionability": {
+        "class": "E",
+        "next": "Local source-built native ARM64 plain/encrypted redb/PG results count but are not exact shipped bundles. Supply one real checked-tag asset set for each claimed architecture/backend/edition, its source/run provenance and execution host; use existing validators rather than regenerate synthetic release metadata.",
+        "refs": [
+          "scripts/check-edition-artifacts.py",
+          "scripts/check-release-bundle.py",
+          "docs/roadmap/evidence/a08-native-linux-arm64-2026-09-29/integration-review.json"
+        ]
+      }
+    },
+    {
+      "id": "58a9602e-2449-42cf-82bc-635806c92176",
+      "code": "Q09",
+      "title": "[P2] Q09 — Publish reproducible benchmarks",
+      "status": "todo",
+      "updated_at": 1790894719,
+      "original_outcome": "Compare equivalent functionality and security settings; measure whole-deployment cost, latency, successful throughput, errors, and background interference.",
+      "original_workstream_goal": "This work starts with the architecture changes and continues through every feature.",
+      "original_workstream_gate": "Claims about security, compatibility, speed, and recovery each have the appropriate evidence. Passing one category does not establish the others.",
+      "original_prerequisites": "S01, S02, S03, O05, Q08",
+      "original_details_sha256": "3580cc9285be4236e8f75e00b7ef782d1ba0a6b3d3a7c29e0d5be5651596999e",
+      "actionability": {
+        "class": "D/E",
+        "next": "Broad benchmark campaign remains deferred. Four historical secure ARM64 scoped measurements are real but do not cover whole-deployment cost/background workloads. Root must select equivalent workload/security/resource envelope and reserve isolated Linux/PG measurement capacity before any narrow next run.",
+        "refs": [
+          "scripts/q09_benchmark_slice.py",
+          "docs/roadmap/q09-benchmark-slice.md"
+        ]
+      }
+    },
+    {
+      "id": "5c0a8de3-c038-47f0-b32a-9d88bbd2e6bd",
+      "code": "Q10",
+      "title": "[P0] Q10 — Gate releases on upgrade and recovery",
+      "status": "todo",
+      "updated_at": 1790894719,
+      "original_outcome": "Test installed artifacts, schema changes, build transitions, restore, maintenance tools, and supported rollback.",
+      "original_workstream_goal": "This work starts with the architecture changes and continues through every feature.",
+      "original_workstream_gate": "Claims about security, compatibility, speed, and recovery each have the appropriate evidence. Passing one category does not establish the others.",
+      "original_prerequisites": "A09, O04, R05, Q08",
+      "original_details_sha256": "bffeed8c80fa8d6ac08390646e60335717cd897f67a574a3e7cbc27680b4cf9a",
+      "actionability": {
+        "class": "E",
+        "next": "Installed gate already uses explicit offline build handoffs; later A08 native evidence supersedes the older direct-open failure. Needs exact current and supported previous installed artifacts/backups plus declared schema/rollback path. Same-version source-built restore is not previous-release rollback; no new source bug was found here.",
+        "refs": [
+          "scripts/check-installed-release-gate.py",
+          "docs/roadmap/q10-installed-release-gate.md"
+        ]
+      }
+    },
+    {
+      "id": "420d4ebb-f42d-4052-9c14-9efe6afcc18f",
+      "code": "Q11",
+      "title": "[P1] Q11 — Publish verifiable releases and independent review evidence",
+      "status": "todo",
+      "updated_at": 1790894719,
+      "original_outcome": "Sign artifacts, publish dependency inventories and provenance, document review scope, and maintain a vulnerability-response process.",
+      "original_workstream_goal": "This work starts with the architecture changes and continues through every feature.",
+      "original_workstream_gate": "Claims about security, compatibility, speed, and recovery each have the appropriate evidence. Passing one category does not establish the others.",
+      "original_prerequisites": "Q07, Q08, Q10",
+      "original_details_sha256": "0036bddbf2713f15802d646150c6183580e118ab4ceb54e9cbf2cf60a44a91ac",
+      "actionability": {
+        "class": "E",
+        "next": "Attestation/SPDX/checksum/provenance machinery, notices and SECURITY intake exist. Supply real signed package sets, corresponding GitHub run/certificate/attestation provenance, publication authority and scoped independent-review record. Source machinery and existing peer reviews must be credited without inventing a completed signed release.",
+        "refs": [
+          "scripts/check-release-attestation.py",
+          "scripts/check-release-evidence.py",
+          "docs/roadmap/q11-release-evidence.md"
+        ]
+      }
+    },
+    {
+      "id": "a96a1977-3210-4284-8f7d-645793369301",
+      "code": "D01",
+      "title": "[P1] D01 — Write separate Essentials and Platform guides",
+      "status": "todo",
+      "updated_at": 1790894719,
+      "original_outcome": "Keep the small-install experience free of unnecessary advanced setup.",
+      "original_workstream_goal": "Document completed user and operator tasks, not merely available settings.",
+      "original_workstream_gate": "A new user and a new operator can independently complete the documented workflows.",
+      "original_prerequisites": "A02, A09, U10, M02",
+      "original_details_sha256": "b9da85fb890b3bf2ec190eea82da0e2441619abe015ab0df680dcbafddee023a",
+      "actionability": {
+        "class": "L/E",
+        "next": "Both task guides exist; Essentials explicitly says its procedures were not executed. Finish the printed small-install/new-operator path and fix observed instructions, using a selected Essentials/server-maintenance/client set. Hardware/browser-presence inputs are needed only for promised factor steps, not for all guide work.",
+        "refs": [
+          "docs/essentials-guide.md",
+          "docs/platform-guide.md",
+          "docs/roadmap/d01-platform-cli-walkthrough.md"
+        ]
+      }
+    },
+    {
+      "id": "9961ab66-f582-4e70-a4eb-da62e51a9acf",
+      "code": "D03",
+      "title": "[P1] D03 — Publish tested integration recipes",
+      "status": "todo",
+      "updated_at": 1790894719,
+      "original_outcome": "Include reusable configuration, expected results, permissions, failure checks, and API/CLI equivalents.",
+      "original_workstream_goal": "Document completed user and operator tasks, not merely available settings.",
+      "original_workstream_gate": "A new user and a new operator can independently complete the documented workflows.",
+      "original_prerequisites": "M02, I10, Q04",
+      "original_details_sha256": "dce233c71ccb9fff0cc20dbd70449a613438622932888f9841b68af453f6efb1",
+      "actionability": {
+        "class": "L/E",
+        "next": "Reusable scoped recipes and real local LDAP/SCIM evidence exist. Finish printed permissions/success/failure/API-CLI walkthroughs for selected published recipes, incorporating accepted route-specific headers and receipt-secret rules. Untested SaaS/cloud recipes need named authorized peers; do not demand every hypothetical integration.",
+        "refs": [
+          "docs/recipes/ldap-import.md",
+          "docs/recipes/platform-inbound-scim.md",
+          "docs/recipes/platform-outbound-scim.md"
+        ]
+      }
+    },
+    {
+      "id": "ec76d0c5-2efe-4005-bb49-1f3b54878146",
+      "code": "D04",
+      "title": "[P1] D04 — Write operational and emergency runbooks",
+      "status": "todo",
+      "updated_at": 1790894719,
+      "original_outcome": "Cover lockout, credential incidents, failed connectors, outages, key loss, restore, migration, and rollback.",
+      "original_workstream_goal": "Document completed user and operator tasks, not merely available settings.",
+      "original_workstream_gate": "A new user and a new operator can independently complete the documented workflows.",
+      "original_prerequisites": "U09, O06, O07, R05, G05",
+      "original_details_sha256": "f601c4eaaf5d50cc9a1c9d54290bd2a52ff5ba41ad64915cfb97e144a0b7dfed",
+      "actionability": {
+        "class": "L/E",
+        "next": "Runbooks already cover incidents and actual key-loss/redb/PG dump/base-backup/PITR results. Local fresh-operator lockout/connector/outage/restore walkthrough and current agreement/header instruction reconciliation are executable. Escrow, physical PG promotion/fencing and real rollback require the declared deployment operator; logical recovery completion is no longer a blanket blocker.",
+        "refs": [
+          "docs/operational-recovery.md",
+          "docs/operations.md",
+          "docs/roadmap/evidence/d04-postgres-pitr-2026-09-29.json"
+        ]
+      }
+    },
+    {
+      "id": "6a2381ab-0f2f-48c6-adf9-8115b78cc143",
+      "code": "D05",
+      "title": "[P1] D05 — Run acceptance against category targets",
+      "status": "todo",
+      "updated_at": 1790894719,
+      "original_outcome": "Evaluate usability, workflows, administration, interoperability, footprint, performance, availability, recovery, migration, and security evidence.",
+      "original_workstream_goal": "Document completed user and operator tasks, not merely available settings.",
+      "original_workstream_gate": "A new user and a new operator can independently complete the documented workflows.",
+      "original_prerequisites": "A02, Q03, Q04, Q06, Q08, Q09, Q10, Q11, D01, D02, D03, D04",
+      "original_details_sha256": "4a71c19606928fab05dfe834e129287a503c2ec0c5a2f2ceb26234a18230b0dd",
+      "actionability": {
+        "class": "L",
+        "next": "Refresh ten-category evaluation from its historical source snapshot to this pin, crediting accepted A03/A08/W02/W05/M07/O03 outcomes and measured evidence. Keep unmeasured categories explicit. Original outcome is evaluation against targets; do not fabricate passing results or add an undocumented universal all-rows/brand-new-run closure rule.",
+        "refs": [
+          "docs/roadmap/d05-acceptance-evidence.json",
+          "docs/roadmap/d05-acceptance-evidence.md"
+        ]
+      }
+    },
+    {
+      "id": "988578f4-8544-4604-a508-3c3c2e676f8b",
+      "code": "X01",
+      "title": "[P3] X01 — Additional SAML profiles",
+      "status": "todo",
+      "updated_at": 1790534568,
+      "original_outcome": "Evaluate artifact/SOAP/ECP and encrypted-NameID requirements against named target applications.",
+      "original_workstream_goal": "These should not delay a complete Essentials experience. Scope them separately when a real integration requires them.",
+      "original_workstream_gate": "Each extension solves a named requirement, has its own security model, and is tested against a real peer.",
+      "original_prerequisites": "I04, Q01",
+      "original_details_sha256": "61778cf98fe09f8f237b9eebe0926e4b0b0632d97d3d1ca09bf440324aba0bb5",
+      "actionability": {
+        "class": "D",
+        "next": "Demand-driven by original wording. No named artifact/SOAP/ECP/encrypted-NameID target requirement is recorded here. Root must obtain the application/profile, security model and real peer before scoping; do not invent another SAML implementation to clear a todo.",
+        "refs": []
+      }
+    },
+    {
+      "id": "2175d198-8798-466a-8a46-867693552a0a",
+      "code": "X02",
+      "title": "[P3] X02 — Additional network and directory functionality",
+      "status": "todo",
+      "updated_at": 1790534568,
+      "original_outcome": "Evaluate RADIUS accounting, CoA, PEAP/TTLS, and additional LDAP/SCIM write or schema behavior.",
+      "original_workstream_goal": "These should not delay a complete Essentials experience. Scope them separately when a real integration requires them.",
+      "original_workstream_gate": "Each extension solves a named requirement, has its own security model, and is tested against a real peer.",
+      "original_prerequisites": "I04, P06, Q01",
+      "original_details_sha256": "8aa86942b2f2902f82fc87c72df06f6a01ab1e91be4a0d5c93fbf56c3f5a163e",
+      "actionability": {
+        "class": "D",
+        "next": "Demand-driven. Needs a named NAS/directory client's accounting/CoA/PEAP/TTLS/write/schema requirement and peer. Existing supported-profile acceptance remains I04/P06; do not automatically implement every listed possibility.",
+        "refs": []
+      }
+    },
+    {
+      "id": "db2de8e7-889c-4345-ae4b-3ef5a1c9e798",
+      "code": "X03",
+      "title": "[P3] X03 — Additional Shared Signals and provisioning directions",
+      "status": "todo",
+      "updated_at": 1790534568,
+      "original_outcome": "Scope polling, stream verification, subject management, and outbound cloud-directory connectors separately.",
+      "original_workstream_goal": "These should not delay a complete Essentials experience. Scope them separately when a real integration requires them.",
+      "original_workstream_gate": "Each extension solves a named requirement, has its own security model, and is tested against a real peer.",
+      "original_prerequisites": "P01, P02, I05, I06, Q01",
+      "original_details_sha256": "32237c8711d3585d5f77788acde31d576f586dfd9b43a60a543b9e5c1686d2c0",
+      "actionability": {
+        "class": "D",
+        "next": "Demand-driven. Name the requested polling/verification/subject-management/outbound-cloud direction, tenant and permissions first. Existing SSF/provisioning support does not authorize arbitrary new cloud writes.",
+        "refs": []
+      }
+    },
+    {
+      "id": "484beda3-9015-4f4c-9052-67d80d0defbe",
+      "code": "X04",
+      "title": "[P3] X04 — Advanced proxy orchestration and specialized extensions",
+      "status": "todo",
+      "updated_at": 1790534568,
+      "original_outcome": "Consider managed gateways, additional proxies, constrained credential injection, and exceptional workflow integrations.",
+      "original_workstream_goal": "These should not delay a complete Essentials experience. Scope them separately when a real integration requires them.",
+      "original_workstream_gate": "Each extension solves a named requirement, has its own security model, and is tested against a real peer.",
+      "original_prerequisites": "I03, W07, Q01",
+      "original_details_sha256": "02410769d9f0cc821ee34c52d0d95b7cf433751df03393928367a3aaa0743249",
+      "actionability": {
+        "class": "D",
+        "next": "Demand-driven. Needs a named gateway/proxy/credential-injection/custom-workflow integration, security model and real peer. W07 macOS confinement is reusable evidence, not a reason to build unspecified extensions.",
+        "refs": []
+      }
+    }
+  ],
+  "top_three_proposals_only": [
+    {
+      "rank": 1,
+      "code": "R05",
+      "task_id": "8c477e5e-8055-4cbe-9f3d-0c69fb19a2e8",
+      "proposed_owner": "Recovery drill lane",
+      "files": [
+        "scripts/recovery-drill.py",
+        "scripts/recovery-drill-postgres.py",
+        "scripts/recovery-drill-oidc.py (new helper if needed)",
+        "docs/roadmap/local-wave30-r05-application-login-report.md (new)"
+      ],
+      "path": "Extend the existing isolated restore drill with one local relying-party callback and public authorization-code/S256-PKCE exchange, state/nonce/issuer/subject/JWKS verification before and after restore. Keep old-session denial and recovery attestation gates. Record sanitized outcomes and exact binary/source hashes; service login alone must not be labeled application login.",
+      "boundary": "No Core/API/credential writer edits. First bounded completion: redb application recovery path; reuse helper for existing logical PG drill when root provides/reserves PG runtime. Remaining physical/escrow/deployment cases stay explicit."
+    },
+    {
+      "rank": 2,
+      "code": "O07",
+      "task_id": "6c981199-62dd-464d-a12a-4ce4e27f428f",
+      "proposed_owner": "Deployment templates lane",
+      "files": [
+        "scripts/check-deployment-small.py (new bounded harness)",
+        "deploy/compose-small.yml (only an observed correction)",
+        "docs/roadmap/local-wave30-o07-small-deployment-report.md (new)"
+      ],
+      "path": "Implement opt-in isolated verification of the printed small template using an operator-selected exact image: verify image edition/revision/digest, generated UID10001 fixture/mounts, one owning redb volume, init/readiness/discovery/login, read-only restart and outage/refusal behavior, with scoped cleanup. Require actual observed success before calling the template tested.",
+      "boundary": "No distributed production cluster or shared API/state/diagnostics edits. Linux Docker Compose/image/TLS fixture is required for the one execution, not to write the harness. The two-host template and externally operated PG HA/fencing remain separate remaining O07 scope."
+    },
+    {
+      "rank": 3,
+      "code": "D01",
+      "task_id": "a96a1977-3210-4284-8f7d-645793369301",
+      "proposed_owner": "Essentials operator guide lane",
+      "files": [
+        "docs/essentials-guide.md",
+        "docs/roadmap/local-wave30-d01-essentials-walkthrough.md (new)"
+      ],
+      "path": "Walk the printed Essentials small-install/init/sign-in/client-registration/OIDC path from a clean private fixture with selected matching server/maintenance and standalone client, fixing only observed guide issues. Capture exact hashes/commands/actor outcomes and first-only confidential secret output; follow the printed backup/recovery path after R05 evidence is available.",
+      "boundary": "Documentation/evidence only; no Platform guide, shared recipe, API/portal or workflow edits. Finish the remaining guide sections explicitly rather than claiming whole D01 from the first path. Physical-authenticator steps need their selected device/operator; virtual fixtures remain labeled."
+    }
+  ],
+  "historical_evidence": [
+    {
+      "code": "A09",
+      "summary": "Release machinery packages edition-matched server/maintenance/client artifacts, archives/containers and v4 digest/feature provenance. Actual local native ARM64 ELF/archive/image evidence exists; metadata fixtures reject swapped payloads.",
+      "accepted_commits": [
+        "09e8a858fddab69d8ac70d21925eae83d6784d8f",
+        "0ab0b82ebcaab05c95f3e4154c50143f4bfd8091"
+      ],
+      "references_at_audit_pin": {
+        "scripts/package-release.sh": "2663c67109f017170412d66eddaf3126f90c089f",
+        ".github/workflows/release.yml": "897df176d6dd773f9e86f8dfdb3655003c5c32ca",
+        "scripts/check-release-bundle.py": "37eeafd8ccd62d49ee2cc1cceb11c7003b739c43",
+        "docs/roadmap/q08-native-arm64-local-6ca4779.md": "6d26f9c39ac1d75dcc4d0e04fabcf740c96214be"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "U10",
+      "summary": "Accepted invalid-input/focus fixes and historical headless 320 CSS pixel Chromium/Firefox/WebKit checks cover individual paths.",
+      "accepted_commits": [
+        "099c19047ecde2ab990f7c7e9dada604981b9ff8",
+        "5892563fddecaf5446c4d7219a0cacb4e236e551"
+      ],
+      "references_at_audit_pin": {
+        "tools/browser/signin.spec.js": "50bf9a0623d4c72211d14ce0cccf1ac8afbd4dfa",
+        "tools/browser/portal.spec.js": "331822cca062e669e0240f4a935531c204f65d48",
+        "docs/roadmap/integration-verdict-2026-09-30.md": "4d6b1447533afa2ebd7bbc2551cca6a188c82edf"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "W07",
+      "summary": "Accepted installed guest preserves bounded IPC/compile/request/result limits, startup compilation bound, empty environment, killable child, hard deadline before acceptance/after joined IO and process-bound stage_binding. macOS default-deny Seatbelt and descriptor admission have reviewed 19-test native evidence plus portable binding/refusal compatibility.",
+      "accepted_commits": [
+        "4cc1c8bf82f48d9561f1f61c7fb13487b8d610b0",
+        "afd7ad2d7e3299778cfad218d4610ba676c9573b",
+        "1610156480a7205d185180bc47c3ec4a28680a9a",
+        "f9b2920dc2509c71b08107202f2c52333405cd93"
+      ],
+      "references_at_audit_pin": {
+        "src/workflow/extension_gate.rs": "a6d9876e5b44b65932a9f779f5e272a2eb6e5fd4",
+        "src/workflow/extension_gate/isolation.rs": "6c1b790233b0e05eaa37aeff511bca474f856e5c",
+        "src/workflow/extension_gate/guest-macos.sb": "b0c1de53e46ebeb05c2c0c0ece86de556157584e",
+        "src/workflow/extension_gate/native-probe.c": "84953f942ff4936bf96ab66852589c7927fd93a2",
+        "docs/roadmap/local-wave27-extension-isolation-report.md": "887bd872211a76369ef094facfc172bf81d2e030",
+        "docs/workflows.md": "e30b8cff729b42dc6d72c57cf4f442a1542a76ad"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "P06",
+      "summary": "Accepted SCIM filtering/PATCH/projection/resource-version and paged ownership slices preserve unrelated members and reject malformed member values; selected redb and plain/encrypted PG checks are recorded.",
+      "accepted_commits": [
+        "7b9253117e51a0676988de5ea26fb43dc2c627e5",
+        "221b0585423d09504a611582e3a1e04773a7b92c"
+      ],
+      "references_at_audit_pin": {
+        "src/scim.rs": "d520d498a05434fe23dfcc13411d25001e78ed87",
+        "src/scim_shared.rs": "4458fa98ca5ce8973574cfc0614cbb0714952df7",
+        "tests/scim_patch_compat.rs": "b3422dd15081253cb6b856000b7ffa07ac62e0d1",
+        "tests/scim_patch_valuepath.rs": "770abdbada7fe8f1b4b6a69a45a92f5849eaa6ce",
+        "tests/scim_resource_versions.rs": "b9c6dd709170efec475be16840dc8c1accc78a0c",
+        "docs/scim.md": "d912cb921cf0a04cbd967cdc486b8d586fdb6c13"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "P08",
+      "summary": "Accepted durable delivery/outcome state, ambiguous update read-back, managed-attribute boundaries, audited settlement/offboarding projection and capacity reservation have focused P08/O05/browser evidence.",
+      "accepted_commits": [
+        "113177300342ea32fad7b24cf64a998bb66d8a35",
+        "2b76c8763e8485e4f49e47e2b02c91fdd9b20515",
+        "997325a2492ee64fb578ed89d805f12675e2f11b",
+        "f66926a710ea19746aa8b1da3ee24a1f9d48f075",
+        "e2221d075a6aee6eb6d8adf4a8e13ea52a585a28",
+        "8187ff9f1719f736db8595b4e65331171bb9ad3f",
+        "7fc1e44579060fedf958076057b9e868186800a1",
+        "fa7b33288416380a89ae3e85cbbb0944385900ad",
+        "d6b609c558ead6f37e4f675f4c125c79fd5e5b6c",
+        "61636e6708526311df4e14d57658b7e75efa3f1a"
+      ],
+      "references_at_audit_pin": {
+        "src/provisioning.rs": "e745095151194b23531516b540d2c9d5df94b435",
+        "src/provisioning/deactivation.rs": "005ea1bfb0036b0e7f5ff1709c68baf8d1ea270b",
+        "src/identity/downstream.rs": "79640cb1cec0a0ff6b9b7a922dcb996d735da026",
+        "docs/scim.md": "d912cb921cf0a04cbd967cdc486b8d586fdb6c13"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "I02",
+      "summary": "Accepted linking/trust slices retire presented state on disabled sources and certificate-pin retirement, preserving exact source/account proof and one-time browser state. Source-link/trust/logout checks are recorded.",
+      "accepted_commits": [
+        "94ffa6062fc6982e985aa28f9b56c500271cfde8",
+        "ab5743eef83d0e47bcbe671fa748563653056a1a",
+        "c2037b5e1d5d6d221db25ee50381eed81da60106"
+      ],
+      "references_at_audit_pin": {
+        "src/source.rs": "5f36affa7d4f7291d871f3c8788f4385e5c355fa",
+        "src/source/saml.rs": "c29f1fb1296b2539217234e62e87fdbcf8ed7158",
+        "src/source/workflow.rs": "58995640dc298dc60f823ec0e49c3e0a615bf7df",
+        "tests/identity/sources.rs": "0f38b0c0dff9921dd123b560c55a6c1cb5e1fcf6",
+        "docs/oidc-profiles.md": "d9f222a7eec7b2998db800ec15d6b1bfc2b7cee5"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "I04",
+      "summary": "Genuine local independent OpenLDAP and GNU Lasso/XMLsec evidence exercises specific LDAP import and SAML SP profiles, including audience/lifetime and corrected Recipient rejection.",
+      "accepted_commits": [
+        "62ce3d83980c52f5242353952a3c4a0c7fdc6b7a",
+        "8d389d4ca919918e8a9ddf5f4531effc55fb3757"
+      ],
+      "references_at_audit_pin": {
+        "src/saml.rs": "81ba36c7cd3ddc28655082dfb9bdfc0335cfe8c5",
+        "src/ldap_server.rs": "bbf085bf641e9c047379a7ab83cd4bce6973f8e2",
+        "src/radius.rs": "df4f241b3e5697495942360a2d9678437d9494e1",
+        "scripts/test-saml-sp.sh": "543da9d3fccb3714b8d94bf55c43af762144a5a1",
+        "scripts/test-ldap-provider.sh": "f2d4ae20e32e7e9eb4d68e23f71571995b4d7984",
+        "docs/testing.md": "362ed577e28ce9400a6c04c97a254651014cc2b3"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "I05",
+      "summary": "Accepted direct Workspace service-account authorization, pinned Google endpoints, disabled redirects and ambient proxies remove the broker as a code prerequisite. Synthetic peer is test-support-only.",
+      "accepted_commits": [
+        "ff40b13a6a31cbe94fb5f06af2fe80984ed7e981",
+        "a94a045c04a61a696b8635bfe50eaccb1617e0d7"
+      ],
+      "references_at_audit_pin": {
+        "src/cloud_directory.rs": "f912db10b2a9ca52f4bdfef6ae2ab5042545fd16",
+        "src/assembly/cloud_directory_runtime.rs": "9aca65bb8605cd4765b0a4c2dbca243ea453e201",
+        "docs/enterprise/ENT-03.md": "8d2a0af34d794f01a3aaf87c0f687dbc04ee469e",
+        "tests/cloud_directory.rs": "1756a3ce6115691160503c6e02fabc19dbc1188e"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "I06",
+      "summary": "Accepted Entra certificate assertions/rotation and inconsistent snapshot refusal complement token/paging/membership/mapping/removal implementation and local fixture checks.",
+      "accepted_commits": [
+        "6ea7f765ec468be6a73a5b0f408bf681e8253d12",
+        "d7f01826d760f5407ee7c9215ad605fe9089fce7"
+      ],
+      "references_at_audit_pin": {
+        "src/cloud_directory.rs": "f912db10b2a9ca52f4bdfef6ae2ab5042545fd16",
+        "src/assembly/cloud_directory_runtime.rs": "9aca65bb8605cd4765b0a4c2dbca243ea453e201",
+        "tests/cloud_directory.rs": "1756a3ce6115691160503c6e02fabc19dbc1188e",
+        "docs/enterprise/ENT-04.md": "c18060e5d87c18fc702c09b38c71b750156d9cd3"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "I07",
+      "summary": "Fail-closed Verified Access v2 binds issued challenge, session/epoch/expiry/one-use state and managed-device policy; accepted device_trust 10/10 and secret-wipe check are recorded.",
+      "accepted_commits": [
+        "cf6592783d9be7aec1e14ffb33e2bfab9bc60f52",
+        "67b892d78d60bf7c3e60bbf50ba67c7005ee4bd9",
+        "09db56d9bf86007716aedcec783b5ebeafa33b87",
+        "33b996ae41429417ed9da3fd2be499d09d0cc274"
+      ],
+      "references_at_audit_pin": {
+        "src/device_trust.rs": "6c1ff333817a07b341101f006664bcde4f2243ab",
+        "src/assembly/device_trust.rs": "47f092dc99d0a0529b37effd440eb756dd068a04",
+        "tests/device_trust.rs": "25f6bbba250a66ba664e391905d379d1f24e7d43",
+        "docs/enterprise/ENT-06.md": "f71d5fdbc33591d02a1c5f9daa5bf6621c45a6fc"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "I08",
+      "summary": "Accepted online-gated Windows provider, signed bundle/rollback floor, interrupted-update journal and signed-byte manifest binding cover installation/update policy slices.",
+      "accepted_commits": [
+        "aa81e50b42477dd1b0f80837e4c0789ea494c66f",
+        "5537d5685eb982eee0bf9f94ac8fba975fa59adb",
+        "edfac4f3a83647379ea6003096e66928a2dc47e3",
+        "65e85b9bc382f7a6719138ad87b1c53fc576e8e0"
+      ],
+      "references_at_audit_pin": {
+        "windows/RiAuth.CredentialProvider/CredentialProvider.cpp": "e37f150408f42e4f1335983f9b038a72088e09f3",
+        "windows/RiAuth.DeviceHost/DeviceHost.cs": "1b9adc281aa2414a698558663e8b78a2f15a4f5b",
+        "windows/Install-DeviceHost.ps1": "bbea45b8e67baaf4514300d2c0cdb16170f1ec16",
+        "windows/RECOVERY.md": "69ca6c34c29f777f93ac83fe27b00f2db14a8922",
+        "docs/enterprise/ENT-13.md": "683f9622ccde30d59169f3f80c5afde3f20faa57"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "I09",
+      "summary": "Accepted browser temporary access and parent-owned agent security fences include RADIUS EAP binding and Windows enrollment. Regressions prove unchanged denial snapshots, replay, expiry/revoke and exposure audit.",
+      "accepted_commits": [
+        "044a984caf208f85f2fef170c4ad7266507b4683",
+        "bc3c3248dfa55217845602f7f4ab9d5c6a331b8e"
+      ],
+      "references_at_audit_pin": {
+        "src/pam.rs": "5240b9c1387895d17a138630550539a79cbc6cd6",
+        "src/identity/agent_credentials.rs": "7dff935aa86389fbaee000246e7da24e7185e75b",
+        "src/identity/windows_credentials.rs": "63607f30471c2ac64f68fb3ad71187a9448ed4a2",
+        "tests/windows_login.rs": "207b4ecd16d894a16acf701de0f468aea316a6f0",
+        "docs/enterprise/ENT-14.md": "9bc45fe59a5c999d3450ae60b26ddc54b5e4b933"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "I10",
+      "summary": "Accepted connector operations, bounded private credential preflight, test connection, redacted audited/idempotent readiness and browser CSRF/replay/revocation tests cover local operator paths.",
+      "accepted_commits": [
+        "e4ad254a317cc53980220f8817657303d654ab8e",
+        "de95a49fb6b197c7dfafdb4e5cfd3d1775bad3c8"
+      ],
+      "references_at_audit_pin": {
+        "src/assembly/cloud_operations.rs": "8461d8d2556454cc9f401de5c6158dcd644ff38c",
+        "src/cloud_operations.rs": "79043b1b4b39b08c522a14ef9c005eb31b0d5727",
+        "tests/cloud_directory.rs": "1756a3ce6115691160503c6e02fabc19dbc1188e",
+        "docs/cloud-directory-operations.md": "a35daafd23279f3b805e285535563164e857fab8"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "S02",
+      "summary": "Accepted pagination and Group projection reuse reduce scans/repeated source reads with plain/encrypted redb/PG checks. Authoritative Group cutover design records the coherent format contract.",
+      "accepted_commits": [
+        "8b6d0a24acbe4200bdc2462162fc31196b85259c",
+        "7ab5108290eb9ee6156380708a9b642b1e547657",
+        "8d1edec90cd79310bfc1b396b6b8c4a75d3394ab"
+      ],
+      "references_at_audit_pin": {
+        "src/store.rs": "8e78d889220c9e956fe00a4f7a69b603063d3ebf",
+        "src/store/maintenance.rs": "f7f75a6f6dfa15a967fc6ddc59903257519d4e18",
+        "src/management.rs": "8ff588258fd859949015604518003c5950bcd2ad",
+        "docs/roadmap/s02-authoritative-group-cutover.md": "39afe2a666af19a71190058a5905c7c13f73e05d"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "O07",
+      "summary": "Accepted small and two-host Linux templates document process roles and database HA/recovery responsibility boundaries.",
+      "accepted_commits": [
+        "5724ffc2ee40ef783d85377e1926c0aa496feae7"
+      ],
+      "references_at_audit_pin": {
+        "deploy/compose-small.yml": "a75307cde81782907014e97fb607884c2d0e731b",
+        "deploy/compose-distributed.yml": "394b14528b3166edad135b501f4ba558c02f5e0e",
+        "deploy/riauth.service": "2bcf423da7d3c12234a39bd76e0c000c90c3bb18",
+        "docs/deployment-examples.md": "a773996bd0f73e2f7591f6226a450fda1a68a0d5"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "R05",
+      "summary": "Recorded local redb/logical PG failure/restore drills and isolated PG16 physical base-backup evidence preserve actual refusals and same-lineage blind spot. Invalidation closes serving and rejects old artifacts.",
+      "accepted_commits": [
+        "f61c7f70a4f5d469c6019edc0118653f2ace48ab",
+        "4cc1c8bf82f48d9561f1f61c7fb13487b8d610b0"
+      ],
+      "references_at_audit_pin": {
+        "scripts/recovery-drill-postgres.py": "6a1fcb41443f63500ae125dda819a2bdc76c8844",
+        "src/recovery.rs": "99718c37c4ec85f8e31ffced5bfb1722427b247d",
+        "docs/roadmap/recovery-drill-r05.md": "1dfe95476f7b38d7bb2db916ac645fd9f0d199f1",
+        "docs/roadmap/evidence/r05-native-postgres-2026-09-29/report.json": "ac811bf862fa61edd977919a8f94b05b2ebf1176"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "G02",
+      "summary": "Accepted conversion and fingerprint-bound plan/apply preserve proven subjects/issuers/client sectors/source links and refuse ambiguous/altered identity attributes; reimport/target-claim regressions exist.",
+      "accepted_commits": [
+        "679f2927885d9dc4dcc1c881fd972bcade70e07a",
+        "3ddcab4d43cfa1ce41222b6253dedbed573c0c64"
+      ],
+      "references_at_audit_pin": {
+        "src/migration.rs": "be21fbdfa8cac065ba0a796f41bb6214c9396e9c",
+        "src/state.rs": "7efb3c9da0c254f5d0ff6eb408fc22eb8be84d18",
+        "docs/migration.md": "9fb749445449bc14d42f1e5184d5515241ddef67"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "G05",
+      "summary": "Accepted synthetic Authentik-to-riAuth local reference RP rehearsal covers denied/successful access, claims/JWKS/PKCE, refresh/replay, MFA, recovery code, logout and local route-file rollback boundary.",
+      "accepted_commits": [
+        "cf827a9ee103672b329907a433fb96ac868fe178"
+      ],
+      "references_at_audit_pin": {
+        "docs/roadmap/g05-local-reference-oidc.md": "3213cafdc7312b12d8e264c328876e64b65ef86b",
+        "docs/migration.md": "9fb749445449bc14d42f1e5184d5515241ddef67"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "Q03",
+      "summary": "Pinned independent OIDF runner/preflight and six historical fixture checks enforce private input/source/suite identity and incomplete-result refusal; pilot report records missing inputs.",
+      "accepted_commits": [
+        "59606617510df11022d19b206610cd9f28c836ae"
+      ],
+      "references_at_audit_pin": {
+        "scripts/run-conformance.py": "5f982a8492187fad68671e7501548808d2d7b12f",
+        "tests/test_run_conformance.py": "c393ccf1606a24036230382cad885687697fb843",
+        "docs/roadmap/q03-conformance-pilot.md": "d4d6fb9fd1a7d064096ef802a7cdf9f05e52ac43"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "Q04",
+      "summary": "Genuine local PG/OpenLDAP/proxy/XMLsec and GNU Lasso evidence exists, including assertion Recipient/audience/lifetime negatives.",
+      "accepted_commits": [
+        "8d389d4ca919918e8a9ddf5f4531effc55fb3757",
+        "25cd9b517a932fa72251291433ec9ef6f2ac890d"
+      ],
+      "references_at_audit_pin": {
+        "scripts/test-saml-sp.sh": "543da9d3fccb3714b8d94bf55c43af762144a5a1",
+        "scripts/test-ldap.sh": "5c2e36a0c84a912c23831cd9337f2b5a2ead5fbf",
+        "scripts/test-postgres.sh": "c8e3bd778f59322e02114445fdac370d6609bdd0",
+        "docs/testing.md": "362ed577e28ce9400a6c04c97a254651014cc2b3"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "Q06",
+      "summary": "Accepted pinned Playwright CI wiring and bounded headless allowlist recorded 22 pass/2 expected CDP skips. Virtual authenticators and phone viewports remain explicitly software fixtures.",
+      "accepted_commits": [
+        "03124272a6cfe14ac48227c504cc896c2f11d9aa",
+        "4676f7419618d96389b9bdbbb3ccc00ccc74c837",
+        "85dcd4a0c0e420871bf6b7f408263183dd255f77"
+      ],
+      "references_at_audit_pin": {
+        "tools/browser/playwright.config.js": "a94bf44c9456c8dfb9a404d6aadda3ec9508a0dd",
+        ".github/workflows/ci.yml": "7c724fd7f4dc210a2268f5a702bdc09b1a10d76b",
+        "docs/testing.md": "362ed577e28ce9400a6c04c97a254651014cc2b3"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "Q08",
+      "summary": "Exact edition/capability/bundle validators and historical local native ARM64 plain/encrypted redb/PG matrices exist. Later A08 transition evidence supersedes the older local active-capability switch failure.",
+      "accepted_commits": [
+        "aacf13cdcfd7b99c7d79c523ec0b36b97e92bf58",
+        "efb8775b9c7b8c58980205e7eb3c50b4504e2d4a",
+        "b6263b43fce3a9c19f333c396829bb7ef23646cc",
+        "847439171c97e5d53bcc2f22be331d54cca9b99a",
+        "12cd615cbe1b5cc39ac1db9e4f0577009c578acd",
+        "ae863d8996ae641439b804f8905112931a9c8bb4",
+        "05ff8d39ff6f61bf5cccc6e7fff4e2533a4a9804",
+        "cf3e1ddeb79f381872614164f501835de74462a0",
+        "52bfd85a3121b0dc9ede3929c1a6822c297ba8a6",
+        "4128dc3210aedd5e8e3e6503e075b73400f0435d"
+      ],
+      "references_at_audit_pin": {
+        "scripts/check-edition-artifacts.py": "f88b8db533cd2e9aafd40132a06f88b4ba41b9c6",
+        "scripts/check-release-bundle.py": "37eeafd8ccd62d49ee2cc1cceb11c7003b739c43",
+        "docs/roadmap/q08-exact-edition-matrix.json": "24a3f5cd369025c797183e5313bacca981bf203b",
+        "docs/roadmap/q08-native-arm64-local-6ca4779.md": "6d26f9c39ac1d75dcc4d0e04fabcf740c96214be",
+        "docs/roadmap/evidence/a08-native-linux-arm64-2026-09-29/RUN.md": "3b771bf995513ede2f7047d592116c6ec1f36a29"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "Q09",
+      "summary": "Secure benchmark harness and four actual historical native ARM64 reports measure scoped workloads with private-CA HTTPS/encrypted storage and preserved hashes.",
+      "accepted_commits": [
+        "a898c7a9cf2dc278a514e4cccc79e8b8f6b0f322",
+        "d48cea1b390e72ff001c3b1f6b6d98fc9916ce3b",
+        "9c808d2c78d9d91d3351dc7e6f0dbca8747462d8",
+        "dd5ce832d04b773c8ac831ed30658da13035a5a8"
+      ],
+      "references_at_audit_pin": {
+        "scripts/q09_benchmark_slice.py": "558cc1a22a69007ab70a6c481c9bf90cfbf58cd0",
+        "docs/roadmap/q09-benchmark-slice.md": "c08d2468411430146d93260d135f57977cecf2f5"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "Q10",
+      "summary": "Official asset/installed-gate machinery and metadata fixtures exist. Later actual local native A08 transitions/logical recovery resolve the older source transition blocker.",
+      "accepted_commits": [
+        "aacf13cdcfd7b99c7d79c523ec0b36b97e92bf58",
+        "efb8775b9c7b8c58980205e7eb3c50b4504e2d4a",
+        "b6263b43fce3a9c19f333c396829bb7ef23646cc",
+        "847439171c97e5d53bcc2f22be331d54cca9b99a",
+        "12cd615cbe1b5cc39ac1db9e4f0577009c578acd",
+        "ae863d8996ae641439b804f8905112931a9c8bb4",
+        "05ff8d39ff6f61bf5cccc6e7fff4e2533a4a9804",
+        "cf3e1ddeb79f381872614164f501835de74462a0",
+        "52bfd85a3121b0dc9ede3929c1a6822c297ba8a6",
+        "4128dc3210aedd5e8e3e6503e075b73400f0435d"
+      ],
+      "references_at_audit_pin": {
+        "scripts/check-installed-release-gate.py": "0425336649312787d6835741619943fd4dbcb4fe",
+        ".github/workflows/release.yml": "897df176d6dd773f9e86f8dfdb3655003c5c32ca",
+        "docs/roadmap/q10-installed-release-gate.md": "535864abc76790ae3fd75fa095f4ecbde25e2d78",
+        "docs/roadmap/evidence/a08-native-linux-arm64-2026-09-29/integration-review.json": "74e69594ec5086c4a40a03d53fc18737cb74c670"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "Q11",
+      "summary": "Accepted pinned GitHub/Sigstore provenance/SPDX machinery and offline verification bind certificate run/attempt; dependency notices and vulnerability-response policy exist.",
+      "accepted_commits": [
+        "b7592162f8fce22d08ee696bd6664c8b54e83658",
+        "c1bc15072938ec2848ef16c15d0e7fa9a8276b79",
+        "fe145dfde9f8a2c1e37d0c54534f07d3ddcd283b"
+      ],
+      "references_at_audit_pin": {
+        "scripts/check-release-attestation.py": "baa48bd2c9d5d6c5e815446a1769e3562a77e410",
+        "scripts/check-release-evidence.py": "f67f9b4e165974be9384bcfe5b2c388414c47d85",
+        ".github/workflows/release.yml": "897df176d6dd773f9e86f8dfdb3655003c5c32ca",
+        "SECURITY.md": "047208fb72e97fc942fe5d4d988b162c28f80d5c",
+        "docs/roadmap/q11-release-evidence.md": "a3ed1a0381f4507e678ddc8a54ab4c7bfbd5519b"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "D01",
+      "summary": "Separate Essentials/Platform paths and retained partial Platform walkthrough exist. Accepted SAML preparation checks cover key/revision/retry, metadata manifests and genuine local XMLsec/Lasso acceptance with failed attempt preserved.",
+      "accepted_commits": [
+        "298cbec18eeccc3235c64368df50e505f5946418",
+        "eabb48b70dc38647acf9368429a0ebdbef51ddcc"
+      ],
+      "references_at_audit_pin": {
+        "docs/getting-started.md": "2768960f64443664e8e783f287b3c9d89e7059aa",
+        "docs/roadmap/d01-platform-cli-walkthrough.md": "ef367ba40fdec9b26e6bef462d9a07de830e0d3b"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "D03",
+      "summary": "Accepted reusable recipes name permissions, expected outcomes, API/CLI and failure/rollback boundaries; local OpenLDAP and loopback outbound SCIM evidence ties to accepted tests.",
+      "accepted_commits": [
+        "24b08ea58b17bea9142e9ae9bac2f74ee56dc051",
+        "b918977540bbd0eb6c1cebd55f8107eb53aefe95",
+        "16bc560d3b5feda5e8fce5c8783f5aa362448c72"
+      ],
+      "references_at_audit_pin": {
+        "docs/recipes/ldap-import.md": "a8ccd4245c2e74de952664fa17260959218d590a",
+        "docs/recipes/platform-outbound-scim.md": "43441b88ea6046c67e4ff068e0964cdb61166fa8",
+        "docs/recipes/platform-saml-idp.md": "bbc4b01407b55baa2ab950e941b092d18dc51cd3",
+        "docs/recipes/oidc-relying-party.md": "e91f5f5939bbeeb8cb35941e7ca47de5539fb4fc"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "D04",
+      "summary": "Accepted incident/recovery runbooks and local evidence cover key removal/restart, redb recovery and PG16.14 dump/base-backup/PITR. Actual failures, retained lineage and partial reconciliation are recorded.",
+      "accepted_commits": [
+        "e953cc0da18d29190b64a85cfdf6c08f262d1bbd",
+        "c019c27a1c7cbbc9ba6d0aaf774d116c52fb8a60"
+      ],
+      "references_at_audit_pin": {
+        "docs/operational-recovery.md": "728a6c39ef50009b2b91bff5627d2a3262e590b1",
+        "docs/operations.md": "43090322dec87e3630eed1237e3e5ba4cde75894",
+        "docs/roadmap/evidence/d04-postgres-pitr-2026-09-29.json": "215bcc9fe6625a052ee8b4048dd4f3a753e0128a",
+        "docs/roadmap/evidence/d04-postgres-base-backup-2026-09-29.json": "43c737a1e7fb970104ea3241dbbe4ee28e7691e4"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    },
+    {
+      "code": "D05",
+      "summary": "Accepted ten-category matrix explicitly records d05_passed false and all categories not_passed, separating source, historical local runs, real peers/tenants, official assets and missing measurements.",
+      "accepted_commits": [
+        "09e68460d7836be8227568fbc84d8516d2d23e84",
+        "7f10ff184cf6a6eea6688b6cc59b8731b0d65ccd",
+        "0ebdc08cbf8f96b9309706234af97e2db9b22527"
+      ],
+      "references_at_audit_pin": {
+        "docs/roadmap/d05-acceptance-evidence.json": "501e4b4af8ce1529c52bc3edececbd2f30949a5c",
+        "docs/roadmap/d05-acceptance-evidence.md": "9e3116c1cc50a984ed3ba3e1613efff560fa271c"
+      },
+      "historical_audit_pin": "32770ab73270901ec94a2d1249cbd8bb6052a415",
+      "historical_execution_not_rerun": true,
+      "current_blob_lookup_is_metadata_only": true
+    }
+  ],
+  "metadata_checks": {
+    "accepted_commits_checked": 81,
+    "all_checked_commits_are_ancestors": true,
+    "current_reference_blob_lookups": 115,
+    "all_original_todo_uuid_and_outcome_rows": 33
+  },
+  "historical_measured_pins": {
+    "native_arm64_packages": "6ca4779b68cf41e29af490d2aca6ea3d59e1f2bd",
+    "native_A08_products": "f3aba63ac3b824843a40b99623f1619ef8edc19f",
+    "native_A08_validator": "730d373078c4b128373d7afa5f3e278f63b065fd",
+    "encrypted_A08_validator": "9f8efaf0372e02b0bc0042251d591f1facc0f783",
+    "native_logical_recovery_supplement": "082563b362acb218f276e4dbcaf476e303b561b7",
+    "D01_partial_platform_snapshot": "58357fde77211e62dc51c14fb3fc216bdf143ceb",
+    "extension_worker_source": "6421a1e79392fe483130f727a365066cbdb88ee6"
+  },
+  "desktop_preference": "Only RiWork Cua.ai Driver MCP: inspect descriptions/current state first; report missing setup/permissions and do not switch providers.",
+  "accepted_contracts_to_preserve": [
+    "Reviewed client-creation receipt-secret behavior",
+    "Route-specific optional/required headers",
+    "PAM fallback",
+    "Live permission/review/receipt/removal/audit/credential protections"
+  ],
+  "scope": "Read-only portfolio audit; only this JSON and same-stem Markdown written. Top three are proposals for root assignment, not reservations or starts. Root alone integrates/pushes/statuses. No workers/task rows/worktrees/shells created."
+}

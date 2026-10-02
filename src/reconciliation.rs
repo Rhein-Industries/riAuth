@@ -495,6 +495,8 @@ fn make_job(
 struct DiagnosticCounts {
     schedules: u64,
     schedules_with_error: u64,
+    /// Configured scopes with no currently stored schedule; not execution history.
+    controllers_without_schedule: u64,
     jobs: u64,
     queued: u64,
     running: u64,
@@ -667,6 +669,22 @@ fn schedule_item(schedule: &Schedule, completion: &Completion) -> Listed {
             "last_completed_at": schedule.last_completed_at,
             "completion_age_seconds": completion.age,
             "overdue": completion.overdue,
+        }),
+    }
+}
+
+fn configured_controller_item(scope: &str) -> Listed {
+    Listed {
+        rank: 3,
+        id: scope.into(),
+        body: json!({
+            "record": "controller",
+            "scope": scope,
+            "component": "reconciliation_controller",
+            "status": "configured_without_schedule",
+            "next_action": "check_worker_duty",
+            "safe_state": "No periodic schedule is stored, so periodic completion is unknown. This read changes no identity state or jobs; event jobs may still exist.",
+            "remedy": "Ensure a process with the background-jobs duty runs with this controller configured. If the schedule remains absent, inspect controller authority and credential setup.",
         }),
     }
 }
@@ -938,7 +956,10 @@ impl Core {
     /// an earlier job. Each schedule row also carries its local completion age
     /// and an `overdue` verdict (see [`local_completion`]); an overdue enabled
     /// schedule is an attention row without a stored error. This read does not
-    /// change readiness, doctor, or probes.
+    /// change readiness, doctor, or probes. Configured scopes with no stored
+    /// schedule have a separate controller attention row and count; absence
+    /// supplies no execution history or remote lag measurement. Configuration
+    /// admission limits the missing-scope set to 96 controllers.
     pub fn reconciliation_diagnostics(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let _actor =
@@ -947,7 +968,14 @@ impl Core {
             let jobs = tx.list::<Job>(JOBS)?;
             let mut counts = DiagnosticCounts::default();
             let mut listed = Vec::new();
-            for (_, schedule) in tx.list::<Schedule>(SCHEDULES)? {
+            let mut missing: BTreeSet<&str> = self
+                .config
+                .reconciliation_controllers
+                .keys()
+                .map(String::as_str)
+                .collect();
+            for (scope, schedule) in tx.list::<Schedule>(SCHEDULES)? {
+                missing.remove(scope.as_str());
                 let created = schedule.last_job.as_deref().and_then(|id| {
                     jobs.iter()
                         .find(|(_, job)| job.id == id)
@@ -964,6 +992,12 @@ impl Core {
                 if schedule.last_error.is_some() || completion.overdue {
                     listed.push(schedule_item(&schedule, &completion));
                 }
+            }
+            for scope in missing {
+                counts.controllers_without_schedule =
+                    counts.controllers_without_schedule.saturating_add(1);
+                counts.attention = counts.attention.saturating_add(1);
+                listed.push(configured_controller_item(scope));
             }
             for (_, job) in jobs {
                 count_job(&mut counts, &job);

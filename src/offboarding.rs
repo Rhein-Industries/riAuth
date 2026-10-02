@@ -256,6 +256,26 @@ struct DownstreamRollup {
     recorded: usize,
     full_targets: Vec<Value>,
     attention_targets: Vec<AttentionTarget>,
+    missing_records: usize,
+    retained_incomplete: usize,
+}
+
+impl DownstreamRollup {
+    /// Missing records explain unavailable evidence, never a delivery outcome
+    /// or the reason for deletion. Retained failures and waivers stay actionable.
+    fn evidence_unavailable_only(&self) -> bool {
+        self.state == "incomplete" && self.missing_records > 0 && self.retained_incomplete == 0
+    }
+
+    fn evidence_status(&self) -> &'static str {
+        if self.missing_records == 0 {
+            "retained"
+        } else if self.retained_incomplete > 0 {
+            "mixed_unavailable"
+        } else {
+            "unavailable_only"
+        }
+    }
 }
 
 fn downstream_rollup(
@@ -274,6 +294,7 @@ fn downstream_rollup(
     let mut full_targets = Vec::new();
     let mut attention_targets = Vec::new();
     let (mut hidden, mut open, mut delivered, mut resolved) = (0usize, 0usize, 0usize, 0usize);
+    let (mut missing_records, mut retained_incomplete) = (0usize, 0usize);
     for entry in recorded {
         let target = entry["target"].as_str().unwrap_or_default();
         let id = entry["delivery"].as_str().unwrap_or_default();
@@ -282,6 +303,13 @@ fn downstream_rollup(
             Some(row) if row.delivery_state() == "succeeded" => delivered += 1,
             Some(row) if row.delivery_state() == "resolved" => resolved += 1,
             Some(row) if !row.status.terminal() => open += 1,
+            _ => {}
+        }
+        match row.as_ref() {
+            None => missing_records += 1,
+            Some(row) if !matches!(row.delivery_state(), "succeeded" | "resolved") => {
+                retained_incomplete += 1;
+            }
             _ => {}
         }
         if viewer.is_some_and(|viewer| {
@@ -353,6 +381,8 @@ fn downstream_rollup(
         recorded: recorded.len(),
         full_targets,
         attention_targets,
+        missing_records,
+        retained_incomplete,
     }))
 }
 
@@ -495,6 +525,11 @@ fn attention_rank(job: &Job, rollup: Option<&DownstreamRollup>, overdue: bool) -
     // An overdue job has not committed its local revocation, like a failed one.
     if job.status == Status::Failed || overdue {
         0
+    } else if job.status == Status::Done
+        && rollup.is_some_and(DownstreamRollup::evidence_unavailable_only)
+    {
+        // Keep unknown evidence in attention, behind retained actionable work.
+        4
     } else if rollup.is_some_and(|rollup| rollup.state == "incomplete") {
         1
     } else if rollup.is_some_and(|rollup| rollup.state == "pending") {
@@ -525,6 +560,9 @@ fn job_next_action(job: &Job, rollup: Option<&DownstreamRollup>, overdue: bool) 
     };
     if rollup.hidden > 0 {
         return "inspect_hidden_targets";
+    }
+    if job.status == Status::Done && rollup.evidence_unavailable_only() {
+        return "inspect_missing_delivery_evidence";
     }
     let actions: Vec<&str> = rollup
         .attention_targets
@@ -585,6 +623,9 @@ struct DiagnosticCounts {
     downstream_incomplete: u64,
     downstream_delivered: u64,
     downstream_resolved: u64,
+    /// Done/incomplete jobs whose only unresolved evidence is unavailable.
+    /// A missing record does not establish expiry, delivery or resolution.
+    downstream_evidence_unavailable_only: u64,
     no_downstream_targets: u64,
     attention: u64,
     withheld: u64,
@@ -636,6 +677,12 @@ fn count_job(
         _ => &mut counts.no_downstream_targets,
     };
     *downstream = downstream.saturating_add(1);
+    if job.status == Status::Done && rollup.is_some_and(DownstreamRollup::evidence_unavailable_only)
+    {
+        counts.downstream_evidence_unavailable_only = counts
+            .downstream_evidence_unavailable_only
+            .saturating_add(1);
+    }
     if needs_attention(job, rollup, late.is_some()) {
         counts.attention = counts.attention.saturating_add(1);
     }
@@ -669,6 +716,7 @@ fn attention_item(job: &Job, rollup: Option<&DownstreamRollup>, late: Option<u64
             "execute_at": job.execute_at,
             "next_attempt": job.next_attempt,
             "downstream_state": rollup.map(|rollup| rollup.state),
+            "downstream_evidence_status": rollup.map(DownstreamRollup::evidence_status),
             "recorded_targets": rollup.map(|rollup| rollup.recorded).unwrap_or(0),
             "hidden_targets": rollup.map(|rollup| rollup.hidden).unwrap_or(0),
             "remote_completion_verified": rollup.is_some_and(|rollup| rollup.state == "delivered"),
