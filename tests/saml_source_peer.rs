@@ -47,7 +47,6 @@ const P: &str = "urn:oasis:names:tc:SAML:2.0:protocol";
 const A: &str = "urn:oasis:names:tc:SAML:2.0:assertion";
 const DS: &str = "http://www.w3.org/2000/09/xmldsig#";
 const RSA256: &str = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
-const POST: &str = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST";
 const REDIRECT: &str = "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect";
 const PASSWORD: &str = "independent-native-peer-fixture-only-password";
 type Snapshot = BTreeMap<String, Value>;
