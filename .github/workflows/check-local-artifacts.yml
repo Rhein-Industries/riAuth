@@ -24,7 +24,6 @@ jobs:
         shell: bash
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
-      A09_ROOT: ${{ runner.temp }}/riauth-a09-${{ github.run_id }}-${{ github.run_attempt }}
       CARGO_BUILD_JOBS: '1'
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_DEV_DEBUG: '0'
@@ -36,6 +35,8 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          export A09_ROOT="$RUNNER_TEMP/riauth-a09-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf 'A09_ROOT=%s\n' "$A09_ROOT" >> "$GITHUB_ENV"
           mkdir -m 700 "$A09_ROOT"
           cat > "$A09_ROOT/driver.py" <<'PY'
           import datetime, gzip, hashlib, json, os, pathlib, platform, re
