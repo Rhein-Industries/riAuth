@@ -435,3 +435,157 @@ source or other worktree's file.
 **Runtime is still held.** The cleanup approval does not authorize any test,
 build or run. The whole 24-test `scim_oauth` run waits for root's separate
 release after A09 remote run `37016520583` exits. No Cargo command has run.
+
+## Sol support handoff and single whole-target run, 2026-10-02
+
+This section appends new evidence to the preceding historical phases. Their
+Linux 16-pass/8-fail result, source review, runtime holds, inventory and approved
+prune receipt remain unchanged. The statements that runtime was held above
+describe those phases, rather than this subsequent explicit release.
+
+Project: `891e7443-8dac-4c1b-897f-9e53cb59c7ee`. Existing support worktree:
+`a1303b57-4a34-487e-9c63-a841f05b51a0`, branch
+`roadmap/local-workflow-safety-wave27`. I10/R05/W02/W05 remain DONE; this is
+separate CI support and makes no task-status change.
+
+**Method switch and authority.** Root reported that the original Claude shell
+login expired before any Cargo invocation, and assigned the sole Cargo slot
+to this existing Sol shell. That authentication blocker is root-reported;
+this lane did not reproduce it, refresh credentials, contact the other worker
+or attempt an authentication workaround. Root released one whole 24-case
+target, with no baseline, eight-case filter or automatic retry.
+
+**Alignment and immutable inputs.** A clean, history-preserving
+`git merge --no-edit 9b8956f7b2a9961b14e313fa57c0f5214a136772` produced
+`34cb9ce2aeea82981b660ab9235be39e09b40bb9`, with parents
+`d9c5309a5f27eccc2425564b58ac4ce2ac17a369` and the fixed published commit.
+There were no conflicts. The entire merge tree is byte-equivalent to the
+published tree `8b1e27b0919277ca76eddbb7e7cfb2d92acf0254`; this includes every
+production source, crate, manifest, lockfile and toolchain file. The complete
+own history remains an ancestor. The accepted SCIM report was added intact,
+and the full own I10 report already matched published blob
+`86741ae7edd83212429d7074a1ec74e19a4add99`, requiring no conflict resolution.
+
+Reviewed fixture commit `20dd4eed2985ecb1017e95f12836e2da063566a7` was inspected
+as an immutable Git object. It retains an unserved router in six test bodies
+and returns/retains a router through `staff_removal_at_group_step` and its two
+callers. It changes no assertion, reviewed removal, retry or production
+contract. The executed fixture blob is exactly
+`02ce939a673c500296a3bf7feb1154180f39a20e`. Additional input blobs:
+
+| Input | Git blob |
+| --- | --- |
+| `Cargo.toml` | `5660d4bb922fcdc5bfe05d7502585980f4720d06` |
+| `Cargo.lock` | `f1b819d47d204d73617b095513f0c6ab6eb8aa4e` |
+| `rust-toolchain.toml` | `c3f67b6771b777215340531caf051bc25cef066c` |
+| Published SCIM report, preserved prefix | `8c925562c7062a5335dc12d4ae39ba0f6f3cf813` |
+
+Applicable ancestor/repository/documentation `AGENTS.md` paths were checked;
+none existed. An unscoped `riwork orchestrator send --help` check selected
+the absent global orchestrator and exited 2. Reading the existing CLI selector
+showed that project scope was required; the subsequent explicit-project
+alignment and immediate slot-release messages succeeded. No orchestrator or
+shell was created.
+
+**Preflight.** Read-only inspection of this lane's existing private
+`.target-wave27` found matching `default,essentials,fuzzing,platform,test-support`
+library/test fingerprints, a 408,762,648-byte library and adjacent test
+executables around 202–204 MB. Production/manifests/toolchain matched this
+lane's prior warm `ef80983` source as well as fixed published 9b. Free disk
+was 11.094 GiB during inventory and 11.093 GiB at invocation. That supported
+a conservative transient estimate below 1.5 GiB, with a 9 GiB stop threshold
+and mandatory 8 GiB floor. No Cargo/rustc process was present. No cache,
+evidence or other lane's files were deleted or modified by this lane.
+
+**The only Cargo invocation**, started at `2026-10-02T15:01:09Z` from this
+existing worktree:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test scim_oauth -- --test-threads=1
+```
+
+Host: Darwin 25.2.0 arm64. Tools: `rustc 1.98.1 (48a229cea 2026-09-01)` and
+`cargo 1.98.1 (797e8a9bc 2026-08-05)`. Cargo used the requested features,
+jobs=1, incremental=0 and dev/test debug=0. Compilation exited successfully
+in 5.56 s, with the native linker compact-unwind warning. The whole-target
+run then **exited 101: 22 passed, 2 failed, 0 ignored, 0 measured, 0 filtered
+out, in 28.22 s**. Wrapper elapsed time was 35.414643 s.
+
+| Test | Actual result |
+| --- | --- |
+| `ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link` | PASS |
+| `cached_token_serves_overlapping_callers_until_forced_expiry` | PASS |
+| `client_credentials_provision_an_independent_scim_server` | PASS |
+| `completed_job_history_is_compact_and_bounded` | FAIL |
+| `controller_modes_bind_plans_and_stop_at_removal_review_floor` | PASS |
+| `final_scim_plan_and_apply_read_only_reviewed_links` | PASS |
+| `jwt_scope_and_audience_claims_must_cover_configuration` | PASS |
+| `legacy_token_file_config_stays_exclusive_with_oauth` | PASS |
+| `missing_expires_in_is_cached_briefly` | PASS |
+| `paged_scim_snapshot_resumes_and_refuses_a_link_added_behind_its_cursor` | PASS |
+| `plans_supersede_pending_snapshots_and_bound_historical_links` | PASS |
+| `reconcile_stales_incompatible_backoff_jobs_and_replans_without_dispatch` | PASS |
+| `refresh_token_grant_is_reread_and_not_written_back` | PASS |
+| `reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback` | PASS |
+| `reviewed_last_group_member_removal_requires_complete_remote_membership` | PASS |
+| `reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch` | PASS |
+| `scim_apply_binds_reviewed_content_authority_and_previous_links` | PASS |
+| `scim_unauthorized_acquires_once_more_then_stops` | PASS |
+| `scim_user_cursor_ignores_login_but_restarts_on_projection_change` | PASS |
+| `secret_rotation_and_static_token_rotation_apply_on_next_acquisition` | PASS |
+| `shared_freshness_invalidates_local_cache_and_fences_late_publication` | PASS |
+| `token_endpoint_failure_retries_once_then_can_succeed` | PASS |
+| `uncertain_patch_response_is_reconciled_without_a_second_patch` | FAIL |
+| `wrong_secret_server_errors_and_rejected_tokens_do_not_call_scim` | PASS |
+
+**Concrete remaining failures.** At `tests/scim_oauth.rs:960:48`,
+`completed_job_history_is_compact_and_bounded` unwraps the next plan's public
+`provisioning_apply` result and receives status 409/code `conflict`:
+“Target already has an unfinished job; inspect or retry it”. The loop iteration
+is not logged. The retained router alone did not make the synchronous
+65-job fixture complete. The final 64-job retention assertions were not
+reached; this run does not establish their failure or a production defect.
+
+At `tests/scim_oauth.rs:1175:5`,
+`uncertain_patch_response_is_reconciled_without_a_second_patch` finds
+`completed["completed"]` equal to `false`, expected `true`, after its existing
+three-second wait and next `step`. Earlier assertions in that same execution
+passed: the job was incomplete after the lost response, the PATCH count was
+one, and the remote display name had changed. This differs from the earlier
+Linux failure at the first PATCH-count assertion. The final assertion that
+PATCH count still equals one was not reached. No job error/due-time/admission
+details were logged at this failure, so its underlying cause remains
+unproven. Six of the eight historical failing cases passed in this native
+run; this is not a fresh Linux result or complete resolution of the gate.
+
+**Disk and process containment.** Twenty samples were taken at a requested
+2 s interval; maximum observed gap was 2.089966 s. Free space started at
+11,911,270,400 bytes (11.093 GiB), reached a minimum of 11,696,762,880 bytes
+(10.894 GiB), and was 11,697,799,168 bytes (10.895 GiB) at completion.
+Neither threshold was reached, so no stop signal was needed. Owned Cargo
+PID `20554` was reaped; observed child PIDs `20556`, `20613`, `20614` and
+`20621`, and the owned process group, were absent on independent readback.
+The worktree was clean after runtime and the whole tree still matched fixed9b.
+**CARGO SLOT RELEASED** was sent immediately on completion, before this
+report append; the explicit-project orchestrator message exited 0.
+
+Private evidence is retained under this worktree's `.target-wave27`. The log,
+observation and independent verification were created exclusively with mode
+0600; their SHA-256 values were independently recomputed. The executed test
+binary is regular mode 0755, 211,639,440 bytes, with a fingerprint containing
+the requested features.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `scim-oauth-wave30-support-20261002T150109Z.log` (3,278 bytes) | `e2dc6ca95deb2667af47886d046ec96ebef9ded3b7ae57a1db4cea289c2919eb` |
+| `scim-oauth-wave30-support-20261002T150109Z.observation.json` | `559839950bd834ecc6b37dc9c58f8e5c4ad9d119fc7c1b08c5a1b3a4a21ed719` |
+| `scim-oauth-wave30-support-20261002T150109Z.verification.json` | `e75b1e84467bd58ebc97b9d376aa92c1d81b9727a4ce9dbba987b0829a562606` |
+| `debug/deps/scim_oauth-951d26c550be29f2` | `e409dcbbb96247b0a43f6dfba7f317107cbe9ba96e870e486641191801342d7e` |
+
+Only this report is appended after the alignment merge. Static checks for
+the append: `python3 scripts/check-docs.py`, `git diff --check`, exact
+published-report prefix preservation, report-only changed-path inspection
+and production/test/manifests/toolchain equality against fixed9b. No source
+or fixture correction, retry, other target, external provider, desktop,
+full-suite gate or I10 reopening occurred. The two failures need root's
+separate source/fixture ownership and runtime release before further work.
