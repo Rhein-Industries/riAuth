@@ -2895,3 +2895,140 @@ evidence. Helper470 SHA7fbc is unchanged; controller/product/guide/D05/config/
 tests/main/status/push remain untouched. Report-only scope, archive extraction/
 hash reconstruction, Markdown fence/final-newline/whitespace and git diff
 --check are verified before this separate report-only commit.
+
+## 2026-10-02: released corrected memory verification, actual complete result
+
+Reservation: wave30_D01_corrected_memory_verification. Root fully reviewed
+the corrected archive and independently reconstructed its payload before
+explicitly releasing exactly ONE standard-library memory verification. This
+phase executed that exact payload once, retained its complete fixed JSON/
+numeric exit/timing/hash before expectation comparisons, immediately handed
+off the actual result to the explicit project orchestrator, and then appended
+this evidence. No correction, retry, new case or source/harness change occurred.
+The entire real confidential browser fixture remains HELD for root review.
+
+### Pins, execution and retention order
+
+Preflight started from clean
+ab3fbace55465e9725ad230ff9eca160cdcc2856. The report matched that Git object,
+SHA-256 0d5520f3fa7212757b595dc44fdd5a51a089700683b86f652b3be06f97d42904,
+176534 bytes / 2897 lines. Extracted complete readable logic matched SHA-256
+98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb.
+The immutable ac3c baseline at 7461ab50 and the exact 7fbc candidate at
+470690cad0cd93c9f25c5bc40b982e1b91679b49 were read before verification and
+serialized as the two reviewed source lines. Payload reconstruction matched
+SHA-256 ce79aeb99fafaaeb265d6b7bff55f415e91825d83e9c650eed412825a5a9525f,
+91163 bytes / 463 physical lines. Disk helper matched the immutable candidate
+and SHA-256
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0.
+All five prior private metadata hashes/lengths/0600 modes matched before
+execution. Source preflight parsed/compiled only; it did not run the harness.
+
+A small outer Python controller launched one owned Python child with the exact
+payload on stdin and a 35-second outer communicate timeout. The reviewed
+payload retained its unchanged 30-second SIGALRM deadline and stop-on-first-
+unexpected-failure behavior. The outer controller alone used subprocess to
+enforce the bound and reap the child; the payload made no subprocess/CLI/
+network/socket/listener/native/provider/Driver/browser/Cargo calls and did
+not import a helper module or invoke module main. It only executed selected
+request methods and the reviewed memory sinks.
+
+Outer controller source SHA-256 ab966e651f0a3f572f2d3ac2c27e39faf5cb63ef6c2f86be4a942ab6c8fc8b6d,
+99002 bytes / 37 physical lines.
+The exact outer tool result, then the complete captured child stdout/stderr,
+were retained in session memory before parsing the fixed child JSON and before
+any success/count comparisons. No private deployment evidence file was
+created or overwritten. The exact fixed stdout is durably archived below;
+741 UTF-8 bytes, SHA-256 81c7a85c6b278bb60412be566a0bc07732fbc50c1ead9aa6030d07c14648dc5f, including its final LF. Stderr was empty,
+0 bytes. No request/header/cookie/code/state/subject/private-value output was
+printed.
+
+### Actual result and complete fixed JSON
+
+**Child exit 0; result passed; all 78 cases completed.** Actual Handler calls:
+44 baseline / 80 candidate, 124 total. No first failure and no unreached case.
+The injected 403 write-failure branch ran once and the injected response-
+timeout branch ran once; both met their reviewed propagation assertions.
+These expected injected failures are successful check observations, not
+unexpected fixture failures.
+
+Child elapsed 0.021527 seconds with the 30-second cap. Outer elapsed 0.064020
+seconds with the 35-second timeout, timeout false, outer failure tag null,
+child reaped true. Tool wall time 0.168740042 seconds; outer tool exit 0.
+The stdout/exit/hash/timing values above were retained before comparison.
+
+Exact emitted child JSON (fence content preserves the entire 741-byte stdout):
+
+```json
+{"completed_cases": 78, "deadline_seconds": 30, "elapsed_seconds": 0.021527, "expected_response_timeouts": 1, "expected_write_failures": 1, "failed_case": null, "failure_tag": null, "groups": {"authorization_bounds": 12, "authorization_presence": 6, "bounded_sequence": 4, "controlled_parser_result": 2, "counter_persistence": 1, "first_reason": 1, "header_free_bounds": 12, "header_free_routes_guards": 25, "parser_header_limits": 5, "postflow": 7, "record_copy": 1, "response_failures": 2}, "handler_calls": {"baseline": 44, "candidate": 80}, "helper_sha256": "7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0", "main_invoked": false, "network_listener_native_provider_cli_driver_browser_cargo": false, "result": "passed"}
+```
+
+| Actual group | Completed | What the reviewed assertions established in memory |
+| --- | ---: | --- |
+| Initial count/final-copy/outcome gate | 1 | Count 0 copy; incomplete checks cannot pass |
+| Cumulative first-three/fourth refusals | 4 | First 3 fixed 403/live, fourth fixed 403/terminal request_invalid, count 1..4 and no journey credit |
+| Authorization presence/refused routes | 6 | Empty/duplicate/POST/protected/callback/other method refusal; no dispatch/credential/cookie use |
+| Strict state/exhaustion | 7 | Four lifecycle disqualifiers, two non-False attempted values and defensive count 4 preserve terminal 400 |
+| Header-free routes/route guards | 25 | OLD/NEW state/reply/stub-call parity |
+| Actual-parser header-free structural cases | 12 | Prior guards match, including normalized network-path routing parity |
+| Actual-parser Authorization structural cases | 12 | Bounds fail closed; normalized network-path counterpart refused with bounded 403 and no credit |
+| Controlled parser-result netloc rejection | 2 | Injected nonempty netloc separately yields OLD/NEW terminal 400, correct fixed first reason and zero dispatch/count |
+| Parser/request/header limits | 5 | Request-line/header-line/header-count/header-total/parser refusal parity |
+| Counter across header-free flow/cleanup | 1 | Counter/reason survive root/login/post-flow refusal and clear |
+| Preexisting first-reason preservation | 1 | Existing first fixed reason is not overwritten |
+| 403 write-failure/response-timeout propagation | 2 | Writer failure escapes refusal catch and existing error sink fails closed; response Halt propagates |
+| Total | 78 | Complete released check; no case pending |
+
+All previously unattempted parser limits, remaining target failure assertions,
+counter-through-flow, first-only reason, write-failure and timeout branches
+executed in this one corrected run. The count/final-copy assertions covered
+0..4. The reviewed branch assertions checked no refusal dispatch, secret/cookie
+read, flow/check/status mutation, form, Location, Set-Cookie or journey credit.
+
+The wire network-path case used the actual stdlib parser with no override;
+its normalized path assertions and OLD/NEW generic routing outcomes passed
+in this new memory run. Its Authorization counterpart stayed a refused 403.
+The two separately labeled controlled-result cases invoked the actual parser
+first and then explicitly injected only a path value in the test sink to
+exercise the unchanged nonempty-netloc predicate. They do not claim wire
+parsing exposes that netloc. No helper parser/Host/Authorization/target guard
+was changed.
+
+### Evidence limits and preserved failed run
+
+This result verifies the exact bounded lifecycle/guard/sink assertions above.
+begin()/callback() remain controlled stubs and module main never ran. Memory
+login/callback/protected results do not prove actual browser sign-in, consent,
+OIDC exchange, native verifier/JWKS/RS256, issuer/userinfo, a physical passkey,
+ordinary nonadmin/invitation/tenant workflow or full D01/D05 acceptance.
+No real browser, provider, IdP, CLI fixture or listening process was started.
+No desktop/operator/Cargo resource slot was acquired or released; no service/
+listener/profile cleanup was necessary for this memory-only run. The one
+owned Python child was reaped.
+
+The original memory execution still failed: exit 1, 61 of 76 completed,
+header_free_bound_netloc/assertion_failed, with its response/predicate not
+retained. The now-passing corrected expectations do not attribute an actual
+response to that old run or rewrite its outcome. All historical provider
+refusal/lost-value/reporting correction and actual browser-fixture failures
+remain unchanged in prior phases. Sender of the historical Authorization
+request remains UNKNOWN. Root alone reviews this actual complete result and
+decides any further browser release or D01/D05 gate; O06/I10/R05 remain closed.
+
+### Report-only preservation checks
+
+The complete 176534-byte / 2897-line ab3fbace report remains a byte-exact
+prefix. The exact archived fixed JSON parses to the retained complete result,
+reproduces its 741-byte stdout hash and matches the retained exit/count/hash/
+elapsed metadata. Expected group counts sum to 78 with 44/80 calls, injected
+failures/timeouts 1/1 and no failure/unreached cases. These comparisons occurred
+after complete retention and immediate root handoff.
+
+Payload reconstruction from the unchanged archived logic and source objects
+still matches ce79 SHA. Disk helper remains exactly immutable 470690/7fbc;
+all five historical private metadata files retain byte counts, hash and 0600
+modes without body output. Source/controller/product/guide/D05/config/tests/
+main/status/push remain untouched. Report scope, archive extraction, prefix,
+source identity, Markdown fences/final newline/whitespace and git diff --check
+are checked before the separate evidence-only commit. No broader campaign
+or additional check execution occurred.
