@@ -140,3 +140,38 @@ Before and after report creation, `python3 scripts/check-docs.py` exited `0`: `M
 Final staged verification passed: exactly this new report, index/file equality, no other working or untracked files, `git diff --cached --check` exit `0`, and the report-aware docs checker exit `0`. The existing D01 helper SHA-256 `75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1` and D01 report SHA-256 `9530a35876c00d4fd6e949bb51ab56b12b36e0d829358a1d3e8672273ca670bb` were also rechecked unchanged. The commit itself changes no source or existing document. Clean handoff verification follows the commit; its immutable hash is returned separately rather than embedded in its own content.
 
 Root must review this exact proposed seam before granting any test-source ownership. The observed startup cause remains **UNKNOWN**, child numeric exit/stderr remain unavailable, the failed run remains failed, and current overall CI success remains unestablished. Existing closed rows and all unrelated lanes are unchanged.
+
+## 2026-10-03: exact passive-readiness source materialization
+
+Reservation: `wave30_CI_cli_startup_passive_readiness`, source only. Root reported full review of the historical `8ea5c9ebc0bc626935bd96b8570642b9ab31c27e` diagnosis and acceptance at `4f8e45f`, then authorized exactly its archived candidate in `tests/cli.rs` and an append-only evidence update here. All original `17719` report bytes / `142` lines are preserved as the prior read-only phase; their SHA-256 remains `1db401fcba85d7b23db4c3e3e1c8ed171c302b2ba3ea966dd5f415d1df647f48`. Earlier statements that the proposal was not applied describe that historical phase.
+
+Before editing, the complete published `722def77ea2e9e52ad1b560c0cb0dcb54543bb5a:tests/cli.rs`, reviewed CI `56bd0829514ed8014cc9563fc7b0e727dba46d1d:tests/cli.rs`, and own on-disk test file were verified equal: `118817` bytes, SHA-256 `b7e9641345c609eb2dc788b820b3a4090d89d8650b48949d6b7e6d9cfabd8a59`. The published Git blob is `70084462c1102c2a3e19a963b8bee185b961fe87`. Entry HEAD was `8ea5c9ebc0bc626935bd96b8570642b9ab31c27e`, and the working tree and index were clean. No source alignment or import occurred; the whole worktree is not claimed to match current published production.
+
+| Materialized source identity | Actual value |
+| --- | --- |
+| Source commit | `f142ca460124b245bbe2b5328f1554e21fc95bd5` |
+| Source commit parent | `8ea5c9ebc0bc626935bd96b8570642b9ab31c27e` |
+| Sole changed source path | `tests/cli.rs` |
+| Git blob | `aac85be6bd8bb395170b8fe26319a0a05ea31c2b` |
+| Complete source bytes / lines | `118935` / `3798` |
+| Complete source SHA-256 | `4941d65dd62abfb6614be55260a6d14077e5f17bb2126d366f3e54ca57968e59` |
+| Exact archived zero-context diff | `346` bytes / `13` lines; SHA-256 `d5958c04a6420ce60a927e015a5cd39f9c06232ee218d98d455ce0e3ad63ab0f` |
+| Source commit change size | `6` insertions, `2` deletions, one file |
+
+The source materialization contains exactly the three archived hunks: the `TcpStream` import, the configured helper's bounded 30 ms connection attempt, and readiness acceptance after its unchanged child-alive and 15-second deadline assertions. Its unsuccessful-attempt sleep remains exactly 30 ms. The first separate repeated-bind loop is unchanged. The original port allocation, configuration closure, server spawn, null stdout/stderr, environment handling, init/login calls, owned `Server::drop`, selected certificate test, and all remaining fixture/security/refusal/replay/revision/audit/mutation bytes are unchanged.
+
+The actual source was compared with the in-memory replacement of the unique original import and configured-loop anchors. Its generated zero-context diff matched the archived fence byte for byte. Reversing only those anchors restored the entire `118817`-byte published baseline exactly. The suffix after the configured loop and the complete suffix from the selected certificate test through EOF matched the baseline. The file still has exactly three spawns, two original 30 ms sleep statements, and two original 15-second deadline declarations. These are text/byte proofs; they are not a typecheck or runtime test.
+
+Actual authorized formatter command, using the installed pinned toolchain binary directly, with no rustup setup/download or version query:
+
+```sh
+/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/rustfmt --edition 2024 --check tests/cli.rs
+```
+
+It exited `0` with no output. The edition was read from the existing manifest and the `1.98.1` pin from `rust-toolchain.toml`; neither file was edited. This is a static Rust formatting/parse check. No Cargo, compiler, typecheck, test, product binary, helper, TCP connection, socket, listener, HTTP request, provider, or service was executed. The formatter did not rewrite the exact source bytes.
+
+The baseline verification, exact candidate/hash, three-hunk equality, whole-file reversal, protected suffix checks, and source-only scope checks all passed. `git diff --check`, source-staged `git diff --cached --check`, and `python3 scripts/check-docs.py` each exited `0`. The docs checker reported `Markdown links and build-directory layout checked`; no pre-existing layout error was observed. Source-stage index/file equality was verified, and the source commit changed exactly `tests/cli.rs`. The worktree was clean immediately after that source commit. No static check failure was observed in this phase.
+
+The report appendix is committed separately. Complete historical-prefix equality, source-commit/file equality, report-only working scope, trailing-whitespace/final-LF, and existing D01 helper/report hash checks passed. Report-aware `python3 scripts/check-docs.py` and `git diff --check` both exited `0`. Those D01 bytes remain exactly `75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1` and `9530a35876c00d4fd6e949bb51ab56b12b36e0d829358a1d3e8672273ca670bb`. The separate report commit follows final index equality/scope/whitespace checks; its hash and clean handoff are returned separately because they cannot be embedded in their own commit. No other existing report, helper, manifest, workflow, product, or test path was changed.
+
+The recorded Linux CI `37061329345` / job `111020195345` remains failed. Its startup cause is **UNKNOWN**, and discarded child stderr/status are still unavailable. This materialization establishes no Linux-fixed result, rare-race reproduction, current all-green CI, listener-ownership proof, or HTTP-readiness proof. Root owns immutable source review, any later exact production alignment, measured private-cache/capacity assessment, and a separate release for the previously proposed single filtered command. No runtime slot was acquired or released, no cache was deleted, and no native build/service/test or runtime command was attempted. Original A09, D01, and all closed-row gates are unchanged; D01 memory/browser/native work remains held.
