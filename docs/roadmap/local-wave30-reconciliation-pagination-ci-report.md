@@ -193,3 +193,77 @@ choice and the separately reserved baseline/correction window. The initial
 setup-only suggestion is insufficient. Root alone reviews/integrates/pushes;
 no new task/worktree/worker, service, cloud/PG/browser/desktop, main/accepted,
 status/board or completed S04/O03 source/evidence mutation occurred.
+
+## Approved production preparation — runtime still held
+
+Root approved `wave30_CI_reconciliation_pagination_settlement` in
+`planning/local-wave29-ownership-approvals.json`. The preceding section records
+its earlier read-only proposal. The exact source ownership is now authorized;
+Cargo remains held while the gauge lane corrects its concrete fixture expectation.
+No baseline or corrected test has run in this phase.
+
+Implementation commit: `9810c33edba8027433c1a4e24442d878710b9a8a`.
+Only `src/reconciliation.rs` changed, 4 additions and 1 deletion, entirely inside
+`Core::reconciliation_process`:
+
+```rust
+let Some((job, target)) = self.claim_reconciliation(&owner)? else {
+    return Ok(false);
+};
+let outcome = self.execute_reconciliation(&job, &owner);
+self.finish_reconciliation(&job.id, &owner, outcome)?;
+if target.release().is_err() {
+    tracing::warn!("Connector admission settlement deferred");
+}
+Ok(true)
+```
+
+Release occurs after the successful durable writer returns, outside any writer.
+The release helper and its owner/generation guard remain untouched. A failed
+cleanup emits a fixed message with no formatted error, identifier or credential
+field, then preserves the truthful committed `Ok(true)`. This deliberately uses
+bounded warning text rather than the earlier proposal's formatted error. Existing
+Drop-queued release and the 60-second expiry fallback remain. Failure of durable
+finish still takes its existing error/Drop path. Claim, finish, execution,
+heartbeat, job eligibility, retry/page budgets, dispatch, recovery and schema
+algorithms have not changed.
+
+The **entire** `tests/reconciliation_jobs.rs` remains byte-identical to fixed
+`da5ff7dcfc3442c302955344229168872911b0ec`, including both named fixtures, real
+reopen and every original assertion. Fixture SHA-256:
+`ffd3c16817b337b195f0e09de4a7ad441dd7a097c33007c770afd6bc35b48076`.
+Reversing only the permit name and three inserted cleanup lines reconstructs
+the whole pinned `src/reconciliation.rs` exactly; nothing outside that method
+changed. No router holder or extra fixture operation was added.
+
+Private ignored backups under this own worktree are ready for the separately
+released baseline/correction window:
+
+| Copy under target/wave27/support-ci-reconciliation-pagination | Bytes | SHA-256 |
+| --- | ---: | --- |
+| baseline-reconciliation.rs | 56,429 | `8f9b2af481d5c96e0d468a3a973f0d4681cee201cb55e131e4b85b96210518ed` |
+| corrected-reconciliation.rs | 56,548 | `e3003c4572bf1ed6791214774ff05834efdf7840b5074e403f72b169c9cb9631` |
+
+The baseline was copied and byte-verified against the immutable pin **before**
+editing; the corrected copy matches the implementation bytes. These are source
+backups, not extra compiled targets. After root releases runtime, temporarily
+restore the byte-verified baseline for the exact named test, restore and verify
+the committed corrected bytes for the same filter, and finish with the committed
+source clean. No history reset or whole-stack replacement is involved; abort if
+unexpected source edits appear. The exact command and private build settings
+remain those recorded above. No other test target is reserved by this report.
+
+Actually performed in this preparation: approval-record read, clean branch and
+pinned source/fixture byte checks, exclusive private backup creation/verification,
+exact source reconstruction, `rustfmt --edition 2024 --check src/reconciliation.rs`,
+Git staged whitespace/path checks and `python3 scripts/check-docs.py`. These
+passed. There was no Cargo/compilation/native reproduction, failure, rerun or
+corrected passing evidence. Observed free disk was 16,477,620 KiB (about
+15.71 GiB); the future build floor remains 8 GiB.
+
+Root received the immutable code hash and baseline/corrected byte hashes with
+runtime readiness. Remaining work is root's separate runtime release, exact
+unmodified-source baseline and corrected named-filter results, and independent
+review/integration. S04/O03 stay DONE; accepted measurement, history and all other
+source/fixtures remain intact. This preparation alone does not claim the Linux
+failure is reproduced or fixed at runtime.
