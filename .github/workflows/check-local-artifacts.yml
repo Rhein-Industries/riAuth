@@ -1,4 +1,4 @@
-name: Check local ARM64 artifacts
+name: Check local Linux artifacts
 
 on:
   workflow_dispatch:
@@ -7,6 +7,12 @@ on:
         description: Root-reviewed full 40-character product source SHA
         required: true
         type: string
+      architecture:
+        description: Native Linux architecture for five LOCAL artifacts
+        required: true
+        type: choice
+        default: arm64
+        options: [arm64, x86_64]
 
 permissions:
   contents: read
@@ -16,14 +22,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  native-arm64:
-    runs-on: ubuntu-24.04-arm
+  native-linux:
+    runs-on: ${{ inputs.architecture == 'x86_64' && 'ubuntu-24.04' || 'ubuntu-24.04-arm' }}
     timeout-minutes: 150
     defaults:
       run:
         shell: bash
     env:
       SOURCE_SHA: ${{ inputs.source_sha }}
+      ARCHITECTURE: ${{ inputs.architecture }}
       CARGO_BUILD_JOBS: '1'
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_DEV_DEBUG: '0'
@@ -42,6 +49,18 @@ jobs:
           import datetime, gzip, hashlib, json, os, pathlib, platform, re
           import resource, shutil, signal, subprocess, sys, tarfile, time
 
+          architecture = os.environ.get('ARCHITECTURE')
+          platforms = {
+              'arm64': {'runner': 'ubuntu-24.04-arm', 'machine': 'aarch64',
+                        'runner_arch': 'ARM64', 'target': 'aarch64-unknown-linux-gnu',
+                        'elf_machine': 183},
+              'x86_64': {'runner': 'ubuntu-24.04', 'machine': 'x86_64',
+                         'runner_arch': 'X64', 'target': 'x86_64-unknown-linux-gnu',
+                         'elf_machine': 62}}
+          if architecture not in platforms:
+              raise RuntimeError('unsupported_native_architecture')
+          native = platforms[architecture]
+
           root = pathlib.Path(os.environ['A09_ROOT'])
           evidence = root / 'evidence'
           evidence.mkdir(mode=0o700, exist_ok=True)
@@ -50,6 +69,8 @@ jobs:
               'schema': 'riauth.local-artifact-evidence/v1',
               'official_release': False, 'source_verified': False,
               'shared_full_gate': 'not_run', 'steps': [], 'cleanup_errors': [],
+              'selected_platform': {'architecture': architecture, 'target': native['target'],
+                                    'elf_machine': native['elf_machine']},
               'action_pins': {
                   'checkout': '3d3c42e5aac5ba805825da76410c181273ba90b1',
                   'rust_toolchain': '02cb101ec7c40f2c49e1d9714d64511d8e1b74de',
@@ -58,7 +79,7 @@ jobs:
                   'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
                   'GITHUB_WORKFLOW_REF', 'GITHUB_WORKFLOW_SHA', 'GITHUB_SHA',
                   'GITHUB_REF', 'GITHUB_EVENT_NAME')},
-              'runner': {'label': 'ubuntu-24.04-arm',
+              'runner': {'label': native['runner'],
                          'system': platform.system(), 'machine': platform.machine(),
                          'environment': os.environ.get('RUNNER_ENVIRONMENT'),
                          'arch': os.environ.get('RUNNER_ARCH'),
@@ -180,9 +201,10 @@ jobs:
           try:
               if phase == 'init':
                   require(re.fullmatch('[0-9a-f]{40}', os.environ['SOURCE_SHA']), 'invalid_full_source_sha')
-                  require(platform.system() == 'Linux' and platform.machine() == 'aarch64'
-                          and os.environ.get('RUNNER_ARCH') == 'ARM64'
-                          and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted', 'not_native_hosted_arm64')
+                  require(platform.system() == 'Linux' and platform.machine() == native['machine']
+                          and os.environ.get('RUNNER_ARCH') == native['runner_arch']
+                          and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted',
+                          'not_native_hosted_' + architecture)
                   require(os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
                           and os.environ.get('GITHUB_REF_TYPE') == 'branch', 'manual_branch_dispatch_required')
                   require(re.fullmatch('[0-9a-f]{40}', os.environ.get('GITHUB_WORKFLOW_SHA', '')),
@@ -215,7 +237,7 @@ jobs:
                   data['build_environment'] = {key: environment[key] for key in (
                       'CARGO_BUILD_JOBS', 'CARGO_INCREMENTAL', 'CARGO_PROFILE_DEV_DEBUG',
                       'CARGO_PROFILE_TEST_DEBUG', 'CARGO_PROFILE_RELEASE_DEBUG')}
-                  target = 'aarch64-unknown-linux-gnu'
+                  target = native['target']
                   for edition in ('essentials', 'platform'):
                       environment['CARGO_TARGET_DIR'] = str(root / 'target' / edition)
                       command('build-' + edition, ['cargo', '+1.98.1', 'build', '--release', '--locked',
@@ -237,8 +259,9 @@ jobs:
                       require(binary.is_file() and not binary.is_symlink(), 'missing_regular_binary')
                       with binary.open('rb') as stream:
                           header = stream.read(20)
-                      require(header[:6] == b'\x7fELF\x02\x01' and header[18:20] == b'\xb7\x00',
-                              'not_elf64_little_endian_aarch64')
+                      require(header[:6] == b'\x7fELF\x02\x01'
+                              and header[18:20] == native['elf_machine'].to_bytes(2, 'little'),
+                              'not_elf64_little_endian_' + native['machine'])
                       stem = name if edition == 'client' else name + '-' + edition
                       observed = None
                       if name == 'riauth':
@@ -249,9 +272,9 @@ jobs:
                           require(envelope.get('ok') is True and observed.get('scope') == 'artifact'
                                   and observed.get('edition') == edition
                                   and observed.get('build_features') == expected
-                                  and observed.get('target') == {'os': 'linux', 'arch': 'aarch64'},
+                                  and observed.get('target') == {'os': 'linux', 'arch': native['machine']},
                                   'observed_build_metadata_mismatch')
-                      archive = archives / ('local-' + stem + '-aarch64.tar.gz')
+                      archive = archives / ('local-' + stem + '-' + native['machine'] + '.tar.gz')
                       with archive.open('xb') as raw, gzip.GzipFile(fileobj=raw, mode='wb', mtime=0) as zipped:
                           with tarfile.open(fileobj=zipped, mode='w') as tar:
                               for member_name, member_path in ((name, binary), ('LICENSE', pathlib.Path('LICENSE')),
@@ -276,7 +299,7 @@ jobs:
                       ('essentials-maintenance-archive', 'riauth-maintenance-essentials'),
                       ('platform-maintenance-archive', 'riauth-maintenance-platform'),
                       ('riauthctl-archive', 'riauthctl')):
-                      smoke += ['--' + flag, str(archives / ('local-' + stem + '-aarch64.tar.gz'))]
+                      smoke += ['--' + flag, str(archives / ('local-' + stem + '-' + native['machine'] + '.tar.gz'))]
                   command('focused-native-archive-smoke', smoke, 180)
                   source_check()
                   require(data['inputs'] == original_inputs, 'build_inputs_changed')
@@ -319,7 +342,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: riauth-local-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          name: riauth-local-${{ inputs.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.A09_ROOT }}/evidence/
           if-no-files-found: error
           compression-level: 0
