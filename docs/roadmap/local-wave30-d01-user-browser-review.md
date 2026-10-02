@@ -1077,3 +1077,126 @@ remain an exact prefix, reviewed helper bytes/hash are unchanged, and both new
 private metadata files retain their actual bytes/hash and mode 0600. Only this
 report differs, Markdown fences/final newline pass, and `git diff --check`
 passed. These checks invoked no fixture or provider again.
+
+## Reserved request-rejection diagnostic, source only — 2026-10-02
+
+Root fully read the preceding actual fixture evidence/private JSON and request
+guards, found no identifiable failed predicate or sender, and reserved
+`wave30_D01_request_rejection_diagnostic` for source only. This phase adds one
+private evidence field, `request_invalid_reason`, initially null. It records
+only the first fixed whitelisted request-rejection label. No helper, provider,
+operator command, listener, Driver, browser or runtime was executed here. The
+failed fixture remains failed and its historical reason remains unidentified.
+
+Source commit **`7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238`**, parent
+`3b85ee2d000fb691c81218b9ae2cd7179b5e7102`, changes only
+`scripts/d01-confidential-browser-demo.py` (36 insertions / 16 deletions).
+Result: mode `100644`, 671 lines / 31162 bytes, blob
+`62460c2f4515a325bb65fc430649b904e8bb2c10`, SHA-256
+`ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd`.
+The original source for equivalence is reviewed `16395f1`, blob
+`37c9136850c2522da1eaa5f31f8b94e70acc0886`, SHA-256 `f94af72a...` above.
+
+### Exact finite mapping and first-reason preservation
+
+| Fixed label | Original rejected predicate / unchanged control-flow position |
+| --- | --- |
+| `http_parse` | Parser `send_error`; original code/status/failure-tag assignment and reply follow unchanged |
+| `host` | `headers.get_all("Host") == [AUTHORITY]` |
+| `authorization` | `headers.get_all("Authorization") is None` |
+| `transfer_encoding` | `headers.get_all("Transfer-Encoding") is None` |
+| `expect` | `headers.get_all("Expect") is None` |
+| `content_length` | `headers.get_all("Content-Length") in (None, ["0"])` |
+| `target_scheme` | `not target.scheme` |
+| `target_netloc` | `not target.netloc` |
+| `target_fragment` | `not target.fragment` |
+| `method` | Same existing `GET` / `POST` branches, otherwise the original `Failure("request_invalid")` |
+| `post_target` | `target.path == "/login" and not target.query`, preserved as one compound condition |
+| `origin` | `headers.get_all("Origin") == [ORIGIN]` |
+| `content_type` | `headers.get_all("Content-Type") == ["application/x-www-form-urlencoded"]` |
+| `cookie_header_count` | `len(headers) <= 1`, before existing cookie-size/piece limits and own-cookie loop |
+| `own_cookie_shape` | Same compound separator / absence of duplicate own name / exact 43-character cookie regex, in the existing own-cookie loop |
+
+The header predicates still run in the five-row order above, followed by the
+three target predicates. POST retains target, Origin, type order. The own-cookie
+compound retains all three operands and their short-circuit order. Each failed
+new `require_request` call records its fixed label then immediately raises the
+same `Failure("request_invalid")`, so later predicates are not evaluated after
+an earlier rejection. Parser `send_error` records only `http_parse`; method
+rejection records only `method` before its unchanged raise. Existing request
+limits, parser behavior, exceptions, timeouts and accepted/refused sets remain.
+
+The recorder assigns only when the in-memory reason is null **and** the supplied
+label belongs to the 15-name whitelist. Every call site supplies a fixed literal
+from that set, with only the internal recorder forwarding its `reason` argument.
+There are exactly two writes to the in-memory property: initialization to null
+and this guarded first assignment. Main initializes the private JSON field to
+null and copies that property once in finally before clearing private references.
+No response/cleanup branch resets or replaces it. Unknown labels cannot be
+stored. No request line, header, Host, path, query, method, cookie, Origin, error
+text or sender information is added to output. Existing stdout summaries are
+unchanged; only the owner-private JSON gains the one field.
+
+### Actual static proofs, no execution
+
+The source-only verifier parsed both full modules, then normalized the new AST
+by removing exactly the whitelist, two diagnostic methods, null initialization,
+one private JSON key/copy and two fixed parser/method marks. It regrouped only
+the five approved predicate runs into their prior `require(..., "request_invalid")`
+conjunctions, flattening the POST-target compound into the original four-operand
+conjunction. The resulting **entire module AST exactly equals the original AST**
+without source-position attributes. This covers original predicates, their
+ordering/branch nesting, public responses, other outputs and all other logic.
+The normalization collector visits nested bodies first; its internal run list
+is a traversal detail, not a claim that own-cookie shape executes before the
+header-count guard. Original branch nesting/order is established by the full
+restored-AST equality.
+
+The new rejection helper, with its diagnostic call removed, also has exactly
+the old `require` function body after substituting the fixed original tag.
+Whitelist membership, all fixed-label call sites and null-first assignment
+shape were checked directly in the AST. The private key has exactly one added
+initialization and one final copy; no additional output-field change survives
+the normalization proof.
+
+Byte comparisons independently verified **28 existing functions** unchanged,
+including credential/verifier loading, every Budget method, Demo provider setup,
+authorization begin/callback/clear, HeaderReader, DemoServer, protected access
+`Handler.get`, replies/CSP/cookies in `Handler.reply`, quiet logging and
+`QuietParser.error`. Only Demo initialization, three instrumented Handler methods and main's
+new private field/copy differ, plus the two new diagnostic methods. The full
+pinned version/hash, flow/native crypto, five-second operations, real deadlines,
+cleanup, protected 403/200 predicates and client-secret contracts remain exact.
+
+In-memory `compile(source, filename, "exec", dont_inherit=True)` passed. The
+code object was not executed; the helper was not imported and no bytecode was
+written. Scope and `git diff --check` passed before source commit. All prior
+68899 report bytes were unchanged at that point. Retained failed-fixture JSON
+`04074d4a...`, separate diagnostic `8f47d8fb...` and fixture provider metadata
+`6fad035f...` matched their complete SHA-256 pins and mode 0600 on readback.
+No metadata was augmented retrospectively with a new reason.
+
+### Remaining input and held runtime
+
+This source provides a bounded predicate category for a future separately
+released rejection; it cannot identify sender or reconstruct the prior failure.
+No concrete controller defect or product cause is established by these static
+proofs, and no controller behavior/guard relaxation is changed or proposed here.
+Root must immutably review/publish this source and separately release any exact
+fixture before execution. This source reservation acquires/releases no runtime
+or Cargo slot. RiWork Cua.ai Driver MCP remains the sole future desktop provider.
+
+Only the reserved helper source and this append-only report change. No other
+helper/product/guide/D05/config/state/test edit, provider/CLI/server/listener/
+HTTP/Driver/browser/session/Cargo/build/test run, main/push/status/merge/reset,
+new worker/task/worktree/shell or other-worker contact occurred. First-refusal
+lost values/reporting correction, actual failed fixture and dated D01/R05
+observations remain preserved. Root owns D01/D05 interpretation; O06/I10/R05
+stay DONE. Receipt/header/PAM/removal/audit and held Group/nonrenewed
+60-second/paused-I/O protections remain unchanged.
+
+Evidence-append checks passed: all 68899 bytes of `3b85ee2` remain an exact
+prefix; committed diagnostic source and all three private historical metadata
+files retain their bytes/hash/mode. Only this report differs, Markdown fences
+and final newline pass, and `git diff --check` passed. No source import,
+provider call or runtime execution was used for these document checks.
