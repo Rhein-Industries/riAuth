@@ -102,3 +102,22 @@ root close A03 **done** against the original outcome, retain the accepted A08
 credit, and track release/deployment and other lanes' functional acceptance on
 their own rows. Root owns review, integration and task status; this report makes
 no status change and claims no W02 config/source-TOTP/executor or M03 API work.
+
+## Root closure decision
+
+Root accepts **A03 done** against its original responsibility-separation outcome.
+The reviewed implementation slices, including the exact registration move, and
+the eight responsibility dispositions above support that decision. Root also
+checked the current identity persistence port/assembly callbacks, management
+transaction writers, connector reconciliation/read-only startup merge, server
+preflight/role composition and separate client manifests. Current product files
+remain the audited e302 versions; the intervening O03 change affects only two
+evidence fixtures and their report.
+
+Accepted historical A08 measurements are credited at their recorded source and
+artifact pins. Root inspected the tracked integration review and prior accepted
+evidence; this closure runs no new Rust build, runtime test or historical drill.
+It does not claim current-main native format-3 cross-build execution or official
+release/deployment completion. Those distinct gates and other lanes' functional
+acceptance remain on their existing tasks. After publication, root updates only
+A03's existing RiWork task status; no new task, worktree or worker is created.
