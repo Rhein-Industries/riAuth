@@ -267,3 +267,404 @@ before any exact runtime release; the primary writer retains existing-doc
 ownership. Desktop remains RiWork Cua.ai Driver only if separately assigned;
 none is needed for this CLI plan. Accepted credential-issuance, route-header,
 PAM fallback, review/permission/receipt/removal/audit protections stay unchanged.
+
+
+## Released independent operator checkpoint: actual pass, 2026-10-02
+
+Root read the complete immutable plan and released one checkpoint under
+`wave30_D04_independent_lockout_checkpoint`, with 900 seconds overall,
+840 seconds for operations and 60 seconds reserved for cleanup. This append
+supersedes only the initial runtime-held/proposal wording for this incident;
+the original report is preserved byte-for-byte. Root separately reported an
+adjacent relief-authenticator clarification in accepted staging `6466901`.
+This lane did not edit that guide or exercise its authenticator branch.
+
+**The one released password-only checkpoint passed.** Controller exit **0**;
+all **32 native CLI commands** matched their expected outcomes, including
+**13 deliberate nonzero refusals**, with exactly **11 login requests**.
+There was no unexpected result, mutation workaround, automatic correction or
+second checkpoint. One additional `riauth serve` lifecycle was started and
+joined; it is recorded separately from the 32 CLI commands. `riauthctl` was
+hashed but never executed. No Cargo, Docker, browser/Driver, remote peer,
+existing guide/product/source mutation or task/status action was performed.
+
+### Exact provenance, timing and safety observations
+
+The clean execution HEAD was the plan commit
+`e26857b7a0429fc530d40c83badedadebb65f092`. Printed semantics came from fixed
+published `88790deb62d32c84fa17dceb12cd93a727224e94`, runbook blob
+`0f3ab36243e5298aab203d4aef75dee37fc3c5ec`. The exact c01 native artifacts listed
+above matched their SHA-256/mode pins at preflight, were rehashed by the
+controller before setup, and matched again in a post-exit read-only check.
+This remains local-source Essentials/macOS-arm64 evidence, not official release
+or whole-current-main binary equivalence.
+
+Execution used one inline standard-library Python controller; no helper script
+or product test was written. Its controller template, excluding here-doc framing and the added trailing
+blank line, was **23159 bytes, 323 lines**, SHA-256
+`a148e13462ef48df76cf1706c5b2fb1d0ace4c9f461275f1b8bdda262572a26d`.
+Python AST syntax was checked before the sole execution, without side effects.
+It orchestrated the approved public CLI argv, performed ownership/output/
+privacy/deadline checks and cleanup, and printed only fixed redacted progress
+and final summary. It did not instantiate Core or inspect/change a store,
+receipt, password history, attempts row or clock.
+The literal here-doc Python payload adds one trailing blank line: **23160 bytes,
+324 lines**, SHA-256
+`28b4d9396377c235cb4a6027a724cd60e4e07e4a56fb15ef82df8132f4dc3404`.
+
+| Observation | Actual value |
+| --- | --- |
+| Start UTC | `2026-10-02T13:00:28.336727+00:00` |
+| End UTC | `2026-10-02T13:00:38.368724+00:00` |
+| Monotonic elapsed | **10.031960 seconds**, through cleanup/disk check, before final evidence publication |
+| Captured serve PID/group | **70340**; new process group verified |
+| One selected listener | **127.0.0.1:55533**, issuer `http://127.0.0.1:55533` |
+| Startup ownership | Own PID and exact loopback socket verified before the one `status` call |
+| D01 localhost9000 | Not selected or queried |
+| Default login category | **20/minute**, unmodified; **11** incident login requests |
+| Revisions | **R0 = 0**, **R1 = 1**, **R2 = 2** |
+| External preflight free disk | **9.895 GiB** |
+| Controller first/min/final free disk | **9.909 / 9.909 / 9.909 GiB** (rounded); **38** samples, all above 8.5 GiB stop margin and 8 GiB floor |
+| OS metadata calls | **4** `lsof` invocations: own-PID startup waiting plus final selected-port closure; not product retries |
+| Controller failure | None |
+
+A fresh nonce-named mode-0700 private lab and exclusive mode-0600 project/task/
+run ownership marker were created under this worktree's target. The port was
+chosen once by binding an ephemeral loopback socket, held during init, then
+released for the single serve launch. No bind race or port fallback occurred.
+The three explicit role-specific XDG session paths remained separate; saved
+sessions were checked as regular operator-owned mode-0600 files with the exact
+issuer. HOME was preserved; RIAUTH/OTP/agent/proxy overrides were not inherited.
+The generated distinct 32-character passwords traveled only on stdin, never
+argv or environment. There was no post-init configuration/rate change.
+
+The controller bounded each child at 30 seconds and combined stdout/stderr
+at 256 KiB, stdin at 64 KiB, used a 5-second CLI HTTP timeout, and checked joined
+IO/deadlines before accepting results. Native CLI stdout/stderr were transient,
+not printed or logged; generated passwords and saved token values were checked
+against them. Server stdout/stderr were discarded, so no server-log scan is
+claimed. No password, token, cookie, key, raw config/store/response, private lab
+path or low-entropy-secret hash was retained in the redacted evidence.
+
+### Actual command outcomes
+
+Aliases/prefixes A/R/T, CFG, LAB, session roles, passwords and keys retain the
+initial plan's definitions. M is the exact maintenance artifact with
+`--config "$LAB/riauth.toml" --json --non-interactive`; A/R/T each expand to the
+exact server artifact with `--config "$CFG" --session-file ROLE_SESSION
+--json --non-interactive --request-timeout 5`. The values after `/` are stdin
+aliases, not password strings. Keys retain one unique value per label during
+this run, and K_RESET was identical across its three documented request cases.
+The separate serve argv was exactly
+`$RIAUTH --config "$LAB/riauth.toml" serve`.
+
+| # | Recorded stage | Actual suffix / stdin alias | Exit | Observed public outcome |
+| --- | --- | --- | --- | --- |
+| 1 | `setup.init` | `M init --issuer "$ISSUER" --listen "$LISTEN" --data-dir data --admin affected --password-stdin / P0` | 0 | initialized; exact issuer |
+| 2 | `setup.status` | `T status` | 0 | ready after own-PID socket identity |
+| 3 | `authority.affected_login` | `A login affected --password-stdin / P0` | 0 | expected human/admin/enabled identity |
+| 4 | `authority.affected_whoami` | `A whoami` | 0 | expected human/admin/enabled identity |
+| 5 | `setup.revision_before_relief` | `A revision` | 0 | revision 0 |
+| 6 | `setup.create_relief` | `A --idempotency-key "$K_CREATE" --if-revision 0 user create relief --admin --password-stdin / PR` | 0 | expected human/admin/enabled identity |
+| 7 | `authority.relief_login` | `R login relief --password-stdin / PR` | 0 | expected human/admin/enabled identity |
+| 8 | `authority.relief_whoami` | `R whoami` | 0 | expected human/admin/enabled identity |
+| 9 | `setup.revision_after_relief` | `R revision` | 0 | revision 1 |
+| 10 | `lock.wrong_1` | `T login affected --password-stdin / PW` | 3 | 401, invalid_credentials, retryable false |
+| 11 | `lock.wrong_2` | `T login affected --password-stdin / PW` | 3 | 401, invalid_credentials, retryable false |
+| 12 | `lock.wrong_3` | `T login affected --password-stdin / PW` | 3 | 401, invalid_credentials, retryable false |
+| 13 | `lock.wrong_4` | `T login affected --password-stdin / PW` | 3 | 401, invalid_credentials, retryable false |
+| 14 | `lock.wrong_5` | `T login affected --password-stdin / PW` | 3 | 401, invalid_credentials, retryable false |
+| 15 | `lock.correct_password_refused` | `T login affected --password-stdin / P0` | 6 | 429, rate_limited, retryable true |
+| 16 | `locked.existing_affected_session` | `A whoami` | 0 | expected human/admin/enabled identity |
+| 17 | `locked.relief_authority` | `R whoami` | 0 | expected human/admin/enabled identity |
+| 18 | `refusal.missing_bindings` | `R user passwd affected --password-stdin / P1` | 1 | 0, operation_failed, retryable false |
+| 19 | `refusal.stale_revision` | `R --idempotency-key "$K_STALE" --if-revision 0 user passwd affected --password-stdin / P1` | 5 | 409, conflict, retryable false |
+| 20 | `refusal.password_reuse` | `R --idempotency-key "$K_REUSE" --if-revision 1 user passwd affected --password-stdin / P0` | 2 | 400, invalid_request, retryable false |
+| 21 | `refusal.revision_unchanged` | `R revision` | 0 | revision 1 |
+| 22 | `refusal.lock_remains` | `T login affected --password-stdin / P0` | 6 | 429, rate_limited, retryable true |
+| 23 | `remedy.password_replacement` | `R --idempotency-key "$K_RESET" --if-revision 1 user passwd affected --password-stdin / P1` | 0 | expected human/admin/enabled identity |
+| 24 | `retry.exact_original_revision` | `R --idempotency-key "$K_RESET" --if-revision 1 user passwd affected --password-stdin / P1` | 0 | same public data |
+| 25 | `retry.different_fingerprint` | `R --idempotency-key "$K_RESET" --if-revision 1 user passwd affected --password-stdin / P2` | 5 | 409, conflict, retryable false |
+| 26 | `outcome.final_revision` | `R revision` | 0 | revision 2 |
+| 27 | `outcome.user_list` | `R user list` | 0 | one affected and one relief enabled admin |
+| 28 | `outcome.old_session_refused` | `A whoami` | 3 | 401, invalid_token, retryable false |
+| 29 | `outcome.old_password_refused` | `T login affected --password-stdin / P0` | 3 | 401, invalid_credentials, retryable false |
+| 30 | `outcome.new_password_login` | `T login affected --password-stdin / P1` | 0 | expected human/admin/enabled identity |
+| 31 | `outcome.restored_affected_identity` | `T whoami` | 0 | expected human/admin/enabled identity |
+| 32 | `outcome.relief_still_authorized` | `R whoami` | 0 | expected human/admin/enabled identity |
+
+Both existing sessions still answered whoami while new affected password
+sign-in was locked. Missing binding, stale revision and password reuse refusals
+left revision 1 and the lock in place. The current-revision/new-key password
+remedy succeeded; exact retry with original revision 1 returned identical public
+data; a different password with the same key returned the fingerprint conflict.
+Final revision was exactly 2. The untouched original affected session was
+refused, its old password was refused, the replacement password restored
+sign-in, and relief authority remained available. These are visible CLI/API
+outcomes, not a raw snapshot/audit/receipt inspection or factor-retention test.
+
+### Exact expected refusal envelope values
+
+All 13 deliberate refusals below matched schema, ok=false, exit, HTTP status,
+code, full fixed message and retryable boolean. These are canonical JSON values
+of the selected CLI envelopes, not raw stdout/stderr or byte-order transcripts.
+The missing-bindings refusal is local HTTP status 0; no HTTP 428 is inferred.
+Six invalid-credentials refusals comprise five wrong passwords plus the old
+password after repair; two rate-limited refusals establish and preserve the
+active account lock. No nonzero native CLI invocation is omitted or labelled as exit 0.
+
+```json
+[
+  {
+    "envelope": {
+      "error": {
+        "code": "invalid_credentials",
+        "http_status": 401,
+        "message": "Invalid username, password, or one-time code",
+        "retryable": false
+      },
+      "exit_code": 3,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "lock.wrong_1"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "invalid_credentials",
+        "http_status": 401,
+        "message": "Invalid username, password, or one-time code",
+        "retryable": false
+      },
+      "exit_code": 3,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "lock.wrong_2"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "invalid_credentials",
+        "http_status": 401,
+        "message": "Invalid username, password, or one-time code",
+        "retryable": false
+      },
+      "exit_code": 3,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "lock.wrong_3"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "invalid_credentials",
+        "http_status": 401,
+        "message": "Invalid username, password, or one-time code",
+        "retryable": false
+      },
+      "exit_code": 3,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "lock.wrong_4"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "invalid_credentials",
+        "http_status": 401,
+        "message": "Invalid username, password, or one-time code",
+        "retryable": false
+      },
+      "exit_code": 3,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "lock.wrong_5"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "rate_limited",
+        "http_status": 429,
+        "message": "Too many attempts; try again later",
+        "retryable": true
+      },
+      "exit_code": 6,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "lock.correct_password_refused"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "operation_failed",
+        "http_status": 0,
+        "message": "User update requires --idempotency-key and --if-revision (from `riauth revision`)",
+        "retryable": false
+      },
+      "exit_code": 1,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "refusal.missing_bindings"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "conflict",
+        "http_status": 409,
+        "message": "Configuration revision changed",
+        "retryable": false
+      },
+      "exit_code": 5,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "refusal.stale_revision"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "invalid_request",
+        "http_status": 400,
+        "message": "Password was used recently",
+        "retryable": false
+      },
+      "exit_code": 2,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "refusal.password_reuse"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "rate_limited",
+        "http_status": 429,
+        "message": "Too many attempts; try again later",
+        "retryable": true
+      },
+      "exit_code": 6,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "refusal.lock_remains"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "conflict",
+        "http_status": 409,
+        "message": "Idempotency key was used for a different request",
+        "retryable": false
+      },
+      "exit_code": 5,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "retry.different_fingerprint"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "invalid_token",
+        "http_status": 401,
+        "message": "Authentication required or session expired",
+        "retryable": false
+      },
+      "exit_code": 3,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "outcome.old_session_refused"
+  },
+  {
+    "envelope": {
+      "error": {
+        "code": "invalid_credentials",
+        "http_status": 401,
+        "message": "Invalid username, password, or one-time code",
+        "retryable": false
+      },
+      "exit_code": 3,
+      "ok": false,
+      "schema_version": "riauth.cli/v1"
+    },
+    "stage": "outcome.old_password_refused"
+  }
+]
+```
+
+### Cleanup, evidence retention and operator-runtime release
+
+Cleanup sent SIGTERM only to the verified captured serve group, waited and
+joined it with process exit **0**; SIGKILL was not needed. Final read-only
+`lsof` reported no listener on the selected port. The exact private project/
+task/run marker and ownership/containment were rechecked before deleting that
+new lab; the config/redb/XDG/session tree was removed. Actual cleanup:
+
+```json
+{
+  "failures": [],
+  "marker_verified": true,
+  "ok": true,
+  "owned_server_started": true,
+  "private_lab_removed": true,
+  "selected_port_closed": true,
+  "server_exit": 0,
+  "server_joined": true,
+  "server_pid": 70340
+}
+```
+
+Evidence was created exclusively at
+`target/d04-second-admin-c01c39a-88790deb.json`, mode **0600**, **16502 bytes**,
+SHA-256 `44ce6499604c79471c722d99b8c1e463465d112ecbffdad29ce6a771b2be9350`.
+It retains all 32 command outcomes, exact refusal envelope values, identity/
+admin/session booleans, source/artifact provenance, revision numbers, timing,
+disk samples, own socket check and cleanup booleans. It was not rewritten.
+The original O07 evidence files and their accepted hashes remain unchanged.
+
+Actual exit/counts/failure=null/elapsed/disk/cleanup and evidence hash were sent
+immediately to the explicit-project orchestrator, with **RELEASE OPERATOR
+RUNTIME**. This checkpoint used no Cargo slot and makes no Cargo release claim.
+The runtime is finished; only this append-only report remains to commit.
+
+### Method limits and original acceptance disposition
+
+Accept this one local password-only second-human-administrator operator
+checkpoint as executed evidence of the printed serving-store remedy. This is
+one Essentials native fixture, not all eight D04 incident families or the full
+new-user/new-operator gate. Root owns combining it with the primary writer's
+other evidence and owns any final disposition; this lane changes no status.
+
+No authenticator/recovery-code enrollment, reset-mfa/factor retention, browser,
+hardware, SMTP/tenant, passkey-only/delegated/agent/exposed-account recovery,
+key loss, break-glass, backup/restore, migration/rollback, PostgreSQL, deployment,
+TLS, other platform/edition or released-asset workflow ran here. The optional
+relief authenticator clarification is source-reviewed by root, not tested by
+this factor-free execution. This run adds no O07 Docker/deployment proof.
+
+The controller checked live success/refusal data and revision counts; it did
+not inspect audit/receipt/attempt ledgers or prove global snapshot equality.
+Startup lsof polling's individual raw rows/return codes and raw server logs
+were not retained; the successful own-PID check and final closure were. No
+cancellation, escaped IO, cleanup-error or forced-termination scenario was
+exercised. Elapsed was captured after cleanup immediately before exclusive JSON
+write; final fsync/publication/tool-return latency was not separately timed.
+No atomic publication, forced-termination cleanup or memory-zeroization
+promise is made. Source bytes, commands and actual observed outcomes are
+separated from broader runtime/security claims.
+
+Post-exit checks actually verified the unchanged artifact hashes, retained
+JSON hash/size/mode/counts, every expected command result, cleanup/revision
+fields and clean execution tree. This append's e268 prefix, exact recorded
+refusal/cleanup values, bounds/source references, sole-file diff and Git
+whitespace are checked before its separate report commit; no runtime retry,
+new source test or broad documentation campaign follows. Accepted credential/
+header/PAM and review/permission/receipt/removal/audit contracts stay unchanged.
