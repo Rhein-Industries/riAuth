@@ -1370,3 +1370,330 @@ the missing evidence:
    this file, the coverage inventory, or a ledger review note as that record.
 
 <!-- D05 HISTORICAL SNAPSHOT END -->
+
+---
+
+## Current-evidence addendum — 2026-10-02
+
+**Current status remains in_progress; evaluated_with_gaps; full D05 gate false.**
+This dated addendum supplements the complete earlier Markdown byte prefix and
+the unchanged c01 assessment values. It supersedes only the three bounded
+absence claims below; old board/source/CI observations and failures remain dated.
+The `current_evidence_addendum` object in the [JSON twin](d05-acceptance-evidence.json)
+matches this section. No product/runtime/guide/report edit or status mutation occurred.
+
+Approved proposal: `bc3fd18e610b352e782c7015b3d815c33ee88603` (`docs/roadmap/local-wave30-d05-independent-review.md`);
+original D01 disposition: `33d4b76fa0a036cd7701663810ee138eccd9d6a3`. Current reviewed publication:
+`9cefe7a56425bb73c17753e8766d92320b77da3b`. Browser and root-review blobs are actually published there.
+The earlier proposal null-publication statement was accurate at its dated read,
+not the new publication fact. Authored/staging/review/runtime inputs stay distinct.
+
+Counts: 17 -> 20 stable evidence IDs; 27 -> 30 newer slices. All prior17 records,
+27 slices, the old ten-slice prefix, every prior JSON value and category boolean,
+and the entire 118897-byte previous Markdown are preserved.
+
+### Prior artifact identities
+
+| Input at current reviewed publication | Git blob | SHA-256 |
+| --- | --- | --- |
+| `docs/roadmap/d05-acceptance-evidence.json` | `efe71acea3b549d0027bdf42e8eb3ae07ca91ce2` | `84cfbd6c8f8c83dbb5367e00c0b389157548cdf79d0a533de915f9d7049f9ef7` |
+| `docs/roadmap/d05-acceptance-evidence.md` | `6651a2ecc016a2f86d79d1b99716522cd533e6ae` | `f72e875bfc2428d9dcad09d6dd45b14996f4a12a4c01db5c8f97c346251bb066` |
+
+### E-D01-OPERATOR — executed local fixture
+
+27 printed CLI/probe commands exited 0 and two original-config servers exited 0; 607.862-second bounded checkpoint. Essentials sections 2/3/5/6-8 executed init, distinct sessions, doctor, confidential local-demo registration/discovery, online backup, closed offline restore, original restart, groups, claims simulation and correlated audit/CSV. Restored store remained pending and was never served or attested.
+
+Verification: Immutable authored/published/root-review records inspected and hash-checked; no runtime replay, binary rehash or private raw-evidence read by this refresh.
+Runtime run by this slice: **false**. Accepted published pin: `88790deb62d32c84fa17dceb12cd93a727224e94`.
+
+| Provenance role | Pin / path | Blob / SHA-256 |
+| --- | --- | --- |
+| accepted published actual operator appendix | `88790deb62d32c84fa17dceb12cd93a727224e94:docs/roadmap/local-wave30-d01-walkthrough-report.md` | `92f85d5f4c242e221fded43635754f8f961ac294` / `9d8dc3d135013efd88e91759d416effb7119eba0458524aec89494fc70481236` |
+| authored actual operator appendix | `9cde81dd93ff171fa54194b2ed514142451484d9:docs/roadmap/local-wave30-d01-walkthrough-report.md` | `92f85d5f4c242e221fded43635754f8f961ac294` / `9d8dc3d135013efd88e91759d416effb7119eba0458524aec89494fc70481236` |
+| printed execution guide | `950fc6ecb14fcbafd4587f95987b9231984994c2:docs/essentials-guide.md` | `be68580333ad5f2238ac1966d164bf0fbf80aca1` / `ac1b10ddf08158a5286c6de0c3233e51f5e0402d76579984c5b3595edacaa4c4` |
+| later original D01 disposition; separate dated record | `33d4b76fa0a036cd7701663810ee138eccd9d6a3:docs/roadmap/local-wave30-d01-walkthrough-report.md` | `49f11d5fec28643afafc3ec1c1ab97f8ddf55df1` / `262d7975ccc07a2fb7dcc64b26279e574c44a8d301529ad556ab6bf7e19d0837` |
+
+Referenced commit identities: `9cde81dd93ff171fa54194b2ed514142451484d9`, `950fc6ecb14fcbafd4587f95987b9231984994c2`, `88790deb62d32c84fa17dceb12cd93a727224e94`, `33d4b76fa0a036cd7701663810ee138eccd9d6a3`.
+
+Command provenance: Exact historical redacted argv or recorded command only. Aliases/explicit substitutions retained; nothing invoked by this refresh.
+
+Historical recorded commands; **not executed by this refresh**:
+
+- `$MAINT --config $LAB/riauth.toml --non-interactive init --issuer http://localhost:9000 --listen 127.0.0.1:9000 --data-dir data --admin admin --password-stdin`
+- `curl --fail http://127.0.0.1:9000/readyz`
+- `$RIAUTH --server http://localhost:9000 --non-interactive login admin --password-stdin`
+- `$RIAUTH --server http://localhost:9000 doctor`
+- `$CTL --server http://localhost:9000 --non-interactive login admin --password-stdin`
+- `$CTL --server http://localhost:9000 client create local-demo --name 'Local demo' --confidential --redirect-uri http://localhost:3000/callback --scope openid,profile --secret-file $LAB/local-demo-secret.json`
+- `$CTL --server http://localhost:9000 discovery`
+- `$CTL --server http://localhost:9000 whoami`
+- `$RIAUTH --server http://localhost:9000 --non-interactive login admin --password-stdin`
+- `$MAINT keygen --out $LAB/backup.key`
+- `$RIAUTH --server http://localhost:9000 backup --key-file $LAB/backup.key --out $LAB/backup.riauth`
+- `$MAINT restore --backup $LAB/backup.riauth --key-file $LAB/backup.key --out $LAB/restored`
+- `$RIAUTH --config $LAB/restored/riauth.toml recovery status`
+- `curl --fail http://127.0.0.1:9000/readyz`
+- `$CTL --server http://localhost:9000 --non-interactive login admin --password-stdin`
+- `$CTL --server http://localhost:9000 revision`
+- `$CTL --server http://localhost:9000 --run-id staff-group --idempotency-key staff-create --if-revision 1 group create staff`
+- `$CTL --server http://localhost:9000 revision`
+- `$CTL --server http://localhost:9000 --run-id staff-group --idempotency-key staff-add-admin --if-revision 2 group add-member staff admin`
+- `$CTL --server http://localhost:9000 group get staff`
+- `$CTL --server http://localhost:9000 group has-member staff admin`
+- `$CTL --server http://localhost:9000 revision`
+- `$CTL --server http://localhost:9000 --run-id local-demo-claims --idempotency-key local-demo-claims --if-revision 3 client update local-demo --scope openid,profile,groups --settings-file $LAB/local-demo-claims.json`
+- `$RIAUTH --server http://localhost:9000 explain local-demo admin --scope 'openid profile groups'`
+- `$RIAUTH --server http://localhost:9000 audit --limit 100`
+- `$RIAUTH --server http://localhost:9000 inventory audit --limit 100 --filter staff-group`
+- `$RIAUTH --server http://localhost:9000 report audit --run-id staff-group --out $LAB/audit-staff-group.csv`
+
+Actual recorded operator results:
+
+| Stage | Exact redacted argv | Exit | Public outcome |
+| --- | --- | ---: | --- |
+| section2.init | `$MAINT --config $LAB/riauth.toml --non-interactive init --issuer http://localhost:9000 --listen 127.0.0.1:9000 --data-dir data --admin admin --password-stdin` | 0 | Initialized fresh config and redb data directory. |
+| section2.ready | `curl --fail http://127.0.0.1:9000/readyz` | 0 | Probe passed; listener owned by PID 75420. |
+| section2.server_login | `$RIAUTH --server http://localhost:9000 --non-interactive login admin --password-stdin` | 0 | Administrator identity; server session mode 0600. |
+| section2.doctor | `$RIAUTH --server http://localhost:9000 doctor` | 0 | Exact issuer; returned public diagnostics. |
+| section3.client_login | `$CTL --server http://localhost:9000 --non-interactive login admin --password-stdin` | 0 | Administrator identity; separate client session mode 0600. |
+| section3.client_create | `$CTL --server http://localhost:9000 client create local-demo --name 'Local demo' --confidential --redirect-uri http://localhost:3000/callback --scope openid,profile --secret-file $LAB/local-demo-secret.json` | 0 | local-demo; openid/profile; exact callback; new nonempty credential file mode 0600; no top-level credential value fields in captured stdout. |
+| section3.discovery | `$CTL --server http://localhost:9000 discovery` | 0 | Exact issuer and /oauth/token endpoint. |
+| section3.whoami | `$CTL --server http://localhost:9000 whoami` | 0 | Administrator identity. |
+| section5.fresh_server_login | `$RIAUTH --server http://localhost:9000 --non-interactive login admin --password-stdin` | 0 | Fresh password administrator session; §4 revocation itself skipped. |
+| section5.keygen | `$MAINT keygen --out $LAB/backup.key` | 0 | New private key file mode 0600. |
+| section5.online_backup | `$RIAUTH --server http://localhost:9000 backup --key-file $LAB/backup.key --out $LAB/backup.riauth` | 0 | New nonempty private archive mode 0600; server still running. |
+| section5.offline_restore | `$MAINT restore --backup $LAB/backup.riauth --key-file $LAB/backup.key --out $LAB/restored` | 0 | Verified true; redb; serving_allowed false; new restored config. |
+| section5.recovery_status | `$RIAUTH --config $LAB/restored/riauth.toml recovery status` | 0 | Pending record present; serving_allowed false; no attestation. |
+| section6.ready | `curl --fail http://127.0.0.1:9000/readyz` | 0 | Original config restarted; probe passed. |
+| section6.client_login | `$CTL --server http://localhost:9000 --non-interactive login admin --password-stdin` | 0 | Renewed isolated standalone-client session. |
+| section6.revision_before_create | `$CTL --server http://localhost:9000 revision` | 0 | Revision 1. |
+| section6.group_create | `$CTL --server http://localhost:9000 --run-id staff-group --idempotency-key staff-create --if-revision 1 group create staff` | 0 | staff-create / revision 1 / staff-group. |
+| section6.revision_before_member | `$CTL --server http://localhost:9000 revision` | 0 | Revision 2. |
+| section6.group_add_member | `$CTL --server http://localhost:9000 --run-id staff-group --idempotency-key staff-add-admin --if-revision 2 group add-member staff admin` | 0 | staff-add-admin / revision 2 / staff-group. |
+| section6.group_get | `$CTL --server http://localhost:9000 group get staff` | 0 | Group record returned. |
+| section6.group_has_member | `$CTL --server http://localhost:9000 group has-member staff admin` | 0 | member true. |
+| section7.revision_before_claims | `$CTL --server http://localhost:9000 revision` | 0 | Revision 3. |
+| section7.client_update | `$CTL --server http://localhost:9000 --run-id local-demo-claims --idempotency-key local-demo-claims --if-revision 3 client update local-demo --scope openid,profile,groups --settings-file $LAB/local-demo-claims.json` | 0 | Scopes groups/openid/profile; exact printed settings object. |
+| section7.explain | `$RIAUTH --server http://localhost:9000 explain local-demo admin --scope 'openid profile groups'` | 0 | Simulation true; allowed true; token_issued false; staff and department=lab projected. |
+| section8.audit | `$RIAUTH --server http://localhost:9000 audit --limit 100` | 0 | 11 rows; both correlated group actions observed. |
+| section8.inventory | `$RIAUTH --server http://localhost:9000 inventory audit --limit 100 --filter staff-group` | 0 | 2 exact-run rows; revision 4; cursor absent. |
+| section8.report | `$RIAUTH --server http://localhost:9000 report audit --run-id staff-group --out $LAB/audit-staff-group.csv` | 0 | 2 exact-run CSV rows; printed 7 columns; mode 0600. |
+
+Recorded counts: `{"cli_probe_commands": 27, "all_command_exit_codes_zero": true, "original_config_server_exit_codes": [0, 0], "redacted_record_count": 34, "checkpoint_elapsed_seconds": 607.862}`.
+The exact private JSONL has 34 reported records, SHA-256 `a476b366da75b7a7c52a9f5b3edd5b615ea72beeb527d7801289501334774f3e`.
+Root reviewed those records; this refresh did not open/rehash that private JSONL.
+
+Recorded failures/refusals/discovery limits:
+
+- historical handoff: leave copy mode and enable terminal input before submitting; after successful cleanup, not a printed-command/product failure (exit 2)
+
+Reported runtime artifacts; no fresh binary/provider read or rehash:
+
+| Role | SHA-256 | Verification class |
+| --- | --- | --- |
+| Essentials server | `7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606` | Reported accepted execution/root checks; binary not opened or rehashed here. |
+| maintenance | `86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95` | Reported accepted execution/root checks; binary not opened or rehashed here. |
+| base client | `bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf` | Reported accepted execution/root checks; binary not opened or rehashed here. |
+
+Limits: Operator execution was by the guide author; root separately reviewed 34 redacted records. Not independent human/browser completion. Simulation is not issued tokens. No restored-store serving/attestation, confidential app browser login, physical factor, installation wrapper, tenant or release claim.
+
+### E-D01-BROWSER — executed local fixture
+
+Independent fresh password administrator browser sign-in with empty optional code, signed-in identity/empty catalogue, Sign-in and security open/close, logout, password relogin and final logout. RiWork Cua.ai Driver MCP 0.30.4, isolated profile/exact returned binding; explicit DOM clicks followed by fresh snapshots. All eight recorded transitions observed; not eight tests. No application journey was attempted.
+
+Verification: Immutable authored/published/root-review records inspected and hash-checked; no runtime replay, binary rehash or private raw-evidence read by this refresh.
+Runtime run by this slice: **false**. Accepted published pin: `9cefe7a56425bb73c17753e8766d92320b77da3b`.
+
+| Provenance role | Pin / path | Blob / SHA-256 |
+| --- | --- | --- |
+| now accepted and actually published browser record | `9cefe7a56425bb73c17753e8766d92320b77da3b:docs/roadmap/local-wave30-d01-user-browser-review.md` | `0beaceecb32b3fda2b6f06ff5bac2c26d6c3aee5` / `68f4b61ed388d9a6ec980bc93a28eb6964c0ca75d36ac64ee4bd9108d837ffd4` |
+| authored browser record | `6837b745576552b0917b3bd1f1424515621a0a85:docs/roadmap/local-wave30-d01-user-browser-review.md` | `0beaceecb32b3fda2b6f06ff5bac2c26d6c3aee5` / `68f4b61ed388d9a6ec980bc93a28eb6964c0ca75d36ac64ee4bd9108d837ffd4` |
+| prior accepted staging, distinct from publication | `937d0da38a52ff1e2e4a510b61e79f22087a94f1:docs/roadmap/local-wave30-d01-user-browser-review.md` | `0beaceecb32b3fda2b6f06ff5bac2c26d6c3aee5` / `68f4b61ed388d9a6ec980bc93a28eb6964c0ca75d36ac64ee4bd9108d837ffd4` |
+| now published separate root review | `9cefe7a56425bb73c17753e8766d92320b77da3b:docs/roadmap/local-wave30-d01-root-user-review.md` | `100d3b5924c92a387fed1416366fa5a265f44965` / `af64815f3b6370a3e11f663dc2809abc48a1ed4e1a207419d38b0d8ce0f506e7` |
+| root review provenance | `1711b531f720b57c22bed8e59a9657faaa6370bc:docs/roadmap/local-wave30-d01-root-user-review.md` | `100d3b5924c92a387fed1416366fa5a265f44965` / `af64815f3b6370a3e11f663dc2809abc48a1ed4e1a207419d38b0d8ce0f506e7` |
+| printed runtime guide | `6b4db4f0317e4427c187f55e063989ccba124217:docs/essentials-guide.md` | `e48371d3a34a7b6441cbcfce700daf954aa5f2ae` / `9df3c2861984751d48b28d284cfb47c07801fd3934072e2ccb829edeb35579a0` |
+| runtime portal instructions | `6b4db4f0317e4427c187f55e063989ccba124217:docs/PORTAL.md` | `7c529fcf698e0e07b083d4cfb520bf340f32857e` / `386fa4ca53f4607133b3f30071b7e2714ff4504cb0879b514fe2b52d86ddc015` |
+
+Referenced commit identities: `6837b745576552b0917b3bd1f1424515621a0a85`, `937d0da38a52ff1e2e4a510b61e79f22087a94f1`, `1711b531f720b57c22bed8e59a9657faaa6370bc`, `6b4db4f0317e4427c187f55e063989ccba124217`, `c01c39ab4e092423d5522bedc50fff87656d8c0a`, `9cefe7a56425bb73c17753e8766d92320b77da3b`.
+
+Command provenance: Exact historical redacted argv or recorded command only. Aliases/explicit substitutions retained; nothing invoked by this refresh.
+
+No HTTP/CLI authentication command is substituted for the browser actions.
+
+Recorded setup prerequisites (not authentication replacements):
+
+- `riauth-maintenance --config <fresh-private-lab>/riauth.toml init --issuer http://localhost:9000 --listen 127.0.0.1:9000 --data-dir data --admin admin`
+- `riauth --config <fresh-private-lab>/riauth.toml serve`
+- `curl --fail --max-time 5 http://127.0.0.1:9000/readyz`
+
+Recorded private-lab placeholders; interactive hidden prompts, no --password-stdin/CLI login/HTTP authentication substitute. Readiness is setup only.
+
+Recorded action method: RiWork Cua.ai Driver only; browser_type, explicit dom_event clicks and fresh same-target/tab semantic snapshots. No actions replayed by this refresh.
+
+| Actual browser action | Fresh recorded observation |
+| --- | --- |
+| Open printed `http://localhost:9000/apps` | Snapshot `p845`: “Not signed in”, Username, Password, optional Authenticator or recovery code, and instruction to leave it empty |
+| Enter credentials | Username entered through `p845:6`, confirmed as synthetic `admin` in `p846`; password typed through `p846:8`; `p847` confirmed the authenticator field remained empty; no secret value was printed or captured |
+| Submit Sign in | `p847:53`; `p848` showed submission pending, then `p849` showed “Signed in as admin (@admin)”, “Connected”, “Welcome back, admin”, and 0 applications |
+| Open Sign-in and security | `p849:55`; `p850` showed the named dialog, Password/Change password, Passkeys with “You have no passkeys yet”, and Authenticator app “Off” |
+| Close security dialog | `p850:22`; `p851` returned to the signed-in portal |
+| Sign out | `p851:92`; `p852` showed “Not signed in”, “You’re signed out”, and the password sign-in form |
+| Sign in again | Username remained `admin`; fresh password input via `p852:8`, empty code checked at `p853`, submit `p853:53`; pending `p854`, then `p855` restored signed-in identity, “Connected” and the empty catalogue |
+| Final UI cleanup sign-out | `p855:92`; `p856` again confirmed “Not signed in” and “You’re signed out” |
+
+Recorded counts: `{"recorded_transitions": 8, "transition_count_is_test_count": false, "init_exit_code": 0, "readiness_exit_code": 0, "server_exit_code": 0, "server_interval_seconds": 186.997, "exact_overall_browser_duration_measured": false, "minimum_reported_free_gib": 9.598}`.
+The prior bc3fd18 proposal correctly recorded null publication at its dated read. Browser and root-review blobs are now present at reviewed publication9cefe7a; authored/staging/review/runtime pins remain distinct.
+
+Recorded failures/refusals/discovery limits:
+
+- reviewed preflight discovery: Guessed riauth-server filename corrected to authorized riauth before execution; implicit state query returned session_not_started before declared lifecycle. Neither was a product/guide failure; no required transition retry.
+
+Reported runtime artifacts; no fresh binary/provider read or rehash:
+
+| Role | SHA-256 | Verification class |
+| --- | --- | --- |
+| Essentials server | `7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606` | Actual prior worker rehash and separate root comparison recorded; no new artifact rehash here. |
+| maintenance | `86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95` | Actual prior worker rehash and separate root comparison recorded; no new artifact rehash here. |
+
+Limits: Fresh synthetic administrator, zero applications, no ordinary-nonadmin/application/consent/invitation/factor journey. DOM dispatch reported unverifiable; fresh snapshots verify application effects, not physical input/trusted authenticator gestures. Root did not replay GUI. Profile-file erasure not inspected. Server interval is not a performance measure or overall browser duration.
+
+### E-R05-RP — executed local fixture
+
+One redb drill invocation exited 0 with 19 unique passed checks. Actual public local OIDC RP before backup/after restore executed callback, S256 exchange, native RS256/JWKS and issuer/audience/nonce/time/at_hash verification, userinfo, fresh RP cookie and protected-access 403/200. Gated restore, explicit synthetic reconciliation and old-session denial passed. Service login is the prerequisite, not the RP proof.
+
+Verification: Immutable authored/published/root-review records inspected and hash-checked; no runtime replay, binary rehash or private raw-evidence read by this refresh.
+Runtime run by this slice: **false**. Accepted published pin: `88790deb62d32c84fa17dceb12cd93a727224e94`.
+
+| Provenance role | Pin / path | Blob / SHA-256 |
+| --- | --- | --- |
+| accepted actual runtime appendix | `88790deb62d32c84fa17dceb12cd93a727224e94:docs/roadmap/local-wave30-r05-drill-plan.md` | `e07cba637b9108aff0c146b9d58e7135feb51a55` / `8d86e5ac504c650f8f2880f36183ccf200859e70f22fa9ce41b4dd38a4f3a313` |
+| authored runtime appendix | `0cc3515eb54a3bcbef83e7fbe03a00ddbcea6cbc:docs/roadmap/local-wave30-r05-drill-plan.md` | `e07cba637b9108aff0c146b9d58e7135feb51a55` / `8d86e5ac504c650f8f2880f36183ccf200859e70f22fa9ce41b4dd38a4f3a313` |
+| accepted original R05 root disposition | `88790deb62d32c84fa17dceb12cd93a727224e94:docs/roadmap/local-wave30-r05-root-disposition.md` | `01b7ffe1c012663c5eefdf2508d869165289a821` / `098cfb40cb7f27453455f72a58c013449e9a4cb5dda9609e91ee57e6ef3070a5` |
+| authored root disposition | `dcd6882c510b6380e828882e1ebadf558fe86f8b:docs/roadmap/local-wave30-r05-root-disposition.md` | `01b7ffe1c012663c5eefdf2508d869165289a821` / `098cfb40cb7f27453455f72a58c013449e9a4cb5dda9609e91ee57e6ef3070a5` |
+| exact tracked redacted nineteen-check result JSON | `88790deb62d32c84fa17dceb12cd93a727224e94:docs/roadmap/evidence/r05-local-rp-2026-10-02.json` | `215c719d05f581fc95278e9013aa6e85b54aee5e` / `5498bbf1f089224947ef3f0cbc7e163c4aa35683eb8d0256943100f49012df41` |
+| documented operator path | `88790deb62d32c84fa17dceb12cd93a727224e94:docs/roadmap/recovery-drill-r05.md` | `5f6b5582faed4368cfc38f3495f7b987a387ef14` / `bc2000c3059e72bd11ec9180a72a512fc68e64aa125f3572dd0616b93d68309b` |
+| exact historical runtime parent identity | `b5cea614c4f46d82aff2380c052bd2dffc760f9e:scripts/recovery-drill.py` | `ada2dfa93ccac1ec132cc15fb4a2b5a042fad878` / `7de1728211621a9bfb2e32d6712fac3960d91b4c31abaf0bab02d68dc85c2437` |
+| exact historical runtime RP helper identity | `b5cea614c4f46d82aff2380c052bd2dffc760f9e:scripts/recovery-drill-oidc.py` | `3be747d03146f1bcaa3ec012ee8d173b61fa737d` / `f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d` |
+
+Referenced commit identities: `0cc3515eb54a3bcbef83e7fbe03a00ddbcea6cbc`, `dcd6882c510b6380e828882e1ebadf558fe86f8b`, `b5cea614c4f46d82aff2380c052bd2dffc760f9e`, `c01c39ab4e092423d5522bedc50fff87656d8c0a`, `88790deb62d32c84fa17dceb12cd93a727224e94`.
+
+Command provenance: Exact historical redacted argv or recorded command only. Aliases/explicit substitutions retained; nothing invoked by this refresh.
+
+Historical recorded commands; **not executed by this refresh**:
+
+- `python3 scripts/recovery-drill.py --binary "$PWD/.target-wave27/debug/riauth" --evidence "$PWD/.target-wave27/r05-wave30-local-rp.json"`
+
+Recorded counts: `{"invocations": 1, "exit_code": 0, "unique_passed_checks": 19, "failure_stage": null, "reruns": 0, "observer_elapsed_seconds": 6.872, "observer_interval_is_performance_measure": false}`.
+Production source `c01c39ab4e092423d5522bedc50fff87656d8c0a`; runtime `b5cea614c4f46d82aff2380c052bd2dffc760f9e`; matching production src tree `3adc2b59c3547d22bff202daccfd8ad97f1e78ab`.
+All nineteen raw tracked check records and public observations are retained in
+the JSON record and referenced tracked evidence, separate from private log/observer files.
+
+| Actual tracked check | Result | Public observed fields |
+| --- | --- | --- |
+| `binary_capabilities` | passed | `{"edition": "platform"}` |
+| `source_ready` | passed | `{"http_status": 200, "storage": "encrypted_redb"}` |
+| `backup_without_session_denied` | passed | `{"error_code": "operation_failed", "exit_code": 1, "output_absent": true}` |
+| `representative_login_before_backup` | passed | `{"login_kind": "identity_service", "username": "drill-user"}` |
+| `local_rp_registered` | passed | `{"exact_loopback_callback": true, "openssl_sha256": "67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72", "openssl_version": "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)", "public_client": true}` |
+| `application_login_before_backup` | passed | `{"access_hash_verified": true, "authorization_http_status": 302, "callback_http_status": 200, "fresh_rp_session": true, "issuer_audience_nonce_time_verified": true, "pkce": "S256", "protected_http_status": 200, "signature_algorithm": "RS256", "signature_verified": true, "state_verified": true, "subject_matches_source": null, "token_exchange_http_status": 200, "unauthenticated_protected_http_status": 403, "userinfo_subject_verified": true}` |
+| `authenticated_backup` | passed | `{"bytes": 23458, "format": "riauth.backup/v3", "verified": true}` |
+| `source_outage` | passed | `{"login": {"error_code": "operation_failed", "exit_code": 1}, "ready_http_status": null}` |
+| `wrong_backup_key_rejected` | passed | `{"error_code": "invalid_request", "exit_code": 2, "output_absent": true}` |
+| `tampered_archive_rejected` | passed | `{"error_code": "invalid_request", "exit_code": 2, "output_absent": true}` |
+| `existing_target_preserved` | passed | `{"error_code": "conflict", "exit_code": 5, "marker_unchanged": true}` |
+| `restore_verified_and_gated` | passed | `{"encrypted_at_rest": true, "invalidated_sessions": 2, "recovery_id": "6305b564-1b0e-4aaf-887a-3024a23bc6f5", "serving_allowed": false, "storage": "redb", "verified": true}` |
+| `gated_serve_denied` | passed | `{"exit_code": 5, "listener_closed": true}` |
+| `wrong_recovery_id_denied` | passed | `{"error_code": "conflict", "exit_code": 5, "gate_preserved": true}` |
+| `missing_reconciliation_attestation_denied` | passed | `{"error_code": "invalid_request", "exit_code": 2, "gate_preserved": true}` |
+| `recovery_completed` | passed | `{"serving_allowed": true, "synthetic_credentials_reviewed": true}` |
+| `restored_session_rejected` | passed | `{"error_code": "invalid_token", "exit_code": 3}` |
+| `restored_service_and_login` | passed | `{"discovery_http_status": 200, "doctor_encrypted_at_rest": true, "doctor_healthy": true, "jwks_http_status": 200, "jwks_key_count": 1, "login_kind": "identity_service", "ready_http_status": 200, "username": "drill-user"}` |
+| `application_login_after_restore` | passed | `{"access_hash_verified": true, "authorization_http_status": 302, "callback_http_status": 200, "fresh_rp_session": true, "issuer_audience_nonce_time_verified": true, "pkce": "S256", "protected_http_status": 200, "signature_algorithm": "RS256", "signature_verified": true, "state_verified": true, "subject_matches_source": true, "token_exchange_http_status": 200, "unauthenticated_protected_http_status": 403, "userinfo_subject_verified": true}` |
+
+Recorded failures/refusals/discovery limits:
+
+- expected refusal controls: Passed checks include exit1 operation_failed, exit2 invalid_request, exit5 conflict/gated serving, exit3 invalid_token; these are expected security outcomes, not failed checks. No failure-driven rerun.
+
+Reported runtime artifacts; no fresh binary/provider read or rehash:
+
+| Role | SHA-256 | Verification class |
+| --- | --- | --- |
+| Platform server | `0f137475af5a8040d96a794b1ad331e7430be4467046b81b1312fb974b7e8a6a` | Reported actual before/after runtime hash plus root rehash; not opened/rehash by this refresh. |
+| native OpenSSL | `67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72` | Reported actual fixture provider/hash; not opened/rehash here. |
+
+Limits: Scripted PUBLIC loopback RP, not the printed confidential section3 BROWSER application task. Not deployment escrow/reissued external secrets, named tenant/RP, physical PG/PITR promotion, browser usability, remote-peer/HA/fleet or paused-IO proof. Old sixteen-check runs remain historical and are not added to nineteen.
+
+### Ten bounded category deltas
+
+These are the exact ten-row deltas in the approved bc3 proposal, not changed
+category target booleans, full-category passes or reopened implementation rows.
+
+| Category | Current IDs and bounded change | Remaining claim-specific limit |
+| --- | --- | --- |
+| Usability | `E-D01-BROWSER`: replace blanket absence of actual password browser completion with accepted sign-in/navigation/logout/relogin evidence. | Application browser journey is the one local gap above; ordinary-nonadmin, factor/invitation/device/accessibility claims are not supplied. |
+| Workflows | `E-D01-OPERATOR`: document the executed built-in Essentials setup/management sequence. | It is not a configured Platform graph/operator browser-authoring journey; do not reopen accepted W rows or invent arbitrary-graph gates. |
+| Administration | `E-D01-OPERATOR`: client/group/claim/audit commands and exact authority/revision/idempotency/secret-file behavior are actual tasks. Current context acknowledges accepted O06 DONE. | No People/Security browser ceremony or universal browser resource coverage is inferred; retain accepted M03/receipt/header/PAM decisions. |
+| Interoperability | `E-R05-RP`: actual local synthetic OIDC application callback/exchange/verification/protected-access evidence. | A public local RP is not the guide's confidential browser task, a named third-party tenant or family certification. |
+| Footprint | No new ID or measurement assertion. Artifact hashes identify the executed binaries only. | Existing native/RSS/release-size/install limits remain. |
+| Performance | No new ID or benchmark assertion. | 607.862s/186.997s are bounded checkpoint intervals; R05's 19 checks are not load/latency/throughput evidence. |
+| Availability | `E-R05-RP`: actual stopped-source outage/refusal and restored local service access. Current context acknowledges O06 DONE. | No deployed HA/failback/fleet health or old-worker quiescence inference. |
+| Recovery | `E-D01-OPERATOR`, `E-R05-RP`: online backup/closed offline restore plus separate completed synthetic redb recovery and fresh real local application access. Current R05 original acceptance is DONE. | Do not merge the independent labs or relabel the pending operator restore/older physical/PITR observations as completed deployment reconciliation. |
+| Migration | No new ID or migration-completion assertion. | R05's stable subject within one recovery lineage is not Authentik export/cutover/G05 or older-binary route rollback. |
+| Security | All three IDs: scoped secret-file handling, actual password browser session transitions and actual restore/refusal/signature/protected-access controls. | Keep source/native fixture, software/device, release/independent review and deployment claims distinct. |
+
+### Original workflow gate and current context
+
+Independent workflow gate: **partially_evidenced; full gate false; root classifies**.
+**Remaining local workflow: Printed Essentials section 3 CONFIDENTIAL BROWSER application sign-in/consent/callback and fresh protected application access.**
+Separately being planned in existing WT7 by its owner; unexecuted at this observation. No other-worker contact or duplicate setup/runtime by this refresh.
+The PUBLIC scripted R05 and empty administrator portal cannot be combined
+into that CONFIDENTIAL BROWSER workflow. Independent documented outcomes
+remain required in the original scope; a report alone cannot complete it.
+
+- O06: DONE acknowledged only here; c01 dated active snapshots unchanged.
+- R05: DONE acknowledged only here; historical in_progress observations unchanged.
+- D03: in_progress retained; the accepted rate paragraph is not its independent journey gate.
+
+### Current CI observation, separate from the c01 snapshot
+
+Root-verified run `37006213470` at `88790deb62d32c84fa17dceb12cd93a727224e94`: audit/integration passed;
+check job `110834995681` failed `reports::admin_can_filter_paginate_and_attribute_changes`.
+Historical command `cargo test --all-targets --features test-support,fuzzing --locked`.
+The reports target had **11 passed, 1 failed, 0 ignored, 0 filtered, 7.06s**.
+Existing raw check log `/tmp/riauth-wave30-ci-37006213470-110834995681.log`, 294596 bytes, SHA-256 `005bcd6193cdc6133b0da9b050155a407a9380b0b19774271c6d1c14965ec15b`:
+bytes/hash/checkout/command/name/count were inspected; no command was repeated.
+Existing integration job `110834995871` log SHA-256 `0d327b38cb4999bedc20df3f739eafac161baa6d571aa3a81a4d139189c67859` was rehashed;
+its success is root-verified context, not a fresh test execution or category pass.
+Latest root observation: publication `9cefe7a56425bb73c17753e8766d92320b77da3b`, run prefix `370092` still running.
+Its full run ID/outcome was not independently queried. **No overall-green claim.**
+
+### Method limits and actual documentation checks
+
+- All three record classes are executed local fixture from prior actual runs, not execution by this slice.
+- Private JSONL/log/observer and runtime artifact hashes are reported accepted provenance; only Git/tracked result/current CI-log bytes explicitly listed were checked here.
+- Operator27 commands and two server exits are separate; browser transitions are observations; R05 nineteen checks are not summed with older sixteen.
+- 607.862s/186.997s/6.872s identify bounded checkpoint/server/observer intervals, not performance/load/latency/throughput proof.
+- PUBLIC scripted RP and empty administrator portal do not complete CONFIDENTIAL BROWSER app sign-in/consent/callback/protected-access.
+- No all-targets, recruited-human study, device, every-browser, release, deployed-HA or generic universal new-run gate is added.
+- Accepted permission/review/receipt/removal/audit/credential, route-header, PAM, Group hold and nonrenewed60s/paused-IO boundaries remain intact.
+
+This refresh reread the explicit-project original D05 row and approved ledger,
+the complete bc3 current addendum/D01 original disposition/browser/root review,
+the actual operator/R05 appendices, tracked nineteen-check JSON and precise
+publication/script/guide identities. Runtime hashes/private observers remain
+reported provenance; selected Git objects/tracked result/current CI-log hashes
+were checked here. No new body review of the runtime scripts is claimed.
+
+A generation guard initially included both prior and current category rows and
+stopped before writes; restricting it to the approved current addendum corrected
+the helper. Original artifact bytes were still unchanged at that failed guard.
+This was a documentation helper correction, not a product/runtime failure.
+
+Documentation checks **passed**: exact JSON/Markdown correspondence, prior-value/array/prefix
+preservation, typed pin/blob/hash references, exact operator argv/zero-exit rows,
+browser action record/publication identities, R05 nineteen unique checks/command
+and category-delta equality, all 23 cited typed pin/path/blob/SHA references,
+docs checker and insertion-only Git whitespace/two-artifact scope.
+No Cargo/build/test/runtime/desktop/service/peer, other-worker contact, new worker/
+task/worktree/shell, merge/reset/main/accepted edit/push/status mutation occurred.
+The independent journey is separately owned; this update releases no runtime.
