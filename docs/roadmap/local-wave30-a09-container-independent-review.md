@@ -806,3 +806,14 @@ architecture, exact Go V1/config/ordered-chain derivation and final no-extra/
 digest checks are accepted as source only. Independent source review and
 complete one build-free validation design remain pending. The actual container
 receipt remains failed and its UID/fixture gates unreached; no retry is released.
+
+## Root independent source-review acceptance, 2026-10-03 local
+
+Root read all257 lines of independent report
+`370c141412aa99eab42545d076f92022b537ab53`, including the full-helper
+read/reversal evidence, upstream access limits and exact profile boundaries. No
+concrete source blocker was reported. The strict59f metadata source remains
+accepted for one separately reviewed build-free archive/synthetic validation.
+No candidate serializer/archive validation or Docker runtime ran in this review;
+the retained370613 container cohort remains failed and all downstream gates
+remain unreached. Its complete payload/controller design is still pending.
