@@ -119,3 +119,90 @@ Protected API route/classifier/core/config/node-security/state/workflow/credenti
 ## Remaining disposition
 
 Keep full O06 open. Root must review the implementation, actual focused runtime results and separate original-acceptance review at immutable Git objects before integration. True remote connector lag, full key-health evidence and physical pressure remain unimplemented; no report, healthy readiness, successful Grafana import or allocation number closes them. No additional runtime or edition is claimed. Root separately approved a following explicit key-health availability slice, with a later runtime window held behind S04; that work has separate commits and evidence. Another Sol owns the configured-controller/missing-schedule reconciliation gap. Neither is credited as completed by this report.
+
+## Approved opt-in allocation budget follow-up — source ready, runtime queued
+
+This append records the subsequent storage-budget assignment on 2026-10-02. The preceding report is retained as historical evidence without alteration. Root reports that the prior storage/key slices and other independently reviewed work are published; those results are not new verification by this follow-up. O06 remains open and root alone owns integration, publication and status.
+
+Root explicitly approved `wave30_O06_storage_allocation_budget` in the project's ownership ledger for these exact seven files: `src/config.rs`, `src/operations/storage_diagnostics.rs`, `src/operations.rs`, `src/api/observability.rs`, the new `src/operations/storage_diagnostics/tests.rs`, `docs/operations.md`, and this append-only report. The ledger records worktree `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2` and shell `2173637e-bdb3-4eba-a128-178f57b41a34`. Runtime is separately queued after the gauge/pagination/readiness/signer lanes; its release is not inferred from source approval.
+
+Published source base: `60437b59933cadd40a1f5fbbb91ba153aee56456`. A preserving merge on this worker branch, `6aad3b0a103624d924003f7ab91cc1a94170fe91`, produced a tree exactly equal to that published object, verified by `git diff --exit-code`. This retained accepted key wiring and independently accepted operational documentation. The one new source/test/documentation commit is `caf7fe02807f8363dbde01780c1456704244e6c8`. Root can integrate that six-file delta against the combined published source; replacing stale whole files is unnecessary.
+
+### Implemented comparison and operator boundary
+
+Configuration now accepts one optional `storage_allocation_budget`, omitted by default and omitted from serialization when unset. Its required typed `scope` is exactly `redb_file_including_free_pages` or `postgresql_owned_relations_and_indexes`; its required `bytes` is a `u64`, and configuration validation rejects zero. The nested structure rejects unknown members and serde rejects invalid integer types, missing members and unknown scope names. The pure decorator also refuses a zero budget defensively. Active-backend equality is deliberately a diagnostic comparison, not a config/startup or migration gate.
+
+Unconfigured output retains the exact `riauth.storage-pressure/v1` body and unavailable/remedy semantics. Configured public output uses `riauth.storage-pressure/v2`, `component: storage` and `basis: configured_allocation_budget`. It includes the declared bytes/scope, fixed warning and critical percentages, display ratio, exact `at_or_over_budget`, safety boundary and corrective action. Raw allocation and cache documents remain independent and unchanged, including `capacity: unknown` and null configured/filesystem capacity and occupancy fields.
+
+For a recognized matching allocation scope and an available sample, an uncached dedicated reading or a complete fresh cache sample permits comparison. Below 80% of the budget, the level is `within_budget` and the action is `monitor_allocation_budget`; from 80% to below 90%, `warning` directs `plan_allocation_budget_relief`; from 90%, `critical` directs `prioritize_allocation_budget_relief`. Threshold products use `u128`; every `u64` byte count times these fixed percentages fits. The positive denominator makes the floating-point display ratio finite, and ratios above one remain unclamped. Floating-point rounding never selects a level or the exact budget-reached flag.
+
+Zero bytes are used only when an available sample actually contains zero. Missing/failed allocation, a stale or invalid/incomplete cache freshness contract, an invalid budget, an unknown sample scope or a mismatched declared scope refuses comparison. The level, ratio and budget-reached flag are null, with fixed reasons and actions; raw allocation errors and cache age/refresh fields remain available under their original permission. A dedicated sample has no cache fields; the presence of any cache field requires the complete fresh-cache contract, so deleting a cache freshness field does not turn that cached document into a fresh reading.
+
+The budget covers exactly the apparent redb file length including its free pages, or the existing PostgreSQL owned relation/descendant/index/TOAST/free-map allocation. It explicitly excludes WAL, backups, files outside that allocation scope and all other storage domains. The comparison is not filesystem free space, physical headroom, an all-storage health result or guaranteed write safety. `safety.capacity_verified` and `affects_readiness` remain false at every level. Changing the budget adds no capacity. An operator must verify actual host/database capacity and excluded domains before separately authorized retention, expansion or maintenance. This scoped budget comparison addresses the missing actionable allocation-pressure seam; root may assess the original O06 pressure/operator gate within these stated bounds without requiring universal physical-capacity monitoring.
+
+### Exact implementation scope and protection checks
+
+| File | New reserved delta |
+| --- | --- |
+| `src/config.rs` | Optional field after `postgres`, small typed budget/scope declarations, default `None`, positive-byte validation before backup validation |
+| `src/operations/storage_diagnostics.rs` | Optional budget argument, preserved unconfigured body, pure configured-budget branch and focused test-module declaration |
+| `src/operations.rs` | Pass local budget to the already authorized dedicated allocation decorator only |
+| `src/api/observability.rs` | Pass local budget to the JSON cached-allocation decorator inside the existing `storage.then` authorization gate only |
+| `src/operations/storage_diagnostics/tests.rs` | Six focused cases, with pure supplied-byte arithmetic distinguished from actual local-redb reader evidence |
+| `docs/operations.md` | Qualify unconfigured v1 behavior and add the typed opt-in v2 budget/threshold/safety contract |
+
+The dedicated read still requires `operations.read` on `operations/storage` before the allocation call. JSON metrics still require `operations/metrics` and a separate `operations/storage` grant before accessing the cache. The decorator performs no I/O, storage scan, writer call or remote sampling. Narrow or unauthorized readers gain no budget output or cache refresh. Prometheus is unchanged.
+
+Reverse-applying the exact dedicated call change reproduced the published `src/operations.rs` byte-for-byte. Removing the one JSON decorator argument reproduced published `src/api/observability.rs` byte-for-byte; the accepted key-health assignment, authorization, queues, runtime and Prometheus source remain intact. The unconfigured decorator body was byte-compared with the published body; SHA-256 of that preserved body is `b216be0e5da1ff9e695bbbc44e24d3171d0ddc7f3e4febf3aab4c18c047ce240`. The accepted key documentation and all documentation from `Diagnostic next actions` onward were retained byte-identically.
+
+Exact byte checks against the published source also confirmed no changes to `src/store.rs`, `src/api.rs`, `src/api/probes.rs`, `src/core.rs`, `src/node_security.rs`, `src/state.rs`, `src/workflow/approval.rs`, `src/edition.rs`, `src/edition/transition.rs`, `src/kms.rs`, `src/kms_essentials.rs`, `src/operations/key_diagnostics.rs`, `Cargo.toml`, `Cargo.lock`, or either existing storage-allocation/pressure integration test file. Existing client-creation receipt/secret handling, route-specific headers, PAM fallback, removal/audit/credential protections and agreement algorithms were not edited.
+
+The stored format-3 agreement explicitly selects issuer, active capabilities, authentication policy and effective rates; the local diagnostic budget is excluded without changing that algorithm. Existing backup/config serialization retains an opted-in budget. The existing edition-transition token hashes the full configuration, so a changed budget naturally changes the planned token; no hash, edition algorithm, activation or writer was changed.
+
+### Authored focused cases and actual pre-runtime checks
+
+The following cases are authored and **not yet executed** at this source pin:
+
+| Case | Intended evidence |
+| --- | --- |
+| `config_budget_is_optional_typed_positive_and_roundtrips_full_u64` | Omission/default, both typed scopes, positive bounds and TOML/JSON roundtrip including `u64::MAX`, required/unknown members, zero and invalid integer rejection |
+| `no_budget_preserves_exact_v1_pressure_and_raw_fields` | Exact serialized legacy pressure golden for direct/stale/unavailable inputs and unchanged underlying fields |
+| `supplied_byte_thresholds_are_exact_despite_display_rounding_and_large_products` | Pure 0/79/80/89/90/100/>100 percentage boundaries, values around rounded floating-point boundaries and `u64::MAX` arithmetic; no physical or PostgreSQL runtime claim |
+| `mismatched_invalid_missing_stale_and_failed_samples_refuse_comparison` | Pure scope/schema/exclusion/byte/failure/freshness/metadata refusal cases with null comparison results |
+| `real_redb_dedicated_and_cached_readers_keep_permissions_safety_and_state` | Actual disposable redb allocation, dedicated/HTTP and fresh-cache parity, cold/stale/expired/missing-stat/failed cache, live permission gates, no disclosure or stored mutation, no direct scan, retained key wiring and readiness independence |
+| `budget_only_reopen_preserves_format3_agreement_and_records` | Budget-only reopening including mismatched scope, unchanged format-3 agreement/records/readiness, and read-only existing Platform edition-plan token change without activation |
+
+The missing-stat case moves only a disposable still-open local redb file and restores it; it is not a full-disk, physical-pressure, cloud or HA experiment. Snapshot assertions report changed keys only, never stored values containing generated credentials. No new test-support cache/store mutation hook was added.
+
+Actual checks performed before source commit:
+
+```text
+rustfmt --edition 2024 --config skip_children=true --check src/config.rs src/operations/storage_diagnostics.rs src/operations.rs src/api/observability.rs src/operations/storage_diagnostics/tests.rs
+python3 scripts/check-docs.py
+git diff --check
+```
+
+All three passed. The docs checker printed `Markdown links and build-directory layout checked`. The reserved-file, exact-call, unconfigured-body, retained-documentation and protected-byte proofs described above also passed. The published merge-tree equality passed. Local and parent instruction-file checks found no `AGENTS.md`.
+
+**No Cargo invocation or new runtime log exists for this follow-up at this report revision.** The ledger was re-read after source commit and still recorded `runtime_released: false`. Only this focused target is ready and queued, not executed:
+
+```text
+cargo test --locked --features test-support --lib operations::storage_diagnostics::tests
+```
+
+Once root explicitly releases it, the private worktree target must retain jobs 1, incremental 0, dev/test debug 0 and a monitored 8 GiB free-space floor. No broad campaign, new dependency, unsafe/statvfs, remote sample, Essentials/PG/cloud/HA/physical-pressure evidence, additional worker/task/worktree, desktop, main edit, push or board-status update is authorized or claimed. Desktop provider preference remains RiWork Cua.ai Driver with descriptions/current state required before interaction.
+
+### Follow-up immutable source pins
+
+All implementation/test/documentation blobs below are at `caf7fe02807f8363dbde01780c1456704244e6c8`:
+
+| File | Git blob |
+| --- | --- |
+| `src/config.rs` | `0fc0b9a530440c66555eae9d9ee976d1c03549c3` |
+| `src/operations/storage_diagnostics.rs` | `483df8327822c6e5e0074dc1925efa6ae4bebf86` |
+| `src/operations.rs` | `31779eb7574041502f99304f54ba38032ad9f4d4` |
+| `src/api/observability.rs` | `ce5058c231fc860feb572868e868db735508b69e` |
+| `src/operations/storage_diagnostics/tests.rs` | `57543edbdb8d11ae06bef026308d9590fb5a902d` |
+| `docs/operations.md` | `02e986b827419c091f6e6c936b657c3f73e77885` |
+
+The implementation and runtime-readiness handoff was sent through `riwork orchestrator send --project 891e7443-8dac-4c1b-897f-9e53cb59c7ee`. Source is ready for root review at this fixed object; runtime acceptance and any original O06 disposition remain pending root coordination and actual focused results.
