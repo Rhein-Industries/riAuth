@@ -506,3 +506,183 @@ The bounded connection-probe slice is ready for root runtime review and
 integration; these eight passes do not automatically close the original
 all-advertised I10 gate. Historical catalog evidence remains credited only at
 its recorded scope. W02/W05/R05 remain closed.
+
+## Original I10 disposition after accepted probe — one local residual
+
+**Recommendation: retain I10 in_progress for one narrow diagnostic correction
+before an unconditional local-completion recommendation.** All seven requested
+operator paths now exist for the four advertised connector kinds. The accepted
+SCIM connection slice resolves the demonstrated pre-delivery gap with eight
+fresh passing cases. A supported Entra certificate configuration still gets an
+incorrect private-file failure in its existing operations view. This residual
+is locally actionable and distinct from any unmeasured tenant or missing GUI.
+Root alone interprets the original gate, reserves any correction, integrates
+and changes status. No source/test correction is made in this disposition.
+
+### Live acceptance and exact reviewed basis
+
+The explicit-project live I10 row was reread. It remains `in_progress`, assigned
+to worktree `a1303b57-4a34-487e-9c63-a841f05b51a0`; its original details hash is
+still `ed01a543d76a0509cda1b5a8441929f201b36b869c389c58198cd0b2fff76b58`.
+The original outcome is configuration validation, test connection, mappings,
+schedules, secret rotation, job history and actionable errors. The unchanged
+workstream gate requires a working setup, lifecycle and failure-handling path
+for every advertised integration. The explicit current assignment supersedes
+the old scheduling note; the row was only read, never mutated.
+
+The inventory is the concrete
+`connector_definitions::Kind::{Ldap,Workspace,Entra,Scim}` / `Kind::ALL`, not a
+new universal protocol/device acceptance rule. Essentials advertises LDAP
+import and outbound SCIM; Platform adds the two cloud directories. The
+intentional operator interfaces below implement the row through API, reviewed
+configuration and existing CLI/controller paths. A second CLI alias, generic
+browser control or arbitrary new credential mode is not added to acceptance.
+Other original protocol/device tasks retain their own gates.
+
+Reviewed staging source is `737843ec88f34efc8c27b65899aa8d28dbf34981`, with
+source-only report `5ab260c25dc1bd8bc7d94554fde6f093263eb215`. Its five probe
+source/test/docs blobs exactly equal implementation
+`683e81a5e5423af651570551f90d094b6747cfa9`; root accepted actual runtime receipt
+`11f5516070f05224fbbd0a3c625618dd403acfb3`. This is reviewed staging provenance,
+not a newly claimed published/released artifact. Own clean HEAD at the start
+of this disposition was that runtime receipt. No alignment merge was needed
+or performed.
+
+Ten configuration/connector/LDAP/cloud-operations/scheduler/CLI source paths
+were compared by Git blob to published `88790deb`; all remained identical in
+reviewed staging. Seventeen further cloud source/test/guide/historical-report
+blobs were checked against own HEAD and staging and matched. Therefore the
+initial fixed-pin matrix remains applicable, with the SCIM probe now added.
+All line references in the following matrix use reviewed staging; unchanged
+cloud/LDAP bodies also retain their fixed-baseline lines.
+
+### Seven-facet disposition for each advertised connector
+
+| Original facet | LDAP | Outbound SCIM | Workspace | Entra |
+| --- | --- | --- | --- | --- |
+| Configuration validation | `config.rs:585`, `Directory::validate` (`directory.rs:96`): explicit bounded DN/filter/attributes and LDAPS/STARTTLS/literal loopback. | `config.rs:621`, `Target::validate` (`provisioning.rs:85`): configured origin, selected groups, exactly one static/OAuth credential; plan refuses absent mapped groups. | `config.rs:597`, `WorkspaceDirectory::validate` (`cloud_directory.rs:201`): customer/domain/groups/attributes, direct delegated service-account or explicit broker; direct endpoints are pinned. | `config.rs:609`, `EntraDirectory::validate` (`cloud_directory.rs:259`): tenant/Graph/token/scope binding, immutable object-id mapping, exactly one shared-secret or certificate/private-key mode. |
+| Test connection | `directory_plan` (`assembly/directory.rs:184,311`) calls `advance_snapshot` then `Directory::service` (`directory.rs:201,224`), authenticates and pages before producing a reviewed plan. Draft/plan/audit writes are deliberate; accounts change only at apply. | New `provisioning_test_connection` (`provisioning.rs:897`) / API `:333,3631`: configured authentication plus one validated Users page before delivery. Scope before lookup, live send/retry/outcome checks, eight fresh cases. | `cloud_test_connection` (`assembly/cloud_operations.rs:167`) → `cloud_connection_probe` (`assembly/cloud_directory_runtime.rs:17`) → token/first Admin SDK users page (`cloud_directory.rs:1566`). | Same exact kind-selected Core/API path obtains an Entra token and first Graph users page with count-header mode. Both cloud probes retain pre/post current authority checks. |
+| Mappings | Directory fields (`directory.rs:70`) select stable id/name/display/email/prefix and explicit local group filters; plan previews mapped effects. | Plan (`provisioning.rs:971,1040`) projects selected enabled non-admin local users and optionally Groups/members; stored link and managed-field fences remain. | `cloud_operations` (`assembly/cloud_operations.rs:15`) exposes configured attributes, prefix and local-to-upstream group map; `cloud_plan` and reviewed apply use source-specific stable links. | Same operations/plan/apply flow with tenant-bound Graph object ids, explicit group selection and complete counted membership snapshots; email does not adopt identities. |
+| Schedules | Optional operator-configured `ldap/{id}` controller; exact directory.sync authority. | Optional operator-configured `scim/{id}` controller; exact provisioner.sync authority. | Optional `workspace/{id}` controller plus scoped `cloud_schedule_update` (`reconciliation.rs:785`) API/browser cadence/enabled control. | Same controller/schedule implementation with exact `entra/{id}` authority. Shared `scope_details`/`validate_controller` (`reconciliation.rs:250,344`) bounds cadence to 60–86,400s. |
+| Secret rotation | Replace the existing owner-only bind-password file; `Directory::service` rereads each bind. A new authenticated plan checks acceptance; a readable file alone does not. | `Target::bearer_fenced` (`provisioning.rs:127`) rereads static/OAuth private material and checks content/freshness before cache reuse; new probe actually tests static and both OAuth replacement paths. | Direct service-account JSON is reopened (`cloud_directory.rs:677`); broker secret uses bounded `read_secret` (`:532`). `cloud_verify_credential` (`assembly/cloud_operations.rs:189`) records redacted audited fresh token/page verification. | Token acquisition reloads shared secret or certificate/private key (`cloud_directory.rs:532,543,573`); credential verification uses current mode. **Residual:** operations' private-file status still selects the empty secret path for certificate mode. |
+| Job history | Actor-bound plan/status/audit plus optional scoped controller history. No synthetic completed job is invented for manual planning. | `provisioning_jobs` (`provisioning.rs:1382`), existing `provision jobs`, retained detailed delivery outcomes, separate controller history. | `cloud_operations` returns up to ten redacted recent jobs; scoped `reconciliation_jobs`/`schedules` (`reconciliation.rs:935,920`) remain reachable. | Same exact-kind filtered history path. Queued/running/local-complete status does not assert downstream or provider completion. |
+| Actionable errors | Fixed `directory_unavailable` (`directory.rs:287`) and connector incident procedure distinguish bind/TLS/outage/incomplete snapshot from departures. | New fixed probe status/error/remedy; `provisioning_job_diagnostics` (`provisioning.rs:1407`) plus existing stop, observation, dispatch/deactivation recovery and audited settlement expose pending/failed/ambiguous outcomes. | Operations validation/missing groups/controller/job next actions plus bounded credential/controller verification and the cloud incident guide. | Same operational/verification/incident paths; the certificate-mode false private-file warning gives the wrong local repair advice until the selector is corrected. |
+
+API wiring is concrete: `api.rs:3417-3475` delegates cloud operations/probe/
+credential/controller/schedule handlers to those Core methods; `:3478-3547`
+delegates Workspace/Entra plan/get/apply with existing exact removal review and
+admission. Server CLI `directory`/`provision` handlers (`cli.rs:1711-1775`) and
+riauthctl modules (`directory.rs:84`, `provision.rs:130` under `crates/riauthctl`)
+use those established routes. The new SCIM probe deliberately has its documented
+bearer API procedure. Neither duplicating it in both CLIs nor adding a browser
+button is a new gate. LDAP/SCIM periodic schedules intentionally use server
+configuration and controller credentials; cloud schedule controls supplement
+the same scheduler. Stored-definition activation remains reviewed, operator-
+pinned and per-process at startup (`connector_definitions.rs:135,1404`).
+
+### Historical evidence versus the eight fresh probe passes
+
+| Evidence credited | Exact accepted basis/result and limit |
+| --- | --- |
+| Independent LDAP import setup/lifecycle/failure path | [LDAP recipe](../recipes/ldap-import.md) records accepted disposable OpenLDAP 2.7.1/Darwin ignored `openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync`, **1/1 passed**, with stable identity, TLS/login/MFA/fail-closed sync and reviewed 205-entry departure. Accepted recipe `16bc560d3b5feda5e8fce5c8783f5aa362448c72` preserves that historical scope. No fresh rerun or AD/customer-directory result. |
+| Reviewed stored connector/operator lifecycle | [M03 connector report](local-management-connector-status-port-report.md), accepted `1df219b72f55bad25079e2bd642563d3bf189a20`: **3 export mocks passed** and **1 real-binary local stored-LDAP/restart fixture passed**. No tenant or every-connector live deployment result. |
+| Outbound SCIM real local delivery | [Outbound recipe](../recipes/platform-outbound-scim.md), accepted `24b08ea58b17bea9142e9ae9bac2f74ee56dc051` / `b918977540bbd0eb6c1cebd55f8107eb53aefe95`: exact identity `policy_tests::outbound_scim_plans_provision_groups_preserve_remote_attributes_disable_departures_and_stop_stale_jobs`, **1/1 passed** against a second riAuth loopback router. Historical two-tick failures and bounded eight-step correction remain in the accepted audit; they are not fresh failures here. No named SaaS. |
+| Cloud operation and full-crawl continuation checks | [A03 boundary report](local-wave27-module-boundaries-report.md), exact retained bodies: **7 historical cloud tests passed**, including `workspace_quotas_bind_plan_continuation_and_apply` (1), scope/revocation probe pair (2), missing-config authorization (1), credential replay preflight (1), credential write revocation/revision (2). No new cloud run or all-provider test count. |
+| Cloud credential/controller/operator behavior | [Accepted task audit](local-wave28-task-closure-audit.json), I10 `e4ad254a317cc53980220f8817657303d654ab8e` / `de95a49fb6b197c7dfafdb4e5cfd3d1775bad3c8`: reviewed exact local cloud readiness tests **1/1 each** and credential browser CSRF/replay/revocation/private-file/redaction coverage. Earlier schedule/credential operations are connected source; held M07/setup language is historical and superseded by accepted configuration work. |
+| Workspace and Entra supported credential/lifecycle source | Same audit and explicit-project accepted ledger credit Workspace direct endpoints/proxy refusal `ff40b13a6a31cbe94fb5f06af2fe80984ed7e981` / `a94a045c04a61a696b8635bfe50eaccb1617e0d7`; Entra certificate rotation `6ea7f765ec468be6a73a5b0f408bf681e8253d12` and inconsistent-snapshot refusal `d7f01826d760f5407ee7c9215ad605fe9089fce7`. Current functions `workspace_direct_service_account_assertion_and_expiry` / `entra_certificate_assertion_rotates_without_secret_fallback` / counted membership tests are inspected definitions. Do not assign them a new observed pass count or turn local accepted fixtures into tenant acceptance. |
+| Fresh configured SCIM connection evidence | Implementation `683e81a5e5423af651570551f90d094b6747cfa9`, accepted receipt `11f5516070f05224fbbd0a3c625618dd403acfb3`: **8/8 passed**, exit 0, 5.17s, Darwin/arm64. Exact command, eight functions, log SHA-256, 0600 observation, 2s disk monitoring and Cargo release remain in the preceding runtime section. Root independently reviewed that actual evidence. No repeat in this disposition. |
+
+Ten selected older accepted commits in the matrix were verified ancestors of
+reviewed staging. An ancestor or inspected definition is provenance, not a
+fresh execution. Existing P08 conservative delivery and O06 missing-evidence
+semantics remain accepted; missing/expired evidence is never proof of remote
+success or resolution.
+
+### Exact remaining local diagnostic defect and one prospective seam
+
+Reachable configuration: a structurally valid Entra directory with
+`certificate_file` and owner-only `private_key_file`, and an empty
+`client_secret_file`. `EntraDirectory::validate` (`cloud_directory.rs:266-277`)
+requires this mutually exclusive mode; `config.rs:948-955` deliberately leaves
+the empty secret path unresolved. Token signing reads the actual private key
+with the 16,384-byte bound (`cloud_directory.rs:573`). The accepted certificate
+fixture (`tests/cloud_directory.rs:1685-1752`) explicitly clears the secret
+path, validates configuration, rotates both files, refuses a mismatched pair
+and checks no secret fallback. It does not request the operational view.
+
+An authorized `GET /api/cloud-directories/entra/{id}/operations` reaches the
+Entra arm of `Core::cloud_operations` (`assembly/cloud_operations.rs:45-60`).
+That arm always calls `credential_status(&directory.client_secret_file, 4096)`.
+The unchanged helper (`cloud_operations.rs:21-39`) reads the supplied path and
+emits `state: file_unavailable`, `modified_at: null` when it cannot read it.
+Thus this supported mode reports its unused empty secret path rather than its
+readable active private key. The existing browser (`portal/admin.js:1893-1895`)
+renders that result as **Private file unavailable**, with advice to check the
+configured private file's existence/bounds/permissions. This is a concrete
+wrong operational result for a supported configuration, not an inference that
+the provider rejected a certificate. Fresh token/page verification can still
+succeed; it does not correct this separate file-status value.
+
+The current operational API fixture (`tests/cloud_directory.rs:3242,3345`)
+configures Entra shared-secret mode, and direct Workspace status coverage uses
+the Workspace key selector. Neither covers Entra certificate-mode file status.
+No current runtime reproducer was run here; the witness is an exact source
+trace through the supported configuration and public route.
+
+| Witness file at reviewed staging | Immutable blob |
+| --- | --- |
+| `src/assembly/cloud_operations.rs` | `8461d8d2556454cc9f401de5c6158dcd644ff38c` |
+| `src/cloud_operations.rs` | `79043b1b4b39b08c522a14ef9c005eb31b0d5727` |
+| `src/cloud_directory.rs` | `f912db10b2a9ca52f4bdfef6ae2ab5042545fd16` |
+| `src/cloud_directory_types.rs` | `711f37bcb7cdfbcea9ed4b30b43e544941c800ad` |
+| `src/config.rs` | `0fc0b9a530440c66555eae9d9ee976d1c03549c3` |
+| `src/portal/admin.js` | `6ddf4a1e7a149f3fd3f4930ff2993b96c35aa57d` |
+| `tests/cloud_directory.rs` | `1756a3ce6115691160503c6e02fabc19dbc1188e` |
+
+**Prospective reservation only:** change only the Entra credential-status
+selector in `src/assembly/cloud_operations.rs` to inspect the configured active
+private key with the existing 16-KiB bound in certificate mode and retain the
+existing shared-secret selector otherwise. Reuse unchanged `credential_status`;
+preserve scope-first authority, fixed output shape, `provider_verified: false`,
+next-token reload, certificate validation/signing, verification receipts,
+writers, admission and all other operations. File readability remains only
+file readability; it must not claim a valid certificate pair or provider
+acceptance. No JS/API/schema/helper change is proposed for this one seam.
+
+One prospective test addition in `tests/cloud_directory.rs`, using its existing
+certificate fixture helpers: exact
+`cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted`.
+Assert a valid certificate-mode setup reports the actual owner-only private
+file readable, removal/unsafe permissions/oversize report unavailable, wrong
+scope remains refused, output remains redacted/provider-unverified and the
+durable snapshot/peer request counters stay unchanged. The current test does
+not exist and no command is executed now. Only after root source/runtime
+reservation, the one exact filtered command would be:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test cloud_directory cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted -- --exact --test-threads=1
+```
+
+### Completion boundary and disposition-only checks
+
+The concrete local residual is the supported-mode private-file diagnostic.
+Named Workspace delegation/tenant, Entra app permissions/admin consent and
+certificate overlap/expiry acceptance, AD/customer-directory setup and SaaS
+SCIM lifecycle remain deployment/peer prerequisites. Groups/filter/write/full-
+crawl behavior has separate reviewed source and historical fixture evidence;
+the new first-page probe does not measure it. Multi-node activation/authority,
+remote completion, physical hosts and released artifacts remain outside this
+local interface disposition. Original I05/I06/I04/P08/D03 and other protocol
+rows are not absorbed, reopened or closed by this report.
+
+This phase performed only live-row/ledger and Git/source/document inspection,
+exact blob/ancestor comparisons and append-only report checks. Initial raw task
+listing was too large for displayed output; the successful exact-row reread
+filtered its JSON before printing. Guessed cloud paths/globs and an absent
+recipe were corrected using the actual file inventory; no source was imported
+or changed. The exact residual/source claim was sent to the explicit project
+orchestrator before this append. Report-only prefix/scope assertions,
+`python3 scripts/check-docs.py` and working/staged whitespace checks pass.
+There is no Cargo/test/runtime/provider/desktop action, no source/test/other-doc
+edit, merge/reset, new worker/task/worktree, main/push or board/status action.
+Every preceding report phase and private runtime artifact is preserved.
