@@ -13,6 +13,12 @@ This build uses the default Platform edition. For Essentials, add
 `--no-default-features --features essentials` to the Cargo command and use the
 resulting Essentials binary. The script records the edition it actually ran.
 
+The redb drill also requires Python 3.11 or later and a native `openssl` executable
+on `PATH`. Its local relying-party helper uses OpenSSL to verify RS256 signatures
+against the issuer JWKS. It starts a second disposable loopback listener for the
+callback and protected application; both listeners and their private workspace
+are closed at exit.
+
 The evidence path must not exist. The script writes a new owner-only JSON file,
 including a binary SHA-256, timestamps, and one result per completed check. It
 exits nonzero and records the failure if a check fails. Credentials, keys, sessions,
@@ -37,6 +43,25 @@ targets; a pre-existing target returned `conflict` (exit 5) and retained its
 marker. The successful restore invalidated two sessions and kept serving closed
 until the matching recovery ID was completed. The restored service returned 200
 for readiness, discovery, and JWKS, and accepted a fresh normal-user login.
+
+## Representative local application access after restore
+
+The current redb script registers a public loopback OIDC client through the normal
+API and completes an actual application login before backup and after recovery.
+Each phase follows the callback without an IdP bearer, exchanges the authorization
+code with S256 PKCE, verifies RS256/JWKS signature, issuer, audience, nonce, times,
+access-token hash and userinfo subject, and creates a fresh RP cookie. The protected
+application refuses access without that cookie. Source/restored subject equality
+is checked privately; credentials, codes, tokens and cookie values are not logged.
+
+The [2026-10-02 redb run](evidence/r05-local-rp-2026-10-02.json) passed all **19
+checks** in one invocation, using reviewed `c01c39ab4e092423d5522bedc50fff87656d8c0a`
+production and the binary hash recorded in the evidence. Both application phases
+returned callback/token/protected-resource success; unauthenticated application
+access returned 403. The original sixteen restore/outage/refusal/session controls
+also passed. This is local synthetic RP execution with native OpenSSL 3.6.4,
+not a released artifact, external tenant, browser or SAML exercise. The older
+sixteen-check redb and PostgreSQL results below retain their original scope.
 
 ## Disposable PostgreSQL drill
 
@@ -150,7 +175,7 @@ escrow, and external exercise before an operator can reopen serving.
 
 ## Deployment gates
 
-Both JSON reports record **observations**, not proof for an actual deployment.
+The JSON reports record **observations**, not proof for an actual deployment.
 Rehearse the following separately with that deployment's files and external
 systems:
 
@@ -161,7 +186,7 @@ systems:
 | Referenced secret-file loss | Provision the saved TLS, mail, directory, device-trust, RADIUS, and other configured files at the restored paths. Check both restore-time and serve-time failures. |
 | External services | Exercise Vault Transit signing, SMTP, upstream login, provisioning, and listeners that are enabled in the deployment. Local doctor and JWKS do not prove external signing. |
 | PostgreSQL | This local base-backup drill exercises offline invalidation and single-cluster fencing. Exercise PITR or dump restore with the deployment's backup path, then multi-node fencing/readiness with dedicated infrastructure. |
-| Application sign-in | Complete a real OIDC and, where used, SAML login with a relying party after restore. The local drill's normal-user password login is only a representative service login. |
+| Application sign-in | Complete a real OIDC and, where used, SAML login with a relying party after restore. The current redb drill verifies a synthetic local OIDC RP; the older sixteen-check records verify service login only. Neither proves access through a deployment's external RP or SAML integration. |
 
 Use the full [disaster recovery runbook](../disaster-recovery.md) before returning
 production traffic. Its persistent-credential review cannot be automated from a

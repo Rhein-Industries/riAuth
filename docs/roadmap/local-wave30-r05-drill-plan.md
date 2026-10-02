@@ -454,3 +454,151 @@ balanced fences, byte-prefix retention, single-report scope and empty reviewed
 production/build-input diff checks passed. Both private evidence hashes/modes
 and provenance JSON fields were verified. These are evidence/document checks;
 no runtime release is implied.
+
+## Released local redb RP drill: actual evidence
+
+Root independently reviewed the build provenance/log and recomputed the exact
+artifact hash, then explicitly released the one previously proposed command:
+
+```sh
+python3 scripts/recovery-drill.py --binary "$PWD/.target-wave27/debug/riauth" --evidence "$PWD/.target-wave27/r05-wave30-local-rp.json"
+```
+
+**One invocation exited 0: 19 checks passed, no failure stage, no rerun or
+correction.** The script recorded 2026-10-02T11:55:03.815161+00:00 through
+11:55:10.231016+00:00; the private process/resource observer measured 6.872 s
+including its own observation overhead. The last check was
+`application_login_after_restore`. D01 retained the sole Cargo slot: no Cargo,
+build, test, additional drill, PostgreSQL, maintenance/client bin or substitute
+artifact was used in this turn.
+
+### Verified execution pins
+
+- Runtime HEAD **`b5cea614c4f46d82aff2380c052bd2dffc760f9e`**, clean before
+  and after the invocation. Reviewed production/build inputs remained
+  `c01c39ab4e092423d5522bedc50fff87656d8c0a` equivalent, with production
+  `src` tree `3adc2b59c3547d22bff202daccfd8ad97f1e78ab`. Only documentation
+  changed between the actual build HEAD above and this runtime HEAD.
+- The same `.target-wave27/debug/riauth` artifact was hashed before and after:
+  **`0f137475af5a8040d96a794b1ad331e7430be4467046b81b1312fb974b7e8a6a`**.
+- Parent blob **`ada2dfa93ccac1ec132cc15fb4a2b5a042fad878`**, runtime SHA-256
+  `7de1728211621a9bfb2e32d6712fac3960d91b4c31abaf0bab02d68dc85c2437`.
+  Helper blob **`3be747d03146f1bcaa3ec012ee8d173b61fa737d`**, runtime SHA-256
+  `f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d`.
+  Reviewed blobs were checked before execution and remained unchanged afterward.
+- Actual Python **3.14.6**; native `/opt/homebrew/bin/openssl` reported
+  **OpenSSL 3.6.4 25 Aug 2026**, executable SHA-256
+  `67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+  The helper independently recorded that same provider/hash during the drill.
+  Python bytecode writes were disabled in the observation environment, without
+  changing the authorized command arguments or script bytes.
+
+### Actual check outcomes
+
+| Check | Recorded observation |
+| --- | --- |
+| `binary_capabilities` | Platform artifact. |
+| `source_ready` | Encrypted redb service ready, HTTP 200. |
+| `backup_without_session_denied` | Exit 1 `operation_failed`; no archive created. |
+| `representative_login_before_backup` | Fresh synthetic user service login/whoami; explicitly labeled `identity_service`. |
+| `local_rp_registered` | Normal public client, exact loopback callback, no client secret; native OpenSSL provider pinned. |
+| `application_login_before_backup` | Authorization 302, actual callback 200, S256 token exchange 200, RS256 signature/JWKS verification, state and issuer/audience/nonce/time checks, at_hash and matching userinfo. Protected route refused no-cookie access with 403 and accepted the fresh RP cookie with 200. |
+| `authenticated_backup` | Verified `riauth.backup/v3`, 23458 bytes. |
+| `source_outage` | Stopped source readiness unavailable; login refused, exit 1 `operation_failed`. |
+| `wrong_backup_key_rejected` | Exit 2 `invalid_request`; output absent. |
+| `tampered_archive_rejected` | Exit 2 `invalid_request`; output absent. |
+| `existing_target_preserved` | Exit 5 `conflict`; marker unchanged. |
+| `restore_verified_and_gated` | Verified encrypted redb restore; serving disabled; 2 sessions invalidated. |
+| `gated_serve_denied` | Exit 5, listener closed. |
+| `wrong_recovery_id_denied` | Exit 5 `conflict`; same pending gate retained. |
+| `missing_reconciliation_attestation_denied` | Exit 2 `invalid_request`; same pending gate retained. |
+| `recovery_completed` | Explicit synthetic-credential reconciliation opened the serving gate. |
+| `restored_session_rejected` | Pre-restore session refused, exit 3 `invalid_token`. |
+| `restored_service_and_login` | Fresh user/admin service login, healthy/encrypted doctor, ready/discovery/JWKS 200, one published key. |
+| `application_login_after_restore` | Fresh callback/code/token/RP-cookie flow repeated against the restored service; all signature/claims/access-hash/userinfo checks passed, no-cookie protected access 403 and fresh-cookie access 200. Source/restored subject equality checked in memory and recorded only as true. |
+
+This supplies the previously missing **actual local representative application
+login** before and after a gated restore. Service password login was its IdP
+authentication prerequisite, not the application-login assertion. The public
+HTTP callback, PKCE exchange, native JWT verification and protected cookie
+resource were executed. No unsigned payload decode, nonempty-JWKS check or
+old application cookie substituted for those steps.
+
+### Independent cleanup and disk observation
+
+A transient private supervisor invoked the exact command once, captured only
+its redacted stdout/stderr to an exclusive mode-0600 log, and observed only
+that fixture's PID tree, loopback listeners and new temporary directory.
+Process-table inspection used numeric ownership/start-time fields, not raw
+command arguments. No observer script or source helper file was added.
+
+Actual observations: fixture PID **61098** reaped; **13 owned PIDs observed**,
+none remaining with their observed start identity. **Two loopback listeners
+observed, both closed** after exit. **One private workspace observed, removed**
+after exit. Process/listener counts are sampled observations, not a claim to
+enumerate every short-lived CLI child. The RP shared its parent PID; that
+process exit also ended its thread. No cleanup stop was needed. A 300 s
+supervisor deadline and the 9 GiB disk stop condition were not triggered.
+
+Disk at fixture launch: **12008411136 bytes / 11.184 GiB** free; minimum
+sampled **11984875520 bytes / 11.162 GiB**; after exit **11986112512 bytes /
+11.163 GiB**. Every sample stayed above the 9 GiB stop threshold and 8 GiB
+floor while the independent D01 Cargo lane continued. No cache, artifact or
+evidence was deleted.
+
+Immediately after completion, root received actual exit/checks/last-stage,
+failure=null, cleanup, disk and evidence/log hashes with explicit project ID
+and **R05 RUNTIME RELEASED**. This release happened before the report append;
+no Cargo slot was acquired or released by this drill.
+
+### Private evidence and redaction verification
+
+| Exclusive mode-0600 file | Bytes | SHA-256 |
+| --- | --- | --- |
+| `.target-wave27/r05-wave30-local-rp.json` | 6090 | `5498bbf1f089224947ef3f0cbc7e163c4aa35683eb8d0256943100f49012df41` |
+| `.target-wave27/r05-wave30-local-rp.log` | 170 | `eae0e0fa1efb41180139d76d07ba46eee08ddb903d34df2d97f6119e33e55623` |
+| `.target-wave27/r05-wave30-local-rp-observation.json` | 1465 | `4f8fe650453df05cfbeff29e03ef962db767b1b0952d4b154e93bbdc9e563fc5` |
+
+The evidence/observer JSON was structurally inspected before display: no raw
+credential/code/token/state/nonce/verifier/cookie/subject fields, HTTP/query
+URLs, session/code/refresh token prefixes or JWT values. Only verification
+booleans, fixed statuses/check IDs, public hashes and non-secret fixture
+metadata remain. The log contains one success-summary JSON object with only
+result/check count/evidence path. Hashes/modes, successful result, 19 checks,
+cleanup fields and unchanged source/script pins were verified. All original
+16 controls were exercised within this one authorized integration drill; no
+separate historical recovery or key-loss campaign was repeated.
+
+### Original-row disposition and limits
+
+The concrete local representative-RP gap identified in the original R05 audit
+is now implemented and observed passing. Successful/failed restore and outage
+checks also passed in this same bounded run. Earlier lost-backup-key,
+database-key-removal/restart and PostgreSQL records remain historical evidence
+at their own pins; this invocation does not refresh those observations.
+Referenced-secret-file refusal source coverage and documented reprovisioning
+requirements remain distinct from actually recovering deployment secrets.
+
+Root can review the original R05 completion candidate using this application
+facet plus the exact historical acceptance map above. No further local script
+correction was exposed by the assigned command. Fresh operator prerequisites
+are explicit: matching reviewed build, Python 3.11+, native OpenSSL, clean
+checkout, private new evidence path, loopback fixtures and truthful synthetic
+reconciliation. The one-command replay of this fixture is not authority to
+attest reconciliation for a deployment.
+
+No release/shipped artifact, external tenant/RP, browser UI, SAML, real escrow,
+reissued external secrets, PostgreSQL physical/PITR promotion or multi-node
+fencing claim is made. No broad tests, source/product/config/recovery writer
+edit, main/push/board/status mutation, desktop or new worker/task/worktree
+was performed. R05 remains in_progress pending root evidence review/status;
+W02/W05 remain DONE. Root alone integrates/publishes and decides completion
+against the original row. This appendix preserves all earlier proposal,
+implementation and build evidence byte for byte.
+
+Actual appendix verification: `python3 scripts/check-docs.py` exited 0;
+`git diff --check`, balanced-fence/newline checks, exact prior-report byte-prefix
+retention and single-report scope checks passed. Reviewed production/build-input
+diffs remained empty and parent/helper blobs unchanged. All three private runtime
+artifact hashes and mode-0600 permissions were rechecked. These document,
+scope and evidence checks did not invoke another drill or Cargo command.

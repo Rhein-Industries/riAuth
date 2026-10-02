@@ -496,3 +496,203 @@ run, installed or described as official released artifacts. The matching pair
 now exists; standalone-client provenance and the disposable port-9000 checkpoint
 remain separately scheduled by root. D01 stays in_progress against its original
 independent-user/operator gate; no task status was changed.
+
+## Released base-client build — 2026-10-02
+
+Root released exactly one base-client build in ledger
+`wave30_D01_base_client_build` (`approved: true`, `runtime_released: true`
+for this build only). The entry specifies reuse of the warm private target,
+the 9 GiB stop and 8 GiB floor. Operator/service/binary execution remains held.
+The one build **exited 0** in **27.764 seconds**; exit, binary hash and result
+were sent through the explicit project orchestrator and the Cargo slot released
+immediately after receiving them. This appendix was added after that release.
+
+Client source/manifests were verified against reviewed
+`c01c39ab4e092423d5522bedc50fff87656d8c0a`, built from own HEAD
+`d87eb1522d08a6836992b6b003f63ef36058f8c1`. Entire client tree:
+`27344f623abd1829a9eb408af6b3e2d5ed16ab31`; client source tree:
+`f909fcccab7f9e39234df7df9a25b4816efe3569`. Exact SHA-256 inputs:
+
+| Input | SHA-256 |
+| --- | --- |
+| crates/riauthctl/Cargo.toml | `af385d4d989c53987396edfdfa684cd3902a603d1cf65dd31ac72da7f08de9ea` |
+| crates/riauthctl/Cargo.lock | `2998555ddb2d00e8130a970fcacfed19dfee7a0b2e3305011ebd40746f67b4db` |
+| rust-toolchain.toml | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+
+Actual toolchain remained Rust/Cargo 1.98.1, compiler full commit
+`48a229ceaefd4985c50990b14116b6d856af0985`, Cargo commit `797e8a9bc`, native
+`aarch64-apple-darwin`, LLVM 22.1.8. No Cargo config files were found in working
+directory ancestors or active Cargo home; checked Rust/compiler/wrapper/
+toolchain/target overrides were unset. Actual Cargo argv used the absolute
+own-worktree client manifest path:
+
+```sh
+cargo build --locked --manifest-path "$PWD/crates/riauthctl/Cargo.toml" --no-default-features --target aarch64-apple-darwin --bin riauthctl
+```
+
+Environment: the same absolute `target/d01-essentials-c01c39a` private target,
+`CARGO_BUILD_JOBS=1`, `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_DEV_DEBUG=0`,
+`CARGO_PROFILE_TEST_DEBUG=0`. Client fingerprint features are exactly `[]`,
+with empty Rust flags: base client, no terminal-usb. No new target, server/test/
+other build or cache deletion was performed. The log has no warnings or server
+package compilation line; the independent client workspace was used.
+
+Started `2026-10-02T11:53:05.903140+00:00`; ended
+`2026-10-02T11:53:33.667980+00:00`. Initial free space was **12280758272 bytes
+(11.437 GiB)**. The two-second monitor recorded 14 observations, maximum actual
+sample gap 2.005 seconds. Minimum/final free space was **12090331136 bytes
+(11.260 GiB)**; no stop was triggered and the 8 GiB floor was preserved.
+The shared private target occupied `1703824 KiB` by `du -sk` afterward.
+
+Produced `target/d01-essentials-c01c39a/aarch64-apple-darwin/debug/riauthctl`:
+**20406784 bytes**, SHA-256
+`bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf`.
+Compiler fingerprint SHA-256:
+`7657f171d9e3a951215d9e5995f6667eed5e02cce9fec52b467bfc1de072442f`.
+The prior Essentials server and maintenance SHA-256 values were freshly
+verified unchanged both before and after this build.
+
+Private evidence retained in the same target:
+
+| File | SHA-256 |
+| --- | --- |
+| client-build-provenance.json | `19a19fe12e23ec465b2f5434b3ce50c2e525e0326eaa71c20fde52e4927319f0` |
+| client-build-result.json | `4337fa7f7341b6977b880e8b73720873b7b0ba5b9fdfb90e997e51630c1b4919` |
+| client-build.stdout.log | `52997132a8df9e6ad675d87357f94c5b17984114f91606d292b7c8937ef0b872` |
+| client-disk-observations.jsonl | `4d1fb489f60648685711e097f9ab182f27131a457f2a7bd328e244811a13bc8b` |
+
+Post-build static checks freshly verified client hash/size/empty features,
+unchanged Essentials pair, pinned client inputs and clean tracked state before
+this appendix. No produced binary was executed, installed or claimed as an
+official release. The complete local matching artifact set is now available
+for root review; the disposable port-9000 checkpoint remains separately held.
+No guide/product edit, merge, push, desktop, worker/task creation or status
+mutation occurred. D01 remains in_progress against the original gate.
+
+## Released printed Essentials operator checkpoint — 2026-10-02
+
+Root released ONE up-to-20-minute checkpoint in
+`wave30_D01_operator_checkpoint`, for D01's exact task/worktree IDs.
+All **27 CLI/probe commands exited 0**, plus both owned original-configuration
+`serve` lifecycles exited 0. Cleanup ended at
+`2026-10-02T12:11:32.327769+00:00`; wall elapsed **607.862 seconds**
+(about 10 minutes 8 seconds), within the bound. No printed-command failure,
+silent retry, alternate API or bypass occurred.
+
+Execution source was the reviewed `c01c39a` production input recorded in the
+build sections, own HEAD `950fc6ecb14fcbafd4587f95987b9231984994c2`.
+All three exact artifact hashes above were recomputed before use. Printed
+commands came from Essentials guide blob
+`be68580333ad5f2238ac1966d164bf0fbf80aca1`; root's later `fd6d8c8`
+qualification changes the unexecuted older-format paragraph only and remains
+the current refusal/rollback guidance.
+
+The only substitutions were absolute own-target executable paths, a fresh
+private lab for config/data/settings/key/archive/credential/CSV paths, isolated
+XDG directories for both CLI sessions, and `--password-stdin` /
+`--non-interactive` for the private synthetic password input. No `HOME`
+change or existing home credential/session/store read occurred. The lab was
+0700; retained redacted evidence is 0600. Raw program stdout/stderr were
+captured transiently for public-result selection, never logged; server output
+was discarded. No secret/token/key/cookie value appears in the evidence.
+
+### Actual redacted command outcomes
+
+Aliases in the following exact argv rendering: `$RIAUTH`, `$MAINT` and
+`$CTL` are the matching binaries under the assigned
+`target/d01-essentials-c01c39a/aarch64-apple-darwin/debug/`; `$LAB` is
+the one disposable private lab. All quoted text is a public argv value;
+password input is omitted.
+
+| Printed stage | Actual argv with private paths replaced by aliases | Exit | Observed public outcome |
+| --- | --- | --- | --- |
+| section2.init | `$MAINT --config $LAB/riauth.toml --non-interactive init --issuer http://localhost:9000 --listen 127.0.0.1:9000 --data-dir data --admin admin --password-stdin` | 0 | Initialized fresh config and redb data directory. |
+| section2.ready | `curl --fail http://127.0.0.1:9000/readyz` | 0 | Probe passed; listener owned by PID 75420. |
+| section2.server_login | `$RIAUTH --server http://localhost:9000 --non-interactive login admin --password-stdin` | 0 | Administrator identity; server session mode 0600. |
+| section2.doctor | `$RIAUTH --server http://localhost:9000 doctor` | 0 | Exact issuer; returned public diagnostics. |
+| section3.client_login | `$CTL --server http://localhost:9000 --non-interactive login admin --password-stdin` | 0 | Administrator identity; separate client session mode 0600. |
+| section3.client_create | `$CTL --server http://localhost:9000 client create local-demo --name 'Local demo' --confidential --redirect-uri http://localhost:3000/callback --scope openid,profile --secret-file $LAB/local-demo-secret.json` | 0 | local-demo; openid/profile; exact callback; new nonempty credential file mode 0600; no top-level credential value fields in captured stdout. |
+| section3.discovery | `$CTL --server http://localhost:9000 discovery` | 0 | Exact issuer and /oauth/token endpoint. |
+| section3.whoami | `$CTL --server http://localhost:9000 whoami` | 0 | Administrator identity. |
+| section5.fresh_server_login | `$RIAUTH --server http://localhost:9000 --non-interactive login admin --password-stdin` | 0 | Fresh password administrator session; §4 revocation itself skipped. |
+| section5.keygen | `$MAINT keygen --out $LAB/backup.key` | 0 | New private key file mode 0600. |
+| section5.online_backup | `$RIAUTH --server http://localhost:9000 backup --key-file $LAB/backup.key --out $LAB/backup.riauth` | 0 | New nonempty private archive mode 0600; server still running. |
+| section5.offline_restore | `$MAINT restore --backup $LAB/backup.riauth --key-file $LAB/backup.key --out $LAB/restored` | 0 | Verified true; redb; serving_allowed false; new restored config. |
+| section5.recovery_status | `$RIAUTH --config $LAB/restored/riauth.toml recovery status` | 0 | Pending record present; serving_allowed false; no attestation. |
+| section6.ready | `curl --fail http://127.0.0.1:9000/readyz` | 0 | Original config restarted; probe passed. |
+| section6.client_login | `$CTL --server http://localhost:9000 --non-interactive login admin --password-stdin` | 0 | Renewed isolated standalone-client session. |
+| section6.revision_before_create | `$CTL --server http://localhost:9000 revision` | 0 | Revision 1. |
+| section6.group_create | `$CTL --server http://localhost:9000 --run-id staff-group --idempotency-key staff-create --if-revision 1 group create staff` | 0 | staff-create / revision 1 / staff-group. |
+| section6.revision_before_member | `$CTL --server http://localhost:9000 revision` | 0 | Revision 2. |
+| section6.group_add_member | `$CTL --server http://localhost:9000 --run-id staff-group --idempotency-key staff-add-admin --if-revision 2 group add-member staff admin` | 0 | staff-add-admin / revision 2 / staff-group. |
+| section6.group_get | `$CTL --server http://localhost:9000 group get staff` | 0 | Group record returned. |
+| section6.group_has_member | `$CTL --server http://localhost:9000 group has-member staff admin` | 0 | member true. |
+| section7.revision_before_claims | `$CTL --server http://localhost:9000 revision` | 0 | Revision 3. |
+| section7.client_update | `$CTL --server http://localhost:9000 --run-id local-demo-claims --idempotency-key local-demo-claims --if-revision 3 client update local-demo --scope openid,profile,groups --settings-file $LAB/local-demo-claims.json` | 0 | Scopes groups/openid/profile; exact printed settings object. |
+| section7.explain | `$RIAUTH --server http://localhost:9000 explain local-demo admin --scope 'openid profile groups'` | 0 | Simulation true; allowed true; token_issued false; staff and department=lab projected. |
+| section8.audit | `$RIAUTH --server http://localhost:9000 audit --limit 100` | 0 | 11 rows; both correlated group actions observed. |
+| section8.inventory | `$RIAUTH --server http://localhost:9000 inventory audit --limit 100 --filter staff-group` | 0 | 2 exact-run rows; revision 4; cursor absent. |
+| section8.report | `$RIAUTH --server http://localhost:9000 report audit --run-id staff-group --out $LAB/audit-staff-group.csv` | 0 | 2 exact-run CSV rows; printed 7 columns; mode 0600. |
+
+The exact section-7 JSON block was copied from the guide into a private settings
+file and applied once. Membership/create and claims writes used their printed
+distinct keys and freshly read revisions 1, 2 and 3. Audit inventory confirmed
+revision 4. All audit views correlated `group.create` and `group.member.add`
+with `staff-group`; the CSV columns were exactly `id, at, actor, action,
+target, run_id, request_id`. Preview was a simulation, not token issuance or
+application login.
+
+### Ownership, recovery and cleanup evidence
+
+Before launch, `lsof -nP -iTCP:9000 -sTCP:LISTEN` exited 1 with no listener;
+an exclusive bind check on `127.0.0.1:9000` succeeded. Initial server PID
+**75420** exclusively owned the listener, served only the original lab, and
+was stopped after online backup with a PID-scoped interrupt: exit 0, no listener
+remaining. Only then was the archive restored offline. Status returned
+`serving_allowed: false` and a pending record. No restored-store server,
+completion, attestation or factor recovery was attempted.
+
+Original-config restart PID **84673** exclusively owned port 9000. Its
+PID-scoped finally cleanup also exited 0 and left no listener. No unrelated
+process was signaled or stopped. The only disposable lab, including synthetic
+password, sessions, credential, key, archive, CSV and pending restored store,
+was removed after redacted evidence was retained. The matching build artifacts
+and all prior evidence remain intact.
+
+Initial free space: **11859480576 bytes
+(11.045 GiB)**; final snapshot:
+**11883405312 bytes (11.067 GiB)**.
+Each command checked the 8 GiB floor; each owned-server guard checked an
+8.5 GiB stop margin every second and enforced the overall 20-minute deadline.
+No guard stop or floor failure occurred. A numeric runtime minimum was not
+logged and is not inferred from these two snapshots.
+
+Retained 0600 redacted evidence:
+`deployment-private/d01-wave30-operator-685d00b092a8.redacted.jsonl`,
+34 records, SHA-256
+`a476b366da75b7a7c52a9f5b3edd5b615ea72beeb527d7801289501334774f3e`.
+Static validation confirmed all 27 exit records, both server exits, removed
+fixture, unused final listener, evidence mode/hash and unchanged pinned
+production source. No runtime or build was repeated for those checks.
+
+The immediate explicit-project release handoff was attempted after cleanup,
+but RiWork rejected it with exit **2**:
+`leave copy mode and enable terminal input before submitting`.
+The resource is already free; the rejection was reported in commentary.
+The post-commit handoff records whether the receipt retry was delivered.
+No terminal/desktop-provider workaround or input-mode change was made.
+
+### Credited scope and remaining gate
+
+This supplies current local **operator** evidence for §§2, 3, 5 and 6–8.
+Install, browser first-administrator setup/user login, passkey §4, actual epoch
+revocation, OIDC application login/consent, LDAP/SCIM/mail/invitations, recovery
+attestation/break-glass, edition switching, peers and deployment were skipped.
+No independent browser-user acceptance or full D01/release completion is
+claimed. No failure-driven guide correction is needed for this executed path.
+
+No Cargo/build/test, helper/product/guide edit, extra service/worker/shell,
+desktop, merge, main edit, push or board/status mutation occurred. This report
+is appended only after exit and cleanup. D01 stays in_progress against the
+original independent-user/operator gate; root alone owns integration and
+closure.

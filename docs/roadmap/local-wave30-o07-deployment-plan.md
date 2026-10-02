@@ -508,3 +508,280 @@ checked before its separate report commit. These checks run no product, engine
 fixture or additional test. The initial failure/cleanup/evidence hash was sent
 promptly to the existing explicit-project orchestrator; the report commit and
 bounded diagnostic proposal follow in a separate handoff.
+
+
+## Reserved empty-setup diagnostics: source ready, runtime held, 2026-10-02
+
+Root accepted the classifier limitation in the preceding failed-run report and
+reserved only the empty ownership setup diagnostic hunks in
+`scripts/check-deployment-small.py` plus this append. Code commit
+`c8a34c8df5184d89f7a36d933f2ec172d01471cd` changes that script alone, with
+29 insertions and 8 deletions; blob
+`fa77efc53aefcf167bd4f1ce8cb2f60d62bdbb74`, SHA-256
+`7e6e2265dad539356a4566131d62dd7904e19df7bba451d4e44588a23c77837d`.
+No product, Compose, other documentation, main or board edit was made. Prior
+branch history and the failed observation remain intact. **Runtime is held
+until root reviews this immutable correction and releases one exact command.**
+
+### Diagnostic contract and bounded scope
+
+The future evidence has `ownership_setup.stage: "empty_directory_ownership"`.
+Once the same bounded child call returns after joined IO, its actual integer
+status is saved as `ownership_setup.child_rc`; an unavailable/deadline/cancelled
+child that never returns a status does not receive a fabricated one. Booleans
+are rejected as numeric status values. No generic nonzero result is taken as
+evidence of unsupported mapping:
+
+| Initial empty-setup observation | Fixed refusal and allowlisted evidence |
+| --- | --- |
+| Nonzero joined child status | `ownership_helper_command_failed`; fixed stage and actual integer `child_rc` only. Child output is not decoded or echoed. |
+| Successfully decoded, handled chown/chmod/stat OSError | `ownership_setup_syscall_failed`; fixed stage, `child_rc: 0`, one of the literal operations `chown`, `chmod`, `stat`, and integer errno only. No error message, filename or traceback is retained. |
+| Validated numeric UID/GID/mode differ from 10001/10001/0700 | `uid_mapping_unsupported`; stage, zero rc and the observed numeric fields. This is a postcondition mismatch, not inferred syscall causality. |
+| Invalid JSON, duplicate keys, wrong shape/extra fields or invalid numeric diagnostic | Fixed decode/validation refusal; only already established stage/rc can persist. Arbitrary diagnostic values do not enter evidence. |
+| Validated numeric UID/GID/mode equal the required values | Continue to the existing port-selection path; retain numeric observations without claiming any later check passed. |
+
+The embedded setup preserves the original empty-directory check and exact
+chown/chmod/stat calls. It catches OSError only for those three operations and
+prints a two-field fixed-operation/integer-errno object. That handled branch
+exits zero to deliver structured data; the parent explicitly refuses it, so
+zero is never sufficient for ownership acceptance. Unhandled errors such as an
+initial listdir failure still become a generic command failure, with no claim
+about which syscall ran. Errno must be a nonboolean integer in 1..2^31-1.
+UID/GID must be nonboolean integers in 0..2^32-1; mode must be a nonboolean
+integer in 0..0777. Exact key sets prevent extra/private fields from surviving.
+Numeric observations are copied only after validation.
+
+Only the `SETUP_EMPTY` literal, the `Deployment.helper` empty-mount branch and
+initial `Deployment.run` setup validation changed. The helper launch still has
+the same pinned image, explicit fresh EMPTY mount, root-only setup user,
+network none, read-only root, cap-drop ALL plus CHOWN/FOWNER/DAC_OVERRIDE,
+no-new-privileges, pids/memory limits, pull-never, stdin/output bounds and
+8-second child/global deadlines. Runner, cleanup, nonempty helpers, application
+model and all later operations are unchanged. In particular, this reservation
+does not change the later application-tool `FILE_MODES` failure classifier.
+Raw stdout/stderr/error strings/paths/URLs/private values are not stored or
+printed by the new diagnostic branches.
+
+### Checks actually run before the source commit
+
+Python AST parsing passed for the corrected script and embedded setup. After
+masking only the reserved setup literal and the two containing methods, the
+complete old/new module ASTs were equal. Every byte starting at the existing
+`port_info = self.helper(PROBE, {"kind": "port"})` through the end of the script
+was also equal to original harness commit `97a30bd`. This separately verifies
+no change to later postconditions, application control or cleanup. A mocked
+old/new empty-helper invocation produced identical launch argv/options except
+for the reserved inline setup code.
+
+One local in-memory guard check passed **32 mocked controller cases** and
+**4 mocked embedded setup outcomes**. It covered generic rc 1/125/126/127/-9,
+boolean rc refusal, the exact valid postcondition, individual UID/GID/mode
+mismatches, all three fixed errno operations, boolean/float/string/negative/
+out-of-range numeric refusal, absent/wrong/extra shapes, unknown operations,
+duplicate keys and malformed JSON. Fake OSError messages and filenames carrying
+a private marker did not appear in helper JSON or retained diagnostics. The
+mocked embedded success/chown/chmod/stat cases called fake os functions only;
+the accepted controller case stopped before port selection. No subprocess,
+Docker command, mount, real ownership syscall or product was executed by these
+checks. They are local diagnostic guard evidence, not a second mechanics run
+or host-mapping proof.
+
+Source-only Git whitespace and sole-script scope checks passed; no Compose
+render rerun, Cargo, image pull/build, container, service, daemon/context change
+or alternative topology was invoked. The original 1745-byte failure JSON still
+has mode 0600 and SHA-256
+`308dfe8d3b424ff9a4e54369d809f560847b6aefda43a83ca229842b34068adc`.
+It remains at `target/o07-small-60437b5-f3aba63.json`; the original report prefix
+and complete failed evidence are not rewritten.
+
+### One proposed identical mechanics command after separate release
+
+The original template/source/image/edition/probe/timeout tuple remains fixed.
+Only the evidence destination is new; its absence was checked without creating
+it. Proposed command, **not executed**:
+
+```sh
+python3 scripts/check-deployment-small.py \
+  --template-revision 60437b59933cadd40a1f5fbbb91ba153aee56456 \
+  --image sha256:ae84172a41d2dbe607a581d48fcde79cd1d293e00244994e257a757fd6def842 \
+  --image-source-revision f3aba63ac3b824843a40b99623f1619ef8edc19f \
+  --edition essentials --artifact-kind local-source \
+  --probe-image sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 \
+  --timeout-seconds 180 \
+  --evidence "$PWD/target/o07-small-60437b5-f3aba63-ownership-diagnostic.json"
+```
+
+If separately released, keep the private target and 8 GiB floor, a fresh owned
+random fixture, the same controls and ownership-checked cleanup, and preserve
+every failed result. No automatic retry/fallback follows from this correction.
+The prior runtime failed early; this source-only change adds no actual mapping,
+host visibility, service, TLS, current/release binary, distributed/HA/recovery or
+whole O07 evidence. The original task acceptance and component/evidence/safety/
+remedy gate remain open to root's review; no task/status claim is made here.
+The immutable code pins/scope and exact new-path command, followed by this
+separate append-only report commit, are handed to the explicit project
+orchestrator before any further runtime authorization.
+
+
+## Corrected diagnostic command: observed mapping refusal, 2026-10-02
+
+Root independently accepted immutable correction
+`c8a34c8df5184d89f7a36d933f2ec172d01471cd` and released exactly one execution of
+the new-path 180-second mechanics command. This section supersedes only the
+preceding runtime-held/not-executed wording for that command. It preserves the
+prior code/static/failed-run records verbatim. Project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original O07 task
+`6c981199-62dd-464d-a12a-4ce4e27f428f` and existing worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7` remain the scope. No status change is made.
+
+### Exact single command and actual evidence
+
+Preflight confirmed a clean branch at report-only descendant HEAD
+`1291f52c2135ec6b1b2070fb669ec814d58da4b6`; the on-disk script was byte-identical
+to approved code commit `c8a34c8`, blob
+`fa77efc53aefcf167bd4f1ce8cb2f60d62bdbb74`, SHA-256
+`7e6e2265dad539356a4566131d62dd7904e19df7bba451d4e44588a23c77837d`.
+The exact source/image constants and pinned template hash matched. The private
+target was a real directory, the new evidence path was absent, and the original
+failed JSON/hash/mode remained unchanged. Free disk before the command was
+**11.05 GiB**, above the 8 GiB floor. The command ran **once**:
+
+```sh
+python3 scripts/check-deployment-small.py \
+  --template-revision 60437b59933cadd40a1f5fbbb91ba153aee56456 \
+  --image sha256:ae84172a41d2dbe607a581d48fcde79cd1d293e00244994e257a757fd6def842 \
+  --image-source-revision f3aba63ac3b824843a40b99623f1619ef8edc19f \
+  --edition essentials --artifact-kind local-source \
+  --probe-image sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 \
+  --timeout-seconds 180 \
+  --evidence "$PWD/target/o07-small-60437b5-f3aba63-ownership-diagnostic.json"
+```
+
+Actual exit **1**; command-tool wall time approximately **0.8712 seconds**, not
+a separately recorded in-process elapsed field. Exact stdout:
+
+```json
+{"result": "failed", "checks": 1, "cleanup_ok": true, "evidence_written": true}
+```
+
+The actual setup diagnostic was stage `empty_directory_ownership`, integer
+`child_rc: 0`, `uid: 0`, `gid: 0`, `mode: 448` (octal **0700**). The mode matched;
+the observed UID/GID did not meet required **10001:10001**. No operation/errno
+failure object was returned. The resulting `uid_mapping_unsupported` therefore
+comes from the validated numeric postcondition mismatch in this run. It is not
+an inference from a generic nonzero command. The helper code requests chown to
+10001:10001, then chmod 0700, then stat; the returned success-form diagnostic
+contains the stat numbers, without a caught OSError. This establishes the failed
+postcondition in the selected fixture, not the underlying Desktop/kernel/file
+sharing reason or support on other hosts. The earlier original failure retains
+its original classifier limitation; it is not retroactively reclassified.
+
+The installed image provenance check alone passed (**count 1**). The selected
+engine remained Linux/arm64, version 29.7.2, context `desktop-linux`. Post-exit
+free disk was **11.04 GiB**. No bypass, alternative topology, daemon/context
+change, permission relaxation, Cargo, pull/build or additional command run was
+attempted. D01's localhost9000 service was untouched: execution stopped before
+the harness selected any random port, and no fixed application port was used.
+
+The new evidence is retained at
+`target/o07-small-60437b5-f3aba63-ownership-diagnostic.json`, mode **0600**,
+**1878 bytes**, SHA-256
+`351349aa31e383fabd76a13dce188019437c9174af56d92a9824888abdba8af9`.
+Its complete selected nonsecret JSON is preserved here:
+
+```json
+{
+  "checks": [
+    {
+      "id": "installed_images_match_local_manifest",
+      "observed": {},
+      "result": "passed"
+    }
+  ],
+  "cleanup": {
+    "failures": [],
+    "ok": true
+  },
+  "distributed_verified": false,
+  "engine": {
+    "arch": "arm64",
+    "context": "desktop-linux",
+    "host_visibility_test_required": true,
+    "os": "linux",
+    "version": "29.7.2"
+  },
+  "failure": "uid_mapping_unsupported",
+  "ha_verified": false,
+  "ownership_setup": {
+    "child_rc": 0,
+    "gid": 0,
+    "mode": 448,
+    "stage": "empty_directory_ownership",
+    "uid": 0
+  },
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "public_tls_verified": false,
+  "result": "failed",
+  "schema": "riauth.deployment-small-local/v1",
+  "scope": "local-template-mechanics",
+  "source": {
+    "artifact_kind": "local-source",
+    "current_source_binary_verified": false,
+    "edition": "essentials",
+    "equivalent_revision": "c01c39ab4e092423d5522bedc50fff87656d8c0a",
+    "execution_head": "1291f52c2135ec6b1b2070fb669ec814d58da4b6",
+    "harness_git_blob": "fa77efc53aefcf167bd4f1ce8cb2f60d62bdbb74",
+    "harness_sha256": "7e6e2265dad539356a4566131d62dd7904e19df7bba451d4e44588a23c77837d",
+    "image": "sha256:ae84172a41d2dbe607a581d48fcde79cd1d293e00244994e257a757fd6def842",
+    "image_source_revision": "f3aba63ac3b824843a40b99623f1619ef8edc19f",
+    "manifest_sha256": "638822d3c437d06678d27d4fb68987ebd2f6a884dd36c5843e9addf7727b5c7e",
+    "probe_image": "sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285",
+    "release_verified": false,
+    "template_blob": "a75307cde81782907014e97fb607884c2d0e731b",
+    "template_revision": "60437b59933cadd40a1f5fbbb91ba153aee56456",
+    "template_sha256": "2db9060a4bbd8dd895401f5e58f2653ca3b774abf8e1867b9a41a52c0ae0cea6"
+  },
+  "task": "6c981199-62dd-464d-a12a-4ce4e27f428f",
+  "whole_o07_complete": false
+}
+```
+
+### Cleanup, unreached gates and disposition
+
+Actual harness cleanup again reported `ok: true`, `failures: []`. The tested
+cleanup path still uses only the fresh fixture's project/task/random-run labels,
+rechecks ownership before removal, inventories remaining owned containers and
+removes the empty configuration directory/private parent. This is its recorded
+cleanup proof; no separate post-run engine inventory, signal exercise or
+resource-token attestation is added. No global prune or cache deletion occurred.
+The setup helper used the same fresh EMPTY mount and fixed controls; the
+application volume, tools network and application service were not created via
+the unreached later code. No application credentials were generated.
+
+The run did not reach port selection/host visibility, Compose rendering,
+keygen/init, application UID/file mode checks, health/readiness, public HTTP/
+discovery/JWKS, administrator login/doctor, second-owner refusal, outage,
+missing-key refusal/content preservation or same-volume restart assertions.
+The previous source-only structural render remains static evidence only. This
+failed execution does not prove small-service mechanics, the current/release
+binary, public TLS, distributed/two-host/PostgreSQL/HA/fencing/recovery or full
+O07 acceptance. The original component/evidence/safety/remedy gate and database
+HA/recovery responsibilities remain open to root's review. There is no automatic
+repeat or remediating mutation; this lane stops after the released run and report.
+
+The original evidence at `target/o07-small-60437b5-f3aba63.json` is still
+1745 bytes, mode 0600, SHA-256
+`308dfe8d3b424ff9a4e54369d809f560847b6aefda43a83ca229842b34068adc`.
+Neither evidence file is overwritten. Source/hash/pins/new-path/floor preflight,
+post-exit JSON/hash/size/mode/original-preservation/clean-tree checks were actual
+local checks. No extra product test or Docker runtime diagnostic followed the
+exit. Exact exit/stage/rc/numeric mismatch/check count/unreached scope/cleanup
+and evidence hashes were sent promptly to the existing explicit-project
+orchestrator. This separate append's byte-prefix, exact command/JSON/pins,
+sole-report scope and Git whitespace are checked before committing it; root
+alone owns integration/publication/statuses. All earlier completed-task and
+credential/header/PAM/admission contracts remain untouched.
+
+An initial report-verification assertion used a mistyped expected hash for the
+original evidence. Correcting that literal passed all checks; neither evidence
+nor source was changed. This was a local check failure, not another runtime run.
