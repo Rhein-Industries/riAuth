@@ -1089,3 +1089,100 @@ cleanup. LF/fence/scope and whitespace checks passed. The docs checker again
 exited1 solely for the same five pre-existing target-wave directory-layout
 violations, zero missing Markdown links. These report checks performed no
 second compile, test, service or artifact execution.
+
+## Bad-factor expected binding — approved source-only fixture correction
+
+Root reserved `wave30_I02_bad_factor_expected_binding` for this same project,
+original I02 and supporting WT. Starting HEAD was
+`4b9aa13b0d62942c795956866dcb45f3abb2faa8`; the actual failed run and its full
+appendix remain unchanged. Only the appended named test's expected-memory field
+and this report are owned. I04 owns the Cargo slot; no execution is authorized.
+
+### Independent source trace verified before editing
+
+At immutable production pin `196ac2096f79e5cc3c7d53ffa990ccdeba11a439`, inspected
+complete relevant construction/branch/writer bodies and found no contrary source:
+
+* `src/assembly/source_runtime.rs:595–675` begins the stage using
+  Start.authentication_transaction=None at622, then creates the stage's separate
+  transaction at631 and records it in SourceStage.transaction at656. SourceStage
+  derives Serialize/Deserialize and has the transaction String field at278–292.
+* `source_start_for` at326 onward constructs Login.authentication from that input
+  at371, initially None, with attempts0 at375. The fixture's existing3958–3959
+  reads that serialized stage record and its login key without any new writer.
+* `resume_stage` at729–735 returns local_factor_required before binding when no
+  factor was supplied. When attempting the local factor,754 sets
+  pending.authentication=Some(stage.transaction.clone()) before calling
+  complete_source_login at755–762.
+* `src/assembly/source_finish.rs:175–197` checks the local factor; its invalid
+  branch increments attempts at195 and persists **the whole pending Login** at196,
+  then returns outerOk(innerErr unauthorized). Resume propagates that inner error
+  through outerOk at source_runtime765.
+* `src/assembly/source_stage.rs:201–210` calls Store.write and returns its inner
+  result afterward. `src/store.rs:1058–1070` commits when the closure's outer
+  Result is Ok;1125–1135 has the equivalent non-preview PostgreSQL commit order.
+  An outerErr still bypasses commit. No transaction or error handling is changed.
+
+Trace Git blobs: source_runtime
+`51a46db7a7ad3e46914146461c79c6ae42ab124a`, source_finish
+`339e57f895b7203452f4ad6f384ac04e348fda19`, source_stage
+`d12ffffc0ea60de399decf3f089c66d9f42a6837`, store
+`8e78d889220c9e956fe00a4f7a69b603063d3ebf`. All still match196ac209 exactly.
+
+This proves a source-derived omission in the charged expectation: it modeled
+attempts1 but omitted the committed authentication binding. It does **not**
+recover the failed run's caller, row, actual authentication value or exact HTTP
+step. Those were unrecorded and remain unrecorded; the changed-record collection
+alone cannot retrospectively establish them. No new runtime pass is inferred.
+
+### Exact expected-memory-only delta and protected reconstruction
+
+Source correction `90b6e8d832174df676d12395452e525de827f9e8` changes only
+tests/source_stage.rs: four added lines, immediately after the existing attempts1
+expectation and before the unchanged full snapshot assertion. A brief comment
+describes bad-factor charging; the single assignment is:
+
+```rust
+charged
+    .get_mut(&format!("source_logins/{login_key}"))
+    .unwrap()["authentication"] = stage_record["transaction"].clone();
+```
+
+It changes only the expected BTreeMap/JSON clone in memory. No stored record,
+Core/Tx/store call, snapshot exclusion, collection allowance, assertion removal
+or changed status/request/cookie/factor/writer/helper. The expected exact
+transaction comes from the existing stage record, not a wildcard or any stored
+post-failure observation. All other fields and collections remain covered by
+the same full snapshot assertion and existing HTTP-rate-only exemption.
+
+Python byte checks passed: the235-byte assignment/comment addition occurs once
+at the approved anchor; removing just that addition reconstructs the **entire**
+196ac209 test,166005 bytes, SHA256
+`0c5efa341f72922b3ef16cd92a6157200ab439b1860ad339c42d7b5ee83250b8`.
+Corrected test is166240 bytes, SHA256
+`5c1e1fe5975e91ac284f6b7637f7b4024f83c9b43eff59a857c7c32c48af1236`,
+Git blob `e19ec1f55eae34555e445b333d066a4c2e0a3f2c`. The entire124606-byte
+pre-regression prefix at196ac209 is unchanged, including its already reviewed
+configured-callback helper correction. Every other byte of the appended test is
+unchanged, including all operations, refusals, status/cookie checks and complete
+mutation/attempt/code/audit assertions. The previous36ccc64 reconstruction is
+still available by additionally reversing that separate callback correction.
+
+Actual static checks: installed1.98.1 rustfmt check parsed the test and accepted
+its formatting without changing bytes; Python anchor/reversal/prefix/single-file and
+protected source/helper/manifest assertions passed; git diff and staged whitespace
+checks exited0. Actual failed1322-byte Cargo log still hashes to
+`9ed4e8a9a01a40f929ba51b343a0ee96cd26fe83972c475271319c0c4047e567`.
+No artifact, Cargo, compiler/typecheck, HTTP/CLI product, provider, browser or
+retry was executed during this source-only correction. No independent reviewer
+or other worker was contacted. Root must complete immutable/independent review
+and separately release any one same-filter rerun; this fixture delta is unrun.
+Original primary/status and all accepted receipt/header/PAM/Group/authority/
+credential/one-use/60s contracts remain unchanged. Driver-only preference persists.
+
+Report preparation verified immutable90b6e8d parent/single-file scope and whole
+test reversal, the five cited source/test blobs, the entire86947-byte4b9aa13
+report prefix and all three prior failed-run evidence hashes unchanged. LF/fence,
+sole-report append and whitespace checks passed. Docs checker exited1 only for
+the same five pre-existing target-wave directory-layout violations, with zero
+missing Markdown links. No directory/checker/evidence change or runtime replay.
