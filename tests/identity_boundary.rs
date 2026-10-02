@@ -634,23 +634,55 @@ fn management_receipt_replays_before_revision_checks_on_both_redb_formats() {
             )
         };
         let first = context::scope(Some(request.clone()), create).unwrap();
-        assert_eq!(
-            context::scope(Some(request.clone()), create).unwrap(),
-            first
+        let credential = first["credential"]["token"].as_str().unwrap();
+        assert!(credential.starts_with("ri_agent_"));
+        assert_eq!(first["credential"]["agent_id"], "boundary-agent");
+        let full_snapshot = || f.core.store.read(|tx| tx.snapshot()).unwrap();
+        let issued = full_snapshot();
+        assert!(
+            f.core
+                .store
+                .get::<u64>("meta", "revision")
+                .unwrap()
+                .unwrap()
+                > revision
         );
-        assert_eq!(f.core.store.list::<Value>("receipts").unwrap().len(), 1);
+        let receipts = f.core.store.list::<Value>("receipts").unwrap();
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(
+            receipts[0].1["result"],
+            json!({"agent_id":"boundary-agent","credential_issued":true})
+        );
+        assert!(
+            !serde_json::to_string(&receipts)
+                .unwrap()
+                .contains(credential)
+        );
+        // Issuance receipts are checked before the now-stale revision, but can never
+        // replay the disclosed credential or add another mutation, audit or receipt.
+        let replay = context::scope(Some(request.clone()), create).unwrap_err();
+        assert_eq!(replay.status, axum::http::StatusCode::CONFLICT);
+        assert_eq!(replay.code, "credential_already_issued");
+        assert_eq!(
+            replay.message,
+            "Agent credential was already issued; inspect the agent and rotate if delivery failed"
+        );
+        assert!(!replay.to_string().contains(credential));
+        assert!(full_snapshot() == issued);
         let mut changed = request.clone();
         changed.fingerprint = "request-v2".into();
         assert_eq!(
             context::scope(Some(changed), create).unwrap_err().message,
             "Idempotency key was used for a different request"
         );
-        let mut stale = request;
+        assert!(full_snapshot() == issued);
+        let mut stale = request.clone();
         stale.idempotency_key = Some("another-request".into());
         assert_eq!(
             context::scope(Some(stale), create).unwrap_err().message,
             "Configuration revision changed"
         );
+        assert!(full_snapshot() == issued);
         assert_eq!(f.core.store.list::<Value>("receipts").unwrap().len(), 1);
         assert!(
             f.core
@@ -660,5 +692,52 @@ fn management_receipt_replays_before_revision_checks_on_both_redb_formats() {
                 .unwrap()
                 .enabled
         );
+
+        // Ordinary secret-free mutations retain their established successful receipt
+        // replay before revision checks; issuance denial does not replace that contract.
+        let group_request = RequestContext {
+            idempotency_key: Some("create-boundary-group".into()),
+            fingerprint: "group-request-v1".into(),
+            revision: f.core.store.get::<u64>("meta", "revision").unwrap(),
+            ..Default::default()
+        };
+        let create_group = || f.core.create_group(&f.admin, "boundary-group");
+        let group = context::scope(Some(group_request.clone()), create_group).unwrap();
+        let grouped = full_snapshot();
+        assert!(
+            f.core
+                .store
+                .get::<u64>("meta", "revision")
+                .unwrap()
+                .unwrap()
+                > group_request.revision.unwrap()
+        );
+        assert_eq!(
+            context::scope(Some(group_request.clone()), create_group).unwrap(),
+            group
+        );
+        assert!(full_snapshot() == grouped);
+        assert_eq!(f.core.store.list::<Value>("receipts").unwrap().len(), 2);
+
+        // A saved receipt cannot bypass the same principal's lost live authority,
+        // either to disclose an issuance outcome or return an ordinary mutation.
+        f.core
+            .store
+            .write(|tx| {
+                let uid: String = tx.get("usernames", "admin")?.unwrap();
+                let mut admin: User = tx.get("users", &uid)?.unwrap();
+                admin.admin = false;
+                tx.put("users", &uid, &admin)
+            })
+            .unwrap();
+        let unprivileged = full_snapshot();
+        let assert_denied = |denied: Error| {
+            assert_eq!(denied.status, axum::http::StatusCode::FORBIDDEN);
+            assert_eq!(denied.code, "access_denied");
+            assert!(!denied.to_string().contains(credential));
+            assert!(full_snapshot() == unprivileged);
+        };
+        assert_denied(context::scope(Some(request), create).unwrap_err());
+        assert_denied(context::scope(Some(group_request), create_group).unwrap_err());
     }
 }
