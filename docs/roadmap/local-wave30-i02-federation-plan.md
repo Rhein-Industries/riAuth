@@ -568,3 +568,189 @@ descriptions/current state; this design used no desktop tool or provider.
 No proposed hunk/test function was compiled or executed; the one future Cargo
 command remains HELD. This is a transport design for root's review, not evidence
 that the original browser gap has been implemented or that I02 can close.
+
+## Approved source-only implementation: wave30_I02_browser_transport_implementation
+
+The subsequent root instruction released exactly the six source/test paths from
+the design, plus this append-only evidence. It did not release compilation,
+execution or integration. The original live I02 row was reread: `in_progress`,
+primary `a2dff16a-c4b0-47fc-96de-ac85b1fb6d9e`, with the original five-part outcome
+and working setup/lifecycle/failure-handling gate quoted above. This supporting
+worktree does not change that assignment or status. A03 and W02 remain DONE;
+D01's isolated active runtime was neither contacted nor duplicated.
+
+### History alignment and exact commits
+
+* History-preserving merge `a59809f47e0a1928271a9d6ecec4e207e17ef8c7` has parents
+  `0569450afc67d1de01223bf42f39742193347722` and exact published
+  `9b8956f7b2a9961b14e313fa57c0f5214a136772`. No reset or replacement from a stale
+  tree. Three conflicts were resolved narrowly: each guide's old blanket
+  format-3 sentence was replaced only by the published formats1/2 qualifier;
+  the report's empty published conflict side was removed while retaining the
+  whole own design appendix. Both guides byte-match the published pin. Before
+  implementation, the entire merged tree differs from that pin only in this
+  report, which byte-matches `0569450`; the published report is its exact prefix.
+  All published root notes and accepted equivalents were retained.
+* Source/test commit `36ccc64e4c4044491f55b68cf7fdcaeff992391c`, parent that merge:
+  exactly `src/api.rs`, `src/portal.rs`, `src/portal/source_stage.rs`,
+  `src/portal/source-stage.html`, `src/portal/source-stage.js`,
+  `tests/source_stage.rs`. Six files,1524 insertions/5 deletions. The one appended
+  test function is
+  `browser_source_stage_transport_binds_factor_and_renders_both_response_modes`.
+  This report appendix is committed separately after static checks.
+
+### Implemented transport, with execution still held
+
+The implementation follows the reviewed cookie-bound design. The old GET retains
+its exact StageReference extraction and Core call on the JSON/non-browser branch;
+only positive HTML with browser_ui and a stored matching browser binding receives
+the read-only local handoff. GET responses vary on Accept. Legacy JSON POST,
+cancel, factor-in-query refusals, records and callback bodies remain byte-intact.
+
+The new page GET authenticates the original return cookie through authorize_state,
+loads the exact stored pair, checks binding/expiry and renders an empty prompt.
+It invokes no resume/cancel/write. An already-ready callback hands off locally;
+it does not infer a successful grant from the state name. Resume/cancel POSTs use
+the unchanged browser_write_guard and explicit positive JSON, reject query and
+extra JSON fields, and preflight the same browser/pair/undecided state. Each calls
+its existing Core wrapper exactly once. Bad-code errors are translated only after
+that wrapper returns, preserving its inner committed charge; there is no new
+store.write to change outer rollback. Closed status/code_issued/redirect-presence
+classification strips the RP URL and returns only a waiting status or the exact
+original local continuation, retaining rejected/cancelled outcomes.
+
+Private route responses add no-store/no-referrer; the global guard/CSP and callback
+renderer stay unchanged. Shared-middleware refusals retain their existing policy.
+Identifiers are encoded for path segments (spaces use%20) and then escaped in HTML
+attributes. RiAuth.post receives issuer-base-relative paths, while native continue
+uses the original base-prefixed path: no duplicate non-root issuer prefix. The
+page has an unnamed empty factor input, guarded type-button actions and external
+scripts. One page-level busy flag covers initial check, factor, recheck and cancel.
+Network/5xx ambiguity clears the input and requires reload; factor/cancel are never
+automatically retried. No RP fetch, returned HTML insertion, new credential,
+account/request factory, standalone finish, private Pending projection or visibility
+widening. The original browser-resume GET still owns query302/form_post rendering,
+one-use delivery and browser SSO establishment. No Core/source/factor/workflow/
+storage/authority/admission implementation was edited; only the approved API route
+classification joins the existing source_callback bucket.
+
+The single table-driven HTTP/rendering definition covers root query and non-root
+form_post, disabled browser_ui, explicit media negotiation and malformed quality,
+empty/escaped HTML and base-relative script paths, foreign/missing/duplicate
+cookies and mixed pairs, the unchanged Origin/header/Fetch Metadata refusals,
+query-factor and malformed shared-header/extra-body refusals, pending/local factor,
+one committed bad-code attempt, fixture-only broken bindings/expiry/deleted browser,
+one recovery-code consumption and exact Alice/source/link/fingerprint/PKCE/code,
+native delivery and signed subject/one-use redemption, replay/reload, cancel and
+an upstream Bob proof rejected by an actual Alice-bound browser request. Separate
+legacy GET/POST/cancel cases retain their original query/form_post outcomes.
+Setup uses existing admitted source-link writers and synchronous test-clock factor
+setup; no standalone finish or shared helper/test edit. Fresh routers give the
+independent transport cases fresh rate tables without changing a budget. Assertions
+use the existing snapshot oracle, exempting only its operational http_rates keys;
+they do not dump private snapshots, cookies, factors, codes or tokens.
+
+These are definitions inspected statically, not passing runtime assertions. The
+broken-proof cases exercise early Core/transport refusals; no post-factor fault
+injector or concurrency test was added. Late outer rollback remains supported by
+the unchanged Core/Tx bodies described in the design, not a new executed claim.
+
+### Exact source hashes and actual static checks
+
+Full-file SHA256 at source commit `36ccc64`:
+
+| File | SHA256 |
+| --- | --- |
+| `src/api.rs` | `1bbb387dd627f1fd56b7dfe408ea17eef48131f927597da1b81b21ed5f64b8ca` |
+| `src/portal.rs` | `ec3dd0321fe996caf8c8b4d8747c6c8f5c1b332bcd13f02c9bef7681f0897344` |
+| `src/portal/source_stage.rs` | `a4fed0542f3393f3d09aa518d2c0cf74f7f90fcb992288cdb9dd9640a52239c2` |
+| `src/portal/source-stage.html` | `1c8fe8280cd0fca1cc90084e772c366e7f75d82b0115faa21115f0b5b76255c0` |
+| `src/portal/source-stage.js` | `e540a4910ee39dfaf9810a28259d32b41ee29787ab1e008692bb3d85d8e2ba1b` |
+| `tests/source_stage.rs` | `d3d44e96f461bb88626d73caf0a30ff1610187ca6f6338a9e8e1e5a1b28fb9a6` |
+
+Checks actually performed, without Cargo/type checking:
+
+* Local guidance/clean state, fixed Git object and live exact-task read; merge and
+  the conflict-resolution/equivalence assertions above.
+* Python full API reconstruction: replace only the new GET span with its original
+  span, remove the route merge and added rate condition, then match the entire
+  published API byte-for-byte (original SHA256
+  `ffcb8590457eda37a4fe0434c40d328eecdb1718953b8b3607405007a13451b3`).
+  Thus all other handlers/records/helpers, including native browser/callback and
+  old stage POST/cancel/result, are protected. Removing just the additive portal
+  declaration similarly reconstructs the entire published portal module.
+* Original `tests/source_stage.rs`124619 bytes remain an exact prefix, SHA256
+  `a65e2dd309b1260c3249f45dec14205b95eec142c6db72bb2dc743c2a9626e9c`;
+  the append contains exactly one tokio test/async function, with local closures.
+  The prior52789 report bytes remain an exact prefix of this appendix.
+* Sixteen held files byte-match the published pin: portal/http.rs, portal/auth.js,
+  response.rs, assembly/browser_runtime.rs, assembly/source_stage.rs,
+  assembly/source_runtime.rs, assembly/source_finish.rs, source.rs, core.rs,
+  store.rs, workflow.rs, workflow/executor.rs, workflow/approval.rs,
+  api/interaction.rs, config.rs and assembly/oidc.rs (all under src/).
+* Static negative guards: new GET body has no resume/cancel/store.write/native
+  resume; module has exactly one Core resume and one cancel call, no standalone
+  finish, new store.write, bearer response or global CSP/CORS change.
+* Installed1.98.1 formatter `rustfmt 1.9.0-stable (48a229ceae 2026-09-01)` parsed
+  and formatted only the appended test via stdin, preserving all old bytes.
+  Direct `rustfmt --edition 2024 --config skip_children=true --check` on api.rs,
+  portal.rs and the new module exited0; children were not reformatted.
+  `node --check src/portal/source-stage.js` exited0 (syntax only, no script run).
+  Python HTMLParser/DOM-id/static-JS assertions passed: empty unnamed input,
+  type-button guards, external scripts, relative POST/exact local continuation,
+  no credential logging/storage, RP fetch/HTML insertion or automatic retry.
+* `git diff --check` and staged whitespace/exact six-file source scope passed.
+  `python3 scripts/check-docs.py` still reports only the five pre-existing
+  target-wave directories listed above, zero missing Markdown links; no checker
+  or directory change. Final append/scope/Markdown/whitespace checks are repeated
+  for the separate report commit.
+
+### One concrete held compile/runtime command and resource plan
+
+The same focused command from the design would compile the matching Platform
+library and source_stage test target, then run only the named function:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/i02-browser-transport-wave30" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test source_stage browser_source_stage_transport_binds_factor_and_renders_both_response_modes -- --exact --test-threads=1
+```
+
+**Not run; requires a separate root release of the sole Cargo slot and this
+fixture runtime.** Default Platform plus test-support, installed pinned1.98.1;
+no fuzzing, USB, standalone-client target or other test invocation. Source commit
+and manifests must be re-pinned before that release. Current immutable manifest
+SHA256: Cargo.toml `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8`,
+Cargo.lock `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426`,
+rust-toolchain.toml `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167`.
+
+Read-only `df -k .` during static review reported14219380KiB available
+(about13.56GiB). That is a historical capacity measurement, not a reserved budget.
+Immediately remeasure before any released build; require at least12GiB, monitor
+every2 seconds, stop only this Cargo process at9GiB to preserve the8GiB floor.
+Private target in this worktree only; no accepted/cache deletion. Use private0600
+logs and preserve redacted exit/elapsed/disk/source/feature evidence. Only this
+selected function's disposable in-process HTTP/signed-peer fixtures may run;
+bound its post-build runtime to20 minutes, stop its own process on failure/timeout
+and release the slot immediately. No desktop, provider tenant or production service.
+
+### Residual original acceptance and ownership limits
+
+The proposed local transport is now implemented in an uncompiled source slice.
+Concrete remaining verification is the held type/HTTP-rendering check and root's
+independent review. No fresh browser/provider execution, released artifact or
+original-I02 completion is claimed. The previously identified existing
+oidc-profiles limitation paragraph is untouched and remains reserved for a separate
+docs decision after reviewed implementation, not silently rewritten in this lane.
+All historical passes/failures/log-provenance limits above remain historical.
+Any wiring failure that needs a held writer/private browser contract change must
+be reported to root before broadening. Receipt-secret, optional/required headers,
+PAM, Group/source materialization, live authority/one-use/audit/credential and
+remote-I/O/60s boundaries remain intact. Root alone integrates/pushes/statuses;
+primary a2dff16a is unchanged. Driver-only desktop preference remains, and no
+desktop/provider inspection or delegated work was performed.
+
+Final report preparation passed: exact prior52789-byte prefix, sole report file,
+LF/fence/whitespace checks,38 referenced Git objects and28 source/report paths,
+and all six source-commit SHA256 values recomputed exactly. Repeated rustfmt
+checks and Node syntax check exited0. The docs checker's actual captured exit
+was1, with exactly the same five directory-layout errors and zero missing links.
+These checks execute no product, test, provider or browser flow.
