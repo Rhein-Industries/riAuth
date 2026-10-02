@@ -175,3 +175,14 @@ The baseline verification, exact candidate/hash, three-hunk equality, whole-file
 The report appendix is committed separately. Complete historical-prefix equality, source-commit/file equality, report-only working scope, trailing-whitespace/final-LF, and existing D01 helper/report hash checks passed. Report-aware `python3 scripts/check-docs.py` and `git diff --check` both exited `0`. Those D01 bytes remain exactly `75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1` and `9530a35876c00d4fd6e949bb51ab56b12b36e0d829358a1d3e8672273ca670bb`. The separate report commit follows final index equality/scope/whitespace checks; its hash and clean handoff are returned separately because they cannot be embedded in their own commit. No other existing report, helper, manifest, workflow, product, or test path was changed.
 
 The recorded Linux CI `37061329345` / job `111020195345` remains failed. Its startup cause is **UNKNOWN**, and discarded child stderr/status are still unavailable. This materialization establishes no Linux-fixed result, rare-race reproduction, current all-green CI, listener-ownership proof, or HTTP-readiness proof. Root owns immutable source review, any later exact production alignment, measured private-cache/capacity assessment, and a separate release for the previously proposed single filtered command. No runtime slot was acquired or released, no cache was deleted, and no native build/service/test or runtime command was attempted. Original A09, D01, and all closed-row gates are unchanged; D01 memory/browser/native work remains held.
+
+## Root source review, 2026-10-03 local
+
+Root read the142-line diagnosis, complete f142 source diff and35-line static
+appendix. Reversing only the import and configured-loop changes independently
+restored the entire118817-byte published baseline. The exact118935-byte candidate
+was staged without changing production or the first separate fixture loop.
+Typechecking and the selected startup/certificate filter remain unexecuted;
+full production alignment and measured private-cache preparation precede any
+separate runtime release. The56 CI failure stays failed with unknown child cause;
+the later b71 CI success is credited solely to its earlier exact source.
