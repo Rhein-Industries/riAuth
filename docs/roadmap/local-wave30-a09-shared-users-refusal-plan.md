@@ -404,3 +404,94 @@ The appended report passed `python3 scripts/check-docs.py` and staged
 `git diff --cached --check` (both exit 0). An explicit byte comparison
 preserved the full original 20,060-byte / 344-line report prefix and the
 original local helper. This evidence append adds no existing-source change.
+
+## Authorized exact implementation and static evidence, 2026-10-02
+
+Root explicitly extended the preparation reservation to the exact reviewed
+helper. This supersedes the hold for new work without rewriting the dated
+baseline mismatch above. Own history retains the older 13,127-byte helper,
+the complete original proposal and that mismatch record. No alignment,
+merge/reset or other source import was performed.
+
+Preparation commits, **both excluded from root integration**:
+
+* Existing workflow preparation:
+  `eba66b4931b1de1400a79c183743e40fbc17d4ce`.
+* New helper-only baseline preparation:
+  `7c44cc15c19260e4066cea9cf4bf18080fd6f7e2`, directly from validator
+  `30f5a8a884ec4ea398c00bde596ed8f8764a8aab`. It is exactly 21,716 bytes,
+  SHA-256 `575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1`,
+  and preserves the reviewed/local `100644` mode. Its preparation diff
+  contains only the helper; no workflow/hash correction is mixed into it.
+
+Integration source commit:
+`f7af6cc85b938738e6152b4b0e5109e36a3abdec`, parent
+`7c44cc15c19260e4066cea9cf4bf18080fd6f7e2`. It changes only these two files,
+29 insertions / 2 deletions:
+
+| Source file | Actual committed bytes / SHA-256 | Git blob |
+| --- | --- | --- |
+| scripts/check-local-edition-transition-postgres.py | 23,518 / `d86d9a99c9e09e29eb43af52f409332e11a70caaed90b5545bf132df1f2a1982` | `593220583104cf075bf3635e2e6c9feefb3177fd` |
+| .github/workflows/check-local-shared-handoff.yml | 77,543 / `5290d7a5d9e15eaeaa19169523668e9658b0341d4eb76ca47695c532e7aa27b2` | `20df5c4a18ce214746ed2232fa78a9231bd8db69` |
+
+The patch was extracted from the two diff fences in immutable
+`5515a317070f9a35b51134721acc4c35cf4babcf`. `git apply --check -` and
+`git apply -` both exited 0. No context or substitution variation was used.
+Actual complete `difflib.unified_diff` output equals those archived fences
+exactly; in-memory reversals restore the reviewed whole helper/workflow
+bytes and their `575dfb04...` / `45304da2...` identities.
+
+Actual static checks all passed:
+
+* Python `ast.parse` of the complete edited helper. Its top-level AST
+  differs only in `shared_probe`. Complete raw source bytes of `load`,
+  `rows`, `transition_metadata`, `require_target_metadata`,
+  `require_preserved`, `authenticated_status`, `ordinary_fixture`,
+  `shared_config_refusals` and `main` are identical to the reviewed helper.
+  Imports/constants/entry point and the sample return AST are unchanged.
+* Installed Ruby Psych parsed the complete edited workflow. Each of its
+  three extracted run blocks passed `bash -n`. The complete edited inline
+  controller and bootstrap strings passed `ast.parse`; none was imported
+  or executed. Bootstrap remains 3,678 bytes / SHA-256
+  `27361ddd98813b9e539758ca26a433ea86a1b085b0fd68036a39678ed464f7e2`.
+* Decoding both complete `FIXED` maps proves the sole change is the helper
+  import hash. Normalizing that literal restores complete controller AST
+  equality. All other workflow bytes, executable bodies, product/artifact
+  identities, refusal/transport/resource/ownership/finalization/upload
+  boundaries remain unchanged.
+* All four other fixed imports match both validator bytes and hashes in
+  the actual committed source tree, not merely the working directory:
+  matrix `f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887`;
+  gate `cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5`;
+  encrypted fixture `09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e`;
+  SPDX `ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c`.
+* `python3 scripts/check-docs.py`, `git diff --check`, and the staged
+  `git diff --cached --check` exited 0. Staged source scope was checked
+  before commit; immutable commit scope contains only the two approved paths.
+  No `src`, crates/vendor, manifest/lock or toolchain changes occurred.
+
+This implements exactly the archived public user-create refusal check:
+fresh delegate revision before the complete snapshot, fresh idempotency key,
+non-admin valid creation input/password on stdin, actual CLI exit 4 plus
+HTTP 403 / `access_denied`, and complete ordered `records_v1` byte equality.
+The snapshot target accepts only the fixture's exact loopback connection
+shape and explicit psql host/port/database/user; reads have five-second
+timeouts, no startup files/password prompting and no raw captured values
+in output. All prior E-P-E comparisons and refusal checks remain intact.
+These are source/static assertions; the HTTP/CLI result and snapshot
+equality have not been evaluated in this phase.
+
+No static check failed in this implementation phase. The earlier report
+formatting correction, source baseline hold and historical remote failures
+remain recorded in full. The latest finite remote boundary remains diagnosed
+by source; an earlier missing inner cause remains unknown. No borrowed or
+fresh runtime pass, successful hosted shared gate or A09 closure is claimed.
+
+Root still owns full review, integration/publication and a distinct reviewed
+validator-source commit containing this corrected helper plus all four exact
+imports. The workflow continues to require separate product, workflow and
+validator roles. There is no remote/runtime release here: no helper/module
+main/import/harness, native product, PostgreSQL/HTTP/Cargo, remote query,
+download/dispatch, service/browser, cleanup/deletion, worker/contact or
+task/board/main/push action occurred. No runtime slot was acquired or released.
+Original A09 shared full gate remains open; I02/I10/R05/W02/W05 remain DONE.
