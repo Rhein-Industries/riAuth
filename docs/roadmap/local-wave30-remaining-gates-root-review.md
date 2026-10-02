@@ -89,3 +89,48 @@ and Git whitespace checks. Root did not build or run services, tests or containe
 Publication and task decisions remain root-owned. Closed original W02/W05/M03/M07/
 S04/O03/O06 gates and credential/header/PAM/admission/paused-I/O limitations remain.
 No current whole-CI, physical-capacity, tenant, hardware, release or HA claim is made.
+
+## Root review of the notices, observer, x86 and IdP source batch
+
+2026-10-02. Reviewed staging before this receipt: `0f33265b93fb10c409a37a2d98d6e63a77decd84`.
+Root read the full new IdP C mode and 1,072-line Rust target, independent
+260-line review `7ecc79bde1627f4729c28f918d0d4cf5effe4c9f`, and compiler
+205-line appendix `ac869dff2f931a5bfbaa6d4c7563991f9c7c5f0d`. Root also
+read the 8,279-byte actual wrapper and complete controls/preflight/result/artifact/
+dependency records, independently checking private modes, sizes and hashes.
+Metadata and compiler returned zero; both owned groups were reaped and absent.
+The 40,880-byte arm64 helper hash is
+`951465d744c1bf99e7ed91fc414337d00e960c24a1715977cce0e14535794bff`.
+This establishes C compile/link only. The protected 347-path author baseline
+remains ae893780; the five later I02 portal/API paths differ from b619 as
+disclosed, while selected SAML hooks/manifests are equal. No worker alignment
+merge or stale production import was integrated. A separately released one-filter
+Rust/lifecycle run is pending; no protocol result or I04 closure is inferred.
+
+Root read the full 516-line D01 preparation/cleanup proposal `3822aca11830ab582a955914457fad330285d8a1`,
+including the complete 193-line candidate archive. Only the preparation
+integer changes 30 to 180; original START+840, inclusive900, helper and
+four-refusal limit remain intact. The earlier prepared attempt remains failed,
+helper never started, and its true first-cleanup-to-final-absence 60-second bound
+is unproven. The proposed direct owned Driver kill/end/readback sequence can be
+measured; the MCP schema supplies no hard call cancellation/deadline. A new
+separately released one-attempt fixture is pending. D01/D05 remain open.
+
+The actual unmodified offline notices generator and subsequent check both
+returned zero in the reviewed `41eea6a`/`e4512d2` pair. Root read both private
+logs and the full 8,321-byte observation, checked their hashes/modes, and
+reversed the exact single client-lock header-field change. No manual generated
+edit or full-CI success is credited. Historical b5/b619 jobs still failed at
+notices after their named Rust tests passed.
+
+The shared-helper observer has source-preservation review and all 84 corrected
+memory cases passed; the first zero-case preparation failure is retained.
+It observes fixed finite failure frames and does not repair or retrospectively
+diagnose the earlier PostgreSQL phase_exit. Root native x86 artifact receipt
+and BuildKit registry/source pin are included with their own provenance limits.
+No container or complete shared gate was run by this batch.
+
+Actual root checks at reviewed staging: docs checker exit0, repository hygiene
+exit0 (1,035 tracked files), cumulative whitespace exit0. The batch has no
+production src/crates/Cargo/toolchain change. No board status changed;
+root alone owns subsequent runtime, integration and original acceptance.

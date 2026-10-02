@@ -2872,3 +2872,153 @@ Root reports a separate dispatch of the **unchanged** workflow using published a
 A09 stays **open**. This first run's actual fields remain `official_release: false`, `full_shared_gate: not_certified`, `sample_result: not_run`; earlier `shared_full_gate: not_run` and Linux x86/container/TLS/device/full shared/platform limits remain attached to their dated evidence. No source/workflow/helper/product correction or implementation occurred in this reservation; no artifacts were produced, fetched or executed by this worker. All prior accepted permission/review/receipt/header/PAM/removal/audit/credential/Group/input/non-renewed-60-second protections remain intact. RiWork Cua.ai Driver preference persists; no desktop operation occurred.
 
 Actual report verification: docs checker exit 0; staged tracked-file hygiene exit 0 (964 files); whitespace and append-only scope/prefix proofs exit 0. Published-b619/authored-502/local workflow byte equality, inline controller hash and all six protected helper/import/build-workflow hashes passed; none was edited or executed. The reserved delta contains only this report append, zero deletions and no untracked files. The unavailable root planning receipt and uninspected later run remain explicit limits; this evidence is ready for root review/integration and grants no shared-gate closure.
+
+## Phase N — second shared-run actual transport and helper failure (2026-10-02)
+
+Reservation `wave30_A09_second_shared_actual_receipt` owns only this report append for project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09 `506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing WT `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. The complete parent `70cdfedb70cecba29d517fe6b7f1236dcd6c9733` report remains byte-exact: **224,208 bytes / 2,874 lines**, SHA-256 `64d42fb922933d046eac20085bb47099dfae871cddc77e694e2c349da5fc8ca6`. All prior failures, proposal/correction/source-only materialization and actual historical evidence remain dated and unchanged. Phase M's later-run inspection boundary describes that earlier reservation; this new reservation authorizes only reading the supplied second-run evidence and appending its result.
+
+### Complete local evidence and root dispatch receipts
+
+The worker read the complete public `controller.json`, `helper-redacted.json`, `resources.jsonl` and `cleanup.json` at `/tmp/riauth-wave30-a09-shared-37043196924/riauth-local-shared-arm64-37043196924-1`, plus all **1,452 lines** of the parent `job.log`. The worker also read both exact root receipts at `/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/evidence/`. No absent earlier own-WT receipt is required or substituted; its dated absence finding remains historical. All seven supplied files were read and hashed as local text only:
+
+| Document | Bytes | Local SHA-256 |
+| --- | --- | --- |
+| `controller.json` | 13,487 | `0d5603a712881c3d35e957797b4c89beae06b0047d0977e2fa26195eed817a8f` |
+| `helper-redacted.json` | 70 | `ea7793e91dfdf9fc5f1d08bacad8429368cd69cd2131927da2ccf74b330c8f08` |
+| `resources.jsonl` | 1,755 | `2c9bb4c59fc148b65db40604dc89f09a5267c11db019359bb4778f4bdafe8f28` |
+| `cleanup.json` | 294 | `d3b6f9bc7107fa540408dbf195a74b00919943f8555481969ea6ccf4fdbe35e3` |
+| `parent job.log` | 239,508 | `5a71cf88d168378c819816aed087da10ee633ed6319e0a2641931833c97a0778` |
+| `wave30-a09-shared-distinct-source-dispatch-request.json` | 609 | `0ef781692aec846774eb34ae7ecfe2110ebe65592886e64f964d67cfd357379f` |
+| `wave30-a09-shared-distinct-source-dispatch-receipt.json` | 325 | `f1d69e156017471a00ea5bd40e857b0032136e971eada653504bf05c5132c669` |
+
+The request pins `Rhein-Industries/riAuth`, `.github/workflows/check-local-shared-handoff.yml`, ref `main`, workflow `b619fe25269ccc150e473bbcde47cdb3623ef810`, validator `0a243c9afd9c18d38192145e58485357a2f30b93`, product `9a819317efb3a13fa27cd86f884be2be00898fc0`, tree `a627df2ce21a4d255b8c1914d4f543e32f40f4de`, and prior failed run 37042000805. It was created at `2026-10-02T17:48:18.613384+00:00`. The receipt binds the request SHA-256 `0ef781692aec846774eb34ae7ecfe2110ebe65592886e64f964d67cfd357379f`, records **one invocation**, exit **0**, empty stderr, elapsed **2.4027337501756847 seconds**, completion at `2026-10-02T17:48:21.016839+00:00`, and the returned URL for **run 37043196924**. This is actual root-owned dispatch evidence, not a dispatch performed by this worker.
+
+### Immutable source roles and passed transport/product checks
+
+The actual public controller records run **37043196924**, attempt **1**, repository `Rhein-Industries/riAuth`, event `workflow_dispatch`, workflow/GitHub source SHA **`b619fe25269ccc150e473bbcde47cdb3623ef810`**, selected validator SHA **`0a243c9afd9c18d38192145e58485357a2f30b93`**, and product SHA **`9a819317efb3a13fa27cd86f884be2be00898fc0`**. These three source roles are distinct. Exact local immutable Git reads confirm b619 and 0a243 have the same complete tree **`a627df2ce21a4d255b8c1914d4f543e32f40f4de`**, matching the root request; the local log line **1351** shows checkout of 0a243. The correction was solely root's validator selection, with no workflow/guard/helper/product change.
+
+The complete local, published-b619, selected-validator-0a243 and authored-502 workflow bytes are equal: **73,380 bytes**, SHA-256 `0de9c7be9b380bd32c748a19699739e8ed7dacb2313d1a366bb000f701e15037`. The extracted inline controller SHA-256 equals the actual public result: `b84868ddce285e3c2979318b778bbb4d522ca0d212a1310c59d25c12bbd8f9e3`. The runtime `validator-head` phase passed, and all five recorded validator/import hashes match both the pinned controller's fixed map and selected immutable Git source/local protected files; helper SHA-256 remains **`575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1`**. No helper/import was executed by this worker.
+
+The remote controller records successful metadata transport: **708 bytes**, SHA-256 `b6998d70acdbb05cd1ff098f5caab614a7a432e7b1171a82097b06c12bcbf5f5`, internal transfer elapsed **0.18240001999998867 seconds**. It records successful ZIP transport: **49,177,062 bytes**, SHA-256 **`fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30`**, internal transfer elapsed **1.409651819000004 seconds**. These transfers consumed the fixed prior artifact **11232871527**, `riauth-local-arm64-37016520583-1`, from actual build run/job **37016520583 / 110868629053**, build workflow **`036a392656b4b5070cc86a11d5ca3258b7b868d2`**, product **9a819317efb3a13fa27cd86f884be2be00898fc0** / tree **`1528b61ba463d9262d6252d54174748a176f313b`**. They are remote-run observations retained in public evidence, not a worker download or local outer-ZIP re-hash.
+
+`validated_input_files` exactly equals all **18** pinned entries: **11 logs, two JSON/JSONL documents and five archives**. The map includes original build evidence SHA-256 `fd8280125b38e6afbe13970be4617df8fdbe72e7280a4e6dedb2f2a84e4c9ab1` and original build-resource SHA-256 `f81d488c07a2616e4541926c7d98bf5a87bfb38d97923a5c200cc03bf2a321ad`. The entire map/body equality was checked statically against the unchanged inline fixed JSON. Source flow reached the helper only after exact ZIP member allowlist/hash checks, pinned build evidence/source/input identity, each exact three-member regular tar, native ARM64 ELF verification, and complete binary/license hash validation. No new build/archive was produced by this run.
+
+The remote result's five `validated_products` records also equal the complete fixed product map; all target **`aarch64-unknown-linux-gnu`**. Full observed/pinned archive and binary identities are:
+
+| Edition / binary | Archive bytes / SHA-256 | Binary bytes / SHA-256 |
+| --- | --- | --- |
+| `essentials/riauth` | 13,996,440 / `848758095ccab44919ddc643dd91ced3f77d4acc083be0edf63925fdb2b51981` | 37,242,432 / `0e07481de56505904864e42d63be743b235001e95c44af772654d1185a4f40e8` |
+| `platform/riauth` | 18,375,977 / `9f615ca8fbe3cb1dfd400dea6c6d03a1f2677d7510b0ad6f1541c974a72723e8` | 49,565,208 / `c8c93c0605c83271049dd15794a8960cb3021245f0b439b7de3bbb9d37aec0ef` |
+| `essentials/riauth-maintenance` | 5,946,216 / `e43ed01029baeb7cae4821e125d168d687a7e60ab701afc8f46c9fea442adc3a` | 13,768,992 / `8c6b1d9a8df61aa5c7d16105b609a0e5dc67e9609d35de85fc822c78033a30ac` |
+| `platform/riauth-maintenance` | 6,788,229 / `510c55acf014273a53acb5b87d55b40381b9d00f51ef8b654493a307250f92df` | 16,062,840 / `2b2461adae8101f4e38c2842963bd273403c4c1ad06c6528a45ab1fd12f7bff1` |
+| `client/riauthctl` | 3,641,341 / `d826f26176ababda4fe3930e00a051c0416e2b10c9ec22a1f31ca4f4ef8118da` | 9,185,272 / `7c8831ed42d89a31f3ab2042cd03ab460ef19b991a41b7667b1bfe9c91c04291` |
+
+Declared features remain `essentials` for Essentials server/maintenance, `essentials, platform` for Platform server/maintenance and none for the client. The license records equal the fixed documents: `LICENSE` **1,076 bytes**, SHA-256 `ef79ab7079893da02af81ebb8a57bec27dc7a601d505b228b1d5356a3aa5b1a9`; `THIRD_PARTY_NOTICES.md` **752,651 bytes**, SHA-256 `142c0e5150de9436513d9f6f215c5422b8a3af84d4eb7d0708f155e3e18fce05`. These are verified transport/packaging identities for the prior **LOCAL** ARM products, not official release assets or a shared-application success.
+
+### Actual installed PostgreSQL versions and phase outcomes
+
+All five installed `/usr/lib/postgresql/16/bin` tool-version phases passed, with matching actual **16.15** versions. The unchanged controller requires regular native ELF executables owned by root, executable and not group/other writable before invoking their versions; no apt/setup/build phase exists in this shared workflow. Public tool and version-output hashes are:
+
+| Installed tool | Version | Executable SHA-256 | Version-output SHA-256 |
+| --- | --- | --- | --- |
+| `createdb` | 16.15 | `9355152b744375622d46c6b56efa1d3d893254658851e1a88d24b5d5c7dd4fd1` | `9fbaf5e28c4c16dadbbc7543f7036c16f9c66f514d6fce5b3b04330e6503b2e4` |
+| `initdb` | 16.15 | `ab56cd75bfb8762d7249345c100197c91f6def2f23901925f7454253e449b746` | `ee49d82f1a99b64d3779395fd84356752715b720590be6164f3e76b6c186465a` |
+| `pg_ctl` | 16.15 | `3a938f3075faa8b8ebb537b0c51120b40774b5d843d9134bc2d1f92706a1097f` | `3766407902893ad1c7a44df95f3567bf376dee36aed372a93787740e48df1d0f` |
+| `postgres` | 16.15 | `903bbfe0869a00a0b694b71f9f35b8af760045fc7f725e36f6b18474d510a007` | `d4c9b9bca29f7ce9083c8c785f314216d38a1aeb13e3f352ea9444b77f43b127` |
+| `psql` | 16.15 | `adecc5ad98357e57ce0317f1e2b92c50a9c50aab13cf3571672e9e091b7e2686` | `4f23a24c04e495ea42ba6e2f21615862eb1aeaaa5f7e88fd859831403fd9663d` |
+
+The full public command-phase sequence is preserved here. Command-phase elapsed times include controller capture/polling overhead and differ from the internal transfer elapsed times above:
+
+| Actual phase | Exit | Status | Elapsed seconds |
+| --- | --- | --- | --- |
+| `validator-head` | 0 | passed | 0.201843 |
+| `artifact-metadata` | 0 | passed | 0.401572 |
+| `artifact-zip` | 0 | passed | 1.603148 |
+| `postgres-version-initdb` | 0 | passed | 0.2018 |
+| `postgres-version-pg_ctl` | 0 | passed | 0.201564 |
+| `postgres-version-createdb` | 0 | passed | 0.201663 |
+| `postgres-version-psql` | 0 | passed | 0.201679 |
+| `postgres-version-postgres` | 0 | passed | 0.201534 |
+| `focused-shared-helper` | 1 | failed | 3.205067 |
+
+### Helper invoked; inner exception unavailable
+
+The actual focused helper **WAS invoked** and failed: `first_failure` is exactly `{phase: focused-shared-helper, code: phase_exit, exit_code: 1}`, the helper command row is `status: failed`, elapsed **3.205067 seconds**, and overall `controller_exit_code` is **1**. The raw private capture was removed during successful cleanup; only capture metadata remains: stdout **0 bytes**, SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`; stderr **1,148 bytes**, SHA-256 `bb8d5727bf57759c8fc0876b081d5ab41ade7a33859a54734e79213440b8915d`. That hash/size does not reveal the inner exception or failed helper substep. No exception, product defect, operator assertion outcome or corrective source hunk is inferred from it.
+
+`helper-redacted.json` remains the **70-byte pending placeholder** with `result: not_run`, and controller `sample_result` remains `not_run`. Here those fields mean **no completed, validated helper report**, not that the helper was never invoked. Source inspection shows the command must exit 0 before its private report is read/redacted and `sample_result` changed to `passed`; this command exited 1 first. No complete E→P→E/shared identity/authorization/current-format-3 configuration/refusal acceptance is credited, and no particular inner assertion is labeled passed or failed. Installed PG version success likewise does not prove a completed database/server setup or transition.
+
+### Measured resources and actual cleanup
+
+The complete resource body records **six** samples, from `2026-10-02T17:48:29.476450+00:00` to `2026-10-02T17:48:39.245509+00:00`, spanning **9.769060981999985 seconds** of sampled monotonic time. Minima were **115,575,992,320 bytes** (approximately **107.638531 GiB**) for host root, private scratch and workspace; all three locations share observed device ID **2049**, not three independent capacities. Maximum actual interval was **2.0006397049999975 seconds** (rounded **2.000640**). Count/minima/max-gap and adjacent monotonic differences match the public controller. Actual samples stayed above the unchanged 30-GiB start/10-GiB stop/8-GiB floor and within the unchanged 6-second gap bound. The job log identifies native image `ubuntu-24.04-arm`, image **20260927.135.1**, runner **2.337.0**. No sustained 600-second workload or later-host capacity is inferred from this short observed run.
+
+`cleanup.json` and controller both retain **empty cleanup-failure lists**. Actual cleanup fields are `owned_processes_reaped: 1`, `remaining_owned_processes: 0`, `owned_fixture_removed: true`, `owned_private_scratch_removed: true`, `postgres_pidfile_verified: false`, `postgres_state: no_live_owned_postgres`. The controller's source requires its fixture path/uid/mode/nonce-marker checks before reporting fixture removal; the public result records that removal and one reap. It does not identify the reaped process or retain raw marker/PID proof. The false PostgreSQL PIDfile verification and no-live-owned-PostgreSQL observation at cleanup establish no live owned PostgreSQL observed then; they do **not** prove PostgreSQL never started, a live-cluster shutdown path or a timeout/forced-kill scenario. No unrelated ownership evidence is invented.
+
+Local log lines **1392** and **1402** record run exit **1** and finalize exit **1**. The unchanged finally/finalize source returns the original first-failure result; finalize's 1 preserves the helper `phase_exit` and is **not an additional cleanup failure**. Always-upload retained four fixed sanitized documents: log lines **1424**, **1431**, **1434** record evidence artifact **11243930343**, name **`riauth-local-shared-arm64-37043196924-1`**, upload-reported size **16,120 bytes** and ZIP SHA-256 **`aa76bfe76ec78a21f47c9ad43151f753d482789dc3b9a1e3ddd8cb4f038b1b10`**. This upload-log digest was not independently outer-ZIP re-hashed by the worker; it is distinct from the consumed prior build ZIP and the first-run evidence upload.
+
+### Actual static comparison and remaining gate
+
+Local receipt/request hash binding, full source-role/tree/workflow/controller equality, five protected import hashes, complete 18-member/five-product/license-body equality, phase exits and all six resource samples passed in-memory/source-only checks. One initial comparison checker exited **1** with `ValueError: malformed node or string` because it incorrectly applied `ast.literal_eval` to the fixed initializer's `json.loads` call node. Only that checker was corrected to inspect the exact AST call shape and parse its literal JSON string with standard-library `json.loads`; no controller/helper/import was executed and no source byte changed. The corrected full comparison exited **0**. This is a local static authoring failure, separate from the retained actual remote helper exit 1; no repository checker was changed.
+
+A09 remains **open**, with actual `official_release: false`, `full_shared_gate: not_certified`, `sample_result: not_run`. Passed source/transport/packaging/tool-version/resource observations are credited at their exact pins; they do not close the shared runtime gate or certify Linux x86/container/TLS/device/full shared-gate coverage. All accepted permission/review/receipt/header/PAM/removal/audit/credential/Group/input/non-renewed-60-second contracts remain intact. A later privacy-safe observer source decision is a **separate root-owned reservation**, not a source proposal or runtime grant in this append.
+
+No workflow/helper/product/source change, runner/native/PostgreSQL/helper/Cargo/build execution by this worker, remote query/download/dispatch, new worker/task/worktree/terminal session, contact, cache deletion, main/push/status change occurred. Lane availability supplies no native authorization. Root alone reviews/integrates/publishes and decides later source/runtime work. RiWork Cua.ai Driver preference persists; no desktop operation occurred.
+
+Final actual report validation: docs checker exit 0; tracked-file hygiene exit 0 (964 files); staged/unstaged whitespace, complete 70cdf prefix equality, report-only scope and fixed supplied evidence/source-byte proofs exit 0. Only this append is staged, with zero deletions and no untracked files; both workflows and all five protected helpers/imports remain unchanged. This report commit is evidence only; the actual helper failure and incomplete shared gate remain open for root review.
+
+## Phase O — exact approved failure-source observer, source only (2026-10-02)
+
+Reservation `wave30_A09_failure_source_observer_implementation` owns only [check-local-shared-handoff.yml](../../.github/workflows/check-local-shared-handoff.yml) and this report append for project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09 `506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing WT `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. The entire `bdffad83924804845d2d86795f06605196dbfd41` report remains byte-exact: **240,621 bytes / 2,966 lines**, SHA-256 `707790e665ccb56dbb226851e862cdf0e9ba83f7877f7127f75b7585b0e7bb16`. Both actual failed shared runs, historical artifact/source-only phases and all prior findings remain unchanged. The second helper's inner cause remains **UNKNOWN**.
+
+### Final approved design and immutable source result
+
+Only the final independent report `6ed52573c3b3f0db34583040ce7022807eebcc1e`, path `docs/roadmap/local-wave30-a09-native-helper-failure-review.md`, supplied the candidate. Its complete **19,193 bytes / 292 lines** were read, SHA-256 `06f769cd4894d3a73190eeb8af3629725577219997487ffe672fba48e6cc9843`. Earlier working e847/e73/8c88 designs are superseded and were not applied or treated as approved. Root's review/authorization of final 6ed is the source reservation; no independent memory-validation result or later runtime endorsement is inferred.
+
+The complete own workflow and published `0d090169f20f61f7cb59b685dccb13203526539f` workflow were compared byte for byte with immutable `b619fe25269ccc150e473bbcde47cdb3623ef810`: all equal **73,380 bytes / 1,279 lines**, SHA-256 `0de9c7be9b380bd32c748a19699739e8ed7dacb2313d1a366bb000f701e15037`. No alignment, stale file import, merge/reset or other published-source replacement was needed. Exactly the two final 6ed diff anchors were applied to this verified own baseline.
+
+| Materialized source object | Immutable pin |
+| --- | --- |
+| Source-only commit | **`565b2afc874d5527f16df0c03ad36dc9c0ccc8c5`** |
+| Source commit parent | `bdffad83924804845d2d86795f06605196dbfd41` |
+| Source tree | `faf3e8ed0a91d596d4dfc2ade52d1cdde7ba5210` |
+| Sole source path / mode / Git blob | `.github/workflows/check-local-shared-handoff.yml` / **100644** / `b43653d09de8ce5db3bc3300a5e78457aa0c7b82` |
+| Whole workflow | **77,543 bytes / 1,338 lines**, SHA-256 **`45304da275d3072c2c0de9f6debed1acc335ffa99e0ed6baa15064549bab5574`** |
+| Entire extracted inline controller | **63,045 bytes / 1,262 lines**, SHA-256 **`ffa6d792bcf9170018f6bcd2bbd58d0920444dd2720c5570bdd9de9fadfc0e32`** |
+| Entire bootstrap literal | **3,678 bytes / 69 lines**, SHA-256 **`27361ddd98813b9e539758ca26a433ea86a1b085b0fd68036a39678ed464f7e2`** |
+| Source delta | One existing workflow, exactly **63 additions / four deletions**, no other source or report change at that commit |
+
+These three SHA-256 values match root's final approved candidate exactly. The two replacements are the existing bootstrap `runpy` call wrapper and `Controller.helper` command-refusal wrapper. No third hunk, helper/import edit, success-oracle modification, action/authority/transport/resource/process change or cause fix was made.
+
+### Failure-only projection and preserved behavior
+
+The new bootstrap observer projects only the terminal exception escaping the unchanged `runpy` call. It internally compares full trusted source filenames but emits only six fixed basenames: `bootstrap.py`, `check-local-edition-transition-postgres.py`, `check-exact-edition-matrix.py`, `check-installed-release-gate.py`, `check-local-encrypted-edition-transition.py`, and `spdx_sbom.py`. It examines at most **64 traceback links**, retains the last **eight trusted frames**, and permits only exact integer line numbers **1..4096**. Output contains a fixed exception-class literal from the approved map or `Other`, plus those basename/line frames. It formats no raw exception/text/traceback/path, source line, locals, SQL, protocol, arguments or credential value.
+
+The optional private diagnostic `helper-failure-source.json` is bounded to **2 KiB** and created exclusively with `O_EXCL`/`O_NOFOLLOW`, mode **0600**, under the existing owned private scratch. Successful `SystemExit` with `None`, integer zero or boolean zero is excluded; the original escaping exception/exit is re-raised. Any observer/write error is swallowed solely to preserve the original raise. No helper function, oracle or product byte changes.
+
+The controller reads this optional diagnostic only after the existing child command raises `Refusal`, validates its exact dictionary/frame keys, literal class/basename allowlists, exact types and bounds, and best-effort adds the single optional `helper_failure_source` field to existing `controller.json`. Missing/malformed/unavailable observation does not replace the original `Refusal`, first failure or cleanup. Existing cleanup removes the private diagnostic with owned scratch. The unchanged four public upload names and schemas remain `controller.json`, `resources.jsonl`, `cleanup.json`, `helper-redacted.json`; no raw private stdout/stderr, configuration/database/session/token or new upload path is introduced.
+
+This optional future evidence can locate a trusted terminal escaping exception; it does not promise the original inner cause if an existing helper finally block replaces an earlier error, and may be absent after a kill or failure before runpy. It cannot reconstruct either historical run's removed stderr and grants no retrospective cause/pass attribution. Success, original command arguments/600-second budget, first-failure classification and all five imports are preserved.
+
+### Actual static checks, without executing proposed code
+
+Actual source-only checks passed exit 0:
+
+- The final 6ed diff had exactly two anchors with correct old/new line counts, matching baseline positions and unique replacement occurrences. Reversing both replacements restored **every baseline workflow byte**. Candidate/full controller/bootstrap hashes and actual filesystem/committed Git blob equality matched the approved hashes above.
+- Both entire controller/bootstrap ASTs parsed. Normalizing only the `BOOTSTRAP` assignment value and `Controller.helper` method yielded attribute-free full-controller AST equality with b619; every other top-level object and controller method is unchanged. Separately removing the observer/wrapper restored the complete bootstrap AST, and restoring the sole wrapped helper command restored its complete method AST. The original runpy expression, child command/arguments and all later success/report-validation statements are exact.
+- The bootstrap wrapper catches `BaseException`, preserves its original bare raise, and excludes the approved typed successful SystemExit cases in source. The helper wrapper catches only the existing `Refusal` and re-raises it after best-effort observation. These are AST/source inspections, **not** executed synthetic projection cases; Sol2's separately assigned pure-memory validation is not claimed or awaited.
+- All five full protected helper/import hashes and ASTs match the unchanged fixed map and published 0d090 source. The accepted plaintext format-3/16-rate/authorization sample and unchanged encrypted import remain source-identical. No proposed helper/import/controller/bootstrap/runtime-library/native/main code was executed.
+- Installed **Psych** safely parsed the complete baseline and candidate YAML. Replacing only the first step's changed run string restored equality of the entire parsed YAML documents. **Bash -n** parsed exactly three run blocks; no block ran.
+- Manual-only workflow dispatch and required full validator input, read-only contents/actions permissions, fixed concurrency/no auto-cancel, one `ubuntu-24.04-arm` job/20-minute cap, five-step scope and exact checkout/upload pins remain unchanged. Job env uses the inputs context; the first-step retrieval token uses the github context; actual `RUNNER_TEMP` remains shell-only and `A09_ROOT` is exported through `GITHUB_ENV`; later upload paths use the env context. No invalid job-level runner expression was introduced.
+- The whole-other-body proofs preserve fixed product/build/run/artifact roles, all original ZIP/tar/ELF/license/input/transport allowlists, private capture/file bounds, process/fixture/reap/cleanup logic, 600/1080-second budgets, and unchanged **30-GiB start / 10-GiB stop / 8-GiB floor**, 2-second intended monitor / 6-second maximum actual-gap policy. These are protected source controls, not measured capacity, transport or cleanup for the new observer.
+- Docs checker exit 0, tracked-file hygiene exit 0 (**964 files**), staged/unstaged whitespace and exact source scope/mode checks exit 0. At the source commit the report was still the complete original bdffad bytes, with no other tracked/untracked delta. The committed source left a clean tree before this separate evidence append.
+
+No static check or mutation failed in this implementation phase. Earlier report/native/static authoring failures remain in their dated phases and are not reclassified. No global checker, workflow helper, other guide, existing scripts or protected source was changed.
+
+### Root-owned review and held observer invocation
+
+This is **source-only** implementation of the approved evidence seam. It does not fix or diagnose the unknown second-run inner exception, produce a successful shared report, qualify a release or close A09. Actual runs **37042000805** and **37043196924** remain their exact failures; the latter helper was invoked and failed, with no completed validated report. Prior source/transport/product/tool/resource results remain attached to their historical immutable pins.
+
+Root's separate pure-memory projection validation is assigned to Sol2; no contact, result, endorsement or blocking dependency is inferred. Root also owns x86 host build **37046857550**, which this worker did not query/inspect/execute or claim. Root joins immutable observer source and memory review, integrates/publishes, then separately selects distinct validator/workflow/product roles before any new observer PostgreSQL/helper invocation. All such invocations remain **HELD**; lane availability is not runtime authorization.
+
+No controller/bootstrap/helper/import/main execution, native/PostgreSQL/Cargo/compiler/provider/version/network/query/download/dispatch/runtime, new worker/task/worktree/terminal session, contact, cache deletion, alignment/merge/reset, main/push/status occurred. Only the reserved workflow source and this append changed. All accepted permission/review/receipt/header/PAM/removal/audit/credential/Group/input/non-renewed-60-second protections remain untouched. A09 stays open with `official_release: false`, `full_shared_gate: not_certified` and prior incomplete shared-sample/platform/x86/container/TLS/device limits preserved. RiWork Cua.ai Driver preference persists; no desktop operation occurred.
+
+Final separate report evidence: docs checker exit 0; staged hygiene exit 0 (964 files); whitespace/report-only scope/whole-bdffad-prefix and exact source-565 equality checks exit 0. This evidence append has zero deletions, and the approved source commit stays unchanged; no execution or new shared-gate/capacity/exception-cause credit is granted. Root review/integration/publication, Sol2 memory review and any separately released observer invocation remain outside this reservation.

@@ -410,3 +410,337 @@ Root alone performs independent source review/integration and may release a
 future x86 run. Primary A09 ownership/status and all original shared/container/
 official-artifact evidence limits remain unchanged; Driver-only preference is
 retained.
+
+## Container cohort source design only
+
+Reservation `wave30_A09_container_cohort_source_design`, same project/original
+A09/supporting WT42/primary f2. Root reviewed/staged `3c21136`/`3df43b1`; this
+phase does not publish them or execute the root-owned prospective x86 job.
+The complete `3df43b15f4af90211ed0f8ec1718a6a8e4e7c2c5` report remains an exact
+28,140-byte prefix, SHA256
+`5492e8f7caf839fd888fe0020f1357e7cf06aa7347e17242612ebc78caaf4a89`.
+The original `85b06e3` prefix and every historical outcome remain intact. Only
+this appendix is materialized; all workflows/helpers/recipes below are proposals.
+
+### Original container outcome and source reviewed
+
+The original row requests tested **server, client, container and maintenance**
+artifacts on supported Linux x86-64 and ARM64, with the stated shared
+identity/authorization/configuration distribution gate. Native archives alone
+do not cover containers. One native x86 container cohort would add a concrete
+artifact-family sample; it would not complete both architectures, official
+releases, deployed tenants or the entire shared-state gate.
+
+Fixed source is `b619fe25269ccc150e473bbcde47cdb3623ef810`. Complete Git-body
+reads covered `Dockerfile`, `.dockerignore`, the small Compose template, release
+workflow, packager, focused artifact checker,
+standalone client main and the historical encrypted-transition helper. Installed
+gate installation/metadata/drill/main bodies were reread; its complete body was
+previously reviewed and its fixed-pin bytes match that prior review. Selected
+production bodies, not full-file reviews, covered Core startup/me/logout/audit,
+UserView, edition assessment/token/activation, format3 agreement enforcement,
+rate defaults/resolution/validation, immediate low-risk grants, delegated audit
+authority and client user/group/session/grant/transport handlers. O07's corrected
+diagnostic appendix (lines 626–787) was read fully; the whole 787-line report was
+not reviewed. No current PostgreSQL launcher/helper was inspected or contacted.
+
+Source-backed findings:
+
+- `Dockerfile` builds only `riauth` with locked, explicit edition features from
+  Rust 1.98.1/trixie digest
+  `a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546`.
+  Runtime Debian/trixie-slim digest is
+  `a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a`;
+  runtime dependencies/notices, revision/edition labels, `USER 10001:10001`,
+  `/data` mode 0700 and entrypoint are explicit. No smaller production defect
+  was established. The Dockerfile does not itself bound Cargo jobs.
+- Release/package source produces both images plus five binaries and requires
+  actual release inputs. `check-installed-release-gate.py::verify_assets` refuses
+  an incomplete LOCAL cohort; do not forge v4 release provenance or invoke that
+  entire gate with substitutes. Its `drill` supplies relevant explicit-handoff
+  assertions, not a container or ordinary-user grant equivalence pass.
+- Focused checker image methods exercise routes, agent refusals/state and direct
+  downgrade. They do not test verified standalone-client journeys or all shared
+  identity semantics. Its native tool installer uses mode 0700; a bind-mounted
+  tool owned by a different measured host UID would not be executable by image
+  UID10001. A new adapter must handle **public executable** permissions correctly;
+  no native permission failure is claimed from source alone.
+- `src/config.rs:803` requires HTTP issuers to listen on loopback. The current
+  image route checker uses an HTTPS issuer with raw HTTP requests; that is not
+  evidence of the client's exact discovery-issuer verification. The new native
+  fixture must use host-network loopback with matching HTTP issuer/listener,
+  rather than inventing a TLS waiver or changing issuer verification.
+- `Core::open_store` checks edition compatibility and the complete agreement
+  before migration/recovery/startup writes. Node-security format is **3**; its
+  transition preflight compares issuer, authentication and all 16 effective rate
+  categories. Edition activation rechecks the full config/store-bound token
+  inside the locked transaction and stamps metadata; no adoption is implicit.
+- `live_identity_and_grant` in the encrypted helper creates a real password user
+  and low-risk auditor grant through CLI. Its whole `run`/metadata/probe path is
+  ARM-specific and expects format2: it must not be called or relabeled a current
+  container gate. The new fixture should reuse the public command semantics only.
+- Auditor scope `audit/events` permits `/api/audit?limit=1` through
+  `Core::audit_events`; it does **not** confer the broader `audit` inventory scope.
+  The planned positive permission assertion therefore uses that exact HTTP
+  route, not a claimed successful `riauthctl inventory audit` alias.
+
+Fresh selected byte hashes (SHA256; hashing is distinct from body coverage):
+
+| Fixed-pin body | SHA256 |
+| --- | --- |
+| Dockerfile | `458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb` |
+| Encrypted helper | `09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e` |
+| Edition transition | `301548a213f422e3dfd37914a83f7bf93f8b69ae7f4d0753fc2dbd61295201cb` |
+| Node-security | `979f1d22a4835bce97866e302dc2a8a21df4f0d383d4bd1e6960b6a5d7a3bcb7` |
+| Core | `13da3f54b28a130cd73e5380253248c650f110b4c4bfb563c88382f55cc74304` |
+| Client main | `e75f26eedb1b740d6cbeacf32663f01fb5b802330be6a612eecfca35f29a7da6` |
+| O07 report | `202589fec95f51e4de1724ecde6d887a0732518edfb35e073bb099a60ddd36b3` |
+
+Release/packager/focused/installed checker hashes still match those recorded
+earlier. Additional production/client body hashes were computed, not executions.
+
+### ONE smallest prospective cohort and source claim
+
+Propose **two new paths only** after root reservation:
+`.github/workflows/check-local-container-cohort.yml` (one manual native Linux
+x86-64 job) and `scripts/check-local-container-cohort.py` (bounded transport,
+image build/archive and container/CLI fixture adapter). Neither exists at the
+fixed pin. Leave Dockerfile, release/package/checkers, native-artifact workflow,
+shared-state workflow/helpers, deployment templates and primary A09 report intact.
+
+Use the root's eventual **actual, reviewed five-native-x86-artifact cohort** as
+input, rather than rebuilding those five binaries or consuming old ARM products
+as x86/current source. Two full source-built LOCAL images use exactly that
+cohort's product source. Runtime inputs are full product SHA, full immutable
+root-receipt commit and narrowly allowed x86 receipt path. Source/workflow SHA
+and helper hash are separately recorded from the published controller revision.
+The actual native receipt/run/artifact IDs, product/workflow pins and hashes
+must come from that future accepted execution; they are not available here.
+
+Controller requirements before any image build:
+
+1. Native Linux `x86_64` / runner `X64` / GitHub-hosted `ubuntu-24.04`, manual
+   branch dispatch, exact reviewed controller/product commits, clean product
+   tree and input/recipe hashes. Local native Docker socket only; no Desktop,
+   remote daemon, emulation, global daemon/context change or same-host O07 retry.
+2. Trusted immutable root receipt with exact project/schema, native architecture,
+   five products/editions/features/triple and matching product SHA/tree. Actual
+   GitHub metadata must match its repository/run/attempt/artifact/name/digest;
+   workflow-run head matches **build workflow SHA**, not product SHA. Expired,
+   mismatched or missing inputs are refused, never replaced with newest artifacts.
+3. Owned capped download of the one exact native artifact. Hash retained outer
+   ZIP bytes against its declared digest; reject mismatch, do not silently use
+   another transport. Strict ZIP member/path/type/size checks and exact five
+   archive/member/license/notices hashes; extracted ELF64 little-endian machine
+   62. Native receipt/evidence hashes and identities remain separate from the
+   new container job. Proposed transport caps: 512 MiB compressed/expanded;
+   root must compare actual x86 sizes before release, not assume ARM sizing.
+4. Private 0700 input parent; public binaries mode 0755 when mounted read-only
+   into UID10001 containers. Credentials/config/keys/sessions remain 0600 and
+   unlogged. Validate native capabilities/versions/features before fixture use;
+   no USB/default/test-support/fuzz feature or Store probe is added.
+
+The one new job has `contents: read`, narrowly necessary `actions: read` for
+same-repository artifact transport, no write/id-token/attestation scope, no
+automatic trigger/matrix/cancel, and the legacy native-artifact serialization
+key. Root's ledger also serializes this with the shared-state job; no modification
+of its workflow or ownership is proposed. The job remains 150 minutes, with an
+owned controller deadline of 7200 s and fixture deadline of 1200 s.
+
+### Image recipe, product identity and exact future commands
+
+The original Dockerfile stays unchanged. Generate one **private resource-only
+validation recipe** from the checked product Dockerfile: require exactly one
+existing edition-selected Cargo command, and prefix that command's environment:
+
+```dockerfile
+    && CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target \
+       CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+       CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_RELEASE_DEBUG=0 \
+       cargo build --release --locked --no-default-features --features "$RIAUTH_EDITION" --bin riauth
+```
+
+No other recipe byte changes: base digests, apt packages, source COPY set,
+edition validation, release thin LTO/strip, output COPY, runtime labels/dependencies,
+UID, directory permissions and entrypoint remain. Reversing the exact prefix
+must reconstruct the pinned Dockerfile. Record original/derived recipe hashes
+and the explicit resource-only variant in LOCAL provenance; do not claim the
+canonical unmodified Docker build command was executed. Source pin denotes
+checked product code; recipe/controller pins are separate. Native and image
+server hashes can differ because Ubuntu native and Debian image build baselines
+differ; compare each to its own recorded bytes, not falsely require equality.
+The existing `.dockerignore` whitelist/private-material exclusions remain;
+receipt downloads, logs, Docker configuration and fixture secrets live outside
+the product context. No GitHub transport credential enters a build argument,
+context or application environment.
+
+Use one fresh private Buildx config and a dedicated builder, never the shared
+default builder. Before implementation/release, root must supply a reviewed
+content-addressed BuildKit image reference: **none is pinned in these source
+bodies and no digest was guessed or fetched here**. Availability/driver controls
+and actual native image architecture need future measurement. This tool pin is
+a concrete ownership/cancellation prerequisite, not a new release/device gate.
+Builder creation must provide an exclusive name and retain its actual container/
+volume creation identity; refuse existing resources or unverifiable ownership.
+Root reviews those controls before permitting any privileged builder lifecycle.
+Application containers never inherit builder privileges/socket/credentials.
+
+Prospective argv (all variables are controller-owned/pinned, not free shell code):
+
+```bash
+docker buildx create --name "$BUILDER" --driver docker-container --driver-opt "image=$REVIEWED_BUILDKIT_REF"
+docker buildx build --builder "$BUILDER" --platform linux/amd64 --load --progress plain \
+  --file "$A09_ROOT/Dockerfile.serial" --build-arg RIAUTH_EDITION=essentials \
+  --build-arg "RIAUTH_COMMIT=$SOURCE_SHA" --label "org.riauth.local.owner=$OWNER" \
+  --tag "$ESSENTIALS_TAG" --iidfile "$A09_ROOT/essentials.iid" "$PRODUCT_CONTEXT"
+# Identical second argv with edition=platform and its own tag/iidfile.
+docker image save "$ESSENTIALS_TAG"
+# Stream into owned gzip mtime=0 output; repeat for Platform, then hash/validate.
+docker image rm --no-prune "$ESSENTIALS_TAG" "$PLATFORM_TAG"
+docker image load --input "$A09_ROOT/evidence/local-essentials-x86_64.docker.tar.gz"
+docker image load --input "$A09_ROOT/evidence/local-platform-x86_64.docker.tar.gz"
+```
+
+Each build is sequential and capped at 1800 s; metadata/pull/setup/save/load
+operations have explicit shorter bounds under the same sampler. Image archive
+cap is 2 GiB each. Validate tar manifests/member paths and exact owned tags/IDs
+before load; verify the loaded identities equal the saved images. Record actual
+image config IDs, archive SHA256/size, container server SHA256/ELF, exact source/
+edition/owner labels, Linux/amd64, `Config.User=10001:10001`, runtime notices and
+capability target/features/version. Source base pins and actual resolved base
+identities/toolchain/dependency observations are distinct fields. LOCAL image
+IDs are not registry digests; no tag, push, official provenance or attestation.
+
+### One bounded container/standalone-client/maintenance gate
+
+All application/tool containers use explicit UID/GID10001, read-only root,
+no-new-privileges, dropped capabilities and bounded `/tmp` tmpfs. Each fixture
+has two owned named volumes: private configuration/key and shared data. No root
+application, root ownership repair or permission relaxation after a refusal.
+A fresh named volume must first report `/data` UID/GID10001 and mode0700 through
+an unprivileged numeric stat probe, before keygen/init/credentials. Seed/probe
+each new volume at the image's existing `/data` mount, then mount those same
+recorded volumes at `/config` and `/data`. Serving mounts configuration/key
+read-only and data read-write, as the small template separates them; offline
+setup mounts configuration read-write only for the explicit owner tool.
+Missing/unusable mapping stops the fixture. Named-volume copy-up is a source
+expectation, not an actual native pass here.
+
+Use native **host network** for the serving container with an unused random
+`127.0.0.1:PORT`, and that exact HTTP issuer/listener in the generated config.
+No fixed9000, public interface, bridge fallback or Docker Desktop opt-in. This
+is loopback fixture scope, not network isolation or public TLS/deployment proof.
+Offline tools can use network-none. Example maintenance argv retains the image's
+default user and mounts only the exact public tool read-only:
+
+```bash
+docker run --rm --user 10001:10001 --network none --read-only \
+  --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,nosuid,noexec,size=16m \
+  --mount "type=volume,src=$CONFIG_VOLUME,dst=/config" \
+  --mount "type=volume,src=$DATA_VOLUME,dst=/data" \
+  --mount "type=bind,src=$ESSENTIALS_MAINTENANCE,dst=/cohort/riauth-maintenance,readonly" \
+  --entrypoint /cohort/riauth-maintenance "$ESSENTIALS_IMAGE_ID" \
+  --config /config/riauth.toml --json --non-interactive init \
+  --issuer "$BASE" --listen "127.0.0.1:$PORT" --data-dir /data \
+  --database-key-file /config/database.key --password-stdin
+```
+
+First keygen uses the same unprivileged tool to create `/config/database.key`;
+application init is first-only. Check actual config/key/store ownership/private
+modes. The image's entrypoint metadata is unchanged. For this separated config
+layout, serving explicitly uses the same `/usr/local/bin/riauth` with
+`--config /config/riauth.toml serve`, matching the small template's supported
+entrypoint adaptation; no binary/wrapper/authentication bypass. Server startup
+uses host network, read-only config/key mount, the same controls/data volume
+and exclusive recorded name/cidfile. Native `riauthctl`
+runs on the host with explicit `--server "$BASE"`, private session files,
+`--json --non-interactive --request-timeout 30`; secrets enter stdin only.
+Passwords, session tokens and transition-token argv values are never logged.
+
+| Planned phase | Exact success/refusal assertions, not executed results |
+| --- | --- |
+| Essentials baseline | Loaded Essentials image readiness; exact discovery issuer and unchanged JWKS. Base client password login/whoami. Administrator creates one non-admin password user, one unprotected local group/membership, and low-risk `auditor`/`audit/events` grant with fresh revision/request keys. Client verifies user/group/grants; delegate password login/whoami; direct `/api/audit?limit=1` is200; delegate attempted user-create is403/client exit4, with no created child. |
+| Revocation sample | Copy one delegate session privately before logout; reuse through its issuer-bound session file and require401/client exit3 before and after each handoff. Revoke a second delegate session while Platform is active and require both remain refused after return. Fresh password login remains possible. Never omit a refusal from the report or convert local missing-file failure into a server401. |
+| Offline config refusals | Stop/reap the owning app first. Exact one-field private config variants for issuer, `session_ttl`, and `rate_limits.login` must parse with only that intended change. Platform maintenance plan rejects them with exit5 and the corresponding issuer/node-security blocker; source-edition image startup also rejects them. Generic invalid TOML is not a passed policy assertion. Original config stays byte-identical; no agreement record/adoption/upgrade bypass. |
+| Explicit E→P→E | Baseline target plan is ready. One Platform maintenance tool calls existing plan/activate with the exact private token per direction; direct opposite-build open before activation is refused. Start the corresponding loaded image on the same volume/config/issuer; repeat fresh password login, discovery/JWKS, complete UserView/groups, exact low-risk grants and allow/deny/revoked-session assertions. All12 UserView fields remain compared; only top-level session_id/expires_at vary for fresh sessions. |
+| Credential/config and edition boundaries | Both maintenance versions match the observed server version; Essentials does keygen/init, Platform does both handoffs. Format3 agreement enforcement runs at each startup/plan, preserving the same config's authentication and 16 rate settings. A second owned Platform-only fixture creates the existing agent-state sample with unchanged route-specific If-Match/request headers; Essentials direct/preflight downgrade must refuse that state. No privileged grant/group review or source-derived Group materialization is bypassed. |
+
+The Platform-only refusal fixture is part of this single bounded gate, kept
+separate so it cannot contaminate the clean return fixture. Every call goes
+through existing public CLI/HTTP/Core methods. No raw store mutation, new probe,
+patched callback, credential import/adoption, API alias or helper privilege
+bypass. Stable snapshots remain private; public evidence reports statuses,
+counts and product hashes, not passwords/tokens/keys/opaque identity values.
+This samples container-shared identity/authority/configuration behavior; it does
+not assert all credential kinds or complete raw-row/PG/encrypted cross-build
+coverage. Existing shared-gate workers retain that separate scope.
+Private candidate configs are created as UID10001 in the owned configuration
+volume while the service is stopped, using an exclusive fixed-path stdin writer
+with umask077; they are not host-owned 0600 files made readable by weakening
+permissions. Original config/key are never overwritten. Transition tokens stay
+in private controller memory; required CLI token argv is redacted in evidence.
+
+### Ownership/resources, O07 retention and prerequisites
+
+One private run root/config/log/evidence directory (0700/0600, exclusive paths),
+empty private Docker client configuration with no operator registry credentials,
+fixed local Unix daemon, fresh dedicated builder, owner-labeled images/networks/
+volumes/containers and exact creation records. Docker daemon children do not
+belong to the CLI process group: cleanup must explicitly cancel/remove the
+owned builder and stop/remove owned application/tool containers as well as
+TERM/KILL/join CLI groups. Record resources before mutable operations; on a
+lost create response resolve only the exclusive owned name/labels/creation
+identity. If ownership cannot be proven, stop and report cleanup blocked, never
+remove a guessed or shared resource. No global prune, shared cache deletion,
+daemon restart/settings or root application fallback.
+
+At launch and before download/builder/build/fixture phases, require measured
+30 GiB free on host/workspace/private and actual Docker-storage filesystems.
+Sample all every nominal2s; below10 GiB stop only owned work and retain8 GiB
+floor margin. Cap command logs8 MiB and evidence/resource streams; sensitive
+CLI/HTTP/application output is discarded after in-memory typed assertions,
+not raw-logged. Build/dependency logs contain no input credentials. Finally stop/
+reap/join, recheck exact owned inventories, remove only owned disposable state,
+and retain capped redacted receipt/image/archive/hash/failure/cleanup evidence.
+Sampling/cancellation are not hard quotas; unknown peak/shared drain can refuse
+the run. Empty cleanup claims require actual inventories, not process exit alone.
+
+The O07 corrected run remains **EXIT1**, diagnostic child_rc0, UID/GID0:0,
+mode448/0700, `uid_mapping_unsupported`, one image-provenance check and cleanup
+reported okay. Evidence1878 bytes SHA256
+`351349aa31e383fabd76a13dce188019437c9174af56d92a9824888abdba8af9` is retained;
+the earlier1745-byte failure and its classifier limitation remain separate.
+No credentials/service/host-visibility/TLS/HA checks were reached. This native
+hosted proposal does not repair, retry or retrospectively pass that host mapping.
+
+Measured here: immutable source/evidence bytes and those **recorded** historical
+outcomes. Unmeasured prerequisites: root-approved new source/recipe/transport/
+controller review, actual accepted native-x86 receipt and size/digest identity,
+reviewed BuildKit tool-image pin, allocated native Docker/buildx/host-network/
+volume behavior and actual≥30 GiB capacity/peak/durations. Historical ARM104.45
+GiB minimum and O07 Desktop11.04 GiB free are not new-cohort capacity. No current
+image IDs, archives, successful gate counts or new GitHub identities are invented.
+Root alone can reserve implementation and eventual serialized runtime; no A09
+status recommendation follows from design. No full release/registry/tag/
+attestation, every-host/browser/device/tenant gate is added.
+
+### Actual checks for this appendix
+
+Clean existing HEAD `3df43b1`; immutable Git body/selected-span/evidence reads and
+SHA256 comparisons only. Both proposed new paths are absent at `b619`; no recipe,
+workflow or helper was materialized. Prefix/scope/Markdown/whitespace checks are
+performed before the report-only commit; no parser or fixture test is claimed
+for unimplemented source. Both original85 and complete3df byte-prefix checks,
+sole-report scope, unchanged architecture-workflow bytes, Markdown fence/link/
+whitespace hygiene and `git diff --check` passed. `python3 scripts/check-docs.py`
+exited **1** for the same five pre-existing `target-wave29-source`,
+`target-wave28-scim`, `target-wave28-portal`, `target-wave28`, `target-wave27`
+directories, with no Markdown-link errors; no checker/directory edits or deletion.
+One append-edit patch used an incorrect literal (`different` for `differ`) and
+was refused before any mutation/check execution; correcting the exact context
+applied it, with both prefixes subsequently proved intact. This was a local
+documentation edit failure, not a fixture/Docker run. No Docker/native/tool-version/Cargo/build/pull/query/
+download/dispatch/service/browser/network, worker contact, new task/worktree/
+managed shell, merge/reset/main/push/status or current PG overlap occurred.
+Driver-only desktop preference and all receipt/header/PAM/Group/60s contracts
+remain unchanged.
