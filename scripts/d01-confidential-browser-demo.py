@@ -232,6 +232,7 @@ class Demo:
         self.attempted = self.done = False
         self.failure = None
         self.request_invalid_reason = None
+        self.preflow_authorization_refusals = 0
 
     def invoke(self, stage, seconds, function, *args, **kwargs):
         self.stage = stage
@@ -379,6 +380,10 @@ class DemoServer(http.server.HTTPServer):
         self.demo.failure, self.demo.done = "unexpected_failure", True
 
 
+class PreflowAuthorizationRefusal(Exception):
+    pass
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     timeout = 5
     protocol_version = "HTTP/1.0"
@@ -420,6 +425,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.rfile = original
                 self.close_connection = True
                 self.require_request(self.headers.get_all("Host") == [AUTHORITY], "host")
+                if (self.headers.get_all("Authorization") is not None
+                        and demo.attempted is False and demo.pending is None
+                        and demo.cookie is None and demo.subject is None
+                        and demo.preflow_authorization_refusals < 4):
+                    self.record_request_reason("authorization")
+                    self.require_request(self.headers.get_all("Transfer-Encoding") is None, "transfer_encoding")
+                    self.require_request(self.headers.get_all("Expect") is None, "expect")
+                    self.require_request(self.headers.get_all("Content-Length") in (None, ["0"]), "content_length")
+                    target = urllib.parse.urlsplit(self.path)
+                    self.require_request(not target.scheme, "target_scheme")
+                    self.require_request(not target.netloc, "target_netloc")
+                    self.require_request(not target.fragment, "target_fragment")
+                    demo.preflow_authorization_refusals += 1
+                    raise PreflowAuthorizationRefusal
                 self.require_request(self.headers.get_all("Authorization") is None, "authorization")
                 self.require_request(self.headers.get_all("Transfer-Encoding") is None, "transfer_encoding")
                 self.require_request(self.headers.get_all("Expect") is None, "expect")
@@ -442,6 +461,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 self.record_request_reason("method")
                 raise Failure("request_invalid")
+        except PreflowAuthorizationRefusal:
+            if demo.preflow_authorization_refusals == 4:
+                demo.failure, demo.done = "request_invalid", True
+            self.reply(403, "Local demo could not complete this request.")
         except Failure as failure:
             demo.failure, demo.done = failure.tag, True
             self.reply(400, "Local demo could not complete this request.")
@@ -533,7 +556,7 @@ def main():
     stage = "arguments"
     record = {"schema": "riauth.d01-confidential-browser/v1", "result": "failed",
               "failure_stage": None, "failure_tag": None, "checks": {}, "cleanup": {},
-              "request_invalid_reason": None,
+              "request_invalid_reason": None, "preflow_authorization_refusals": 0,
               "source": {"verifier_commit": VERIFIER_COMMIT, "verifier_blob": VERIFIER_BLOB,
                          "verifier_expected_sha256": VERIFIER_SHA256},
               "provider": None,
@@ -621,6 +644,7 @@ def main():
             record["cleanup"]["connection_closed"] = server.active is None
         if demo is not None:
             record["request_invalid_reason"] = demo.request_invalid_reason
+            record["preflow_authorization_refusals"] = demo.preflow_authorization_refusals
             try:
                 demo.clear()
                 record["cleanup"]["private_references_cleared"] = True
