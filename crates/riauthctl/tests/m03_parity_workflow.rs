@@ -367,7 +367,7 @@ fn review_activate_and_revoke_send_exact_bodies_with_both_headers() {
     let revoked = data(&run(
         &server.origin,
         &session,
-        &["workflow", "revoke", WORKFLOW],
+        &["workflow", "revoke", WORKFLOW, "--approval-id", "ap-1"],
         None,
     ));
     assert_eq!(revoked["workflow_id"], WORKFLOW);
@@ -387,7 +387,7 @@ fn review_activate_and_revoke_send_exact_bodies_with_both_headers() {
         ("/api/workflow-approvals/activate", json!({"plan_id": PLAN})),
         (
             "/api/workflow-approvals/revoke",
-            json!({"workflow_id": WORKFLOW}),
+            json!({"workflow_id": WORKFLOW, "approval_id": "ap-1"}),
         ),
     ];
     let mut keys = std::collections::HashSet::new();
@@ -468,8 +468,24 @@ fn a_response_that_names_another_id_or_decision_is_refused() {
             "Activation response does not match the requested plan_id",
         ),
         (
-            vec!["workflow", "revoke", "wrong-workflow"],
+            vec![
+                "workflow",
+                "revoke",
+                "wrong-workflow",
+                "--approval-id",
+                "ap-1",
+            ],
             "Revocation response does not match the requested workflow_id",
+        ),
+        (
+            vec![
+                "workflow",
+                "revoke",
+                "wf",
+                "--approval-id",
+                "another-approval",
+            ],
+            "Revocation response does not match the requested approval_id",
         ),
     ] {
         let output = run(&server.origin, &session, &args, None);
@@ -523,15 +539,19 @@ fn bad_ids_and_decisions_are_refused_before_any_request() {
         vec!["workflow", "activate", ""],
         vec!["workflow", "activate", long.as_str()],
         vec!["workflow", "activate", control],
-        vec!["workflow", "revoke", ""],
-        vec!["workflow", "revoke", long.as_str()],
-        vec!["workflow", "revoke", control],
+        vec!["workflow", "revoke", "", "--approval-id", "ap-1"],
+        vec!["workflow", "revoke", long.as_str(), "--approval-id", "ap-1"],
+        vec!["workflow", "revoke", control, "--approval-id", "ap-1"],
+        vec!["workflow", "revoke", "wf", "--approval-id", ""],
+        vec!["workflow", "revoke", "wf", "--approval-id", long.as_str()],
+        vec!["workflow", "revoke", "wf", "--approval-id", control],
         // The decision is one of two words; a missing or other word never leaves the process.
         vec!["workflow", "review", "plan-1"],
         vec!["workflow", "review", "plan-1", "--decision", "maybe"],
         vec!["workflow", "review", "plan-1", "--decision", "APPROVE"],
         vec!["workflow", "activate"],
         vec!["workflow", "revoke"],
+        vec!["workflow", "revoke", "wf"],
     ] {
         let output = run(&server.origin, &session, &args, None);
         assert!(!output.status.success(), "{args:?} must fail");
@@ -556,10 +576,13 @@ fn the_longest_allowed_id_is_sent_unchanged() {
         data(&run(
             &server.origin,
             &session,
-            &["workflow", "revoke", &longest],
+            &["workflow", "revoke", &longest, "--approval-id", "ap-1"],
             None
         ))["workflow_id"],
         longest.as_str()
     );
-    assert_eq!(server.writes()[0].json(), json!({"workflow_id": longest}));
+    assert_eq!(
+        server.writes()[0].json(),
+        json!({"workflow_id": longest, "approval_id": "ap-1"})
+    );
 }

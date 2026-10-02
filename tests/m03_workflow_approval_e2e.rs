@@ -346,6 +346,8 @@ fn riauthctl_reviews_activates_and_revokes_a_workflow_through_three_administrato
             "workflow",
             "revoke",
             "approved-password",
+            "--approval-id",
+            activated["approval_id"].as_str().unwrap(),
         ],
     ));
     assert!(reused.contains("409"), "{reused}");
@@ -359,21 +361,35 @@ fn riauthctl_reviews_activates_and_revokes_a_workflow_through_three_administrato
             "workflow",
             "revoke",
             "approved-password",
+            "--approval-id",
+            activated["approval_id"].as_str().unwrap(),
         ],
     ));
     assert!(stale.contains("409"), "{stale}");
     let revoked = success(ctl_as(
         "executor",
-        &["workflow", "revoke", "approved-password"],
+        &[
+            "workflow",
+            "revoke",
+            "approved-password",
+            "--approval-id",
+            activated["approval_id"].as_str().unwrap(),
+        ],
     ));
     assert_eq!(revoked["workflow_id"], "approved-password", "{revoked}");
     assert_eq!(revoked["selection"], "revoked");
-    // Revoked once; a second revocation has nothing to retire.
-    let again = failure(ctl_as(
+    // An eligible new-key retry returns the same completed retirement.
+    let again = success(ctl_as(
         "executor",
-        &["workflow", "revoke", "approved-password"],
+        &[
+            "workflow",
+            "revoke",
+            "approved-password",
+            "--approval-id",
+            activated["approval_id"].as_str().unwrap(),
+        ],
     ));
-    assert!(again.contains("409"), "{again}");
+    assert_eq!(again, revoked);
 
     // The server CLI reads one audit record per committed decision: the
     // retried activation and every refusal left none.

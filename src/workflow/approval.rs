@@ -138,15 +138,12 @@ pub(crate) enum Activation {
 impl Core {
     /// Record one administrator's approval or refusal of the author's stored plan.
     pub fn review_workflow(&self, token: &str, plan_id: &str, decision: &str) -> Result<Value> {
-        bounded_id(plan_id, "plan_id")?;
-        if decision != "approve" && decision != "refuse" {
-            return Err(Error::bad(
-                "Workflow review decision must approve or refuse",
-            ));
-        }
-        let decision = decision.to_owned();
-        self.store
-            .write(|tx| review_in(self, tx, token, plan_id, &decision))
+        retry_command(
+            self,
+            token,
+            RetryCommand::Review { plan_id, decision },
+            RetryHeaders::Optional,
+        )
     }
 
     /// Commit the reviewed definition and its immutable approval as the selection.
@@ -160,11 +157,28 @@ impl Core {
         })?
     }
 
-    /// Retire the current approval. The approval row stays. Open pinned runs seal.
-    pub fn revoke_workflow_approval(&self, token: &str, workflow_id: &str) -> Result<Value> {
+    /// Untargeted retirement is ambiguous after replacement. Supply an approval ID.
+    pub fn revoke_workflow_approval(&self, _token: &str, workflow_id: &str) -> Result<Value> {
         bounded_id(workflow_id, "workflow_id")?;
-        self.store
-            .write(|tx| revoke_in(self, tx, token, workflow_id))
+        Err(Error::bad("Workflow revocation requires approval_id"))
+    }
+
+    /// Retire exactly this immutable approval, or validate its completed retirement.
+    pub fn revoke_workflow_approval_targeted(
+        &self,
+        token: &str,
+        workflow_id: &str,
+        approval_id: &str,
+    ) -> Result<Value> {
+        retry_command(
+            self,
+            token,
+            RetryCommand::Revoke {
+                workflow_id,
+                approval_id,
+            },
+            RetryHeaders::Optional,
+        )
     }
 
     /// Definition a configured start must execute. Not for use inside `store.write`.
@@ -172,6 +186,123 @@ impl Core {
         self.store
             .read(|tx| configured_definition_in(self, tx, workflow))
     }
+}
+
+/// Workflow-specific attempt policy; browser/Core keep optional context headers.
+#[derive(Clone, Copy)]
+pub(crate) enum RetryHeaders {
+    Optional,
+    Required,
+}
+
+pub(crate) enum RetryCommand<'a> {
+    Review {
+        plan_id: &'a str,
+        decision: &'a str,
+    },
+    Revoke {
+        workflow_id: &'a str,
+        approval_id: &'a str,
+    },
+}
+
+enum RetryOutcome {
+    Applied(Value),
+    Replayed(Value),
+}
+
+/// One writer for authority, receipt validation, live domain outcome and receipt save.
+/// Unlike generic management receipts, a workflow receipt never supplies the outcome.
+pub(crate) fn retry_command(
+    core: &Core,
+    token: &str,
+    command: RetryCommand<'_>,
+    headers: RetryHeaders,
+) -> Result<Value> {
+    match &command {
+        RetryCommand::Review { plan_id, decision } => {
+            bounded_id(plan_id, "plan_id")?;
+            if *decision != "approve" && *decision != "refuse" {
+                return Err(Error::bad(
+                    "Workflow review decision must approve or refuse",
+                ));
+            }
+        }
+        RetryCommand::Revoke {
+            workflow_id,
+            approval_id,
+        } => {
+            bounded_id(workflow_id, "workflow_id")?;
+            bounded_id(approval_id, "approval_id")?;
+        }
+    }
+    core.store.write(|tx| {
+        let actor = core.principal(tx, token)?;
+        if actor.agent || actor.delegated {
+            return Err(Error::forbidden());
+        }
+        require_admin(tx, &actor.id)?;
+        let context = crate::context::current();
+        let key = context.as_ref().and_then(|c| c.idempotency_key.as_ref());
+        let revision = context.as_ref().and_then(|c| c.revision);
+        if matches!(headers, RetryHeaders::Required) && (key.is_none() || revision.is_none()) {
+            return Err(Error::new(
+                axum::http::StatusCode::PRECONDITION_REQUIRED,
+                "precondition_required",
+                "Workflow approval requires Idempotency-Key and If-Match",
+            ));
+        }
+        let receipt_key = key.map(|key| digest(&format!("{}\0{key}", actor.id)));
+        let permissions = crate::context::management_permissions(tx, &actor)?;
+        let matched = if let Some(key) = &receipt_key {
+            crate::context::replay_receipt(
+                tx,
+                key,
+                &context.as_ref().unwrap().fingerprint,
+                &permissions,
+            )?
+            .is_some()
+        } else {
+            false
+        };
+        let first_guard = |tx: &Tx<'_>| {
+            if let Some(revision) = revision
+                && tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision
+            {
+                return Err(Error::conflict("Configuration revision changed"));
+            }
+            Ok(())
+        };
+        let outcome = match command {
+            RetryCommand::Review { plan_id, decision } => {
+                review_or_replay_in(core, tx, token, plan_id, decision, first_guard)?
+            }
+            RetryCommand::Revoke {
+                workflow_id,
+                approval_id,
+            } => revoke_or_replay_in(core, tx, token, workflow_id, approval_id, first_guard)?,
+        };
+        match outcome {
+            RetryOutcome::Applied(view) => {
+                if matched {
+                    return Err(Error::conflict(
+                        "Idempotency receipt exists for a workflow operation that is not recorded",
+                    ));
+                }
+                if let Some(key) = receipt_key {
+                    crate::context::save_receipt(
+                        tx,
+                        &key,
+                        context.unwrap().fingerprint,
+                        permissions,
+                        &view,
+                    )?;
+                }
+                Ok(view)
+            }
+            RetryOutcome::Replayed(view) => Ok(view),
+        }
+    })
 }
 
 /// Revalidate every replay inside the same writer as the caller's receipt logic.
@@ -349,16 +480,20 @@ pub(crate) fn configured_definition_in(
         .ok_or_else(|| Error::missing("Configured workflow is unavailable"))
 }
 
-pub(crate) fn review_in(
+fn review_or_replay_in(
     core: &Core,
     tx: &Tx<'_>,
     token: &str,
     plan_id: &str,
     decision: &str,
-) -> Result<Value> {
+    first_guard: impl FnOnce(&Tx<'_>) -> Result<()>,
+) -> Result<RetryOutcome> {
     let caller = caller(core, tx, token)?;
     let (plan, author_id) = open_plan(tx, plan_id)?;
     require_plan_content(&plan)?;
+    if plan.plan_id != plan_id {
+        return Err(Error::conflict("Workflow plan identity changed"));
+    }
     let author = require_admin(tx, &author_id)?;
     if caller.id == author.id {
         return Err(Error::conflict(
@@ -374,22 +509,30 @@ pub(crate) fn review_in(
     config_agrees(core, &definition)?;
     let fingerprint = definition.fingerprint();
     let dependencies = dependency_digest(core, tx, &definition)?;
+    let reviewer_authority = authority_digest(tx, &caller)?;
     if let Some(existing) = tx.get::<WorkflowReview>(REVIEWS, plan_id)? {
-        if existing.reviewer == caller.id
+        if existing.schema_version == REVIEW_SCHEMA
+            && existing.plan_id == plan_id
+            && existing.workflow_id == definition.id.as_str()
+            && existing.revision == definition.revision
+            && existing.author == author.id
+            && existing.author_authority == author_authority
+            && existing.reviewer_authority == reviewer_authority
+            && existing.reviewer == caller.id
             && existing.decision == decision
             && existing.plan_hash == plan.hash
             && existing.fingerprint == fingerprint
             && existing.dependencies == dependencies
         {
-            return Ok(review_view(&existing));
+            return Ok(RetryOutcome::Replayed(review_view(&existing)));
         }
         return Err(Error::conflict("Workflow review is already recorded"));
     }
     // Authority is checked above so a disabled author is not reported as a
     // stale configuration revision. The same retry of a recorded review returns
     // before this, because that review is already immutable.
+    first_guard(tx)?;
     require_current_plan(core, tx, &plan)?;
-    let reviewer_authority = authority_digest(tx, &caller)?;
     let review = WorkflowReview {
         schema_version: REVIEW_SCHEMA.into(),
         plan_id: plan.plan_id.clone(),
@@ -410,7 +553,7 @@ pub(crate) fn review_in(
         bump_revision(tx)?;
     }
     audit(tx, &caller.id, "workflow.review", definition.id.as_str())?;
-    Ok(review_view(&review))
+    Ok(RetryOutcome::Applied(review_view(&review)))
 }
 
 pub(crate) fn activate_in(core: &Core, tx: &Tx<'_>, token: &str, plan_id: &str) -> Result<Value> {
@@ -496,34 +639,113 @@ pub(crate) fn activate_in(core: &Core, tx: &Tx<'_>, token: &str, plan_id: &str) 
     Ok(approval_view(&approval))
 }
 
-pub(crate) fn revoke_in(core: &Core, tx: &Tx<'_>, token: &str, workflow_id: &str) -> Result<Value> {
-    let caller = caller(core, tx, token)?;
-    let pointer = tx
-        .get::<ActivationPointer>(ACTIVATION, workflow_id)?
-        .ok_or_else(|| Error::conflict("Workflow approval is not active"))?;
-    let authority = authority_digest(tx, &caller)?;
-    let revocation = WorkflowRevocation {
-        schema_version: REVOCATION_SCHEMA.into(),
-        id: crypto::id(),
-        workflow_id: workflow_id.to_owned(),
-        approval_id: pointer.approval_id.clone(),
-        actor: caller.id.clone(),
-        actor_authority: authority,
-        at: now(),
-    };
-    tx.put(REVOCATIONS, &revocation.id, &revocation)?;
-    super::executor::retain_workflow_revocation(tx, workflow_id)?;
-    tx.delete(ACTIVATION, workflow_id)?;
-    super::executor::seal_approved_runs(core, tx, workflow_id)?;
-    bump_revision(tx)?;
-    audit(tx, &caller.id, "workflow.revoke", workflow_id)?;
-    Ok(json!({
+/// Locate one target retirement without materializing the complete ledger.
+/// Each page contains at most 128 records; total traversal is linear in all
+/// revocations, including unrelated workflows, while holding the writer.
+fn target_revocation(
+    tx: &Tx<'_>,
+    workflow_id: &str,
+    approval_id: &str,
+) -> Result<Option<WorkflowRevocation>> {
+    let mut after = None;
+    let mut found = None;
+    loop {
+        let page = tx.scan::<WorkflowRevocation>(REVOCATIONS, after.as_deref(), 128)?;
+        let Some((last, _)) = page.last() else {
+            break;
+        };
+        after = Some(last.clone());
+        for (key, row) in page {
+            if row.approval_id != approval_id {
+                continue;
+            }
+            if row.workflow_id != workflow_id
+                || row.schema_version != REVOCATION_SCHEMA
+                || row.id != key
+                || found.is_some()
+            {
+                return Err(Error::conflict("Workflow revocation history changed"));
+            }
+            found = Some(row);
+        }
+    }
+    Ok(found)
+}
+
+fn revocation_view(row: &WorkflowRevocation) -> Value {
+    json!({
         "schema_version": REVOCATION_SCHEMA,
-        "revocation_id": revocation.id,
-        "workflow_id": workflow_id,
-        "approval_id": pointer.approval_id,
+        "revocation_id": row.id,
+        "workflow_id": row.workflow_id,
+        "approval_id": row.approval_id,
         "selection": "revoked",
-    }))
+    })
+}
+
+fn revoke_or_replay_in(
+    core: &Core,
+    tx: &Tx<'_>,
+    token: &str,
+    workflow_id: &str,
+    approval_id: &str,
+    first_guard: impl FnOnce(&Tx<'_>) -> Result<()>,
+) -> Result<RetryOutcome> {
+    let caller = caller(core, tx, token)?;
+    let approval = tx
+        .get::<WorkflowApproval>(APPROVALS, approval_id)?
+        .ok_or_else(|| Error::conflict("Workflow approval is not recorded"))?;
+    if approval.schema_version != APPROVAL_SCHEMA
+        || approval.id != approval_id
+        || approval.definition.id.as_str() != workflow_id
+        || approval.definition.fingerprint() != approval.fingerprint
+    {
+        return Err(Error::conflict("Workflow approval history changed"));
+    }
+    let completed = target_revocation(tx, workflow_id, approval_id)?;
+    let pointer = tx.get::<ActivationPointer>(ACTIVATION, workflow_id)?;
+    let authority = authority_digest(tx, &caller)?;
+    if let Some(pointer) = pointer {
+        if completed.is_some()
+            || pointer.schema_version != ACTIVATION_SCHEMA
+            || pointer.approval_id != approval.id
+            || pointer.fingerprint != approval.fingerprint
+            || pointer.revision != approval.definition.revision
+            || pointer.dependencies != approval.dependencies
+        {
+            return Err(Error::conflict(
+                "Workflow approval is not the targeted active selection",
+            ));
+        }
+        first_guard(tx)?;
+        let revocation = WorkflowRevocation {
+            schema_version: REVOCATION_SCHEMA.into(),
+            id: crypto::id(),
+            workflow_id: workflow_id.to_owned(),
+            approval_id: approval_id.to_owned(),
+            actor: caller.id.clone(),
+            actor_authority: authority,
+            at: now(),
+        };
+        tx.put(REVOCATIONS, &revocation.id, &revocation)?;
+        super::executor::retain_workflow_revocation(tx, workflow_id)?;
+        tx.delete(ACTIVATION, workflow_id)?;
+        super::executor::seal_approved_runs(core, tx, workflow_id)?;
+        bump_revision(tx)?;
+        audit(tx, &caller.id, "workflow.revoke", workflow_id)?;
+        return Ok(RetryOutcome::Applied(revocation_view(&revocation)));
+    }
+    let completed =
+        completed.ok_or_else(|| Error::conflict("Workflow approval is not active or retired"))?;
+    if completed.actor != caller.id || completed.actor_authority != authority {
+        return Err(Error::conflict("Workflow revocation authority changed"));
+    }
+    super::executor::workflow_revision_fence(
+        tx,
+        workflow_id,
+        approval.definition.revision,
+        &approval.fingerprint,
+    )?;
+    Ok(RetryOutcome::Replayed(revocation_view(&completed)))
 }
 
 fn open_plan(tx: &Tx<'_>, plan_id: &str) -> Result<(Plan, String)> {
@@ -1151,8 +1373,12 @@ mod tests {
         assert_eq!(error.message, "Workflow approval already exists");
         assert_unchanged(&before, &fixture.snapshot());
 
-        core.revoke_workflow_approval(&fixture.executor, WORKFLOW)
-            .unwrap();
+        core.revoke_workflow_approval_targeted(
+            &fixture.executor,
+            WORKFLOW,
+            view["approval_id"].as_str().unwrap(),
+        )
+        .unwrap();
         let before = fixture.snapshot();
         let error = core
             .store

@@ -28,10 +28,12 @@ pub enum WorkflowCommand {
         #[arg(allow_hyphen_values = true)]
         plan_id: String,
     },
-    /// Retire the current approval of a workflow
+    /// Retire exactly the named immutable approval of a workflow
     Revoke {
         #[arg(allow_hyphen_values = true)]
         workflow_id: String,
+        #[arg(long, allow_hyphen_values = true)]
+        approval_id: String,
     },
 }
 
@@ -56,10 +58,23 @@ pub(super) async fn run(remote: &Remote, command: WorkflowCommand) -> Result<Val
             "/api/workflow-approvals/activate",
             json!({"plan_id": plan_id}),
         ),
-        WorkflowCommand::Revoke { workflow_id } => (
+        WorkflowCommand::Revoke {
+            workflow_id,
+            approval_id,
+        } => (
             "/api/workflow-approvals/revoke",
-            json!({"workflow_id": workflow_id}),
+            json!({"workflow_id": workflow_id, "approval_id": approval_id}),
         ),
     };
-    remote.call(Method::POST, path, Some(body), true).await
+    let response = remote
+        .call(Method::POST, path, Some(body.clone()), true)
+        .await?;
+    for field in ["plan_id", "decision", "workflow_id", "approval_id"] {
+        if let Some(expected) = body.get(field)
+            && response.get(field) != Some(expected)
+        {
+            bail!("Workflow response does not match the requested {field}");
+        }
+    }
+    Ok(response)
 }

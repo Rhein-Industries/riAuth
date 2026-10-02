@@ -2949,6 +2949,7 @@ fn configured_saml_final_approval_rechecks_policy_before_issuance() {
         let key = browser_app(&f, false, true);
         f.user("alice");
         let sso = browser_signed_in(&f, "alice");
+        let mut approval_id = None;
         if matches!(change, "revoked_approval" | "divergent_approved_config") {
             let mut admins = vec![];
             for username in ["reviewer", "executor"] {
@@ -2985,7 +2986,10 @@ fn configured_saml_final_approval_rechecks_policy_before_issuance() {
             f.core
                 .review_workflow(&admins[0], &plan.plan_id, "approve")
                 .unwrap();
-            f.core.activate_workflow(&admins[1], &plan.plan_id).unwrap();
+            approval_id = Some(text(
+                &f.core.activate_workflow(&admins[1], &plan.plan_id).unwrap(),
+                "approval_id",
+            ));
             // A stored exact-content approval works without a duplicate config entry.
             f.core.config.workflows.remove(definition.id.as_str());
         }
@@ -3033,7 +3037,11 @@ fn configured_saml_final_approval_rechecks_policy_before_issuance() {
             }
             "revoked_approval" => {
                 f.core
-                    .revoke_workflow_approval(&f.admin, definition.id.as_str())
+                    .revoke_workflow_approval_targeted(
+                        &f.admin,
+                        definition.id.as_str(),
+                        approval_id.as_deref().unwrap(),
+                    )
                     .unwrap();
             }
             "divergent_approved_config" => {

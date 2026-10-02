@@ -281,6 +281,7 @@ struct WorkflowPlanBody {
 #[serde(deny_unknown_fields)]
 struct WorkflowRevokeBody {
     workflow_id: String,
+    approval_id: Option<String>,
 }
 
 #[cfg(feature = "platform")]
@@ -316,7 +317,11 @@ async fn workflow_revoke(
 ) -> Result<Json<Value>> {
     let token = writer(&app, &headers)?;
     app.run(move |core| {
-        core.revoke_workflow_approval(&token, &input.workflow_id)
+        let approval_id = input
+            .approval_id
+            .as_deref()
+            .ok_or_else(|| Error::bad("Workflow revocation requires approval_id"))?;
+        core.revoke_workflow_approval_targeted(&token, &input.workflow_id, approval_id)
             .map(Json)
     })
     .await
