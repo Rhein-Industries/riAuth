@@ -4919,3 +4919,738 @@ metadata/fences/whitespace/finalnewline/diff checks and a report-only commit.
 No controllerfile/helper/product/guide/D05/config/test edit or newworker/task/
 worktree/shell/main/push/status/other-worker contact. Desktop and Cargo remain
 unacquired; acceptance/integration/release decisions belong to root.
+
+## Dated actual phase: separately released 180s preparation gate, 2026-10-02
+
+Reservation: wave30_D01_prepared_browser_single_checkpoint, latest root release
+of the exact3822 archived180s controller. This was ONE fresh attempt, not a
+continuation or retry of aca. Result: FAILED at the application root page after
+a proven initial protected403. Desktop/operator resources were released in
+commentary after joined owned cleanup and before this evidence append. No
+Cargo slot was acquired or released. D01/D05 acceptance remains root-owned.
+
+### Actual observations and stopping point
+
+The exact Driver-bound browser first navigated to
+http://localhost:3000/protected. Fresh semantic snapshot p858 showed title and
+heading “Local demo” and “Sign in required.” The helper retained
+protected_before403 and protected_without_cookie_denied true. Browser transport
+success alone was not treated as proof of the HTTP status; that403 comes from
+the helper's separate retained status/check.
+
+The next normal application navigation to http://localhost:3000/ returned a
+fresh semantic snapshot p859 with “Local demo could not complete this request.”
+There was no start-form action to continue. This was the first unexpected
+journey outcome; ordinary GUI actions stopped. No password was read/typed,
+no sign-in, consent, callback, token exchange, userinfo or fresh protected200
+was reached. No retry, replay, fallback, reprepare or rebind occurred.
+
+Joined helper exit1 retained result failed, stage request, tag
+unexpected_failure, request_invalid_reason null and
+preflow_authorization_refusals0. Joined outer controller exit1 retained stage
+browser_checkpoint and tag rp_nonzero. The generic failure does not identify
+a cause, a failed predicate, a request sender or a product defect. No raw
+exception/request/header/private value was retained, printed or investigated
+in this evidence phase. Earlier Authorization senders remain UNKNOWN.
+This attempt's observed0 refusals is not a counter reset or extra allowance.
+
+The helper's credential_private_validated, discovery_verified,
+provider_identity_verified and protected_without_cookie_denied checks are true.
+All six subsequent journey/crypto acceptance checks are false; subsequent
+authorization/callback/exchange/userinfo/protected-after statuses are null.
+There is no new journey/crypto/passkey/tenant/full-D01/full-D05 success credit.
+
+### Pre-start reads, artifact pins and actual bounded setup
+
+Before inclusiveSTART, the cua-driver SKILL.md v0.29.1, MACOS.md and BROWSER.md
+were read in full, advertised MCP descriptions were cached, and health,
+permissions and read-only session state were read. Health was cua-driver0.30.4,
+macOS26.2 arm64, overall ok; Accessibility and Screen Recording were granted,
+direct capture was not checked and no permission/settings change occurred.
+No existing Driver session was listed. No Driver history tool was advertised
+or called. MCP schema supplies no hard per-call timeout/cancel.
+
+Fresh pre-setup free capacity was22599233536 bytes, above8.5GiB.
+Before executing the retained controller it was22594727936 bytes.
+Both9000 and3000 listener preflights returned absent, with empty lsof outputs.
+The three current evidence paths below were declared absent before any setup,
+within the existing private0700 deployment-private directory. Files were
+created exclusively0600; no historical metadata was overwritten.
+
+The controller freshly rehashed the c01 Essentials artifacts from the approved
+wave27 target, the helper, git-object verifier and resolved native provider.
+These are identity checks, not additional source body reviews or builds:
+
+| Input | Actual matching pin |
+| --- | --- |
+| c01 source provenance | c01c39ab4e092423d5522bedc50fff87656d8c0a |
+| riauth | 7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606 |
+| riauth-maintenance | 86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95 |
+| riauthctl | bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf |
+| unchanged470 helper | 7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0 |
+| verifier commit | 9cefe7a56425bb73c17753e8766d92320b77da3b |
+| verifier blob | 3be747d03146f1bcaa3ec012ee8d173b61fa737d |
+| verifier SHA256 | f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d |
+| resolved /opt/homebrew/bin/openssl | 67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72 |
+
+The outer native version invocation exited0 within its5s bound, with63ASCII
+stdout bytes and0stderr bytes. Complete numeric exit, full stdout/stderr,
+lengths/hash/environment-key names were retained in the exclusive provider
+metadata BEFORE exact equality:
+OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026), followed by newline.
+No extra diagnostic/provider invocation was made. The helper performed its
+unchanged native identity/verification prerequisite; no custom crypto was added.
+
+The exact printed CLI setup used a fresh own0700 lab and private XDG, synthetic
+password through prompt stdin and the normal confidential local-demo creation
+with localhost3000 callback/openid,profile scope and private0600 client secret.
+No session/review/header/receipt bypass occurred. Actual fixed command records:
+
+| Command | Exit | Password prompt writes |
+| --- | --- | --- |
+| maintenance_init | 0 | 2 |
+| operator_login | 0 | 1 |
+| confidential_client_create | 0 | 0 |
+| discovery | 0 | 0 |
+| whoami | 0 | 0 |
+
+The public commands/arguments are completely archived below; generated secrets,
+session values and runtime private paths are not copied into evidence.
+The owned IdP listener was exactPID7637 on9000, with readyz200. No new RP
+readiness HTTP request/probe was added. Initialization is operator setup,
+not an application browser journey.
+
+InclusiveSTART was1790968887.308 (2026-10-02T19:21:27.308Z). The reviewed180s
+preparation gate ran once within START+840 and inclusive900, with cleanup60.
+Helper deadline600, pending180, native/HTTP5, CLI60 and listener/page30 bounds
+were unchanged. Disk checks retained108 outer samples and42 helper samples;
+outer minimum22573965312 bytes, helper minimum22573801472 bytes (~21.023GiB).
+No8.5GiB stop/floor event occurred. Final cleanup capacity22598422528 bytes.
+
+### Exact Driver ownership/order and gate protocol
+
+One Driver MCP session d01-budget180-checkpoint was created. ONE
+browser_prepare isolated_new call returned driver-owned disposable PID9690,
+window103554, new isolated profile and blank page. No profile copying,
+personal-process modification, screenshot or security/settings change occurred.
+
+The exact returned blank target was bound once:
+target bt-30a830b4-18ec-48d8-aa10-1c62b2bb7dd4,
+tab tab-a95fdd8c-894a-4ca0-8e12-61f505c07486.
+Binding quality exact and mutation_allowed true; internal Driver transport
+was provider-owned. No raw CDP or alternate provider was used by this worker.
+
+At browser_prepare_required, controllerPID7480/serverPID7637 were live and
+helper3000 had not been created. Preparation, exact window read/binding,
+exact guard/server numeric PID liveness check and exclusive zero0600 own-lab
+browser-prepared marker creation were followed by waiting for fixture_ready.
+No description/skill load or rebind intervened. The marker writer checked only
+those exact two PIDs; no browser navigation/RP probe preceded the marker.
+After fixture_ready proved exact helperPID9879 listener3000, the same bound
+target promptly navigated to protected and obtained fresh p858. Application
+root navigation then obtained fresh p859 and stopped the journey on its
+generic failure. Exactly one helper main invocation occurred.
+
+Helper first3 stateless Authorization403/fourth terminal403, post-flow400,
+Host/parser/body-target/cookie/credential/crypto/single-use guards were unchanged.
+No rejected traffic is credited as a journey. No extra accepted request,
+counter reset, allow-list change, alternate port, HTTP sign-in/approval,
+CLI service-session substitute, physical passkey or terminal approval was used.
+
+### Retained actual controller: pre-execution pin and full archive
+
+Actual command14905 bytes/SHA256
+6662bdbb168bf0ba6ec5ff24b6f3b88dc15b54b4dfc3b800fdaca1cbee403bbb;
+body14882 bytes/193 lines/SHA256
+271b4a00711a084e21792b0310839e69d4fb8779fa5e6d003bde04caf0c82c72.
+Complete payload/hash were retained before execution, followed by static
+AST parse/in-memory code-object compile only and full byte/AST reversal.
+
+Reversing ONLY START=1790968887.308 to START=1790966050.847 and the two fresh
+budget180 result/provider filenames to the reviewed prepared filenames
+reconstructs the exact3822 command14903 bytes/SHA
+3d6b4124bbc77cb82166729c3e529e08d5cc7cab28b5561c973390386cb896b7,
+body14880 bytes/193 lines/SHA
+e251f4e45f80c4edffd94d94a8a8ff13bb30eb8ed6113bdc96e249caed307881.
+The180s assignment is the only reviewed behavior delta from the older30s
+candidate. No controller file was materialized or helper/source changed.
+
+```sh
+python3 -u - <<'PY'
+import datetime,fcntl,hashlib,json,os,pathlib,pty,secrets,select,shutil,signal,stat,subprocess,sys,tempfile,termios,time,urllib.request
+ROOT=pathlib.Path.cwd()
+START=1790968887.308
+ACTIVE=START+840
+BIN=pathlib.Path('/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/target/d01-essentials-c01c39a/aarch64-apple-darwin/debug')
+PRIVATE=ROOT/'deployment-private'
+OUT=PRIVATE/'d01-confidential-browser-budget180.redacted.json'
+PROVIDER_META=PRIVATE/'d01-confidential-browser-budget180-provider-20261002.json'
+record={'schema':'riauth.d01-confidential-browser-outer/v1','result':'failed','failure_stage':None,'failure_tag':None,'request_invalid_reason':None,'preflow_authorization_refusals':None,'commands':[],'artifacts':{},'cleanup':{},'owned_child_exits':[],'started_epoch':START,'active_seconds':840,'cleanup_seconds':60,'minimum_free_bytes':None,'disk_samples':0}
+lab=None;children=[];names={};server=None;helper=None;password=None;stage='preflight';resultfd=None;lastsample=0
+def require(ok,tag):
+    if not ok:raise RuntimeError(tag)
+def tick():
+    global lastsample
+    now=time.monotonic()
+    if now-lastsample>=1:
+        free=shutil.disk_usage(ROOT).free
+        record['disk_samples']+=1
+        record['minimum_free_bytes']=free if record['minimum_free_bytes'] is None else min(record['minimum_free_bytes'],free)
+        lastsample=now
+        require(free>=8.5*1024**3,'disk_margin')
+    require(time.time()<ACTIVE,'active_deadline')
+def write_exclusive(path,value):
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    raw=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode('ascii')
+    with os.fdopen(fd,'wb') as f:
+        f.write(raw);f.flush();os.fsync(f.fileno())
+    return hashlib.sha256(raw).hexdigest()
+def listeners(port):
+    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)
+    require(p.returncode in (0,1),'socket_observation_failed')
+    return set(int(v) for v in p.stdout.split())
+def own(p,name):
+    children.append(p);names[p.pid]=name;return p
+def stop_child(p):
+    if p.poll() is None:
+        for sig,wait in [(signal.SIGINT,8),(signal.SIGTERM,5),(signal.SIGKILL,2)]:
+            if p.poll() is not None:break
+            p.send_signal(sig)
+            try:p.wait(timeout=wait)
+            except subprocess.TimeoutExpired:pass
+    require(p.poll() is not None,'owned_child_reap_failed')
+def controlling_tty():
+    os.setsid();fcntl.ioctl(0,termios.TIOCSCTTY,0)
+def cli(name,args,prompts=0):
+    tick()
+    master,slave=pty.openpty()
+    p=own(subprocess.Popen(args,cwd=lab,env=environment,stdin=slave,stdout=slave,stderr=slave,preexec_fn=controlling_tty),name)
+    os.close(slave);seen=0;raw=b'';started=time.monotonic()
+    try:
+        while p.poll() is None:
+            tick();require(time.monotonic()-started<60,'cli_deadline')
+            if select.select([master],[],[],0.2)[0]:
+                try:chunk=os.read(master,4096)
+                except OSError:chunk=b''
+                raw+=chunk;require(len(raw)<=131072,'cli_output_limit')
+                for prompt in ([b'Password: ',b'Confirm password: '] if prompts==2 else [b'Password: ']):
+                    if seen<prompts and prompt in raw:
+                        require(prompt==([b'Password: ',b'Confirm password: '][seen] if prompts==2 else b'Password: '),'cli_prompt_order')
+                        os.write(master,password.encode()+b'\n');seen+=1;raw=b''
+        while select.select([master],[],[],0)[0]:
+            try:
+                chunk=os.read(master,4096)
+                if not chunk:break
+                raw+=chunk
+            except OSError:break
+        code=p.wait()
+        record['commands'].append({'name':name,'exit':code,'password_prompts':seen})
+        require(code==0,'cli_nonzero');require(seen==prompts,'cli_prompt_missing')
+    finally:
+        raw=b'';os.close(master)
+        if p.poll() is None:stop_child(p)
+def wait_listener(p,port):
+    deadline=time.monotonic()+30
+    while time.monotonic()<deadline:
+        tick();require(p.poll() is None,'owned_service_early_exit')
+        owners=listeners(port)
+        if owners:
+            require(owners=={p.pid},'listener_owner_mismatch');return
+        time.sleep(0.2)
+    raise RuntimeError('listener_deadline')
+try:
+    tick()
+    require(PRIVATE.is_dir() and not PRIVATE.is_symlink() and stat.S_IMODE(PRIVATE.stat().st_mode)==0o700,'private_directory_invalid')
+    require(not OUT.exists() and not PROVIDER_META.exists(),'evidence_already_exists')
+    require(not listeners(9000) and not listeners(3000),'port_occupied');record['ports_preflight_empty']=True
+    pins={'riauth':'7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606','riauth-maintenance':'86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95','riauthctl':'bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf'}
+    for name,pin in pins.items():
+        tick()
+        with (BIN/name).open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
+        record['artifacts'][name]=digest;require(digest==pin,'artifact_hash_mismatch')
+    helper_path=ROOT/'scripts/d01-confidential-browser-demo.py'
+    require(hashlib.sha256(helper_path.read_bytes()).hexdigest()=='7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0','helper_hash_mismatch')
+    verifier=subprocess.check_output(['git','show','9cefe7a56425bb73c17753e8766d92320b77da3b:scripts/recovery-drill-oidc.py'],timeout=5)
+    require(hashlib.sha256(verifier).hexdigest()=='f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d','verifier_hash_mismatch')
+    provider=pathlib.Path('/opt/homebrew/bin/openssl').resolve(strict=True)
+    with provider.open('rb') as f:provider_hash=hashlib.file_digest(f,'sha256').hexdigest()
+    require(provider_hash=='67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72','provider_hash_mismatch')
+    provider_env={k:v for k,v in os.environ.items() if k in {'PATH','HOME','TMPDIR','LANG','LC_ALL'}}
+    p=subprocess.Popen([str(provider),'version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=provider_env)
+    try:stdout,stderr=p.communicate(timeout=5);timeout=False
+    except subprocess.TimeoutExpired:
+        p.kill();stdout,stderr=p.communicate(timeout=2);timeout=True
+    provider_record={'sha256':provider_hash,'exit':p.returncode,'timeout':timeout,'stdout_ascii':stdout[:4096].decode('ascii',errors='backslashreplace'),'stderr_ascii':stderr[:4096].decode('ascii',errors='backslashreplace'),'stdout_bytes':len(stdout),'stderr_bytes':len(stderr),'environment_keys':sorted(provider_env)}
+    record['provider_metadata_sha256']=write_exclusive(PROVIDER_META,provider_record)
+    require(not timeout and p.returncode==0 and len(stdout)<=256 and len(stderr)<=4096 and stdout.decode('ascii').strip()=='OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)','provider_version_failed')
+    tick()
+    resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    lab=pathlib.Path(tempfile.mkdtemp(prefix='d01-confidential-browser-diagnostic.',dir=PRIVATE));os.chmod(lab,0o700)
+    for name in ('xdg','deployment-private','rp'):(lab/name).mkdir(mode=0o700)
+    (lab/'recovery-drill-oidc.py').write_bytes(verifier);os.chmod(lab/'recovery-drill-oidc.py',0o600);verifier=None
+    password=secrets.token_urlsafe(30)
+    fd=os.open(lab/'browser-password',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,'w') as f:f.write(password)
+    environment=dict(provider_env);environment['XDG_CONFIG_HOME']=str(lab/'xdg')
+    stage='init';cli('maintenance_init',[str(BIN/'riauth-maintenance'),'--config',str(lab/'riauth.toml'),'init','--issuer','http://localhost:9000','--listen','127.0.0.1:9000','--data-dir','data','--admin','admin'],2)
+    stage='serve'
+    server=own(subprocess.Popen([str(BIN/'riauth'),'--config',str(lab/'riauth.toml'),'serve'],cwd=lab,env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL),'server')
+    record['server_pid']=server.pid;wait_listener(server,9000);record['server_listener_owned']=True
+    stage='readyz'
+    with urllib.request.urlopen('http://127.0.0.1:9000/readyz',timeout=5) as response:
+        record['readyz_status']=response.status;response.read(4096)
+    require(record['readyz_status']==200,'readyz_failed')
+    stage='cli_login'
+    base=[str(BIN/'riauthctl'),'--server','http://localhost:9000']
+    cli('operator_login',base+['login','admin'],1)
+    stage='client_create';secretpath=lab/'deployment-private/local-demo-secret.json'
+    cli('confidential_client_create',base+['client','create','local-demo','--name','Local demo','--confidential','--redirect-uri','http://localhost:3000/callback','--scope','openid,profile','--secret-file',str(secretpath)])
+    require(stat.S_IMODE(secretpath.stat().st_mode)==0o600,'cli_secret_mode_invalid')
+    stage='discovery';cli('discovery',base+['discovery'])
+    stage='whoami';cli('whoami',base+['whoami'])
+    stage='browser_prepare'
+    prepare_deadline=time.monotonic()+180
+    prepare_marker=lab/'browser-prepared'
+    print(json.dumps({'browser_prepare_required':True,'guard_pid':os.getpid(),'server_pid':server.pid,'lab':str(lab)}),flush=True)
+    while not prepare_marker.exists():
+        tick();require(server.poll() is None,'idp_early_exit')
+        require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')
+        require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')
+        time.sleep(0.2)
+    tick();require(server.poll() is None,'idp_early_exit')
+    require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')
+    require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')
+    prepare_info=prepare_marker.lstat()
+    require(stat.S_ISREG(prepare_info.st_mode) and stat.S_IMODE(prepare_info.st_mode)==0o600 and prepare_info.st_uid==os.getuid() and prepare_info.st_nlink==1 and prepare_info.st_size==0,'browser_prepare_marker_invalid')
+    stage='rp_start'
+    helper=own(subprocess.Popen([sys.executable,'-B',str(helper_path),'--workspace',str(lab/'rp'),'--secret-file',str(secretpath),'--verifier-helper',str(lab/'recovery-drill-oidc.py'),'--openssl','/opt/homebrew/bin/openssl','--deadline-seconds','600','--evidence',str(lab/'rp-result.json')],cwd=ROOT,env=environment,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True),'helper')
+    record['helper_pid']=helper.pid;record['helper_invocations']=1
+    wait_listener(helper,3000);record['helper_listener_owned']=True
+    print(json.dumps({'fixture_ready':True,'guard_pid':os.getpid(),'server_pid':server.pid,'helper_pid':helper.pid,'lab':str(lab),'commands':record['commands'],'provider_metadata_sha256':record['provider_metadata_sha256'],'minimum_free_bytes':record['minimum_free_bytes']}),flush=True)
+    stage='browser_checkpoint';announced=False
+    while not (lab/'stop').exists():
+        tick();require(server.poll() is None,'idp_early_exit')
+        if helper.poll() is not None:
+            code=helper.wait()
+            if not announced:
+                record['helper_exit']=code;record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())
+                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']
+                record['preflow_authorization_refusals']=record['helper_result']['preflow_authorization_refusals']
+                print(json.dumps({'helper_completed':True,'exit':code,'result':record['helper_result']['result'],'failure_tag':record['helper_result']['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals']}),flush=True);announced=True
+            require(code==0,'rp_nonzero')
+        time.sleep(0.2)
+    if (lab/'ui-failure').exists():raise RuntimeError('browser_checkpoint_failed')
+    require(helper.poll()==0,'rp_checkpoint_incomplete');record['result']='passed'
+except Exception as error:
+    record['failure_stage']=stage
+    tags={'disk_margin','active_deadline','private_directory_invalid','evidence_already_exists','port_occupied','socket_observation_failed','artifact_hash_mismatch','helper_hash_mismatch','verifier_hash_mismatch','provider_hash_mismatch','provider_version_failed','cli_deadline','cli_output_limit','cli_prompt_order','cli_prompt_missing','cli_nonzero','owned_service_early_exit','listener_owner_mismatch','listener_deadline','readyz_failed','cli_secret_mode_invalid','idp_early_exit','rp_nonzero','browser_checkpoint_failed','rp_checkpoint_incomplete','browser_prepare_deadline','browser_prepare_marker_invalid'}
+    record['failure_tag']=str(error) if str(error) in tags else 'outer_unexpected_failure'
+finally:
+    for p in reversed(children):
+        try:stop_child(p)
+        except Exception:record['cleanup']['child_reap_failure']=True
+        record['owned_child_exits'].append({'name':names[p.pid],'pid':p.pid,'exit':p.poll()})
+    record['cleanup']['owned_children_reaped']=all(p.poll() is not None for p in children)
+    if lab is not None:
+        if helper is not None:
+            record['helper_exit']=helper.poll()
+            if (lab/'rp-result.json').exists():
+                record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())
+                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']
+                record['preflow_authorization_refusals']=record['helper_result']['preflow_authorization_refusals']
+        password=None;shutil.rmtree(lab);record['cleanup']['lab_removed']=not lab.exists()
+    else:record['cleanup']['lab_removed']=True
+    try:
+        record['cleanup']['port9000_absent']=not listeners(9000);record['cleanup']['port3000_absent']=not listeners(3000)
+    except Exception:record['cleanup']['socket_observation_failure']=True
+    record['completed_utc']=datetime.datetime.now(datetime.timezone.utc).isoformat();record['elapsed_seconds']=round(time.time()-START,3)
+    if resultfd is None and not OUT.exists():resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    if resultfd is not None:
+        with os.fdopen(resultfd,'wb') as f:
+            f.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode('ascii'));f.flush();os.fsync(f.fileno())
+    print(json.dumps({'fixture_finished':True,'result':record['result'],'failure_stage':record['failure_stage'],'failure_tag':record['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'cleanup':record['cleanup'],'owned_child_exits':record['owned_child_exits'],'minimum_free_bytes':record['minimum_free_bytes'],'disk_samples':record['disk_samples'],'elapsed_seconds':record['elapsed_seconds']}),flush=True)
+sys.exit(0 if record['result']=='passed' else 1)
+PY```
+
+### Actual cleanup, precise evidence and timing limits
+
+Cleanup ran as one contiguous orchestration call: record local clock latch;
+use original own-lab ui-failure/stop marker protocol if the lab still exists;
+immediate Driver kill_app exact proven-owned PID9690 ONCE; end_session exact
+session ONCE; list_windows exactPID9690 ONCE; join original controller;
+numeric-only exact own PID/9000/3000/lab absence readback; exclusive cleanup
+metadata write/fsync. No cooperative Cmd+Q, manual browser signal, unrelated
+kill, extra cleanup attempt or replacement provider was used.
+
+The original controller autonomously joined helper9879 exit1 and IdP7637 exit0
+and its other five children, removing its own lab/listeners. The worker joined
+controller exit1 and independently read back own guard7480/server7637/
+helper9879/browser9690 absent, exact ports9000/3000 absent, lab absent,
+zero Driver browser windows and session ended. All seven child exit values
+are retained below before comparisons. Immediate DESKTOP/OPERATOR RELEASE
+was sent after those checks and before this append.
+
+| Observed action | Allocation ms | Retained elapsed ms | Result |
+| --- | --- | --- | --- |
+| kill_app | 30000 | 600 | returned |
+| end_session | 15000 | 638 | returned |
+| list_windows | 5000 | 591 | returned |
+| owned_readback | 55820 remaining | 986 | returned |
+
+No call exceeded its observational allocation. MCP has no advertised hard
+timeout/cancel, so these actual timings are not a future enforcement guarantee.
+The observed worker-trigger-to-final-absence interval was5165ms by the retained
+shared monotonic clocks. first_event_proven is false; first_failure is
+first_event_unproven and whole_cleanup_within60_proven is false.
+
+The outer controller completed at19:23:18.594564Z, elapsed111.287s.
+The later worker cleanup-trigger wall clock was about19:25:12.386914Z; final
+absence readback about19:25:17.551883Z, roughly118.957s after outer completion
+and230.244s after inclusiveSTART. This gap is explicitly retained. The5.165s
+contiguous cleanup interval cannot be used to erase that delay or prove the
+requested whole60s bound. No exact first unexpected UI observation clock or
+first actual autonomous cleanup-start clock was recorded; no such old clock
+is invented. Essential owned cleanup finished even though whole60s success
+cannot be claimed.
+
+Clock sources were Python time.monotonic_ns/time.time_ns. Clock records were
+retained before comparisons. Monotonic values here are below2^53 and survive
+JavaScript JSON-number transport exactly. Wall epoch nanoseconds exceed2^53;
+JavaScript Number transport rounds their low-order nanoseconds. The durable
+wall integers are retained unchanged, but do not carry exact nanosecond
+precision. Timing arithmetic for action/remaining budgets uses monotonic
+values. No correction/rewrite of existing metadata is made.
+
+### Exclusive current redacted metadata and full fixed results
+
+All three new files remain deployment-private0600. These were absent before
+setup, written exclusively and read back after cleanup. They are not git
+tracked; no raw secret/request/header/query/token/cookie/password was stored.
+The first lost provider invocation and incorrect historical report are still
+retained in the prior dated phases rather than overwritten by these results.
+
+| New file | Bytes | SHA256 |
+| --- | --- | --- |
+| d01-confidential-browser-budget180-cleanup.redacted.json | 2612 | 2ac06f21da0aff2874094788cd227397f3a67b64dafa2a434e5d5a6e8ba47dda |
+| d01-confidential-browser-budget180-provider-20261002.json | 359 | 6fad035f1897b5287b2ebd812405fcabf6a33b72d2d4f498f3bca7081eb719ab |
+| d01-confidential-browser-budget180.redacted.json | 4099 | 83549d45aec2900fae09b1ec2ea4bd7792945a5508bde085568b59506a08cd9f |
+
+Complete outer/helper fixed result:
+
+```json
+{
+  "active_seconds": 840,
+  "artifacts": {
+    "riauth": "7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606",
+    "riauth-maintenance": "86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95",
+    "riauthctl": "bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf"
+  },
+  "cleanup": {
+    "lab_removed": true,
+    "owned_children_reaped": true,
+    "port3000_absent": true,
+    "port9000_absent": true
+  },
+  "cleanup_seconds": 60,
+  "commands": [
+    {
+      "exit": 0,
+      "name": "maintenance_init",
+      "password_prompts": 2
+    },
+    {
+      "exit": 0,
+      "name": "operator_login",
+      "password_prompts": 1
+    },
+    {
+      "exit": 0,
+      "name": "confidential_client_create",
+      "password_prompts": 0
+    },
+    {
+      "exit": 0,
+      "name": "discovery",
+      "password_prompts": 0
+    },
+    {
+      "exit": 0,
+      "name": "whoami",
+      "password_prompts": 0
+    }
+  ],
+  "completed_utc": "2026-10-02T19:23:18.594564+00:00",
+  "disk_samples": 108,
+  "elapsed_seconds": 111.287,
+  "failure_stage": "browser_checkpoint",
+  "failure_tag": "rp_nonzero",
+  "helper_exit": 1,
+  "helper_invocations": 1,
+  "helper_listener_owned": true,
+  "helper_pid": 9879,
+  "helper_result": {
+    "checks": {
+      "authorization_redirect_issued": false,
+      "confidential_s256_exchange_verified": false,
+      "credential_private_validated": true,
+      "discovery_verified": true,
+      "protected_with_fresh_cookie_accepted": false,
+      "protected_without_cookie_denied": true,
+      "provider_identity_verified": true,
+      "rs256_jwks_issuer_audience_nonce_time_access_hash_verified": false,
+      "state_issuer_flow_cookie_verified": false,
+      "userinfo_subject_verified": false
+    },
+    "cleanup": {
+      "connection_closed": true,
+      "listener_closed": true,
+      "private_references_cleared": true,
+      "verifier_temporaries_removed": true
+    },
+    "disk_samples": 42,
+    "elapsed_seconds": 10.096,
+    "failure_stage": "request",
+    "failure_tag": "unexpected_failure",
+    "http_statuses": {
+      "authorization_redirect": null,
+      "callback": null,
+      "protected_after": null,
+      "protected_before": 403,
+      "token_exchange": null,
+      "userinfo": null
+    },
+    "minimum_free_bytes": 22573801472,
+    "preflow_authorization_refusals": 0,
+    "provider": {
+      "sha256": "67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72",
+      "version": "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)"
+    },
+    "request_invalid_reason": null,
+    "result": "failed",
+    "schema": "riauth.d01-confidential-browser/v1",
+    "source": {
+      "helper_sha256": "7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0",
+      "verifier_blob": "3be747d03146f1bcaa3ec012ee8d173b61fa737d",
+      "verifier_commit": "9cefe7a56425bb73c17753e8766d92320b77da3b",
+      "verifier_expected_sha256": "f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d",
+      "verifier_sha256": "f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d"
+    }
+  },
+  "minimum_free_bytes": 22573965312,
+  "owned_child_exits": [
+    {
+      "exit": 1,
+      "name": "helper",
+      "pid": 9879
+    },
+    {
+      "exit": 0,
+      "name": "whoami",
+      "pid": 7715
+    },
+    {
+      "exit": 0,
+      "name": "discovery",
+      "pid": 7712
+    },
+    {
+      "exit": 0,
+      "name": "confidential_client_create",
+      "pid": 7707
+    },
+    {
+      "exit": 0,
+      "name": "operator_login",
+      "pid": 7683
+    },
+    {
+      "exit": 0,
+      "name": "server",
+      "pid": 7637
+    },
+    {
+      "exit": 0,
+      "name": "maintenance_init",
+      "pid": 7567
+    }
+  ],
+  "ports_preflight_empty": true,
+  "preflow_authorization_refusals": 0,
+  "provider_metadata_sha256": "6fad035f1897b5287b2ebd812405fcabf6a33b72d2d4f498f3bca7081eb719ab",
+  "readyz_status": 200,
+  "request_invalid_reason": null,
+  "result": "failed",
+  "schema": "riauth.d01-confidential-browser-outer/v1",
+  "server_listener_owned": true,
+  "server_pid": 7637,
+  "started_epoch": 1790968887.308
+}
+```
+
+Complete native provider metadata, retained before equality:
+
+```json
+{
+  "environment_keys": [
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PATH",
+    "TMPDIR"
+  ],
+  "exit": 0,
+  "sha256": "67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72",
+  "stderr_ascii": "",
+  "stderr_bytes": 0,
+  "stdout_ascii": "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)\n",
+  "stdout_bytes": 63,
+  "timeout": false
+}
+```
+
+Complete cleanup observation, including numeric clocks/exits before comparisons:
+
+```json
+{
+  "actions": [
+    {
+      "allowed_ms": 30000,
+      "elapsed_ms": 600,
+      "end_monotonic_ns": 2466445222762625,
+      "end_wall_epoch_ns": 1790969113925337000,
+      "label": "kill_app",
+      "over_budget": false,
+      "result_state": "returned",
+      "start_monotonic_ns": 2466444622279541,
+      "start_wall_epoch_ns": 1790969113324955000
+    },
+    {
+      "allowed_ms": 15000,
+      "elapsed_ms": 638,
+      "end_monotonic_ns": 2466446328554375,
+      "end_wall_epoch_ns": 1790969115030950000,
+      "label": "end_session",
+      "over_budget": false,
+      "result_state": "returned",
+      "start_monotonic_ns": 2466445690294791,
+      "start_wall_epoch_ns": 1790969114392790000
+    },
+    {
+      "allowed_ms": 5000,
+      "elapsed_ms": 591,
+      "end_monotonic_ns": 2466447394085083,
+      "end_wall_epoch_ns": 1790969116096320000,
+      "label": "list_windows",
+      "over_budget": false,
+      "result_state": "returned",
+      "start_monotonic_ns": 2466446802951000,
+      "start_wall_epoch_ns": 1790969115505273000
+    },
+    {
+      "allowed_ms": 55820,
+      "elapsed_ms": 986,
+      "end_monotonic_ns": 2466448849850000,
+      "end_wall_epoch_ns": 1790969117551883000,
+      "label": "owned_readback",
+      "over_budget": false,
+      "result_state": "returned",
+      "start_monotonic_ns": 2466447863624416,
+      "start_wall_epoch_ns": 1790969116565792000
+    }
+  ],
+  "cleanup_budget_ms": 60000,
+  "driver_max_observation_ms": 30000,
+  "final_absence": {
+    "lab": true,
+    "owned_pids": {
+      "7480": true,
+      "7637": true,
+      "9690": true,
+      "9879": true
+    },
+    "ports": {
+      "3000": true,
+      "9000": true
+    },
+    "session_ended": true,
+    "window_count": 0
+  },
+  "first_event_kind": "worker_cleanup_trigger",
+  "first_event_monotonic_ns": 2466443684070333,
+  "first_event_proven": false,
+  "first_event_wall_epoch_ns": 1790969112386914000,
+  "first_failure": "first_event_unproven",
+  "owned_child_exits": [
+    {
+      "exit": 1,
+      "name": "helper",
+      "pid": 9879
+    },
+    {
+      "exit": 0,
+      "name": "whoami",
+      "pid": 7715
+    },
+    {
+      "exit": 0,
+      "name": "discovery",
+      "pid": 7712
+    },
+    {
+      "exit": 0,
+      "name": "confidential_client_create",
+      "pid": 7707
+    },
+    {
+      "exit": 0,
+      "name": "operator_login",
+      "pid": 7683
+    },
+    {
+      "exit": 0,
+      "name": "server",
+      "pid": 7637
+    },
+    {
+      "exit": 0,
+      "name": "maintenance_init",
+      "pid": 7567
+    }
+  ],
+  "schema": "riauth.d01-cleanup-observation/v1",
+  "whole_cleanup_within60_proven": false
+}
+```
+
+### Prefix/scope checks and candid handoff
+
+The entire3822 report304690-byte prefix/SHA
+e2744d8d26a6d885dbdfbc43264a64d8886d365c11f63802b24c192cd7c5d617 is
+preserved byte-exact. All nine older0600 metadata files and all three new0600
+files retain their exact recorded byte counts/hashes. Helper470 retains its
+entire immutable byte identity and SHA7fbc. Post-append archive equality,
+fresh-literal-only byte/AST reversal, metadata mode/hash/count, Markdown fence,
+final-newline, whitespace and report-only diff checks are performed; no new
+test, build, runtime, browser action or source correction accompanies them.
+
+Preserved historical phases include the lost provider output/report correction,
+all older request refusals/senderUNKNOWN, failed61/76 memory run, dated78/78
+memory pass with44baseline/80candidate calls, capacity refusal/notstarted,
+500b no journey, aca helperNOTRUN/preparation deadline/marker ProcessLookup
+and69.766s absence-readback limit. Their dates/outcomes are not refreshed.
+Memory sinks and this initial403 are not confidential browser journey proof.
+
+The concrete remaining checkpoint is still the real confidential application's
+printed password sign-in/Local demo consent/callback/validated token-userinfo/
+fresh protected200. This attempt cannot proceed past its generic application
+failure. No speculative cause/fix, source investigation or retry is authorized
+or performed here. Root decides any separately reserved diagnosis/correction
+and original D01/D05 disposition. No universal install/HA/release/tenant/
+physical-passkey or ordinary-user/invitation/application coverage is claimed.
+
+Only this existing report is appended and committed. No helper/controller
+file/product/guide/D05/config/test edit, main/merge/push/status, new worker/task/
+WT/shell or other-worker contact occurred. No Cargo lane was touched.
+Desktop/operator cleanup is complete and released; all future runtime remains
+HELD pending a separate root decision. Historical copy-mode handoff refusals
+are retained; no input-mode workaround or automatic handoff retry is made.
