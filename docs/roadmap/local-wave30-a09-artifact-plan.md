@@ -1253,3 +1253,53 @@ The first report whitespace check flagged six blank unified-diff context lines c
 One local reconstruction/refinement snippet initially asserted on an insertion hunk because it treated zero-count unified-diff line positions as ordinary context positions. It failed before writing; the static parser was corrected to handle zero-count insertions, reconstructed the exact proposal, and then added strict refusal of extra non-transition rows. This was a local authoring/check correction, not native helper execution.
 
 Final appendix checks passed with exit 0: repository docs checker, whitespace, hygiene (963 files), exact report-only scope and prior 961-line/63,148-byte prefix, reconstruction of the embedded zero-context diff against pinned product source, unchanged helper entry point, Python AST and the three proposed/recorded shell blocks with `bash -n`. The helper proposal was never imported, materialized or executed. These static report checks add no native/runtime acceptance.
+
+## Append: approved format-3 PostgreSQL helper materialized, runtime held
+
+2026-10-02, original A09 task / existing WTf2. Root approved source-only reservation `wave30_A09_postgres_shared_gate_helper`: exactly the helper delta reviewed in `f0796af` and an append to this report. The preceding **1,255 lines / 93,763 bytes** remain an exact prefix, SHA-256 `1b0f9a68168c3a53f3438dc316ab75b2b23635373e7b010a3611aa39be162744`. Earlier missing-metadata observations, actual HTTP 422/invalid-push failures, local authoring/static corrections and historical artifact limitations remain dated phases, not rewritten.
+
+### Newly supplied artifact metadata, with unchanged integrity limits
+
+Root supplied exact GitHub API-reported artifact identity: ID **11232871527**, name **`riauth-local-arm64-37016520583-1`**, digest **`sha256:fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30`**. Root expressly did **not** retain/re-hash the outer ZIP. This new metadata resolves the earlier lack of a full API-reported digest; it does not retroactively turn the prior prefix-only observation into full-digest knowledge or establish independent outer-ZIP verification. This worker did not download or re-hash an outer ZIP.
+
+The complete accepted root receipt `docs/roadmap/evidence/wave30-a09-native-arm64-37016520583.json` was read as an immutable Git object at `a74d3225dd8c845d0c7dff43ab922749c3a957b5`, SHA-256 `2cbf8ee46dbdd8b2ab43ad933913dd0a16c20b3183497c2d3b9cf3d1287da227`, blob `ceee1550df02541ee64fa16eb126b819d59fa2d6`. It agrees on the real run/job/workflow/product pins, all five local product hashes, resource/log/input hashes, `outer_zip_rehashed_by_root: false`, `shared_full_gate: not_run` and `official_release: false`. Root also names `planning/evidence/wave30-a09-remote-result-review.json`; it was not found as a tracked Git object or at the shared Git-root planning path accessible here, so no independent read of that planning file is claimed. The complete accepted receipt and root's explicit message supply the metadata above without requiring contact or external API access. No accepted root docs or planning files were edited/copied/merged.
+
+### Actual source pins and approved byte proof
+
+Before editing, the protected helper matched product `9a819317efb3a13fa27cd86f884be2be00898fc0` byte for byte: 13,127 bytes / 236 lines, SHA-256 `d6b0d023164756b2fcabe1a89794400d5ee70b43b6b4874abed3fd2f6a2cce7d`. The zero-context diff embedded in committed `f0796af897425b43a258b0d30214741beb238a32` was reconstructed against that exact protected body. Only the approved helper was written, its prior mode 0644 retained, and the result matched the proposed complete text hash exactly. The helper was never imported or executed.
+
+| Materialized source | Exact value |
+| --- | --- |
+| Source-only commit | `d36e13ad17541d21c88ed90d842e0a3e6db2280d` |
+| Parent proposal/report commit | `f0796af897425b43a258b0d30214741beb238a32` |
+| Sole source path | `scripts/check-local-edition-transition-postgres.py` |
+| Git blob | `d55d51aad16f508b3cb993a15f44e23aeb912729` |
+| Complete source | 21,716 bytes / 370 lines, SHA-256 `575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1` |
+| Exact delta | 139 insertions / 5 deletions; approved proposal bytes, no extra correction |
+
+The implemented source requires strict current format 3 and all 16 valid effective rates, compares the complete effective-rate map through supported E→P→E, rejects added as well as changed/removed non-transition rows, creates one disposable ordinary password/auditor/group fixture and compares its ID/user/groups/grants and authorization outcomes across editions. It checks audit allow/user administration deny, previously logged-out session refusal, one-session fixed expiry and authentication/general-rate plan/start refusals with unchanged rows/agreement and no ready listener. The owned connected-client cleanup has TERM/5 seconds/KILL/5 seconds bounds. These are **authored checks**, not observed native test results.
+
+| Source hunk mapping | Actual helper start line |
+| --- | ---: |
+| `transition_metadata` | 66 |
+| `require_target_metadata` | 88 |
+| `require_preserved` | 102 |
+| `authenticated_status` | 108 |
+| `ordinary_fixture` | 120 |
+| `shared_probe` | 135 |
+| `shared_config_refusals` | 170 |
+| `main` | 211 |
+
+### Stable supporting API equality and protected inputs
+
+Supporting API bodies were reread at product `9a81931`: `Core::me` returns a stable `UserView` and durable group membership beside transient session ID/expiry/MFA fields; `UserView` contains stored user identity/account fields, not session ID/expiry. `Core::human_grants` returns username plus stored grants; `Core::get_resource("group", ...)` returns the stored group object. The AST-checked `shared_probe` equality snapshot contains exactly **user, groups, group, grants, audit_status, users_status**. It excludes session IDs, expiry and tokens. The returned token is kept separately in memory for refusal checks, and the expiry comparison is only within the same session. No equality adjustment or broader source edit was necessary.
+
+The encrypted helper remains byte-exact at product source, SHA-256 `09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e`; its unchanged `live_identity_and_grant` function source segment has SHA-256 `893ebad3662b67c835a35826ae202022b478f4184cd69a42e2c6b9a38220cf44`. Static call inspection finds only this function through `encrypted_fixture`. Its historical format-2 metadata/run/compiled-probe path is not called. Installed-gate, exact-matrix and SPDX helper bytes remain equal to the pinned product hashes already recorded above; the workflow remains exact `036a392` bytes/SHA-256 `0a98865e5ee25d2f94b745b32602949553bf4f4e3b83d8bd302fade98eafd948`. No product/edition/node-security/CLI writer, encrypted helper or workflow was edited.
+
+### Actual static checks and still-held runtime
+
+Source validation passed with exit 0: approved-diff reconstruction/exact complete SHA/length/line/mode proof, Python AST, stable snapshot-field/token separation and encrypted-function-call inspection, protected byte comparisons, docs checker, staged whitespace and repository hygiene (963 files). The report was unchanged at the source-only commit. No helper import, native process, PostgreSQL tool/service/fixture, Cargo/build, transport/download/launcher/workflow execution or contact occurred. No current artifact or shared-gate result is credited by this source change.
+
+A future fresh native build-free launcher still requires separate immutable source review/reservation: exact artifact transport/full-digest comparison, safe hash-bound extraction, real new run provenance, actual PostgreSQL/native/resource preflight, 30 GiB start/10 GiB stop/8 GiB floor, finite timeout and owned cleanup, private capture/allowlisted failure evidence. Root's API-reported digest does not substitute for verifying transport bytes. Neither this helper nor this report implements/owns that launcher. The previous native executor ended and its slot was released; no runtime slot is consumed here.
+
+Original A09 remains open. Linux x86-64/container/TLS/passkey/device/full-client/encrypted-redb/full shared/physical/tenant/escrow/paused-IO limits and accepted receipt-secret, route-header, PAM, permission/review/removal/audit/credential/Group/input/non-renewed-60-second protections persist. Root alone reviews/integrates and decides later native acceptance/release/status. No other file, main, push, status, worker/task/worktree/shell or desktop was changed/created. RiWork Cua.ai Driver preference persists.
