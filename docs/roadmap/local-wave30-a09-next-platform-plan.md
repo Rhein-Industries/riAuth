@@ -744,3 +744,204 @@ download/dispatch/service/browser/network, worker contact, new task/worktree/
 managed shell, merge/reset/main/push/status or current PG overlap occurred.
 Driver-only desktop preference and all receipt/header/PAM/Group/60s contracts
 remain unchanged.
+
+## Native container cohort implementation — SOURCE ONLY
+
+Reservation `wave30_A09_native_container_cohort_implementation`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, supporting WT42; primary f2 unchanged.
+Root approved the full `a7a314e` design. That entire report remains an exact
+52,019-byte prefix, SHA256
+`8584ee2e9b536dcbf0eb543dac191c362f149caa9e8440eb1af7fcbcedfc45b4`.
+The original 85/3df prefixes and historical outcomes are retained verbatim.
+No source alignment, merge, reset, existing production/helper/workflow edit or
+board change was needed or performed.
+
+Source commit **`be22eebb8cc957037f5e5c1f153f87df81f3dc25`** adds only:
+
+| New body | Lines / bytes | SHA256 |
+| --- | --- | --- |
+| `.github/workflows/check-local-container-cohort.yml` | 88 / 3398 | `7a0b7fb12a6c2650a1a7413e856ed6a9053aed7f5e1f06c2172413c7fdf84302` |
+| `scripts/check-local-container-cohort.py` | 1516 / 85922 | `0f499284f5a053026230586f936b0ba38e58898a4f8fe36885efd30161bbbcfa` |
+
+### Reviewed inputs now supplied, distinct from a new container execution
+
+Immutable root receipt commit
+`66c814a339665e6b3f8e6c22bc59d4f6f0aa224c` supplies both input records. Full
+receipt bodies were read and their bytes hashed; no official URL/registry/network
+request was made here.
+
+- Native receipt path
+  `docs/roadmap/evidence/wave30-a09-native-x86-root-review.json`, 11,244 bytes,
+  SHA256 `ccf7c3fb6c0bd85816097c32a24a1c1b0a67b9597346d571cd68975a4680b1af`.
+  Actual SUCCESS run **37046857550**, job **110970324302**, attempt **1**;
+  artifact **11246575279**, `riauth-local-x86_64-37046857550-1`, **52428080** bytes,
+  API/upload digest
+  `sha256:7c1bcad0f78d90eb611ab76d67943a32a0d691cd5bbd9e5588512bdde635e2a0`.
+  Product source `b619fe25269ccc150e473bbcde47cdb3623ef810`, tree
+  `a627df2ce21a4d255b8c1914d4f543e32f40f4de`; native build workflow source
+  `0d090169f20f61f7cb59b685dccb13203526539f`, workflow hash `62c37897…`.
+  Those two source identities are deliberately different. The native input has
+  five binaries, ELF machine62 and eleven historical commands with exit0;
+  `shared_full_gate=not_run`. The stale notices at b619 are retained explicitly.
+- BuildKit receipt path
+  `docs/roadmap/evidence/wave30-container-buildkit-source-pin.json`, 8628 bytes,
+  SHA256 `4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0`.
+  Root's read-only v0.33.1 index pin is
+  `sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea`;
+  selected native amd64 reference is
+  `docker.io/moby/buildkit@sha256:98cc6a3fc46220d00f8224ae483f3274fc874e9be8d7dd1e2e2c5481209228b5`.
+  Its config digest is checked by the future controller. Root's receipt states
+  no layers downloaded/no native execution; that is not compatibility evidence.
+
+The allowed local historical evidence directory was read, not replayed.
+`riauth-local-x86_64-37046857550-1/evidence.json` is 60,389 bytes / SHA256
+`1527aa7388a13554d3699f4869af12d7f91d3fbe1fe8ebf18e18b50c0c31b986`;
+`resources.jsonl` is 195,534 bytes / SHA256
+`74606c2c2709d4a02664e7c66367acf9eb8b61898abb28e8d040c37f9f4937bc`.
+I independently rehashed those, the eleven recorded logs and five compressed
+archives against the immutable root receipt. I did not execute/extract the
+binaries or freshly repeat their ELF/three-member tests. The raw native JSON
+contains `observed_server_capabilities` beyond the receipt's product summary;
+the new helper compares those independently against the hashed capability logs.
+Root did not retain/rehash the historical outer ZIP. The new transport must hash
+actual downloaded outer ZIP bytes and refuse disagreement, with no alternate
+download/retry. The historical native evidence is not a new container pass.
+
+### Materialized control and public-interface gate
+
+One manual native `ubuntu-24.04` job, no matrix/automatic trigger, read-only
+contents/actions, pinned checkout/upload actions, legacy serialization key and
+no automatic cancellation. Separate immutable controller/product/review
+checkouts; exact branch controller identity, product tree, receipt hashes and
+clean source checks precede product calls. Preparation steps have explicit
+timeouts; the controller's nominal2s sampler covers its source/transport/Docker/
+fixture operations. The launch guard measures capacity before action checkouts;
+no claim of sampler coverage during those checkout actions is made.
+
+The future controller performs one exact same-repository artifact transport,
+API/run/attempt/source identity validation, strict ZIP/TAR member checks,
+512 MiB compressed/expanded native limits, five archive/binary/license/notices
+hashes and ELF62. Public tool files alone become0755; private input parents,
+configs, keys, sessions and redacted evidence stay0700/0600. Native capabilities
+and versions are checked; no native binaries are rebuilt.
+
+The original Dockerfile and ignore/context rules remain unchanged. The private
+resource-prefix recipe reverses exactly to the b619 Dockerfile; jobs1,
+incremental0 and dev/test/release debug0 are scoped to its one original Cargo
+command. Both LOCAL images use that explicit variant, not a claimed unmodified
+canonical build. Dedicated private Buildx configuration/builder and pinned tool
+image; no default builder/context, inherited registry credential, global prune,
+shared cache deletion, remote daemon or registry write. Each image has its own
+actual ID/server hash and both capabilities must match the recorded native
+edition; Ubuntu native and Debian image binary hashes are not equated.
+
+Image save/load is bounded, with 2 GiB per-archive compressed/expanded caps,
+strict outer member types/paths and tag/config/layer/index identity checks before
+load; loaded IDs, edition/source/owner labels, amd64, UID10001, entrypoint/Cmd/
+working directory/volume declarations, notices, ELF and version are checked.
+Base references remain pinned source inputs; public bounded build logs retain
+actual resolution/package output. No independent resolved-base/toolchain audit
+or official image attestation is claimed.
+
+Application/tool containers have explicit UID10001, read-only root, dropped
+capabilities, no-new-privileges, private tmpfs and finite resource bounds; no
+Docker socket/credentials. Two owned volumes per fixture are first copy-up/
+numeric-stat probed at `/data`, before any credentials; unsupported UID/mode
+mapping stops without repair. Serving uses read-only config/key and writable
+data, loopback host-network random port and the exact matching HTTP issuer.
+Offline maintenance uses public mounted binaries and closed stdin/config paths.
+
+The single fixture function implements the approved clean E→P→E journey plus
+the separate Platform-state refusal fixture: administrator creates one ordinary
+password user/local group/auditor grant with fresh revision/request keys;
+complete 12-field UserView, me fields other than fresh session ID/expiry, group,
+grant, issuer/JWKS, allow audit200, deny user-create403/client4/no new user, two
+logout401/client3 samples, explicit exact-token handoffs and wrong direct-build
+refusals. Private original config/key comparisons remain exact. Three offline
+one-field issuer/session-policy/login-rate variants must parse exactly, show
+specific plan/startup refusals and preserve the original config/key/data hashes.
+The separate Platform agent sample uses the existing quoted revision/request
+headers and requires direct/preflight downgrade refusal; no Source Group,
+reviewed privileged grant or writer bypass. Format3/16-rate enforcement is
+through pinned public entrypoints, not a new raw-store/credential probe.
+
+Concrete static corrections from the reread b619 bodies, confined to new code:
+
+- `src/cli/local.rs::emit_transition` uses **ok:false**, data.ready:false and
+  exit5 for a blocked plan/preflight; it is not a normal success envelope and
+  not a normal `error` envelope. This corrects my earlier commentary wording.
+- `Config.rate_limits` skips serialization when empty; the exact one-leaf login
+  override therefore supports an absent table. Full TOML equality verifies the
+  intended candidate, rather than accepting a generic parse failure.
+- Standalone client flags/session/JSON envelopes and its403→4/401→3 mappings,
+  public maintenance keygen/init/plan/activate, Core.me/UserView/logout/audit,
+  grant writer and node-security/activation ordering were reviewed directly.
+  Audit scope `audit/events` uses `/api/audit`, not inventory-audit. Discovery
+  can advertise edition capabilities: only the stable issuer/JWKS contract is
+  compared, while UserView/group/grants remain complete comparisons.
+- Docker attach transport status and the product container State.ExitCode are
+  recorded separately; assertions use the actual product exit. Docker absence
+  needs typed not-found output plus a live daemon check, not any exit1.
+
+The job is150m; controller7200s, fixture1200s, builds1800s each, scoped cleanup
+240s, and setup/pull/save/load/metadata operations have finite bounds. Require
+30 GiB initially and before large phases, nominal2s host/private/workspace/
+actual Docker-storage sampling, own-work stop at10 GiB preserving8 GiB margin,
+8 MiB log/evidence caps; sampling is not a hard quota. Docker daemon children
+are cleaned explicitly. Expected names are recorded before creation; actual
+container/volume/image identities and labels are checked before scoped removal.
+The builder's private instance/creation interval/state mount bind cleanup.
+Missing ownership blocks deletion. Process start ticks/session/group are bound;
+group signals precede leader reap, followed by group-empty proof. Only private
+fixture/input state is removed; retained public evidence is redacted. No raw
+CLI/HTTP/app output, password/token/key/opaque user IDs or transition argv is
+logged. Source/input refusal before daemon setup does not trigger Docker cleanup.
+
+### Actual static checks, failures and remaining release boundary
+
+- Full new source bodies/patches reviewed; Python `ast.parse`, local method
+  keyword signatures, closed literal public refusal codes and no existing-helper
+  imports checked without importing/running the helper.
+- Psych structure/manual trigger/one job/permissions/serialization/actions/
+  source refs/context/step deadlines checked; **two** `bash -n` run blocks pass.
+- Receipt/input hashes, AST-extracted recipe literal/reversal, historical
+  evidence/log/archive hashes, unchanged tracked files and new-file whitespace
+  checked. Staged source `git diff --cached --check` passes; source commit has
+  only the two reserved additions. No existing Dockerfile/ignore/deploy/release/
+  packager/checker/native/shared workflow/helper/product/manifest changed.
+- Static audit failures retained: the first historical JSON read used the
+  directory root instead of the uploaded-artifact subdirectory (FileNotFound;
+  corrected read only); an attempted patch had an extraneous nonexistent
+  context and was refused without mutation; a first Psych probe assumed YAML
+  1.2's string `on` key (Psych's YAML1.1 decodes it as true; checker normalization
+  fixed, workflow unchanged); a first AST literal probe did not resolve constant
+  dictionary keys (probe corrected without importing the helper). Subsequent
+  named checks pass. None was a container/fixture failure or pass.
+
+Documentation/append-prefix/scope/whitespace checks are recorded below after
+this append. There was **zero** Docker/buildx/pull/version/native binary/helper
+main/import/Cargo/typecheck/test/HTTP/query/download/dispatch/service/provider/
+browser execution here, no slot reservation or worker contact. No new task/
+worker/worktree/managed shell, main/push/status or source alignment occurred.
+
+Root source and independent review still precede any serialized native cohort
+release. Actual native Docker/buildx driver/private-instance/archive behavior,
+UID copy-up/mounts, maintenance library compatibility, capacity/peak/durations,
+public-interface assertions and cleanup remain **UNRUN**. The named input pins
+are now supplied; those runtime properties are not inferred from their hashes.
+O07's actual UID0:0 versus10001/EXIT1 limitation and both historical receipts
+remain in the preserved prefix; no root-application fallback, same-host retry,
+host-mapping repair or retrospective success. No full A09/shared/ARM-container/
+official-release/tenant/device conclusion or status recommendation from source
+alone. Root alone integrates, releases runtime and decides original closure.
+Driver-only desktop preference and all receipt/header/PAM/Group/60s limits remain.
+
+Post-append actual checks: exact85/3df/a7 byte-prefix proofs PASS; current diff
+contains only this report; total phase scope is exactly the two new source paths
+and report. Both source files still match `be22eeb` byte-for-byte. Markdown
+fences/whitespace and `git diff --check` PASS. `python3 scripts/check-docs.py`
+EXIT1 reports only the same five pre-existing build directories:
+`target-wave29-source`, `target-wave28-scim`, `target-wave28-portal`,
+`target-wave28`, `target-wave27`; no Markdown-link errors. No directory deletion
+or checker change. These static results do not release any runtime.
