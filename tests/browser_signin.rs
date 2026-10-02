@@ -3004,8 +3004,12 @@ async fn configured_browser_password_totp_consent_spends_exact_preparation_once(
     f.user("bob");
     let enrollment = f.core.mfa_begin(&alice).unwrap();
     let totp = crypto::totp(enrollment["secret"].as_str().unwrap(), "alice").unwrap();
+    let period = riauth::authenticator::TotpSettings::default().period;
+    // Preserve the exact login input across hashing, reopen and period rollover.
+    let login_at = now();
+    let spent_code = totp.generate(login_at).to_string();
     f.core
-        .mfa_confirm(&alice, &totp.generate(now() - 30).to_string())
+        .mfa_confirm(&alice, &totp.generate(login_at - period).to_string())
         .unwrap();
     let login = f
         .core
@@ -3013,7 +3017,7 @@ async fn configured_browser_password_totp_consent_spends_exact_preparation_once(
             None,
             "alice".into(),
             PASSWORD.into(),
-            Some(totp.generate(now()).to_string()),
+            Some(spent_code.clone()),
             false,
         )
         .unwrap();
@@ -3031,6 +3035,9 @@ async fn configured_browser_password_totp_consent_spends_exact_preparation_once(
         .to_owned();
     let bob_sso = browser(&f, "bob");
     let alice_sid = sid(&f, &alice_sso);
+    let alice_id = user_id(&f, "alice");
+    let account: User = f.core.store.get("users", &alice_id).unwrap().unwrap();
+    assert_eq!(account.totp_last_step, Some(login_at / period));
     let stored = session(&f, &alice_sid);
     let session_count = f.core.store.list::<Session>("sessions").unwrap().len();
     let app = riauth::api::router(f.core.clone());
@@ -3097,23 +3104,40 @@ async fn configured_browser_password_totp_consent_spends_exact_preparation_once(
         post(
             &i.path("/password"),
             &i.cookies(Some(&alice_sso)),
-            json!({"username":"alice", "password":"", "otp":totp.generate(now()).to_string()}),
+            json!({"username":"alice", "password":"", "otp":spent_code}),
         ),
     )
     .await;
     assert_eq!(spent.status, StatusCode::OK, "{}", spent.text);
     assert_eq!(spent.body["requirements"]["configured_stage"], "totp");
+    let account: User = f.core.store.get("users", &alice_id).unwrap().unwrap();
+    let last_step = account.totp_last_step.unwrap();
+    assert_eq!(last_step, login_at / period);
+    assert_eq!(account.totp_settings.period, period);
+    // Use the current step or the next replay-safe step, never beyond the
+    // verifier's one-period future window. The API runs on blocking workers,
+    // which do not inherit crypto's thread-local fixture clock.
+    let current_step = now() / period;
+    let fresh_step = current_step.max(last_step + 1);
+    assert!(fresh_step > last_step && fresh_step <= current_step + 1);
+    let fresh_code = totp.generate(fresh_step * period).to_string();
+    assert!(
+        fresh_code != spent_code,
+        "fresh input must differ from login"
+    );
     let verified = call(
         &app,
         post(
             &i.path("/password"),
             &i.cookies(Some(&alice_sso)),
-            json!({"username":"alice", "password":"", "otp":totp.generate(now() + 30).to_string()}),
+            json!({"username":"alice", "password":"", "otp":fresh_code}),
         ),
     )
     .await;
     assert_eq!(verified.status, StatusCode::OK, "{}", verified.text);
     assert_eq!(verified.body["status"], "consent");
+    let account: User = f.core.store.get("users", &alice_id).unwrap().unwrap();
+    assert_eq!(account.totp_last_step, Some(fresh_step));
     assert_ne!(
         decide(&app, &i, Some(&bob_sso), true, &verified.body)
             .await
