@@ -411,3 +411,17 @@ Root queried run37053472817 and downloaded only its completed jobs. Audit1109982
 Run37053472817 now concluded SUCCESS: audit110998234590, integration110998234910 and check110998234935 all succeeded. Root retained and rehashed the complete873553-byte mode0600 check log SHA2921a4efb17d9e13c4bc225d1210ad7f188ee9ea23cc274ab69ba273a177aa9d, confirmed checkout94054b3c9b674e445893b52c1d7de29703fca73c and inspected named fixture lines/test-summary blocks and terminal step results. It records203 successful Rust test summaries and no failed summaries; documentation/notices and release build also completed successfully. The [terminal root receipt](evidence/wave30-ci-940-terminal-root-review.json) retains exact job/step metadata. Previously retained audit/integration hashes remain unchanged.
 
 This is actual whole-CI success for94054b3 only. Earlier notices-failed runs remain failed; queued69 run37056602599 was cancelled with no jobs. Later native I04/observer/container source is not credited as executed by this older checkout. No ignored Lasso runtime, external tenant, current packaged release or D01 confidential browser success is inferred.
+
+
+## Root later CI receipt at56bd, 2026-10-02
+
+Run37061329345/check111020195345 finished FAILED at exact56bd082; audit and
+integration succeeded. The CLI target reports21pass/1fail/0ignored/0filtered
+in23.47s. cli_certificate_bind_and_revoke_require_retry_binding failed at
+tests/cli.rs:954:9 with server exited early during the shared startup helper.
+Numeric server exit and stderr were discarded, so no cause or certificate
+failure is inferred. The full320779-byte check log SHA256bad1860b1454adc7db80f5fcb35c621e46fc70214855deb2bfe63d4f5dd1dc45
+is retained privately; [terminal receipt](evidence/wave30-ci-56bd-terminal-root-review.json)
+records exact provenance and missing evidence. Root reserved read-only startup
+source diagnosis; no new test or source correction ran. The genuine whole
+940 CI success remains dated to its pin; later/current source is not all-green.
