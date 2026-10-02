@@ -3039,3 +3039,177 @@ main/status/push remain untouched. Report scope, archive extraction, prefix,
 source identity, Markdown fences/final newline/whitespace and git diff --check
 are checked before the separate evidence-only commit. No broader campaign
 or additional check execution occurred.
+
+## 2026-10-02: bounded confidential browser release refused by fresh capacity
+
+Reservation: wave30_D01_bounded_confidential_browser_checkpoint. Root released
+one fresh confidential localhost fixture on the unchanged reviewed helper,
+assigned the sole desktop/operator controller, and retained Cargo with other
+owners. This phase **refused before fixture execution**: the fresh shared-volume
+capacity sample was below both the 8.5 GiB start/stop margin and 8 GiB floor.
+No automatic repeat, capacity cleanup, provider fallback, source correction,
+or entire fixture execution occurred. Immediate desktop/operator RELEASE was
+sent to the explicit project orchestrator after ending the one named Driver
+lifecycle session and obtaining cleanup readbacks, before this appendix.
+
+### Actual prerequisite and refusal
+
+The read-only preflight command exited 0 and emitted:
+
+```json
+{"free_bytes":4741165056,"private_mode":"0o700","fresh_result_absent":true,"fresh_provider_absent":true}
+```
+
+4741165056 bytes is 4.415554 GiB. Required start/stop margin:
+9126805504 bytes (8.5 GiB); absolute floor 8589934592 bytes (8 GiB).
+This actual sample was already below the floor. The task stopped before
+controller preparation/execution, native/provider version invocation, any
+maintenance/server/base-client/helper command, secret/password generation,
+lab/XDG creation, listener launch, browser/profile preparation or GUI action.
+
+This is a shared-capacity prerequisite refusal, not a product/guide/protocol
+failure or a browser pass. Fixture command count is 0, helper invocations 0,
+browser preparations/actions 0. There is no fixture START or active/cleanup
+timer, provider exit/stdout/stderr, signing result, browser target/tab binding,
+authorization/refusal counter, cookie/redirect/callback/token/userinfo/protected
+status to attribute to this phase. Those values are unobserved/not applicable,
+not zero-success substitutes.
+
+The requested fresh paths remained absent and were not populated with an
+invented controller/helper result or provider metadata:
+
+- deployment-private/d01-confidential-browser-bounded.redacted.json
+- deployment-private/d01-confidential-browser-bounded-provider-20261002.json
+
+A new updated public controller payload was not prepared or executed after
+the capacity failure. The prior retained 177-line controller remains unchanged,
+command SHA-256
+ab0a9c5d8f8fb1c4f5fb5db8b3c396e4dfbdf56bb5a7f0f7e7178b485d77040e.
+No new payload hash/execution/protocol observation is claimed.
+
+### Driver-only preflight and lifecycle cleanup actually observed
+
+Read the installed cua-driver SKILL.md (skill source version 0.29.1), MACOS.md
+and BROWSER.md, plus advertised MCP descriptions before any GUI action.
+Provider stayed RiWork Cua.ai Driver MCP. History tools were not advertised;
+none were invoked. No screenshots, recordings, native AX tests, raw CDP/
+Playwright/AppleScript, browser settings/security changes or permission-dialog
+automation occurred.
+
+Read-only check_permissions(prompt=false) observed Accessibility granted and
+Screen Recording granted, attributed to the driver daemon
+com.trycua.driver, PID 33430. Direct-capture readiness was not probed.
+list_sessions observed 0 visible sessions; get_session returned the expected
+session_not_started state. health_report restricted to version/platform/
+session/bundle/TCC checks reported overall ok, driver 0.30.4, darwin macOS
+26.2 arm64 and com.trycua.driver. AX capability/capture checks were skipped.
+These are provider prerequisite observations, not application accessibility
+or browser evidence.
+
+Started named lifecycle metadata session d01-bounded-confidential; returned
+active true, capture_scope auto/effective_scope window, desktop_capture_authorized
+false and desktop_unlocked false. This did not launch or bind an application.
+The external capacity sample was then evaluated; no browser_prepare followed.
+Cleanup end_session for that exact label returned active false. No browser,
+window, profile or target was created and no unrelated session/process was
+terminated.
+
+The initial guide lookup used a shell glob which failed before lookup with
+no matches; it was corrected using rg --files to locate the existing guide.
+No fixture/product action occurred during that tooling correction. Some broad
+description/read outputs were truncated; applicable tool descriptions and
+platform/browser instruction portions were subsequently read in bounded
+calls before any planned interaction. These tooling observations do not
+change the capacity refusal or supply browser evidence.
+
+### Fresh cleanup readback and immediate resource release
+
+Cleanup readback command exit 0, UTC 2026-10-02T17:42:16.722017+00:00. It sampled
+4446744576 bytes (4.141354 GiB) free.
+This second sample was a cleanup readback, not a retry/start gate. Actual
+readback JSON:
+
+```json
+{
+  "browser_created": false,
+  "cleanup_readback": true,
+  "epoch": 1790962936.722017,
+  "free_bytes": 4446744576,
+  "lab_created": false,
+  "new_outer_absent": true,
+  "new_provider_absent": true,
+  "ports": {
+    "3000": {
+      "absent": true,
+      "exit": 1,
+      "listener_count": 0
+    },
+    "9000": {
+      "absent": true,
+      "exit": 1,
+      "listener_count": 0
+    }
+  },
+  "server_helper_created": false
+}
+```
+
+Exact lsof observations for ports 9000 and 3000 both exited 1, returned no
+listener PID and confirmed absent. No owned server/helper/browser PID existed
+to join. No private lab path had been allocated, so there was no lab to remove
+or credential file to delete. Driver session cleanup completed. No unrelated
+process/file was touched; no Cargo slot was acquired or released.
+
+Then the explicit project orchestrator received immediate actual refusal and
+DESKTOP/OPERATOR RELEASE with both capacity samples and resource readbacks;
+that send exited 0 before this report append. The released fixture attempt
+will not be resumed on a later sample. Shared-volume remediation belongs to
+root, and a future attempt requires a separate explicit release after the
+capacity prerequisite is met. No end-user approval or alternate provider
+flow was introduced.
+
+### Source/evidence pins and unexecuted scope
+
+Root's published pin for the reviewed helper is main
+b619fe25269ccc150e473bbcde47cdb3623ef810 / accepted 0a243c9 / tree a627df2.
+Local history remained unchanged at 772c8cdbfd02e2bf3f28212884aebe5ef9f03849
+until this report-only commit; no alignment/merge/main edit was performed.
+The actual local helper matches immutable source
+470690cad0cd93c9f25c5bc40b982e1b91679b49, blob
+3d3379399126423a6a5588a6bd55ea4ac1723ebd, SHA-256
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0,
+32723 bytes / 695 lines.
+
+Read local Essentials section 3 registration commands and source-identified
+the published guide objects at b619fe:
+
+| Published document | Bytes | SHA-256 |
+| --- | ---: | --- |
+| docs/essentials-guide.md | 52032 | 9df3c2861984751d48b28d284cfb47c07801fd3934072e2ccb829edeb35579a0 |
+| docs/oidc-profiles.md | 25350 | 50e749a35ebed44e7430eb8400debbbce89d15444079913237a349b6fb21ca21 |
+
+Guide identity checks are source/hash observations, not execution or full
+independent body reviews of the published objects. No application setup step
+was attempted. The expected c01 server7abf745, maintenance86490c7, baseclient
+bfbbb322, verifierf6dd1aa and provider67a83dd/full-version pins remain
+requirements for any future fixture; **none of those artifacts was freshly
+rehashed/invoked in this phase**, because capacity failed first. Do not carry
+historical artifact checks forward as new runtime evidence.
+
+The original 78-case corrected memory pass remains dated and limited to
+memory sinks; the earlier failed 61-of-76 memory run, actual failed fixtures,
+provider refusal/lost values/reporting correction and UNKNOWN request sender
+remain preserved. No source/controller/harness/guide/product/D05/test/Cargo
+change or new worker/task/worktree was made. No real password sign-in,
+Local demo consent, callback, protected 403/200, native verifier/JWKS/RS256,
+userinfo, physical passkey, ordinary nonadmin, invitation, tenant or full
+D01/D05 gate is credited. Root alone adjudicates future releases and original
+acceptance; O06/I10/R05 remain closed.
+
+Preservation checks before committing this append: the complete 185976-byte /
+3034-line 772c8cd report remains a byte-exact prefix; helper470 SHA7fbc and the
+retained original controller hash are unchanged; all five dated private
+metadata files retain their bytes/hash/0600 modes. Fresh requested output
+paths remain absent. Only this report changes; Markdown fences/final newline/
+whitespace, git diff --check, source/prefix/readback identity and report-only
+commit scope are checked without additional runtime.
