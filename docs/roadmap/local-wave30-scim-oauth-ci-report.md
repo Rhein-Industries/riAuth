@@ -1032,3 +1032,78 @@ exact prior-report prefix preservation, report-only changed-path checks and
 actual source/fixture blob equality. Root owns the subsequent exact helper
 implementation reservation and any one-target runtime release. Cargo remains
 FREE and unused; I10/R05/W02/W05 stay DONE.
+
+## Reviewed scheduler-helper implementation: source/static evidence only
+
+Root approved `wave30_CI_scim_oauth_scheduler_helper_implementation` after
+reading proposal `10b0e9e` and independently tracing cursor selection,
+claim, error and finish. This phase implements exactly that prospective
+private-helper delta, with runtime still HELD for this lane. No Cargo,
+typecheck, test, service or provider invocation, slot acquisition, deletion,
+other-worker contact, task status change or main/push action occurred.
+
+Source commit: `199980044994d74adcb429bed70ff386399445d8`, parent
+`10b0e9e055af1644ceff08f8577f11caeae1bf1d`. Its only path is
+`tests/scim_oauth.rs`, with 20 insertions and four replaced lines entirely
+inside the existing private `step(core: &Core)` helper. Actual whole-file
+blob and SHA-256 match root's expected proposal exactly:
+
+- Git blob: `55a59a6e87f5085a938fa3338c694241fe176f27`.
+- SHA-256: `ee69d6311be8bcbe697a902586acb070dfc55a7769758c7ccdd3b41f8f30b218`.
+
+The helper reads whether a due cursor existed, preserves the first public
+Core call and its error propagation, and allows at most one extra scheduling
+pass only after `Some-before / None-after`. A selected claim parks the cursor
+and finish/error leaves it in place, so the optional pass cannot advance a
+second selected resource in these isolated sequential fixtures. The existing
+blocking boundary, JoinError/result unwraps and already-imported `Error`
+remain. There is no polling, sleep, clock/due write, new helper, caller,
+assertion, authority, lease or product change.
+
+**Actual static checks.**
+
+- `rustfmt --edition 2024 --check --config skip_children=true tests/scim_oauth.rs`
+  exited 0, without editing child modules or running tests.
+- `git diff --check` exited 0.
+- Applying the exact prospective diff from the committed report in memory
+  reproduced the actual file; reversing it restored the **entire** immutable
+  `ba09a980b248ce1be742d60a3f82a4f3f5fbea81` fixture. Removing only the four
+  f89 additions from that restored file then reproduced the entire accepted
+  20dd fixture `02ce939a673c500296a3bf7feb1154180f39a20e`.
+- All protected imports, helper callers, assertion AST items, original event
+  sequences, 20dd router holders and f89 calls retain their bytes outside the
+  one approved helper delta. Production/crates/manifests/lockfile/toolchain
+  remain byte-equivalent to fixed published
+  `9b8956f7b2a9961b14e313fa57c0f5214a136772`.
+- Changed-path checks confirmed only the fixture changed before its source
+  commit, and the preceding report remained untouched. Docs validation,
+  whitespace and exact report-prefix/scope checks cover this separate append.
+
+**Dated Linux failure, predating these changes.** Root supplied run
+`37022804623`, check `110890070823`, at published `9b8956f7`. This lane
+independently read its SCIM section and verified the downloaded raw log
+`/tmp/riauth-wave30-ci-37022804623-110890070823.log`:
+588,141 bytes, SHA-256
+`f4a0dc82a546d23cbb849938a53349680599a1c21ff8bb8ded283f5fe494e077`.
+The log names the fixed source hash and records **21 passed, 3 failed,
+0 ignored/filtered, in 25.41 s**, from `2026-10-02T15:20:54Z` to
+`15:21:20Z`. These are historical Linux results, not a run of f89 or this
+new helper.
+
+| Historical failure | Actual logged assertion |
+| --- | --- |
+| `completed_job_history_is_compact_and_bounded`, line 960:48 | Public apply unwrap receives 409 unfinished-job conflict. |
+| `reviewed_last_group_member_removal_requires_complete_remote_membership`, line 2425:5 | Shared helper's subsequent item cursor is 1, expected 2. |
+| `uncertain_patch_response_is_reconciled_without_a_second_patch`, line 1175:5 | Final completion is false, expected true. |
+
+The first read-only log locator expected an uncolored `Running` marker and
+did not match the encoded color prefix; locating the test-file marker instead
+read the unchanged section successfully. This was a source-inspection locator
+correction, with no test execution or source correction.
+
+All earlier Linux 16/8, native 22/2 results, static review and prune evidence
+are retained. The native f89 repeat passed the history and lost-PATCH cases
+but remained 22/2 at different failure locations. **This new helper has no
+fresh typecheck or runtime result**, and neither the historical Linux failure
+nor the whole target is claimed fixed. Root owns immutable review and a
+separate whole-24 release. I10/R05/W02/W05 remain DONE.
