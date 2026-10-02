@@ -8,7 +8,18 @@ fn platform_conditional_policy_uses_bound_signals_and_projects_only_allowed_clai
         ConditionalPolicy, Predicate,
     };
 
-    let f = Fixture::new();
+    let mut f = Fixture::new();
+    // ApprovedDevice mappings require a usable verifier even when this
+    // password-only session has no device proof to project into its claims.
+    let device_keys = f._dir.path().join("device-trust.jwks.json");
+    let (_, verifier) = alternate_client_keys();
+    riauth::config::write_private(&device_keys, &serde_json::to_vec(&verifier).unwrap(), false)
+        .unwrap();
+    f.core.config.device_trust = Some(riauth::device_trust::TrustConfig {
+        jwks_file: Some(device_keys),
+        ..Default::default()
+    });
+    f.core.config.validate().unwrap();
     f.client("app", false);
     let alice = f.user("alice");
     f.core.create_group(&f.admin, "engineering").unwrap();
@@ -652,6 +663,9 @@ async fn outbound_scim_plans_provision_groups_preserve_remote_attributes_disable
             export_groups: true,
         },
     );
+    // Retain the shared executor so settled permits can release admission on
+    // the next claim instead of waiting for a discarded executor's lease expiry.
+    let _source_router = riauth::api::router(source.core.clone());
     let credential = source
         .core
         .create_agent(
