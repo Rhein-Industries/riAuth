@@ -267,3 +267,121 @@ unmodified-source baseline and corrected named-filter results, and independent
 review/integration. S04/O03 stay DONE; accepted measurement, history and all other
 source/fixtures remain intact. This preparation alone does not claim the Linux
 failure is reproduced or fixed at runtime.
+
+## Released baseline and corrected exact runs — 2026-10-02
+
+Root released exactly the baseline and corrected named filter after the gauge
+lane completed. The earlier runtime-held statements are historical. This phase
+used the committed `9810c33edba8027433c1a4e24442d878710b9a8a` correction unchanged;
+no further implementation or fixture correction was needed.
+
+### Baseline source equivalence and restoration
+
+Before execution, compared all **505 tracked paths** under `src`, `tests`,
+`Cargo.toml`, `Cargo.lock`, `.cargo`, `build.rs` and `rust-toolchain.toml`
+against fixed `da5ff7dcfc3442c302955344229168872911b0ec`. The only baseline
+differences were the retained authorized S04 `src/state.rs` control/common body
+and `tests/state_reconciliation.rs` appended workload, both exactly matching
+own accepted implementation `5120a0ddb51d015fbf89fbca19da127444e26f8b`.
+All other source/test/build configuration paths, including every relevant
+reconciliation/provisioning/admission/API/Core/reopen caller, equal the pin.
+No other non-document path differs in own committed history except the corrected
+reconciliation method and these two S04 files.
+
+The baseline replaced **only** the approved reconciliation source using its
+private verified copy, without changing history. After the expected failure,
+verified no unexpected edit, restored the corrected private copy byte-for-byte
+against the immutable implementation commit, and checked clean tracked source.
+The full fixture was never edited or swapped. Exact Git blobs:
+
+| Source | Git blob |
+| --- | --- |
+| Baseline src/reconciliation.rs | `31a2149392c84b4330519079f3aaf2bb1ebb9908` |
+| Corrected src/reconciliation.rs | `5c32840631536b51f6df3f33b8c7bcdeb2702e99` |
+| Entire unchanged tests/reconciliation_jobs.rs, both runs | `aa1c3bdc70b232796dfb0c150179b8165384b85a` |
+
+The previously recorded SHA-256s for all three byte sequences were checked
+before baseline, before correction and after completion. A private ignored
+source-comparison manifest is retained at
+`target/wave27/support-ci-reconciliation-pagination/baseline-source-manifest.json`.
+The baseline is the precise fixed source with the disclosed unrelated S04
+exceptions, not a claim that the entire historical binary was reproduced.
+
+Root's published `d23dabbf9c8a9c150987e18f4f416bf93f52562a` S04 Clippy correction
+was inspected: one needless `&token` borrow becomes `token` inside the appended
+S04 workload. This lane did not replace that test file wholesale, edit it or
+recast/re-execute its measurement. It retained the original authorized own
+S04 bytes for both pagination runs; that ignored workload is not this test target.
+Root's accepted published correction remains intact for integration. No main
+alignment or whole-stack import changed this controlled comparison.
+
+### Exact command and actual results
+
+Executed exactly twice, baseline then corrected, with identical flags/filter:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo test --locked --features test-support,fuzzing --test reconciliation_jobs \
+  controller_resumes_more_than_four_scim_snapshot_pages_without_spending_retries \
+  -- --exact --test-threads=1
+```
+
+Each output was captured using pipefail and `tee`; the Cargo arguments did not
+change. Default Platform, `test-support,fuzzing`, `[unoptimized]` test profile,
+`Darwin 25.2.0 arm64`, local disposable redb fixture.
+
+| Run | Build | Test time | Exit | Exact target result |
+| --- | --- | --- | ---: | --- |
+| Baseline | 1m 01s | 1.44s | 101 | 0 passed, 1 failed, 0 ignored, 0 measured, 1 filtered |
+| Corrected 9810 source | 1m 01s | 1.71s | 0 | 1 passed, 0 failed, 0 ignored, 0 measured, 1 filtered |
+
+Baseline reproduced the downloaded Linux assertion at
+`tests/reconciliation_jobs.rs:229:9`: `reconciliation_process()` returned false
+after the real reopen. No compilation error occurred. Both builds emitted the
+same native `__eh_frame` compact-unwind table size warning, recorded separately
+from the assertion failure. The corrected test passed on its first invocation;
+no repeat, fixture/body change, extra target or broad campaign occurred.
+These execution times characterize the two test runs, not performance evidence.
+
+| Captured log | SHA-256 |
+| --- | --- |
+| /tmp/riauth-wave30-reconciliation-pagination-baseline.log | `5e8be0ae942ccbed9118b9b76a03bf6dc1383d762e13e938ef0a3eff3ae0c7fb` |
+| /tmp/riauth-wave30-reconciliation-pagination-corrected.log | `2cc8e8b515edf992ed22d42ea4e596ae8ae45df75271ddc6954537754bcd17b5` |
+
+### Preserved behavior, checks and residual limits
+
+Passing the entirely unchanged fixture verifies the existing real-close/reopen,
+same controller job through 128/256/384/512 link progress, zero attempts and no
+plan during partial pages, one completed attempt and one final plan, 513 disabled
+users requiring removal review, delivery none and no downstream provisioning job.
+No old executor holder, sleep, new request/probe/event, extra snapshot page, budget,
+raw ledger deletion, test clock or serving-gate bypass was introduced.
+
+The source-inspected change remains exactly four additions/one deletion: existing
+permit naming and owner/generation-checked release after durable finish, outside
+its writer, with the fixed safe warning and committed `Ok(true)` on cleanup error.
+Claim/finish/heartbeat/lease/schema/dispatch algorithms and paused-I/O limits are
+unchanged. Release-failure cleanup and stale-generation races were source-reviewed,
+not fault-injected or newly tested in this exact pagination target. The sibling
+revoked-authority controller test was filtered out in both invocations, not
+credited as freshly passing.
+
+Free disk before baseline was 17,244,368 KiB; observed after correction
+17,172,156 KiB, with a final reading of 17,167,176 KiB (about 16.37 GiB), above
+the 8 GiB floor. Both runs used only this own private target, jobs 1,
+incremental 0 and dev/test debug 0. Root received the exact results and immediate
+Cargo slot release on corrected exit; no further Cargo work is planned.
+
+Actual post-run checks: baseline/comparison manifest and complete fixture/code
+bytes against immutable objects/private copies; both exact log results and hashes;
+`rustfmt --edition 2024 --check src/reconciliation.rs`; Git path/whitespace checks;
+`python3 scripts/check-docs.py`. These passed. Committed corrected source is fully
+restored, and only this report changed for the separate runtime evidence commit.
+
+Recommend root accept the bounded production correction on this failed-baseline /
+passing-correction evidence. Corrected Linux CI, full all-target check, other
+features/backends and fault-injected cleanup are not claimed. Root alone owns
+review, additive integration with O06's disjoint diagnostics, publication and any
+status decision. S04/O03 stay DONE; their accepted source/history/measurement and
+the published Clippy correction are not reopened or replaced.
