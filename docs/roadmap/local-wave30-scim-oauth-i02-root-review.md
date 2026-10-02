@@ -112,3 +112,22 @@ The current SCIM Linux failure remains a failure. No corrected Linux, whole-CI,
 remote tenant, physical storage, release or I02 browser completion claim follows
 from this source review. I10, O06, R05, D03, D04, S04 and O03 remain closed under
 their accepted original scopes.
+
+## Reviewed private-target cleanup
+
+The worker inventory `cc4b329d2b2a4b4dfc5a994f3e1338bd023ea6a5` and
+actual cleanup `6acd927b3647717eaeb1ff3e465c480df784a796` are preserved in
+the SCIM report. Root verified the immutable 0600 inventory manifest SHA-256
+`b5fd6399c9fc1b2a47498eba342d58956aa8cf8e3bb3dff5e17d75e83831c113`.
+Root independently rehashed all sixteen selected files and checked exact parent,
+regular/non-symlink status, single link, mode, size, old feature fingerprints and
+absence of live process references. These were metadata/live-reference checks;
+no executable was run by this review.
+
+Root authorized only the sixteen-file option, totaling 3,390,210,480 bytes.
+After the worker's repeated checks, its one literal-path removal exited zero.
+Root independently confirmed all sixteen paths absent. The worker's measured
+free space rose from 8.04 to 11.19 GiB; root subsequently observed 11.18 GiB.
+The private manifest and review receipt remain retained. This authorization is
+exhausted. No additional cache, accepted binary, log, evidence or archive
+removal is authorized. The SCIM target is still held after the remote A09 job.
