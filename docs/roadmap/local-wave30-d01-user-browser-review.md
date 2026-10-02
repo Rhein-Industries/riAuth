@@ -1999,3 +1999,1043 @@ SHA-256 and 0600 modes. Final AST/in-memory compile/reconstruction/control-flow
 and report-only scope checks exited 0; Markdown fence/final-newline/whitespace
 and git diff --check passed. No source/helper/controller implementation or
 runtime occurred; source/fixture remain HELD pending root review/reservation.
+
+## 2026-10-02: exact bounded refusal source and one failed memory verification
+
+Reservation: wave30_D01_bounded_preflow_authorization_refusals. Root released
+the exact source candidate and ONE <=30-second stdlib-only in-memory lifecycle
+verification. The source was materialized/committed separately; verification
+failed, so it stopped immediately with no rerun or candidate correction.
+This append records partial observations and source diagnosis, not a complete
+verification pass. The real confidential browser fixture remains HELD.
+No desktop/operator/Cargo resource slot was acquired or released.
+
+### Source materialized exactly
+
+Source-only commit 470690cad0cd93c9f25c5bc40b982e1b91679b49, parent
+2d2baa58f9a56b6d0370a30597bb7981b61df46d. Its sole changed file is
+scripts/d01-confidential-browser-demo.py, blob
+3d3379399126423a6a5588a6bd55ea4ac1723ebd, SHA-256
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0,
+32723 bytes / 695 lines. It matches the entire root-reviewed six-hunk
+in-memory candidate byte-exact, including three stateless nonterminal 403
+refusals, fourth terminal 403, count 0..4 and old post-flow terminal 400.
+The prior report was unchanged in the source commit.
+
+Before writing, the entire original ac3c helper was matched to immutable
+7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238. Candidate reversal reconstructed all
+31162 original bytes and the whole location-free AST; 31 original functions
+were byte-exact. Only Demo.__init__, Handler.handle_one_request and main
+changed, plus the new two-line exception class. The exact diff extracted from
+the immutable design report matched the generated zero-context diff.
+Parser/Host/body/target guards, header-free dispatch/cookie/flow/protected
+methods, native/crypto/provider methods, first reason recorder, response writer,
+budgets, cleanup and success gate remain as proved in the prior phase.
+
+After the failed memory run, static parse/in-memory compile/reconstruction
+and function-segment assertions were repeated against the actual disk helper
+and exited 0. Disk bytes still match the reviewed candidate and source commit.
+These are static proofs, distinct from the failed execution below; no helper
+module, main function, verifier/native/provider routine or controller ran in
+those source checks.
+
+### Exactly one executed lifecycle verification
+
+Executed payload SHA-256
+81b659352cedd0cc7fce37e32e447d04b0e373ebd9fea5c33f993c8b35b50d96,
+89348 bytes / 431 physical lines, including embedded immutable baseline and
+candidate source strings. Both source strings were read using Git before
+the verification; their identities were asserted inside it. The verification
+itself invoked no subprocess/CLI, helper module main, network/socket/listener,
+native verifier/provider, product CLI, Driver/browser or Cargo.
+
+The harness used io.BytesIO request/body streams, selected constant/class/
+method ASTs and controlled synthetic headers, the actual stdlib request parser,
+the helper's unchanged HeaderReader/Handler methods, stub five-second budget/
+reply/write/dispatch/flow sinks and a credential-read counter. Only Demo's
+constructor and clear method were included; begin/callback were local stubs,
+so routing outcomes do not claim OIDC or cryptographic validation. It executed
+selected private record-initialization/final-copy and existing outcome-gate
+statements directly, never module main. SIGALRM enforced a 30-second cap.
+No controlled input/header/cookie/state/subject values were printed or retained
+in the result.
+
+Actual command exit: **1**. Harness elapsed 0.019471 seconds; tool wall time
+0.137263541 seconds. Result failed/assertion_failed at fixed case
+header_free_bound_netloc. It completed 61 of 76 planned cases; one case failed,
+14 subsequent cases were never attempted. It made 35 baseline and 60 candidate
+in-memory Handler calls (95 total). Expected injected response-write failures
+and response timeouts both remained 0 because those cases were later in the
+sequence and did not run.
+
+Complete sanitized result emitted by that single execution:
+
+```json
+{
+  "completed_cases": 61,
+  "deadline_seconds": 30,
+  "elapsed_seconds": 0.019471,
+  "expected_response_timeouts": 0,
+  "expected_write_failures": 0,
+  "failed_case": "header_free_bound_netloc",
+  "failure_tag": "assertion_failed",
+  "groups": {
+    "authorization_bounds": 9,
+    "authorization_presence": 6,
+    "bounded_sequence": 4,
+    "header_free_bounds": 9,
+    "header_free_routes_guards": 25,
+    "postflow": 7,
+    "record_copy": 1
+  },
+  "handler_calls": {
+    "baseline": 35,
+    "candidate": 60
+  },
+  "helper_sha256": "7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0",
+  "main_invoked": false,
+  "network_listener_native_provider_cli_driver_browser_cargo": false,
+  "result": "failed"
+}
+```
+
+| Verification group | Completed | Planned | Actual scope |
+| --- | ---: | ---: | --- |
+| Initial count/final-copy/outcome gate | 1 | 1 | Count 0 copied; incomplete checks cannot pass |
+| Cumulative first-three/fourth refusals | 4 | 4 | Counts 1..4, fixed 403, live/live/live/terminal, no dispatch or journey credit |
+| Authorization presence/route refusal | 6 | 6 | Empty, duplicate, POST, protected/cookie, callback and other method refused without dispatch |
+| Strict state/exhaustion | 7 | 7 | Four state disqualifiers, two non-False attempted values and existing count 4 retain terminal 400 |
+| Header-free routes/route guards | 25 | 25 | Baseline/candidate snapshots, replies and stub traces equal |
+| Header-free structural bounds | 9 | 12 | First nine matched; tenth case failed before candidate comparison |
+| Authorization structural bounds | 9 | 12 | First nine terminal; no continuation/count/flow/check/status changes |
+| Parser/request/header limits | 0 | 5 | Not run |
+| Counter across header-free flow/cleanup | 0 | 1 | Not run |
+| Preexisting first-reason preservation | 0 | 1 | Not run |
+| 403 write-failure/response-timeout propagation | 0 | 2 | Not run |
+
+Completed sequence cases copied reason/count at counts 1..4, verified no form/
+Location/Set-Cookie, checked all refused-request dispatch/credential counters
+remained zero, and invoked the unchanged incomplete-check outcome gate.
+The six presence cases also called actual clear(), observing that count 1 and
+first reason authorization survived. This is not full counter-through-flow
+or response/cleanup-failure coverage; those scheduled cases were not reached.
+
+The 25 header-free parity cases covered root/unavailable/query routing,
+protected before/after/mismatched-cookie and missing precondition, callback
+routing with stub pending state, login/repeated login, method, POST target/
+query, Origin/type missing/wrong/duplicate and cookie count/shape/duplicate/
+unrelated handling. Stub protected 200/callback/login outcomes are memory
+control-flow observations, never browser sign-in/consent/token success.
+
+The nine structural cases completed for both header-free parity and preflow
+Authorization covered missing/wrong/duplicate Host, Transfer-Encoding, Expect,
+nonzero/duplicate/noncanonical Content-Length and absolute target scheme.
+The failed next case was a network-path target. Its candidate comparison,
+Authorization counterpart, fragment and invalid target-parse cases, all raw
+parser/line/header limits, flow counter persistence, first-only preset reason,
+403 write failure and response timeout remain **unverified by execution**.
+
+### Source-only diagnosis of the stopped assertion
+
+The failed header-free structural case first invokes the baseline, appends
+its in-memory outcome, then requires:
+
+```python
+assert d.done and d.failure is not None and h.responses == [(400, ())]
+```
+
+That case did not complete or reach its candidate request/comparison. The
+sanitized result retains its fixed case/failure tag and counts, not the
+individual false predicate or the baseline response/status. No actual status
+is asserted from the lost in-memory sink.
+
+After stopping, read-only inspection of the installed stdlib source found
+BaseHTTPRequestHandler.parse_request normalizes a leading network-path prefix
+before returning to the helper. Python version 3.14.6, executable
+/opt/homebrew/opt/python@3.14/bin/python3.14; inspected source
+/opt/homebrew/opt/python@3.14/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py,
+53122 bytes, SHA-256
+b917e19d333ae8aa1995063c9bddf5a15391f8f7caf32e41a22067824d643429.
+The parse_request source segment SHA-256 is
+2e3a1f90b0ab739e3c2b191b01f0dbf52ab13d4f77e3695bae662db8b2277be4.
+Its normalization at line 396 is:
+
+```python
+if self.path.startswith('//'):
+    self.path = '/' + self.path.lstrip('/')
+```
+
+Source inference: the harness's expectation that this parsed network-path
+request must hit the helper's netloc rejection is incorrect. The helper
+checks the parser's normalized path, not the original raw target. Both old
+and new header-free paths still use exactly that same parser and guards.
+This is a concrete test-expectation defect identifiable in source, not an
+observed product failure or a complete parity pass for the stopped case.
+No helper/Host/Authorization/parser guard is relaxed and no sender/probe
+origin is inferred. The earlier actual fixture failures stay failed.
+
+### Next validation proposal, not executed or released
+
+Keep source SHA exactly unchanged. If root separately releases a corrected
+memory check, classify the normalized network-path example as header-free
+old/new routing parity instead of requiring terminal netloc rejection.
+Its Authorization-bearing counterpart should expect the bounded preflow
+403 refusal when all normalized bounds/state pass, with no dispatch/journey
+credit. Check the unchanged target.netloc guard independently against a
+controlled parser-result stub retaining a nonempty netloc. This distinguishes
+actual stdlib normalization from the helper predicate without changing either.
+Report all new observed cases and the preserved first failed verification;
+do not silently count this failed run as a pass.
+
+The other planned, unexecuted cases still require separately released
+validation: parser/line/header bounds, remaining target failures, counter/
+reason persistence across flow/cleanup, and actual propagation from a 403
+write sink/response timeout. No correction/rerun happened here, and no new
+test/helper file was created. No entire browser fixture is released.
+Application/password/consent/callback/protected and native crypto gates
+remain unproven by this memory check. Root alone decides source acceptance,
+further validation releases and D01/D05 outcome; O06/I10/R05 remain closed.
+
+### Evidence preservation and scope
+
+The entire 128522-byte / 2001-line 2d2baa report is a byte-exact prefix of this
+append. All five historical private metadata files retain byte counts,
+SHA-256 and 0600 modes; checks read only identities and did not print bodies.
+All prior provider refusal/lost values/reporting correction and both failed
+fixtures remain intact. The helper remains exactly committed after the failed
+check. Controller/product/guide/D05/config/test files and main/status/push were
+not changed. Evidence is a separate report-only commit. Final report scope,
+source identity, Markdown fences/final newline/whitespace and git diff --check
+are checked independently of the failed lifecycle verification.
+
+## 2026-10-02: corrected complete memory harness, design only
+
+Reservation: wave30_D01_corrected_memory_harness_design. Only this existing
+report is appended. Root confirmed the prior network-path expectation defect
+from source. The harness below is a static proposal: it was parsed/compiled
+to in-memory code objects, but never executed or imported. No helper/module
+main, controller, native/provider, product CLI, HTTP/socket/listener, Driver/
+browser or Cargo ran. No runtime slot was acquired/released; real browser
+fixture remains HELD. Root must review this immutable archive before releasing
+ONE <=30-second verification.
+
+The first memory run remains **failed**, exit 1, 61 of 76 cases completed,
+case header_free_bound_netloc, failure assertion_failed. Its baseline response
+and exact false predicate were not retained. Root's source-confirmed diagnosis
+does not retroactively attribute an observed status. The proposed expectations
+below are future assertions, not results; no pass or D01/D05 closure is claimed.
+All earlier fixture/provider/reporting failures remain in their dated phases.
+
+### Source identities and exact payload construction
+
+The helper remains source commit
+470690cad0cd93c9f25c5bc40b982e1b91679b49, blob
+3d3379399126423a6a5588a6bd55ea4ac1723ebd, SHA-256
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0,
+32723 bytes / 695 lines. No helper/controller/source change is proposed.
+
+The embedded baseline is Git object
+7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238:scripts/d01-confidential-browser-demo.py,
+blob 62460c2f4515a325bb65fc430649b904e8bb2c10, SHA-256
+ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd,
+31162 bytes / 671 lines. The embedded candidate is the entire exact 470690
+object above. Both strings retain their final newline and were source/hash
+matched to those objects without execution. No runtime credential material
+is embedded.
+
+The readable archive below is complete harness logic. Reconstruct the exact
+executable payload by prepending these two lines, in this order, without any
+extra separator, then appending the archived logic bytes including its final
+newline:
+
+```text
+BASELINE_TEXT=<json.dumps(baseline_source, ensure_ascii=True)>\n
+SOURCE_TEXT=<json.dumps(candidate_source, ensure_ascii=True)>\n
+```
+
+Angle-bracket expressions are assembly instructions, not literal payload
+contents; each evaluates to the JSON string literal of the corresponding
+whole ASCII source. The displayed backslash-n denotes one actual LF. The
+two original serialized source lines are byte-exact and unchanged from
+the retained 81b659 payload. Their combined length is 66953 bytes.
+
+| Identity | Bytes | Physical lines | SHA-256 |
+| --- | ---: | ---: | --- |
+| Original complete payload | 89348 | 431 | 81b659352cedd0cc7fce37e32e447d04b0e373ebd9fea5c33f993c8b35b50d96 |
+| Original readable logic | 22395 | 429 | e37a2dd56ed269f2ee8bda90ddc37920e21497544a126832be59a53cb8ce80df |
+| Corrected complete payload | 91163 | 463 | ce79aeb99fafaaeb265d6b7bff55f415e91825d83e9c650eed412825a5a9525f |
+| Corrected readable logic | 24210 | 461 | 98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb |
+| Exact zero-context diff | 3262 | 57 | ae31333e31149558e01ed45d0e3c1e410699406134d74ee9b5a5be0b3746c815 |
+
+### Narrow correction and proposed case counts
+
+Only five unique replacements change the harness. The request sink gains a
+parser_path=None hook which always calls the actual parser first, injecting a
+controlled result only when explicitly requested. All 76 existing cases omit
+that argument and retain actual stdlib wire parsing.
+
+For the existing normalized network-path case, header-free OLD/NEW routing
+must compare equal after the actual parser strips the leading prefix; the
+test asserts the normalized path and unchanged generic 404/live outcome.
+Its Authorization counterpart must satisfy the existing refused() assertions:
+fixed 403, no dispatch/cookie/credential/flow/check/status/Location/Set-Cookie/
+form/journey credit, first authorization reason and count 1.
+
+Two added cases separately inject a parser-result path with nonempty netloc
+after successfully parsing an ordinary root request: one header-free, one with
+Authorization. They require terminal 400, request_invalid, correct finite first
+reason (target_netloc or authorization), zero dispatch/credential counters,
+unchanged flow/check/status snapshots and candidate count 0, with OLD/NEW
+outcomes equal. This explicitly tests the helper's netloc predicate rather
+than pretending CPython wire parsing preserves that raw form. The hook changes
+only a memory test sink, never helper guards or accepted traffic.
+
+All other cases/assertions remain, including the previously unattempted
+parser/request/header limits, remaining target failure cases, counter across
+header-free flow/cleanup, first-only reason, 403 write-failure propagation and
+response-timeout propagation. Planned counts are expectations only:
+
+| Group | Original planned | Corrected planned |
+| --- | ---: | ---: |
+| Initial count/final-copy/outcome gate | 1 | 1 |
+| First-three/fourth refusals | 4 | 4 |
+| Authorization presence/refused routes | 6 | 6 |
+| Strict state/exhaustion | 7 | 7 |
+| Header-free routes/guards | 25 | 25 |
+| Actual-parser header-free structural cases | 12 | 12 |
+| Actual-parser Authorization structural cases | 12 | 12 |
+| Controlled parser-result netloc rejection | 0 | 2 |
+| Parser/request/header limits | 5 | 5 |
+| Counter across header-free flow/cleanup | 1 | 1 |
+| Preexisting first-reason preservation | 1 | 1 |
+| 403 write-failure/response-timeout propagation | 2 | 2 |
+| Total | 76 | 78 |
+
+A complete proposed run would make 44 baseline and 80 candidate in-memory
+Handler calls (124 total). No such run occurred. begin()/callback() remain
+stubs; protected/login/callback memory results cannot prove OIDC, native
+crypto, browser consent or actual user success. Output remains fixed sanitized
+labels/counts/booleans; controlled inputs are source constructions below,
+not printed request/header/cookie/token values.
+
+### Exact original-to-corrected diff
+
+41 added / 9 removed lines, net +32 lines. The original terminal assertions
+remain byte-equivalent ASTs inside the non-normalized branches.
+
+```diff
+--- original-memory-harness.py
++++ corrected-memory-harness.py
+@@ -137 +137 @@
+-def request(ns,demo,version,wire,*,write_fail=False,timeout=False):
++def request(ns,demo,version,wire,*,write_fail=False,timeout=False,parser_path=None):
+@@ -139,0 +140,5 @@
++        def parse_request(self):
++            parsed=super().parse_request()
++            if parsed and parser_path is not None:
++                self.path=parser_path
++            return parsed
+@@ -319 +324,5 @@
+-                assert d.done and d.failure is not None and h.responses==[(400,())]
++                if target.startswith("//"):
++                    assert h.path=="/"+target.lstrip("/")
++                    assert not d.done and d.failure is None and h.responses==[(404,())]
++                else:
++                    assert d.done and d.failure is not None and h.responses==[(400,())]
+@@ -327,7 +336,11 @@
+-            assert d.done and d.failure is not None and h.responses==[(400,())]
+-            assert d.preflow_authorization_refusals==0
+-            assert d.request_invalid_reason==("host" if host!="normal" or any(n=="Host" for n,v in headers)
+-                                             else "authorization")
+-            after=flow_snapshot(d)
+-            assert after[:4]==before[:4] and after[6:]==before[6:]
+-            assert all(v==0 for v in d.calls.values())
++            if target.startswith("//"):
++                assert h.path=="/"+target.lstrip("/")
++                refused(new,d,h,before,1,False)
++            else:
++                assert d.done and d.failure is not None and h.responses==[(400,())]
++                assert d.preflow_authorization_refusals==0
++                assert d.request_invalid_reason==("host" if host!="normal" or any(n=="Host" for n,v in headers)
++                                                 else "authorization")
++                after=flow_snapshot(d)
++                assert after[:4]==before[:4] and after[6:]==before[6:]
++                assert all(v==0 for v in d.calls.values())
+@@ -334,0 +348,19 @@
++    for authorization in (False,True):
++        def controlled(authorization=authorization):
++            outcomes=[]
++            parser_path="//"+new["AUTHORITY"]+"/"
++            for ns,version in [(old,"baseline"),(new,"candidate")]:
++                d=make_demo(ns);before=flow_snapshot(d)
++                headers=[("Authorization","ignored")] if authorization else []
++                h=request(ns,d,version,build_wire(ns,headers=headers),parser_path=parser_path)
++                assert h.path==parser_path
++                assert h.responses==[(400,())] and d.done and d.failure=="request_invalid"
++                assert d.request_invalid_reason==("authorization" if authorization else "target_netloc")
++                after=flow_snapshot(d)
++                assert after[:4]==before[:4] and after[6:]==before[6:]
++                assert all(v==0 for v in d.calls.values())
++                if version=="candidate":assert d.preflow_authorization_refusals==0
++                outcomes.append(normalized(ns,d,h))
++            assert outcomes[0]==outcomes[1]
++        verify("controlled_parser_result_"+("authorization" if authorization else "header_free"),
++               "controlled_parser_result",controlled)
+```
+
+### Complete corrected readable harness logic
+
+Archive marker: D01_CORRECTED_MEMORY_HARNESS_LOGIC_V1. The following Python
+fence is complete logic, not executed by this design phase. Extract all fence
+content with its terminating newline; prepend the two pinned serialized-source
+lines described above to obtain the exact corrected payload hash.
+
+Root publication encoding: the one `handle_error` indexing call below has a
+space before its call parentheses so the repository Markdown checker does not
+interpret it as a link. Remove only that space when reconstructing the archived
+logic/payload. This rendering normalization restores the exact executed source;
+no helper or verification payload changed. All dated author-prefix proofs refer
+to their immutable author commits before this publication-only encoding.
+
+```python
+import ast, contextlib, copy, hashlib, http.server, io, json, re, signal, time, urllib.parse
+from types import SimpleNamespace
+
+started=time.monotonic()
+SOURCE_SHA="7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0"
+BASE_COMMIT="7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238"
+groups={}
+completed=0
+case="source_pin"
+handler_calls={"baseline":0,"candidate":0}
+expected_write_failures=0
+expected_timeouts=0
+
+class VerificationDeadline(BaseException):
+    pass
+
+def deadline(signum,frame):
+    raise VerificationDeadline
+
+def verify(name,group,body):
+    global case,completed
+    case=name
+    body()
+    completed+=1
+    groups[group]=groups.get(group,0)+1
+
+class BudgetSink:
+    def __init__(self):
+        self.events=[]
+        self.pending_deadline=None
+        self.fail_response=False
+    @contextlib.contextmanager
+    def limit(self,seconds,tag):
+        self.events.append((seconds,tag,"enter"))
+        if tag=="response_timeout" and self.fail_response:
+            raise self.halt("response_timeout")
+        try:
+            yield
+        finally:
+            self.events.append((seconds,tag,"exit"))
+
+class WriteFailure(Exception):
+    pass
+
+class WriteSink(io.BytesIO):
+    def __init__(self):
+        super().__init__()
+        self.fail=False
+    def write(self,value):
+        if self.fail:
+            raise WriteFailure
+        return super().write(value)
+
+def load_selected(text,version):
+    tree=ast.parse(text)
+    constants=[node for node in tree.body if isinstance(node,ast.Assign)]
+    assert all(not any(isinstance(item,ast.Call) for item in ast.walk(node)) for node in constants)
+    selected=constants[:]
+    for node in tree.body:
+        if isinstance(node,ast.ClassDef) and node.name in {
+                "Failure","Halt","HeaderReader","Handler","PreflowAuthorizationRefusal"}:
+            selected.append(node)
+        elif isinstance(node,ast.FunctionDef) and node.name=="require":
+            selected.append(node)
+        elif isinstance(node,ast.ClassDef) and node.name=="Demo":
+            node=copy.deepcopy(node)
+            node.body=[method for method in node.body if isinstance(method,ast.FunctionDef)
+                       and method.name in {"__init__","clear"}]
+            selected.append(node)
+    ns={"http":http,"re":re,"urllib":urllib}
+    exec(compile(ast.fix_missing_locations(ast.Module(body=selected,type_ignores=[])),
+                 "<selected-request-methods-"+version+">","exec"),ns)
+    main=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=="main")
+    ns["record_node"]=copy.deepcopy(next(node for node in main.body if isinstance(node,ast.Assign)
+        and any(isinstance(t,ast.Name) and t.id=="record" for t in node.targets)))
+    main_try=next(node for node in main.body if isinstance(node,ast.Try))
+    demo_final=next(node for node in main_try.finalbody if isinstance(node,ast.If)
+        and isinstance(node.test,ast.Compare) and isinstance(node.test.left,ast.Name)
+        and node.test.left.id=="demo")
+    ns["copy_nodes"]=[copy.deepcopy(node) for node in demo_final.body
+                     if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Subscript)
+                     and isinstance(node.targets[0].value,ast.Name)
+                     and node.targets[0].value.id=="record"]
+    loop_index=next(i for i,node in enumerate(main_try.body) if isinstance(node,ast.While))
+    ns["gate_nodes"]=copy.deepcopy(main_try.body[loop_index+1:loop_index+4])
+    server=next(node for node in tree.body if isinstance(node,ast.ClassDef) and node.name=="DemoServer")
+    error=copy.deepcopy(next(node for node in server.body if isinstance(node,ast.FunctionDef)
+                            and node.name=="handle_error"))
+    exec(compile(ast.Module(body=[error],type_ignores=[]),"<server-error-method>","exec"),ns)
+    return ns
+
+def make_demo(ns):
+    names=("credential_private_validated","provider_identity_verified","discovery_verified",
+        "protected_without_cookie_denied","authorization_redirect_issued",
+        "state_issuer_flow_cookie_verified","confidential_s256_exchange_verified",
+        "rs256_jwks_issuer_audience_nonce_time_access_hash_verified",
+        "userinfo_subject_verified","protected_with_fresh_cookie_accepted")
+    class DemoSink(ns["Demo"]):
+        def __getattribute__(self,name):
+            if name=="secret":
+                access=object.__getattribute__(self,"calls")
+                access["credential"]+=1
+            return object.__getattribute__(self,name)
+        def begin(self):
+            self.calls["begin"]+=1
+            ns["require"](not self.attempted,"flow_already_started")
+            self.stage="flow"
+            self.attempted=True
+            self.pending={}
+            return ns["ISSUER"]+"/authorize","a"*43
+        def callback(self,query,cookie):
+            self.calls["callback"]+=1
+            ns["require"](self.pending is not None,"callback_already_consumed")
+            self.pending=None
+            self.cookie="b"*43
+            self.subject="synthetic"
+            return self.cookie
+    budget=BudgetSink()
+    budget.halt=ns["Halt"]
+    demo=DemoSink(SimpleNamespace(equal=lambda left,right:left==right),None,object(),budget,
+                  {name:i<3 for i,name in enumerate(names)},
+                  {name:None for name in ("authorization_redirect","callback","token_exchange",
+                   "userinfo","protected_before","protected_after")})
+    demo.calls={"get":0,"cookies":0,"begin":0,"callback":0,"credential":0}
+    return demo
+
+def flow_snapshot(demo):
+    return (demo.attempted,demo.pending,demo.cookie,demo.subject,
+            demo.failure,demo.done,copy.deepcopy(demo.checks),copy.deepcopy(demo.statuses))
+
+def build_wire(ns,method="GET",target="/",headers=(),host="normal"):
+    prefix=[] if host=="absent" else [("Host",ns["AUTHORITY"] if host=="normal" else "invalid")]
+    return ((method+" "+target+" HTTP/1.1\r\n"
+            +"".join(name+": "+value+"\r\n" for name,value in prefix+list(headers))
+            +"\r\n").encode("ascii"))
+
+def request(ns,demo,version,wire,*,write_fail=False,timeout=False,parser_path=None):
+    handler_calls[version]+=1
+    class HandlerSink(ns["Handler"]):
+        def parse_request(self):
+            parsed=super().parse_request()
+            if parsed and parser_path is not None:
+                self.path=parser_path
+            return parsed
+        def get(self,target):
+            demo.calls["get"]+=1
+            return super().get(target)
+        def cookies(self):
+            demo.calls["cookies"]+=1
+            return super().cookies()
+        def reply(self,status,text,**options):
+            self.responses.append((status,tuple(sorted(options))))
+            return super().reply(status,text,**options)
+        def send_response(self,status,message=None):
+            self.sent_statuses.append(status)
+        def send_header(self,name,value):
+            self.sent_headers.append((name,value))
+        def end_headers(self):
+            self.header_ends+=1
+    handler=object.__new__(HandlerSink)
+    handler.server=SimpleNamespace(demo=demo)
+    handler.rfile=io.BytesIO(wire)
+    handler.wfile=WriteSink()
+    handler.wfile.fail=write_fail
+    handler.responses=[]
+    handler.sent_statuses=[]
+    handler.sent_headers=[]
+    handler.header_ends=0
+    demo.budget.fail_response=timeout
+    handler.handle_one_request()
+    return handler
+
+def normalized(ns,demo,handler):
+    return (flow_snapshot(demo),demo.stage,demo.request_invalid_reason,demo.calls,
+            handler.responses,handler.sent_statuses,handler.sent_headers,handler.wfile.getvalue(),
+            demo.budget.events)
+
+def record_copy(ns,demo):
+    env=dict(ns)
+    env["demo"]=demo
+    exec(compile(ast.Module(body=[ns["record_node"]],type_ignores=[]),"<record-initialization>","exec"),env)
+    exec(compile(ast.Module(body=ns["copy_nodes"],type_ignores=[]),"<record-final-copy>","exec"),env)
+    return env["record"]
+
+def gate_fails(ns,demo):
+    env=dict(ns)
+    env["demo"]=demo
+    env["record"]={"checks":demo.checks,"result":"failed"}
+    try:
+        exec(compile(ast.Module(body=ns["gate_nodes"],type_ignores=[]),"<existing-outcome-gate>","exec"),env)
+    except ns["Failure"] as failure:
+        assert failure.tag in {"request_invalid","unexpected_failure"}
+    else:
+        raise AssertionError
+    assert env["record"]["result"]=="failed"
+
+def refused(ns,demo,handler,before,count,terminal):
+    assert handler.responses==[(403,())] and handler.sent_statuses==[403]
+    assert handler.header_ends==1
+    assert all(name not in {"Location","Set-Cookie"} for name,value in handler.sent_headers)
+    assert b"<form" not in handler.wfile.getvalue()
+    assert demo.calls=={"get":0,"cookies":0,"begin":0,"callback":0,"credential":0}
+    after=flow_snapshot(demo)
+    assert after[:4]==before[:4] and after[6:]==before[6:]
+    assert demo.preflow_authorization_refusals==count
+    assert demo.request_invalid_reason=="authorization"
+    assert demo.failure==("request_invalid" if terminal else before[4])
+    assert demo.done==(True if terminal else before[5])
+    assert all(not value for key,value in demo.checks.items() if key not in
+               {"credential_private_validated","provider_identity_verified","discovery_verified"})
+    assert all(value is None for value in demo.statuses.values())
+    copied=record_copy(ns,demo)
+    assert copied["preflow_authorization_refusals"]==count
+    assert copied["request_invalid_reason"]=="authorization"
+    gate_fails(ns,demo)
+
+def run():
+    global expected_write_failures,expected_timeouts
+    text=SOURCE_TEXT
+    assert hashlib.sha256(text.encode()).hexdigest()==SOURCE_SHA
+    baseline_text=BASELINE_TEXT
+    assert hashlib.sha256(baseline_text.encode()).hexdigest()=="ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd"
+    old=load_selected(baseline_text,"baseline")
+    new=load_selected(text,"candidate")
+    demo=make_demo(new)
+    assert record_copy(new,demo)["preflow_authorization_refusals"]==0
+    verify("initial_count_copy","record_copy",lambda:gate_fails(new,demo))
+    for count in range(1,5):
+        def check(count=count):
+            before=flow_snapshot(demo)
+            handler=request(new,demo,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+            refused(new,demo,handler,before,count,count==4)
+        verify("bounded_refusal_"+str(count),"bounded_sequence",check)
+    for label,headers,method,target in [
+        ("empty",[("Authorization","")],"GET","/"),
+        ("duplicate",[("Authorization","ignored"),("Authorization","")],"GET","/"),
+        ("post",[("Authorization","ignored")],"POST","/login"),
+        ("protected",[("Authorization","ignored"),("Cookie","d01_local_demo="+"b"*43)],"GET","/protected"),
+        ("callback",[("Authorization","ignored")],"GET","/callback"),
+        ("other_method",[("Authorization","ignored")],"PUT","/")]:
+        def check(headers=headers,method=method,target=target):
+            d=make_demo(new);before=flow_snapshot(d)
+            h=request(new,d,"candidate",build_wire(new,method,target,headers))
+            refused(new,d,h,before,1,False)
+            d.clear()
+            assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        verify("presence_"+label,"authorization_presence",check)
+    for field,value in [("attempted",True),("pending",{}),("cookie","b"*43),
+                        ("subject","synthetic"),("attempted",0),("attempted",None)]:
+        def check(field=field,value=value):
+            d=make_demo(new);setattr(d,field,value);before=flow_snapshot(d)
+            h=request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+            after=flow_snapshot(d)
+            assert h.responses==[(400,())] and d.failure=="request_invalid" and d.done
+            assert d.preflow_authorization_refusals==0 and d.request_invalid_reason=="authorization"
+            assert after[:4]==before[:4] and after[6:]==before[6:]
+            assert all(v==0 for v in d.calls.values())
+        verify("strict_state_"+field+"_"+str(groups.get("postflow",0)+1),"postflow",check)
+    def exhausted():
+        d=make_demo(new);d.preflow_authorization_refusals=4
+        h=request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+        assert h.responses==[(400,())] and d.done and d.failure=="request_invalid"
+        assert d.preflow_authorization_refusals==4 and all(v==0 for v in d.calls.values())
+    verify("defensive_exhaustion","postflow",exhausted)
+    login=[("Origin",new["ORIGIN"]),("Content-Type","application/x-www-form-urlencoded"),("Content-Length","0")]
+    specifications=[
+        ("root","GET","/",[],None),("protected_before","GET","/protected",[],None),
+        ("unavailable","GET","/unavailable",[],None),("root_query","GET","/?x",[],None),
+        ("protected_query","GET","/protected?x",[],None),
+        ("callback_empty","GET","/callback",[],None),
+        ("callback_ready","GET","/callback",[],{"pending":{}}),
+        ("login","POST","/login",login,None),
+        ("login_repeated","POST","/login",login,{"attempted":True}),
+        ("protected_after","GET","/protected",[("Cookie","d01_local_demo="+"b"*43)],
+            {"cookie":"b"*43,"subject":"synthetic","protected_before":True}),
+        ("protected_before_missing","GET","/protected",[("Cookie","d01_local_demo="+"b"*43)],
+            {"cookie":"b"*43,"subject":"synthetic"}),
+        ("protected_cookie_mismatch","GET","/protected",[("Cookie","d01_local_demo="+"c"*43)],
+            {"cookie":"b"*43,"subject":"synthetic"}),
+        ("method","PUT","/",[],None),
+        ("post_target","POST","/wrong",login,None),("post_query","POST","/login?x",login,None),
+        ("origin_missing","POST","/login",[("Content-Type","application/x-www-form-urlencoded")],None),
+        ("origin_wrong","POST","/login",[("Origin","invalid"),("Content-Type","application/x-www-form-urlencoded")],None),
+        ("origin_duplicate","POST","/login",login+[("Origin",new["ORIGIN"])],None),
+        ("type_missing","POST","/login",[("Origin",new["ORIGIN"])],None),
+        ("type_wrong","POST","/login",[("Origin",new["ORIGIN"]),("Content-Type","text/plain")],None),
+        ("type_duplicate","POST","/login",login+[("Content-Type","application/x-www-form-urlencoded")],None),
+        ("cookie_duplicate","GET","/",[("Cookie","other=x"),("Cookie","other=x")],None),
+        ("cookie_shape","GET","/",[("Cookie","d01_demo_flow=x")],None),
+        ("cookie_own_duplicate","GET","/",[("Cookie","d01_demo_flow="+"a"*43+"; d01_demo_flow="+"a"*43)],None),
+        ("cookie_unrelated","GET","/",[("Cookie","unrelated=x")],None)]
+    structural=[
+        ("host_absent","/","absent",[]),("host_wrong","/","wrong",[]),
+        ("host_duplicate","/","normal",[("Host",new["AUTHORITY"])]),
+        ("transfer","/","normal",[("Transfer-Encoding","chunked")]),
+        ("expect","/","normal",[("Expect","100-continue")]),
+        ("length_nonzero","/","normal",[("Content-Length","1")]),
+        ("length_duplicate","/","normal",[("Content-Length","0"),("Content-Length","0")]),
+        ("length_format","/","normal",[("Content-Length","00")]),
+        ("scheme","http://localhost:3000/","normal",[]),
+        ("netloc","//localhost:3000/","normal",[]),("fragment","/#x","normal",[]),
+        ("parse_target","http://[","normal",[])]
+    for label,method,target,headers,initial in specifications:
+        def check(method=method,target=target,headers=headers,initial=initial):
+            outcomes=[]
+            for ns,version in [(old,"baseline"),(new,"candidate")]:
+                d=make_demo(ns)
+                for field,value in (initial or {}).items():
+                    if field=="protected_before":d.checks["protected_without_cookie_denied"]=value
+                    else:setattr(d,field,copy.deepcopy(value))
+                h=request(ns,d,version,build_wire(ns,method,target,headers))
+                outcomes.append(normalized(ns,d,h))
+                if version=="candidate":
+                    assert d.preflow_authorization_refusals==0
+            assert outcomes[0]==outcomes[1]
+        verify("header_free_"+label,"header_free_routes_guards",check)
+    for label,target,host,headers in structural:
+        def check(target=target,host=host,headers=headers):
+            outcomes=[]
+            for ns,version in [(old,"baseline"),(new,"candidate")]:
+                d=make_demo(ns)
+                h=request(ns,d,version,build_wire(ns,target=target,headers=headers,host=host))
+                outcomes.append(normalized(ns,d,h))
+                if target.startswith("//"):
+                    assert h.path=="/"+target.lstrip("/")
+                    assert not d.done and d.failure is None and h.responses==[(404,())]
+                else:
+                    assert d.done and d.failure is not None and h.responses==[(400,())]
+                if version=="candidate":assert d.preflow_authorization_refusals==0
+            assert outcomes[0]==outcomes[1]
+        verify("header_free_bound_"+label,"header_free_bounds",check)
+        def auth_check(target=target,host=host,headers=headers):
+            d=make_demo(new);before=flow_snapshot(d)
+            h=request(new,d,"candidate",build_wire(new,target=target,host=host,
+                headers=[("Authorization","ignored")]+headers))
+            if target.startswith("//"):
+                assert h.path=="/"+target.lstrip("/")
+                refused(new,d,h,before,1,False)
+            else:
+                assert d.done and d.failure is not None and h.responses==[(400,())]
+                assert d.preflow_authorization_refusals==0
+                assert d.request_invalid_reason==("host" if host!="normal" or any(n=="Host" for n,v in headers)
+                                                 else "authorization")
+                after=flow_snapshot(d)
+                assert after[:4]==before[:4] and after[6:]==before[6:]
+                assert all(v==0 for v in d.calls.values())
+        verify("authorization_bound_"+label,"authorization_bounds",auth_check)
+    for authorization in (False,True):
+        def controlled(authorization=authorization):
+            outcomes=[]
+            parser_path="//"+new["AUTHORITY"]+"/"
+            for ns,version in [(old,"baseline"),(new,"candidate")]:
+                d=make_demo(ns);before=flow_snapshot(d)
+                headers=[("Authorization","ignored")] if authorization else []
+                h=request(ns,d,version,build_wire(ns,headers=headers),parser_path=parser_path)
+                assert h.path==parser_path
+                assert h.responses==[(400,())] and d.done and d.failure=="request_invalid"
+                assert d.request_invalid_reason==("authorization" if authorization else "target_netloc")
+                after=flow_snapshot(d)
+                assert after[:4]==before[:4] and after[6:]==before[6:]
+                assert all(v==0 for v in d.calls.values())
+                if version=="candidate":assert d.preflow_authorization_refusals==0
+                outcomes.append(normalized(ns,d,h))
+            assert outcomes[0]==outcomes[1]
+        verify("controlled_parser_result_"+("authorization" if authorization else "header_free"),
+               "controlled_parser_result",controlled)
+    raw_bounds=[
+        ("request_line",b"GET /"+b"x"*8192+b" HTTP/1.1\r\n\r\n"),
+        ("header_line",b"GET / HTTP/1.1\r\nHost: localhost:3000\r\nX: "+b"x"*4096+b"\r\n\r\n"),
+        ("header_count",b"GET / HTTP/1.1\r\nHost: localhost:3000\r\n"+b"X: x\r\n"*33+b"\r\n"),
+        ("header_total",b"GET / HTTP/1.1\r\nHost: localhost:3000\r\n"+(b"X: "+b"x"*3000+b"\r\n")*3+b"\r\n"),
+        ("parser",b"GET / HTTP/9.0\r\nHost: localhost:3000\r\n\r\n")]
+    for label,wire in raw_bounds:
+        def check(wire=wire):
+            outcomes=[]
+            for ns,version in [(old,"baseline"),(new,"candidate")]:
+                d=make_demo(ns)
+                h=request(ns,d,version,wire)
+                outcomes.append(normalized(ns,d,h))
+                assert d.done and d.failure in {"request_invalid","request_limit"}
+                assert all(v==0 for v in d.calls.values())
+            assert outcomes[0]==outcomes[1]
+        verify("raw_bound_"+label,"parser_header_limits",check)
+    def persist():
+        d=make_demo(new)
+        request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+        request(new,d,"candidate",build_wire(new))
+        assert d.preflow_authorization_refusals==1
+        request(new,d,"candidate",build_wire(new,"POST","/login",login))
+        assert d.attempted and d.preflow_authorization_refusals==1
+        before=flow_snapshot(d)
+        request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+        after=flow_snapshot(d)
+        assert after[:4]==before[:4] and after[6:]==before[6:]
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        copied=record_copy(new,d)
+        d.clear()
+        assert copied["preflow_authorization_refusals"]==1
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+    verify("counter_across_header_free_flow_cleanup","counter_persistence",persist)
+    def first_only():
+        d=make_demo(new);d.request_invalid_reason="http_parse"
+        h=request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+        assert h.responses==[(403,())] and d.request_invalid_reason=="http_parse"
+        assert d.preflow_authorization_refusals==1
+        d.clear()
+        assert d.request_invalid_reason=="http_parse" and d.preflow_authorization_refusals==1
+    verify("first_reason_preserved","first_reason",first_only)
+    def write_failure():
+        global expected_write_failures
+        d=make_demo(new);before=flow_snapshot(d)
+        try:
+            request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]),write_fail=True)
+        except WriteFailure:
+            expected_write_failures+=1
+        else:
+            raise AssertionError
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        assert flow_snapshot(d)==before and all(v==0 for v in d.calls.values())
+        new["handle_error"] (SimpleNamespace(demo=d),None,None)
+        assert d.failure=="unexpected_failure" and d.done
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        assert record_copy(new,d)["preflow_authorization_refusals"]==1
+    verify("403_write_failure_propagates","response_failures",write_failure)
+    def response_timeout():
+        global expected_timeouts
+        d=make_demo(new)
+        try:
+            request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]),timeout=True)
+        except new["Halt"] as failure:
+            assert failure.tag=="response_timeout"
+            expected_timeouts+=1
+        else:
+            raise AssertionError
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        assert all(v==0 for v in d.calls.values())
+        gate_fails(new,d)
+    verify("403_response_timeout_propagates","response_failures",response_timeout)
+
+result="failed"
+failure=None
+signal.signal(signal.SIGALRM,deadline)
+signal.setitimer(signal.ITIMER_REAL,30)
+try:
+    run()
+    result="passed"
+except VerificationDeadline:
+    failure="verification_deadline"
+except AssertionError:
+    failure="assertion_failed"
+except BaseException:
+    failure="harness_exception"
+finally:
+    signal.setitimer(signal.ITIMER_REAL,0)
+elapsed=round(time.monotonic()-started,6)
+print(json.dumps({"result":result,"failure_tag":failure,"failed_case":case if failure else None,
+ "completed_cases":completed,"groups":groups,"handler_calls":handler_calls,
+ "expected_write_failures":expected_write_failures,"expected_response_timeouts":expected_timeouts,
+ "elapsed_seconds":elapsed,"deadline_seconds":30,"helper_sha256":SOURCE_SHA,
+ "main_invoked":False,"network_listener_native_provider_cli_driver_browser_cargo":False},sort_keys=True))
+raise SystemExit(0 if result=="passed" else 1)
+```
+
+### Static-only preservation proof and limits
+
+The original retained complete payload was hash/length matched to 81b659 and
+reconstructed from the unchanged serialized-source prefix plus original logic.
+Applying the five unique replacements in memory created the corrected logic/
+payload. Reversing all five reconstructed the **entire original payload
+byte-exact**, including both source strings and final newline; its full AST
+matched too. No source or harness was imported or executed.
+
+Top-level source-segment comparison found only request and run changed;
+these other 14 functions/classes remained byte-exact:
+
+VerificationDeadline, deadline, verify, BudgetSink, WriteFailure, WriteSink, load_selected, make_demo, flow_snapshot, build_wire, normalized, record_copy, gate_fails, refused.
+
+The prior auth_check assertions are AST-identical to the corrected
+non-normalized else branch. Existing runtime result/exception/signal/deadline/
+sanitized output tail is byte-exact; the 30-second alarm, stop-on-first-failure,
+finite failure tags, expected injected failures and no-main behavior remain.
+The embedded-source prefix, setup factories, credential counters, refusal/
+outcome-gate/record-copy assertions, memory write sink and stub budgets remain
+exact. The parser-path hook is absent from every original call and used only
+for the two new controlled-result cases. AST name inspection found no
+subprocess/socket/os/Path references in the harness logic. These static
+checks and unexecuted AST/in-memory compilation exited 0; they establish
+preservation, not success of any proposed case.
+
+Before any future execution, root should review the entire archived logic,
+the exact diff and both embedded source identities. A separately released
+run must use the exact corrected payload hash, retain its complete fixed
+result/exit/counts, and stop on its first unexpected failure without correction
+or retry. Record the original failed 61-of-76 run separately even if a later
+run passes. No browser/runtime release is implied by this report.
+
+This append preserves the entire eb322 report (139821 bytes / 2209 lines,
+SHA-256 dfe2d894b43a6b8ca507dc5f55d87b3cd41723604e9959bffd89716dc7f5186f)
+as an exact prefix and all five private historical metadata files with their
+recorded bytes/hash/0600 modes. Hash checks add no body reviews or external
+evidence. Helper470 SHA7fbc is unchanged; controller/product/guide/D05/config/
+tests/main/status/push remain untouched. Report-only scope, archive extraction/
+hash reconstruction, Markdown fence/final-newline/whitespace and git diff
+--check are verified before this separate report-only commit.
+
+## 2026-10-02: released corrected memory verification, actual complete result
+
+Reservation: wave30_D01_corrected_memory_verification. Root fully reviewed
+the corrected archive and independently reconstructed its payload before
+explicitly releasing exactly ONE standard-library memory verification. This
+phase executed that exact payload once, retained its complete fixed JSON/
+numeric exit/timing/hash before expectation comparisons, immediately handed
+off the actual result to the explicit project orchestrator, and then appended
+this evidence. No correction, retry, new case or source/harness change occurred.
+The entire real confidential browser fixture remains HELD for root review.
+
+### Pins, execution and retention order
+
+Preflight started from clean
+ab3fbace55465e9725ad230ff9eca160cdcc2856. The report matched that Git object,
+SHA-256 0d5520f3fa7212757b595dc44fdd5a51a089700683b86f652b3be06f97d42904,
+176534 bytes / 2897 lines. Extracted complete readable logic matched SHA-256
+98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb.
+The immutable ac3c baseline at 7461ab50 and the exact 7fbc candidate at
+470690cad0cd93c9f25c5bc40b982e1b91679b49 were read before verification and
+serialized as the two reviewed source lines. Payload reconstruction matched
+SHA-256 ce79aeb99fafaaeb265d6b7bff55f415e91825d83e9c650eed412825a5a9525f,
+91163 bytes / 463 physical lines. Disk helper matched the immutable candidate
+and SHA-256
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0.
+All five prior private metadata hashes/lengths/0600 modes matched before
+execution. Source preflight parsed/compiled only; it did not run the harness.
+
+A small outer Python controller launched one owned Python child with the exact
+payload on stdin and a 35-second outer communicate timeout. The reviewed
+payload retained its unchanged 30-second SIGALRM deadline and stop-on-first-
+unexpected-failure behavior. The outer controller alone used subprocess to
+enforce the bound and reap the child; the payload made no subprocess/CLI/
+network/socket/listener/native/provider/Driver/browser/Cargo calls and did
+not import a helper module or invoke module main. It only executed selected
+request methods and the reviewed memory sinks.
+
+Outer controller source SHA-256 ab966e651f0a3f572f2d3ac2c27e39faf5cb63ef6c2f86be4a942ab6c8fc8b6d,
+99002 bytes / 37 physical lines.
+The exact outer tool result, then the complete captured child stdout/stderr,
+were retained in session memory before parsing the fixed child JSON and before
+any success/count comparisons. No private deployment evidence file was
+created or overwritten. The exact fixed stdout is durably archived below;
+741 UTF-8 bytes, SHA-256 81c7a85c6b278bb60412be566a0bc07732fbc50c1ead9aa6030d07c14648dc5f, including its final LF. Stderr was empty,
+0 bytes. No request/header/cookie/code/state/subject/private-value output was
+printed.
+
+### Actual result and complete fixed JSON
+
+**Child exit 0; result passed; all 78 cases completed.** Actual Handler calls:
+44 baseline / 80 candidate, 124 total. No first failure and no unreached case.
+The injected 403 write-failure branch ran once and the injected response-
+timeout branch ran once; both met their reviewed propagation assertions.
+These expected injected failures are successful check observations, not
+unexpected fixture failures.
+
+Child elapsed 0.021527 seconds with the 30-second cap. Outer elapsed 0.064020
+seconds with the 35-second timeout, timeout false, outer failure tag null,
+child reaped true. Tool wall time 0.168740042 seconds; outer tool exit 0.
+The stdout/exit/hash/timing values above were retained before comparison.
+
+Exact emitted child JSON (fence content preserves the entire 741-byte stdout):
+
+```json
+{"completed_cases": 78, "deadline_seconds": 30, "elapsed_seconds": 0.021527, "expected_response_timeouts": 1, "expected_write_failures": 1, "failed_case": null, "failure_tag": null, "groups": {"authorization_bounds": 12, "authorization_presence": 6, "bounded_sequence": 4, "controlled_parser_result": 2, "counter_persistence": 1, "first_reason": 1, "header_free_bounds": 12, "header_free_routes_guards": 25, "parser_header_limits": 5, "postflow": 7, "record_copy": 1, "response_failures": 2}, "handler_calls": {"baseline": 44, "candidate": 80}, "helper_sha256": "7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0", "main_invoked": false, "network_listener_native_provider_cli_driver_browser_cargo": false, "result": "passed"}
+```
+
+| Actual group | Completed | What the reviewed assertions established in memory |
+| --- | ---: | --- |
+| Initial count/final-copy/outcome gate | 1 | Count 0 copy; incomplete checks cannot pass |
+| Cumulative first-three/fourth refusals | 4 | First 3 fixed 403/live, fourth fixed 403/terminal request_invalid, count 1..4 and no journey credit |
+| Authorization presence/refused routes | 6 | Empty/duplicate/POST/protected/callback/other method refusal; no dispatch/credential/cookie use |
+| Strict state/exhaustion | 7 | Four lifecycle disqualifiers, two non-False attempted values and defensive count 4 preserve terminal 400 |
+| Header-free routes/route guards | 25 | OLD/NEW state/reply/stub-call parity |
+| Actual-parser header-free structural cases | 12 | Prior guards match, including normalized network-path routing parity |
+| Actual-parser Authorization structural cases | 12 | Bounds fail closed; normalized network-path counterpart refused with bounded 403 and no credit |
+| Controlled parser-result netloc rejection | 2 | Injected nonempty netloc separately yields OLD/NEW terminal 400, correct fixed first reason and zero dispatch/count |
+| Parser/request/header limits | 5 | Request-line/header-line/header-count/header-total/parser refusal parity |
+| Counter across header-free flow/cleanup | 1 | Counter/reason survive root/login/post-flow refusal and clear |
+| Preexisting first-reason preservation | 1 | Existing first fixed reason is not overwritten |
+| 403 write-failure/response-timeout propagation | 2 | Writer failure escapes refusal catch and existing error sink fails closed; response Halt propagates |
+| Total | 78 | Complete released check; no case pending |
+
+All previously unattempted parser limits, remaining target failure assertions,
+counter-through-flow, first-only reason, write-failure and timeout branches
+executed in this one corrected run. The count/final-copy assertions covered
+0..4. The reviewed branch assertions checked no refusal dispatch, secret/cookie
+read, flow/check/status mutation, form, Location, Set-Cookie or journey credit.
+
+The wire network-path case used the actual stdlib parser with no override;
+its normalized path assertions and OLD/NEW generic routing outcomes passed
+in this new memory run. Its Authorization counterpart stayed a refused 403.
+The two separately labeled controlled-result cases invoked the actual parser
+first and then explicitly injected only a path value in the test sink to
+exercise the unchanged nonempty-netloc predicate. They do not claim wire
+parsing exposes that netloc. No helper parser/Host/Authorization/target guard
+was changed.
+
+### Evidence limits and preserved failed run
+
+This result verifies the exact bounded lifecycle/guard/sink assertions above.
+begin()/callback() remain controlled stubs and module main never ran. Memory
+login/callback/protected results do not prove actual browser sign-in, consent,
+OIDC exchange, native verifier/JWKS/RS256, issuer/userinfo, a physical passkey,
+ordinary nonadmin/invitation/tenant workflow or full D01/D05 acceptance.
+No real browser, provider, IdP, CLI fixture or listening process was started.
+No desktop/operator/Cargo resource slot was acquired or released; no service/
+listener/profile cleanup was necessary for this memory-only run. The one
+owned Python child was reaped.
+
+The original memory execution still failed: exit 1, 61 of 76 completed,
+header_free_bound_netloc/assertion_failed, with its response/predicate not
+retained. The now-passing corrected expectations do not attribute an actual
+response to that old run or rewrite its outcome. All historical provider
+refusal/lost-value/reporting correction and actual browser-fixture failures
+remain unchanged in prior phases. Sender of the historical Authorization
+request remains UNKNOWN. Root alone reviews this actual complete result and
+decides any further browser release or D01/D05 gate; O06/I10/R05 remain closed.
+
+### Report-only preservation checks
+
+The complete 176534-byte / 2897-line ab3fbace report remains a byte-exact
+prefix. The exact archived fixed JSON parses to the retained complete result,
+reproduces its 741-byte stdout hash and matches the retained exit/count/hash/
+elapsed metadata. Expected group counts sum to 78 with 44/80 calls, injected
+failures/timeouts 1/1 and no failure/unreached cases. These comparisons occurred
+after complete retention and immediate root handoff.
+
+Payload reconstruction from the unchanged archived logic and source objects
+still matches ce79 SHA. Disk helper remains exactly immutable 470690/7fbc;
+all five historical private metadata files retain byte counts, hash and 0600
+modes without body output. Source/controller/product/guide/D05/config/tests/
+main/status/push remain untouched. Report scope, archive extraction, prefix,
+source identity, Markdown fences/final newline/whitespace and git diff --check
+are checked before the separate evidence-only commit. No broader campaign
+or additional check execution occurred.

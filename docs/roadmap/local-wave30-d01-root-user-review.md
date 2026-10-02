@@ -56,3 +56,29 @@ Cargo, tests, build, server, GUI action or task-status change was performed.
 Root read the full `2d2baa58f9a56b6d0370a30597bb7981b61df46d` design appendix and exact six-hunk candidate diff. Authorization-bearing traffic remains refused. Only otherwise structurally bounded strict-preflow requests get stateless 403: first three leave the listener live; the fourth sets the existing terminal failure. No route, cookie, credential, flow, journey check or HTTP-status evidence is dispatched or credited. Existing parser/Host/body/target bounds and post-flow terminal Authorization refusal remain intact. Sender and historical timing remain unknown.
 
 Root reserved exact source materialization of candidate SHA-256 `7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0` in the sole demo helper, plus its report. One bounded standard-library in-memory lifecycle check with stub request/reply/dispatch sinks is explicitly released; it may not invoke a listener, network, native provider, CLI, Driver, browser or module main. The complete real confidential browser fixture remains held. Source/check results are pending; no journey pass or status change is inferred.
+
+
+## Controlled verification stopped at a parser expectation
+
+Root read the full `eb3229e13ed56fbee47f37974337b2a8657c45d2` actual appendix and the exact `470690cad0cd93c9f25c5bc40b982e1b91679b49` helper diff/hash. Candidate SHA-256 remains `7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0`. One memory verification exited 1 after 61 of 76 planned cases, at `header_free_bound_netloc`; fourteen cases were not attempted. The failing case asserted a terminal 400 from the baseline before its candidate comparison. Individual actual response/predicate values were not retained. No complete controlled-suite or browser pass is credited.
+
+Root independently read the installed CPython parser body: it normalizes leading network-path prefixes before the helper receives the target. The failing baseline expectation conflicts with that source order. This establishes a harness expectation defect, not a recovered actual response, sender, helper regression or product cause. The installed stdlib source hash is `b917e19d333ae8aa1995063c9bddf5a15391f8f7caf32e41a22067824d643429`.
+
+Root reserves only a source-first corrected harness design/report: actual-parser old/new normalized routing parity, its bounded Authorization refusal and distinct controlled parser-result tests of the unchanged netloc guard. All other cases and the exact helper remain unchanged. Execution requires a separate release after complete harness review; the real confidential browser fixture remains held. All prior failures, lost values and reporting corrections remain dated evidence.
+
+
+## Corrected complete controlled verification: immediate result
+
+Root read every line of the complete `ab3fbace55465e9725ad230ff9eca160cdcc2856` corrected harness logic, its prose and five-hunk diff. Reconstructing the two immutable source strings plus archived logic produced exactly 91,163 bytes, SHA-256 `ce79aeb99fafaaeb265d6b7bff55f415e91825d83e9c650eed412825a5a9525f`; root parsed it without executing it. Root then released one bounded memory verification.
+
+The worker immediately reports exit 0, all 78 cases completed, 44 baseline and 80 candidate calls, one injected write failure and one injected response timeout, with no failed or unreached case. Child elapsed was 0.021527 seconds, bounded outer elapsed 0.06402 seconds; the child was reaped. Its complete result was retained before comparisons. The prior 61-of-76 attempt remains failed and unchanged. Root accepts the immediate controlled result pending full actual-appendix review; no browser, native crypto, callback, consent or application success is inferred. The real fixture remains held.
+
+
+## Complete controlled result reviewed
+
+Root read all137 lines of `772c8cdbfd02e2bf3f28212884aebe5ef9f03849` and rehashed its exact741-byte retained JSON: `81c7a85c6b278bb60412be566a0bc07732fbc50c1ead9aa6030d07c14648dc5f`. All12 groups sum to78; calls are44/80, expected injected failure/timeout1/1, first failure null. The helper remains exactly470/7fbc. Root accepts this completed controlled verification and may publish the source. The next real browser invocation requires a separate explicit release; no GUI, protocol or crypto success is inferred from this memory result.
+
+
+## Report publication encoding correction
+
+The first root batch docs check exited1 because its link scanner interpreted the archived Python indexing call as a Markdown link. Root inserted one separating space in that report call and documented the exact reconstruction normalization. Removing that space restores the complete reviewed logic SHA `98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb`; whole-report reversal also passes. The checker and actual helper/payload/results are unchanged. Author prefix proofs remain statements about their immutable commits, before this explicit report-only publication encoding.
