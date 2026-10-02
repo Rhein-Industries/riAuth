@@ -1696,3 +1696,78 @@ Actual static archive checks passed: full corrected-source/diff/inverse hashes a
 ## Root corrected supervisor admission (2026-10-03)
 
 Root read the full907708e prose/diff and reversed both exact insertions in27731B/6732765f to the previously fully read27303B/1be75053 supervisor. The final inclusive deadline check occurs after the last receipt save and has no following regular-file write; first failure is preserved. A fresh independent350-entry mode/blob manifest matches fixed35 with exact CLI4941d65 and clean own907708e. Root separately reserves ONE same-filter run with this immutable supervisor, fresh13GiB launch,9stop/8floor and owned leader/group cleanup; no runtime result is supplied by these source checks.
+
+
+## 2026-10-03: one released local filter, actual result and slot release
+
+Reservation: `wave30_CI_cli_startup_single_filter_907708e`, project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing WT `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2` only. Root explicitly released the sole Cargo slot for the exact corrected archived supervisor and one filtered command. Entry was clean at `907708eb45c8d1ab778cec8ab403320ab5eed9e5`. This appendix preserves every preceding `111620` byte / `1688` lines, SHA-256 `394f3ee7e45d0085332cd24e106abf7cfc93c557643781b2f1da4873f5921a16`, including the complete earlier `77850`-byte source phase, final-clock correction, initial failed CI receipt, aborted alignment attempt, and dated prior CI success.
+
+The exact reviewed `27731`-byte / `646`-line supervisor was created exclusively, mode `0600`, at ignored own `target/wave30-cli-startup-supervisor-907708e.py`. Creation used `O_EXCL`/`O_NOFOLLOW`, write/fsync, and full readback. Its SHA-256 was and remains `6732765f7192d733cb6dd3adf48321e7ee96acf519fdfb22231f4e1f9b348847`; complete on-disk bytes equal the corrected report fence. There was one installed Python invocation, with no substitution, retry, baseline run, fixture/supervisor correction, or broader target:
+
+```sh
+/opt/homebrew/opt/python@3.14/bin/python3.14 target/wave30-cli-startup-supervisor-907708e.py
+```
+
+A `umask 077`/no-clobber wrapper retained its closed stdout and stderr in the exclusive ignored `.stdout.json`/`.stderr.log` siblings, then wrote the numeric wrapper status to the exclusive `.exit.json` sibling before exiting with that same status. The supervisor launched exactly:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test cli cli_certificate_bind_and_revoke_require_retry_binding -- --exact --test-threads=1
+```
+
+The recorded argv expanded the target to this WT's own absolute `target/`. The supervisor prepended the already installed, hash-pinned `1.98.1-aarch64-apple-darwin` toolchain bin directory to child PATH. It performed its reviewed source/cache/configuration preflight; it did not install a toolchain or alter a cache/configuration to obtain a pass. The normal selected test initialized, spawned its configured owned server, logged in, and completed its unchanged certificate binding/replay/refusal/revision/revocation/audit assertions. Production source and the selected test were not edited.
+
+### Actual numeric result, retained final clock, and cleanup
+
+Cargo exited `0`, controller exited `0`, and wrapper exited `0`; the invocation tool also returned numeric exit `0`. Console reported exactly `running 1 test`, the selected test `... ok`, and `1 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 4.67s`. Cargo's test-profile completion was `56.36s`. The full `3579`-byte / `37`-line console was read; the fixed one-test/selected-ok/one-pass grade predicates were all true.
+
+The final closed stdout was retained and read with its numeric wrapper status before outcome comparison. Its full public shape was:
+
+```json
+{"actual_exit": 0, "cleanup_failed": false, "controller_exit": 0, "direct_child_reaped": true, "final_deadline_reached": false, "final_elapsed_ns": 61955337500, "first_failure": null, "persist_failed": false, "release_required": true}
+```
+
+The wrapper status document was `{"wrapper_exit":0}` plus final LF. Final elapsed time was `61.955337500s`; the inclusive final-clock deadline was not reached. The saved receipt's earlier elapsed value was `61955154625ns`. The saved receipt precedes the final clock; its exit/grade alone was not used to establish the final outcome. No post-clock evidence-file write was added, and no hard kernel/output bound is claimed.
+
+The receipt records one owned Cargo leader PID/PGID `59319`, exit observed with the reviewed `WNOWAIT` ownership sequence, actual exit `0`, direct child reaped `true`, remaining owned members `0`, cleanup failures `[]`, first failure `null`, persistence failure `false`, log EOF `true`, and release criterion `true`. The group's remaining-member snapshot and direct reaping meet the reviewed release criterion; this is not a census of unrelated host services. After confirming those fields and the terminal invocation/final stdout, I immediately reported the actual outcome and **SOLE CARGO SLOT RELEASED** in commentary, before writing this appendix. No additional Cargo/native/runtime invocation followed. Root owns subsequent scheduling and integration.
+
+Cargo emitted three warnings that debug stripping with `rust-objcopy` failed by signal `6` (`SIGABRT`), associated with the CLI test, `riauth`, and `riauth-maintenance`. It also emitted a linker warning that `__eh_frame` exceeded `16MB` for compact unwind encoding and exception-handling performance might be affected. These observed subtool failures/warnings are retained; they did not make Cargo/controller/wrapper nonzero. No corrective invocation or retry was made, and no debug-stripping success is claimed.
+
+### Actual resources and private evidence identities
+
+The fresh first sample, at `114662333ns`, measured `25976090624` free bytes (`24.192119598GiB`), satisfying the authoritative `13GiB` start preflight. All `32` complete samples used target device `16777234`. Minimum sampled free space was `25116266496` bytes (`23.391345978GiB`); final sampled free space was `25117417472` bytes (`23.392417908GiB`) at `61954302791ns`. Maximum sampled gap was `2040334542ns` (`2.040334542s`), below the `5s` gap refusal threshold. The final forced sample's gap was `740782791ns`. No sampled `9GiB` stop or `8GiB` floor condition occurred; `floor_observed` is false. These are actual sampled filesystem-free-space observations for the private target's device, not an unsampled peak or future capacity guarantee. The earlier commentary's three-decimal minimum is superseded by the exact bytes and conversion here.
+
+The reviewed `1200s` outer deadline, `20s` cleanup reserve, `2s` sampling, `610` sample / `1MiB` resource cap, `8MiB` combined console cap, `TERM`/`5s` then `KILL`/reap cleanup controls, first-failure preservation, and actual-before-grade persistence were unchanged. Console occupied `3579` bytes and resources `2864` bytes, both below their caps. The evidence directory `target/wave30-cli-startup-filter-35c3` is mode `0700`; the supervisor and every evidence/wrapper file below are regular mode `0600` and Git-ignored. No raw private console, configuration, credential, token, protocol, database, or host environment value was copied into the repository.
+
+| Private own-target file | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `wave30-cli-startup-supervisor-907708e.py` | `27731` | `6732765f7192d733cb6dd3adf48321e7ee96acf519fdfb22231f4e1f9b348847` |
+| `wave30-cli-startup-supervisor-907708e.stdout.json` | `235` | `982e8a96f7282884c5fd56f598249d506602d204bcbbad26d24c7664daf09b47` |
+| `wave30-cli-startup-supervisor-907708e.stderr.log` | `0` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `wave30-cli-startup-supervisor-907708e.exit.json` | `19` | `e001763a44c7aac0e4e807c37103dfcc57ac25a26405f9018f6b2e37f59725bf` |
+| `wave30-cli-startup-filter-35c3/receipt.json` | `1427` | `7f2cdd401f25af302eb8fd7dd9d981bf50bef7d074e7a2c7bff42ab72bb69f62` |
+| `wave30-cli-startup-filter-35c3/console.log` | `3579` | `6b80ef1ca164b534c202cb411b60350bb35f91677266456c500d78383362afc3` |
+| `wave30-cli-startup-filter-35c3/resources.jsonl` | `2864` | `537b57564dd31c0f9d7e09c3477f88188f0d5a2b352075600505f32325271c26` |
+
+Complete receipt/resource JSON bodies were read, and their sample counts/extrema/gaps, command/source fields, cleanup/exit fields, file lengths, hashes, modes, and closed final stdout were independently compared. Resource/log hashes equal the receipt. These private files remain on disk for root inspection; they are not repository evidence assets or release artifacts.
+
+### Actual source, installed inputs, and generated binary pins
+
+The recorded runtime source head is `907708eb45c8d1ab778cec8ab403320ab5eed9e5`, product pin `35c3fd3007c52d8142c7bee1d69aee127cc42a95`, and history-preserving alignment pin `22a0e4b7b41266d958c802ea8fdd1e41522df127`. All `350` protected source/Cargo/toolchain/build-configuration mode/blob entries remained exactly fixed35, including working bytes; the canonical NUL-delimited manifest SHA-256 remains `f1decf551c0ad8bf8f613b1c8d8ffba80477f1733bb6180c1011b018070adf47`. `tests/cli.rs` remains `118935` bytes, mode `0644`, SHA-256 `4941d65dd62abfb6614be55260a6d14077e5f17bb2126d366f3e54ca57968e59`, equal to fixed35 and the accepted passive-readiness candidate. After runtime, before report writing, both tracked worktree and index diffs were empty.
+
+The installed Python invocation path is a symlink to its installed executable; following that link gives `34640` bytes, mode `0755`, SHA-256 `4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56`. No version probe was invoked. Installed Cargo was `31960040` bytes / mode `0755`, SHA-256 `6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d`; installed rustc was `412504` bytes / mode `0755`, SHA-256 `766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941`. Both regular toolchain inputs matched the preflight pins.
+
+The generated selected-test fingerprint `target/debug/.fingerprint/riauth-9dda9481bf0c5cca/test-integration-test-cli.json` was read only: `4022` bytes, mode `0600`, SHA-256 `bec1f03695a8203c70181269582f8ef13ea27088d84582604af3ca2382b2b8bb`; features were `default, essentials, fuzzing, platform, test-support`, profile `11094973624911973823`, config `9396254390672932401`, rustflags `[]`. No default/native feature was suppressed for this run. The warm private target was reused, without a cold duplicate or cache deletion.
+
+| Generated private target binary | Bytes | Mode | SHA-256 |
+| --- | ---: | --- | --- |
+| `debug/deps/cli-9dda9481bf0c5cca` | `68491144` | `0700` | `632a0e33024372460827e067376917335ab85a9ad9d2d24ad3e872ee4dd5010b` |
+| `debug/riauth` | `263438456` | `0700` | `8b8c3878f6f14e2ee2a0ffeb4bfe3b9ccc2906efc191c2f200d852db076e9743` |
+| `debug/riauth-maintenance` | `68907296` | `0700` | `12d5377e21fd5dae70cd9c227e263e5cd89a65bdab7a442c26903535f0e05d3a` |
+
+These are regular, non-symlink local files hashed after the single Cargo command. The fixture's compiled `CARGO_BIN_EXE_riauth` is `debug/riauth`; its header is little-endian 64-bit Mach-O with CPU type `16777228` (ARM64). There is no separate `debug/riauth-server` or `debug/riauth-cli` file. Cargo's integration-test preparation also generated `riauth-maintenance`; its hash does not establish a maintenance test or release-asset validation. No binary was executed separately for metadata, version, or additional validation.
+
+### Scope and remaining limits
+
+This actual pass covers one unchanged local Darwin ARM64 certificate-binding/revocation CLI test at the protected fixed35 source plus the accepted passive-readiness fixture edit. It does not determine the lost child exit/stderr or actual startup cause from failed Linux CI37061329345/job111020195345/source56, prove a port collision or rare-race elimination, validate a current full Linux CI run, or confer an A09/D01/artifact/shared/browser/closed-row status. The older b71 whole-CI SUCCESS remains dated evidence. All other held runtime/native/archive work remains held. No main/push/status/worker-contact or other source/test/helper/workflow/report change occurred. Root owns review, integration, later release, and row status.
+
+Actual post-run static checks passed: full 907/01cc historical-prefix equality; complete retained receipt/resource/final-stdout/wrapper-status comparison; evidence modes, regular-file and ignored-path checks; exact CLI and existing D01 source/report identities; report-only working scope; trailing-whitespace/final-LF; `git diff --check` exit `0`; and `python3 scripts/check-docs.py` exit `0` (`Markdown links and build-directory layout checked`). No pre-existing layout error or static-check failure was observed. Final staged file equality/scope/whitespace and clean post-commit checks accompany the separate report commit, whose immutable hash is returned in the handoff. Runtime and owned cleanup ended, and the sole slot was released before these report-only checks and this append.

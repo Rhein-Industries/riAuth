@@ -4362,3 +4362,149 @@ review and separate release; no slot or hosted repeat was requested.
 Root fully read the complete a47f7b7 child/controller/assembly and exact diffs. Whole-byte reversal independently reproduced all original1aed archives (24494/12634/1427 bytes); source pins, all prior cases and full equality remain unchanged. The three reviewed design seams add all/list, permit only actual shared_probe five arguments with one None default, and bind unique bounded archive blocks/hashes. Earlier designs remain UNEXECUTED/blocked at their dated states. The [independent original-design review](local-wave30-a09-snapshot-diagnostic-independent-review.md) preserves the shared_probe/all findings; list and exact selector corrections are later inputs, not retroactive findings. Independent corrected-design review is separately active before any ONE bounded memory release. No native/PG/shared gate or actual changed-row evidence is supplied.
 
 Root mistyped the full1aed object suffix in a data-only reversal command; Git refused before writes. Resolving actual1aed8a4 and previously hashed archives produced all three exact inverses. A later report integration successfully appended only the shared report before an insufficient three-character2c9 revision refused. No other file was written in that attempt. Corrected parent-object selection preserved complete published files and appended the other reviewed reports. These are preparation errors, not candidate or runtime failures.
+
+## Actual single memory invocation, 2026-10-03
+
+Project 891e7443-8dac-4c1b-897f-9e53cb59c7ee; original A09 task
+506e3979-a590-4af3-8fa8-ee90d3a517f2; existing isolated worktree
+a1303b57-4a34-487e-9c63-a841f05b51a0. Explicit runtime reservation:
+wave30_A09_snapshot_counts_single_memory_a47f. Root released exactly one memory
+invocation after complete source and independent review. This is its actual
+receipt; no second invocation, case expansion or source repair occurred.
+
+This append preserves all 254,437 bytes of immutable source-design report
+a47f7b73c3a10cf6846547db17e6553b3faa0391 (SHA256
+e2a9ccd6ff5baf1610a99b2a0811ab9a5c3f0cb729ae6ed974aed1057c0bb4bc).
+All earlier designs/failures remain dated in that prefix: 1aed and 4d were
+historically unexecuted/blocked; only the reviewed a47 runnable design was
+executed by this release. Actual prior PG changed rows/origin remain UNKNOWN.
+
+### Fresh preflight and exact execution
+
+Preflight confirmed clean own branch at a47f7b73c3a10cf6846547db17e6553b3faa0391,
+full report equality to that immutable object, all six d00c968 source byte/hash
+pins, all three complete archived source hashes, and absent exclusive child
+evidence path. The existing private target directory was present and not a
+symlink. Fresh host free space was 25,107,660,800 bytes (23.383331298828125 GiB),
+above the 8 GiB floor. This is a measured point, not attributed cache usage.
+
+The command was extracted from that immutable Git report object and passed
+unchanged to the existing shell once. It was the exact 1,668-byte assembly,
+SHA256 21ecc40da9618eef5e9c86ff4194a389e09ce59ee86ca3f069300769233cecc7,
+archived in the Runnable memory-validation design section above. It selected
+the exact 13,019-byte controller e87d72ca393c448354355de881b0b5ba098985fe9666b98d657bf4e0d23dc8e2
+and 25,221-byte child 2a686adae4b02a7f623566b13432ca2d14f43bb5206b839552639979bdce1a7d.
+No command/harness was materialized or substituted. No source/helper/workflow
+file changed. The approved source binding, namespace/signature/selector repairs,
+synthetic corpus, privacy checks and original full-byte equality checks were
+used without adjustment.
+
+### Actual result and elapsed times
+
+The shell command exited 0. The child exited 0 and recorded completed stage,
+89 attempted/89 passed/0 failed, budget_exhausted false. The observation derived
+89 actual case records and 89 pass records directly from retained child output;
+89 was not inserted to meet the earlier static corpus expectation. First
+failure is null: there is no failed case boundary to report.
+
+| Actual group | Attempted | Passed | Failed |
+| --- | ---: | ---: | ---: |
+| source_binding | 9 | 9 | 0 |
+| counts | 5 | 5 | 0 |
+| parser | 24 | 24 | 0 |
+| schema | 14 | 14 | 0 |
+| packet | 20 | 20 | 0 |
+| producer | 8 | 8 | 0 |
+| equality | 8 | 8 | 0 |
+| privacy | 1 | 1 | 0 |
+
+Child measured payload elapsed: 0.04628437524661422 seconds.
+Owned child wall time: 0.07398658385500312 seconds.
+Controller clock after outcome saves: 0.08500774996355176 seconds.
+Final post-save clock: 0.08579179178923368 seconds, below the 35-second ceiling.
+The tool separately reported command wall time 0.173568625 seconds.
+These are distinct measured clocks, not an inferred benchmark.
+
+Owned child PID 68399 was waited/reaped by the controller (owned_reaped true);
+stop reason none. Stderr was empty. No kill/timeout/cap/refusal/retry occurred.
+No independent broad process scan is claimed. The unchanged controller's
+Popen/wait receipt and final parent outcome establish owned-child completion;
+the pure child has no process-spawning/native path.
+
+The complete actual final parent JSON was retained before post-run expectation
+or source comparisons; it is reproduced here verbatim including its final LF:
+
+```json
+{"accepted_memory_only":true,"actual_exit_code":0,"final_postsave_seconds":0.08579179178923368,"grading":"accepted_memory_only","outcome_saved":true,"owned_reaped":true,"schema":"riauth.a09-memory-final/v1","shared_gate":"not_measured"}
+```
+
+The single memory invocation finished and the serialized memory lane was
+released immediately in the user-facing result notification, before this
+report append. No Cargo/desktop slot was claimed or used. All further memory,
+hosted/shared or native invocations remain HELD for separate root authorization.
+
+### Private raw evidence and retention order
+
+Child evidence remains under this worktree's existing private target:
+.target-wave27/a09-snapshot-counts-memory-d00c968-wave30.
+Parent raw outcome/observations remain separately under:
+.target-wave27/a09-snapshot-counts-memory-a47f-parent-wave30.
+Both directories are measured 0700. All retained files below are measured 0600,
+regular files, created exclusively without following symlinks. No old file was
+overwritten, truncated, moved or deleted.
+
+The approved controller saved the actual numeric child exit first, then full
+bounded child stdout and stderr, before grading/source rechecks, and fsynced
+receipts before the final clock. After command completion, the observer saved
+actual numeric command exit, complete raw parent output and tool result
+exclusively/fsynced before parsing or comparing outcomes. Only afterward did
+it derive counts/groups, hash/read fixed receipts and retain observation.json.
+No raw row/key/value/message/URI/private synthetic path is in public diagnostics.
+The full private child output is retained, not merely a pass summary.
+
+| Origin | File | Bytes | Mode | SHA256 |
+| --- | --- | ---: | --- | --- |
+| child | child-exit.json | 190 | 0600 | bddf55d5b09a3817f4370598f720b6db710aba7247f39b5ffebbc0375591ef67 |
+| child | child.json | 8584 | 0600 | 15c45e5824aa35a224776435a55bc23724addd380a0a211cce0d8cc2d359adc1 |
+| child | child-stderr.bin | 0 | 0600 | e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 |
+| child | controller.json | 775 | 0600 | 6a985e145676050132585d0b80e1f53482ebd9692a081a55e74fd81f9d347a7b |
+| parent | parent-command-exit.json | 103 | 0600 | ad4f9b386e9b3eeb4074bad3d5e418d59f8ee25b222c64276d54c007bd7f123a |
+| parent | parent-command-output.bin | 237 | 0600 | 8ba62544d50ceb1e0992698458a37d0640ac864e7cd7d2c521c4310281d90a0e |
+| parent | parent-tool-result.json | 366 | 0600 | 8642648bbb1f60ea0c864f9b71846b823dfb2099f7d5d045fd2b4c20369b63c8 |
+| parent | observation.json | 3015 | 0600 | 7944dadad310b37b13dff4b73addd9918afdbd248a4e820378b9861e346c5bef |
+
+Post-observation free space was 25,101,778,944 bytes (23.377853393554688 GiB),
+still above 8 GiB. This host delta is not attributed to this invocation.
+The child and parent source-hash receipts matched all six fixed d00c968 inputs;
+post-run source byte comparisons and report-prefix equality also matched.
+No source alignment or production edit occurred.
+
+### Evidence boundary and residual gates
+
+This is actual compatibility/privacy/fallback evidence for the selected pinned
+pure diagnostic definitions, exact equality Try and genuine controlled synthetic
+tracebacks. native_runtime false and shared_gate not_measured were reported.
+No helper module/main/shared_probe body, native product, SQL/PG/HTTP/CLI/browser/
+provider/tenant, Cargo or hosted gate ran. It measures no live Store rows, native
+resource behavior, tenant delivery, recovery outcome or release acceptance.
+
+In particular, 37060776569's actual full Store inequality after successful
+CLI4/HTTP403/access_denied refusal remains unexplained by runtime row evidence.
+This successful memory run neither diagnoses that origin nor proves a shared
+gate pass. Earlier missing-cause/failed PG evidence and blocked designs remain
+unchanged. Original A09/shared gate stays root-owned/open; I02/I10/R05/W02/W05
+remain DONE. No status/integration/publication action was taken.
+
+Only static docs/whitespace/archive/source-scope checks follow this invocation;
+no memory rerun is performed. The receipt is committed separately for root
+review before any additional runtime decision.
+
+### Actual post-run static checks
+
+python3 scripts/check-docs.py and git diff --check exited 0. The actual receipt
+hashes and verbatim parent JSON matched retained private files; observed group
+totals summed to actual case records. Full 254,437-byte prefix and all six source
+files remained byte-equivalent. Change scope was only this report (136 appended
+lines before this final static receipt). No runtime invocation was repeated.
+Final docs/whitespace/source-scope checks cover this receipt before committing
+it; this is a report-only evidence commit with all further runtimes held.
