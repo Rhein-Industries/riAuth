@@ -590,7 +590,7 @@ async fn approval_activate(
     .await
 }
 
-/// Retire the current approval of one workflow. The same service as the portal.
+/// Retire the explicitly targeted approval. The same service as the portal.
 async fn approval_revoke(
     State(app): State<App>,
     headers: HeaderMap,
