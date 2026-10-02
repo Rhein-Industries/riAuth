@@ -971,6 +971,15 @@ returns a `workflow` view, an opaque `challenge` and its `expires_at`.
 `POST /api/workflows/{id}/totp` accepts that `challenge` and the authenticator
 `code`, using the original bearer session. The handle binds the account, epoch,
 session, request, run, definition, primary proof, current step and attempt.
+A configured source-then-current-TOTP workflow starts with
+`POST /api/workflows/configured/{workflow}/source-totp` and the bearer of a live
+session whose account has a current, non-pending TOTP factor. The response is
+exactly `workflow` and `authorization_url`: no cookie, session or token. A
+workflow that is not configured is `404`, a configured one that is not the exact
+chain is `409`, an account without a current TOTP is `403`, and a second start on
+an active session is `409`. The route shares the `source_start` rate bucket with
+`source-passkey`. The continuations are the unchanged
+`POST /api/workflows/{id}/source`, `/totp/start` and `/totp`.
 
 The executor uses the ordinary TOTP verifier, enrolled algorithm/digits/period,
 and account-wide `totp_last_step`. It rechecks the primary proof's freshness and

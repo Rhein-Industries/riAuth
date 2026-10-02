@@ -49,6 +49,10 @@ pub(super) fn routes() -> Router<App> {
             "/api/workflows/configured/{workflow}/source-passkey",
             post(configured_source_passkey_start),
         )
+        .route(
+            "/api/workflows/configured/{workflow}/source-totp",
+            post(configured_source_totp_start),
+        )
         .route("/api/workflows/authorization", post(authorization_start))
         .route(
             "/api/workflows/authorization/passkey",
@@ -286,6 +290,19 @@ async fn configured_source_passkey_start(
     let token = bearer(&headers)?;
     app.run(move |core| {
         core.workflow_configured_source_passkey_start(&token, &workflow)
+            .map(Json)
+    })
+    .await
+}
+
+async fn configured_source_totp_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(workflow): Path<String>,
+) -> Result<Json<SourceStart>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.workflow_configured_source_totp_start(&token, &workflow)
             .map(Json)
     })
     .await
