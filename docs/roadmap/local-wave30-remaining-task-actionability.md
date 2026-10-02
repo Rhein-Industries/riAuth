@@ -1,5 +1,12 @@
 # Wave30 remaining-task actionability at fixed main
 
+This is the dated 2026-10-02 snapshot at `2dea9f5`, before M03 and S04 closure
+and before six final acceptance reviews were assigned. Its 33 todo count is
+historical. Root independently verified all 33 original detail hashes, 81 unique
+accepted commit ancestors and 115 pinned reference blobs. These metadata checks
+validate the inventory, not task completion or fresh runtime. Current board
+state is maintained in RiWork.
+
 There are **33 todo rows**, with six original-scope closure-review candidates and
 concrete local work that can proceed without cloud tenants or release publication.
 Prioritize **R05 restored-application login**, **O07 small-template verification**,
