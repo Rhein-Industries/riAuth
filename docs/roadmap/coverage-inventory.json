@@ -1173,11 +1173,12 @@
       ],
       "label": "extend",
       "journey": "partial",
-      "current_state": "The desired-state manifest covers users, groups, clients, sources, and source_links (`api_version`, JSON Schema). Workflows, roles, connectors, PAM approvers, and listeners live only in `riauth.toml`.",
+      "current_state": "Update at 93999d15f7681ff918f986a341c48b5556bee24f: desired state covers users, groups, clients, sources/source_links, workflows, delegated_grants (roles), four connector definition families plus retirement, and SSF streams through versioned APIs/manifests. Dedicated-API and operator-only resources are documented; no declarative GUI-only state was found.",
       "implementation": [
         "src/state.rs",
         "src/schema.rs",
-        "src/resource.rs"
+        "src/resource.rs",
+        "src/connector_definitions.rs"
       ],
       "tests_existing": [
         {
@@ -1193,11 +1194,12 @@
       ],
       "tests_run_in_this_task": [],
       "documentation": [
-        "docs/agent.md"
+        "docs/agent.md",
+        "docs/roadmap/local-wave29-management-final-disposition.md"
       ],
       "released_artifact_evidence": "Compiled into the single riauth binary and container image; no separate artifact. Only v0.1.1 (tag 5ef0261) was released; base 96e23e2 is unreleased.",
       "gaps": [
-        "Connectors, roles, workflows not manageable resources"
+        "Shared activation optional-header parity remains open before the interface-outcome gate; applicable connector-peer, runtime and released-artifact evidence remains separately qualified."
       ],
       "unverified": []
     },

@@ -151,6 +151,9 @@ Original workstream gate: The same change has the same permission checks and out
 
 ### M07 — in_progress
 
+**Post-snapshot update (2026-10-02, main `93999d15f7681ff918f986a341c48b5556bee24f`):** The connector rejection and held-stack statements below describe only the original `32770ab` audit pin. Reviewed cumulative connector ports and workflow API/client corrections are now published. Workflows, roles, connectors and SSF have versioned API/manifest coverage. M07 remains in progress for the shared activation supplied-header parity seam; see the [current management disposition](local-wave29-management-final-disposition.md). This annotation preserves the historical audit and its JSON evidence.
+
+
 Task `0da684c3-b5cd-45e5-b190-1d0ce97f2c80`; original title: [P2] M07 — Extend desired-state coverage.
 
 **Original acceptance (verbatim):** Manage workflows, roles, connectors, and other supported resources through versioned APIs and manifests—not GUI-only state.
