@@ -196,3 +196,86 @@ released to root unused.
 
 The fixture, its context and every assertion are unchanged, and nothing was
 retried or substituted.
+
+## Authorized prune and re-released run
+
+The section above is kept as the record of the first release, which was not
+started for lack of disk margin.
+
+### Prune
+
+Root then authorized pruning exactly ten stale test executables in this
+worktree's own private `target/wave27/debug/deps`, named by an allowlist:
+
+- `connector_manifest-b5c429e714c66c89`
+- `postgres-5cdfc42d060b10a2`
+- `account_browser-13d010228aab885a`
+- `process_role-bd861b8e9eac3599`
+- `source_unlink_management-434a2643f833ad68`
+- `workflow_configured_reset-513c88f5a5baab01`
+- `rate_limits-9016256a2e41d15f`
+- `reviewed_client_policy-7f9bead74682912c`
+- `contention-97b95fa09d4385f0`
+- `m03_user_email-b4c7d03435162eea`
+
+All ten were built at 04:30-04:31.
+
+**Checks before removal.** Each file was re-checked immediately before removal:
+
+- its parent resolved exactly to this worktree's `target/wave27/debug/deps`;
+- it was a regular file, not a symlink, with one link and mode 755;
+- it was larger than 100 MiB;
+- `lsof` and `pgrep` showed no process referencing it.
+
+**Manifest.** Each file's basename, size, mtime and SHA-256 went into a
+private 0600 manifest in the session scratchpad. The manifest's own SHA-256
+is `aa579fd42a906a723b35ca5200d49d3c3a4434d10de1f74546ba9727fbf3b700`.
+
+**Removal.** One `rm` with literal absolute paths removed the files (exit 0).
+An earlier attempt that built the paths from shell variables was refused by
+the Claude Code safety check and did not run.
+
+**Result.**
+
+- All ten files are gone; the directory went from 2067 to 2057 entries.
+- 2,084,098,352 bytes (1.94 GiB) were recovered.
+- Free disk went from 9.92 to 11.85 GiB.
+- No other file was touched: no log, source, fingerprint, rlib, current
+  runtime binary or other worktree's target.
+
+### Re-released run
+
+With 11.85 GiB free, the run had about 2.85 GiB of headroom above the 9 GiB
+stop, against an expected peak of 0.5-1.2 GiB. The one approved command ran
+exactly as written:
+
+- on product bytes equal to `5fe8ee7` (HEAD `41f28f7`, clean tree,
+  `tests/reports.rs` blob `7f969bb`);
+- in this worktree's private `target/wave27`, with `CARGO_BUILD_JOBS=1`,
+  `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_DEV_DEBUG=0` and
+  `CARGO_PROFILE_TEST_DEBUG=0`.
+
+| Item | Result |
+| --- | --- |
+| Exit | 0 |
+| Test | `admin_can_filter_paginate_and_attribute_changes ... ok`; 1 passed, 0 failed, 0 ignored, 11 filtered out (1.62 s) |
+| Build | `Compiling riauth v0.1.1`, `Finished test profile in 1m 05s`, from 2026-10-02T13:10:37Z to 13:11:46Z |
+| Warnings | Only the existing macOS linker note for the `riauth` binary (`__eh_frame section too large`) |
+| Log | 14 lines, SHA-256 `e1a0a89a65fe1059576b6279e9c3ee55ab387eaa3345069c7845b75ea250abad`, kept in the session scratchpad |
+| Disk | Free space was checked every 5 seconds and was never below 11.39 GiB; it was 11.63 GiB after the run. The 9 GiB stop never triggered. |
+| Tree | Unchanged after the run |
+
+**Monitor correction.** The monitor was replaced a few seconds into the run.
+Its emergency stop had matched a broad compiler pattern, which could have hit
+other worktrees. The replacement matches only this run's command line and
+this worktree's exact target path. The stop never fired.
+
+The slot was released to root as soon as the run exited, before this
+appendix.
+
+### What this shows
+
+The corrected fixture compiles and passes locally on macOS, with its context
+and every assertion unchanged. The historical Linux failure above stays as
+recorded. The published CI run will show the Linux result. There was no
+baseline run, no other target and no retry.
