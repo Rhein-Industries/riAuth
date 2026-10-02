@@ -7,15 +7,24 @@ Date: 2026-10-02.
 Audited published commit: `2f9affb0c3772f5ff09c07bf2f171a180dce8967`.
 Worker starting HEAD: `e46224490582da8f9930b13a60b92dde8c145646`.
 
+Reading note: the original eight-facet map, acceptance and historical evidence
+below remain the audit at `2f9affb`. Proposal commit
+`3754794811dbbf0170d5f58dac0f6df8a712dbbc` preserves that initial phase. Root's
+later explicit approval authorizes the single guide paragraph and this report
+update; the applied-hunk mapping below records the follow-up at published
+`6b4db4f0317e4427c187f55e063989ccba124217`.
+
 **The eight incident facets have documented entry points, but this audit does
 not establish the independent user/operator completion gate.** One concrete
 missing step was found in the numbered upgrade procedure: it directs an
 existing-store operator to start before following the required offline
 security-agreement upgrade. A single-paragraph follow-up was sent to the
-project orchestrator before any existing-guide edit. It remains a proposal.
+project orchestrator before any existing-guide edit. Root subsequently approved
+that exact opening, now applied in the separate guide commit recorded below.
 
-Only this review report is authorized for writing. Published objects were read
-with `git show`/`git grep`; this worktree was not aligned or merged. The accepted
+The initial reservation authorized only this review report. The follow-up
+authorizes only the guide paragraph and report correction. Published objects
+were read with `git show`/`git grep`; this worktree was not aligned or merged. The accepted
 O06 implementation and evidence remain independent, and its original-row review
 belongs to the separately assigned worktree. No D01/R05 runtime was repeated.
 Root owns follow-up reservations, integration, publication and task status.
@@ -72,11 +81,12 @@ headroom, write admission or an assertion that every storage domain is healthy.
 WAL, backups and other files excluded from that allocation still need their own
 host/database monitoring.
 
-## One exact proposed follow-up hunk
+## Approved guide correction and original proposal provenance
 
-**Proposed path:** `docs/operations.md`, only numbered step 4 under `Upgrade and
-rollback` (published line 152). No existing-guide edit is made here. Root must
-coordinate its concurrent ownership and reserve this hunk before implementation.
+**Applied path:** `docs/operations.md`, only numbered step 4 under `Upgrade and
+rollback` (published line 152). Root explicitly approved the exact opening
+proposed in `3754794811dbbf0170d5f58dac0f6df8a712dbbc`; no secondary paragraph
+or other operations text is changed by this follow-up.
 
 At the audited pin, `Core::open_store` calls `node_security::enforce` at
 `src/core.rs:230`, before `upgrade::migrate` at line 232, lineage invalidation,
@@ -86,10 +96,31 @@ cannot carry such an existing store through migration. The necessary explicit
 offline procedure already exists at operations lines 469–499, but the numbered
 upgrade workflow does not direct the operator to it before starting.
 
-```diff
--4. Replace the binary and start the new service against the **existing** configuration and store. Its first open performs any required migration. Check `/readyz`, `riauth doctor`, administrator login and representative OIDC/SAML/application flows before restoring traffic.
-+4. Replace the binary. Before the first start, follow [Shared policy and offline upgrade](#rate-limits-and-admission) for an older or missing security agreement, using the source-edition maintenance binary and both confirmation flags; add `--adopt-missing-agreement` only for reviewed missing-row adoption. Then start the new service against the **existing** configuration and store. Its first open performs any required migration. Check `/readyz`, `riauth doctor`, administrator login and representative OIDC/SAML/application flows before restoring traffic.
-```
+Guide correction commit: `decf95090acd513562d700b6a4c0ee53f0ac1f30`.
+Its parent is the historical proposal commit `3754794811dbbf0170d5f58dac0f6df8a712dbbc`.
+The commit changes one line in one file. Step 4 now requires
+[Shared policy and offline upgrade](../operations.md#rate-limits-and-admission)
+before starting with older or missing agreements, using the source-edition
+maintenance binary, both confirmation flags and reviewed missing-row adoption
+only. The rest of step 4, from the existing configuration/store through the
+readiness, doctor, administrator and application checks, remains byte-exact.
+
+The current published paragraph at
+`6b4db4f0317e4427c187f55e063989ccba124217` was read before editing and matched
+the proposed original bytes exactly. Its operations blob is
+`652cbc779670b7dfa94abb768286e39802afbab4`. The worker's pre-edit operations
+blob is `02e986b827419c091f6e6c936b657c3f73e77885`; the guide commit's blob is
+`5f66dc22fe2dcda29dab65a31aff0178ea445313`. Comparing those worker objects
+proves every byte outside the approved paragraph is unchanged.
+
+Applying only that same literal paragraph substitution to the published
+operations object computes prospective blob
+`9137cd96afe8139d4305d0bacf69a9b8dea31900`. This is a calculated integration
+mapping, not a main edit or publication. Published signer/readiness additions
+absent from this worker's older operations file were not copied, removed or
+included in the guide commit; root integrates the single hunk onto current main.
+The applied commit mapping replaces the now-applied embedded diff while the
+original exact proposal remains available in immutable `3754794`.
 
 Here “source-edition maintenance binary” means the current release's maintenance
 tool compiled for the store's source edition, as the linked procedure requires.
@@ -101,8 +132,9 @@ gate. It does not duplicate D01 guide changes or R05 application runtime.
 
 Initial claim and this proposal were delivered using `riwork orchestrator send
 --project 891e7443-8dac-4c1b-897f-9e53cb59c7ee` before writing this report and before
-any existing-doc edit. No follow-up production/doc reservation is inferred from
-delivery or elapsed time.
+any existing-doc edit. That delivery was not treated as approval. Root's later
+explicit message supplied the exact paragraph reservation; it authorizes no
+production changes or secondary stale-statement edits.
 
 Two other source-backed stale statements are recorded for root's disposition,
 without proposing an additional owned edit in this slice:
@@ -269,17 +301,21 @@ those objects, even when the worker checkout's file differs.
 
 ## Actual checks and remaining disposition
 
-Performed only read-only task/ledger/guidance queries, fixed-object guide/source
+The initial `3754794` phase performed read-only task/ledger/guidance queries, fixed-object guide/source
 inspection, and JSON parsing of the eleven historical recovery records. Their
 scopes, outcomes, check counts, refusals and artifact pins were read rather than
-inferred from file names. No Cargo, binary execution, service, database, browser,
+inferred from file names. No Cargo, riAuth binary execution, service, database, browser,
 desktop, external request, source merge, main/push or task-status mutation ran.
 
-The first report-only static check exited 1 because it treated the relative
-anchor inside the fenced proposed diff as a link in this report. The checker
-was corrected to ignore fenced blocks and verify that proposed anchor against
-its actual target document. This was a document-checker error, with no product
-execution or changed runbook. The corrected static check exited 0: all eight
+The first ad hoc report-only static check exited 1 for the guide-relative
+fragment embedded in this report's proposed diff. I then made that ad hoc check
+ignore fenced blocks and check the fragment against the intended guide, and it
+exited 0. That workaround left the report's link context unfixed. The original
+claim that this was a checker error was incorrect: this was a report defect.
+The repository checker scans Markdown links even inside fenced text and has not
+been changed. The now-applied diff is replaced above with its immutable commit
+mapping and the correct report-relative guide link. Historical ad hoc results
+otherwise remain as recorded: all eight
 facet rows present, 39 Git blob pins and 11 recorded binary hashes matched,
 16 guide links/anchors resolved at the published pin, and the proposed old
 paragraph bytes and destination anchor matched. Final newline, whitespace and
@@ -287,8 +323,42 @@ balanced fences passed. These are document checks, not product acceptance.
 `git diff --cached --check` exited 0; scope inspection showed only this new
 report, with no preexisting staged or tracked changes and unchanged worker HEAD.
 
-The next concrete implementation is the proposed single upgrade paragraph, only
-after root reserves it. Root can assess D04's eight-facet/operator decision scope
+### Approved follow-up verification, 2026-10-02
+
+- Read published `6b4db4f0317e4427c187f55e063989ccba124217` before the guide
+  edit. Literal substitution checks passed for the current published paragraph,
+  the unchanged step tail and every other worker-file byte. Guide commit
+  `decf95090acd513562d700b6a4c0ee53f0ac1f30` contains only the one approved
+  operations paragraph, with one insertion and one deletion.
+- `python3 scripts/check-docs.py` exited 0 before editing, after the guide hunk,
+  and after replacing the report diff/link. It printed `Markdown links and
+  build-directory layout checked`. No pre-existing build-layout errors were
+  reported. Checker blob `e26ad77fc7a169a10ee0ca68e4571ec775501e7d` is identical
+  to the current published checker; no global checker change was made.
+- `git diff --check` and the guide's `git diff --cached --check` exited 0.
+  Scope checks showed only the guide before its commit and only this report
+  afterward. Report checks verified 39 historical blob pins and 17 actual
+  report links/anchors, the applied commit/proposal mapping, removal of the
+  embedded diff, final newline and whitespace.
+- Byte comparisons against `3754794` preserved the original acceptance,
+  eight-facet map, historical records/limits and historical source-pin sections.
+  Their SHA-256 values are recorded below. Failed outcomes and original artifact
+  pins were not rewritten or promoted into new runtime evidence.
+- The initial project-orchestrator claim send was rejected with RiWork exit 2:
+  `leave copy mode and enable terminal input before submitting`. An unscoped
+  read-only send-help query also returned exit 2 because no global orchestrator
+  session was configured. No session was created and no terminal/desktop
+  interaction was performed. Final handoff receipt is reported separately.
+
+| Preserved original section | SHA-256 |
+| --- | --- |
+| Acceptance and initial reservation | `f2680f9b03adc620986a19528a3265261c41c443c92932f055811f0f6f852249` |
+| Eight-facet map and diagnostic boundaries | `80cf98282753a5d132fb30058d315c54c3c4e17d53b2c2fec141db7719922260` |
+| Historical records, binary provenance and limits | `36a53dfcda002ebf931d4be699b0d3801868c22fcc664819a72b17c2863e79c4` |
+| Historical source and guide pins | `33f3eed5fbdbce8578891f1897dc55123f3c1cceba45fdb33bef95669722f059` |
+
+The approved single upgrade paragraph is now implemented; it does not establish
+independent operator completion. Root can assess D04's eight-facet/operator decision scope
 without demanding every possible host, tenant, escrow or physical-pressure
 matrix. The independent user/operator gate still requires evidence from the
 documented chosen workflows; this worker's source audit and report are neither
