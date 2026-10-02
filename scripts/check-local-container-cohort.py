@@ -44,6 +44,40 @@ RECEIPT_HASHES = {
     BUILDKIT_RECEIPT: "4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0",
 }
 BUILDKIT = "docker.io/moby/buildkit@sha256:98cc6a3fc46220d00f8224ae483f3274fc874e9be8d7dd1e2e2c5481209228b5"
+ARM_BUILDKIT_RECEIPT = "docs/roadmap/evidence/wave30-container-buildkit-arm64-source-pin.json"
+PLATFORMS = {
+    "x86_64": {
+        "architecture": "x86_64", "machine": "x86_64", "runner_arch": "X64",
+        "daemon_arch": "x86_64", "oci_arch": "amd64", "platform": "linux/amd64",
+        "elf_machine": 62, "target": "x86_64-unknown-linux-gnu",
+        "source": SOURCE, "tree": TREE, "review": REVIEW,
+        "native_receipt": NATIVE_RECEIPT, "receipt_hashes": RECEIPT_HASHES,
+        "native_schema": "riauth.wave30.native-x86-root-review/v1",
+        "run": 37046857550, "job": 110970324302, "artifact": 11246575279,
+        "buildkit": BUILDKIT, "buildkit_receipt": BUILDKIT_RECEIPT,
+        "tool_manifest": "linux_amd64_manifest", "cohort_limit": "native x86 LOCAL cohort only",
+    },
+    "arm64": {
+        "architecture": "arm64", "machine": "aarch64", "runner_arch": "ARM64",
+        "daemon_arch": "aarch64", "oci_arch": "arm64", "platform": "linux/arm64",
+        "elf_machine": 183, "target": "aarch64-unknown-linux-gnu",
+        "source": "9a819317efb3a13fa27cd86f884be2be00898fc0",
+        "tree": "1528b61ba463d9262d6252d54174748a176f313b",
+        "review": "b71b7b0041a549793233e8c7a81bbb61797e20f3",
+        "native_receipt": "docs/roadmap/evidence/wave30-a09-native-arm64-37016520583.json",
+        "receipt_hashes": {
+            "docs/roadmap/evidence/wave30-a09-native-arm64-37016520583.json":
+                "2cbf8ee46dbdd8b2ab43ad933913dd0a16c20b3183497c2d3b9cf3d1287da227",
+            BUILDKIT_RECEIPT: "4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0",
+            ARM_BUILDKIT_RECEIPT: "e234b809df9212785c818ace0a287eb356de0b9d5ca8560aab0818e5111d0de2",
+        },
+        "native_schema": "riauth.root-reviewed-artifact-receipt/v1",
+        "run": 37016520583, "job": 110868629053, "artifact": 11232871527,
+        "buildkit": "docker.io/moby/buildkit@sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768",
+        "buildkit_receipt": ARM_BUILDKIT_RECEIPT,
+        "tool_manifest": "linux_arm64_manifest", "cohort_limit": "native ARM64 LOCAL cohort only",
+    },
+}
 DOCKERFILE_HASH = "458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb"
 WORKFLOW = ".github/workflows/check-local-container-cohort.yml"
 OWNER_LABEL = "org.riauth.local.owner"
@@ -93,6 +127,65 @@ def json_bytes(data):
     return (json.dumps(data, sort_keys=True, indent=2) + "\n").encode()
 
 
+def closed_platform(architecture):
+    require(architecture in PLATFORMS, "unsupported_native_architecture")
+    return PLATFORMS[architecture]
+
+
+def native_receipt_view(record, selected):
+    if selected["architecture"] == "x86_64":
+        return record
+    require(record["schema"] == selected["native_schema"]
+            and record["runner"]["label"] == "ubuntu-24.04-arm"
+            and record["runner"]["system"] == "Linux"
+            and record["runner"]["machine"] == selected["machine"]
+            and record["runner"]["arch"] == selected["runner_arch"]
+            and record["runner"]["environment"] == "github-hosted"
+            and record["native_archive_slice"] == "passed"
+            and record["official_release"] is False
+            and record["root_local_artifact_execution"] is False
+            and all(p["target"] == selected["target"] for p in record["products"]),
+            "root_arm_native_scope")
+    # Only adapt fixed root metadata; preserve products, inputs, logs and raw attribution.
+    return {**record, "repository": REPOSITORY, "product_source": record["product_sha"],
+            "run_id": record["run"], "job_id": record["job"], "attempt": 1,
+            "workflow_source": record["workflow_sha"],
+            "workflow_run_conclusion": record["conclusion"],
+            "selected_platform": {"architecture": selected["architecture"],
+                "elf_machine": selected["elf_machine"], "target": selected["target"]},
+            "artifact": {"id": record["artifact"]["id"], "name": record["artifact"]["name"],
+                "size_in_bytes": 49177062, "digest": record["artifact"]["github_reported_digest"]},
+            "files": {
+                "evidence.json": {"bytes": 60299, "sha256": record["downloaded_evidence_sha256"]},
+                "resources.jsonl": {"bytes": 278604, "sha256": record["resource_log_sha256"]},
+            }}
+
+
+def arm_tool_pin(tool, parent):
+    descriptor = {"mediaType": "application/vnd.oci.image.manifest.v1+json",
+                  "digest": "sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768",
+                  "size": 2261, "platform": {"architecture": "arm64", "os": "linux"}}
+    config = "sha256:f27f9c00a3aca2c219642d1500610eade3ddcb6b873ea8847852ab156663d32f"
+    require(tool["schema"] == "riauth.wave30-buildkit-arm64-source-pin/v1"
+            and parent["index_digest"]
+                == "sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea"
+            and parent["source_reference"] == BUILDKIT
+            and tool["verified_parent_index_digest"] == parent["index_digest"]
+            and tool["selected_descriptor"] == descriptor
+            and descriptor in parent["index"]["manifests"]
+            and tool["response_bytes"] == descriptor["size"]
+            and tool["response_sha256"] == descriptor["digest"].split(":")[1]
+            and tool["response_digest_header"] == descriptor["digest"]
+            and tool["linux_arm64_manifest"]["schemaVersion"] == 2
+            and tool["linux_arm64_manifest"]["mediaType"] == descriptor["mediaType"]
+            and tool["linux_arm64_manifest"]["config"]
+                == {"mediaType": "application/vnd.oci.image.config.v1+json", "digest": config, "size": 2668}
+            and tool["linux_arm64_config_digest"] == config
+            and tool["registry_read_only"] is True
+            and tool["public_auth_token_retained"] is False,
+            "root_arm_buildkit_identity")
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -100,6 +193,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class Cohort:
     def __init__(self, args):
+        self.selected = closed_platform(os.environ.get("ARCHITECTURE"))
         self.args = args
         self.root = args.root.resolve(strict=True)
         expected_root = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve() / (
@@ -150,11 +244,12 @@ class Cohort:
                           "BUILDX_CONFIG": str(self.config / "buildx")}
         self.receipt = {"schema": "riauth.local-container-cohort/v1", "project": PROJECT,
                         "repository": REPOSITORY, "official_release": False,
-                        "shared_full_gate": "not_run", "source": SOURCE,
-                        "source_tree": TREE, "root_review": REVIEW,
+                        "shared_full_gate": "not_run", "source": self.selected["source"],
+                        "source_tree": self.selected["tree"], "root_review": self.selected["review"],
+                        "architecture": self.selected["architecture"],
                         "steps": [], "checks": [], "cleanup_errors": [],
                         "images": {}, "resources": {}, "result": "not_run",
-                        "limits": ["native x86 LOCAL cohort only",
+                        "limits": [self.selected["cohort_limit"],
                                    "resource-only Dockerfile variant",
                                    "format3 enforcement through pinned public entrypoints",
                                    "no raw agreement or credential-row probe",
@@ -405,7 +500,7 @@ class Cohort:
 
     def source_check(self):
         require((platform.system(), platform.machine(), os.environ.get("RUNNER_ARCH"),
-                 os.environ.get("RUNNER_ENVIRONMENT")) == ("Linux", "x86_64", "X64", "github-hosted"),
+                 os.environ.get("RUNNER_ENVIRONMENT")) == ("Linux", self.selected["machine"], self.selected["runner_arch"], "github-hosted"),
                 "unsupported_native_host")
         require(os.environ.get("GITHUB_REPOSITORY") == REPOSITORY
                 and os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
@@ -414,26 +509,29 @@ class Cohort:
         require(re.fullmatch(r"[0-9a-f]{40}", controller) is not None
                 and controller == os.environ.get("GITHUB_SHA")
                 and controller == os.environ.get("GITHUB_WORKFLOW_SHA"), "controller_identity")
-        for path, pin in ((self.args.product, SOURCE), (self.args.review, REVIEW),
+        for path, pin in ((self.args.product, self.selected["source"]), (self.args.review, self.selected["review"]),
                           (self.args.controller, controller)):
             require(not path.is_symlink() and self.git(path, "rev-parse", "HEAD").decode().strip() == pin
                     and self.git(path, "status", "--porcelain") == b"", "clean_exact_checkout")
-        require(self.git(self.args.product, "rev-parse", "HEAD^{tree}").decode().strip() == TREE,
+        require(self.git(self.args.product, "rev-parse", "HEAD^{tree}").decode().strip() == self.selected["tree"],
                 "product_tree")
-        self.native = json.loads((self.args.review / NATIVE_RECEIPT).read_bytes())
-        for relative, expected in RECEIPT_HASHES.items():
+        self.native = json.loads((self.args.review / self.selected["native_receipt"]).read_bytes())
+        for relative, expected in self.selected["receipt_hashes"].items():
             require(file_hash(self.args.review / relative) == expected, "root_receipt_hash")
-        tool = json.loads((self.args.review / BUILDKIT_RECEIPT).read_bytes())
-        require(tool["source_reference"] == BUILDKIT and tool["layers_downloaded"] is False
+        tool = json.loads((self.args.review / self.selected["buildkit_receipt"]).read_bytes())
+        require(tool["source_reference"] == self.selected["buildkit"] and tool["layers_downloaded"] is False
                 and tool["native_image_executed"] is False, "tool_pin_scope")
+        if self.selected["architecture"] == "arm64":
+            arm_tool_pin(tool, json.loads((self.args.review / BUILDKIT_RECEIPT).read_bytes()))
+        self.native = native_receipt_view(self.native, self.selected)
         r = self.native
-        require(r["schema"] == "riauth.wave30.native-x86-root-review/v1"
+        require(r["schema"] == self.selected["native_schema"]
                 and r["project"] == PROJECT and r["repository"] == REPOSITORY
-                and r["product_source"] == SOURCE and r["product_tree"] == TREE
-                and r["run_id"] == 37046857550 and r["attempt"] == 1
-                and r["job_id"] == 110970324302 and r["workflow_run_conclusion"] == "success"
-                and r["selected_platform"] == {"architecture": "x86_64", "elf_machine": 62,
-                    "target": "x86_64-unknown-linux-gnu"} and r["shared_full_gate"] == "not_run",
+                and r["product_source"] == self.selected["source"] and r["product_tree"] == self.selected["tree"]
+                and r["run_id"] == self.selected["run"] and r["attempt"] == 1
+                and r["job_id"] == self.selected["job"] and r["workflow_run_conclusion"] == "success"
+                and r["selected_platform"] == {"architecture": self.selected["architecture"], "elf_machine": self.selected["elf_machine"],
+                    "target": self.selected["target"]} and r["shared_full_gate"] == "not_run",
                 "root_native_identity")
         require(len(r["products"]) == 5 and len(r["steps"]) == 11
                 and all(x["exit_code"] == 0 for x in r["steps"]), "root_native_outcome")
@@ -453,11 +551,14 @@ class Cohort:
         self.receipt.update(controller=controller,
             helper_sha256=file_hash(pathlib.Path(__file__)),
             workflow_sha256=file_hash(self.args.controller / WORKFLOW),
-            native_input={"receipt_sha256": RECEIPT_HASHES[NATIVE_RECEIPT],
+            native_input={"receipt_sha256": self.selected["receipt_hashes"][self.selected["native_receipt"]],
                           "run": r["run_id"], "artifact": r["artifact"]},
-            tool_pin={"reference": BUILDKIT, "receipt_sha256": RECEIPT_HASHES[BUILDKIT_RECEIPT]},
+            tool_pin={"reference": self.selected["buildkit"], "receipt_sha256": self.selected["receipt_hashes"][self.selected["buildkit_receipt"]]},
             recipe={"variant": "private-serial-resource-prefix", "original_sha256": digest(original),
                     "derived_sha256": digest(recipe), "exact_reverse": True})
+        self.receipt["native_input"]["raw_schema"] = r["schema"]
+        if self.selected["architecture"] == "arm64":
+            self.receipt["native_input"]["root_outer_zip_rehashed"] = False
         # Credentials are outside product; only the Dockerfile's unchanged COPY set is sent.
         require(self.root not in self.args.product.resolve().parents
                 and self.args.product.resolve() not in self.root.parents
@@ -505,8 +606,8 @@ class Cohort:
         self.phase = "native-transport"
         self.capacity(30 * GiB)
         r = self.native
-        run = self.github_json("/actions/runs/37046857550/attempts/1")
-        artifact = self.github_json("/actions/artifacts/11246575279")
+        run = self.github_json("/actions/runs/" + str(self.selected["run"]) + "/attempts/1")
+        artifact = self.github_json("/actions/artifacts/" + str(self.selected["artifact"]))
         require(run["id"] == r["run_id"] and run["run_attempt"] == 1
                 and run["conclusion"] == "success" and run["status"] == "completed"
                 and run["head_sha"] == r["workflow_source"]
@@ -519,7 +620,7 @@ class Cohort:
                 and artifact["workflow_run"]["head_sha"] == r["workflow_source"], "native_artifact_metadata")
         # Authenticated API redirect only; signed storage GET has no bearer header.
         code, _, headers = self.http("https://api.github.com/repos/" + REPOSITORY
-            + "/actions/artifacts/11246575279/zip", token=os.environ["A09_GH_TOKEN"], cap=65536)
+            + "/actions/artifacts/" + str(self.selected["artifact"]) + "/zip", token=os.environ["A09_GH_TOKEN"], cap=65536)
         location = headers.get("Location") or headers.get("location")
         require(code == 302 and isinstance(location, str), "artifact_redirect")
         target = urllib.parse.urlsplit(location)
@@ -583,7 +684,7 @@ class Cohort:
             require(p.stat().st_size == declared["bytes"] and file_hash(p) == declared["sha256"],
                     "native_evidence_identity")
         native_evidence = json.loads((unpacked / "evidence.json").read_bytes())
-        require(native_evidence["source_sha"] == SOURCE and native_evidence["source_tree"] == TREE
+        require(native_evidence["source_sha"] == self.selected["source"] and native_evidence["source_tree"] == self.selected["tree"]
                 and native_evidence["native_archive_slice"] == "passed"
                 and [{k: v for k, v in p.items() if k != "observed_server_capabilities"}
                      for p in native_evidence["products"]] == r["products"], "native_evidence_outcome")
@@ -617,7 +718,7 @@ class Cohort:
                 binary = directory / product["binary"]
                 require(binary.stat().st_size == product["binary_bytes"]
                         and file_hash(binary) == product["binary_sha256"], "native_binary_identity")
-                self.elf(binary)
+                self.elf(binary, self.selected["elf_machine"])
                 binary.chmod(0o755)  # Public executable; enclosing host directories stay private.
                 self.bins[(product["edition"], product["binary"])] = binary
         self.native_caps = {}
@@ -636,18 +737,18 @@ class Cohort:
         self.save()
 
     @staticmethod
-    def elf(path):
+    def elf(path, machine):
         with path.open("rb") as stream:
             header = stream.read(20)
         require(len(header) == 20 and header[:6] == b"\x7fELF\x02\x01"
-                and header[18:20] == (62).to_bytes(2, "little"), "native_elf62")
+                and header[18:20] == machine.to_bytes(2, "little"), "native_elf" + str(machine))
 
     def capabilities(self, data, edition):
         require(data["edition"] == edition and data["build_features"]
                 == (["essentials"] if edition == "essentials" else ["essentials", "platform"]),
                 "capability_features")
         version = tomllib.loads((self.args.product / "Cargo.toml").read_text())["package"]["version"]
-        require(data["version"] == version and data["target"] == {"arch": "x86_64", "os": "linux"},
+        require(data["version"] == version and data["target"] == {"arch": self.selected["machine"], "os": "linux"},
                 "capability_native_target_version")
         return data
 
@@ -658,7 +759,7 @@ class Cohort:
         code, out, _ = self.docker("daemon-info", "info", "--format", "{{json .}}", timeout=30)
         require(code == 0, "native_daemon_unavailable")
         info = json.loads(out)
-        require(info["OSType"] == "linux" and info["Architecture"] == "x86_64"
+        require(info["OSType"] == "linux" and info["Architecture"] == self.selected["daemon_arch"]
                 and "desktop" not in info["OperatingSystem"].lower(), "native_daemon_required")
         self.daemon_seen = True
         storage = pathlib.Path(info["DockerRootDir"])
@@ -673,19 +774,19 @@ class Cohort:
         code, out, _ = self.docker("builder-list", "buildx", "ls", "--format", "{{json .}}")
         require(code == 0 and self.builder.encode() not in out, "builder_preexists")
         # Pull a content-addressed tool, never a mutable tag. No registry writes.
-        code, _, _ = self.docker("pull-pinned-buildkit", "image", "pull", BUILDKIT,
+        code, _, _ = self.docker("pull-pinned-buildkit", "image", "pull", self.selected["buildkit"],
                                   timeout=300, public=True)
         require(code == 0, "buildkit_pull_failed")
-        tool = self.inspect("image", BUILDKIT)
-        pin = json.loads((self.args.review / BUILDKIT_RECEIPT).read_bytes())
-        require(tool["Id"] == pin["linux_amd64_manifest"]["config"]["digest"]
-                and tool["Os"] == "linux" and tool["Architecture"] == "amd64", "buildkit_actual_identity")
+        tool = self.inspect("image", self.selected["buildkit"])
+        pin = json.loads((self.args.review / self.selected["buildkit_receipt"]).read_bytes())
+        require(tool["Id"] == pin[self.selected["tool_manifest"]]["config"]["digest"]
+                and tool["Os"] == "linux" and tool["Architecture"] == self.selected["oci_arch"], "buildkit_actual_identity")
         self.receipt["tool_pin"]["actual_config_id"] = tool["Id"]
         self.builder_created_after = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
         self.builder_attempted = True
         self.save()  # Expected exclusive names retained even if setup loses its response.
         code, _, _ = self.docker("builder-create", "buildx", "create", "--name", self.builder,
-            "--driver", "docker-container", "--driver-opt", "image=" + BUILDKIT,
+            "--driver", "docker-container", "--driver-opt", "image=" + self.selected["buildkit"],
             "--driver-opt", "memory=8g", "--driver-opt", "cpu-period=100000",
             "--driver-opt", "cpu-quota=300000", timeout=60, public=True)
         require(code == 0, "builder_create_failed")
@@ -721,7 +822,7 @@ class Cohort:
         require(config["Name"] == self.builder and config["Driver"] == "docker-container"
                 and len(config["Nodes"]) == 1
                 and config["Nodes"][0]["Endpoint"] in {"default", "unix:///var/run/docker.sock"}
-                and config["Nodes"][0]["DriverOpts"]["image"] == BUILDKIT,
+                and config["Nodes"][0]["DriverOpts"]["image"] == self.selected["buildkit"],
                 "private_builder_binding")
         if self.builder_instance is not None:
             require(file_hash(instance) == self.builder_instance, "builder_instance_changed")
@@ -729,7 +830,7 @@ class Cohort:
         item = json.loads(out)[0]
         created = datetime.datetime.fromisoformat(item["Created"].replace("Z", "+00:00")).timestamp()
         require(item["Name"] == "/" + self.builder_container
-                and item["Config"]["Image"] == BUILDKIT
+                and item["Config"]["Image"] == self.selected["buildkit"]
                 and created >= self.builder_created_after
                 and (self.builder_id is None or item["Id"] == self.builder_id), "builder_creation_identity")
         mounts = [m for m in item["Mounts"] if m["Type"] == "volume"]
@@ -859,7 +960,7 @@ class Cohort:
         item = self.inspect("image", identifier)
         labels = item["Config"].get("Labels") or {}
         require(re.fullmatch(r"sha256:[0-9a-f]{64}", item["Id"]) is not None
-                and item["Os"] == "linux" and item["Architecture"] == "amd64"
+                and item["Os"] == "linux" and item["Architecture"] == self.selected["oci_arch"]
                 and item["Config"]["User"] == "10001:10001"
                 and item["Config"]["Entrypoint"] == ["riauth", "--config", "/data/riauth.toml"]
                 and item["Config"]["Cmd"] == ["serve"]
@@ -867,7 +968,7 @@ class Cohort:
                 and item["Config"]["Volumes"] == {"/data": {}}
                 and labels.get(OWNER_LABEL) == self.owner
                 and labels.get("org.riauth.edition") == edition
-                and labels.get("org.opencontainers.image.revision") == SOURCE
+                and labels.get("org.opencontainers.image.revision") == self.selected["source"]
                 and labels.get("org.opencontainers.image.source") == "https://github.com/" + REPOSITORY,
                 "image_product_identity")
         return item
@@ -879,8 +980,8 @@ class Cohort:
             self.absent("image", tag)
             iid = self.root / (edition + ".iid")
             code, _, _ = self.docker("build-" + edition, "buildx", "build", "--builder", self.builder,
-                "--platform", "linux/amd64", "--load", "--progress", "plain", "--file", self.recipe,
-                "--build-arg", "RIAUTH_EDITION=" + edition, "--build-arg", "RIAUTH_COMMIT=" + SOURCE,
+                "--platform", self.selected["platform"], "--load", "--progress", "plain", "--file", self.recipe,
+                "--build-arg", "RIAUTH_EDITION=" + edition, "--build-arg", "RIAUTH_COMMIT=" + self.selected["source"],
                 "--label", OWNER_LABEL + "=" + self.owner, "--tag", tag, "--iidfile", iid,
                 self.args.product, timeout=1800, public=True)
             require(code == 0 and iid.is_file(), "image_build_failed")
@@ -894,7 +995,7 @@ class Cohort:
             self.save()
         for edition, image in self.images.items():
             self.capacity(30 * GiB)
-            archive = self.evidence / ("local-" + edition + "-x86_64.docker.tar.gz")
+            archive = self.evidence / ("local-" + edition + "-" + self.selected["machine"] + ".docker.tar.gz")
             size = 0
             with archive.open("xb") as raw:
                 os.chmod(archive, 0o600)
@@ -965,10 +1066,10 @@ class Cohort:
                 and isinstance(layers, list) and layers and len(set(layers)) == len(layers)
                 and all(layer in hashes for layer in layers), "image_tar_config_layers")
         settings = json.loads(payloads[config])
-        require(settings["os"] == "linux" and settings["architecture"] == "amd64"
+        require(settings["os"] == "linux" and settings["architecture"] == self.selected["oci_arch"]
                 and settings["config"]["Labels"][OWNER_LABEL] == self.owner
                 and settings["config"]["Labels"]["org.riauth.edition"] == edition
-                and settings["config"]["Labels"]["org.opencontainers.image.revision"] == SOURCE,
+                and settings["config"]["Labels"]["org.opencontainers.image.revision"] == self.selected["source"],
                 "saved_config_identity")
         allowed = {"manifest.json", config, *layers}
         # Docker save can include OCI index/layout or legacy per-layer metadata.
@@ -1007,7 +1108,7 @@ class Cohort:
                 require(code == 0 and destination.is_file() and not destination.is_symlink(), "image_public_file")
                 destination.chmod(0o600)
                 if kind == "server":
-                    self.elf(destination)
+                    self.elf(destination, self.selected["elf_machine"])
                     self.receipt["images"][edition]["server_sha256"] = file_hash(destination)
                 else:
                     source_name = "LICENSE" if kind == "license" else "THIRD_PARTY_NOTICES.md"
@@ -1414,7 +1515,7 @@ class Cohort:
                     item = json.loads(out)[0]
                     require((item["Config"].get("Labels") or {}).get(OWNER_LABEL) == self.owner
                             and item["Config"]["Labels"]["org.riauth.edition"] == edition
-                            and item["Config"]["Labels"]["org.opencontainers.image.revision"] == SOURCE
+                            and item["Config"]["Labels"]["org.opencontainers.image.revision"] == self.selected["source"]
                             and item["RepoTags"] == [tag], "image_cleanup_identity")
                     code, _, _ = self.docker("owned-image-remove", "image", "rm", "--no-prune", tag,
                                               timeout=60, cleanup=True)

@@ -1,7 +1,14 @@
-name: Check LOCAL native x86 container cohort
+name: Check LOCAL native Linux container cohort
 
 on:
   workflow_dispatch:
+    inputs:
+      architecture:
+        description: Native Linux architecture for one LOCAL container cohort
+        required: true
+        type: choice
+        default: x86_64
+        options: [x86_64, arm64]
 
 permissions:
   contents: read
@@ -15,13 +22,14 @@ concurrency:
 
 jobs:
   native-container:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 150
     defaults:
       run:
         shell: bash
     env:
       PYTHONOPTIMIZE: '0'
+      ARCHITECTURE: ${{ inputs.architecture }}
     steps:
       - name: Establish private evidence and initial capacity
         timeout-minutes: 2
@@ -30,8 +38,19 @@ jobs:
           umask 077
           python3 - <<'PY'
           import json, os, pathlib, platform, shutil
+          architecture = os.environ.get('ARCHITECTURE')
+          platforms = {
+              'x86_64': {'machine': 'x86_64', 'runner_arch': 'X64',
+                         'source': 'b619fe25269ccc150e473bbcde47cdb3623ef810',
+                         'review': '66c814a339665e6b3f8e6c22bc59d4f6f0aa224c'},
+              'arm64': {'machine': 'aarch64', 'runner_arch': 'ARM64',
+                        'source': '9a819317efb3a13fa27cd86f884be2be00898fc0',
+                        'review': 'b71b7b0041a549793233e8c7a81bbb61797e20f3'}}
+          if architecture not in platforms:
+              raise SystemExit('unsupported_native_architecture')
+          native = platforms[architecture]
           if (platform.system(), platform.machine(), os.environ.get('RUNNER_ARCH'),
-              os.environ.get('RUNNER_ENVIRONMENT')) != ('Linux', 'x86_64', 'X64', 'github-hosted'):
+              os.environ.get('RUNNER_ENVIRONMENT')) != ('Linux', native['machine'], native['runner_arch'], 'github-hosted'):
               raise SystemExit('unsupported_native_host')
           paths = ('/', os.environ['GITHUB_WORKSPACE'], os.environ['RUNNER_TEMP'], '/var/lib/docker')
           free = {p: shutil.disk_usage(p).free for p in paths}
@@ -43,6 +62,8 @@ jobs:
           (root / 'evidence' / 'launch.json').write_text(json.dumps({'initial_free_bytes': free}) + '\n')
           with open(os.environ['GITHUB_ENV'], 'a') as out:
               out.write('A09_CONTAINER_ROOT=' + str(root) + '\n')
+              out.write('A09_PRODUCT_SOURCE=' + native['source'] + '\n')
+              out.write('A09_ROOT_REVIEW=' + native['review'] + '\n')
           PY
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 5
@@ -53,14 +74,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 5
         with:
-          ref: b619fe25269ccc150e473bbcde47cdb3623ef810
+          ref: ${{ env.A09_PRODUCT_SOURCE }}
           path: product
           persist-credentials: false
           fetch-depth: 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         timeout-minutes: 5
         with:
-          ref: 66c814a339665e6b3f8e6c22bc59d4f6f0aa224c
+          ref: ${{ env.A09_ROOT_REVIEW }}
           path: review
           persist-credentials: false
           fetch-depth: 1
@@ -81,7 +102,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: riauth-local-container-x86_64-${{ github.run_id }}-${{ github.run_attempt }}
+          name: riauth-local-container-${{ inputs.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ env.A09_CONTAINER_ROOT }}/evidence/
           if-no-files-found: error
           compression-level: 0
