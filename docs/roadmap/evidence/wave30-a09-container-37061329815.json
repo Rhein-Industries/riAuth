@@ -1,0 +1,1363 @@
+{
+  "schema": "riauth.wave30.container-first-root-review/v1",
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "reviewed_utc": "2026-10-02T21:10:58.990367+00:00",
+  "run": 37061329815,
+  "job": 111018425393,
+  "workflow_source": "56bd0829514ed8014cc9563fc7b0e727dba46d1d",
+  "product_source": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+  "run_result": "failure",
+  "actual_failure": "image_tar_unreferenced_member",
+  "both_image_builds": "exit0",
+  "subsequent_uid_fixture_shared_gate": "not_reached",
+  "artifact_api": {
+    "id": 11252311290,
+    "node_id": "MDg6QXJ0aWZhY3QxMTI1MjMxMTI5MA==",
+    "name": "riauth-local-container-x86_64-37061329815-1",
+    "size_in_bytes": 49206215,
+    "url": "https://api.github.com/repos/Rhein-Industries/riAuth/actions/artifacts/11252311290",
+    "archive_download_url": "https://api.github.com/repos/Rhein-Industries/riAuth/actions/artifacts/11252311290/zip",
+    "expired": false,
+    "digest": "sha256:d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6",
+    "created_at": "2026-10-02T21:03:08Z",
+    "updated_at": "2026-10-02T21:03:08Z",
+    "expires_at": "2026-10-16T21:03:06Z",
+    "workflow_run": {
+      "id": 37061329815,
+      "repository_id": 1387816591,
+      "head_repository_id": 1387816591,
+      "head_branch": "main",
+      "head_sha": "56bd0829514ed8014cc9563fc7b0e727dba46d1d"
+    }
+  },
+  "outer_zip_rehashed_by_root": true,
+  "members": {
+    "essentials-small-metadata.json": {
+      "bytes": 17651,
+      "sha256": "430471f20c63eb533003415c19c3d19c8f83b542af7acb75621cfe150040e5b4",
+      "mode": "0o600"
+    },
+    "pull-pinned-buildkit.log": {
+      "bytes": 1344,
+      "sha256": "7ee4b46404a93feb7895ba65ad0d58bf8aace6fe05b291f5f77b86407654f1fd",
+      "mode": "0o600"
+    },
+    "essentials-image-inventory.json": {
+      "bytes": 3222,
+      "sha256": "11f3352299d6715750b7f2547df31e0df85dc62f1e110b5c2cc5e4a7c9c57258",
+      "mode": "0o600"
+    },
+    "builder-bootstrap.log": {
+      "bytes": 1928,
+      "sha256": "1e58356a0d7d553e498926fc5940621b62abb4a7838655362ecd2ee785d4c111",
+      "mode": "0o600"
+    },
+    "build-essentials.log": {
+      "bytes": 52026,
+      "sha256": "311408a39daad3a846c88e6f8efd19ffd473c29413ddef2cfefb76f4f491329b",
+      "mode": "0o600"
+    },
+    "builder-create.log": {
+      "bytes": 45,
+      "sha256": "13c6a36ccd82d0a9216a410179ddc8e48c83b2edc9a48291eae34561affb63fe",
+      "mode": "0o600"
+    },
+    "container-cohort.json": {
+      "bytes": 16872,
+      "sha256": "ab7c5ce7b87e672db255edc4393ccb27348cb777b14f5f7880f87a68a986ab7d",
+      "mode": "0o600"
+    },
+    "artifact.zip": {
+      "bytes": 49206215,
+      "sha256": "d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6",
+      "mode": "0o600"
+    },
+    "build-platform.log": {
+      "bytes": 40245,
+      "sha256": "264174bdcad4d16ea9a999dd736c17b3ef30ec05ba90ae675dfa4dc522aa2794",
+      "mode": "0o600"
+    },
+    "launch.json": {
+      "bytes": 163,
+      "sha256": "cf616ca243565a9e433e40fcfef3b61d80571c15b0e551a27121a8f94ecbb672",
+      "mode": "0o600"
+    },
+    "resources.jsonl": {
+      "bytes": 158341,
+      "sha256": "c778352aaf5dc0babdf08fada27f1af1bb2047eafe35a79c32025e4a099039ef",
+      "mode": "0o600"
+    },
+    "run.json": {
+      "bytes": 2493,
+      "sha256": "22501b3bebf1a991c5055f9ede20070057fb784950d5942dd4e6604daa45f23a",
+      "mode": "0o600"
+    },
+    "artifacts.json": {
+      "bytes": 751,
+      "sha256": "a5dcc51ae2826872ab8fb34cbdf5f22a6fa13b03af99eddc7162c09b02820a1d",
+      "mode": "0o600"
+    }
+  },
+  "resource_summary": {
+    "samples": 888,
+    "minimum_free_bytes": {
+      "host": 85502218240,
+      "workspace": 85502218240,
+      "private": 85502218240,
+      "docker_storage": 85502218240
+    },
+    "maximum_gap_from_rounded_samples": 2.0010000000002037,
+    "reported_precise_maximum_gap": 2.0004333619999954
+  },
+  "public_controller": {
+    "builder": {
+      "container_id": "bd36de3f97f2b7f9b34f84ee52f1c1e606f196337f9fa714ff94d673bf212111",
+      "created": "2026-10-02T20:33:41.87029558Z",
+      "instance_sha256": "6101d85960f1689c1f68a48e74c05c1e6c063cfadda03df4666fe188cf7b1085",
+      "name": "a09-2ad626a6017c4815a4bd2b89d496ed4e-builder",
+      "privileged_tool_only": true,
+      "state_created": "2026-10-02T20:33:41Z",
+      "state_volume": "buildx_buildkit_a09-2ad626a6017c4815a4bd2b89d496ed4e-builder0_state"
+    },
+    "builder_children_removed": true,
+    "checks": [],
+    "cleanup_errors": [],
+    "controller": "56bd0829514ed8014cc9563fc7b0e727dba46d1d",
+    "creation_records": {
+      "containers": {},
+      "volumes": {}
+    },
+    "daemon": {
+      "Architecture": "x86_64",
+      "DockerRootDir": "/var/lib/docker",
+      "OSType": "linux",
+      "OperatingSystem": "Ubuntu 24.04.5 LTS",
+      "ServerVersion": "28.0.4"
+    },
+    "expected_builder": {
+      "container": "buildx_buildkit_a09-2ad626a6017c4815a4bd2b89d496ed4e-builder0",
+      "name": "a09-2ad626a6017c4815a4bd2b89d496ed4e-builder",
+      "volume": "buildx_buildkit_a09-2ad626a6017c4815a4bd2b89d496ed4e-builder0_state"
+    },
+    "failed_phase": "images",
+    "failure": "image_tar_unreferenced_member",
+    "github": {
+      "GITHUB_EVENT_NAME": "workflow_dispatch",
+      "GITHUB_JOB": "native-container",
+      "GITHUB_REF": "refs/heads/main",
+      "GITHUB_REPOSITORY": "Rhein-Industries/riAuth",
+      "GITHUB_RUN_ATTEMPT": "1",
+      "GITHUB_RUN_ID": "37061329815",
+      "GITHUB_SHA": "56bd0829514ed8014cc9563fc7b0e727dba46d1d",
+      "GITHUB_WORKFLOW_REF": "Rhein-Industries/riAuth/.github/workflows/check-local-container-cohort.yml@refs/heads/main",
+      "GITHUB_WORKFLOW_SHA": "56bd0829514ed8014cc9563fc7b0e727dba46d1d"
+    },
+    "helper_sha256": "0f499284f5a053026230586f936b0ba38e58898a4f8fe36885efd30161bbbcfa",
+    "images": {
+      "essentials": {
+        "architecture": "amd64",
+        "id": "sha256:6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a",
+        "labels": {
+          "org.opencontainers.image.revision": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+          "org.opencontainers.image.source": "https://github.com/Rhein-Industries/riAuth",
+          "org.riauth.edition": "essentials",
+          "org.riauth.local.owner": "a09-2ad626a6017c4815a4bd2b89d496ed4e"
+        },
+        "os": "linux",
+        "recipe": {
+          "derived_sha256": "a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440",
+          "exact_reverse": true,
+          "original_sha256": "458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb",
+          "variant": "private-serial-resource-prefix"
+        },
+        "tag": "riauth-local/a09-2ad626a6017c4815a4bd2b89d496ed4e:essentials"
+      },
+      "platform": {
+        "architecture": "amd64",
+        "id": "sha256:648cdd5e2e717fd3e0eca09f46e8a84a7e1cbd19b8e3aa2fbc0dac13afbbc5a2",
+        "labels": {
+          "org.opencontainers.image.revision": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+          "org.opencontainers.image.source": "https://github.com/Rhein-Industries/riAuth",
+          "org.riauth.edition": "platform",
+          "org.riauth.local.owner": "a09-2ad626a6017c4815a4bd2b89d496ed4e"
+        },
+        "os": "linux",
+        "recipe": {
+          "derived_sha256": "a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440",
+          "exact_reverse": true,
+          "original_sha256": "458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb",
+          "variant": "private-serial-resource-prefix"
+        },
+        "tag": "riauth-local/a09-2ad626a6017c4815a4bd2b89d496ed4e:platform"
+      }
+    },
+    "limits": [
+      "native x86 LOCAL cohort only",
+      "resource-only Dockerfile variant",
+      "format3 enforcement through pinned public entrypoints",
+      "no raw agreement or credential-row probe",
+      "b619 native notices were later found stale; retained, not regenerated",
+      "sampling is not a hard quota",
+      "no registry/tag/release/tenant/device claim"
+    ],
+    "native_input": {
+      "artifact": {
+        "digest": "sha256:7c1bcad0f78d90eb611ab76d67943a32a0d691cd5bbd9e5588512bdde635e2a0",
+        "id": 11246575279,
+        "name": "riauth-local-x86_64-37046857550-1",
+        "size_in_bytes": 52428080
+      },
+      "outer_zip_rehashed": true,
+      "receipt_sha256": "ccf7c3fb6c0bd85816097c32a24a1c1b0a67b9597346d571cd68975a4680b1af",
+      "run": 37046857550
+    },
+    "official_release": false,
+    "owned_image_inventory_empty": true,
+    "owner": "a09-2ad626a6017c4815a4bd2b89d496ed4e",
+    "pending_owned_containers": {},
+    "pending_owned_volumes": {},
+    "planned_image_tags": {
+      "essentials": "riauth-local/a09-2ad626a6017c4815a4bd2b89d496ed4e:essentials",
+      "platform": "riauth-local/a09-2ad626a6017c4815a4bd2b89d496ed4e:platform"
+    },
+    "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+    "recipe": {
+      "derived_sha256": "a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440",
+      "exact_reverse": true,
+      "original_sha256": "458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb",
+      "variant": "private-serial-resource-prefix"
+    },
+    "remaining_owned_cli_groups": 0,
+    "remaining_owned_containers": 0,
+    "remaining_owned_volumes": 0,
+    "repository": "Rhein-Industries/riAuth",
+    "resources": {
+      "maximum_gap_seconds": 2.0004333619999954,
+      "minimum_free_bytes": {
+        "docker_storage": 85502218240,
+        "host": 85502218240,
+        "private": 85502218240,
+        "workspace": 85502218240
+      },
+      "samples": 888
+    },
+    "result": "failed_or_refused",
+    "retained_inputs": "content-addressed tool/base image layers; no shared deletion",
+    "root_review": "66c814a339665e6b3f8e6c22bc59d4f6f0aa224c",
+    "schema": "riauth.local-container-cohort/v1",
+    "shared_full_gate": "not_run",
+    "source": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+    "source_tree": "a627df2ce21a4d255b8c1914d4f543e32f40f4de",
+    "steps": [
+      {
+        "elapsed": 0.001,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.001,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.061,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.001,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.062,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.001,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.066,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.001,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.004,
+        "exit": 0,
+        "name": "native-capabilities",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.004,
+        "exit": 0,
+        "name": "native-capabilities",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.226,
+        "exit": 0,
+        "name": "daemon-info",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.037,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.035,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.065,
+        "exit": 0,
+        "name": "builder-list",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 5.479,
+        "exit": 0,
+        "log_bytes": 1344,
+        "log_sha256": "7ee4b46404a93feb7895ba65ad0d58bf8aace6fe05b291f5f77b86407654f1fd",
+        "name": "pull-pinned-buildkit",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.044,
+        "exit": 0,
+        "log_bytes": 45,
+        "log_sha256": "13c6a36ccd82d0a9216a410179ddc8e48c83b2edc9a48291eae34561affb63fe",
+        "name": "builder-create",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.59,
+        "exit": 0,
+        "log_bytes": 1928,
+        "log_sha256": "1e58356a0d7d553e498926fc5940621b62abb4a7838655362ecd2ee785d4c111",
+        "name": "builder-bootstrap",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "recover-builder-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "inspect-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 762.677,
+        "exit": 0,
+        "log_bytes": 52026,
+        "log_sha256": "311408a39daad3a846c88e6f8efd19ffd473c29413ddef2cfefb76f4f491329b",
+        "name": "build-essentials",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.034,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 972.371,
+        "exit": 0,
+        "log_bytes": 40245,
+        "log_sha256": "264174bdcad4d16ea9a999dd736c17b3ef30ec05ba90ae675dfa4dc522aa2794",
+        "name": "build-platform",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 17.976,
+        "exit": 0,
+        "name": "save-essentials",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 0,
+        "name": "recover-builder-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "inspect-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.27,
+        "exit": 0,
+        "name": "builder-stop-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "inspect-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 9.599,
+        "exit": 0,
+        "name": "builder-volume-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.045,
+        "exit": 0,
+        "name": "builder-instance-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.034,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "cleanup-image-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.053,
+        "exit": 0,
+        "name": "owned-image-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.035,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "cleanup-image-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.409,
+        "exit": 0,
+        "name": "owned-image-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.038,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "owned-image-inventory",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      }
+    ],
+    "tool_pin": {
+      "actual_config_id": "sha256:27933730df224df80c41f4e5a9b33fa78831a79fd31903df3bb7deb49363422f",
+      "receipt_sha256": "4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0",
+      "reference": "docker.io/moby/buildkit@sha256:98cc6a3fc46220d00f8224ae483f3274fc874e9be8d7dd1e2e2c5481209228b5"
+    },
+    "uid_probes": [],
+    "workflow_sha256": "7a0b7fb12a6c2650a1a7413e856ed6a9053aed7f5e1f06c2172413c7fdf84302"
+  },
+  "launch": {
+    "initial_free_bytes": {
+      "/": 92410826752,
+      "/home/runner/work/riAuth/riAuth": 92410826752,
+      "/home/runner/work/_temp": 92410826752,
+      "/var/lib/docker": 92410826752
+    }
+  },
+  "image_member_inventory": [
+    {
+      "name": "blobs",
+      "size": 0,
+      "regular": false,
+      "directory": true,
+      "type": "5"
+    },
+    {
+      "name": "blobs/sha256",
+      "size": 0,
+      "regular": false,
+      "directory": true,
+      "type": "5"
+    },
+    {
+      "name": "blobs/sha256/1350b7621d43833a85f56bc172040d0f1ff3a0a7301382ac9359a0da49803c51",
+      "size": 12056576,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/1bcf121ec65f8f0db3ca0bf9fa905e216bfe5338d717b50afc62ba3909abb1fa",
+      "size": 5120,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/1de23d2d3e2ecafe29ef6e2cfbc28f43a2e220b87aa6fdd0aa2bbdf06da2cc24",
+      "size": 477,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/403d14cad84ab235eb47caa1c6dc4633ed2666b726a8fcacf871de50f9bb72ff",
+      "size": 477,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/42e47bd0cf542b5dc4810ade3689b6809f7b6f2b7a0dd9421cf841a7fc70cc6a",
+      "size": 477,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+      "size": 1024,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/6a99bab363b1a32d4f92c245d95b66304b833dc1a526665aa65be797a6fcd8b0",
+      "size": 756736,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a",
+      "size": 3946,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/a6dc765193a52cbaede3c93a9ff48b9540948dd0774bbe7031fcb5847606f9ac",
+      "size": 81244160,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/bfac4c35c38484d57b91e117ef48571d183808557de737290a2db1033a858be9",
+      "size": 477,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/d2d43e3a3f2cacc1c7d5aa3d446d548f846f8e60beacbe1f1c8912ada2a75458",
+      "size": 1162,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/d72650c02755234d4314c720c6526aac620229621afec4824dc02c82eec5fcf4",
+      "size": 43244544,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/e9c7179eb746fed1f7cd9b4a0111ac84b505bb79166553e1bbd3aa8f481b05b5",
+      "size": 1216,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "blobs/sha256/f2c95b27390582a885e249206a4731e5d6100ff9a77cd39d9bb0eeec3afd422c",
+      "size": 401,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "index.json",
+      "size": 406,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "manifest.json",
+      "size": 2035,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "oci-layout",
+      "size": 31,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    },
+    {
+      "name": "repositories",
+      "size": 136,
+      "regular": true,
+      "directory": false,
+      "type": "0"
+    }
+  ],
+  "image_small_metadata": {
+    "blobs/sha256/1de23d2d3e2ecafe29ef6e2cfbc28f43a2e220b87aa6fdd0aa2bbdf06da2cc24": {
+      "bytes": 477,
+      "sha256": "1de23d2d3e2ecafe29ef6e2cfbc28f43a2e220b87aa6fdd0aa2bbdf06da2cc24",
+      "json": {
+        "id": "94f0f9a780d06a31df8b14daf4c205026009a17655bc05e97ebb9aaf48aa652f",
+        "parent": "ba8215617ef9b6c8bcfc3404cf3db67a3698faf6367064b1acedcbb7690d6394",
+        "created": "1970-01-01T00:00:00Z",
+        "container_config": {
+          "Hostname": "",
+          "Domainname": "",
+          "User": "",
+          "AttachStdin": false,
+          "AttachStdout": false,
+          "AttachStderr": false,
+          "Tty": false,
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Env": null,
+          "Cmd": null,
+          "Image": "",
+          "Volumes": null,
+          "WorkingDir": "",
+          "Entrypoint": null,
+          "OnBuild": null,
+          "Labels": null
+        },
+        "os": "linux"
+      }
+    },
+    "blobs/sha256/403d14cad84ab235eb47caa1c6dc4633ed2666b726a8fcacf871de50f9bb72ff": {
+      "bytes": 477,
+      "sha256": "403d14cad84ab235eb47caa1c6dc4633ed2666b726a8fcacf871de50f9bb72ff",
+      "json": {
+        "id": "ba8215617ef9b6c8bcfc3404cf3db67a3698faf6367064b1acedcbb7690d6394",
+        "parent": "df05de371732dc0b2dfa5b9bfe65cad8d95fdd6e88a1d945d5cfdf31bd08fde4",
+        "created": "1970-01-01T00:00:00Z",
+        "container_config": {
+          "Hostname": "",
+          "Domainname": "",
+          "User": "",
+          "AttachStdin": false,
+          "AttachStdout": false,
+          "AttachStderr": false,
+          "Tty": false,
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Env": null,
+          "Cmd": null,
+          "Image": "",
+          "Volumes": null,
+          "WorkingDir": "",
+          "Entrypoint": null,
+          "OnBuild": null,
+          "Labels": null
+        },
+        "os": "linux"
+      }
+    },
+    "blobs/sha256/42e47bd0cf542b5dc4810ade3689b6809f7b6f2b7a0dd9421cf841a7fc70cc6a": {
+      "bytes": 477,
+      "sha256": "42e47bd0cf542b5dc4810ade3689b6809f7b6f2b7a0dd9421cf841a7fc70cc6a",
+      "json": {
+        "id": "df05de371732dc0b2dfa5b9bfe65cad8d95fdd6e88a1d945d5cfdf31bd08fde4",
+        "parent": "5123e9bebb510daa6215abe65735aa6ee7d86ce01421a1844cf59e123e75bbe0",
+        "created": "1970-01-01T00:00:00Z",
+        "container_config": {
+          "Hostname": "",
+          "Domainname": "",
+          "User": "",
+          "AttachStdin": false,
+          "AttachStdout": false,
+          "AttachStderr": false,
+          "Tty": false,
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Env": null,
+          "Cmd": null,
+          "Image": "",
+          "Volumes": null,
+          "WorkingDir": "",
+          "Entrypoint": null,
+          "OnBuild": null,
+          "Labels": null
+        },
+        "os": "linux"
+      }
+    },
+    "blobs/sha256/6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a": {
+      "bytes": 3946,
+      "sha256": "6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a",
+      "json": {
+        "architecture": "amd64",
+        "config": {
+          "User": "10001:10001",
+          "ExposedPorts": {
+            "9000/tcp": {}
+          },
+          "Env": [
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          ],
+          "Entrypoint": [
+            "riauth",
+            "--config",
+            "/data/riauth.toml"
+          ],
+          "Cmd": [
+            "serve"
+          ],
+          "Volumes": {
+            "/data": {}
+          },
+          "WorkingDir": "/data",
+          "Labels": {
+            "org.opencontainers.image.revision": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+            "org.opencontainers.image.source": "https://github.com/Rhein-Industries/riAuth",
+            "org.riauth.edition": "essentials",
+            "org.riauth.local.owner": "a09-2ad626a6017c4815a4bd2b89d496ed4e"
+          },
+          "ArgsEscaped": true
+        },
+        "created": "2026-10-02T20:46:21.377343067Z",
+        "history": [
+          {
+            "created": "2026-09-18T00:00:00Z",
+            "created_by": "# debian.sh --arch 'amd64' out/ 'trixie' '@1789689600'",
+            "comment": "debuerreotype 0.17"
+          },
+          {
+            "created": "2026-10-02T20:34:00.970673056Z",
+            "created_by": "LABEL org.opencontainers.image.source=https://github.com/Rhein-Industries/riAuth",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:34:00.970673056Z",
+            "created_by": "ARG RIAUTH_EDITION=essentials",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:34:00.970673056Z",
+            "created_by": "ARG RIAUTH_COMMIT=b619fe25269ccc150e473bbcde47cdb3623ef810",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:34:00.970673056Z",
+            "created_by": "LABEL org.riauth.edition=essentials",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:34:00.970673056Z",
+            "created_by": "LABEL org.opencontainers.image.revision=b619fe25269ccc150e473bbcde47cdb3623ef810",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:34:00.970673056Z",
+            "created_by": "RUN |2 RIAUTH_EDITION=essentials RIAUTH_COMMIT=b619fe25269ccc150e473bbcde47cdb3623ef810 /bin/sh -c apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3t64 && rm -rf /var/lib/apt/lists/*     && groupadd --gid 10001 riauth && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin riauth     && install -d -o 10001 -g 10001 -m 0700 /data # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+          },
+          {
+            "created": "2026-10-02T20:46:21.35275459Z",
+            "created_by": "COPY /build/target/release/riauth /usr/local/bin/riauth # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+          },
+          {
+            "created": "2026-10-02T20:46:21.361827946Z",
+            "created_by": "COPY LICENSE /usr/share/doc/riauth/LICENSE # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+          },
+          {
+            "created": "2026-10-02T20:46:21.370720894Z",
+            "created_by": "COPY THIRD_PARTY_NOTICES.md /usr/share/doc/riauth/THIRD_PARTY_NOTICES.md # buildkit",
+            "comment": "buildkit.dockerfile.v0"
+          },
+          {
+            "created": "2026-10-02T20:46:21.370720894Z",
+            "created_by": "USER 10001:10001",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:46:21.377343067Z",
+            "created_by": "WORKDIR /data",
+            "comment": "buildkit.dockerfile.v0"
+          },
+          {
+            "created": "2026-10-02T20:46:21.377343067Z",
+            "created_by": "VOLUME [/data]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:46:21.377343067Z",
+            "created_by": "EXPOSE [9000/tcp]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:46:21.377343067Z",
+            "created_by": "ENTRYPOINT [\"riauth\" \"--config\" \"/data/riauth.toml\"]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          },
+          {
+            "created": "2026-10-02T20:46:21.377343067Z",
+            "created_by": "CMD [\"serve\"]",
+            "comment": "buildkit.dockerfile.v0",
+            "empty_layer": true
+          }
+        ],
+        "os": "linux",
+        "rootfs": {
+          "type": "layers",
+          "diff_ids": [
+            "sha256:a6dc765193a52cbaede3c93a9ff48b9540948dd0774bbe7031fcb5847606f9ac",
+            "sha256:1350b7621d43833a85f56bc172040d0f1ff3a0a7301382ac9359a0da49803c51",
+            "sha256:d72650c02755234d4314c720c6526aac620229621afec4824dc02c82eec5fcf4",
+            "sha256:1bcf121ec65f8f0db3ca0bf9fa905e216bfe5338d717b50afc62ba3909abb1fa",
+            "sha256:6a99bab363b1a32d4f92c245d95b66304b833dc1a526665aa65be797a6fcd8b0",
+            "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+          ]
+        }
+      }
+    },
+    "blobs/sha256/bfac4c35c38484d57b91e117ef48571d183808557de737290a2db1033a858be9": {
+      "bytes": 477,
+      "sha256": "bfac4c35c38484d57b91e117ef48571d183808557de737290a2db1033a858be9",
+      "json": {
+        "id": "5123e9bebb510daa6215abe65735aa6ee7d86ce01421a1844cf59e123e75bbe0",
+        "parent": "985f6de088aa0092b0205cbd28cef38331ebd1200a372782562f92d2067463e1",
+        "created": "1970-01-01T00:00:00Z",
+        "container_config": {
+          "Hostname": "",
+          "Domainname": "",
+          "User": "",
+          "AttachStdin": false,
+          "AttachStdout": false,
+          "AttachStderr": false,
+          "Tty": false,
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Env": null,
+          "Cmd": null,
+          "Image": "",
+          "Volumes": null,
+          "WorkingDir": "",
+          "Entrypoint": null,
+          "OnBuild": null,
+          "Labels": null
+        },
+        "os": "linux"
+      }
+    },
+    "blobs/sha256/d2d43e3a3f2cacc1c7d5aa3d446d548f846f8e60beacbe1f1c8912ada2a75458": {
+      "bytes": 1162,
+      "sha256": "d2d43e3a3f2cacc1c7d5aa3d446d548f846f8e60beacbe1f1c8912ada2a75458",
+      "json": {
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "config": {
+          "mediaType": "application/vnd.oci.image.config.v1+json",
+          "digest": "sha256:6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a",
+          "size": 3946
+        },
+        "layers": [
+          {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar",
+            "digest": "sha256:a6dc765193a52cbaede3c93a9ff48b9540948dd0774bbe7031fcb5847606f9ac",
+            "size": 81244160
+          },
+          {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar",
+            "digest": "sha256:1350b7621d43833a85f56bc172040d0f1ff3a0a7301382ac9359a0da49803c51",
+            "size": 12056576
+          },
+          {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar",
+            "digest": "sha256:d72650c02755234d4314c720c6526aac620229621afec4824dc02c82eec5fcf4",
+            "size": 43244544
+          },
+          {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar",
+            "digest": "sha256:1bcf121ec65f8f0db3ca0bf9fa905e216bfe5338d717b50afc62ba3909abb1fa",
+            "size": 5120
+          },
+          {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar",
+            "digest": "sha256:6a99bab363b1a32d4f92c245d95b66304b833dc1a526665aa65be797a6fcd8b0",
+            "size": 756736
+          },
+          {
+            "mediaType": "application/vnd.oci.image.layer.v1.tar",
+            "digest": "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+            "size": 1024
+          }
+        ]
+      }
+    },
+    "blobs/sha256/e9c7179eb746fed1f7cd9b4a0111ac84b505bb79166553e1bbd3aa8f481b05b5": {
+      "bytes": 1216,
+      "sha256": "e9c7179eb746fed1f7cd9b4a0111ac84b505bb79166553e1bbd3aa8f481b05b5",
+      "json": {
+        "id": "fe9fd051b6d4fd29879e4da7d859543445e9108fb4eaaef0fbdb845f73f3b5d5",
+        "parent": "94f0f9a780d06a31df8b14daf4c205026009a17655bc05e97ebb9aaf48aa652f",
+        "created": "2026-10-02T20:46:21.377343067Z",
+        "container_config": {
+          "Hostname": "",
+          "Domainname": "",
+          "User": "",
+          "AttachStdin": false,
+          "AttachStdout": false,
+          "AttachStderr": false,
+          "Tty": false,
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Env": null,
+          "Cmd": null,
+          "Image": "",
+          "Volumes": null,
+          "WorkingDir": "",
+          "Entrypoint": null,
+          "OnBuild": null,
+          "Labels": null
+        },
+        "config": {
+          "Hostname": "",
+          "Domainname": "",
+          "User": "10001:10001",
+          "AttachStdin": false,
+          "AttachStdout": false,
+          "AttachStderr": false,
+          "ExposedPorts": {
+            "9000/tcp": {}
+          },
+          "Tty": false,
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Env": [
+            "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+          ],
+          "Cmd": [
+            "serve"
+          ],
+          "ArgsEscaped": true,
+          "Image": "",
+          "Volumes": {
+            "/data": {}
+          },
+          "WorkingDir": "/data",
+          "Entrypoint": [
+            "riauth",
+            "--config",
+            "/data/riauth.toml"
+          ],
+          "OnBuild": null,
+          "Labels": {
+            "org.opencontainers.image.revision": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+            "org.opencontainers.image.source": "https://github.com/Rhein-Industries/riAuth",
+            "org.riauth.edition": "essentials",
+            "org.riauth.local.owner": "a09-2ad626a6017c4815a4bd2b89d496ed4e"
+          }
+        },
+        "architecture": "amd64",
+        "os": "linux"
+      }
+    },
+    "blobs/sha256/f2c95b27390582a885e249206a4731e5d6100ff9a77cd39d9bb0eeec3afd422c": {
+      "bytes": 401,
+      "sha256": "f2c95b27390582a885e249206a4731e5d6100ff9a77cd39d9bb0eeec3afd422c",
+      "json": {
+        "id": "985f6de088aa0092b0205cbd28cef38331ebd1200a372782562f92d2067463e1",
+        "created": "1970-01-01T00:00:00Z",
+        "container_config": {
+          "Hostname": "",
+          "Domainname": "",
+          "User": "",
+          "AttachStdin": false,
+          "AttachStdout": false,
+          "AttachStderr": false,
+          "Tty": false,
+          "OpenStdin": false,
+          "StdinOnce": false,
+          "Env": null,
+          "Cmd": null,
+          "Image": "",
+          "Volumes": null,
+          "WorkingDir": "",
+          "Entrypoint": null,
+          "OnBuild": null,
+          "Labels": null
+        },
+        "os": "linux"
+      }
+    },
+    "index.json": {
+      "bytes": 406,
+      "sha256": "e47188d58ecea0309ba878f2150e5b18fdc0e49f13d771b5f8691a89dcaaa968",
+      "json": {
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [
+          {
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "digest": "sha256:d2d43e3a3f2cacc1c7d5aa3d446d548f846f8e60beacbe1f1c8912ada2a75458",
+            "size": 1162,
+            "annotations": {
+              "io.containerd.image.name": "docker.io/riauth-local/a09-2ad626a6017c4815a4bd2b89d496ed4e:essentials",
+              "org.opencontainers.image.ref.name": "essentials"
+            }
+          }
+        ]
+      }
+    },
+    "manifest.json": {
+      "bytes": 2035,
+      "sha256": "6ceb078e3ec8151d7c2236b0a95d8067a8ff384ad8b0c467e75af8cb65d0e9cb",
+      "json": [
+        {
+          "Config": "blobs/sha256/6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a",
+          "RepoTags": [
+            "riauth-local/a09-2ad626a6017c4815a4bd2b89d496ed4e:essentials"
+          ],
+          "Layers": [
+            "blobs/sha256/a6dc765193a52cbaede3c93a9ff48b9540948dd0774bbe7031fcb5847606f9ac",
+            "blobs/sha256/1350b7621d43833a85f56bc172040d0f1ff3a0a7301382ac9359a0da49803c51",
+            "blobs/sha256/d72650c02755234d4314c720c6526aac620229621afec4824dc02c82eec5fcf4",
+            "blobs/sha256/1bcf121ec65f8f0db3ca0bf9fa905e216bfe5338d717b50afc62ba3909abb1fa",
+            "blobs/sha256/6a99bab363b1a32d4f92c245d95b66304b833dc1a526665aa65be797a6fcd8b0",
+            "blobs/sha256/5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+          ],
+          "LayerSources": {
+            "sha256:1350b7621d43833a85f56bc172040d0f1ff3a0a7301382ac9359a0da49803c51": {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar",
+              "size": 12056576,
+              "digest": "sha256:1350b7621d43833a85f56bc172040d0f1ff3a0a7301382ac9359a0da49803c51"
+            },
+            "sha256:1bcf121ec65f8f0db3ca0bf9fa905e216bfe5338d717b50afc62ba3909abb1fa": {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar",
+              "size": 5120,
+              "digest": "sha256:1bcf121ec65f8f0db3ca0bf9fa905e216bfe5338d717b50afc62ba3909abb1fa"
+            },
+            "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef": {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar",
+              "size": 1024,
+              "digest": "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+            },
+            "sha256:6a99bab363b1a32d4f92c245d95b66304b833dc1a526665aa65be797a6fcd8b0": {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar",
+              "size": 756736,
+              "digest": "sha256:6a99bab363b1a32d4f92c245d95b66304b833dc1a526665aa65be797a6fcd8b0"
+            },
+            "sha256:a6dc765193a52cbaede3c93a9ff48b9540948dd0774bbe7031fcb5847606f9ac": {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar",
+              "size": 81244160,
+              "digest": "sha256:a6dc765193a52cbaede3c93a9ff48b9540948dd0774bbe7031fcb5847606f9ac"
+            },
+            "sha256:d72650c02755234d4314c720c6526aac620229621afec4824dc02c82eec5fcf4": {
+              "mediaType": "application/vnd.oci.image.layer.v1.tar",
+              "size": 43244544,
+              "digest": "sha256:d72650c02755234d4314c720c6526aac620229621afec4824dc02c82eec5fcf4"
+            }
+          }
+        }
+      ]
+    },
+    "oci-layout": {
+      "bytes": 31,
+      "sha256": "0cdedc0869d60bb59e3dde736f996025e70318180587e049cfa22f80d67aa8e5",
+      "json": {
+        "imageLayoutVersion": "1.0.0"
+      }
+    },
+    "repositories": {
+      "bytes": 136,
+      "sha256": "7b49f58769b142775b9a60f3112929a7c599ce5080f2dc10947d0e3f7f022d3a",
+      "json": {
+        "riauth-local/a09-2ad626a6017c4815a4bd2b89d496ed4e": {
+          "essentials": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+        }
+      }
+    }
+  },
+  "root_method": {
+    "controller_launch_and_small_metadata_read_in_full": true,
+    "resources_all_rows_parsed": true,
+    "all_recorded_public_log_hashes_rechecked": true,
+    "image_layers_extracted_loaded_or_executed": false,
+    "native_fixture_or_product_run_by_root": false,
+    "actual_changed_pg_rows_inferred": false
+  },
+  "cleanup_review": {
+    "all54_owned_cli_groups_reaped_empty": true,
+    "remaining_groups_containers_volumes": 0,
+    "owned_image_inventory_empty": true,
+    "builder_children_removed": true,
+    "errors": [],
+    "slot_released_before_evidence_commit": true
+  },
+  "limits": [
+    "Both Dockerfile-derived LOCAL image builds completed, not loaded round-trip or application acceptance.",
+    "Archive rejected six legacy V1 JSON blobs outside its current allowlist; no blanket additional-blob acceptance.",
+    "No UID probe, application fixture or E-P-E/shared gate reached.",
+    "Native source notices later found stale remain historical and unchanged.",
+    "Official release, registry, ARM runtime and deployment acceptance not established."
+  ],
+  "root_static_reader_error": "Initial small-JSON metadata reader also selected an empty layer TAR and raised JSONDecodeError before writing; excluding referenced layer members selected only metadata. No image or validator execution/retry."
+}
