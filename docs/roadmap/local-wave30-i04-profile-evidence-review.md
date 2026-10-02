@@ -1707,3 +1707,228 @@ prior prefix, protected source/native/default-cache pins, both failed histories,
 new private capture modes/ignore rules and the current linked test artifact.
 Original primary ownership, integration/status/publication, completed rows,
 O07 blocker and all protected contracts remain unchanged.
+
+
+## Original I04 disposition audit — 2026-10-02, fixed published b5dcfa9
+
+Reservation: `wave30_I04_original_scope_disposition`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. This appendix is a read-only source and
+accepted-evidence review, with no further invocation. Runtime remains free;
+no Cargo, compiler, library, helper, service, browser, provider or network run
+was performed for this disposition. The original primary worktree remains
+`a2dff16a-c4b0-47fc-96de-ac85b1fb6d9e`; root alone owns disposition and publication.
+
+### Recommendation and exact original outcome
+
+**Do not recommend original I04 DONE yet. Recommend one next local slice:
+GNU Lasso 2.9 IdP-to-riAuth SAML source/SP login and link/finish/unlink lifecycle.**
+The concrete residual is independent peer-role evidence, not an observed product
+bug. The accepted source login still constructs the upstream assertion/response
+in the test-owned `Upstream::response`; XMLsec signs that constructed XML but is
+not an IdP implementation. The selected Lasso helper and new native pass cover
+Lasso's SP receiver role, not an IdP serving riAuth's source role. No remote tenant
+is inherently required for the proposed local slice. This is one reachable
+reservation proposal, not a request for an all-vendor, all-device, GUI or human
+study campaign, and not permission to execute or edit the proposed files.
+
+The live RiWork row was reread with `riwork task list --project ... --json`:
+`dae9c528-9e32-462c-947f-661a571f136b`, `[P2] I04 — Verify SAML, LDAP, and RADIUS
+profiles`, status `in_progress`, original primary above. Its exact requested
+outcome is: **“Test exact supported roles, bindings, methods, mappings,
+certificates, and revocation behavior against real peers.”** Its workstream gate
+is: **“Every advertised integration has a working setup, lifecycle, and
+failure-handling path—not just an endpoint or protocol module.”** Prerequisites
+remain A02/A06/Q02. Its evidence instruction requires relevant implementation,
+tests, documentation and released artifacts as applicable, actual verification,
+remaining gaps and external prerequisites; documentation or a worker report
+alone does not establish completion. The old scheduling sentence is preserved
+in the row; this audit follows the current explicit supporting assignment and
+changes no row, ownership or status.
+
+### Advertised profiles and actual evidence
+
+All source/guide references in this appendix mean immutable published
+`b5dcfa9dbb14e953d12edac6a6a1133ecb61033e`, not mutable primary-worker files.
+The advertised boundaries come from `docs/saml.md`, `docs/ldap.md`,
+`docs/ldap-provider.md`, `docs/radius.md`, `docs/limitations.md` and the protocol
+rows of `docs/capability-matrix.md`. The matrix's older source marker is not used
+as a runtime provenance marker.
+
+| Supported role/profile | Accepted real implementation/tool and lifecycle/failure evidence | Exact attribution limit |
+| --- | --- | --- |
+| Platform SAML IdP: signed Redirect/POST AuthnRequest; POST response; persistent/transient/email/unspecified NameID; mapped attributes; signed metadata/assertion/response; optional AES-256-GCM/RSA-OAEP assertion encryption | Real selected Lasso 2.9 SP generates a signed Redirect request and parses the POST response, consumes persistent NameID and validates signatures/audience/time. The helper separately enforces Recipient. Accepted Lasso lifetime, Recipient, tamper and changed-metadata-certificate refusals remain relevant. The complete XMLsec IdP exercise additionally verifies metadata/assertion/response and decrypts encryption, request correlation/ACS index, mapped escaped name, consent/group revocation and ForceAuthn refusal paths. | Lasso's completed login is the persistent profile without configured attribute mappings; it does not establish every NameID/mapping/encryption permutation. XMLsec is a real crypto tool, not a complete SP. The body configures a groups mapping but that is not an independent receiver assertion for its output. Named production SPs remain unverified; SOAP/artifact/ECP/encrypted NameID are outside the profile. |
+| Platform SAML source/SP: signed Redirect request, POST ACS, stable persistent/email/unspecified subject; display/email/verified mappings; optional encrypted assertion and Redirect/POST SLO | Complete accepted source exercise performs explicit account linking/finish, opaque persistent subject/no email adoption, exact issuer/Recipient/audience/InResponseTo, both signatures, tamper/namespace/stale-authentication refusal, encrypted response and live trust/unlink revocation. Its ignored execution uses real XMLsec signing. The browser-ACS named check also passed historically. | **One proposed residual:** the protocol response/attributes are generated by test-owned `Upstream::response` (`tests/identity/saml_source.rs:87`), not an independent IdP implementation. Optional encryption also uses the product-side crypto fixture. Source callback or source-start alone is not completed independent IdP evidence. Transient/unsolicited/artifact/SOAP/ECP are outside the profile. |
+| SAML logout/revocation: Redirect/POST SP initiation and IdP fan-out, local revoke before peer delivery | Complete accepted XMLsec logout exercise covers SP Redirect, SP POST and upstream POST participants, correlation/relay/configuration refusals, loop prevention, local/unrelated identity outcomes and partial/late delivery. New actual Lasso pass adds real saved accepted identity/session state, exact NameID/SessionIndex, wrong-pin refusal, matched receiver session removal, independent reload, one confirmation/audit and spent response/request refusals with unchanged snapshots. | The XMLsec fan-out peers are test-authored messages; its deliberately expired record subcases are not natural elapsed-time observations. New Lasso receiver proof is one selected Redirect local-library slice with synthetic Core setup, not upstream IdP runtime, every SLO binding or deployed/browser evidence. |
+| Essentials/Platform LDAP import/password check: external directory search/simple bind, stable subject mapping, import without copying passwords | Accepted actual OpenLDAP slapd STARTTLS fixture maps entryUUID/uid/cn/mail/description/staff, survives rename, applies paged 205-entry plans, keeps local factors, checks directory password/MFA, and refuses untrusted CA/collision/revoked agent; reviewed removal confirmation/idempotency/actor attribution stay intact. | This peer execution is STARTTLS, not an import LDAPS run. The guide's AD objectGUID/sAMAccountName/memberOf mapping is not real AD evidence. No directory-password-copy or AD schema claim is added. |
+| Platform LDAP provider: read-only LDAPv3 simple bind, LDAPS/STARTTLS, root DSE/Who Am I, scoped filters/paging | Accepted OpenLDAP ldapsearch 2.7.1 runs both LDAPS and STARTTLS: page-size1 users, disabled omission, wrong/revoked token refusal, unrelated CA and crossed transport refusal. Named ldap3 socket test also executed: TLS, scoped search, paging/cookie binding, failed rebind drops authority, password/MFA and live agent revocation. | ldap3 is an independent client library; ldapsearch is an independent executable. Neither establishes AD/POSIX emulation, which is not advertised. Add/modify/delete/modifyDN/compare refusal remains part of the read-only profile. |
+| Platform RADIUS PAP UDP and RadSec: Message-Authenticator, optional MFA and live policy; RadSec mTLS/CA/exact leaf pin | Actual FreeRADIUS radclient 3.2.10 PAP accept/reject and exact datagram retry passes, with one accept audit. The accepted named network test exercises UDP and actual OpenSSL RadSec socket, packet/response authentication and Proxy-State, OTP replay, VLAN/vendor-integer encoding, trusted mTLS/pin and rogue/anonymous refusal, live group revocation. | FreeRADIUS PAP is UDP. RadSec peer is the OpenSSL socket fixture rather than radclient or hardware NAS. Accounting/CHAP/MS-CHAP/PEAP/TTLS/CoA/Disconnect are outside the profile. |
+| Platform RADIUS EAP-TLS method13: TLS1.3 and TLS1.2 EMS, certificate enrollment and revocation | Accepted OpenSSL EAP fixture actually negotiates both versions, 256-byte fragment exchange, exported key/MPPE assertions, explicit local certificate binding (not CN adoption), unrelated binding refusal, missing/rogue certificate and MFA refusal, live group/binding/CRL revocation including cached acceptance, TLS1.3-only refusal of TLS1.2. | The TLS implementation is real OpenSSL; NAS/EAP framing is test-controlled over UDP. No OS/hardware supplicant or combined EAP-over-RadSec run is inferred. Hardware deployment checks remain named limitations, not an invented mandatory next campaign. |
+
+The proposed single source-role slice does not erase these attribution limits
+or prove every profile permutation. It addresses the missing independent role
+in the original local gate; root should reassess the original row from actual
+result and exact profile scope afterward rather than promise automatic closure.
+
+### Reviewed bodies, identity checks and historical execution are distinct
+
+This audit read the complete IdP/source/logout `exercise` bodies, the whole
+OpenLDAP import/provider and FreeRADIUS fixtures, both complete LDAP/RADIUS
+network functions, the EAP main lifecycle function, the legacy Lasso login body,
+the source `Upstream` implementation and current helper dispatch. A hash match
+alone is not recorded as a semantic body review or execution.
+
+| Reviewed complete exercise at published b5 | Bytes / SHA-256 | Accepted execution attribution |
+| --- | --- | --- |
+| `tests/identity/saml.rs` IdP `exercise` | 19334 /`df10198089b8c55cd929dc7364e721b375efdadebbc74cc67e7f6855f58d2942` | Integration log lines1328–1330, 1 passed, 0 failed |
+| `tests/identity/saml_source.rs` source `exercise` | 13707 /`bd93c1c4247c95685c4e51b29a813c6f6924b9a634ba10b9a1c000e89ca2d511` | Integration log lines1347–1349, 1 passed, 0 failed |
+| `tests/identity/saml_logout.rs` logout `exercise` | 11913 /`0589daa0a8d5d78b55dffb717a146739088fa58e844cf14e0116d2c3b5b960dc` | Integration log lines1366–1368, 1 passed, 0 failed |
+
+The hashes above delimit only `fn exercise` through its own column-zero closing
+brace and newline, excluding the following test attribute/function. Earlier
+report span hashes remain unchanged; this tighter delimiter changes no source or
+execution result. Each full exercise is byte-identical to accepted CI checkout
+`2d05c00deed3a6dafcd458a5f1a1a9beb17d0dd8`; a later targeted-revocation fixture
+change outside the IdP exercise does not become new execution evidence.
+`/tmp/riauth-wave29-integration-110661000640.log`, run36950097067/job110661000640,
+is265770 bytes, SHA-256
+`458a30895b5987c0bebe2fb7368a1a32969fa0d41ce90acbfa56f43299ccd186`.
+It also records the actual OpenLDAP import pass at lines2900–2902. The CI XMLsec
+package version is not established by these lines; macOS XMLsec1.3.12 is not
+borrowed as that CI pin.
+
+A separate **failed aggregate CI job** still contains actual named protocol
+passes: `/tmp/riauth-wave29-failed-36951643190.log`, run36951643190/job110666025654,
+256279 bytes, SHA-256
+`5a94f6f07d83ae7f4565d8fb032c3a629f31b44cff99ac84e67f7c0078d376f8`,
+checkout `d31778f066d3bc79f94829cf6295e1eb8df2a84f`:
+
+- line1212: `network_tests::ldap_provider_tls_scoped_search_paging_rebind_mfa_and_revocation` passed;
+- line1214: `network_tests::radius_udp_radsec_authenticators_mfa_duplicates_pinning_and_live_policy` passed;
+- line1314: `radius_eap_tests::openssl_eap_tls_versions_fragments_keys_enrollment_policy_and_revocation` passed;
+- lines1317/1328: source browser-ACS handoff and signed/encrypted terminal/linking/live-trust tests passed.
+
+The whole `network.rs`, `radius_eap.rs` and `saml_source.rs` files were compared
+byte-exact between that checkout and published b5. These named passes are not a
+claim that the failed aggregate job passed, that its unrelated stale fixtures
+were product defects, or that this audit reran current source. This attribution
+updates the initial report's narrower definitions-only credit for OpenSSL
+EAP/network evidence while retaining that original text unchanged.
+
+The accepted-commit ledger was reread and hashed (637887 bytes, SHA-256
+`47e7622cd684ccaa2c5de794a2e69b4d71b0f736afa5f64949cd6b9132b27d55`).
+Relevant recorded accepted slices include:
+
+- Lasso login/lifetime/Recipient: `62ce3d83980c52f5242353952a3c4a0c7fdc6b7a`, `8d389d4ca919918e8a9ddf5f4531effc55fb3757`, `25cd9b517a932fa72251291433ec9ef6f2ac890d`;
+- OpenLDAP provider: `fcba8a5e81037edb365c02c291b512576817e920` (source `d00437fc534faef0b1e2a0bb07a9891d1f018083`);
+- FreeRADIUS PAP: `38f82fe7fce02c0bd70db4a4cd22bb15edcea7a6` (source `c51a0ef9bdb1dc03eddee5244871345c1f5a7456`);
+- LDAP socket execution: `6b201b163dab33384b6c92bda6d8d28876163baa`;
+- OpenSSL PAP/RadSec and EAP execution: `3c09fc398872057f13cda62f718513fc859590f3`, `c077d41c4960c7c42eb17edb045d10682350a1f1`.
+
+The prior FreeRADIUS capture was rehashed unchanged:
+`/tmp/riauth-i04-radius-test.log`, 12298 bytes, SHA-256
+`f5fff90c6e750382a9ccbac1e44c817df36490c7fb0e96bb8befb3939a28bb86`.
+It records radclient3.2.10 and one named PAP pass; the ledger connects its source
+slice. The raw capture does not independently contain a Git checkout marker.
+Prior D01 native evidence only completed Lasso SP login; source configuration/
+start without ACS/finish is not credited as an independent IdP lifecycle.
+
+### New native pass and historical failures retain their own boundaries
+
+The preceding `743dfedfc1c70b0b2b08b0bd4e7318b064eb949e` actual appendix records
+one ignored default-Platform local Lasso lifecycle PASS: Cargo0, 1 passed,
+0 failed, 1 filtered, compile2.59s/test2.09s, owned PG reaped, slot released.
+Published b5 C/test are exactly the tested selected source:
+
+- C23856 bytes SHA-256 `c3d3a8f7d1d2d472e8b877a89ea2807d534921d88638661e8b251e2365906563`;
+- Rust39541 bytes SHA-256 `897e778c2c53d6bc5ea943aefde46812a80cb73bafad82d1702a7529779ea20f`;
+- helper39472 bytes SHA-256 `18f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c`;
+- selected Lasso dylib SHA-256 `0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde`.
+
+New actual log/evidence hashes remain
+`11969084b9a31173adb95c9dcd4eb21022525f6f0d6b8bb8bacb717303d0704e`
+and `55fc3bb6b237f231de4cf684436edf256d8377d6b07eb9e2cbc905ead2e2d7b7`.
+Both historical failed log/evidence pairs were rehashed unchanged. The first
+run's native stage/code/conjunct remains unknown. The second diagnostic run
+observed stage `lasso_logout_process_request_msg`, code102, exit1; its stale
+`contains(-111)` oracle failed and later positive assertions were unreached.
+The final pass uses the precisely selected invalid-signature oracle; it does
+not retroactively convert either receipt to success.
+
+The actual native run's protected production was reviewed
+`ae8937800254a1ad4296ea257de1eccc4780e45b`, not a fresh execution of whole b5.
+The only production differences in `src`/`crates`/Cargo/toolchain/build scope
+between ae and b5 are `src/api.rs`, `src/portal.rs`,
+`src/portal/source-stage.html`, `src/portal/source-stage.js`, and
+`src/portal/source_stage.rs`. Protocol source/LDAP/RADIUS/SAML production and the
+selected C/test identity checks do not authorize a claim that these later
+route/browser changes ran in the native filter.
+
+### One future local reservation seam, with no execution authorization here
+
+The exact gap is `Upstream::response` at published
+`tests/identity/saml_source.rs:87`: its assertion/response is a format-string
+protocol generator. Current `scripts/lasso-saml-sp.c` dispatch supports only
+SP-side `request`, `accept`, `accept-state`, `session-state`, `logout` modes.
+A bounded future proposal is an independently reviewed Lasso **IdP** mode plus
+one ignored source/SP lifecycle function, assigned by root to an existing
+owner. No product fix, source acceptance weakening or remote tenant is proposed.
+
+Selected primary Lasso2.9.0 tarball SHA-256
+`63816c8219df48cdefeccb1acb35e04014ca6395b5263c70aacd5470ea95c351`
+was reread without extraction/execution. `lasso/id-ff/login.h` (SHA-256
+`65bf2fe07a7068caed8b30b803b05416c3f92559bbee633c50048a854802ee4d`)
+declares `lasso_login_process_authn_request_msg`,
+`lasso_login_validate_request_msg`, `lasso_login_build_assertion` and
+`lasso_login_build_authn_response_msg`. The selected `id-ff/login.c` dispatch
+and `saml-2.0/login.c` implement the SAML2/POST path. This is source-backed
+feasibility, not an exported-symbol, compiled-helper or IdP runtime proof.
+The later source phase must confirm exact signature behavior and ownership;
+if that implementation cannot produce the required doubly signed profile,
+stop rather than weaken trust or replace it with handcrafted XML evidence.
+
+The smallest proposed path uses the already advertised unencrypted persistent
+NameID profile: Lasso parses riAuth's signed Redirect AuthnRequest with the
+current SP certificate/metadata, issues a correlated POST response/assertion,
+and riAuth completes explicit local-account link and `source_finish`. Proposed
+assertions retain exact issuer/audience/Recipient/InResponseTo, assertion and
+response signature requirements, current pins, normal permissions and receipts,
+no email adoption, spent callback/finish refusal with no duplicate audit/mutation,
+public unlink or live trust withdrawal revocation, and unrelated identity
+noninterference. It must keep bounded private IO/processes, secret-free evidence
+and the existing60-second fixture budget. A wrong-signature/current-pin negative
+must leave no accepted identity or side effects. No forced clock, raw store/
+ledger edits, pin repair or alternative to a refusal is proposed.
+
+Existing public hooks are `Core::source_start` in
+`src/assembly/source_catalog.rs:120`, `Core::saml_source_callback` in
+`src/assembly/source_saml_runtime.rs:116`, `Core::source_finish` in
+`src/assembly/source_finish.rs:21`, and `Core::source_unlink` in
+`src/assembly/source_catalog.rs:140`. The callback already limits and rejects
+duplicate response/relay fields before verified identity/record processing.
+Those hooks, production writers, route headers, credential receipt-secret
+behavior, PAM fallback, Group constraints and revocation remain protected.
+This future test seam is not an assignment to alter any hook. The proposed
+slice would not claim source SLO, encryption, every NameID, remote tenant,
+browser, Linux, deployment, release or complete I04 by implication.
+
+### This audit's static checks and preservation
+
+The complete prior120140-byte report, SHA-256
+`749af2929689d72597ff8c751c23563c8d9444ad0f593e4c2b8afee4e1217c71`,
+is retained as the exact prefix. Only this report is changed. Read-only checks
+covered the live row, immutable Git objects/body comparisons, selected primary
+source and accepted ledger/log/capture hashes. Static Markdown/link and whitespace
+checks are recorded below after execution. No runtime or status was changed;
+original primary ownership and all earlier successes, failures, setup limits
+and source/preparation prefixes are preserved. Root decides the original-row
+disposition and any next exact reservation.
+
+Actual static verification for this appendix: `python3 scripts/check-docs.py`
+exited0; `git diff --check` exited0. Python assertions passed for the sole report
+diff, complete743df prefix, unchanged published-equal C/Rust helper sources,
+strict complete exercise-function equality with accepted XMLsec CI, whole-file
+network/EAP/source equality with the named failed-job checkout, selected primary
+archive/header hashes, and unchanged native helper/dylib and all six historical/
+new private capture hashes. No private protocol content was read or emitted.
+These are static checks and evidence identity checks, not new protocol execution.
