@@ -1200,3 +1200,156 @@ prefix; committed diagnostic source and all three private historical metadata
 files retain their bytes/hash/mode. Only this report differs, Markdown fences
 and final newline pass, and `git diff --check` passed. No source import,
 provider call or runtime execution was used for these document checks.
+
+## Separately released diagnostic fixture: Authorization rejection — 2026-10-02
+
+**The one new fixture exited 1 before browser launch.** Root fully reviewed and
+published diagnostic source `7461ab5` and evidence `6e4739d` at main
+`d5b60bc12aaafa258daddd64b40879afacb87bc1`, accepted review `cebdcd1`, then
+released one fresh fixture. It used the exact diagnostic helper without edits.
+The helper retained first reason **`authorization`**, original failure tag
+**`request_invalid`**, stage **`request`**. The outer guard stopped with
+`rp_nonzero`, cleaned its resources and exited 1. No browser authentication,
+consent or application checkpoint is credited. No retry or correction ran.
+
+### Source/artifact inputs and unchanged controller behavior
+
+Own entry HEAD was `6e4739d473569d95ef3468012b0a020b3e05d9e7`; no main merge
+occurred. Fresh helper hash matched
+`ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd`,
+blob `62460c2f4515a325bb65fc430649b904e8bb2c10`. All three matching c01 binary
+hashes were recomputed before use and equal the complete pins recorded above.
+The fixed verifier was read from its `9cefe7a` Git object, matched SHA-256
+`f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d`,
+and was materialized only inside the fresh private lab. Published guide and
+OIDC-profile blob/hash identities remain `e48371d...` / `9df3c286...` and
+`d9f222a...` / `ed1ae74c...` respectively. These identity readbacks do not
+claim a new whole-body review or historical observation refresh.
+
+The transient controller retained the prior setup/commands/readiness behavior:
+fresh `0700` own lab/XDG/RP directories, hidden synthetic password prompts,
+same normal confidential public-CLI registration, exact issuer 9000 and callback
+3000, five-second readiness request and `lsof` listener ownership reads.
+Changes were only the required diagnostic source pin, fresh exclusive metadata/
+lab names, finite reason retention and numeric owned-child exit recording.
+No new HTTP probe/request, Host tolerance, guard relaxation, authorization
+substitution or source correction was introduced to avoid the prior refusal.
+No private password, client secret or CLI-session value was printed or passed
+through argv/environment; captured CLI output was discarded.
+
+### Native observation and actual operator setup
+
+The resolved native provider again matched
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+Its preflight `version` invocation used only inherited `HOME`, `LANG`, `LC_ALL`,
+`PATH`, `TMPDIR`, with a five-second timeout. It returned **0**, no timeout,
+**63 ASCII stdout bytes** containing
+`OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)` plus newline,
+and **0 stderr bytes**. That complete exit/text/length/hash observation was
+flushed/fsynced into a new exclusive `0600` file before exact equality assertion:
+`deployment-private/d01-confidential-browser-diagnostic-provider-20261002.json`,
+359 bytes, SHA-256
+`6fad035f1897b5287b2ebd812405fcabf6a33b72d2d4f498f3bca7081eb719ab`.
+Its bytes happen to equal the earlier provider metadata, but it is a distinct
+new file; the old file was never overwritten. The helper's own unchanged native
+version check also passed. No RS256 signature-verification result is claimed.
+
+| Owned command/process | PID | Actual numeric exit / observation |
+| --- | --- | --- |
+| Maintenance init | 56111 | 0; two hidden password prompts |
+| Essentials server | 56161 | 0 after owned cleanup; only owner of listener 9000 while running |
+| Operator CLI login | 56167 | 0; one hidden password prompt |
+| Confidential Local demo creation | 56168 | 0; exact callback/scopes; new secret-file mode 0600 |
+| CLI discovery | 56169 | 0 |
+| CLI whoami | 56170 | 0 |
+| Diagnostic helper, one invocation | 56171 | 1; only owner of listener 3000 while running |
+| Outer guard | 55984 | 1 |
+
+The existing `GET http://127.0.0.1:9000/readyz` returned **200**. CLI login and
+registration were operator setup only, never passed to the RP as a user session.
+No service-session/API sign-in/approval stood in for browser behavior.
+
+### Observed reason, checks and limits of attribution
+
+The helper failed after **3.013 seconds**. Both its private result and the outer
+result retain `request_invalid_reason: "authorization"`. Under the reviewed
+first-only recorder and guard order, this identifies only failure of:
+
+```python
+self.headers.get_all("Authorization") is None
+```
+
+Thus the parsed request's Authorization header list was non-null; no header
+value or sender information was retained. Parsing and the preceding Host guard
+completed before this first rejection. Later request guards were not reached
+and are not credited. No raw request line, Host, method, path, query, cookie,
+Origin, error contents or header value is disclosed. The reason does not name
+an actor, prove product fault or retroactively assign a reason to the prior
+unclassified fixture. That prior failure remains independently unknown.
+
+Actual helper checks: credential/private-file, provider identity and discovery
+are true. All seven subsequent protected/authorization/state/exchange/native
+RS256/JWKS/issuer/audience/nonce/time/access-hash/userinfo/fresh-cookie checks are
+false. All six helper HTTP status fields remain null. The original failure tag,
+stage, booleans and statuses are retained without converting the result to pass.
+No protected-before 403, password/empty-factor sign-in, Local demo consent,
+callback, userinfo or protected-after 200 was performed.
+
+A bounded read-only inspection of this transient controller's source found
+listener readbacks through `lsof`, its single explicit readiness URL on 9000,
+and the unchanged CLI issuer/registration schedule. It establishes no concrete
+controller defect or request origin. No new controller request, source edit,
+diagnostic rerun or sender inference followed the refusal. Root owns the next
+cause adjudication/reservation; this phase grants no further runtime.
+
+### Resource budget, cleanup and release
+
+First clock read: `2026-10-02 15:32:15 UTC`, with the inclusive timer started
+immediately before it. Final cleanup completed at
+`2026-10-02T15:34:48.232499+00:00`, **153.252 seconds** inclusive, under the
+900-second cap. Active/cleanup were capped at 840/60 seconds, helper 600,
+pending 180, native/HTTP five and CLI 60. No conservative historical allowance
+was added to this new timer.
+
+Fresh capacity passed the 8.5 GiB entry gate. Outer one-second monitoring began
+at guard preflight: **5 samples**, minimum **14558846976 bytes / 13.558983 GiB**.
+The helper's scheduled and phase-entry checks recorded **22 samples**, minimum
+**14558842880 bytes / 13.558979 GiB**. Both minima exceed the 8.5 stop margin and
+8 GiB floor. No continuous minimum is claimed before guard preflight, and no
+disk deletion was performed.
+
+Owned children were stopped/joined and their numeric exits retained as above.
+The helper's listener/connection closure, private-reference clearing and
+verifier-temporary cleanup booleans are all true. Fresh readbacks found all
+eight listed PIDs absent, both 9000/3000 `lsof` checks exit 1/no listeners, and
+the entire fresh lab/XDG/store/password/credential/session/verifier input absent.
+No unrelated process was killed, and no Python memory erasure is claimed.
+
+The helper refused before the browser branch. This phase made **zero Driver
+calls** and no session/profile/binding/navigation/input/screenshot/recording/
+logout actions. No Driver-owned browser/session existed to kill or end, and no
+cleanup of a personal/shared Driver resource is claimed. RiWork Cua.ai Driver
+MCP remains the sole allowed desktop provider for any separately released run.
+
+Actual new retained result:
+`deployment-private/d01-confidential-browser-diagnostic.redacted.json`, exclusive
+`0600`, **4046 bytes**, SHA-256
+`aefdc34827486859e08a1e28de0a09505af65b4afdf9f1ba5f952fa0208595fa`.
+Both new metadata files are private/ignored. All old metadata/lost-value and
+reporting-error evidence remain intact.
+
+The explicit-project orchestrator release send exited 0 immediately after
+cleanup/readbacks and before this append: **DESKTOP/OPERATOR RUNTIME RELEASED**.
+No Cargo slot was acquired/released; I04 preparation's independent lane is
+unaffected. Source and original guards remain unchanged, and no retry/fallback
+ran. Only this report is appended; no product/guide/D05/source/test/config/state
+edit, Cargo/build/test, main/push/status/merge/reset, new worker/task/worktree/
+shell or other-worker contact occurred. Root owns D01/D05 gate adjudication;
+O06/I10/R05 remain DONE and every prior accepted protection remains unchanged.
+
+Evidence-append checks passed: all 76829 preceding `6e4739d` report bytes remain
+an exact prefix; helper bytes/hash and every old/new private metadata hash,
+length and mode 0600 match their pins. The actual reason is the finite literal
+`authorization`, and all recorded owned-child exits are numeric. Only this
+report differs, Markdown fences/final newline pass, and `git diff --check`
+passed. These checks repeated no provider or fixture execution.
