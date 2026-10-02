@@ -465,6 +465,59 @@ fn trusted_facts(core: &Core, tx: &Tx<'_>, run: &StoredRun, at: u64) -> Result<T
     })
 }
 
+/// This admitted shape is exclusively local bearer-session reauthentication.
+/// Its original epoch binds credential replacement; requires_mfa binds presence.
+fn conditional_session_agrees(run: &StoredRun, user: &User, request: &RequestAuthority) -> bool {
+    user.id == run.account
+        && user.enabled
+        && user.epoch == run.account_epoch
+        && user.totp_pending.is_none()
+        && user.totp_secret.is_some() == request.requires_mfa
+        && request.id == run.request
+        && request.run == run.id
+        && request.account == run.account
+        && request.account_epoch == run.account_epoch
+        && run.session.as_deref() == Some(request.session.as_str())
+        && request.browser_hash.is_none()
+        && request.source.is_none()
+        && request.authorization.is_none()
+        && request.consent.is_none()
+        && request.saml_consent.is_none()
+        && request.recovery.is_none()
+        && request.invitation.is_none()
+        && request.removal.is_none()
+}
+
+/// Conditional verifier callers commit this outcome via Ok(Err) or an absent
+/// challenge, so restoring a changed account/factor cannot revive the run.
+fn commit_conditional_seal(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &mut RuntimeRun,
+) -> Result<Option<Error>> {
+    if configured_password_path(&run.definition) != Some(ConfiguredPasswordPath::ConditionalTotp)
+        || run.record.state.is_final()
+    {
+        return Ok(None);
+    }
+    if let Some(error) = version::commit_reviewed_seal(core, tx, run)? {
+        return Ok(Some(error));
+    }
+    let user = tx.get::<User>("users", &run.record.account)?;
+    let request = tx.get::<RequestAuthority>(REQUESTS, &run.record.request)?;
+    if let (Some(user), Some(request)) = (&user, &request)
+        && conditional_session_agrees(&run.record, user, request)
+    {
+        match crate::password::require_local(tx, user) {
+            Ok(()) => return Ok(None),
+            Err(error) if error.status.is_server_error() => return Err(error),
+            Err(_) => {}
+        }
+    }
+    version::seal_reviewed(tx, run, version::ReviewedFailure::PolicyChanged)?;
+    Ok(Some(Error::conflict("Workflow account or factor changed")))
+}
+
 fn owned(core: &Core, tx: &Tx<'_>, token: &str, run: &StoredRun) -> Result<()> {
     let (user, session) = core.session(tx, token)?;
     let request = tx
@@ -1272,6 +1325,12 @@ impl Core {
     ) -> Result<View> {
         let configured_consent = supported_configured_consent(checked.definition());
         let configured_removal = supported_configured_passkey_removal(checked.definition());
+        if configured_password_path(checked.definition())
+            == Some(ConfiguredPasswordPath::ConditionalTotp)
+            && (authorization.is_some() || removal_target.is_some())
+        {
+            return Err(Error::forbidden());
+        }
         if configured_consent && authorization.is_none() {
             return Err(Error::forbidden());
         }
@@ -1325,9 +1384,11 @@ impl Core {
             {
                 crate::password::require_local(tx, &user)?;
             }
-            if configured_password
-                .is_some_and(|path| user.totp_secret.is_some() != path.requires_mfa())
-                || (extension_password && user.totp_secret.is_some())
+            if configured_password.is_some_and(|path| {
+                user.totp_secret.is_some() != path.requires_mfa(user.totp_secret.is_some())
+            }) || (extension_password && user.totp_secret.is_some())
+                || (configured_password == Some(ConfiguredPasswordPath::ConditionalTotp)
+                    && user.totp_pending.is_some())
             {
                 return Err(Error::conflict(
                     "This account needs a different verifier path",
@@ -1505,7 +1566,8 @@ impl Core {
                 browser_hash: None,
                 expires_at,
                 requires_mfa: checked.definition().id.as_str() == password::TOTP_WORKFLOW
-                    || configured_password.is_some_and(ConfiguredPasswordPath::requires_mfa)
+                    || configured_password
+                        .is_some_and(|path| path.requires_mfa(user.totp_secret.is_some()))
                     || configured_totp_consent
                     || configured_password_totp_replacement
                     || configured_removal_totp

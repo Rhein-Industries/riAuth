@@ -111,7 +111,7 @@ fn local(tx: &Tx<'_>, checked: &Validated, user: &User, request: &RequestAuthori
         _ if extension => false,
         _ => configured_password_path(checked.definition())
             .ok_or_else(Error::forbidden)?
-            .requires_mfa(),
+            .requires_mfa(user.totp_secret.is_some()),
     };
     crate::password::require_local(tx, user)?;
     if request.source.is_some()
@@ -182,6 +182,9 @@ impl Core {
             if let Some(error) = version::commit_reviewed_seal(self, tx, &mut run)? {
                 return Ok(Err(error));
             }
+            if let Some(error) = commit_conditional_seal(self, tx, &mut run)? {
+                return Ok(Err(error));
+            }
             owner(self, tx, &run.record)?;
             if matches!(extension_currency(self, &run), ExtensionCurrency::Stale) {
                 seal_stale_extension(self, tx, &checked, &mut run, now())?;
@@ -239,6 +242,9 @@ impl Core {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
             if let Some(error) = version::commit_reviewed_seal(self, tx, &mut run)? {
+                return Ok(Err(error));
+            }
+            if let Some(error) = commit_conditional_seal(self, tx, &mut run)? {
                 return Ok(Err(error));
             }
             owner(self, tx, &run.record)?;

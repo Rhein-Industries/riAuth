@@ -84,12 +84,17 @@ pub(crate) enum ConfiguredPasswordPath {
     PasswordOnly,
     Totp,
     TotpOrRecovery,
+    ConditionalTotp,
 }
 
 impl ConfiguredPasswordPath {
     #[cfg(feature = "platform")]
-    pub(crate) fn requires_mfa(self) -> bool {
-        self != Self::PasswordOnly
+    pub(crate) fn requires_mfa(self, has_totp: bool) -> bool {
+        match self {
+            Self::PasswordOnly => false,
+            Self::Totp | Self::TotpOrRecovery => true,
+            Self::ConditionalTotp => has_totp,
+        }
     }
 }
 
@@ -129,6 +134,66 @@ pub(crate) fn configured_password_path(definition: &Definition) -> Option<Config
             })
     };
     match definition.steps.as_slice() {
+        [password, totp]
+            if password.id.as_str() == "password"
+                && totp.id.as_str() == "totp"
+                && success.id.as_str() == "success"
+                && denied.id.as_str() == "denied"
+                && matches!(password.action, Action::VerifyPassword {})
+                && matches!(totp.action, Action::VerifyTotp {})
+                && definition.limits.max_duration_seconds == 600
+                && definition.limits.max_executions == 6
+                && password.max_attempts == 3
+                && totp.max_attempts == 3
+                && password.timeout_seconds == 120
+                && totp.timeout_seconds == 120
+                && password.cancellable
+                && totp.cancellable
+                && success.requires == [vec![Proof::Password]]
+                && success.max_proof_age_seconds == Some(120)
+                && denied.requires.is_empty()
+                && denied.max_proof_age_seconds.is_none()
+                && password.transitions.as_slice()
+                    == [
+                        Transition {
+                            on: Label::fixed("verified"),
+                            when: Some(Condition::AccountHas {
+                                credential: Credential::Totp,
+                            }),
+                            to: totp.id.clone(),
+                        },
+                        Transition {
+                            on: Label::fixed("verified"),
+                            when: Some(Condition::RequestRequiresMfa {}),
+                            to: denied.id.clone(),
+                        },
+                        Transition {
+                            on: Label::fixed("verified"),
+                            when: None,
+                            to: success.id.clone(),
+                        },
+                        Transition {
+                            on: Label::fixed("failed"),
+                            when: None,
+                            to: denied.id.clone(),
+                        },
+                    ]
+                && totp.transitions.as_slice()
+                    == [
+                        Transition {
+                            on: Label::fixed("verified"),
+                            when: None,
+                            to: success.id.clone(),
+                        },
+                        Transition {
+                            on: Label::fixed("failed"),
+                            when: None,
+                            to: denied.id.clone(),
+                        },
+                    ] =>
+        {
+            Some(ConfiguredPasswordPath::ConditionalTotp)
+        }
         [password]
             if matches!(password.action, Action::VerifyPassword {})
                 && routes(password, &success.id, &denied.id) =>
