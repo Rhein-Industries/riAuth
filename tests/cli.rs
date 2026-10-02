@@ -1,7 +1,7 @@
 use serde_json::Value;
 use std::{
     io::Write,
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
     thread,
@@ -950,12 +950,16 @@ fn serve_with_admin_configured(
             .unwrap(),
     );
     let deadline = Instant::now() + Duration::from_secs(15);
-    while TcpListener::bind(addr).is_ok() {
+    loop {
+        let ready = TcpStream::connect_timeout(&addr, Duration::from_millis(30)).is_ok();
         assert!(
             server.0.try_wait().unwrap().is_none(),
             "server exited early"
         );
         assert!(Instant::now() < deadline, "server did not start");
+        if ready {
+            break;
+        }
         thread::sleep(Duration::from_millis(30));
     }
     success(invoke(
