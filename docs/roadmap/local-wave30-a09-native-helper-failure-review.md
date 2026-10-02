@@ -290,3 +290,83 @@ has63 added/four removed lines. Documentation checking with the report present
 and Git whitespace checks exited0. Two final append attempts used a mistyped
 context and were rejected without changing bytes; the exact read tail was then
 used. These were report-edit/static-tool issues, not native runtime failures.
+
+## wave30_A09_failure_projection_memory_validation
+
+2026-10-02. Root authorized an append here and one bounded pure stdlib-memory
+validation of the extracted observer/predicate, with an explicit stop on the
+first unexpected failure and no retry/correction. Outcome: **preparation failed;
+memory validation UNRUN, zero cases executed**. No candidate defect or security
+pass is inferred from this host extraction error.
+
+The starting branch was clean at
+`6ed52573c3b3f0db34583040ce7022807eebcc1e`. The complete prior report equalled that
+commit. Before the extraction error, the script reconstructed its exact candidate
+from the embedded two-hunk diff against b619 and checked all three fixed hashes:
+workflow `45304da275d3072c2c0de9f6debed1acc335ffa99e0ed6baa15064549bab5574`,
+controller `ffa6d792bcf9170018f6bcd2bbd58d0920444dd2720c5570bdd9de9fadfc0e32`,
+bootstrap `27361ddd98813b9e539758ca26a433ea86a1b085b0fd68036a39678ed464f7e2`.
+These exact candidate bytes and the entire prior report remain unchanged.
+
+The static extraction script selected failure_source, the existing runpy
+exception handler, the diagnostic classes/shape predicate, the existing read_json
+size guard and the FIXED import allowlist as AST/literals. The complete candidate
+controller/bootstrap ASTs parsed, and the isolated function definition parsed.
+It then tried ast.parse on ast.unparse of the ExceptHandler by itself:
+`except BaseException as error:`. An except clause requires its enclosing try;
+the host preparation therefore raised SyntaxError before emitting the extracted
+bundle or executing any candidate function, branch or predicate. This is an
+extraction-wrapper error; the existing full candidate's grammar did not fail.
+
+Actual preparation command exit1; tool-recorded process wall time0.137632042s.
+This is not a measured validation-body duration or a successfully enforced
+validation deadline. No private temporary workspace or projection output was
+created, and no synthetic exception/frame/security case executed. Consequently
+there was no owned fixture to clean. The no-retry instruction was honored:
+no repair, re-extraction, candidate invocation or alternative validation followed.
+
+The fixed result was retained in session memory and hashed before report
+comparisons. Its canonical sorted compact ASCII JSON with a final LF is
+726 bytes, SHA256
+`31298828f042e38046bb11ed31fc1a5639bf73bdd121ccef563d2e238f46eeb2`:
+
+```json
+{"candidate_bootstrap_sha256":"27361ddd98813b9e539758ca26a433ea86a1b085b0fd68036a39678ed464f7e2","candidate_controller_sha256":"ffa6d792bcf9170018f6bcd2bbd58d0920444dd2720c5570bdd9de9fadfc0e32","candidate_function_executed":false,"candidate_workflow_sha256":"45304da275d3072c2c0de9f6debed1acc335ffa99e0ed6baa15064549bab5574","cleanup":"not_needed_no_fixture","controller_predicate_executed":false,"exact_branch_executed":false,"executed_cases":0,"owned_fixture_created":false,"passed_cases":0,"process_elapsed_seconds":0.137632042,"process_exit_code":1,"projection_output_created":false,"schema":"riauth.a09-projection-memory-validation/v1","status":"preparation_failed_before_validation","unexpected_preparation_failures":1}
+```
+
+All requested behavioral cases remain unexecuted: trusted basename/line and
+untrusted-frame filtering,64-link/last8 caps, fixed-class/unknownOther privacy,
+sentinel text/private-path/locals exclusion, exact SystemExit0/None/failure
+handling, exclusive duplicate-file refusal, write-failure/original-exception
+preservation, and controller exact-key/type/bool/int/string/size/class/frame
+rejections. The earlier static design review does not substitute for them.
+
+The smallest remaining preparation seam, if root releases a fresh bounded
+attempt, is to carry the already selected handler AST/body under a controlled
+synthetic try/except rather than parsing a standalone except clause. That would
+change the validation harness only, with no candidate edit. No correction or
+fresh invocation is performed or requested as an action by this append.
+
+Original37043196924 focused-helper phase_exit1 remains UNKNOWN internally;
+the earlier equal-SHA root input failure remains separately classified. This
+new host preparation failure changes neither historical runtime result. I02
+DONE and all other closed rows remain preserved; no task/status action occurred.
+
+Only this report append is written. No real helper/controller/bootstrap main,
+import/runpy/source script, native/library/compiler/Cargo, PG/service/provider/
+HTTP/network/download/dispatch/browser/desktop or other worker was invoked.
+Host Python standard-library AST/literal/hash inspection and immutable Git reads
+are preparation, not execution of the candidate or surrounding source.
+Root retains source implementation/invocation ownership in the primary lane.
+
+The full original report prefix is19,193 bytes, SHA256
+`06f769cd4894d3a73190eeb8af3629725577219997487ffe672fba48e6cc9843`.
+Append-only byte preservation, receipt canonical/hash correspondence, repository
+documentation/whitespace/scope and clean-commit checks complete this slice;
+they do not restart the failed preparation or establish behavioral validation.
+
+Final append checks passed: whole prior-prefix/candidate preservation, canonical
+726-byte receipt/hash, zero-case/no-fixture correspondence, append-only sole-file
+scope with zero deletions, LF/fences/trailing whitespace, documentation checker
+exit0 and Git whitespace exit0. Staged report-only/whitespace and clean own branch
+checks accompany the separate append commit.
