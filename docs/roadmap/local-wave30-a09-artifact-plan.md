@@ -314,3 +314,465 @@ Every blob below is from `88790deb62d32c84fa17dceb12cd93a727224e94`:
 A09 remains open: root's next decision is the local driver/source and executor
 reservation above, followed by actual artifact production/validation and
 independent acceptance. This audit cannot provide those runtime receipts.
+
+## Append: source-first hosted ARM64 alternative for root seam review
+
+This append reserves **this same report only**. The original 316 lines,
+23,842 bytes, remain byte-for-byte the `d4b69673b9cbdd322801ecbec61c53ab8528c08d`
+report (SHA-256
+`90602a657e52fc81a231173c084b8857a3d25724c6e6d45e5ec0b0497df89ac0`).
+No current artifact credit, resource receipt or shared-gate completion is added.
+The existing Darwin 9.8982 GiB observation/blocker remains historical and intact.
+
+The exact proposed source seam is one **new** file,
+`.github/workflows/check-local-artifacts.yml`, with the full contents below;
+no hunk to an existing workflow/helper/guide is proposed. It is manually
+dispatchable only, with `contents: read`, one `ubuntu-24.04-arm` job and a
+required full `source_sha` input chosen and reviewed by root. The workflow
+definition commit and checked-out product commit are separately recorded.
+Root owns any later integration and dispatch. The input has no default: root
+can select `88790deb62d32c84fa17dceb12cd93a727224e94` or a separately reviewed
+later full source SHA. The running workflow definition must first be integrated
+on the repository default branch for manual dispatch, per
+[GitHub's manual-run documentation](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
+No dispatch was performed or requested by this append.
+
+### Actual provider/storage constraint, not a runner success
+
+Read-only official documentation inspected on 2026-10-02 describes a fresh
+GitHub-hosted VM per non-single-CPU job. Its public standard runner table lists
+`ubuntu-24.04-arm` as ARM64, 4 vCPUs, 16 GB RAM and **14 GB SSD**.
+[GitHub hosted-runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+That separates a potential remote native VM from this worker's Darwin backing
+storage, but supplies **no 30 GiB available-space guarantee**. The documented
+storage is smaller than the required starting threshold; no actual runner was
+allocated or sampled. Therefore this alternative is currently **capacity
+unestablished and infeasible against the published minimum storage contract**,
+not a build-ready replacement. Its first live receipt would have to measure
+both runner root/workspace and private storage and refuse if any has less than
+30 GiB available. No installed-tool/cache deletion, floor reduction, different
+runner label or paid/larger-runner substitution is hidden in the proposal.
+
+The real GitHub environment exposes workflow SHA/ref, run ID/attempt and native
+runner identity, while `RUNNER_TEMP` is job-scoped temporary storage.
+[GitHub variables reference](https://docs.github.com/en/actions/reference/workflows-and-actions/variables).
+The proposal uses those allowlisted values, not copied historical/fake CI IDs;
+it never emits official-packager `riauth.build/v4`, signatures or attestations.
+An upload remains a workflow evidence artifact, not a released product asset.
+
+### Exact new-file proposal (not applied or executed)
+
+```yaml
+name: Check local ARM64 artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Root-reviewed full 40-character product source SHA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: riauth-local-artifacts-arm64
+  cancel-in-progress: false
+
+jobs:
+  native-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      A09_ROOT: ${{ runner.temp }}/riauth-a09-${{ github.run_id }}-${{ github.run_attempt }}
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      PYTHONOPTIMIZE: '0'
+    steps:
+      - name: Establish owned evidence and fail-closed native capacity
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 700 "$A09_ROOT"
+          cat > "$A09_ROOT/driver.py" <<'PY'
+          import datetime, gzip, hashlib, json, os, pathlib, platform, re
+          import resource, shutil, signal, subprocess, sys, tarfile, time
+
+          root = pathlib.Path(os.environ['A09_ROOT'])
+          evidence = root / 'evidence'
+          evidence.mkdir(mode=0o700, exist_ok=True)
+          state = evidence / 'evidence.json'
+          data = json.loads(state.read_text()) if state.exists() else {
+              'schema': 'riauth.local-artifact-evidence/v1',
+              'official_release': False, 'source_verified': False,
+              'shared_full_gate': 'not_run', 'steps': [], 'cleanup_errors': [],
+              'action_pins': {
+                  'checkout': '3d3c42e5aac5ba805825da76410c181273ba90b1',
+                  'rust_toolchain': '02cb101ec7c40f2c49e1d9714d64511d8e1b74de',
+                  'upload': 'ea165f8d65b6e75b540449e92b4886f43607fa02'},
+              'github': {key: os.environ.get(key) for key in (
+                  'GITHUB_REPOSITORY', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT',
+                  'GITHUB_WORKFLOW_REF', 'GITHUB_WORKFLOW_SHA', 'GITHUB_SHA',
+                  'GITHUB_REF', 'GITHUB_EVENT_NAME')},
+              'runner': {'label': 'ubuntu-24.04-arm',
+                         'system': platform.system(), 'machine': platform.machine(),
+                         'environment': os.environ.get('RUNNER_ENVIRONMENT'),
+                         'arch': os.environ.get('RUNNER_ARCH'),
+                         'cpus': os.cpu_count(),
+                         'memory_bytes': os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')}}
+          GiB = 1024 ** 3
+
+          def interrupted(signum, frame):
+              raise InterruptedError('received_signal_' + str(signum))
+
+          for sig in (signal.SIGINT, signal.SIGTERM):
+              signal.signal(sig, interrupted)
+
+          def save():
+              temporary = state.with_suffix('.tmp')
+              temporary.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
+              temporary.chmod(0o600)
+              temporary.replace(state)
+
+          def require(ok, reason):
+              if not ok:
+                  raise RuntimeError(reason)
+
+          def sha(path):
+              h = hashlib.sha256()
+              with path.open('rb') as stream:
+                  for block in iter(lambda: stream.read(1024 * 1024), b''):
+                      h.update(block)
+              return h.hexdigest()
+
+          def capacity(threshold=10 * GiB):
+              paths = {'host_root': pathlib.Path('/'),
+                       'workspace': pathlib.Path(os.environ['GITHUB_WORKSPACE']),
+                       'private': root}
+              snapshot = {'at_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                          'free_bytes': {label: shutil.disk_usage(path).free
+                                         for label, path in paths.items()},
+                          'device_ids': {label: os.stat(path).st_dev for label, path in paths.items()}}
+              with (evidence / 'resources.jsonl').open('a') as output:
+                  output.write(json.dumps(snapshot, sort_keys=True) + '\n')
+              minima = data.setdefault('minimum_free_bytes', {})
+              for label, available in snapshot['free_bytes'].items():
+                  minima[label] = min(minima.get(label, available), available)
+              save()
+              require(min(snapshot['free_bytes'].values()) >= threshold,
+                      'storage_guard: insufficient measured available bytes')
+
+          def stop_owned(process):
+              # Only a process group created here with start_new_session=True.
+              for sig, grace in ((signal.SIGTERM, 2), (signal.SIGKILL, 5)):
+                  try:
+                      os.killpg(process.pid, sig)
+                  except ProcessLookupError:
+                      pass
+                  except PermissionError:
+                      data['cleanup_errors'].append('owned_group_signal_refused')
+                  try:
+                      process.wait(timeout=grace)
+                      if sig == signal.SIGKILL:
+                          break
+                  except subprocess.TimeoutExpired:
+                      if sig == signal.SIGKILL:
+                          data['cleanup_errors'].append('owned_group_did_not_reap')
+
+          def command(label, argv, seconds, env=None):
+              capacity()
+              log = evidence / (label + '.log')
+              require(not log.exists(), 'refuse_existing_command_log')
+              started = time.monotonic()
+              record = {'name': label, 'argv': argv, 'status': 'running'}
+              data['steps'].append(record)
+              save()
+              process = None
+              try:
+                  with log.open('xb') as output:
+                      process = subprocess.Popen(argv, stdout=output, stderr=subprocess.STDOUT,
+                                                 env=env, start_new_session=True)
+                      while process.poll() is None:
+                          capacity()
+                          require(time.monotonic() - started < seconds, 'command_deadline')
+                          require(log.stat().st_size <= 8 * 1024 * 1024, 'command_log_limit')
+                          time.sleep(2)
+                      record['exit_code'] = process.returncode
+                      require(process.returncode == 0, 'command_failed: ' + label)
+                      capacity()
+                      require(log.stat().st_size <= 8 * 1024 * 1024, 'command_log_limit')
+                  record['status'] = 'passed'
+              except BaseException:
+                  record['status'] = 'failed_or_interrupted'
+                  raise
+              finally:
+                  if process is not None:
+                      stop_owned(process)
+                      record['exit_code'] = process.returncode
+                  record['elapsed_seconds'] = round(time.monotonic() - started, 3)
+                  if log.exists():
+                      record['log_bytes'] = log.stat().st_size
+                      record['log_sha256'] = sha(log)
+                  save()
+              require(not data['cleanup_errors'], 'owned_cleanup_failed')
+
+          def source_check():
+              actual = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, timeout=10).strip()
+              require(actual == os.environ['SOURCE_SHA'], 'checked_source_sha_mismatch')
+              require(not subprocess.check_output(
+                  ['git', 'status', '--porcelain', '--untracked-files=no'], text=True, timeout=10).strip(),
+                  'tracked_source_changed')
+              data['source_sha'] = actual
+              data['source_tree'] = subprocess.check_output(
+                  ['git', 'rev-parse', 'HEAD^{tree}'], text=True, timeout=10).strip()
+              data['source_verified'] = True
+              data['inputs'] = {name: sha(pathlib.Path(name)) for name in (
+                  'Cargo.toml', 'Cargo.lock', 'crates/riauthctl/Cargo.toml',
+                  'crates/riauthctl/Cargo.lock', 'LICENSE', 'THIRD_PARTY_NOTICES.md',
+                  'scripts/check-edition-artifacts.py')}
+              save()
+
+          phase = sys.argv[1]
+          try:
+              if phase == 'init':
+                  require(re.fullmatch('[0-9a-f]{40}', os.environ['SOURCE_SHA']), 'invalid_full_source_sha')
+                  require(platform.system() == 'Linux' and platform.machine() == 'aarch64'
+                          and os.environ.get('RUNNER_ARCH') == 'ARM64'
+                          and os.environ.get('RUNNER_ENVIRONMENT') == 'github-hosted', 'not_native_hosted_arm64')
+                  require(os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+                          and os.environ.get('GITHUB_REF_TYPE') == 'branch', 'manual_branch_dispatch_required')
+                  require(re.fullmatch('[0-9a-f]{40}', os.environ.get('GITHUB_WORKFLOW_SHA', '')),
+                          'missing_real_workflow_sha')
+                  for key in ('GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT'):
+                      require(re.fullmatch('[1-9][0-9]*', os.environ.get(key, '')), 'missing_real_run_identity')
+                  data['requested_source_sha'] = os.environ['SOURCE_SHA']
+                  capacity(30 * GiB)
+              elif phase == 'verify':
+                  source_check()
+                  capacity(30 * GiB)
+              elif phase == 'dependencies':
+                  capacity(30 * GiB)
+                  command('apt-update', ['sudo', 'apt-get', 'update'], 240)
+                  command('apt-install', ['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive',
+                      'apt-get', 'install', '-y', '--no-install-recommends',
+                      'ca-certificates', 'cmake', 'libssl-dev', 'clang', 'pkg-config'], 600)
+                  command('native-dependency-versions', ['dpkg-query', '-W',
+                      'ca-certificates', 'cmake', 'libssl-dev', 'clang', 'pkg-config'], 30)
+              elif phase == 'build':
+                  source_check()
+                  original_inputs = dict(data['inputs'])
+                  capacity(30 * GiB)
+                  command('rustc-version', ['rustc', '+1.98.1', '--version'], 30)
+                  data['rustc'] = (evidence / 'rustc-version.log').read_text().strip()
+                  require(data['rustc'].startswith('rustc 1.98.1 '), 'wrong_toolchain')
+                  command('linux-baseline', ['cat', '/etc/os-release'], 30)
+                  (root / 'cargo-home').mkdir(mode=0o700)
+                  environment = dict(os.environ, CARGO_HOME=str(root / 'cargo-home'))
+                  data['build_environment'] = {key: environment[key] for key in (
+                      'CARGO_BUILD_JOBS', 'CARGO_INCREMENTAL', 'CARGO_PROFILE_DEV_DEBUG',
+                      'CARGO_PROFILE_TEST_DEBUG', 'CARGO_PROFILE_RELEASE_DEBUG')}
+                  target = 'aarch64-unknown-linux-gnu'
+                  for edition in ('essentials', 'platform'):
+                      environment['CARGO_TARGET_DIR'] = str(root / 'target' / edition)
+                      command('build-' + edition, ['cargo', '+1.98.1', 'build', '--release', '--locked',
+                          '--no-default-features', '--features', edition, '--bins', '--target', target],
+                          1800, environment)
+                  environment['CARGO_TARGET_DIR'] = str(root / 'target' / 'client')
+                  command('build-client', ['cargo', '+1.98.1', 'build', '--manifest-path',
+                      'crates/riauthctl/Cargo.toml', '--release', '--locked', '--no-default-features',
+                      '--target', target], 1800, environment)
+                  archives = evidence / 'archives'
+                  archives.mkdir(mode=0o700)
+                  products = [('essentials', 'riauth'), ('platform', 'riauth'),
+                              ('essentials', 'riauth-maintenance'), ('platform', 'riauth-maintenance'),
+                              ('client', 'riauthctl')]
+                  data['products'] = []
+                  for edition, name in products:
+                      capacity()
+                      binary = root / 'target' / edition / target / 'release' / name
+                      require(binary.is_file() and not binary.is_symlink(), 'missing_regular_binary')
+                      with binary.open('rb') as stream:
+                          header = stream.read(20)
+                      require(header[:6] == b'\x7fELF\x02\x01' and header[18:20] == b'\xb7\x00',
+                              'not_elf64_little_endian_aarch64')
+                      stem = name if edition == 'client' else name + '-' + edition
+                      observed = None
+                      if name == 'riauth':
+                          command('capabilities-' + edition, [str(binary), '--json', 'capabilities'], 30)
+                          envelope = json.loads((evidence / ('capabilities-' + edition + '.log')).read_text())
+                          observed = envelope['data']
+                          expected = ['essentials'] if edition == 'essentials' else ['essentials', 'platform']
+                          require(envelope.get('ok') is True and observed.get('scope') == 'artifact'
+                                  and observed.get('edition') == edition
+                                  and observed.get('build_features') == expected
+                                  and observed.get('target') == {'os': 'linux', 'arch': 'aarch64'},
+                                  'observed_build_metadata_mismatch')
+                      archive = archives / ('local-' + stem + '-aarch64.tar.gz')
+                      with archive.open('xb') as raw, gzip.GzipFile(fileobj=raw, mode='wb', mtime=0) as zipped:
+                          with tarfile.open(fileobj=zipped, mode='w') as tar:
+                              for member_name, member_path in ((name, binary), ('LICENSE', pathlib.Path('LICENSE')),
+                                  ('THIRD_PARTY_NOTICES.md', pathlib.Path('THIRD_PARTY_NOTICES.md'))):
+                                  info = tar.gettarinfo(str(member_path), arcname=member_name)
+                                  info.uid = info.gid = info.mtime = 0
+                                  info.uname = info.gname = ''
+                                  info.mode = 0o755 if member_name == name else 0o644
+                                  with member_path.open('rb') as stream:
+                                      tar.addfile(info, stream)
+                      data['products'].append({'edition': edition, 'binary': name,
+                          'declared_build_features': [] if edition == 'client' else (
+                              ['essentials'] if edition == 'essentials' else ['essentials', 'platform']),
+                          'observed_server_capabilities': observed,
+                          'target': target, 'binary_bytes': binary.stat().st_size,
+                          'binary_sha256': sha(binary), 'archive': archive.name,
+                          'archive_bytes': archive.stat().st_size, 'archive_sha256': sha(archive)})
+                      save()
+                  smoke = ['python3', 'scripts/check-edition-artifacts.py']
+                  for flag, stem in (
+                      ('essentials-archive', 'riauth-essentials'), ('platform-archive', 'riauth-platform'),
+                      ('essentials-maintenance-archive', 'riauth-maintenance-essentials'),
+                      ('platform-maintenance-archive', 'riauth-maintenance-platform'),
+                      ('riauthctl-archive', 'riauthctl')):
+                      smoke += ['--' + flag, str(archives / ('local-' + stem + '-aarch64.tar.gz'))]
+                  command('focused-native-archive-smoke', smoke, 180)
+                  source_check()
+                  require(data['inputs'] == original_inputs, 'build_inputs_changed')
+                  for item in data['products']:
+                      binary = root / 'target' / item['edition'] / target / 'release' / item['binary']
+                      require(sha(binary) == item['binary_sha256']
+                              and sha(archives / item['archive']) == item['archive_sha256'],
+                              'tested_product_bytes_changed')
+                  require(not data['cleanup_errors'], 'owned_cleanup_failed')
+                  data['largest_reaped_child_max_rss_bytes'] = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss * 1024
+                  data['native_archive_slice'] = 'passed'
+              else:
+                  raise RuntimeError('unknown_phase')
+              data['last_phase'] = phase
+              data['last_phase_status'] = 'passed'
+          except BaseException as error:
+              data['last_phase'] = phase
+              data['last_phase_status'] = 'failed_or_refused'
+              data['failure'] = str(error)
+              save()
+              raise
+          save()
+          PY
+          python3 "$A09_ROOT/driver.py" init
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify exact reviewed source and remaining capacity
+        run: python3 "$A09_ROOT/driver.py" verify
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: 1.98.1
+      - name: Install the release path's native dependencies under owned bounds
+        run: python3 "$A09_ROOT/driver.py" dependencies
+      - name: Build five local binaries, archive and run focused native smoke
+        run: python3 "$A09_ROOT/driver.py" build
+      - name: Upload exact local outputs and failure/refusal evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: riauth-local-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.A09_ROOT }}/evidence/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+```
+
+### Bounds, provenance and remaining gate
+
+The three exact build argument lists above are sequential release/locked
+Essentials `--bins`, Platform `--bins`, then independent base client, each with
+its own private target and common private Cargo home. There is no cache action,
+Docker, image build/push, service dependency, PG probe, automatic matrix,
+tag/release operation, official packager or invented run identity. Unlike the
+earlier local/offline plan, this **future remote** proposal permits locked Cargo
+dependency fetching and the pinned toolchain/action setup only as part of a
+later root-owned authorized dispatch. Existing release setup supplies exactly
+ca-certificates/cmake/libssl-dev/clang/pkg-config. Apt package versions and OS
+baseline are recorded; mutable hosted images/apt resolution are not called a
+reproducible minimum-libc proof. Action SHA pins match release.yml at
+`88790deb62d32c84fa17dceb12cd93a727224e94`.
+
+Initial and post-checkout preflights, plus dependency/build phase starts,
+require **30 GiB actually free** on `/`, workspace and the private job path.
+Shared device IDs are recorded without adding duplicate free-space samples.
+Every owned command polls those scopes every two seconds, stopping at **10 GiB**
+with 2 GiB margin over the 8 GiB floor. It stops/reaps only the session/process
+group that it created: TERM with two-second grace, then KILL with five-second
+bound, with cleanup refusals retained. No process-name/global kill, cache prune
+or unrelated path removal occurs. Two-second sampling is not a hard filesystem
+quota or an absolute guarantee against an unsampled growth burst. Setup actions
+are GitHub-managed processes, outside these owned command groups; the guards
+check capacity again before subsequent commands, and the 150-minute job bound
+applies throughout. No claim that runner provisioning/action setup passed is
+made here.
+
+Owned apt/update/install and metadata commands have finite individual bounds;
+each build is at most 1,800 seconds, focused smoke 180 seconds. Command logs are
+guarded at 8 MiB (sampling can retain a small overshoot, marked by a failing log
+limit); a failure stops the slice and retains the recorded exit/deadline/resource
+reason and actual captured-log hash rather than retrying or changing an expected
+result. `always()` uploads only the private allowlisted evidence directory:
+five local archives, input/product/checker hashes, real workflow/run identity,
+measured native resources and bounded build/smoke/dependency logs. Fixture keys,
+password/session files, full environment, source checkout and Cargo cache/target
+trees are not uploaded. Logs are from the source-pinned focused fixture and
+build commands; no user/deployed credential input is supplied. GitHub provides
+the upload/run artifact metadata; it is not a cryptographic artifact attestation.
+Cancellation, platform job timeout, runner loss or upload failure can prevent a
+final artifact receipt; primary Actions failure logs and any surviving partial
+evidence must remain failures, not a successful or complete upload claim. After
+upload, GitHub discards the owned ephemeral VM/temp storage; the proposal deletes
+no caches to create room and claims no independently observed teardown receipt.
+
+No repository local driver is strictly needed for this first archive/refusal
+slice: all inline orchestration belongs to the one proposed new workflow file,
+and `check-edition-artifacts.py` remains unchanged. The prior proposal for
+`scripts/check-local-linux-artifacts.py` is a **separate later root-reserved
+source/runtime gate** for real base-client flows, ordinary-user IDs/group
+authorization preservation, format-3 rate/authentication/capability mismatch and
+offline E→P→E handoff. This workflow's native smoke does not establish that full
+gate, dependency inventories, Linux x86-64/current containers, HTTPS/passkeys or
+the complete per-artifact acceptance. The format-2 encrypted helper remains
+untouched. Existing receipt/header/PAM/Group/removal/audit safeguards, the
+non-renewed 60s lease boundary and RiWork Cua.ai Driver preference persist.
+
+Read-only work for this append: complete fixed release workflow reread; pinned
+CI/action/checker source inspection; original report byte/hash comparison;
+official GitHub runner/manual-dispatch/variables documentation reads; explicit
+project orchestrator finding sent exit 0. No actual hosted capacity/run was
+queried or provisioned. PyYAML is not installed locally; no dependency was
+installed. Proposed commands/inline code have not been executed. Report append,
+static syntax/link/pin/whitespace checks and its commit are the only authorized
+local writes. Root's next decision is review of this **new-file source text**
+and the unresolved remote storage prerequisite, before any workflow edit or
+dispatch.
+
+Append validation, without executing the proposed workflow/inline driver:
+installed Ruby Psych parsed the complete YAML; `bash -n` parsed all four `run`
+blocks; Python AST parsed the inline driver. Static assertions checked the sole
+manual trigger, one native job, read-only contents permission, 150-minute job
+bound, sequential/private build settings, floor/start guard constants, owned
+process-group cleanup and failure upload. All three action SHAs matched the
+fixed release source; 13 local links/anchors and 15 source/blob rows remained
+valid, and the three official-document URLs were the pages read above. The new
+workflow file is absent. The proposed full workflow text including its terminal
+newline is **18,130 bytes**, SHA-256
+`883e428ce876154850889949d21760576229f82800f89d6acde28e2671ef34aa`.
+The original prefix comparison, final newline/trailing-whitespace and
+report-only staged-scope checks passed. No product command, workflow dispatch,
+remote runner probe, runtime, Cargo, image/service, desktop, main/push/status or
+new worker/task/worktree action was performed. No actual successful artifact,
+resource or cleanup receipt was fabricated by these static checks.
