@@ -604,3 +604,126 @@ and all 11586 original browser bytes remain unchanged; balanced Markdown fences,
 final newline, unchanged committed source SHA-256/blob and single-report pending
 diff were verified. `git diff --check` passed. No link/build/test or helper
 runtime was substituted for these static checks.
+
+## Released fixture refused during prerequisite checks — 2026-10-02
+
+**No application/browser checkpoint ran.** Root reviewed the source and evidence,
+published them at `ae8937800254a1ad4296ea257de1eccc4780e45b`, and explicitly
+released the single `wave30_D01_confidential_browser_helper` fixture. One
+preflight invocation then exited **1** at a native-provider return/version
+assertion. It stopped before operator setup or any helper/browser launch.
+There was no retry, alternate provider, source correction or substituted pass.
+Desktop/operator reservation release was sent immediately before this append;
+the independent remote A09 Cargo lane was neither acquired nor released here.
+
+### Exact inputs and observed checks
+
+Execution input remained own HEAD
+`6b3a1790ff80cb205bb403854725a779541adbac`; no merge to published main occurred.
+The published helper is blob `cbbaaea8afa667112546c5ee6b85e945d6f306bd`, exactly
+the source reviewed above. Published Essentials is unchanged blob
+`e48371d3a34a7b6441cbcfce700daf954aa5f2ae`, SHA-256
+`9df3c2861984751d48b28d284cfb47c07801fd3934072e2ccb829edeb35579a0`;
+its sections 2/3 were reread for the planned normal operator registration and
+browser task. These current reads do not refresh earlier executions.
+
+All three matching prebuilt c01 artifact hashes were recomputed successfully:
+
+| Artifact | Bytes / matching SHA-256 |
+| --- | --- |
+| Essentials `riauth` | 183038592 / `7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606` |
+| Essentials `riauth-maintenance` | 56499296 / `86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95` |
+| Base `riauthctl` | 20406784 / `bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf` |
+| New demo source, read only | 29933 / `d8446bfdf22f2a345b019673fe93828d5f75024a87b530b100eb6c027da9a863` |
+| Fixed verifier, Git object only | Blob `3be747d03146f1bcaa3ec012ee8d173b61fa737d` / `f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d` |
+
+The native provider also **matches its required artifact hash**:
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+Resolved file: `/opt/homebrew/Cellar/openssl@3/3.6.4/bin/openssl`, 880512 bytes.
+This was checked again read-only after refusal to disambiguate the assertion;
+that metadata read was not a second provider invocation or fixture retry.
+
+The actual first failing statement followed **one**
+`/opt/homebrew/bin/openssl version` invocation, bounded by five seconds and
+using the planned restricted environment. It tested both return code zero
+and stdout stripped to exactly `OpenSSL 3.6.4 25 Aug 2026`. The combined
+assertion failed at Python line 16, and the preflight process exited 1.
+Its captured native return code/stdout/stderr were not retained before that
+assertion terminated the process. Consequently **the returned version and
+native exit code are unknown**: output mismatch and nonzero exit cannot be
+distinguished from this evidence. No exact version mismatch string, changed
+library, installation defect or provider failure cause is invented. The
+preflight tool measured 0.381 seconds for its status/hash/version command.
+
+### Driver prerequisites and unused resources
+
+The cua-driver skill and relevant MACOS/BROWSER/RUNTIME instructions and live
+tool descriptions were consulted before Driver reads. Instruction hashes
+remain the four values recorded in the original browser report; those files
+were rehashed. Initial large combined output was truncated, so bounded
+tool-specific schemas/instruction sections were read next. No GUI action was
+attempted. RiWork's read-only `cua status` reported daemon **0.30.4**, the
+expected CuaDriver executable and ready state. Driver MCP permission read
+reported Accessibility and Screen Recording granted; direct ScreenCaptureKit
+probe was explicitly skipped. MCP recording state reported disabled/inactive.
+
+No fixture `start_session`, isolated profile preparation, browser binding,
+navigation, screenshot, typing, consent or logout occurred. No fresh lab/XDG,
+synthetic password, CLI session/secret, store, server/helper process or socket
+was created. No maintenance/server/client binary was executed. Only the native
+provider version subprocess ran; `subprocess.run` completed and reaped it,
+but its PID was not separately recorded. There was no owned persistent process
+or browser/session to stop, end or remove. This does not claim cleanup or
+erasure of any shared/personal Driver resource.
+
+After refusal, bounded read-only `lsof` returned **exit 1/no listener** for both
+9000 and 3000. The planned
+`deployment-private/d01-confidential-browser.redacted.json` does not exist;
+no helper result was fabricated. The post-refusal capacity sample was
+**8.282 GiB free**, below the 8.5 GiB launch/stop margin and above the 8 GiB
+floor. This is an additional observed prerequisite preventing launch. The
+initial ordered preflight had failed before its disk/socket entry checks and
+before starting the one-second fixture guard; no continuous disk minimum or
+entry-margin pass is claimed. No resource-consuming setup continued after
+that observation, and no cache/artifact/evidence was removed to recover space.
+
+### Release, reporting correction and remaining input
+
+First clock read: `2026-10-02 14:07:20 UTC`. Immediate release and subsequent
+read-only resource observations were complete by the `14:08:18 UTC` clock
+read. A corrected root handoff was delivered by `14:10:09 UTC`. These are
+observation timestamps, not a claimed precisely instrumented whole-fixture
+duration. Both explicit-project orchestrator sends exited 0 before this
+report append. **DESKTOP/OPERATOR RUNTIME RELEASED; Cargo unaffected.**
+
+The first commentary/handoff incorrectly classified the assertion as an
+OpenSSL hash mismatch and said the provider had not executed. That was my
+source-line interpretation error. The read-only digest matched, and inspection
+of the submitted preflight statement identified the version/exit assertion.
+The inaccurate classification was explicitly withdrawn in commentary and a
+second immediate root handoff. This appendix preserves that reporting error
+and correction rather than silently replacing the first claim.
+
+The next root-coordinated input is an actual bounded provider exit/version
+observation retained before any assertion, plus a fresh capacity check at or
+above 8.5 GiB before another released fixture. No new diagnostic/provider call
+or rerun is authorized by this report. The missing captured values do not
+justify relaxing the reviewed version/hash guard or editing the helper, and
+the capacity sample does not justify deleting other work. Root decides any
+concrete correction/reservation and new runtime release.
+
+No password sign-in, Local demo consent, callback, exchange, native token
+validation, userinfo or protected 403/200 result is claimed. Helper invocation
+count is **zero**. All earlier D01/R05 observations remain dated, D01/D05
+completion remains root-owned, and accepted O06/I10/R05 DONE rows stay closed.
+The only tracked change in this turn is this append. No source/helper/guide/
+D05/config/state/approval/workflow/test edit, Cargo/build/test, provider switch,
+new worker/task/worktree/shell, other-worker contact, merge/reset, main/push or
+status change occurred. Accepted receipt/header/PAM/removal/audit/held Group
+and nonrenewed 60-second/paused-I/O contracts remain unchanged.
+
+Evidence verification passed: all 40877 bytes of the prior `6b3a179` report
+remain an exact prefix; the committed helper bytes/SHA-256 are unchanged.
+The pending diff contains only this report append, Markdown fences are
+balanced and the final newline is present. `git diff --check` passed. These
+document/source checks did not execute the helper or repeat the provider call.
