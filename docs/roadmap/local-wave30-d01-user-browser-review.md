@@ -7431,3 +7431,11 @@ No other file, product/guide/D05/config/test/workflow/approval/state edit,
 main/push/status, worker/task/WT/shell/contact or runtime slot operation occurs.
 A future memory run requires a separate explicit root release after review;
 no pass, resource-release receipt or browser closure is claimed by this phase.
+
+## Root reviewed corrected cleanup envelope: one actual memory pass
+
+Root fully read the original322-line logic and604-line design, the503-line corrected appendix, and decoded both complete payloads. The corrected three Driver-case expectations and two comments exactly reverse to the old logic; the entire284-line cell and four collector sources are unchanged. The earlier strict expectation was a root requirement error, never an executed failure.
+
+Root released and executed exactly one reviewed37,738-byte payload SHAa06ab7b0783569f8f3778fffedda55dae0b0a824a8174533e77bb273ba702230 with node --input-type=module under a30-second child bound. Exit0, elapsed0.154203s, no timeout, child94785 reaped, stderr0. Complete5,621-byte stdout SHA91f8865ac7715c9a776c91b5a6645ac8bec7e58fc970067629a3f66d430a9776 and numeric outcome were saved/fsynced before JSON/expectation comparisons. The [fixed root receipt](evidence/wave30-d01-cleanup-memory-2bf9ebc.json) retains all18 completed cases,286 stub tool calls/78 Driver/33 controller/175 collector, no first failure or unreached case.
+
+Controlled assertions cover first latch before cleanup, stop/join/absence ordering and retained failure, metadata/Driver/refusal/late errors, each missing proof, partial JSON, failed join, malformed readback, ownership refusal and no journey credit from the application-only branch. Complete independent absence can prove resource release after Driver error or lateness while that error remains recorded and whole60 remains false. The VM used immediately settled stubs; no actual collector, Driver, browser, native helper, product, socket, signal, filesystem cleanup or Cargo operation occurred. No fixture runtime slot was acquired/released. Real first-event/whole60 timing and confidential journey remain unproven; the real fixture remains held pending the distinct observer-aware envelope. All historical failures/private evidence stay unchanged.
