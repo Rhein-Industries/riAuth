@@ -58,7 +58,7 @@ both. The other ten provider-settings schema digests are unchanged.
 - Chromium and WebKit passed the same steps.
 - The runs uploaded no artifacts, because `ci.yml` has no upload step and `setup.spec.js` disables tracing on purpose. Only the logs were available.
 
-**The cause.** Playwright 1.63.0, with Firefox build 1543, can lose
+**The reproduced mechanism.** Playwright 1.63.0, with Firefox build 1543, can lose
 `Page.navigationCommitted` when Firefox swaps browsing contexts for a
 `Cross-Origin-Opener-Policy: same-origin` document. `goto` then never
 resolves under any `waitUntil`, although the page has loaded.
@@ -72,7 +72,7 @@ with `/apps` (COOP `same-origin`, 200) followed by `/setup` (409, no COOP):
 | Run by | Default prefs | With `ce80088` |
 | --- | --- | --- |
 | Lane | 54 of 200 navigations hung | 0 of 200 |
-| Orchestrator | 7 of 80 hung | 0 of 80 |
+| Claude lane parent | 7 of 80 hung | 0 of 80 |
 
 Every hung page was already at `readyState: complete`. The recovery-spec site,
 a first navigation from `about:blank`, did not reproduce locally (0 in 300+
@@ -89,7 +89,7 @@ Playwright project only.
 - `authenticator-recovery.spec.js --project=firefox --repeat-each=3`: 3 of 3 passed.
 - `setup.spec.js --project=firefox`: 3 of 3 passed.
 - `authenticator-recovery.spec.js` on chromium and webkit: passed.
-- Remove the preference once Playwright is 1.64 or later.
+- Remove the preference after verifying a browser/tooling fix with default COOP settings; a version number alone does not establish the fix.
 
 ## Checks actually run
 
@@ -112,3 +112,21 @@ Playwright project only.
 - **CI artifacts (proposed, not done).** `ci.yml` could upload `target/browser-results` on failure for specs that keep tracing on. `ci.yml` is not this lane's file.
 - **Sibling tests.** Root decides on `505469f`.
 - **Essentials in CI.** CI runs the schema tests only with Platform features, so the Essentials branch of the expectation runs only locally.
+
+## Root integration review
+
+Root checked the [upstream issue](https://github.com/microsoft/playwright/issues/42731)
+and [linked pull request](https://github.com/microsoft/playwright/pull/42788).
+The pull request adds regression tests only; its merge and the v1.64 issue label
+are not evidence that a product fix shipped. Root removed the configuration's
+claim of a fix after 1.63 and its version-only removal rule. Re-enabling the
+default must follow verification of the actual tooling/browser correction.
+
+The local reproductions and focused runtime results above belong to this source
+Claude lane and its subagents, including its parent, not the RiWork root
+orchestrator. Root ran no browser, Rust or stress tests. Root reviewed the one
+Firefox preference, pinned dependency, unchanged server/header assertion and
+upstream workaround; JavaScript syntax, docs and whitespace checks passed.
+The first-navigation CI attribution remains an inference, and the next CI run
+must confirm the result. Firefox COOP isolation coverage is temporarily absent;
+production behavior and the other browser projects are unchanged.
