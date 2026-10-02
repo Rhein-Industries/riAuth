@@ -2207,3 +2207,691 @@ check. Controller/product/guide/D05/config/test files and main/status/push were
 not changed. Evidence is a separate report-only commit. Final report scope,
 source identity, Markdown fences/final newline/whitespace and git diff --check
 are checked independently of the failed lifecycle verification.
+
+## 2026-10-02: corrected complete memory harness, design only
+
+Reservation: wave30_D01_corrected_memory_harness_design. Only this existing
+report is appended. Root confirmed the prior network-path expectation defect
+from source. The harness below is a static proposal: it was parsed/compiled
+to in-memory code objects, but never executed or imported. No helper/module
+main, controller, native/provider, product CLI, HTTP/socket/listener, Driver/
+browser or Cargo ran. No runtime slot was acquired/released; real browser
+fixture remains HELD. Root must review this immutable archive before releasing
+ONE <=30-second verification.
+
+The first memory run remains **failed**, exit 1, 61 of 76 cases completed,
+case header_free_bound_netloc, failure assertion_failed. Its baseline response
+and exact false predicate were not retained. Root's source-confirmed diagnosis
+does not retroactively attribute an observed status. The proposed expectations
+below are future assertions, not results; no pass or D01/D05 closure is claimed.
+All earlier fixture/provider/reporting failures remain in their dated phases.
+
+### Source identities and exact payload construction
+
+The helper remains source commit
+470690cad0cd93c9f25c5bc40b982e1b91679b49, blob
+3d3379399126423a6a5588a6bd55ea4ac1723ebd, SHA-256
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0,
+32723 bytes / 695 lines. No helper/controller/source change is proposed.
+
+The embedded baseline is Git object
+7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238:scripts/d01-confidential-browser-demo.py,
+blob 62460c2f4515a325bb65fc430649b904e8bb2c10, SHA-256
+ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd,
+31162 bytes / 671 lines. The embedded candidate is the entire exact 470690
+object above. Both strings retain their final newline and were source/hash
+matched to those objects without execution. No runtime credential material
+is embedded.
+
+The readable archive below is complete harness logic. Reconstruct the exact
+executable payload by prepending these two lines, in this order, without any
+extra separator, then appending the archived logic bytes including its final
+newline:
+
+```text
+BASELINE_TEXT=<json.dumps(baseline_source, ensure_ascii=True)>\n
+SOURCE_TEXT=<json.dumps(candidate_source, ensure_ascii=True)>\n
+```
+
+Angle-bracket expressions are assembly instructions, not literal payload
+contents; each evaluates to the JSON string literal of the corresponding
+whole ASCII source. The displayed backslash-n denotes one actual LF. The
+two original serialized source lines are byte-exact and unchanged from
+the retained 81b659 payload. Their combined length is 66953 bytes.
+
+| Identity | Bytes | Physical lines | SHA-256 |
+| --- | ---: | ---: | --- |
+| Original complete payload | 89348 | 431 | 81b659352cedd0cc7fce37e32e447d04b0e373ebd9fea5c33f993c8b35b50d96 |
+| Original readable logic | 22395 | 429 | e37a2dd56ed269f2ee8bda90ddc37920e21497544a126832be59a53cb8ce80df |
+| Corrected complete payload | 91163 | 463 | ce79aeb99fafaaeb265d6b7bff55f415e91825d83e9c650eed412825a5a9525f |
+| Corrected readable logic | 24210 | 461 | 98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb |
+| Exact zero-context diff | 3262 | 57 | ae31333e31149558e01ed45d0e3c1e410699406134d74ee9b5a5be0b3746c815 |
+
+### Narrow correction and proposed case counts
+
+Only five unique replacements change the harness. The request sink gains a
+parser_path=None hook which always calls the actual parser first, injecting a
+controlled result only when explicitly requested. All 76 existing cases omit
+that argument and retain actual stdlib wire parsing.
+
+For the existing normalized network-path case, header-free OLD/NEW routing
+must compare equal after the actual parser strips the leading prefix; the
+test asserts the normalized path and unchanged generic 404/live outcome.
+Its Authorization counterpart must satisfy the existing refused() assertions:
+fixed 403, no dispatch/cookie/credential/flow/check/status/Location/Set-Cookie/
+form/journey credit, first authorization reason and count 1.
+
+Two added cases separately inject a parser-result path with nonempty netloc
+after successfully parsing an ordinary root request: one header-free, one with
+Authorization. They require terminal 400, request_invalid, correct finite first
+reason (target_netloc or authorization), zero dispatch/credential counters,
+unchanged flow/check/status snapshots and candidate count 0, with OLD/NEW
+outcomes equal. This explicitly tests the helper's netloc predicate rather
+than pretending CPython wire parsing preserves that raw form. The hook changes
+only a memory test sink, never helper guards or accepted traffic.
+
+All other cases/assertions remain, including the previously unattempted
+parser/request/header limits, remaining target failure cases, counter across
+header-free flow/cleanup, first-only reason, 403 write-failure propagation and
+response-timeout propagation. Planned counts are expectations only:
+
+| Group | Original planned | Corrected planned |
+| --- | ---: | ---: |
+| Initial count/final-copy/outcome gate | 1 | 1 |
+| First-three/fourth refusals | 4 | 4 |
+| Authorization presence/refused routes | 6 | 6 |
+| Strict state/exhaustion | 7 | 7 |
+| Header-free routes/guards | 25 | 25 |
+| Actual-parser header-free structural cases | 12 | 12 |
+| Actual-parser Authorization structural cases | 12 | 12 |
+| Controlled parser-result netloc rejection | 0 | 2 |
+| Parser/request/header limits | 5 | 5 |
+| Counter across header-free flow/cleanup | 1 | 1 |
+| Preexisting first-reason preservation | 1 | 1 |
+| 403 write-failure/response-timeout propagation | 2 | 2 |
+| Total | 76 | 78 |
+
+A complete proposed run would make 44 baseline and 80 candidate in-memory
+Handler calls (124 total). No such run occurred. begin()/callback() remain
+stubs; protected/login/callback memory results cannot prove OIDC, native
+crypto, browser consent or actual user success. Output remains fixed sanitized
+labels/counts/booleans; controlled inputs are source constructions below,
+not printed request/header/cookie/token values.
+
+### Exact original-to-corrected diff
+
+41 added / 9 removed lines, net +32 lines. The original terminal assertions
+remain byte-equivalent ASTs inside the non-normalized branches.
+
+```diff
+--- original-memory-harness.py
++++ corrected-memory-harness.py
+@@ -137 +137 @@
+-def request(ns,demo,version,wire,*,write_fail=False,timeout=False):
++def request(ns,demo,version,wire,*,write_fail=False,timeout=False,parser_path=None):
+@@ -139,0 +140,5 @@
++        def parse_request(self):
++            parsed=super().parse_request()
++            if parsed and parser_path is not None:
++                self.path=parser_path
++            return parsed
+@@ -319 +324,5 @@
+-                assert d.done and d.failure is not None and h.responses==[(400,())]
++                if target.startswith("//"):
++                    assert h.path=="/"+target.lstrip("/")
++                    assert not d.done and d.failure is None and h.responses==[(404,())]
++                else:
++                    assert d.done and d.failure is not None and h.responses==[(400,())]
+@@ -327,7 +336,11 @@
+-            assert d.done and d.failure is not None and h.responses==[(400,())]
+-            assert d.preflow_authorization_refusals==0
+-            assert d.request_invalid_reason==("host" if host!="normal" or any(n=="Host" for n,v in headers)
+-                                             else "authorization")
+-            after=flow_snapshot(d)
+-            assert after[:4]==before[:4] and after[6:]==before[6:]
+-            assert all(v==0 for v in d.calls.values())
++            if target.startswith("//"):
++                assert h.path=="/"+target.lstrip("/")
++                refused(new,d,h,before,1,False)
++            else:
++                assert d.done and d.failure is not None and h.responses==[(400,())]
++                assert d.preflow_authorization_refusals==0
++                assert d.request_invalid_reason==("host" if host!="normal" or any(n=="Host" for n,v in headers)
++                                                 else "authorization")
++                after=flow_snapshot(d)
++                assert after[:4]==before[:4] and after[6:]==before[6:]
++                assert all(v==0 for v in d.calls.values())
+@@ -334,0 +348,19 @@
++    for authorization in (False,True):
++        def controlled(authorization=authorization):
++            outcomes=[]
++            parser_path="//"+new["AUTHORITY"]+"/"
++            for ns,version in [(old,"baseline"),(new,"candidate")]:
++                d=make_demo(ns);before=flow_snapshot(d)
++                headers=[("Authorization","ignored")] if authorization else []
++                h=request(ns,d,version,build_wire(ns,headers=headers),parser_path=parser_path)
++                assert h.path==parser_path
++                assert h.responses==[(400,())] and d.done and d.failure=="request_invalid"
++                assert d.request_invalid_reason==("authorization" if authorization else "target_netloc")
++                after=flow_snapshot(d)
++                assert after[:4]==before[:4] and after[6:]==before[6:]
++                assert all(v==0 for v in d.calls.values())
++                if version=="candidate":assert d.preflow_authorization_refusals==0
++                outcomes.append(normalized(ns,d,h))
++            assert outcomes[0]==outcomes[1]
++        verify("controlled_parser_result_"+("authorization" if authorization else "header_free"),
++               "controlled_parser_result",controlled)
+```
+
+### Complete corrected readable harness logic
+
+Archive marker: D01_CORRECTED_MEMORY_HARNESS_LOGIC_V1. The following Python
+fence is complete logic, not executed by this design phase. Extract all fence
+content with its terminating newline; prepend the two pinned serialized-source
+lines described above to obtain the exact corrected payload hash.
+
+```python
+import ast, contextlib, copy, hashlib, http.server, io, json, re, signal, time, urllib.parse
+from types import SimpleNamespace
+
+started=time.monotonic()
+SOURCE_SHA="7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0"
+BASE_COMMIT="7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238"
+groups={}
+completed=0
+case="source_pin"
+handler_calls={"baseline":0,"candidate":0}
+expected_write_failures=0
+expected_timeouts=0
+
+class VerificationDeadline(BaseException):
+    pass
+
+def deadline(signum,frame):
+    raise VerificationDeadline
+
+def verify(name,group,body):
+    global case,completed
+    case=name
+    body()
+    completed+=1
+    groups[group]=groups.get(group,0)+1
+
+class BudgetSink:
+    def __init__(self):
+        self.events=[]
+        self.pending_deadline=None
+        self.fail_response=False
+    @contextlib.contextmanager
+    def limit(self,seconds,tag):
+        self.events.append((seconds,tag,"enter"))
+        if tag=="response_timeout" and self.fail_response:
+            raise self.halt("response_timeout")
+        try:
+            yield
+        finally:
+            self.events.append((seconds,tag,"exit"))
+
+class WriteFailure(Exception):
+    pass
+
+class WriteSink(io.BytesIO):
+    def __init__(self):
+        super().__init__()
+        self.fail=False
+    def write(self,value):
+        if self.fail:
+            raise WriteFailure
+        return super().write(value)
+
+def load_selected(text,version):
+    tree=ast.parse(text)
+    constants=[node for node in tree.body if isinstance(node,ast.Assign)]
+    assert all(not any(isinstance(item,ast.Call) for item in ast.walk(node)) for node in constants)
+    selected=constants[:]
+    for node in tree.body:
+        if isinstance(node,ast.ClassDef) and node.name in {
+                "Failure","Halt","HeaderReader","Handler","PreflowAuthorizationRefusal"}:
+            selected.append(node)
+        elif isinstance(node,ast.FunctionDef) and node.name=="require":
+            selected.append(node)
+        elif isinstance(node,ast.ClassDef) and node.name=="Demo":
+            node=copy.deepcopy(node)
+            node.body=[method for method in node.body if isinstance(method,ast.FunctionDef)
+                       and method.name in {"__init__","clear"}]
+            selected.append(node)
+    ns={"http":http,"re":re,"urllib":urllib}
+    exec(compile(ast.fix_missing_locations(ast.Module(body=selected,type_ignores=[])),
+                 "<selected-request-methods-"+version+">","exec"),ns)
+    main=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=="main")
+    ns["record_node"]=copy.deepcopy(next(node for node in main.body if isinstance(node,ast.Assign)
+        and any(isinstance(t,ast.Name) and t.id=="record" for t in node.targets)))
+    main_try=next(node for node in main.body if isinstance(node,ast.Try))
+    demo_final=next(node for node in main_try.finalbody if isinstance(node,ast.If)
+        and isinstance(node.test,ast.Compare) and isinstance(node.test.left,ast.Name)
+        and node.test.left.id=="demo")
+    ns["copy_nodes"]=[copy.deepcopy(node) for node in demo_final.body
+                     if isinstance(node,ast.Assign) and isinstance(node.targets[0],ast.Subscript)
+                     and isinstance(node.targets[0].value,ast.Name)
+                     and node.targets[0].value.id=="record"]
+    loop_index=next(i for i,node in enumerate(main_try.body) if isinstance(node,ast.While))
+    ns["gate_nodes"]=copy.deepcopy(main_try.body[loop_index+1:loop_index+4])
+    server=next(node for node in tree.body if isinstance(node,ast.ClassDef) and node.name=="DemoServer")
+    error=copy.deepcopy(next(node for node in server.body if isinstance(node,ast.FunctionDef)
+                            and node.name=="handle_error"))
+    exec(compile(ast.Module(body=[error],type_ignores=[]),"<server-error-method>","exec"),ns)
+    return ns
+
+def make_demo(ns):
+    names=("credential_private_validated","provider_identity_verified","discovery_verified",
+        "protected_without_cookie_denied","authorization_redirect_issued",
+        "state_issuer_flow_cookie_verified","confidential_s256_exchange_verified",
+        "rs256_jwks_issuer_audience_nonce_time_access_hash_verified",
+        "userinfo_subject_verified","protected_with_fresh_cookie_accepted")
+    class DemoSink(ns["Demo"]):
+        def __getattribute__(self,name):
+            if name=="secret":
+                access=object.__getattribute__(self,"calls")
+                access["credential"]+=1
+            return object.__getattribute__(self,name)
+        def begin(self):
+            self.calls["begin"]+=1
+            ns["require"](not self.attempted,"flow_already_started")
+            self.stage="flow"
+            self.attempted=True
+            self.pending={}
+            return ns["ISSUER"]+"/authorize","a"*43
+        def callback(self,query,cookie):
+            self.calls["callback"]+=1
+            ns["require"](self.pending is not None,"callback_already_consumed")
+            self.pending=None
+            self.cookie="b"*43
+            self.subject="synthetic"
+            return self.cookie
+    budget=BudgetSink()
+    budget.halt=ns["Halt"]
+    demo=DemoSink(SimpleNamespace(equal=lambda left,right:left==right),None,object(),budget,
+                  {name:i<3 for i,name in enumerate(names)},
+                  {name:None for name in ("authorization_redirect","callback","token_exchange",
+                   "userinfo","protected_before","protected_after")})
+    demo.calls={"get":0,"cookies":0,"begin":0,"callback":0,"credential":0}
+    return demo
+
+def flow_snapshot(demo):
+    return (demo.attempted,demo.pending,demo.cookie,demo.subject,
+            demo.failure,demo.done,copy.deepcopy(demo.checks),copy.deepcopy(demo.statuses))
+
+def build_wire(ns,method="GET",target="/",headers=(),host="normal"):
+    prefix=[] if host=="absent" else [("Host",ns["AUTHORITY"] if host=="normal" else "invalid")]
+    return ((method+" "+target+" HTTP/1.1\r\n"
+            +"".join(name+": "+value+"\r\n" for name,value in prefix+list(headers))
+            +"\r\n").encode("ascii"))
+
+def request(ns,demo,version,wire,*,write_fail=False,timeout=False,parser_path=None):
+    handler_calls[version]+=1
+    class HandlerSink(ns["Handler"]):
+        def parse_request(self):
+            parsed=super().parse_request()
+            if parsed and parser_path is not None:
+                self.path=parser_path
+            return parsed
+        def get(self,target):
+            demo.calls["get"]+=1
+            return super().get(target)
+        def cookies(self):
+            demo.calls["cookies"]+=1
+            return super().cookies()
+        def reply(self,status,text,**options):
+            self.responses.append((status,tuple(sorted(options))))
+            return super().reply(status,text,**options)
+        def send_response(self,status,message=None):
+            self.sent_statuses.append(status)
+        def send_header(self,name,value):
+            self.sent_headers.append((name,value))
+        def end_headers(self):
+            self.header_ends+=1
+    handler=object.__new__(HandlerSink)
+    handler.server=SimpleNamespace(demo=demo)
+    handler.rfile=io.BytesIO(wire)
+    handler.wfile=WriteSink()
+    handler.wfile.fail=write_fail
+    handler.responses=[]
+    handler.sent_statuses=[]
+    handler.sent_headers=[]
+    handler.header_ends=0
+    demo.budget.fail_response=timeout
+    handler.handle_one_request()
+    return handler
+
+def normalized(ns,demo,handler):
+    return (flow_snapshot(demo),demo.stage,demo.request_invalid_reason,demo.calls,
+            handler.responses,handler.sent_statuses,handler.sent_headers,handler.wfile.getvalue(),
+            demo.budget.events)
+
+def record_copy(ns,demo):
+    env=dict(ns)
+    env["demo"]=demo
+    exec(compile(ast.Module(body=[ns["record_node"]],type_ignores=[]),"<record-initialization>","exec"),env)
+    exec(compile(ast.Module(body=ns["copy_nodes"],type_ignores=[]),"<record-final-copy>","exec"),env)
+    return env["record"]
+
+def gate_fails(ns,demo):
+    env=dict(ns)
+    env["demo"]=demo
+    env["record"]={"checks":demo.checks,"result":"failed"}
+    try:
+        exec(compile(ast.Module(body=ns["gate_nodes"],type_ignores=[]),"<existing-outcome-gate>","exec"),env)
+    except ns["Failure"] as failure:
+        assert failure.tag in {"request_invalid","unexpected_failure"}
+    else:
+        raise AssertionError
+    assert env["record"]["result"]=="failed"
+
+def refused(ns,demo,handler,before,count,terminal):
+    assert handler.responses==[(403,())] and handler.sent_statuses==[403]
+    assert handler.header_ends==1
+    assert all(name not in {"Location","Set-Cookie"} for name,value in handler.sent_headers)
+    assert b"<form" not in handler.wfile.getvalue()
+    assert demo.calls=={"get":0,"cookies":0,"begin":0,"callback":0,"credential":0}
+    after=flow_snapshot(demo)
+    assert after[:4]==before[:4] and after[6:]==before[6:]
+    assert demo.preflow_authorization_refusals==count
+    assert demo.request_invalid_reason=="authorization"
+    assert demo.failure==("request_invalid" if terminal else before[4])
+    assert demo.done==(True if terminal else before[5])
+    assert all(not value for key,value in demo.checks.items() if key not in
+               {"credential_private_validated","provider_identity_verified","discovery_verified"})
+    assert all(value is None for value in demo.statuses.values())
+    copied=record_copy(ns,demo)
+    assert copied["preflow_authorization_refusals"]==count
+    assert copied["request_invalid_reason"]=="authorization"
+    gate_fails(ns,demo)
+
+def run():
+    global expected_write_failures,expected_timeouts
+    text=SOURCE_TEXT
+    assert hashlib.sha256(text.encode()).hexdigest()==SOURCE_SHA
+    baseline_text=BASELINE_TEXT
+    assert hashlib.sha256(baseline_text.encode()).hexdigest()=="ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd"
+    old=load_selected(baseline_text,"baseline")
+    new=load_selected(text,"candidate")
+    demo=make_demo(new)
+    assert record_copy(new,demo)["preflow_authorization_refusals"]==0
+    verify("initial_count_copy","record_copy",lambda:gate_fails(new,demo))
+    for count in range(1,5):
+        def check(count=count):
+            before=flow_snapshot(demo)
+            handler=request(new,demo,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+            refused(new,demo,handler,before,count,count==4)
+        verify("bounded_refusal_"+str(count),"bounded_sequence",check)
+    for label,headers,method,target in [
+        ("empty",[("Authorization","")],"GET","/"),
+        ("duplicate",[("Authorization","ignored"),("Authorization","")],"GET","/"),
+        ("post",[("Authorization","ignored")],"POST","/login"),
+        ("protected",[("Authorization","ignored"),("Cookie","d01_local_demo="+"b"*43)],"GET","/protected"),
+        ("callback",[("Authorization","ignored")],"GET","/callback"),
+        ("other_method",[("Authorization","ignored")],"PUT","/")]:
+        def check(headers=headers,method=method,target=target):
+            d=make_demo(new);before=flow_snapshot(d)
+            h=request(new,d,"candidate",build_wire(new,method,target,headers))
+            refused(new,d,h,before,1,False)
+            d.clear()
+            assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        verify("presence_"+label,"authorization_presence",check)
+    for field,value in [("attempted",True),("pending",{}),("cookie","b"*43),
+                        ("subject","synthetic"),("attempted",0),("attempted",None)]:
+        def check(field=field,value=value):
+            d=make_demo(new);setattr(d,field,value);before=flow_snapshot(d)
+            h=request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+            after=flow_snapshot(d)
+            assert h.responses==[(400,())] and d.failure=="request_invalid" and d.done
+            assert d.preflow_authorization_refusals==0 and d.request_invalid_reason=="authorization"
+            assert after[:4]==before[:4] and after[6:]==before[6:]
+            assert all(v==0 for v in d.calls.values())
+        verify("strict_state_"+field+"_"+str(groups.get("postflow",0)+1),"postflow",check)
+    def exhausted():
+        d=make_demo(new);d.preflow_authorization_refusals=4
+        h=request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+        assert h.responses==[(400,())] and d.done and d.failure=="request_invalid"
+        assert d.preflow_authorization_refusals==4 and all(v==0 for v in d.calls.values())
+    verify("defensive_exhaustion","postflow",exhausted)
+    login=[("Origin",new["ORIGIN"]),("Content-Type","application/x-www-form-urlencoded"),("Content-Length","0")]
+    specifications=[
+        ("root","GET","/",[],None),("protected_before","GET","/protected",[],None),
+        ("unavailable","GET","/unavailable",[],None),("root_query","GET","/?x",[],None),
+        ("protected_query","GET","/protected?x",[],None),
+        ("callback_empty","GET","/callback",[],None),
+        ("callback_ready","GET","/callback",[],{"pending":{}}),
+        ("login","POST","/login",login,None),
+        ("login_repeated","POST","/login",login,{"attempted":True}),
+        ("protected_after","GET","/protected",[("Cookie","d01_local_demo="+"b"*43)],
+            {"cookie":"b"*43,"subject":"synthetic","protected_before":True}),
+        ("protected_before_missing","GET","/protected",[("Cookie","d01_local_demo="+"b"*43)],
+            {"cookie":"b"*43,"subject":"synthetic"}),
+        ("protected_cookie_mismatch","GET","/protected",[("Cookie","d01_local_demo="+"c"*43)],
+            {"cookie":"b"*43,"subject":"synthetic"}),
+        ("method","PUT","/",[],None),
+        ("post_target","POST","/wrong",login,None),("post_query","POST","/login?x",login,None),
+        ("origin_missing","POST","/login",[("Content-Type","application/x-www-form-urlencoded")],None),
+        ("origin_wrong","POST","/login",[("Origin","invalid"),("Content-Type","application/x-www-form-urlencoded")],None),
+        ("origin_duplicate","POST","/login",login+[("Origin",new["ORIGIN"])],None),
+        ("type_missing","POST","/login",[("Origin",new["ORIGIN"])],None),
+        ("type_wrong","POST","/login",[("Origin",new["ORIGIN"]),("Content-Type","text/plain")],None),
+        ("type_duplicate","POST","/login",login+[("Content-Type","application/x-www-form-urlencoded")],None),
+        ("cookie_duplicate","GET","/",[("Cookie","other=x"),("Cookie","other=x")],None),
+        ("cookie_shape","GET","/",[("Cookie","d01_demo_flow=x")],None),
+        ("cookie_own_duplicate","GET","/",[("Cookie","d01_demo_flow="+"a"*43+"; d01_demo_flow="+"a"*43)],None),
+        ("cookie_unrelated","GET","/",[("Cookie","unrelated=x")],None)]
+    structural=[
+        ("host_absent","/","absent",[]),("host_wrong","/","wrong",[]),
+        ("host_duplicate","/","normal",[("Host",new["AUTHORITY"])]),
+        ("transfer","/","normal",[("Transfer-Encoding","chunked")]),
+        ("expect","/","normal",[("Expect","100-continue")]),
+        ("length_nonzero","/","normal",[("Content-Length","1")]),
+        ("length_duplicate","/","normal",[("Content-Length","0"),("Content-Length","0")]),
+        ("length_format","/","normal",[("Content-Length","00")]),
+        ("scheme","http://localhost:3000/","normal",[]),
+        ("netloc","//localhost:3000/","normal",[]),("fragment","/#x","normal",[]),
+        ("parse_target","http://[","normal",[])]
+    for label,method,target,headers,initial in specifications:
+        def check(method=method,target=target,headers=headers,initial=initial):
+            outcomes=[]
+            for ns,version in [(old,"baseline"),(new,"candidate")]:
+                d=make_demo(ns)
+                for field,value in (initial or {}).items():
+                    if field=="protected_before":d.checks["protected_without_cookie_denied"]=value
+                    else:setattr(d,field,copy.deepcopy(value))
+                h=request(ns,d,version,build_wire(ns,method,target,headers))
+                outcomes.append(normalized(ns,d,h))
+                if version=="candidate":
+                    assert d.preflow_authorization_refusals==0
+            assert outcomes[0]==outcomes[1]
+        verify("header_free_"+label,"header_free_routes_guards",check)
+    for label,target,host,headers in structural:
+        def check(target=target,host=host,headers=headers):
+            outcomes=[]
+            for ns,version in [(old,"baseline"),(new,"candidate")]:
+                d=make_demo(ns)
+                h=request(ns,d,version,build_wire(ns,target=target,headers=headers,host=host))
+                outcomes.append(normalized(ns,d,h))
+                if target.startswith("//"):
+                    assert h.path=="/"+target.lstrip("/")
+                    assert not d.done and d.failure is None and h.responses==[(404,())]
+                else:
+                    assert d.done and d.failure is not None and h.responses==[(400,())]
+                if version=="candidate":assert d.preflow_authorization_refusals==0
+            assert outcomes[0]==outcomes[1]
+        verify("header_free_bound_"+label,"header_free_bounds",check)
+        def auth_check(target=target,host=host,headers=headers):
+            d=make_demo(new);before=flow_snapshot(d)
+            h=request(new,d,"candidate",build_wire(new,target=target,host=host,
+                headers=[("Authorization","ignored")]+headers))
+            if target.startswith("//"):
+                assert h.path=="/"+target.lstrip("/")
+                refused(new,d,h,before,1,False)
+            else:
+                assert d.done and d.failure is not None and h.responses==[(400,())]
+                assert d.preflow_authorization_refusals==0
+                assert d.request_invalid_reason==("host" if host!="normal" or any(n=="Host" for n,v in headers)
+                                                 else "authorization")
+                after=flow_snapshot(d)
+                assert after[:4]==before[:4] and after[6:]==before[6:]
+                assert all(v==0 for v in d.calls.values())
+        verify("authorization_bound_"+label,"authorization_bounds",auth_check)
+    for authorization in (False,True):
+        def controlled(authorization=authorization):
+            outcomes=[]
+            parser_path="//"+new["AUTHORITY"]+"/"
+            for ns,version in [(old,"baseline"),(new,"candidate")]:
+                d=make_demo(ns);before=flow_snapshot(d)
+                headers=[("Authorization","ignored")] if authorization else []
+                h=request(ns,d,version,build_wire(ns,headers=headers),parser_path=parser_path)
+                assert h.path==parser_path
+                assert h.responses==[(400,())] and d.done and d.failure=="request_invalid"
+                assert d.request_invalid_reason==("authorization" if authorization else "target_netloc")
+                after=flow_snapshot(d)
+                assert after[:4]==before[:4] and after[6:]==before[6:]
+                assert all(v==0 for v in d.calls.values())
+                if version=="candidate":assert d.preflow_authorization_refusals==0
+                outcomes.append(normalized(ns,d,h))
+            assert outcomes[0]==outcomes[1]
+        verify("controlled_parser_result_"+("authorization" if authorization else "header_free"),
+               "controlled_parser_result",controlled)
+    raw_bounds=[
+        ("request_line",b"GET /"+b"x"*8192+b" HTTP/1.1\r\n\r\n"),
+        ("header_line",b"GET / HTTP/1.1\r\nHost: localhost:3000\r\nX: "+b"x"*4096+b"\r\n\r\n"),
+        ("header_count",b"GET / HTTP/1.1\r\nHost: localhost:3000\r\n"+b"X: x\r\n"*33+b"\r\n"),
+        ("header_total",b"GET / HTTP/1.1\r\nHost: localhost:3000\r\n"+(b"X: "+b"x"*3000+b"\r\n")*3+b"\r\n"),
+        ("parser",b"GET / HTTP/9.0\r\nHost: localhost:3000\r\n\r\n")]
+    for label,wire in raw_bounds:
+        def check(wire=wire):
+            outcomes=[]
+            for ns,version in [(old,"baseline"),(new,"candidate")]:
+                d=make_demo(ns)
+                h=request(ns,d,version,wire)
+                outcomes.append(normalized(ns,d,h))
+                assert d.done and d.failure in {"request_invalid","request_limit"}
+                assert all(v==0 for v in d.calls.values())
+            assert outcomes[0]==outcomes[1]
+        verify("raw_bound_"+label,"parser_header_limits",check)
+    def persist():
+        d=make_demo(new)
+        request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+        request(new,d,"candidate",build_wire(new))
+        assert d.preflow_authorization_refusals==1
+        request(new,d,"candidate",build_wire(new,"POST","/login",login))
+        assert d.attempted and d.preflow_authorization_refusals==1
+        before=flow_snapshot(d)
+        request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+        after=flow_snapshot(d)
+        assert after[:4]==before[:4] and after[6:]==before[6:]
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        copied=record_copy(new,d)
+        d.clear()
+        assert copied["preflow_authorization_refusals"]==1
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+    verify("counter_across_header_free_flow_cleanup","counter_persistence",persist)
+    def first_only():
+        d=make_demo(new);d.request_invalid_reason="http_parse"
+        h=request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]))
+        assert h.responses==[(403,())] and d.request_invalid_reason=="http_parse"
+        assert d.preflow_authorization_refusals==1
+        d.clear()
+        assert d.request_invalid_reason=="http_parse" and d.preflow_authorization_refusals==1
+    verify("first_reason_preserved","first_reason",first_only)
+    def write_failure():
+        global expected_write_failures
+        d=make_demo(new);before=flow_snapshot(d)
+        try:
+            request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]),write_fail=True)
+        except WriteFailure:
+            expected_write_failures+=1
+        else:
+            raise AssertionError
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        assert flow_snapshot(d)==before and all(v==0 for v in d.calls.values())
+        new["handle_error"](SimpleNamespace(demo=d),None,None)
+        assert d.failure=="unexpected_failure" and d.done
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        assert record_copy(new,d)["preflow_authorization_refusals"]==1
+    verify("403_write_failure_propagates","response_failures",write_failure)
+    def response_timeout():
+        global expected_timeouts
+        d=make_demo(new)
+        try:
+            request(new,d,"candidate",build_wire(new,headers=[("Authorization","ignored")]),timeout=True)
+        except new["Halt"] as failure:
+            assert failure.tag=="response_timeout"
+            expected_timeouts+=1
+        else:
+            raise AssertionError
+        assert d.preflow_authorization_refusals==1 and d.request_invalid_reason=="authorization"
+        assert all(v==0 for v in d.calls.values())
+        gate_fails(new,d)
+    verify("403_response_timeout_propagates","response_failures",response_timeout)
+
+result="failed"
+failure=None
+signal.signal(signal.SIGALRM,deadline)
+signal.setitimer(signal.ITIMER_REAL,30)
+try:
+    run()
+    result="passed"
+except VerificationDeadline:
+    failure="verification_deadline"
+except AssertionError:
+    failure="assertion_failed"
+except BaseException:
+    failure="harness_exception"
+finally:
+    signal.setitimer(signal.ITIMER_REAL,0)
+elapsed=round(time.monotonic()-started,6)
+print(json.dumps({"result":result,"failure_tag":failure,"failed_case":case if failure else None,
+ "completed_cases":completed,"groups":groups,"handler_calls":handler_calls,
+ "expected_write_failures":expected_write_failures,"expected_response_timeouts":expected_timeouts,
+ "elapsed_seconds":elapsed,"deadline_seconds":30,"helper_sha256":SOURCE_SHA,
+ "main_invoked":False,"network_listener_native_provider_cli_driver_browser_cargo":False},sort_keys=True))
+raise SystemExit(0 if result=="passed" else 1)
+```
+
+### Static-only preservation proof and limits
+
+The original retained complete payload was hash/length matched to 81b659 and
+reconstructed from the unchanged serialized-source prefix plus original logic.
+Applying the five unique replacements in memory created the corrected logic/
+payload. Reversing all five reconstructed the **entire original payload
+byte-exact**, including both source strings and final newline; its full AST
+matched too. No source or harness was imported or executed.
+
+Top-level source-segment comparison found only request and run changed;
+these other 14 functions/classes remained byte-exact:
+
+VerificationDeadline, deadline, verify, BudgetSink, WriteFailure, WriteSink, load_selected, make_demo, flow_snapshot, build_wire, normalized, record_copy, gate_fails, refused.
+
+The prior auth_check assertions are AST-identical to the corrected
+non-normalized else branch. Existing runtime result/exception/signal/deadline/
+sanitized output tail is byte-exact; the 30-second alarm, stop-on-first-failure,
+finite failure tags, expected injected failures and no-main behavior remain.
+The embedded-source prefix, setup factories, credential counters, refusal/
+outcome-gate/record-copy assertions, memory write sink and stub budgets remain
+exact. The parser-path hook is absent from every original call and used only
+for the two new controlled-result cases. AST name inspection found no
+subprocess/socket/os/Path references in the harness logic. These static
+checks and unexecuted AST/in-memory compilation exited 0; they establish
+preservation, not success of any proposed case.
+
+Before any future execution, root should review the entire archived logic,
+the exact diff and both embedded source identities. A separately released
+run must use the exact corrected payload hash, retain its complete fixed
+result/exit/counts, and stop on its first unexpected failure without correction
+or retry. Record the original failed 61-of-76 run separately even if a later
+run passes. No browser/runtime release is implied by this report.
+
+This append preserves the entire eb322 report (139821 bytes / 2209 lines,
+SHA-256 dfe2d894b43a6b8ca507dc5f55d87b3cd41723604e9959bffd89716dc7f5186f)
+as an exact prefix and all five private historical metadata files with their
+recorded bytes/hash/0600 modes. Hash checks add no body reviews or external
+evidence. Helper470 SHA7fbc is unchanged; controller/product/guide/D05/config/
+tests/main/status/push remain untouched. Report-only scope, archive extraction/
+hash reconstruction, Markdown fence/final-newline/whitespace and git diff
+--check are verified before this separate report-only commit.
