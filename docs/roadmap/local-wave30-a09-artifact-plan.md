@@ -959,3 +959,297 @@ deletion, new worker/task/worktree, Cargo/Docker/service, desktop, status, main
 or push action occurred. The original A09 artifact/shared gate, Linux x86-64/
 container/TLS/passkey scope and physical/tenant/escrow limits remain open.
 RiWork Cua.ai Driver preference persists.
+
+## Append: actual native ARM64 cohort and one held build-free handoff seam
+
+This phase reserves only an append to this report. All prior **961 lines / 63,148 bytes** remain an exact prefix, SHA-256 `9b125ef47d8b449e7ae09f1ef19efbe1b44dd793b5bddb40603d844db1a5caea`. The live original A09 row and shared distribution gate were reread; no task status was changed. Historical artifact failures, the first actual HTTP 422 rejection, invalid-push failures `37014464740`/`37014464605`, and the admitted context-validation miss remain intact. The successful corrected run is a separate receipt.
+
+### Actual run/source/artifact identity
+
+Root reports one corrected manual run **37016520583 / job 110868629053 / attempt 1**, conclusion **SUCCESS**, slot released to SCIM. This worker read only the already downloaded immutable `/tmp/riauth-wave30-a09-37016520583`: full JSON documents, all logs, every resource row and pinned checker/helper bodies. No GitHub query/download, archive extraction, binary/helper/native execution or service occurred.
+
+Workflow source **`036a392656b4b5070cc86a11d5ca3258b7b868d2`**, blob `0e5426c9212433fffbbd578b71ec9fb682ad9c07`, is the exact corrected 18,186-byte workflow, SHA-256 `0a98865e5ee25d2f94b745b32602949553bf4f4e3b83d8bd302fade98eafd948`. Product source **`9a819317efb3a13fa27cd86f884be2be00898fc0`**, tree `1528b61ba463d9262d6252d54174748a176f313b`, was requested and verified in the run; this worker matched all seven input hashes against that Git object. JSON records `workflow_dispatch`, real `Rhein-Industries/riAuth` repository/main workflow ref/run/attempt IDs. Workflow, product, worker-report and future validator pins remain distinct.
+
+Root identifies uploaded artifact **11232871527**, digest prefix **`fc2a83dd`**. Exact workflow/run derive upload name `riauth-local-arm64-37016520583-1`. The downloaded directory has no outer artifact ZIP/full-digest metadata; the full 64-hex digest/name confirmation was requested from root through the project orchestrator. No full digest is invented or claimed to have been independently rehashed here. A later transport gate must verify exact ID/run/repository/full root-confirmed digest before native execution.
+
+| Actual evidence | SHA-256 |
+| --- | --- |
+| `evidence.json`, 60,299 bytes | `fd8280125b38e6afbe13970be4617df8fdbe72e7280a4e6dedb2f2a84e4c9ab1` |
+| `resources.jsonl`, 278,604 bytes | `f81d488c07a2616e4541926c7d98bf5a87bfb38d97923a5c200cc03bf2a321ad` |
+
+The run explicitly records **`official_release: false`**, **`shared_full_gate: not_run`**, **`native_archive_slice: passed`**, empty cleanup errors. These are five **LOCAL native ARM archives**, with no official release/signature/registry/container/image/current-x86 credit. Root independently checked all archive/binary/input/log hashes and ELF ARM64. This worker additionally matched five compressed file hashes/lengths, seven fixed Git inputs and eleven full logs; binary/ELF observations remain root/run evidence. Archives were not opened or extracted here.
+
+| Product / declared features | Archive bytes / SHA-256 | Binary bytes / SHA-256 |
+| --- | --- | --- |
+| essentials `riauth` / `essentials` | `local-riauth-essentials-aarch64.tar.gz` / 13,996,440 / `848758095ccab44919ddc643dd91ced3f77d4acc083be0edf63925fdb2b51981` | 37,242,432 / `0e07481de56505904864e42d63be743b235001e95c44af772654d1185a4f40e8` |
+| platform `riauth` / `essentials,platform` | `local-riauth-platform-aarch64.tar.gz` / 18,375,977 / `9f615ca8fbe3cb1dfd400dea6c6d03a1f2677d7510b0ad6f1541c974a72723e8` | 49,565,208 / `c8c93c0605c83271049dd15794a8960cb3021245f0b439b7de3bbb9d37aec0ef` |
+| essentials `riauth-maintenance` / `essentials` | `local-riauth-maintenance-essentials-aarch64.tar.gz` / 5,946,216 / `e43ed01029baeb7cae4821e125d168d687a7e60ab701afc8f46c9fea442adc3a` | 13,768,992 / `8c6b1d9a8df61aa5c7d16105b609a0e5dc67e9609d35de85fc822c78033a30ac` |
+| platform `riauth-maintenance` / `essentials,platform` | `local-riauth-maintenance-platform-aarch64.tar.gz` / 6,788,229 / `510c55acf014273a53acb5b87d55b40381b9d00f51ef8b654493a307250f92df` | 16,062,840 / `2b2461adae8101f4e38c2842963bd273403c4c1ad06c6528a45ab1fd12f7bff1` |
+| client `riauthctl` / `no-default-features; no optional client feature` | `local-riauthctl-aarch64.tar.gz` / 3,641,341 / `d826f26176ababda4fe3930e00a051c0416e2b10c9ec22a1f31ca4f4ef8118da` | 9,185,272 / `7c8831ed42d89a31f3ab2042cd03ab460ef19b991a41b7667b1bfe9c91c04291` |
+
+All five target `aarch64-unknown-linux-gnu`; each archive contains exactly its binary, LICENSE and THIRD_PARTY_NOTICES.md per producing source/root validation. Historical c01/Q08 products are not relabelled as current.
+
+| Pinned source input | Actual SHA-256 |
+| --- | --- |
+| `Cargo.lock` | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| `Cargo.toml` | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| `LICENSE` | `ef79ab7079893da02af81ebb8a57bec27dc7a601d505b228b1d5356a3aa5b1a9` |
+| `THIRD_PARTY_NOTICES.md` | `142c0e5150de9436513d9f6f215c5422b8a3af84d4eb7d0708f155e3e18fce05` |
+| `crates/riauthctl/Cargo.lock` | `2998555ddb2d00e8130a970fcacfed19dfee7a0b2e3305011ebd40746f67b4db` |
+| `crates/riauthctl/Cargo.toml` | `af385d4d989c53987396edfdfa684cd3902a603d1cf65dd31ac72da7f08de9ea` |
+| `scripts/check-edition-artifacts.py` | `2f477665ed584bc148fb230c0658f6d0cc66aceaa5af631c4dc467872fa9ecce` |
+
+### Actual builds and focused smoke
+
+Observed host: Linux `aarch64`, GitHub-hosted `ubuntu-24.04-arm`, four CPUs, 16,722,042,880 bytes RAM, Ubuntu 24.04.5 LTS. Rust `1.98.1 (48a229cea 2026-09-01)`. Observed packages: ca-certificates `20260601~24.04.1`, clang `1:18.0-59~exp2`, CMake `3.28.3-1build7`, OpenSSL dev `3.0.13-0ubuntu3.16`, pkg-config `1.8.1-2build1`. This is an actual run baseline, not a supported minimum libc guarantee or future availability.
+
+Three sequential locked release commands used separate private targets, jobs=1, incremental=0, dev/test/release debug=0 and native target. Actual suffixes:
+
+```sh
+cargo +1.98.1 build --release --locked --no-default-features --features essentials --bins --target aarch64-unknown-linux-gnu
+cargo +1.98.1 build --release --locked --no-default-features --features platform --bins --target aarch64-unknown-linux-gnu
+cargo +1.98.1 build --manifest-path crates/riauthctl/Cargo.toml --release --locked --no-default-features --target aarch64-unknown-linux-gnu
+```
+
+| Actual step | Exit / elapsed seconds | Full log SHA-256 |
+| --- | --- | --- |
+| `apt-update` | 0 / 8.004 | `19f808a68f6d524d9f9935feddf906fb1ae08319070432aaafa24242c9f52af6` |
+| `apt-install` | 0 / 12.482 | `f6a65260955ad1d97b665b697b960013880647bcd84e7d15bdcf004875df8074` |
+| `native-dependency-versions` | 0 / 2.002 | `0eeacaea693f7b9759023b1e40d5e8a6628e8542bb927792da179ba1d125db65` |
+| `rustc-version` | 0 / 2.002 | `2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376` |
+| `linux-baseline` | 0 / 2.002 | `87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763` |
+| `build-essentials` | 0 / 1004.627 | `281169d70624e7b7ebc4605de2650b2c4a9db100bea9a60d3b54bc07d9bbeec3` |
+| `build-platform` | 0 / 1312.673 | `46294d77993c0ea5d00fe8650c92522599fb47f380742866da68a4096abf34a4` |
+| `build-client` | 0 / 204.104 | `4c2345f5d1f2c58cb6606bc672a960ae9dc233e80569158d05c210966f6fce49` |
+| `capabilities-essentials` | 0 / 2.002 | `4bdc14319c2d0d6c70997f688837533919379906efef266d9b4648d3ea710c86` |
+| `capabilities-platform` | 0 / 2.004 | `beb2ae858a9d081910939d488ba04249f728fcbbbc85daa778698478643c3e02` |
+| `focused-native-archive-smoke` | 0 / 4.008 | `d0b3f6ce4435ad1d80cdbdaff55477e24ce2942ac26d512761a27b598d49ef48` |
+
+Essentials succeeded with **three dead-code warnings**: `discard_workflow_registration`, `workflow_register_start_in`/`workflow_register_verify_in`, `PostLogoutReturn::allowed_by`. They are retained, not described as warning-free. Platform/client logs finish successful optimized release builds. Apt-trigger service restarts/deferred restarts are recorded remote setup output, not this worker's actions.
+
+The unchanged focused checker SHA-256 is `2f477665ed584bc148fb230c0658f6d0cc66aceaa5af631c4dc467872fa9ecce`. Actual native invocation took all five archives and **no image arguments**; exit 0 / 4.008 seconds, 76-byte log `Native archives: edition, route, agent issuance and downgrade checks passed`. The full source body checks artifact capabilities/features, fresh maintenance init/server start/readiness, shared/edition route boundaries, Essentials agent refusals, Platform agent state and direct Essentials downgrade/preflight refusal, plus maintenance/client version. It does not test full base-client remote flows, shared E→P→E preservation, HTTPS/passkey devices or images. Full capability logs match JSON product objects: Essentials 60 compiled features/87 state entries, Platform 87/87; configured/runtime-ready/usable remain null at artifact scope.
+
+### Actual resource samples
+
+All **1,308** rows were parsed: first `2026-10-02T13:57:46.739159+00:00`, last `2026-10-02T14:40:37.351946+00:00`, sample span **2,570.612787 seconds**, largest actual interval **5.40448 seconds**, all timestamps increasing. Host/private/workspace minima are each **112,151,941,120 bytes = 104.449634552 GiB**; each reports device 2049 throughout, so these are named observations on one backing device, not three independent reserves. Initial free bytes 115,879,784,448 met 30 GiB preflight; no recorded 10 GiB stop/8 GiB floor event.
+
+`largest_reaped_child_max_rss_bytes: 4454891520` is the driver's child-resource metric, not simultaneous whole-runner peak memory or future capacity. Samples do not establish continuous storage between observations or write/external-IO safety after paused checks. The prior Darwin resource blocker remains historical; no Linux artifact was pretended to execute on Darwin. The remote executor has ended and its slot is released to SCIM, with no next-gate reservation or capacity credit inherited by this worker.
+
+### ONE held source-first next seam
+
+Propose **only `scripts/check-local-edition-transition-postgres.py`** at exact product `9a819317efb3a13fa27cd86f884be2be00898fc0`. The proposed diff below is contained solely in this report, not applied or owned. This existing native Linux/aarch64 helper is build-free; it requires local `initdb`, `pg_ctl`, `createdb`, `psql`, already compares full non-transition PostgreSQL row hashes (including identity/credential/grant/revocation rows), and checks wrong-build open/connected-client refusal/explicit E→P→E. Extending it is smaller than building a new Store probe. This is a plain local PostgreSQL sample, not encrypted/redb equivalence or physical recovery.
+
+| Pinned helper/dependency | SHA-256 / boundary |
+| --- | --- |
+| `check-local-edition-transition-postgres.py` | `d6b0d023164756b2fcabe1a89794400d5ee70b43b6b4874abed3fd2f6a2cce7d`, 13,127 bytes / 236 lines; metadata currently requires format 2 |
+| `check-local-encrypted-edition-transition.py` | `09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e`, 22,045 bytes / 398 lines; metadata line 61 requires format 2, full run needs separately compiled Store probe |
+| `check-exact-edition-matrix.py` | `f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887`; main runs debug jobs=2/Cargo analysis and must not be called |
+| `check-installed-release-gate.py` | `cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5`; reuse private CLI/serving primitives, never official verify-assets/main for this local cohort |
+| `spdx_sbom.py` | `ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c`; imported dependency unchanged, no generator/packager main invoked |
+| `src/node_security.rs` | `979f1d22a4835bce97866e302dc2a8a21df4f0d383d4bd1e6960b6a5d7a3bcb7`; strict format 3/all 16 effective rates/issuer/authentication/capability refusal and atomic supported handoff |
+
+Exact hunk intent: require format 3/all 16 valid rates and compare the complete map; reuse unchanged encrypted helper's **live_identity_and_grant function only** (never its metadata/run/probe); add one ordinary group and repeat password/user ID/group/grant equality, audit allow/user-admin deny, revoked-session refusal and fixed session expiry through E→P→E; copied authentication/shared-rate config drift must refuse plan/start without changing stored rows/agreement or leaving readiness; refuse added as well as changed/removed non-transition rows; bound the owned connected-client reaping. No stored agreement deletion/adoption, privileged group/client creation, receipt secret handling, product/edition writer algorithm or encrypted helper edit.
+
+Complete proposed helper SHA-256 `575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1` (21,716 bytes / 370 lines). AST parsed only, no import/helper execution. Diff uses zero context to avoid Markdown trailing-space lines; a later reviewer applies it with explicit zero-context support against the exact pinned body. Root may reject/refine before granting source ownership.
+
+```diff
+--- a/scripts/check-local-edition-transition-postgres.py
++++ b/scripts/check-local-edition-transition-postgres.py
+@@ -20,0 +21,3 @@
++import tomllib
++import urllib.error
++import urllib.request
+@@ -32,0 +36,5 @@
++encrypted_fixture = load("encrypted_fixture", ROOT / "check-local-encrypted-edition-transition.py")
++RATE_NAMES = frozenset(("portal_start", "portal_approve", "login", "passkey", "account",
++                        "source_start", "source_callback", "saml", "mfa", "device_start",
++                        "device_verify", "browser_decision", "browser_state",
++                        "forward_auth", "outpost_start", "general"))
+@@ -71,2 +79,6 @@
+-    matrix.require(result["meta/node_security"]["format"] == 2,
+-                   "transition requires a current security agreement")
++    matrix.require(result["meta/node_security"]["format"] == 3,
++                   "transition requires a current format-3 security agreement")
++    rates = result["meta/node_security"]["effective_rate_limits"]
++    matrix.require(set(rates) == RATE_NAMES and
++                   all(type(value) is int and 1 <= value <= 100_000 for value in rates.values()),
++                   "format-3 effective rate map is incomplete or invalid")
+@@ -79 +91 @@
+-    for field in ("issuer", "authentication"):
++    for field in ("issuer", "authentication", "effective_rate_limits"):
+@@ -91 +103,2 @@
+-    changed = sorted(key for key, value in before.items() if after.get(key) != value)
++    changed = sorted(set(before).symmetric_difference(after) |
++                     {key for key, value in before.items() if after.get(key) != value})
+@@ -92,0 +106,103 @@
++
++
++def authenticated_status(base, path, token):
++    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
++    request = urllib.request.Request(base + path, headers={"Authorization": "Bearer " + token})
++    try:
++        with opener.open(request, timeout=5) as response:
++            response.read()
++            return response.status
++    except urllib.error.HTTPError as error:
++        error.read()
++        return error.code
++
++
++def ordinary_fixture(server, config, base, scratch):
++    # Reuse only the live fixture; never the historical format-2 metadata/run/probe.
++    encrypted_fixture.live_identity_and_grant(server, config, base, scratch)
++    session = scratch / "group-admin-session.json"
++    with gate.serving(server, config, base, scratch / "group-fixture.log"):
++        gate.remote(server, base, session, "login", "admin", "--password-stdin",
++                    input="q08-disposable-password\n")
++        for command in (("group", "create", "shared-fixture"),
++                        ("group", "add-member", "shared-fixture", "delegate")):
++            revision = gate.remote(server, base, session, "revision")["revision"]
++            gate.cli(server, "--server", base, "--session-file", session, "--non-interactive",
++                     "--if-revision", revision, "--idempotency-key", os.urandom(16).hex(), *command)
++        gate.remote(server, base, session, "logout")
++
++
++def shared_probe(server, config, base, scratch, revoked_token=None):
++    session = scratch / f"delegate-{time.monotonic_ns()}.json"
++    admin = scratch / f"admin-{time.monotonic_ns()}.json"
++    with gate.serving(server, config, base, scratch / f"shared-{time.monotonic_ns()}.log"):
++        if revoked_token is not None:
++            matrix.require(authenticated_status(base, "/api/me", revoked_token) == 401,
++                           "previously logged-out session became valid")
++        gate.remote(server, base, session, "login", "delegate", "--password-stdin",
++                    input="q08-delegate-disposable-password\n")
++        me = gate.remote(server, base, session, "whoami")
++        matrix.require(me["user"]["username"] == "delegate" and not me["user"]["admin"],
++                       "ordinary credential did not identify the same non-admin user")
++        token = json.loads(session.read_text())["token"]
++        matrix.require(authenticated_status(base, "/api/audit?limit=1", token) == 200,
++                       "active auditor grant stopped authorizing audit read")
++        matrix.require(authenticated_status(base, "/api/users", token) == 403,
++                       "ordinary auditor gained user administration")
++        time.sleep(0.2)
++        again = gate.remote(server, base, session, "whoami")
++        matrix.require(again["expires_at"] == me["expires_at"], "session expiry was renewed")
++        gate.remote(server, base, session, "logout")
++        matrix.require(authenticated_status(base, "/api/me", token) == 401,
++                       "logout failed to revoke the session")
++        gate.remote(server, base, admin, "login", "admin", "--password-stdin",
++                    input="q08-disposable-password\n")
++        grants = gate.remote(server, base, admin, "grants", "get", "delegate")
++        matrix.require(grants["grants"] == [{"role": "auditor", "scope": "audit/events",
++                                            "target_id": "events"}], "auditor grant changed")
++        group = gate.remote(server, base, admin, "get", "group", "shared-fixture")
++        matrix.require(me["groups"], "ordinary membership missing")
++        gate.remote(server, base, admin, "logout")
++        return {"user": me["user"], "groups": me["groups"], "group": group,
++                "grants": grants, "audit_status": 200, "users_status": 403}, token
++
++
++def shared_config_refusals(programs, port, database, server, maintenance, config, base, scratch):
++    original = config.read_text()
++    parsed = tomllib.loads(original)
++    baseline = rows(programs, port, database)
++    metadata = transition_metadata(programs, port, database)
++    candidates = {}
++    authentication, count = re.subn(r"(?m)^(session_ttl\s*=\s*)\d+$",
++                                   lambda m: m[1] + str(parsed["session_ttl"] + 1), original)
++    matrix.require(count == 1, "session_ttl configuration field missing")
++    candidates["authentication"] = (authentication, "Configured token lifetimes or password policy")
++    value = metadata["meta/node_security"]["effective_rate_limits"]["general"] + 1
++    if "general" in parsed.get("rate_limits", {}):
++        rate, count = re.subn(r"(?m)^(general\s*=\s*)\d+$", lambda m: m[1] + str(value), original)
++        matrix.require(count == 1, "general rate configuration field missing")
++    elif re.search(r"(?m)^\[rate_limits\]\s*$", original):
++        rate, count = re.subn(r"(?m)^\[rate_limits\]\s*$",
++                             lambda m: m[0] + f"\ngeneral = {value}", original)
++        matrix.require(count == 1, "duplicate rate_limits table")
++    else:
++        rate = original + f"\n[rate_limits]\ngeneral = {value}\n"
++    matrix.require(tomllib.loads(rate)["rate_limits"]["general"] == value, "rate fixture invalid")
++    candidates["rate"] = (rate, "Configured HTTP rate limit for general")
++    for label, (text, message) in candidates.items():
++        candidate = scratch / f"refuse-{label}.toml"
++        candidate.write_text(text)
++        blocked = gate.cli(maintenance, "--config", candidate,
++                           "transition-plan", "--target", "platform", expected=5)
++        matrix.require(any(item["resource"] == "meta/node_security"
++                           for item in blocked["data"]["blockers"]), "shared configuration was ignored")
++        refused = gate.cli(server, "--config", candidate, "serve", expected=None)
++        matrix.require(message in refused["error"]["message"], "shared configuration startup refusal changed")
++        matrix.require(rows(programs, port, database) == baseline and
++                       transition_metadata(programs, port, database) == metadata,
++                       "configuration refusal changed stored rows or security agreement")
++        try:
++            status = gate.get_status(base + "/readyz")
++        except OSError:
++            status = None
++        matrix.require(status != 200, "refused process left a serving listener")
+@@ -138,0 +255,4 @@
++            ordinary_fixture(essentials / "riauth", config, base, scratch)
++            shared_before, revoked_token = shared_probe(essentials / "riauth", config, base, scratch)
++            shared_config_refusals(programs, port, database, essentials / "riauth",
++                                   platform_bins / "riauth-maintenance", config, base, scratch)
+@@ -171 +291,5 @@
+-                connected.wait(timeout=5)
++                try:
++                    connected.wait(timeout=5)
++                except subprocess.TimeoutExpired:
++                    connected.kill()
++                    connected.wait(timeout=5)
+@@ -190,0 +315,2 @@
++            shared_platform, _ = shared_probe(platform_bins / "riauth", config, base, scratch, revoked_token)
++            matrix.require(shared_platform == shared_before, "upgrade changed shared identity/authorization")
+@@ -209,0 +336,2 @@
++            shared_return, _ = shared_probe(essentials / "riauth", config, base, scratch, revoked_token)
++            matrix.require(shared_return == shared_before, "downgrade changed shared identity/authorization")
+@@ -221,0 +350,6 @@
++                      "agreement_format": 3, "all_effective_rates_preserved": True,
++                      "shared_configuration_refusals": ["authentication", "general_rate"],
++                      "shared_identity_authorization_sample": "passed",
++                      "shared_sample_sha256": hashlib.sha256(json.dumps(
++                          shared_before, sort_keys=True).encode()).hexdigest(),
++                      "full_shared_gate": "not_certified",
+```
+
+### Held native transport, invocation and finite cleanup
+
+Root must review this exact single-helper seam before any source edit. Runtime then needs a **fresh native ARM executor**; the build runner ended. A manual-only read-only transport/launcher is a separate later root-owned source/runtime gate, with real new run/job IDs, pinned checkout/download/upload actions, 20-minute bound and no Cargo/toolchain/build/tag/release/registry. A download action SHA must be reviewed rather than guessed. This append does not reserve/edit that workflow or implement a launcher.
+
+Proposed root-owned metadata/download commands, **not executed here**, in a fresh private root:
+
+```sh
+umask 077
+timeout --signal=TERM --kill-after=5s 120s gh api repos/Rhein-Industries/riAuth/actions/artifacts/11232871527 > "$A09_VALIDATE_ROOT/artifact-metadata.json"
+timeout --signal=TERM --kill-after=5s 120s bash --noprofile --norc -c 'ulimit -f 262144; exec gh api "$1"' riauth-a09 repos/Rhein-Industries/riAuth/actions/artifacts/11232871527/zip > "$A09_VALIDATE_ROOT/artifact.zip"
+```
+
+The ZIP has a Bash file-size bound of at most 256 MiB and finite timeout; retain any nonzero exit as failure and never consume a partial file. Require exact ID `11232871527`, upload name `riauth-local-arm64-37016520583-1`, producing run `37016520583`, repository, unexpired artifact and full root-confirmed SHA-256 beginning `fc2a83dd`. Compare outer ZIP SHA-256 to that exact full digest before extracting; a prefix is insufficient. Missing/expired/deleted artifact refuses, with no rebuild/old-cohort fallback. No transport/native capacity availability has been claimed.
+
+In an owned 0700 root, safely extract only regular allowlisted ZIP members. Verify both JSON hashes, producing product/workflow pins, eleven log hashes, all five archive and binary hashes/lengths plus LICENSE/notices. Gzip extraction may reuse installed-gate `install_member` only after archive verification and exact three-member/256 MiB bounds; reject symlinks/traversal/extra members. Install into `installed/essentials`, `installed/platform`, `installed/client`; verify native ELF AArch64 and actual Linux/aarch64 before execution. Do not call official packaging/SBOM/provenance entry points. Pin the future validator Git SHA/script/import hashes separately from the unchanged product source. The existing helper alone does not verify transport identity, so the source-reviewed launcher must implement these guards before runtime approval.
+
+After separate native PostgreSQL-tool and launcher reservation, the ONE focused target proposed is:
+
+```sh
+env -u PYTHONOPTIMIZE timeout --signal=INT --kill-after=10s 600s python3 scripts/check-local-edition-transition-postgres.py --artifacts "$A09_VALIDATE_ROOT/installed" --evidence "$A09_VALIDATE_ROOT/public/shared-handoff.json" --source-revision 9a819317efb3a13fa27cd86f884be2be00898fc0
+```
+
+PostgreSQL tools/version/native shared-library availability are unobserved for a new executor; previous build logs do not establish them. Missing tools refuse and need separately reserved setup, not implicit installation. No local Darwin execution. The narrow helper uses the native server's existing remote CLI; the fifth client remains hash-bound/retained and its full remote-flow gate stays open.
+
+Preserve **30 GiB start / 10 GiB stop / 8 GiB floor** for the launcher. Read actual host/private/workspace free bytes/device IDs at intended at-most-two-second intervals, report actual gaps/minima/unknown/error states, terminate only owned launch processes at stop-margin/unavailable sampling and retain failure/cleanup evidence. No label-only capacity success, threshold lowering/provider substitution/larger runner/cache deletion. Jobs=1/inc=0/dev+testdebug=0 remain if any later separately reserved build occurs, but this next seam has no builds.
+
+Finite cleanup must be implemented/reviewed in the later launcher: 20-minute job, transport 120 seconds/256 MiB, helper 600 seconds; imported readiness/HTTP/CLI deadlines; proposed owned connected-client TERM→5 seconds→KILL→5 seconds. Capture raw stdout/stderr privately because imported error messages may include private envelopes; upload only allowlisted phase/exit/error-class/hashes, sanitized results/resources/cleanup status. Never upload passwords, tokens, sessions, connection/config/database files or raw private failure traces. Always stop the exact spawned private cluster with immediate `pg_ctl` mode, bounded 10-second TERM/KILL/reap, before removing only its fresh owned fixture directory; cleanup failure fails the gate. SIGINT can enter existing `finally`, but hard timeout alone does not prove cleanup. Root must review the launcher's failure/transport/resource/cleanup source before dispatch. It is not implemented or owned by this report.
+
+A future pass credits a current-format-3 local PostgreSQL shared identity/authorization/configuration **sample**, not universal `shared_full_gate`, release or A09 closure. Current Linux x86-64, containers, HTTPS/TLS, devices/passkeys, full client flow, encrypted/redb, physical/HA/tenant/escrow and external cloud gates remain unproved. Existing receipt-secret, route-specific required/optional headers, PAM fallback, permission/review/removal/audit/credential protections and Group/input limits remain intact. Fixed-session-expiry fixture observations do not change the non-renewed 60-second admission lease or create an atomic paused-IO fence.
+
+### Actual worker checks and preserved failures
+
+Worker checks read full downloaded JSON/log/resource contents, matched all eleven full log hashes/seven fixed inputs/five compressed archive files, recomputed all 1,308 samples and compared both capability logs to full JSON product objects. Full checker/helper bodies and format-3 contracts were read at immutable Git objects. One workflow read mistakenly used product `9a81931`, where that file is absent; corrected to workflow `036a392`. One report-generation command failed Python parsing on an unterminated literal **before any write**; the corrected authoring command then wrote only this append. No native/runtime/build attempt occurred or failed here. The proposed helper diff was AST parsed without import or materialization.
+
+No workflow/helper/product/other-guide/main edit, dispatch/download/build/Cargo/native/helper/service runtime, cache deletion, status/push, other lane, new worker/task/worktree or desktop occurred. Evidence directory was read only. RiWork Cua.ai Driver preference persists. Root alone reviews/integrates, reserves any future native/source gate and decides release/closure.
+
+The first report whitespace check flagged six blank unified-diff context lines containing a single space. The embedded diff was regenerated with zero context, preserving the exact proposed helper bytes/hash; no repository checker was changed. Final docs, whitespace, report-only scope, reconstructed-diff AST and repository hygiene checks are recorded in the separate immutable handoff.
+
+One local reconstruction/refinement snippet initially asserted on an insertion hunk because it treated zero-count unified-diff line positions as ordinary context positions. It failed before writing; the static parser was corrected to handle zero-count insertions, reconstructed the exact proposal, and then added strict refusal of extra non-transition rows. This was a local authoring/check correction, not native helper execution.
+
+Final appendix checks passed with exit 0: repository docs checker, whitespace, hygiene (963 files), exact report-only scope and prior 961-line/63,148-byte prefix, reconstruction of the embedded zero-context diff against pinned product source, unchanged helper entry point, Python AST and the three proposed/recorded shell blocks with `bash -n`. The helper proposal was never imported, materialized or executed. These static report checks add no native/runtime acceptance.

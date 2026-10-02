@@ -45,6 +45,12 @@ MAX_HEADERS = 8192
 MAX_HEADER_LINE = 4096
 MAX_HEADER_COUNT = 32
 MAX_COOKIE = 4096
+REQUEST_INVALID_REASONS = {
+    "http_parse", "host", "authorization", "transfer_encoding", "expect",
+    "content_length", "target_scheme", "target_netloc", "target_fragment",
+    "method", "post_target", "origin", "content_type", "cookie_header_count",
+    "own_cookie_shape",
+}
 STOP_FREE_BYTES = 17 * 1024**3 // 2
 PENDING_SECONDS = 180
 FAILURE_TAGS = {
@@ -225,6 +231,7 @@ class Demo:
         self.pending = self.cookie = self.subject = None
         self.attempted = self.done = False
         self.failure = None
+        self.request_invalid_reason = None
 
     def invoke(self, stage, seconds, function, *args, **kwargs):
         self.stage = stage
@@ -379,7 +386,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+    def record_request_reason(self, reason):
+        demo = self.server.demo
+        if demo.request_invalid_reason is None and reason in REQUEST_INVALID_REASONS:
+            demo.request_invalid_reason = reason
+
+    def require_request(self, condition, reason):
+        if not condition:
+            self.record_request_reason(reason)
+            raise Failure("request_invalid")
+
     def send_error(self, code, message=None, explain=None):
+        self.record_request_reason("http_parse")
         self.server.demo.failure, self.server.demo.done = "request_invalid", True
         self.reply(code, "Local demo could not complete this request.")
 
@@ -401,28 +419,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 finally:
                     self.rfile = original
                 self.close_connection = True
-                require(self.headers.get_all("Host") == [AUTHORITY]
-                        and self.headers.get_all("Authorization") is None
-                        and self.headers.get_all("Transfer-Encoding") is None
-                        and self.headers.get_all("Expect") is None
-                        and self.headers.get_all("Content-Length") in (None, ["0"]),
-                        "request_invalid")
+                self.require_request(self.headers.get_all("Host") == [AUTHORITY], "host")
+                self.require_request(self.headers.get_all("Authorization") is None, "authorization")
+                self.require_request(self.headers.get_all("Transfer-Encoding") is None, "transfer_encoding")
+                self.require_request(self.headers.get_all("Expect") is None, "expect")
+                self.require_request(self.headers.get_all("Content-Length") in (None, ["0"]), "content_length")
                 target = urllib.parse.urlsplit(self.path)
-                require(not target.scheme and not target.netloc and not target.fragment,
-                        "request_invalid")
+                self.require_request(not target.scheme, "target_scheme")
+                self.require_request(not target.netloc, "target_netloc")
+                self.require_request(not target.fragment, "target_fragment")
             if self.command == "GET":
                 self.get(target)
             elif self.command == "POST":
-                require(target.path == "/login" and not target.query
-                        and self.headers.get_all("Origin") == [ORIGIN]
-                        and self.headers.get_all("Content-Type") == ["application/x-www-form-urlencoded"],
-                        "request_invalid")
+                self.require_request(target.path == "/login" and not target.query, "post_target")
+                self.require_request(self.headers.get_all("Origin") == [ORIGIN], "origin")
+                self.require_request(self.headers.get_all("Content-Type") == ["application/x-www-form-urlencoded"], "content_type")
                 self.cookies()
                 location, cookie = demo.begin()
                 self.reply(303, "", location=location, cookie=(FLOW_COOKIE, cookie))
                 demo.statuses["authorization_redirect"] = 303
                 demo.checks["authorization_redirect_issued"] = True
             else:
+                self.record_request_reason("method")
                 raise Failure("request_invalid")
         except Failure as failure:
             demo.failure, demo.done = failure.tag, True
@@ -433,7 +451,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def cookies(self):
         headers = self.headers.get_all("Cookie", [])
-        require(len(headers) <= 1, "request_invalid")
+        self.require_request(len(headers) <= 1, "cookie_header_count")
         raw = headers[0] if headers else ""
         require(len(raw) <= MAX_COOKIE, "request_limit")
         pieces = raw.split(";") if raw else []
@@ -442,9 +460,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for piece in pieces:
             name, separator, value = piece.strip().partition("=")
             if name in (FLOW_COOKIE, APP_COOKIE):
-                require(separator and name not in own
-                        and re.fullmatch(r"[A-Za-z0-9_-]{43}", value) is not None,
-                        "request_invalid")
+                self.require_request(separator and name not in own
+                                     and re.fullmatch(r"[A-Za-z0-9_-]{43}", value) is not None,
+                                     "own_cookie_shape")
                 own[name] = value
         return own
 
@@ -515,6 +533,7 @@ def main():
     stage = "arguments"
     record = {"schema": "riauth.d01-confidential-browser/v1", "result": "failed",
               "failure_stage": None, "failure_tag": None, "checks": {}, "cleanup": {},
+              "request_invalid_reason": None,
               "source": {"verifier_commit": VERIFIER_COMMIT, "verifier_blob": VERIFIER_BLOB,
                          "verifier_expected_sha256": VERIFIER_SHA256},
               "provider": None,
@@ -601,6 +620,7 @@ def main():
             record["cleanup"]["listener_closed"] = server.socket.fileno() == -1
             record["cleanup"]["connection_closed"] = server.active is None
         if demo is not None:
+            record["request_invalid_reason"] = demo.request_invalid_reason
             try:
                 demo.clear()
                 record["cleanup"]["private_references_cleared"] = True

@@ -189,3 +189,35 @@ cryptography change is accepted. The metadata establishes the concrete expected
 text correction, not a browser pass. A new full fixture requires publication,
 separate root release and fresh capacity at or above 8.5 GiB. Desktop is free;
 A09 continues to own the independent serialized Cargo slot. D01/D05 remain open.
+
+## D01 request rejection before browser execution
+
+Root fully read actual3b85ee2d000fb691c81218b9ae2cd7179b5e7102 and its private
+3374-byte mode0600 JSON (04074d4aed82df1127666305c9ab6e41faaa36cab52f34c61562b29da7ebf560).
+The one fresh fixture passed init/login/confidential registration/discovery/whoami
+and readiness, then the helper refused request_invalid before any browser was
+created or acted on. No password, consent, callback, cryptographic verification
+or protected-access outcome follows. Owned guard/server/helper were reaped, lab
+removed and both9000/3000 listeners absent; server numeric exit was not retained.
+Operator/desktop resources were released before reporting; Cargo was untouched.
+
+The retained provider preflight359-byte600 metadata
+6fad035f1897b5287b2ebd812405fcabf6a33b72d2d4f498f3bca7081eb719ab
+records matching native hash/full version/exit0 before comparison. This does not
+recover the first attempt's lost values. The second request failure lacks a
+failed predicate or sender identity; root accepts no specific controller/product
+cause and no widened request guard.
+
+Source7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238 adds a null-first private
+request_invalid_reason field and15 fixed labels only. Root fully read source
+and123-line evidence6e4739d473569d95ef3468012b0a020b3e05d9e7. An independent
+AST normalization removed exactly diagnostic nodes and regrouped the original
+short-circuit predicates: the entire module AST equals reviewed16395f1. Root
+checked all literal labels against the whitelist and compiled a code object
+in memory without execution/import. Source SHA-256 is
+ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd.
+No raw request/header/host/path/query/cookie/method/Origin/error/sender is added.
+Existing failure tag, replies, flow/crypto/provider/limits remain unchanged.
+The first failed fixed predicate can be observed only in a separately released
+fresh fixture after publication; old evidence is not augmented retrospectively.
+D01/D05 remain open. O06/I10/R05 remain closed.

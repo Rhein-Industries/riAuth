@@ -904,3 +904,299 @@ remain an exact prefix; committed source and retained diagnostic bytes/hash/mode
 are unchanged. Pending scope contains only this report, balanced Markdown
 fences and final newline pass, and `git diff --check` passed. No runtime was
 used for these document checks.
+
+## Separately released full-version fixture: stopped before browser — 2026-10-02
+
+**The one released fixture exited 1; no application/browser checkpoint ran.**
+Root reviewed/published source `16395f1` and evidence `fb9f474` at main
+`9b8956f7b2a9961b14e313fa57c0f5214a136772`, with root review `3a7aa16`, then
+released exactly one new confidential Local demo fixture. This phase used that
+reviewed helper without edits. Operator setup succeeded, but the helper failed
+with `request_invalid` before any isolated browser/profile/session action.
+The outer guard stopped immediately, cleaned its owned resources and exited 1.
+There was no retry, correction, alternate provider or substituted browser pass.
+Desktop/operator release was sent before this evidence append; Cargo was
+neither acquired nor released.
+
+### Exact inputs and successful setup observations
+
+Own HEAD at entry was `fb9f474db779fb655b43026f1089be19661bb645`; no merge to main
+occurred. The helper remained blob `37c9136850c2522da1eaa5f31f8b94e70acc0886`,
+651 lines / 29970 bytes, SHA-256
+`f94af72ab613bc332ea684e5c4244c38d53c6540e1ea3d883938aecd265ec6fc`.
+All three c01 artifact hashes in the table above were freshly recomputed and
+matched before use. The pinned `9cefe7a` verifier bytes were read from Git,
+matched `f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d`,
+and were materialized only as a disposable owner-private lab input.
+
+Published guide sections 2/3 were reread directly for normal init/password
+setup and confidential registration. Guide blob remains
+`e48371d3a34a7b6441cbcfce700daf954aa5f2ae`, SHA-256
+`9df3c2861984751d48b28d284cfb47c07801fd3934072e2ccb829edeb35579a0`.
+The published OIDC profiles artifact was identity-checked as blob
+`d9f222a7eec7b2998db800ec15d6b1bfc2b7cee5`, SHA-256
+`ed1ae74c792e5e35da8d8a939cbe1b37a58392519f808d79066957451528d29b`;
+this identity check is not a new whole-body review or protocol execution.
+
+The guard required unused 9000/3000 listeners and fresh capacity at least
+8.5 GiB before setup, then created exactly one fresh owned `0700` lab with
+private XDG, credential directory and RP workspace. Child environment retained
+only the five sanitized inherited keys plus fresh `XDG_CONFIG_HOME`. A synthetic
+password was supplied through hidden PTY prompts, never argv/environment or
+printed output. CLI stdout/stderr were discarded after bounded in-memory
+handling. No policy/config/review/header/receipt bypass was supplied.
+
+| Operator setup command | Actual exit / observation |
+| --- | --- |
+| `riauth-maintenance ... init --issuer http://localhost:9000 --listen 127.0.0.1:9000 --data-dir data --admin admin` | 0; two hidden password prompts |
+| `riauth ... serve` | Started owned PID 15737; only listener owner on 9000 |
+| `GET http://127.0.0.1:9000/readyz` | 200 |
+| `riauthctl --server http://localhost:9000 login admin` | 0; one hidden password prompt; operator setup only |
+| `riauthctl ... client create local-demo --name 'Local demo' --confidential --redirect-uri http://localhost:3000/callback --scope openid,profile --secret-file ...` | 0; new credential file mode 0600 |
+| `riauthctl ... discovery` | 0 |
+| `riauthctl ... whoami` | 0 |
+| Reviewed helper, exactly one invocation | Owned PID 15749; only listener owner on 3000; later exit 1 |
+
+The native provider resolved to the same pinned 880512-byte binary and matched
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+One five-second preflight `version` call returned 0, 63 ASCII stdout bytes
+containing the exact full app/library text plus newline, and zero stderr bytes;
+there was no timeout. Before exact comparison, the guard flushed/fsynced that
+observation into exclusive `0600` metadata:
+`deployment-private/d01-confidential-browser-provider-20261002.json`,
+359 bytes, SHA-256
+`6fad035f1897b5287b2ebd812405fcabf6a33b72d2d4f498f3bca7081eb719ab`.
+The helper independently performed its existing version check and reported
+`provider_identity_verified: true` with the full pinned version. Thus this
+fixture includes the retained preflight version call and the helper's own
+version call; it is one fixture, not a claim of one total native invocation.
+No RS256 verification execution is credited.
+
+### Actual helper failure and scope of diagnosis
+
+The helper's redacted result is **failed**, exit **1**, stage **`request`**,
+tag **`request_invalid`**, elapsed **9.247 seconds**. Its first three checks
+passed: `credential_private_validated`, `provider_identity_verified` and
+`discovery_verified`. Every subsequent check is false:
+
+| Browser/protocol check | Actual value |
+| --- | --- |
+| `protected_without_cookie_denied` | false |
+| `authorization_redirect_issued` | false |
+| `state_issuer_flow_cookie_verified` | false |
+| `confidential_s256_exchange_verified` | false |
+| `rs256_jwks_issuer_audience_nonce_time_access_hash_verified` | false |
+| `userinfo_subject_verified` | false |
+| `protected_with_fresh_cookie_accepted` | false |
+
+All six helper HTTP status fields are null: protected before/after,
+authorization redirect, callback, token exchange and userinfo. No worker browser
+request to the RP, password sign-in, empty-factor submission, Local demo consent,
+callback or fresh protected 200 occurred. The readyz/discovery/operator calls
+above are not user authentication substitutes.
+
+Source-only inspection after cleanup read `Handler.handle_one_request`,
+`send_error`, cookie parsing and routing. `request_invalid` can arise from HTTP
+parsing or several finite header/target/method/cookie guards. The retained result
+does not distinguish those branches, identify a request origin or retain a
+request line/header. It does not justify attributing the failure to the product,
+an external actor, a specific browser request or a particular predicate.
+No exact guard correction is proposed without that missing cause evidence, and
+no raw request/query logging or relaxed guard is authorized here. Root must
+adjudicate the helper failure and any separately scoped diagnostic/source
+reservation before another fixture. This phase performed no diagnostic rerun.
+
+### Driver preparation, budget and cleanup
+
+Before any GUI action, the cua-driver skill, relevant MACOS/BROWSER/RUNTIME
+instructions and live tool schemas were consulted. Initial large tool/file
+output was truncated; narrower schema and relevant-section reads followed.
+The four instruction hashes remain the values recorded above. RiWork read-only
+status reported Driver **0.30.4**, the expected CuaDriver executable and ready.
+MCP permission read reported Accessibility/Screen Recording granted, with
+direct capture unprobed; MCP recording state was disabled/inactive. No history
+tools were advertised.
+
+Because the helper failed first, no `start_session`, `browser_prepare`, binding,
+navigation, click/type, screenshot, recording, browser logout or `end_session`
+was issued. No Driver-owned browser/session was created to kill or end. This
+does not claim cleanup of shared or personal Driver resources. The sole future
+desktop provider remains RiWork Cua.ai Driver MCP.
+
+The outer active/cleanup budgets were 840/60 seconds; the helper cap was 600,
+pending cap 180, native/HTTP caps five seconds and CLI caps 60. The inclusive
+outer elapsed value was **323.837 seconds**, measured from a conservative start
+that includes a 60-second allowance for initial instruction/tool reads before
+the first recorded clock. The actual cleanup completed at
+`2026-10-02T14:57:48.022112+00:00`, within the 900-second bound. It is not a claim
+that the helper itself ran for that duration.
+
+One-second outer disk monitoring began at guard preflight, with **11 samples**
+and minimum **11915264000 bytes / 11.096954 GiB**. The helper's own scheduled and
+phase-entry observations recorded **53 samples**, minimum **11915100160 bytes /
+11.096802 GiB**. Both observed minima exceeded the 8.5 GiB stop margin and 8 GiB
+floor. No disk deletion was performed. No continuous minimum is claimed during
+the earlier instruction-read period before the guard.
+
+The guard's `finally` reaped its recorded children, closed processes/listeners
+and removed the whole fresh lab/XDG/store/credential/password/session/verifier
+input. The helper reported `listener_closed`, `connection_closed`,
+`private_references_cleared` and `verifier_temporaries_removed` all true.
+Fresh readbacks found guard PID 15561, server PID 15737 and helper PID 15749
+absent, both port checks exit 1/no listeners, and the lab path absent. Server
+termination/reaping is proven; its numeric exit was not retained and is not
+claimed. No unrelated process was killed. No Python memory or Driver profile
+erasure is claimed.
+
+The retained outer/helper result is exclusive `0600`,
+`deployment-private/d01-confidential-browser.redacted.json`, 3374 bytes,
+SHA-256 `04074d4aed82df1127666305c9ab6e41faaa36cab52f34c61562b29da7ebf560`.
+It preserves the helper failure beneath outer stage `browser_checkpoint`,
+tag `rp_nonzero`; no result was rewritten as passed. Both new metadata files
+are private/ignored, and no secret/query/raw exception or screenshot is retained.
+
+### Immediate release and remaining gate
+
+The explicit-project orchestrator release send exited 0 immediately after
+cleanup/readbacks and before this append: **DESKTOP/OPERATOR RUNTIME RELEASED**.
+No Cargo slot was acquired or released; the independent CI lane is unaffected.
+The source/provider/helper remain unchanged and this phase grants no rerun.
+The remaining bounded application journey has no browser outcome yet. This
+failure does not replace the earlier dated D01 password-browser/R05 evidence,
+recover the first lost version values, erase the reporting correction or
+change root-owned D01/D05 classification. O06/I10/R05 remain DONE.
+
+Only this report is appended. No source/helper/product/guide/D05/test/config/
+state edit, Cargo/build/test, policy reload, main/push/status/merge/reset, new
+worker/task/worktree/shell or other-worker contact occurred. All accepted
+receipt/header/PAM/removal/audit and held Group/nonrenewed 60-second/paused-I/O
+contracts remain unchanged.
+
+Evidence-append checks passed: all 58457 bytes of preceding `fb9f474` report
+remain an exact prefix, reviewed helper bytes/hash are unchanged, and both new
+private metadata files retain their actual bytes/hash and mode 0600. Only this
+report differs, Markdown fences/final newline pass, and `git diff --check`
+passed. These checks invoked no fixture or provider again.
+
+## Reserved request-rejection diagnostic, source only — 2026-10-02
+
+Root fully read the preceding actual fixture evidence/private JSON and request
+guards, found no identifiable failed predicate or sender, and reserved
+`wave30_D01_request_rejection_diagnostic` for source only. This phase adds one
+private evidence field, `request_invalid_reason`, initially null. It records
+only the first fixed whitelisted request-rejection label. No helper, provider,
+operator command, listener, Driver, browser or runtime was executed here. The
+failed fixture remains failed and its historical reason remains unidentified.
+
+Source commit **`7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238`**, parent
+`3b85ee2d000fb691c81218b9ae2cd7179b5e7102`, changes only
+`scripts/d01-confidential-browser-demo.py` (36 insertions / 16 deletions).
+Result: mode `100644`, 671 lines / 31162 bytes, blob
+`62460c2f4515a325bb65fc430649b904e8bb2c10`, SHA-256
+`ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd`.
+The original source for equivalence is reviewed `16395f1`, blob
+`37c9136850c2522da1eaa5f31f8b94e70acc0886`, SHA-256 `f94af72a...` above.
+
+### Exact finite mapping and first-reason preservation
+
+| Fixed label | Original rejected predicate / unchanged control-flow position |
+| --- | --- |
+| `http_parse` | Parser `send_error`; original code/status/failure-tag assignment and reply follow unchanged |
+| `host` | `headers.get_all("Host") == [AUTHORITY]` |
+| `authorization` | `headers.get_all("Authorization") is None` |
+| `transfer_encoding` | `headers.get_all("Transfer-Encoding") is None` |
+| `expect` | `headers.get_all("Expect") is None` |
+| `content_length` | `headers.get_all("Content-Length") in (None, ["0"])` |
+| `target_scheme` | `not target.scheme` |
+| `target_netloc` | `not target.netloc` |
+| `target_fragment` | `not target.fragment` |
+| `method` | Same existing `GET` / `POST` branches, otherwise the original `Failure("request_invalid")` |
+| `post_target` | `target.path == "/login" and not target.query`, preserved as one compound condition |
+| `origin` | `headers.get_all("Origin") == [ORIGIN]` |
+| `content_type` | `headers.get_all("Content-Type") == ["application/x-www-form-urlencoded"]` |
+| `cookie_header_count` | `len(headers) <= 1`, before existing cookie-size/piece limits and own-cookie loop |
+| `own_cookie_shape` | Same compound separator / absence of duplicate own name / exact 43-character cookie regex, in the existing own-cookie loop |
+
+The header predicates still run in the five-row order above, followed by the
+three target predicates. POST retains target, Origin, type order. The own-cookie
+compound retains all three operands and their short-circuit order. Each failed
+new `require_request` call records its fixed label then immediately raises the
+same `Failure("request_invalid")`, so later predicates are not evaluated after
+an earlier rejection. Parser `send_error` records only `http_parse`; method
+rejection records only `method` before its unchanged raise. Existing request
+limits, parser behavior, exceptions, timeouts and accepted/refused sets remain.
+
+The recorder assigns only when the in-memory reason is null **and** the supplied
+label belongs to the 15-name whitelist. Every call site supplies a fixed literal
+from that set, with only the internal recorder forwarding its `reason` argument.
+There are exactly two writes to the in-memory property: initialization to null
+and this guarded first assignment. Main initializes the private JSON field to
+null and copies that property once in finally before clearing private references.
+No response/cleanup branch resets or replaces it. Unknown labels cannot be
+stored. No request line, header, Host, path, query, method, cookie, Origin, error
+text or sender information is added to output. Existing stdout summaries are
+unchanged; only the owner-private JSON gains the one field.
+
+### Actual static proofs, no execution
+
+The source-only verifier parsed both full modules, then normalized the new AST
+by removing exactly the whitelist, two diagnostic methods, null initialization,
+one private JSON key/copy and two fixed parser/method marks. It regrouped only
+the five approved predicate runs into their prior `require(..., "request_invalid")`
+conjunctions, flattening the POST-target compound into the original four-operand
+conjunction. The resulting **entire module AST exactly equals the original AST**
+without source-position attributes. This covers original predicates, their
+ordering/branch nesting, public responses, other outputs and all other logic.
+The normalization collector visits nested bodies first; its internal run list
+is a traversal detail, not a claim that own-cookie shape executes before the
+header-count guard. Original branch nesting/order is established by the full
+restored-AST equality.
+
+The new rejection helper, with its diagnostic call removed, also has exactly
+the old `require` function body after substituting the fixed original tag.
+Whitelist membership, all fixed-label call sites and null-first assignment
+shape were checked directly in the AST. The private key has exactly one added
+initialization and one final copy; no additional output-field change survives
+the normalization proof.
+
+Byte comparisons independently verified **28 existing functions** unchanged,
+including credential/verifier loading, every Budget method, Demo provider setup,
+authorization begin/callback/clear, HeaderReader, DemoServer, protected access
+`Handler.get`, replies/CSP/cookies in `Handler.reply`, quiet logging and
+`QuietParser.error`. Only Demo initialization, three instrumented Handler methods and main's
+new private field/copy differ, plus the two new diagnostic methods. The full
+pinned version/hash, flow/native crypto, five-second operations, real deadlines,
+cleanup, protected 403/200 predicates and client-secret contracts remain exact.
+
+In-memory `compile(source, filename, "exec", dont_inherit=True)` passed. The
+code object was not executed; the helper was not imported and no bytecode was
+written. Scope and `git diff --check` passed before source commit. All prior
+68899 report bytes were unchanged at that point. Retained failed-fixture JSON
+`04074d4a...`, separate diagnostic `8f47d8fb...` and fixture provider metadata
+`6fad035f...` matched their complete SHA-256 pins and mode 0600 on readback.
+No metadata was augmented retrospectively with a new reason.
+
+### Remaining input and held runtime
+
+This source provides a bounded predicate category for a future separately
+released rejection; it cannot identify sender or reconstruct the prior failure.
+No concrete controller defect or product cause is established by these static
+proofs, and no controller behavior/guard relaxation is changed or proposed here.
+Root must immutably review/publish this source and separately release any exact
+fixture before execution. This source reservation acquires/releases no runtime
+or Cargo slot. RiWork Cua.ai Driver MCP remains the sole future desktop provider.
+
+Only the reserved helper source and this append-only report change. No other
+helper/product/guide/D05/config/state/test edit, provider/CLI/server/listener/
+HTTP/Driver/browser/session/Cargo/build/test run, main/push/status/merge/reset,
+new worker/task/worktree/shell or other-worker contact occurred. First-refusal
+lost values/reporting correction, actual failed fixture and dated D01/R05
+observations remain preserved. Root owns D01/D05 interpretation; O06/I10/R05
+stay DONE. Receipt/header/PAM/removal/audit and held Group/nonrenewed
+60-second/paused-I/O protections remain unchanged.
+
+Evidence-append checks passed: all 68899 bytes of `3b85ee2` remain an exact
+prefix; committed diagnostic source and all three private historical metadata
+files retain their bytes/hash/mode. Only this report differs, Markdown fences
+and final newline pass, and `git diff --check` passed. No source import,
+provider call or runtime execution was used for these document checks.

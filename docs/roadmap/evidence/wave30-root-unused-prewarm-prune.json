@@ -1,0 +1,139 @@
+{
+  "schema": "riauth.root-regenerable-cache-prune/v1",
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "at": "2026-10-02T15:26:12.949557+00:00",
+  "inventory_sha256": "b5fd6399c9fc1b2a47498eba342d58956aa8cf8e3bb3dff5e17d75e83831c113",
+  "review_sha256": "79fc75dc406f264fe08cb279a3cb3fcf619947be845cef91767d78803dfbe250",
+  "historical_nonexecution_source": "existing CI worker immutable64-candidate manifest; no root historical replay",
+  "files": [
+    {
+      "basename": "browser_signin-8d59a3fcd5e6426e",
+      "size_bytes": "203225712",
+      "sha256": "f165df453ff5dee6868dd4de03267b7e1f74d98a80610d27b563226b2e0fb71f",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:33:40",
+      "verified_fingerprint_sha256": "4dfbfaa614aec67cb8bf105f18d0efc8274731b4ff9247dc4f13b765c0e3fd2a"
+    },
+    {
+      "basename": "pam_management-5c221dc71aa1c5ad",
+      "size_bytes": "203175344",
+      "sha256": "501260b2fc78dc3fcb5c7743e6c4191ba67167100352f91ef4a9f5f2c4805956",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:32:03",
+      "verified_fingerprint_sha256": "2576995547ac1f916709a3e21835a2457fdff079a3c12bc2dba9a83eef110025"
+    },
+    {
+      "basename": "reviewed_client_status-8a44f8bfd92b9dae",
+      "size_bytes": "203092752",
+      "sha256": "209921c6013d482e502ce2c4c49cb68c3460ca5a4aee7bbca6fe36235fba8259",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:31:51",
+      "verified_fingerprint_sha256": "9e6bb644284c7bf8f2e55c499890541904e881f6563c62a96b6189ba1efc432b"
+    },
+    {
+      "basename": "reviewed_client_creation-5357853c8658208a",
+      "size_bytes": "202949440",
+      "sha256": "135c28eb5e0fd1542ea7ba01fff2b38d672eaf73321731e17c9d392a39ad5135",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:34:40",
+      "verified_fingerprint_sha256": "86b9633b8c2bdb42955fd42900785a7d7ae0b97d9541324790f27c18727fcb65"
+    },
+    {
+      "basename": "reviewed_memberships_postgres-fe33dfc7ddfa7ebb",
+      "size_bytes": "202891248",
+      "sha256": "5a4c2eafc01ba421b81949568b350c18f8405d3ed2a05083b1500b6313b9f14e",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:34:37",
+      "verified_fingerprint_sha256": "19c3ed0dc437b539be6c6d9d2070b201dbe1e4c0a50b8e6302cf4184320cc408"
+    },
+    {
+      "basename": "background_logout-0b2cca297e40b630",
+      "size_bytes": "202841664",
+      "sha256": "f27a77c6e8ec6906cd50f20607ad0b8d785d96fc2d753b840f90ab853d7d0c7c",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:31:17",
+      "verified_fingerprint_sha256": "85e2b74e676d2f3f8ab470be9d6f9d7944c2540197165737886f7a983304b457"
+    },
+    {
+      "basename": "totp_management-3631aae8519f0e91",
+      "size_bytes": "202784464",
+      "sha256": "d0f80a36090d17285c6a17725b71e71ee260f7e63f2befd365f55b2bead9aba0",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:33:33",
+      "verified_fingerprint_sha256": "d4bd7dbda771c36937d467a3cc1cdb163f5065e35a2ff70c5ca91293e81d5139"
+    },
+    {
+      "basename": "workflow_configured_source_totp_api-9bb761a1900f04ed",
+      "size_bytes": "202683760",
+      "sha256": "1cf802e34b7a1954a8e6e858652be117c35fb82be5b8a82adaf4a712d8aa887a",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:33:46",
+      "verified_fingerprint_sha256": "f5daac5834c27618b86e03eb26e5df4afe02676c1528e40a205faf72a27855d1"
+    },
+    {
+      "basename": "browser-580e5656fb168b03",
+      "size_bytes": "202467856",
+      "sha256": "40a95847d45956c543e8dd0ca710c780fe83a07acd96094b207e7f64efb2a270",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:32:08",
+      "verified_fingerprint_sha256": "4154ac42a59f921546047cefd8c80c1cdeb0dc623c6b563dc568931cb12e70d8"
+    },
+    {
+      "basename": "portal_browser-612515049607a4af",
+      "size_bytes": "202384976",
+      "sha256": "039688aff8f2336bfd1b2facda14ba13fe28a6910296d4ae5672a71741641437",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:31:33",
+      "verified_fingerprint_sha256": "b68bae709c719ef1146343eae54a8288f3c577ea1ee362f25d728b4935143e4f"
+    },
+    {
+      "basename": "ssf-cd5fd38d290b55e0",
+      "size_bytes": "202356848",
+      "sha256": "60d944dff6c71cf1465af050fbc063dfb1708ea0ef31169ebaa3069bfdfd5312",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:33:35",
+      "verified_fingerprint_sha256": "def364509ec272b49f60c718e92dc161f75b8f7f68776051779cb804c38b5c5c"
+    },
+    {
+      "basename": "password_browser-b2d227792ba40e32",
+      "size_bytes": "201983312",
+      "sha256": "86f1f944c1d6eddf9780be254b099740d441c6ee8db64cd530f0e04156fe1985",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:34:13",
+      "verified_fingerprint_sha256": "f7ad1ea1bb055f2dc89bc54685ba7d6be7e08b84d957b946ce533dbc7b0d2d47"
+    },
+    {
+      "basename": "invitation_passkey-44160c94adb5743f",
+      "size_bytes": "201547264",
+      "sha256": "edc481fb8c3af8b5c8fd9b4ce12f3f0b9c935c3ce317467b7ffffa2d12c54173",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:34:33",
+      "verified_fingerprint_sha256": "e88d32a58c2edd25199a931b0a83d1e4ae9ab7875965fba25dea6f2576844a6a"
+    },
+    {
+      "basename": "reviewed_memberships-ae916f41e5d9b9e7",
+      "size_bytes": "201372992",
+      "sha256": "86e4935186729d70fb0ac2dbdc135b283f3a142c1d53581e64964d7be1c4a19e",
+      "features": "default,essentials,platform,test-support",
+      "mtime_local": "2026-10-02T04:33:43",
+      "verified_fingerprint_sha256": "de8ad3c84a383c5576500b7589d5007ffc5b1b68552be7d448186dd951d6d444"
+    }
+  ],
+  "result": {
+    "schema": "riauth.root-regenerable-cache-prune-result/v1",
+    "at": "2026-10-02T15:26:12.949557+00:00",
+    "review_sha256": "79fc75dc406f264fe08cb279a3cb3fcf619947be845cef91767d78803dfbe250",
+    "selected_bytes": 2835757632,
+    "exact_path_count": 14,
+    "rm_exit": 0,
+    "all_absent": true,
+    "deps_before": 2043,
+    "deps_after": 2029,
+    "free_before_bytes": 11712270336,
+    "free_after_bytes": 14548258816,
+    "inventory_preserved": true,
+    "other_deletions": false
+  },
+  "verification_correction": "first guard used test basename instead of riauth-hash fingerprint directory; failed before any mutation, actual Cargo fingerprint path corrected",
+  "authorization_exhausted": true
+}
