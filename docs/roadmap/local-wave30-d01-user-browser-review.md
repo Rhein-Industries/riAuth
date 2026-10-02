@@ -5654,3 +5654,673 @@ WT/shell or other-worker contact occurred. No Cargo lane was touched.
 Desktop/operator cleanup is complete and released; all future runtime remains
 HELD pending a separate root decision. Historical copy-mode handoff refusals
 are retained; no input-mode workaround or automatic handoff retry is made.
+
+## Dated design phase: immediate observation and owned cleanup, 2026-10-02
+
+Reservation wave30_D01_immediate_observation_cleanup_plan owns ONLY this
+append. This is a prospective orchestration design, not a source implementation,
+fixture release or run. No desktop/operator/Cargo slot is acquired or released.
+The complete c88 report and all twelve retained private records remain dated
+and unchanged. In particular, protected403/generic unexpected_failure/zeroAuth,
+no journey and final absence about119s after controller completion remain the
+actual c88 outcome. The earlier60s cleanup limits are not repaired retroactively.
+
+The ONE proposed seam moves the application-root navigation, fresh semantic
+observation and conditional cleanup into a single composed functions.exec cell.
+The failed observation is projected to fixed booleans/labels, its return wall
+clock is latched synchronously, and the first failure is stored before any new
+await, text, notification, yield_control, report formatting or model turn.
+That same cell immediately requests the original own-lab stop protocol and
+finishes essential owned cleanup before returning its redacted failure result.
+There is no model decision between the known failed observation and cleanup.
+
+### Exact future sequence and deliberate limits
+
+Pre-start descriptions/skills/schema/health and the original fixture preparation
+remain outside this observation cell. Future root release must still declare
+fresh absent0600 observation/output paths, freshly match artifact/provider
+pins, measure capacity, prepare/bind one isolated_new Driver target at the180s
+gate, create its exact private marker after guard/server liveness, and prove
+fixture_ready/exact own helper3000 plus the initial browser protected403.
+The archived cell starts at the next normal application-root navigation.
+It does not launch a controller/helper/browser or repeat setup.
+
+1. Read ONLY the original controller's exact exec session once. Retain received
+   wall time and numeric exit projection before comparisons; parse its bounded
+   fixed helper_completed/fixture_finished events. A helper failure or controller
+   completion before this app checkpoint latches the first fixed failure.
+2. If still live, navigate the same exact Driver target/tab to the existing
+   public application root; a returned refusal/exception latches a fixed failure.
+3. If still live, obtain one fresh semantic_v2 snapshot with no screenshot.
+   Retain only fixed flags. The known generic failure phrase triggers immediate
+   application_page_failed. Unknown/incomplete status, missing Local demo
+   heading or missing interactive click ref fails closed as unconfirmed; it is
+   not product blame or a success inference. A passing projection proves only
+   this observation, not sign-in/consent/callback/crypto/fresh protected200.
+4. If still live, read the original controller session once more. A helper
+   failure/completion or controller completion also enters the same path.
+5. On the first failed observation, persist the observation clock in one new
+   exclusive0600 file and write only the original own-lab ui-failure/stop zero
+   markers if that exact owned lab still exists. Do not recreate a removed lab.
+   Metadata-write failure is separate and does not skip the original stop.
+6. Immediately kill only the proven Driver-owned browser PID once, end its
+   exact session once, then list only that PID's windows once. The unchanged
+   controller concurrently runs its original owned-child finally after stop.
+7. Join ONLY its original exec session, observe exact cached own PIDs and
+   9000/3000/lab absence, read its original redacted numeric child exits, retain
+   clocks/exits before comparisons, and write one new exclusive cleanup record.
+   No unrelated PID/signal, direct browser signal, replacement service or extra
+   cleanup attempt is introduced. No file deletion occurs in the new collectors.
+8. Return only the fixed failure and cleanup projection. A truthful resource
+   release requires the numeric original controller join, seven child records,
+   own PID/listener/lab absence, zero own windows and ended session. A missing
+   proof is returned as unresolved; no success/release receipt is invented.
+
+Controller polling is output observation, not another RP HTTP request/probe.
+It uses the advertised empty write_stdin polling yield5000; that is not a
+process deadline. A failed poll is not automatically retried: further join
+polls are disabled and the result remains unproven. Normal running-session
+polls continue essential joining, even after the nominal60s cleanup allocation,
+up to the existing inclusive900 wall deadline as observed between calls.
+No journey continues after a failure. No Promise.race/discarded promise,
+isolate termination or unavailable cancellation is used as proof of stopping
+an in-flight operation.
+
+All Driver calls are awaited and serialized. Consequently this design can
+react to a helper/controller event when the exact poll returns, and to a UI
+failure when the exact navigation/snapshot returns. It cannot observe the
+controller while blocked in an unbounded Driver call, or run a watchdog after
+the composed cell has returned to the model. Before/after polling bounds
+ordinary gaps by actual tool returns, not a new universal detection guarantee.
+An unreturned MCP operation remains unresolved; no overlapping Driver kill,
+second controller or force interruption is invented.
+
+The archived cell's stage predicate is application-root only. The same
+latch-before-yield rule must wrap each later, separately reviewed printed
+journey step; this archive does not invent those stage predicates or a whole
+scripted browser journey. Root can reserve such a concrete composition with
+its existing journey steps after source review. This seam does not diagnose
+the helper failure or substitute a service/API session for browser behavior.
+
+### Owned context and exact advertised calls
+
+The future single cell reads d01_immediate_owned_handles from the same isolate
+session store, created ONLY from that future attempt's returned preparation/
+binding/fixture-ready receipts. Required values are:
+
+| Field | Exact meaning |
+| --- | --- |
+| workspace | This existing WT's absolute path |
+| runtime_release / driver_owned / exact_bound / single_controller | All true only under a fresh root release and returned ownership/binding proof |
+| fixture_ready / listener_pid_proof / fresh_paths_preflight | Fresh true receipts, exact own9000/3000 PIDs and absent output paths |
+| guard_pid / server_pid / helper_pid / browser_pid | Four distinct positive exact returned own PIDs |
+| exec_session | Original controller's exact exec_command session ID; never another task |
+| session / target_id / tab_id | Exact returned Driver-owned lifecycle/target/tab identifiers |
+| start_epoch_ms | Once-started original inclusiveSTART in exact safe integer milliseconds |
+| lab / outer_out | Exact fresh own lab and unchanged controller's fixed result path |
+| event_out / cleanup_out | Two NEW absent deployment-private paths reserved before a future run |
+
+Prospective path names for root reservation are
+deployment-private/d01-confidential-browser-immediate-observation.redacted.json
+and deployment-private/d01-confidential-browser-immediate-cleanup.redacted.json.
+Neither path is created or checked by a runtime invocation in this phase.
+Fresh controller/provider outputs are also a future root decision, not reuse
+of any historical output. Exclusive O_EXCL/O_NOFOLLOW protects existing records.
+
+The c88 historical context was guard7480/server7637/helper9879/browser9690,
+window103554, original exec session16673 and Driver session
+d01-budget180-checkpoint with target
+bt-30a830b4-18ec-48d8-aa10-1c62b2bb7dd4 and tab
+tab-a95fdd8c-894a-4ca0-8e12-61f505c07486.
+Those are past identifiers, all already absent/ended. The source intentionally
+does not reuse them: future context must be fresh exact returned identifiers.
+A missing ownership context refuses the proposal; it grants no right to kill
+an arbitrary/personal process. The exact fixture lifetime is the ownership
+scope, not a broad process-name/argument/environment search.
+
+Actually reread advertised descriptions in this design phase:
+browser_navigate(session,target_id,tab_id,url);
+get_browser_state(session,target_id,tab_id,snapshot_format,include_screenshot);
+kill_app(pid); end_session(session); list_windows(pid).
+No timeout/cancel parameter is advertised. No Driver command/session/state/
+health/browser call ran. No alternate provider/CLI Driver/CDP/Playwright/
+AppleScript/screenshot/input-mode workaround is introduced.
+
+The direct proven-owned disposable kill is the user's explicit cleanup choice;
+it does not widen the normal skill's cooperative-close or process ownership
+rules. The exact local collectors use only stdlib, original marker writes,
+numeric-only ps/lsof observations, the original fixed redacted result and
+exclusive evidence writes. They neither import/execute the helper nor invoke
+a provider, CLI, API, browser/sign-in substitute or native crypto.
+
+### Clock and failure contract: no retrospective first-event claim
+
+The first tool-return wall clock is Date.now, a safe integer in milliseconds,
+latched synchronously in the same composed call. Its received-time flag/exit
+projection is retained before any outcome comparison. The first failure label
+is write-once; subsequent controller events/cleanup errors cannot overwrite it.
+
+Before any Driver cleanup, the local collector captures shared-host
+time.monotonic_ns/time.time_ns, attempts exclusive first-observation persistence
+BEFORE marker/state/budget comparisons, and returns the clock plus finite
+marker/evidence state. The synchronous observed wall clock precedes this local
+monotonic latch; tool invocation/bookkeeping latency is not silently discarded.
+No model/report delay is inserted between the two.
+
+Clocks cross JavaScript as bounded decimal strings; final persistence converts
+them directly to Python signed64-bit integers. This prospective encoding avoids
+new JS Number rounding of wall epoch nanoseconds. It does not rewrite c88's
+already rounded wall integers or any old record. Per-action start is retained
+before its Driver call; returned end/result is retained before elapsed/budget
+comparison. Exact shared monotonic durations cover collector latch through
+final readback. Received-observation-to-final wall milliseconds are recorded
+separately and remain subject to wall-clock adjustment.
+
+The observed first event is still an OBSERVATION, not necessarily the earliest
+actual helper/controller cleanup event. No controller timing insertion is
+proposed. first_event_proven and whole_cleanup_within60_proven remain false
+in this archive, even if the observed interval is under60s. A future true
+first-event proof would need separately reserved source evidence. Historic
+unknown/null anchors and c88's119s delayed readback remain unchanged.
+
+The fixed observational allocations are Driver kill30s, end15s, windows5s,
+then nonnegative remaining-to60 for original join/readback. No allocation is
+passed as a fictitious MCP timeout. Actual over-allocation is recorded only
+after an awaited call returns. Essential cleanup is continued if late.
+Local exec yield10000 is also a tool return/yield observation, not a hard
+command deadline; a still-running collector yields local_pending/unconfirmed
+rather than being treated as completed. Numeric collector exit/session
+receipts are retained before comparison; an unjoined collector suppresses the
+resource-release projection even if the cached primary PIDs are absent. Its
+handle is retained as unresolved, with no retry/cancellation claim. The
+cleanup-file writer's own returned numeric receipt stays in the session store
+and final projection; its already-written file is not overwritten to record
+its own post-write exit. The bounded ps/lsof subprocess calls
+use their real3s stdlib timeouts; they are readbacks, not process signaling.
+
+First journey/observation failure whitelist:
+controller_observation_invalid, helper_failed,
+helper_completed_before_app_checkpoint,
+controller_completed_before_app_checkpoint,
+controller_observation_unavailable, driver_navigation_refused,
+driver_navigation_exception, application_page_failed,
+application_snapshot_unconfirmed, driver_snapshot_exception.
+
+Cleanup errors are a separate finite list:
+clock_unavailable, clock_invalid, driver_operation_over_budget,
+driver_operation_unconfirmed, ownership_unknown, stop_unconfirmed,
+observation_metadata_write_unconfirmed, stop_or_clock_record_unavailable,
+controller_join_unconfirmed, cleanup_budget_exceeded, child_reap_incomplete,
+owned_resource_absence_unproven, owned_readback_unavailable,
+first_event_unproven, cleanup_metadata_write_unconfirmed,
+owned_local_command_unjoined.
+The local exceptions are suppressed to fixed labels; no raw message is stored.
+No request/header/Host/Origin/path/query/method/cookie/token/credential/subject/
+sender is written. Browser snapshot evidence is fixed booleans only, not raw
+outline/names/values/URLs. Controller observations are fixed flags/numeric exits
+from its bounded stdout; canonical outer/helper/provider records stay intact.
+
+The new record has fixed schema, first-failure/received clock, false anchor
+proof, clocks/actions/error list, numeric controller/child exits, exact owned
+resource booleans/counts and separate observed durations. A resource-release
+projection never grants journey/crypto credit. Complete existing failure
+metadata is preserved rather than replaced by this smaller projection.
+
+### Source pins and full unchanged-controller proof
+
+No prospective controller insertion is needed. The approved command remains
+14905 bytes/SHA256
+6662bdbb168bf0ba6ec5ff24b6f3b88dc15b54b4dfc3b800fdaca1cbee403bbb,
+193-line body14882 bytes/SHA256
+271b4a00711a084e21792b0310839e69d4fb8779fa5e6d003bde04caf0c82c72.
+The complete actual command is already archived in c88 above. Entire byte
+identity and entire AST identity are zero-delta reversal, including all nine
+functions. No line is added to that controller. Future fresh START/two result
+names require the existing literal-only reversal before any invocation.
+
+Unchanged controller guards: START+840 active/inclusive900/cleanup60;
+prepare180 once/no reset; helper600/pending180; native/HTTP5/CLI60;
+owned listener/page30;1s disk8.5stop before8floor. The original helper470 SHA
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0,
+refusal count4/first3 stateless403/fourthterminal403/postflow400,
+Host/parser/body/cookie/secret/state/nonce/S256/crypto/accepted request behavior
+remain byte-identical. No helper body diagnosis or ownership is taken here.
+
+The original c01 three binary hashes, verifier commit/blob/SHAf6dd and resolved
+providerSHA67a/full-version literal remain the c88 pins. No new runtime rehash,
+provider invocation, source/build/release claim is made from this design.
+The helper pin check is file identity only, not another helper body review.
+The distinct Sol3 diagnostic report/work is neither inspected nor contacted.
+
+### Exact composed-call source and static manifest
+
+The complete prospective executable cell follows, with no materialized
+controller/helper/harness file. It is NOT executed. Embedded Python constants
+are JSON string encodings; the readable sources below reconstruct each
+constant byte-for-byte.
+
+| Source | Bytes | Lines | SHA256 |
+| --- | --- | --- | --- |
+| clock | 114 | 2 | cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d |
+| stop | 1549 | 29 | ccc2702c4e10209952d8e5489c2974a09a7f4d6c47a3705dc89d5bb028ec3ffb |
+| readback | 1662 | 20 | 95c6fe05f0016ef302dd9c63533b95141b09ea71a661ab390c112c9e6c13ccb3 |
+| persist | 805 | 18 | 819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30 |
+| composed_js | 18091 | 284 | 0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e |
+
+```js
+// Prospective ONE functions.exec cell; NOT executed in this design phase.
+const CLOCK="import json,time\nprint(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))\n";
+const STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in ('ui-failure','stop'):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+const READBACK="import json,pathlib,subprocess,sys,time\nc=json.loads(sys.argv[1])\npids=c['owned_pids']\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nchildren=None\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    # This is the unchanged controller's fixed redacted evidence, not app data.\n    data=json.loads(outer.read_bytes())\n    allowed={'helper','whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==7 and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==7 and next(v['pid'] for v in raw if v['name']=='helper')==c['helper_pid'] and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid']:\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children}))\n";
+const PERSIST="import json,os,pathlib,sys\npath=pathlib.Path(sys.argv[1])\nrecord=json.loads(sys.argv[2])\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\ndef clocks(value):\n    if isinstance(value,dict):\n        for k,v in list(value.items()):\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\n                value[k]=int(v)\n            else:clocks(v)\n    elif isinstance(value,list):\n        for v in value:clocks(v)\nclocks(record)\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'w',encoding='ascii') as f:\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\n');f.flush();os.fsync(f.fileno())\nprint(json.dumps({'written_exclusive':True}))\n";
+const own=load("d01_immediate_owned_handles");
+const OBSKEY="d01_immediate_observation_record";
+if (!own || own.runtime_release!==true || own.driver_owned!==true ||
+    own.exact_bound!==true || own.single_controller!==true ||
+    own.fixture_ready!==true || own.listener_pid_proof!==true ||
+    own.fresh_paths_preflight!==true ||
+    !Number.isSafeInteger(own.start_epoch_ms) || typeof own.workspace!=="string" ||
+    new Set([own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid]).size!==4 ||
+    ![own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid,own.exec_session]
+       .every(v=>Number.isSafeInteger(v)&&v>0) ||
+    ![own.session,own.target_id,own.tab_id,own.lab,own.outer_out,
+       own.event_out,own.cleanup_out].every(v=>typeof v==="string"&&v.length>0)) {
+  text({proposal_refused:"fresh_owned_context_required"});exit();
+}
+const record={
+  schema:"riauth.d01-immediate-observation-cleanup/v1",
+  first_failure:null,first_observation_wall_ms:null,
+  first_event_proven:false,whole_cleanup_within60_proven:false,
+  first_clock:null,observation_receipts:[],controller_observations:[],local_tool_receipts:[],actions:[],cleanup_errors:[],
+  final_absence:null,owned_child_exits:null,controller_exit:null,
+  first_observation_to_final_wall_ms:null,latch_to_absence_ms:null
+};
+const sq=s=>"'"+String(s).replace(/'/g,"'\\''")+"'";
+const retain=()=>store(OBSKEY,record);
+const cleanupError=label=>{
+  if(!record.cleanup_errors.includes(label))record.cleanup_errors.push(label);
+  retain();
+};
+const local=async(source,arg)=>{
+  const cmd="python3 -c "+sq(source)+(arg===undefined?"":" "+sq(JSON.stringify(arg)));
+  const r=await tools.exec_command({cmd,workdir:own.workspace,
+    yield_time_ms:10000,max_output_tokens:2000});
+  record.local_tool_receipts.push({
+    label:source===CLOCK?"clock":source===STOP?"stop":source===READBACK?"readback":"unknown",
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    session_id:typeof r.session_id==="number"?r.session_id:null
+  });retain(); // Numeric collector receipt BEFORE comparisons.
+  if(r.session_id!==undefined) {
+    cleanupError("owned_local_command_unjoined");throw new Error("local_pending");
+  }
+  if(r.exit_code!==0)throw new Error("local_failed");
+  return JSON.parse(r.output);
+};
+const ns=c=>BigInt(c.monotonic_ns);
+const getClock=()=>local(CLOCK);
+let controllerJoined=false;
+let controllerPollAvailable=true;
+let controllerBuffer="";
+let cleanupStarted=false;
+let lastSnapshotFlags=null;
+function latch(label,receivedWall) {
+  if(record.first_failure===null) {
+    record.first_failure=label;
+    record.first_observation_wall_ms=receivedWall;
+    retain(); // Synchronous first-failure/wall latch BEFORE any new await/output.
+  }
+}
+function observeController(r,receivedWall) {
+  const observation={received_wall_ms:receivedWall,
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    helper_completed:false,helper_exit:null,fixture_finished:false};
+  // Complete numeric result projection is retained BEFORE comparisons.
+  record.controller_observations.push(observation);retain();
+  if(typeof r.exit_code==="number") {
+    controllerJoined=true;record.controller_exit=r.exit_code;retain();
+  }
+  controllerBuffer+=typeof r.output==="string"?r.output:"";
+  if(controllerBuffer.length>16384) {
+    latch("controller_observation_invalid",receivedWall);controllerBuffer="";return;
+  }
+  let cut;
+  while((cut=controllerBuffer.indexOf("\n"))>=0) {
+    const line=controllerBuffer.slice(0,cut);controllerBuffer=controllerBuffer.slice(cut+1);
+    if(!line.trim())continue;
+    let event;
+    try{event=JSON.parse(line);}catch{
+      latch("controller_observation_invalid",receivedWall);continue;
+    }
+    if(event.helper_completed===true) {
+      observation.helper_completed=true;
+      observation.helper_exit=typeof event.exit==="number"?event.exit:null;
+      retain();
+      if(event.exit!==0)latch("helper_failed",receivedWall);
+      else if(!cleanupStarted)latch("helper_completed_before_app_checkpoint",receivedWall);
+    }
+    if(event.fixture_finished===true) {
+      observation.fixture_finished=true;retain();
+      if(!cleanupStarted)latch("controller_completed_before_app_checkpoint",receivedWall);
+    }
+  }
+  if(controllerJoined&&!cleanupStarted)
+    latch("controller_completed_before_app_checkpoint",receivedWall);
+}
+async function pollController() {
+  if(controllerJoined||!controllerPollAvailable)return;
+  try {
+    const r=await tools.write_stdin({session_id:own.exec_session,
+      chars:"",yield_time_ms:5000,max_output_tokens:2000});
+    const receivedWall=Date.now();
+    observeController(r,receivedWall);
+  } catch {
+    controllerPollAvailable=false;
+    latch("controller_observation_unavailable",Date.now());
+    if(cleanupStarted)cleanupError("controller_join_unconfirmed");
+  }
+}
+async function timedDriver(label,allocation,operation,project) {
+  let start=null,end=null,result=null,state="unknown";
+  try{start=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label,start_clock:start,end_clock:null,allowed_ms:allocation,
+    result_state:"unknown",elapsed_ms:null,over_budget:null};
+  record.actions.push(action);retain(); // Start retained BEFORE entering Driver call.
+  try {
+    result=await operation();
+    state=result?.isError===true?"refused":"returned";
+  } catch {state="exception";}
+  try{end=await getClock();}catch{cleanupError("clock_unavailable");}
+  action.end_clock=end;action.result_state=state;
+  retain(); // End/result retained BEFORE budget comparison.
+  if(start&&end) {
+    const d=ns(end)-ns(start);
+    if(d>=0n) {
+      action.elapsed_ms=Number(d/1000000n);
+      action.over_budget=action.elapsed_ms>allocation;
+    } else cleanupError("clock_invalid");
+  }
+  if(action.over_budget)cleanupError("driver_operation_over_budget");
+  if(state!=="returned")cleanupError("driver_operation_unconfirmed");
+  if(project)project(result,state);
+  retain();
+}
+async function cleanup() {
+  if(cleanupStarted)return;
+  cleanupStarted=true;
+  try {
+    const r=await local(STOP,{
+      lab:own.lab,event_out:own.event_out,
+      first_failure:record.first_failure,
+      first_observation_wall_ms:record.first_observation_wall_ms
+    });
+    record.first_clock=r.clock;record.stop_state=r.marker_state;retain();
+    if(r.event_state!=="written")cleanupError("observation_metadata_write_unconfirmed");
+    if(r.marker_state==="stop_unconfirmed")cleanupError("stop_unconfirmed");
+    if(r.marker_state==="ownership_unknown")cleanupError("ownership_unknown");
+  } catch {cleanupError("stop_or_clock_record_unavailable");}
+  // No outstanding Driver call exists here: all page calls above were awaited.
+  // Original stop protocol already causes the controller's owned-child finally.
+  await timedDriver("kill_app",30000,
+    ()=>tools.mcp__cua_driver__kill_app({pid:own.browser_pid}));
+  await timedDriver("end_session",15000,
+    ()=>tools.mcp__cua_driver__end_session({session:own.session}),(r,state)=>{
+      record.session_ended=state==="returned"&&
+        r?.structuredContent?.active===false&&r.structuredContent.session===own.session;
+      retain();
+    });
+  await timedDriver("list_windows",5000,
+    ()=>tools.mcp__cua_driver__list_windows({pid:own.browser_pid}),(r,state)=>{
+      const windows=r?.structuredContent?.windows;
+      record.window_count=state==="returned"&&Array.isArray(windows)?windows.length:null;
+      retain();
+    });
+  let readStart=null;
+  try{readStart=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label:"owned_join_readback",start_clock:readStart,end_clock:null,
+    allowed_ms:null,elapsed_ms:null,over_budget:null,result_state:"unknown"};
+  record.actions.push(action);retain();
+  if(readStart&&record.first_clock) {
+    action.allowed_ms=Math.max(0,60000-Number((ns(readStart)-ns(record.first_clock))/1000000n));
+    retain();
+  }
+  // Continue essential join after60s if late; never claim that deadline enforced.
+  // Do not poll another exec session or send a manual process signal.
+  while(!controllerJoined&&controllerPollAvailable&&Date.now()<own.start_epoch_ms+900000) {
+    await pollController();
+    if(record.first_clock) {
+      try {
+        const c=await getClock();record.last_join_clock=c;retain();
+        if(ns(c)-ns(record.first_clock)>60000000000n)
+          cleanupError("cleanup_budget_exceeded");
+      } catch{cleanupError("clock_unavailable");}
+    }
+  }
+  if(!controllerJoined)cleanupError("child_reap_incomplete");
+  try {
+    const r=await local(READBACK,{
+      owned_pids:[own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid],
+      lab:own.lab,outer_out:own.outer_out,helper_pid:own.helper_pid,server_pid:own.server_pid
+    });
+    action.end_clock=r.clock;action.result_state="returned";
+    record.owned_child_exits=r.owned_child_exits;
+    record.final_absence={owned_pids:r.owned_pids,ports:r.ports,
+      lab:r.lab_absent,window_count:record.window_count??null,
+      session_ended:record.session_ended===true};
+    record.first_observation_to_final_wall_ms=Date.now()-record.first_observation_wall_ms;
+    retain(); // Full fixed readback/exits/clock BEFORE comparisons.
+    if(readStart) {
+      action.elapsed_ms=Number((ns(r.clock)-ns(readStart))/1000000n);
+      action.over_budget=action.allowed_ms===null?null:action.elapsed_ms>action.allowed_ms;
+    }
+    if(record.first_clock)
+      record.latch_to_absence_ms=Number((ns(r.clock)-ns(record.first_clock))/1000000n);
+    if(action.over_budget)cleanupError("cleanup_budget_exceeded");
+    const a=record.final_absence;
+    if(!controllerJoined||!Array.isArray(record.owned_child_exits)||
+       record.owned_child_exits.length!==7)cleanupError("child_reap_incomplete");
+    if(!Object.values(a.owned_pids).every(v=>v===true)||
+       !Object.values(a.ports).every(v=>v===true)||a.lab!==true||
+       a.window_count!==0||a.session_ended!==true)
+      cleanupError("owned_resource_absence_unproven");
+  } catch {action.result_state="exception";cleanupError("owned_readback_unavailable");}
+  cleanupError("first_event_unproven");
+  record.whole_cleanup_within60_proven=false;retain();
+  // Exclusive new file only; existing outer/helper/provider evidence untouched.
+  try {
+    const cmd="python3 -c "+sq(PERSIST)+" "+sq(own.cleanup_out)+" "+sq(JSON.stringify(record));
+    const r=await tools.exec_command({cmd,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500});
+    record.local_tool_receipts.push({label:"persist",
+      exit:typeof r.exit_code==="number"?r.exit_code:null,
+      session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+    if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+    if(r.session_id!==undefined||r.exit_code!==0)
+      cleanupError("cleanup_metadata_write_unconfirmed");
+  } catch {cleanupError("cleanup_metadata_write_unconfirmed");}
+  controllerBuffer="";
+}
+await pollController();
+if(record.first_failure===null) {
+  try {
+    const r=await tools.mcp__cua_driver__browser_navigate({
+      session:own.session,target_id:own.target_id,tab_id:own.tab_id,
+      url:"http://localhost:3000/"});
+    const receivedWall=Date.now();
+    record.observation_receipts.push({kind:"browser_navigation",received_wall_ms:receivedWall});
+    retain(); // Received clock BEFORE navigation outcome comparison.
+    if(r?.isError===true)latch("driver_navigation_refused",receivedWall);
+  } catch {latch("driver_navigation_exception",Date.now());}
+}
+if(record.first_failure===null) {
+  try {
+    const r=await tools.mcp__cua_driver__get_browser_state({
+      session:own.session,target_id:own.target_id,tab_id:own.tab_id,
+      snapshot_format:"semantic_v2",include_screenshot:false});
+    const receivedWall=Date.now();
+    record.observation_receipts.push({kind:"browser_snapshot",received_wall_ms:receivedWall});
+    retain(); // Received clock BEFORE any page predicate comparison.
+    const s=r?.structuredContent;
+    const nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
+    lastSnapshotFlags={
+      received_wall_ms:receivedWall,
+      status_ok:r?.isError!==true&&s?.status==="ok",
+      complete:s?.snapshot?.complete===true,
+      heading_match:nodes.some(n=>n.role==="heading"&&n.name==="Local demo"),
+      error_match:nodes.some(n=>n.name==="Local demo could not complete this request."),
+      interactive_ref_present:Array.isArray(s?.refs)&&
+        s.refs.some(n=>Array.isArray(n.actions)&&n.actions.includes("click"))
+    };
+    store("d01_immediate_snapshot_flags",lastSnapshotFlags);
+    // Finite booleans only; no outline/URL/name/value/subject/token is persisted.
+    if(lastSnapshotFlags.error_match)latch("application_page_failed",receivedWall);
+    else if(!lastSnapshotFlags.status_ok||!lastSnapshotFlags.complete||
+            !lastSnapshotFlags.heading_match||!lastSnapshotFlags.interactive_ref_present)
+      latch("application_snapshot_unconfirmed",receivedWall);
+  } catch {latch("driver_snapshot_exception",Date.now());}
+}
+if(record.first_failure===null)await pollController();
+if(record.first_failure!==null) {
+  await cleanup(); // NO text/notify/yield_control/model turn before essential cleanup.
+  text({result:"failed",first_failure:record.first_failure,
+    cleanup_errors:record.cleanup_errors,final_absence:record.final_absence,
+    controller_exit:record.controller_exit,whole_cleanup_within60_proven:false,
+    resource_release_proven:record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v))});
+} else {
+  text({result:"application_checkpoint_observed_only",
+    snapshot_flags:lastSnapshotFlags,journey_credit:false});
+}
+```
+
+Readable exact clock source:
+
+```python
+import json,time
+print(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))
+```
+
+Readable exact first-clock/original-stop source:
+
+```python
+import json,os,pathlib,stat,sys,time
+c=json.loads(sys.argv[1])
+clock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}
+record={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}
+event_state='write_unconfirmed'
+try:
+    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    with os.fdopen(fd,'w',encoding='ascii') as f:
+        f.write(json.dumps(record,sort_keys=True)+'\n');f.flush();os.fsync(f.fileno())
+    event_state='written'
+except OSError:pass
+# Attempt clock persistence BEFORE marker/state/budget comparisons.
+# A metadata error does not prevent the original essential stop protocol.
+lab=pathlib.Path(c['lab']);marker_state='lab_absent'
+try:
+    if lab.exists():
+        info=lab.lstat()
+        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():
+            marker_state='ownership_unknown'
+        else:
+            marker_state='stop_requested'
+            for name in ('ui-failure','stop'):
+                try:
+                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                    os.close(fd)
+                except FileNotFoundError:marker_state='lab_absent'
+                except FileExistsError:pass
+except OSError:marker_state='stop_unconfirmed'
+print(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))
+```
+
+Readable exact own-resource readback source:
+
+```python
+import json,pathlib,subprocess,sys,time
+c=json.loads(sys.argv[1])
+pids=c['owned_pids']
+p=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)
+ps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())
+present=set(int(v) for v in p.stdout.split()) if ps_known else set()
+ports={}
+for port in (9000,3000):
+    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)
+    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None
+children=None
+outer=pathlib.Path(c['outer_out'])
+if outer.is_file():
+    # This is the unchanged controller's fixed redacted evidence, not app data.
+    data=json.loads(outer.read_bytes())
+    allowed={'helper','whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}
+    raw=data.get('owned_child_exits')
+    if isinstance(raw,list) and len(raw)==7 and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==7 and next(v['pid'] for v in raw if v['name']=='helper')==c['helper_pid'] and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid']:
+        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]
+print(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children}))
+```
+
+Readable exact exclusive cleanup-record writer:
+
+```python
+import json,os,pathlib,sys
+path=pathlib.Path(sys.argv[1])
+record=json.loads(sys.argv[2])
+# Convert decimal strings directly to Python integers, avoiding JS Number rounding.
+def clocks(value):
+    if isinstance(value,dict):
+        for k,v in list(value.items()):
+            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):
+                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63
+                value[k]=int(v)
+            else:clocks(v)
+    elif isinstance(value,list):
+        for v in value:clocks(v)
+clocks(record)
+fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+with os.fdopen(fd,'w',encoding='ascii') as f:
+    f.write(json.dumps(record,sort_keys=True,indent=2)+'\n');f.flush();os.fsync(f.fileno())
+print(json.dumps({'written_exclusive':True}))
+```
+
+### Actual static checks, future validation and held scope
+
+Actually performed: final four Python AST parses/in-memory code-object compiles,
+final composed module node --input-type=module --check exit0 (syntax only),
+full actual controller AST/code-object parse with nine functions and zero
+byte/AST delta, archive/embedded-source identity, helper pin and all twelve
+metadata byte/hash/mode checks. Earlier in-memory source drafts were checked
+while preparing the final archive; no proposed cell or collector ran, no
+helper import/main, module payload execution or runtime case was attempted.
+
+An initial source-only rg used nonexistent skill references/MACOS.md and
+references/BROWSER.md paths and exited2. The installed sibling paths were then
+read directly; this was a documentation-path correction, not a provider switch
+or runtime retry. The repository AGENTS.md file search exited1 with no match.
+No actual fixture failure/result is revised by either read.
+
+Before any future runtime, root must review this immutable source and decide
+its new observation-file reservation and unsupported-call/true-first-event
+limits. Any later finite memory verification needs separate authorization;
+none is inferred from static syntax checks. Necessary future controlled
+validation covers: snapshot error and incomplete/unknown projection; navigation
+refusal; helper_failed/controller completion/partial JSON/exit projection;
+first-failure preservation across cleanup errors; exclusive evidence failure
+still requesting stop; each Driver refusal/exception/over-allocation; missing
+child/PID/window/session/port/lab proof preventing release; late/unreturned
+calls and collector yield remaining unresolved; full preserved-controller and
+security-pin proofs. Stub cases would not be browser/crypto journey evidence.
+No new tests, dependencies, targets or broad campaign are proposed or run.
+
+The complete341644-byte c88 report prefix/SHA
+2493b5ebf2405d624cf1c610cfd4cace0513c96708d72871c9df2ad2d004f721
+remains byte-exact. All nine historical0600 records plus the three c88 records
+remain exact, retaining failed61/76/dated memory78 limits, old senderUNKNOWN,
+lost provider values/reporting correction, all fixture/capacity/preparation/
+copy-mode failures and c88's generic failure/cleanup timing. No raw private
+value or broader process args/env is inspected. Only this report is appended
+with archive/prefix/hash/fence/final-newline/whitespace/scope checks and a
+separate immutable report-only commit. No source/helper/controller/product/
+guide/D05/config/test edit, filesystem cleanup, Driver/native/CLI/HTTP/listener/
+Cargo runtime, worker/task/WT/shell/main/push/status or contact occurs.
+D01/D05 and future runtime remain root-owned and HELD; closed rows stay closed.

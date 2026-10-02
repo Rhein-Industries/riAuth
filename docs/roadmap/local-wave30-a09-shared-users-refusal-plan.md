@@ -1,0 +1,344 @@
+# A09 shared user-administration refusal: source-first plan
+
+Project: `891e7443-8dac-4c1b-897f-9e53cb59c7ee`.
+Original task: `506e3979-a590-4af3-8fa8-ee90d3a517f2`.
+Existing worktree: `a1303b57-4a34-487e-9c63-a841f05b51a0`,
+branch `roadmap/local-workflow-safety-wave27`.
+Review date: 2026-10-02.
+Read-only source/report reservation; no helper/workflow/product ownership
+has been exercised. Own starting HEAD:
+`e4512d2deb072fa92833d7f536d2d4f67c0e8d63`.
+
+## Finding and proposed reservation
+
+The current shared probe mistakes a filtered collection read for an
+administration mutation. At the pinned product source, an authenticated
+auditor receives the permitted collection result from `GET /api/users`;
+having no matching `user.read` grant yields an empty array, not a collection
+403. This does not grant user creation or any other administration mutation.
+
+Recommend one replacement inside
+`scripts/check-local-edition-transition-postgres.py::shared_probe`:
+use the existing delegate's public CLI to attempt creation of one new
+non-administrator, with a fresh current revision and idempotency key.
+Require both the actual CLI exit 4 and its HTTP 403 / `access_denied`
+envelope. Compare complete ordered PostgreSQL Store records immediately
+before and after this refusal. Keep the existing `users_status: 403`
+sample field, now describing the actual user-create refusal, so all three
+Essentials–Platform–Essentials sample comparisons remain intact.
+
+The only corresponding workflow change would be the one fixed helper
+SHA-256 in `FIXED["imports"]`. Both exact prospective diffs and whole-file
+identities are archived below. Root must reserve these existing-file
+hunks, review the resulting immutable source, choose the distinct validator
+commit and separately authorize any remote invocation. No runtime slot was
+acquired or released in this audit.
+
+## Pins and finite supplied evidence
+
+| Role | Immutable pin |
+| --- | --- |
+| Failed remote run / job | `37054511216` / `110995799968` |
+| Workflow | `94054b3c9b674e445893b52c1d7de29703fca73c` |
+| Validator helper and imports | `30f5a8a884ec4ea398c00bde596ed8f8764a8aab` |
+| Installed product | `9a819317efb3a13fa27cd86f884be2be00898fc0` |
+
+Read the complete supplied `controller.json`, `resources.jsonl`,
+`cleanup.json` and `helper-redacted.json` under
+`/tmp/riauth-wave30-a09-shared-observer-37054511216/members/riauth-local-shared-arm64-37054511216-1/`.
+Their SHA-256 identities are:
+
+| Member | SHA-256 |
+| --- | --- |
+| controller.json | `ac641a8b52265826721366429ed0415762e243b775fbb2b5b09ee8f45f19dfac` |
+| resources.jsonl | `1504a0b6e57cc93a7638d53eb5b3dda6c5a83e4b48d8bf19f1b4337bad342a12` |
+| cleanup.json | `d3b6f9bc7107fa540408dbf195a74b00919943f8555481969ea6ccf4fdbe35e3` |
+| helper-redacted.json | `ea7793e91dfdf9fc5f1d08bacad8429368cd69cd2131927da2ccf74b330c8f08` |
+
+The controller records exit 1, first failure
+`phase_exit / focused-shared-helper / exit_code 1`, and helper elapsed
+2.803755 s. Its finite observer identifies `AssertionError` frames at
+`bootstrap.py:60`, shared helper `370 / 256 / 150`, and matrix `79`.
+Helper line 256 is the first Essentials `shared_probe` invocation; line
+150 is precisely the `GET /api/users == 403` assertion.
+The private stderr identity reported by the controller is 1,148 bytes,
+SHA-256 `2081126446f2c418a6f2d201fdccffe256b8aad4328b11af18169c46368dd6da`;
+stdout is empty. No private stderr body was read.
+
+The supplied observer does not disclose the actual HTTP result or a response
+body. The expected filtered HTTP 200/empty-array behavior is a source-derived
+explanation of this assertion boundary, not a freshly measured response.
+The first probe had already passed its delegate identity and audit-read
+checks in the sequential source before reaching line 150.
+
+Seven resource samples span 19:30:14.720535–19:30:26.540389 UTC. Reported
+maximum gap is 2.000528820999989 s; minimum free bytes for all three observed
+paths is 115,577,597,952. Cleanup records `failures: []`,
+owned fixture/private scratch removal, one reaped owned process and no
+remaining owned processes. PostgreSQL PID-file verification is false with
+`no_live_owned_postgres`; this is not evidence of a verified live-cluster
+shutdown. Helper-redacted remains the fixed pending/not-run placeholder,
+the controller sample is `not_run`, and `full_shared_gate` is
+`not_certified`.
+
+Both prior failed attempts remain failures. The earlier attempt's missing
+inner cause remains unknown; this source diagnosis applies only to the
+latest supplied finite frames. None of those earlier receipts or reports
+was changed, and no success is inferred for a later phase.
+
+## Exact source contract
+
+All line references in this section are to the product pin above unless
+explicitly marked validator.
+
+* `src/api.rs:2064–2079` routes an unpaginated users GET to
+  `Core::list_users`. `src/core.rs:497–522` authenticates the principal,
+  scans users, adds only views allowed by `user.read` and returns
+  `Ok(Value::Array(users))`. An array read does not prove mutation authority.
+* `src/agent.rs::principal` checks the live session, identity and active
+  exact grants on each credential use. `Principal::allows/require` respects
+  edition availability and delegated grants; missing authority produces
+  `Error::forbidden`.
+* `src/delegation.rs:255–273` permits every active human grant to read
+  `state/revision`, while Auditor only permits `audit.read` at its exact
+  scope. `active` at 282–343 rechecks the holder/provenance and exact
+  `audit/events` / `events` binding. Therefore the existing delegate can
+  obtain the current revision itself and cannot create users.
+* The complete imported encrypted fixture was read. Its
+  `live_identity_and_grant` at validator 184–210 creates a real non-admin
+  `delegate` through the administrator's public CLI, assigns the immediate
+  exact auditor grant and confirms its stable target. The shared helper's
+  `ordinary_fixture` reuses only that live fixture and adds the existing
+  group/membership. No historical format-2 probe/run/metadata is imported
+  as runtime evidence.
+* `src/api.rs:2921–2931` serves revision from a Store read under
+  `state.read/state/revision`. The proposed read precedes the refusal
+  snapshot. Login and logout remain outside that snapshot interval.
+* The complete `gate.cli`, `gate.remote` and their surrounding module
+  were read. `cli` captures the installed binary's JSON, requires actual
+  exit 4 via `expected=4`, validates `riauth.cli/v1` and `ok=false`,
+  and returns the full error envelope. `remote` preserves the current
+  server, private session file and noninteractive mode.
+* `src/cli.rs:2593–2623` requires both mutation flags, reads the password
+  through stdin and sends a genuine authenticated `POST /api/users` with
+  a `NewUser`. The proposed username is new and nonreserved; the default
+  administrator flag remains false. It neither reuses a creation receipt
+  nor submits malformed input to manufacture a refusal.
+* `src/cli/transport.rs:194–232` sends the session bearer, fresh
+  `Idempotency-Key` and exactly quoted numeric `If-Match`.
+  `src/api.rs:872–978` validates these original headers, retains the
+  original quoted validator and binds its exact bytes and body to the
+  request fingerprint. No alternate request adapter/header reconstruction
+  is proposed.
+* `src/core.rs:524–538` rejects missing headers with 428.
+  `mutation_checked` at 69–110 checks principal/receipt/current revision
+  before the writer operation. With a newly generated key and current
+  revision, `src/management.rs:1643–1679` reaches
+  `actor.require("user.write", ...)` before password hashing/history,
+  user/index writes, audit and provenance. A stale revision (409), missing
+  headers (428), bad body (400) or dead session (401) would fail this new
+  probe, not count as an authorization refusal.
+* `src/error.rs` maps forbidden to HTTP 403 / `access_denied`.
+  `response_json` at `src/cli.rs:3021–3045` preserves the response status
+  and error code; `report_error` at 65–93 maps HTTP 403 to CLI exit 4
+  (409/412/428 instead map to exit 5). The proposal checks the envelope's
+  `http_status`, `code` and `exit_code` as well as the actual exit.
+* `src/store.rs:1095–1135` commits a PostgreSQL writer only after its
+  closure returns success. A permission error exits before commit and before
+  receipt creation. The proposed runtime comparison verifies the full
+  application Store row set rather than relying on that source trace alone.
+
+## Full refusal snapshot and protected behavior
+
+The existing shared `rows` intentionally omits revision, activation,
+edition/security metadata and transition history for cross-edition
+comparisons. It must not be reused as proof of a full refusal snapshot, and
+its filters remain byte-equivalent.
+
+The proposed nested `refusal_rows` selects every key and value of
+`riauth_store.records_v1`, hex-encoded and ordered by key. Comparison is
+of the complete captured bytes, with no exclusions or hash-only subset:
+identities, credentials, receipts, audit, indexes, revision, activation,
+security and transition-history rows are all covered. It requires successful
+nonempty output and compares immediately around only the attempted create.
+This proves unchanged durable Store records if it passes; it does not claim
+unchanged PostgreSQL connection statistics, WAL, logs or operational counters.
+
+The fixed fixture creates its own loopback connection file at validator
+helper 242–253, mode 0600, and saves it through the existing PostgreSQL
+configuration. The nested read uses that configuration's connection file,
+resolving relative paths against the config directory. It strictly validates
+the existing fixture's literal loopback host, database, user and SSL mode,
+then passes those fixed values and its validated port explicitly to psql.
+It does not rely on environment connection-string expansion, accept another
+target or print the connection contents. The existing controller's root-owned,
+hash-checked PG16 bin directory remains first in PATH. Each read disables
+psql startup files and password prompting, stops on SQL errors and has a
+five-second timeout. Rows and stderr are captured in memory and never
+included in assertion text or the public report. The disposable creation
+password remains stdin-only; no token/session/body/private connection value
+is added to output.
+
+No additional global helper/import, public evidence field or main-call
+argument is needed. The existing administrator flow is unchanged. The
+delegate/grant/group sample, expiry nonrenewal, logout, previously logged-out
+token refusal, strict E-P-E equality, all preserved-row/metadata comparisons,
+direct-open/rollback/configuration/live-client refusals and final PG cleanup
+remain unchanged. The retained `users_status` name is narrowly interpreted
+as user-administration refusal, not the collection-read status.
+
+## Archived exact prospective patch
+
+This patch exists only inside this report; the existing helper has not
+been written.
+
+```diff
+--- a/scripts/check-local-edition-transition-postgres.py
++++ b/scripts/check-local-edition-transition-postgres.py
+@@ -147,8 +147,35 @@
+         token = json.loads(session.read_text())["token"]
+         matrix.require(authenticated_status(base, "/api/audit?limit=1", token) == 200,
+                        "active auditor grant stopped authorizing audit read")
+-        matrix.require(authenticated_status(base, "/api/users", token) == 403,
++        # Collection reads filter visible users; creation is the administration boundary.
++        connection = config.parent / tomllib.loads(config.read_text())["postgres"]["connection_file"]
++        target = re.fullmatch(r"host=127\.0\.0\.1 port=([0-9]+) dbname=riauth_transition "
++                              r"user=riauth_test sslmode=disable", connection.read_text().strip())
++        matrix.require(target is not None and 0 < int(target[1]) <= 65535,
++                       "unexpected user-create refusal snapshot target")
++
++        def refusal_rows():
++            result = subprocess.run([
++                "psql", "-h", "127.0.0.1", "-p", target[1], "-U", "riauth_test", "-d", "riauth_transition",
++                "-X", "--no-password", "-v", "ON_ERROR_STOP=1", "-At", "-F", "|", "-c",
++                "SELECT encode(key,'hex'),encode(value,'hex') FROM riauth_store.records_v1 ORDER BY key",
++            ], capture_output=True, timeout=5)
++            matrix.require(result.returncode == 0 and result.stdout,
++                           "full user-create refusal snapshot unavailable")
++            return result.stdout
++
++        revision = gate.remote(server, base, session, "revision")["revision"]
++        before_refusal = refusal_rows()
++        denied = gate.remote(server, base, session, "--if-revision", revision,
++                             "--idempotency-key", os.urandom(16).hex(),
++                             "user", "create", "shared-refused-user", "--password-stdin",
++                             input="q08-refused-disposable-password\n", expected=4)
++        matrix.require(denied["error"]["http_status"] == 403
++                       and denied["error"]["code"] == "access_denied"
++                       and denied["exit_code"] == 4,
+                        "ordinary auditor gained user administration")
++        matrix.require(refusal_rows() == before_refusal,
++                       "refused user creation changed durable records")
+         time.sleep(0.2)
+         again = gate.remote(server, base, session, "whoami")
+         matrix.require(again["expires_at"] == me["expires_at"], "session expiry was renewed")
+```
+
+The required fixed-validator mapping is also prospective only:
+
+```diff
+--- a/.github/workflows/check-local-shared-handoff.yml
++++ b/.github/workflows/check-local-shared-handoff.yml
+@@ -236,7 +236,7 @@
+             "imports": {
+               "check-exact-edition-matrix.py": "f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887",
+               "check-installed-release-gate.py": "cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5",
+-              "check-local-edition-transition-postgres.py": "575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1",
++              "check-local-edition-transition-postgres.py": "d86d9a99c9e09e29eb43af52f409332e11a70caaed90b5545bf132df1f2a1982",
+               "check-local-encrypted-edition-transition.py": "09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e",
+               "spdx_sbom.py": "ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c"
+             },
+```
+
+At workflow 769–787, `Controller.source` verifies the distinct full
+validator commit and every fixed import hash. `Controller.helper` passes
+this same fixed helper hash to the bootstrap, records it and rechecks imports
+after execution. Updating only the dictionary value therefore preserves
+both pre- and post-run enforcement.
+
+The future `validator_source_sha` must be the reviewed commit containing
+the corrected helper and all other pinned imports, distinct from the product
+and workflow commit. Its commit identity is not yet known or authorized.
+Product `9a819317efb3a13fa27cd86f884be2be00898fc0`, build workflow
+`036a392656b4b5070cc86a11d5ca3258b7b868d2`, run `37016520583`,
+job `110868629053`, artifact `11232871527`, its full ZIP digest and
+18-file allowlist, all five installed binary pins, the other four import
+hashes, native/PG prerequisite checks, transport limits, resource policy,
+ownership/reaping/retention, bootstrap/finalization and upload remain fixed.
+No new archives, compilation, provider setup or product change is proposed.
+
+## Static byte and AST witnesses
+
+Virtual texts were reconstructed from Git objects in memory. Only standard
+Python parsing/hash/diff operations were used; no helper/module/imported
+fixture/controller/bootstrap was executed or imported.
+
+| Text | Original bytes / SHA-256 | Prospective bytes / SHA-256 |
+| --- | --- | --- |
+| Complete shared helper | 21716 / `575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1` | 23518 / `d86d9a99c9e09e29eb43af52f409332e11a70caaed90b5545bf132df1f2a1982` |
+| Complete workflow | 77543 / `45304da275d3072c2c0de9f6debed1acc335ffa99e0ed6baa15064549bab5574` | 77543 / `5290d7a5d9e15eaeaa19169523668e9658b0341d4eb76ca47695c532e7aa27b2` |
+| Complete inline controller | 63045 / `ffa6d792bcf9170018f6bcd2bbd58d0920444dd2720c5570bdd9de9fadfc0e32` | 63045 / `1d1419c6b726bfd015712a25cc129ee54951e7ac76fb9c4a25891fef040278a7` |
+
+Original/prospective helper Git blobs:
+`d55d51aad16f508b3cb993a15f44e23aeb912729` /
+`593220583104cf075bf3635e2e6c9feefb3177fd`.
+Original/prospective workflow Git blobs:
+`b43653d09de8ce5db3bc3300a5e78457aa0c7b82` /
+`20df5c4a18ce214746ed2232fa78a9231bd8db69`.
+
+Static assertions passed:
+
+* Exact one-hunk replacement and reversal restore the entire 21,716-byte
+  helper and its original SHA/blob. The top-level AST differs only in
+  `shared_probe`; every other function, import, constant and entry point
+  is identical. Its return statement/sample is AST-identical.
+* The workflow contains the original helper digest exactly once.
+  Reversing the single literal replacement restores the whole 77,543-byte
+  workflow and its original SHA/blob.
+* Decoding the complete `FIXED` JSON shows exactly the one helper import
+  value changed. Normalizing that literal makes the entire controller AST
+  identical; every executable controller body remains unchanged.
+* Bootstrap bytes are identical: 3678 bytes,
+  SHA-256 `27361ddd98813b9e539758ca26a433ea86a1b085b0fd68036a39678ed464f7e2`.
+* The four other validator imports were identity-checked from Git against
+  the fixed map. Complete gate/matrix/encrypted/helper executable bodies
+  were read, not merely their hashes; the SPDX dependency was identity-checked.
+  Product authorization, CLI, header, error, writer and session source
+  sections were inspected, not executed.
+
+One source search for nonexistent rate/throttle path names returned no matches
+(exit 1); it is not a runtime failure or proof of absent rate limiting.
+The source conclusion and proposal instead rely on the exact API and Store
+bodies above.
+
+## Scope and remaining prerequisites
+
+Only this new report may be committed. The existing helper, workflow,
+production, old reports and private evidence are untouched; no alignment
+merge/reset, cleanup/deletion, native executable, Cargo, service, PostgreSQL,
+HTTP/network/remote query/download/dispatch, desktop, worker/contact or status
+action occurred. No new runtime result, current CI success, original A09
+completion or universal release/host claim is made. I02/I10/R05/W02/W05 remain
+DONE; original A09 interpretation/integration/publication remain root-owned.
+
+A separately reserved source implementation and fixed-validator workflow
+mapping are the next prerequisite. A separately authorized same-product,
+same-artifact hosted invocation must then measure the actual HTTP/CLI
+refusal, full Store snapshot equality and all subsequent E-P-E checks.
+The new snapshot must refuse, not fall back to filtered rows, on any read or
+comparison failure. Any unexpected current-revision/header/permission
+behavior remains a failure for source-first diagnosis rather than a weaker
+assertion or automatic rerun.
+
+## Actual report checks
+
+`python3 scripts/check-docs.py` exited 0. Static reconstruction from both
+diff fences in this written report reproduced the prospective whole-file
+hashes and exact reversals; the shared-helper AST scope check also passed.
+The first staged `git diff --cached --check` exited 2 for one extra blank
+line at this new report's EOF; that report-only formatting issue was removed.
+The corrected staged whitespace check and repeated docs check exited 0.
+The prospective connection setup was narrowed during static design from
+environment connection-string expansion to the exact existing loopback
+fixture shape; only the report's archived virtual proposal changed.
+No production or fixture failure was observed locally because none was run.

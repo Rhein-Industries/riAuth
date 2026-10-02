@@ -1,0 +1,274 @@
+{
+  "actual_public_metadata": {
+    "args": [
+      "cargo",
+      "test",
+      "--locked",
+      "--test",
+      "saml_source_peer",
+      "lasso_idp_redirect_post_source_lifecycle_replays_and_live_trust",
+      "--",
+      "--exact",
+      "--ignored",
+      "--test-threads=1"
+    ],
+    "cargo_exit": 0,
+    "cargo_joined_reaped": true,
+    "cleanup_seconds": 0.054099041037261486,
+    "cleanup_signals": [],
+    "compile_finished_durations": [
+      "2.59"
+    ],
+    "compile_packages_observed": [
+      "riauth"
+    ],
+    "disk_after_bytes": 22506319872,
+    "disk_before_bytes": 22564667392,
+    "disk_floor_bytes": 8589934592,
+    "disk_samples": [
+      {
+        "elapsed_seconds": 0.004242749884724617,
+        "free_bytes": 22564659200
+      },
+      {
+        "elapsed_seconds": 2.011454042047262,
+        "free_bytes": 22563860480
+      },
+      {
+        "elapsed_seconds": 4.013677541632205,
+        "free_bytes": 22505332736
+      },
+      {
+        "elapsed_seconds": 5.990832374896854,
+        "free_bytes": 22506319872
+      }
+    ],
+    "disk_stop_bytes": 9663676416,
+    "elapsed_seconds": 6.0465591247193515,
+    "ended_at_utc": "2026-10-02T19:50:16.472821+00:00",
+    "explicit_env": {
+      "CARGO_BUILD_JOBS": "1",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_TEST_DEBUG": "0",
+      "CARGO_TARGET_DIR": "/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target",
+      "RIAUTH_TEST_LASSO_IDP": "/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/i04-lasso-idp-source-design-v1/lasso-saml-sp"
+    },
+    "finite_refusal_projection": [],
+    "group_absent": true,
+    "log_bytes": 1055,
+    "log_cap_bytes": 16777216,
+    "log_path": "target/i04-lasso-idp-4ed5b49-owned-asn1-filter.log",
+    "log_sha256": "f0807e70fc5ab811d18aa2daac6df649be29b47b5f69dc8975834c0958769602",
+    "method_limit": "One exact ignored default Platform filter; only allowlisted labels/locations and finite emitted stage/code are projected. Reached oracles require the exact source. No raw protocol/private values, standalone helper/probe, retry or correction. Host disk delta is not own build peak; short helpers/TempDir cleanup not separately enumerated.",
+    "minimum_observed_free_bytes": 22505332736,
+    "monitor_interval_seconds": 2,
+    "observed_group_processes": [
+      {
+        "elapsed_seconds": 0.004247499629855156,
+        "members": [
+          {
+            "comm": "/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/cargo",
+            "pgid": 39829,
+            "pid": 39829,
+            "ppid": 39797
+          }
+        ]
+      },
+      {
+        "elapsed_seconds": 2.011470291763544,
+        "members": [
+          {
+            "comm": "/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/cargo",
+            "pgid": 39829,
+            "pid": 39829,
+            "ppid": 39797
+          },
+          {
+            "comm": "/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/rustc",
+            "pgid": 39829,
+            "pid": 39831,
+            "ppid": 39829
+          },
+          {
+            "comm": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+            "pgid": 39829,
+            "pid": 39878,
+            "ppid": 39831
+          },
+          {
+            "comm": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld",
+            "pgid": 39829,
+            "pid": 39879,
+            "ppid": 39878
+          }
+        ]
+      },
+      {
+        "elapsed_seconds": 4.013689249753952,
+        "members": [
+          {
+            "comm": "/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/cargo",
+            "pgid": 39829,
+            "pid": 39829,
+            "ppid": 39797
+          },
+          {
+            "comm": "/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27/target/debug/deps/saml_source_peer-edfdf6287bca6298",
+            "pgid": 39829,
+            "pid": 39886,
+            "ppid": 39829
+          }
+        ]
+      },
+      {
+        "elapsed_seconds": 5.990838249679655,
+        "members": []
+      }
+    ],
+    "outer_budget_seconds": 1800,
+    "pgid": 39829,
+    "pid": 39829,
+    "pins_after_sha256": {
+      "/opt/homebrew/Cellar/lasso/2.9.0_4/lib/liblasso.3.dylib": "0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde",
+      "Cargo.lock": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426",
+      "Cargo.toml": "58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8",
+      "rust-toolchain.toml": "887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167",
+      "scripts/lasso-saml-sp.c": "1b23f51314038ff15caa3aeb8c31acccb8bcd26d6fb702115767d0f68e4dc186",
+      "target/.rustc_info.json": "27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4",
+      "target/debug/.fingerprint/riauth-f685f1e2409027d4/lib-riauth.json": "78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af",
+      "target/debug/deps/libriauth-f685f1e2409027d4.rlib": "05b5eba724e86dce72c1383f7285220641486ab879b05d6745f3b8b05743a13f",
+      "target/debug/deps/libriauth-f685f1e2409027d4.rmeta": "74653db21fa6164eff22072722090fbe9be2a10621c99db73cfac464975ad9c9",
+      "target/i04-lasso-idp-source-design-v1/cc.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-idp-source-design-v1/cc.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-idp-source-design-v1/compiler-artifact.json": "e9e0b07800233d76f8f063d0de764a1364c266f5bcdff5cca815dc7e81bc6f3e",
+      "target/i04-lasso-idp-source-design-v1/compiler-dependencies.json": "07609a91f22d31ce9e4ca0c1253d0082f49256b143e2565c4a3c696edd50e13f",
+      "target/i04-lasso-idp-source-design-v1/compiler-result.json": "3fc97215f63d520a6aaaed9dc0ac49537e49f2c772d2a0419a3a5b4d85f33ad8",
+      "target/i04-lasso-idp-source-design-v1/lasso-saml-sp": "951465d744c1bf99e7ed91fc414337d00e960c24a1715977cce0e14535794bff",
+      "target/i04-lasso-idp-source-design-v1/pkg-config.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-idp-source-design-v1/pkg-config.stdout": "8d8f51e95d756bdacbfaf1c3fb287970cb580ef1061c9f0c4207761950451a92",
+      "target/i04-lasso-slo-3282285-diagnostic-filter-evidence.json": "6d326ac9e6697e9fe1c1ef5f44ff5c65f3f53501a6f7d22c0d15d348958a8e86",
+      "target/i04-lasso-slo-3282285-diagnostic-filter.log": "17783cf450501bac6f621674a13285740a23ac892e9a39ce589391e4f6fd3c40",
+      "target/i04-lasso-slo-47a5c56-selected-refusal-filter-evidence.json": "55fc3bb6b237f231de4cf684436edf256d8377d6b07eb9e2cbc905ead2e2d7b7",
+      "target/i04-lasso-slo-47a5c56-selected-refusal-filter.log": "11969084b9a31173adb95c9dcd4eb21022525f6f0d6b8bb8bacb717303d0704e",
+      "target/i04-lasso-slo-e028106/cc.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-slo-e028106/cc.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-slo-e028106/lasso-saml-sp": "18f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c",
+      "target/i04-lasso-slo-e028106/pkg-config.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-slo-e028106/pkg-config.stdout": "8d8f51e95d756bdacbfaf1c3fb287970cb580ef1061c9f0c4207761950451a92",
+      "target/i04-lasso-slo-f481938-filter-evidence.json": "22104b9b038bf784a28d51e5d05b360715be17a11a2f60544296225ad9eed2d6",
+      "target/i04-lasso-slo-f481938-filter.log": "a253f09fb45a4641d8373eb9318ca66bf11ff237e7570b490b24d02d6c2b4f03",
+      "tests/saml_source_peer.rs": "b196cba1eea40a67c7d70c6b463ae50ec6897d68c5d81052e33eb3bec2ae5894",
+      "tests/saml_sp_peer.rs": "897e778c2c53d6bc5ea943aefde46812a80cb73bafad82d1702a7529779ea20f"
+    },
+    "pins_before_sha256": {
+      "/opt/homebrew/Cellar/lasso/2.9.0_4/lib/liblasso.3.dylib": "0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde",
+      "Cargo.lock": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426",
+      "Cargo.toml": "58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8",
+      "rust-toolchain.toml": "887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167",
+      "scripts/lasso-saml-sp.c": "1b23f51314038ff15caa3aeb8c31acccb8bcd26d6fb702115767d0f68e4dc186",
+      "target/.rustc_info.json": "27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4",
+      "target/debug/.fingerprint/riauth-f685f1e2409027d4/lib-riauth.json": "78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af",
+      "target/debug/deps/libriauth-f685f1e2409027d4.rlib": "05b5eba724e86dce72c1383f7285220641486ab879b05d6745f3b8b05743a13f",
+      "target/debug/deps/libriauth-f685f1e2409027d4.rmeta": "74653db21fa6164eff22072722090fbe9be2a10621c99db73cfac464975ad9c9",
+      "target/i04-lasso-idp-source-design-v1/cc.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-idp-source-design-v1/cc.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-idp-source-design-v1/compiler-artifact.json": "e9e0b07800233d76f8f063d0de764a1364c266f5bcdff5cca815dc7e81bc6f3e",
+      "target/i04-lasso-idp-source-design-v1/compiler-dependencies.json": "07609a91f22d31ce9e4ca0c1253d0082f49256b143e2565c4a3c696edd50e13f",
+      "target/i04-lasso-idp-source-design-v1/compiler-result.json": "3fc97215f63d520a6aaaed9dc0ac49537e49f2c772d2a0419a3a5b4d85f33ad8",
+      "target/i04-lasso-idp-source-design-v1/lasso-saml-sp": "951465d744c1bf99e7ed91fc414337d00e960c24a1715977cce0e14535794bff",
+      "target/i04-lasso-idp-source-design-v1/pkg-config.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-idp-source-design-v1/pkg-config.stdout": "8d8f51e95d756bdacbfaf1c3fb287970cb580ef1061c9f0c4207761950451a92",
+      "target/i04-lasso-slo-3282285-diagnostic-filter-evidence.json": "6d326ac9e6697e9fe1c1ef5f44ff5c65f3f53501a6f7d22c0d15d348958a8e86",
+      "target/i04-lasso-slo-3282285-diagnostic-filter.log": "17783cf450501bac6f621674a13285740a23ac892e9a39ce589391e4f6fd3c40",
+      "target/i04-lasso-slo-47a5c56-selected-refusal-filter-evidence.json": "55fc3bb6b237f231de4cf684436edf256d8377d6b07eb9e2cbc905ead2e2d7b7",
+      "target/i04-lasso-slo-47a5c56-selected-refusal-filter.log": "11969084b9a31173adb95c9dcd4eb21022525f6f0d6b8bb8bacb717303d0704e",
+      "target/i04-lasso-slo-e028106/cc.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-slo-e028106/cc.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-slo-e028106/lasso-saml-sp": "18f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c",
+      "target/i04-lasso-slo-e028106/pkg-config.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "target/i04-lasso-slo-e028106/pkg-config.stdout": "8d8f51e95d756bdacbfaf1c3fb287970cb580ef1061c9f0c4207761950451a92",
+      "target/i04-lasso-slo-f481938-filter-evidence.json": "22104b9b038bf784a28d51e5d05b360715be17a11a2f60544296225ad9eed2d6",
+      "target/i04-lasso-slo-f481938-filter.log": "a253f09fb45a4641d8373eb9318ca66bf11ff237e7570b490b24d02d6c2b4f03",
+      "tests/saml_source_peer.rs": "b196cba1eea40a67c7d70c6b463ae50ec6897d68c5d81052e33eb3bec2ae5894",
+      "tests/saml_sp_peer.rs": "897e778c2c53d6bc5ea943aefde46812a80cb73bafad82d1702a7529779ea20f"
+    },
+    "pins_preserved": true,
+    "pipe_eof": true,
+    "production_pin": "ae8937800254a1ad4296ea257de1eccc4780e45b",
+    "project_id": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+    "ps_metadata_errors": [],
+    "public_compiler_error_codes": [],
+    "public_panic_labels": [],
+    "public_panic_locations": [],
+    "public_test_result_lines": [
+      "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.63s"
+    ],
+    "remaining_group": [],
+    "source_head": "4ed5b494454da33bd27bc046084522c05a55e2a5",
+    "stage": "ignored_fixture",
+    "start_required_free_bytes": 13958643712,
+    "started_at_utc": "2026-10-02T19:50:10.426059+00:00",
+    "stop_reason": null,
+    "supervisor_exception_type": null,
+    "task_id": "dae9c528-9e32-462c-947f-661a571f136b",
+    "warm_library_metadata_before": {
+      "target/debug/.fingerprint/riauth-f685f1e2409027d4/lib-riauth.json": [
+        3590,
+        1790955987761274395,
+        322818765
+      ],
+      "target/debug/deps/libriauth-f685f1e2409027d4.rlib": [
+        409471184,
+        1790955987716071684,
+        322818761
+      ],
+      "target/debug/deps/libriauth-f685f1e2409027d4.rmeta": [
+        46276739,
+        1790955959465644572,
+        322818687
+      ]
+    },
+    "warm_planning_allowance_upper_bytes": 4294967296,
+    "worktree_id": "e1b4399a-8c0d-46b8-880c-a71a4ebf53e7"
+  },
+  "actual_run_head": "4ed5b494454da33bd27bc046084522c05a55e2a5",
+  "actual_warning_observations": [
+    "unused POST constant at tests/saml_source_peer.rs:50",
+    "existing native compact-unwind linker warning on riauth binary"
+  ],
+  "authored_test_source": "24c0dc921703432ff04a5cab7cc771c0c9d7df3e",
+  "capture_hashes": {
+    "i04-lasso-idp-4ed5b49-owned-asn1-filter-evidence.json": {
+      "bytes": 12603,
+      "sha256": "316302890bdc93373572c01dcbf5918d0a687b20146a0ba47b7d404f977a0288"
+    },
+    "i04-lasso-idp-4ed5b49-owned-asn1-filter-supervisor.py": {
+      "bytes": 15046,
+      "sha256": "fbccc3823b0fd978b22d243c56188d335dc077d9c79958b86b6d6462e3974d94"
+    },
+    "i04-lasso-idp-4ed5b49-owned-asn1-filter.log": {
+      "bytes": 1055,
+      "sha256": "f0807e70fc5ab811d18aa2daac6df649be29b47b5f69dc8975834c0958769602"
+    }
+  },
+  "full_current_published_tree_runtime": false,
+  "later_root_source_warning_cleanup": {
+    "commit": "238618f0a8e916647682f6212ae18384469a80ff",
+    "final_test_sha256": "610e29c32d7eed456c33493aea2bb1eab52fc7a5791d36db5686c59532fc5512",
+    "only_change": "delete single unused POST declaration",
+    "separate_post_cleanup_runtime_or_clippy_run": false,
+    "whole_original_restored_by_reinserting_declaration": true
+  },
+  "linux_browser_tenant_release_claim": false,
+  "original_disposition_pending_independent_review": true,
+  "original_task_status_changed": false,
+  "previous_compilation_and_native_failures_preserved": true,
+  "production_snapshot": "ae8937800254a1ad4296ea257de1eccc4780e45b",
+  "project_id": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "root_read_complete_fixed_evidence_and_log": true,
+  "schema": "riauth.wave30-i04-lasso-idp-root-review/v1",
+  "scope": "selected local native Lasso2.9/macOS IdP-to-Core persistent Redirect-to-POST source lifecycle; all five-child and final assertions passed",
+  "supervisor_root_reversal_to_prior_entire_bytes": true,
+  "task_id": "dae9c528-9e32-462c-947f-661a571f136b"
+}
