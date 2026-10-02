@@ -332,6 +332,12 @@ newline. The password is not a command argument.
 Use a private `--session-file` for the administrator who can still sign in.
 The commands reach the issuer stored in the config. The server stays up.
 
+The password-only login below assumes that the relief administrator has no
+authenticator. For an authenticator-enabled relief account, retain the config
+and private session flags, replace `--password-stdin` with `--mfa`, and enter
+the password and current code interactively. Password alone cannot complete
+that sign-in; repeated missing-code failures can lock the relief account too.
+
 Confirm that sign-in. A 429 `rate_limited` for this person means this page's
 serving path is not available for them.
 

@@ -46,3 +46,20 @@ R05's current local RP recovery and D01's printed operator checkpoint remain
 separate exact executions; neither is a completed deployment incident campaign.
 D04 stays in progress pending the original supported operator/user workflow gate;
 no universal host/tenant/escrow matrix or full-CI/release/HA claim is substituted.
+
+## Conditional relief-administrator sign-in clarification
+
+The independent checkpoint proposal
+`e26857b7a0429fc530d40c83badedadebb65f092` identified an additional printed
+prerequisite: an authenticator-enabled relief administrator needs its current
+code. Root read `Command::Login` in `src/cli.rs` and
+`authenticator::consume_password_factor`: the password-only line supplies no
+code unless one is separately provided; absent code is not valid for enrolled
+TOTP. The runbook now says to preserve its scoped config/session flags and use
+interactive `--mfa` instead of password-only stdin for that account.
+
+Only this adjacent clarification is added. It changes no factor, policy,
+command binding or writer. The reserved independent incident fixture remains
+factor-free, so it will not supply new MFA/hardware evidence. Root's paragraph
+checks do not establish an incident runtime pass; that execution is still held
+pending the exact worker handoff and release.
