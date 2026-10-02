@@ -604,3 +604,303 @@ and all 11586 original browser bytes remain unchanged; balanced Markdown fences,
 final newline, unchanged committed source SHA-256/blob and single-report pending
 diff were verified. `git diff --check` passed. No link/build/test or helper
 runtime was substituted for these static checks.
+
+## Released fixture refused during prerequisite checks — 2026-10-02
+
+**No application/browser checkpoint ran.** Root reviewed the source and evidence,
+published them at `ae8937800254a1ad4296ea257de1eccc4780e45b`, and explicitly
+released the single `wave30_D01_confidential_browser_helper` fixture. One
+preflight invocation then exited **1** at a native-provider return/version
+assertion. It stopped before operator setup or any helper/browser launch.
+There was no retry, alternate provider, source correction or substituted pass.
+Desktop/operator reservation release was sent immediately before this append;
+the independent remote A09 Cargo lane was neither acquired nor released here.
+
+### Exact inputs and observed checks
+
+Execution input remained own HEAD
+`6b3a1790ff80cb205bb403854725a779541adbac`; no merge to published main occurred.
+The published helper is blob `cbbaaea8afa667112546c5ee6b85e945d6f306bd`, exactly
+the source reviewed above. Published Essentials is unchanged blob
+`e48371d3a34a7b6441cbcfce700daf954aa5f2ae`, SHA-256
+`9df3c2861984751d48b28d284cfb47c07801fd3934072e2ccb829edeb35579a0`;
+its sections 2/3 were reread for the planned normal operator registration and
+browser task. These current reads do not refresh earlier executions.
+
+All three matching prebuilt c01 artifact hashes were recomputed successfully:
+
+| Artifact | Bytes / matching SHA-256 |
+| --- | --- |
+| Essentials `riauth` | 183038592 / `7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606` |
+| Essentials `riauth-maintenance` | 56499296 / `86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95` |
+| Base `riauthctl` | 20406784 / `bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf` |
+| New demo source, read only | 29933 / `d8446bfdf22f2a345b019673fe93828d5f75024a87b530b100eb6c027da9a863` |
+| Fixed verifier, Git object only | Blob `3be747d03146f1bcaa3ec012ee8d173b61fa737d` / `f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d` |
+
+The native provider also **matches its required artifact hash**:
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+Resolved file: `/opt/homebrew/Cellar/openssl@3/3.6.4/bin/openssl`, 880512 bytes.
+This was checked again read-only after refusal to disambiguate the assertion;
+that metadata read was not a second provider invocation or fixture retry.
+
+The actual first failing statement followed **one**
+`/opt/homebrew/bin/openssl version` invocation, bounded by five seconds and
+using the planned restricted environment. It tested both return code zero
+and stdout stripped to exactly `OpenSSL 3.6.4 25 Aug 2026`. The combined
+assertion failed at Python line 16, and the preflight process exited 1.
+Its captured native return code/stdout/stderr were not retained before that
+assertion terminated the process. Consequently **the returned version and
+native exit code are unknown**: output mismatch and nonzero exit cannot be
+distinguished from this evidence. No exact version mismatch string, changed
+library, installation defect or provider failure cause is invented. The
+preflight tool measured 0.381 seconds for its status/hash/version command.
+
+### Driver prerequisites and unused resources
+
+The cua-driver skill and relevant MACOS/BROWSER/RUNTIME instructions and live
+tool descriptions were consulted before Driver reads. Instruction hashes
+remain the four values recorded in the original browser report; those files
+were rehashed. Initial large combined output was truncated, so bounded
+tool-specific schemas/instruction sections were read next. No GUI action was
+attempted. RiWork's read-only `cua status` reported daemon **0.30.4**, the
+expected CuaDriver executable and ready state. Driver MCP permission read
+reported Accessibility and Screen Recording granted; direct ScreenCaptureKit
+probe was explicitly skipped. MCP recording state reported disabled/inactive.
+
+No fixture `start_session`, isolated profile preparation, browser binding,
+navigation, screenshot, typing, consent or logout occurred. No fresh lab/XDG,
+synthetic password, CLI session/secret, store, server/helper process or socket
+was created. No maintenance/server/client binary was executed. Only the native
+provider version subprocess ran; `subprocess.run` completed and reaped it,
+but its PID was not separately recorded. There was no owned persistent process
+or browser/session to stop, end or remove. This does not claim cleanup or
+erasure of any shared/personal Driver resource.
+
+After refusal, bounded read-only `lsof` returned **exit 1/no listener** for both
+9000 and 3000. The planned
+`deployment-private/d01-confidential-browser.redacted.json` does not exist;
+no helper result was fabricated. The post-refusal capacity sample was
+**8.282 GiB free**, below the 8.5 GiB launch/stop margin and above the 8 GiB
+floor. This is an additional observed prerequisite preventing launch. The
+initial ordered preflight had failed before its disk/socket entry checks and
+before starting the one-second fixture guard; no continuous disk minimum or
+entry-margin pass is claimed. No resource-consuming setup continued after
+that observation, and no cache/artifact/evidence was removed to recover space.
+
+### Release, reporting correction and remaining input
+
+First clock read: `2026-10-02 14:07:20 UTC`. Immediate release and subsequent
+read-only resource observations were complete by the `14:08:18 UTC` clock
+read. A corrected root handoff was delivered by `14:10:09 UTC`. These are
+observation timestamps, not a claimed precisely instrumented whole-fixture
+duration. Both explicit-project orchestrator sends exited 0 before this
+report append. **DESKTOP/OPERATOR RUNTIME RELEASED; Cargo unaffected.**
+
+The first commentary/handoff incorrectly classified the assertion as an
+OpenSSL hash mismatch and said the provider had not executed. That was my
+source-line interpretation error. The read-only digest matched, and inspection
+of the submitted preflight statement identified the version/exit assertion.
+The inaccurate classification was explicitly withdrawn in commentary and a
+second immediate root handoff. This appendix preserves that reporting error
+and correction rather than silently replacing the first claim.
+
+The next root-coordinated input is an actual bounded provider exit/version
+observation retained before any assertion, plus a fresh capacity check at or
+above 8.5 GiB before another released fixture. No new diagnostic/provider call
+or rerun is authorized by this report. The missing captured values do not
+justify relaxing the reviewed version/hash guard or editing the helper, and
+the capacity sample does not justify deleting other work. Root decides any
+concrete correction/reservation and new runtime release.
+
+No password sign-in, Local demo consent, callback, exchange, native token
+validation, userinfo or protected 403/200 result is claimed. Helper invocation
+count is **zero**. All earlier D01/R05 observations remain dated, D01/D05
+completion remains root-owned, and accepted O06/I10/R05 DONE rows stay closed.
+The only tracked change in this turn is this append. No source/helper/guide/
+D05/config/state/approval/workflow/test edit, Cargo/build/test, provider switch,
+new worker/task/worktree/shell, other-worker contact, merge/reset, main/push or
+status change occurred. Accepted receipt/header/PAM/removal/audit/held Group
+and nonrenewed 60-second/paused-I/O contracts remain unchanged.
+
+Evidence verification passed: all 40877 bytes of the prior `6b3a179` report
+remain an exact prefix; the committed helper bytes/SHA-256 are unchanged.
+The pending diff contains only this report append, Markdown fences are
+balanced and the final newline is present. `git diff --check` passed. These
+document/source checks did not execute the helper or repeat the provider call.
+
+## Separately authorized native-provider diagnostic — 2026-10-02
+
+**The one diagnostic exited 0; the confidential fixture remains held.** Root
+received `93643763a1fc3360491a0a4a32424fd353e92cc0`, preserved its first refusal
+and reporting correction, and authorized exactly one new native-provider
+version observation. That authorization did not release the helper, operator
+fixture, desktop or Cargo. This phase is separate from the lost first native
+invocation; its return/output values remain unknown.
+
+### Retained observation and provenance
+
+Own source input remains helper commit
+`0b0d15cda6e6c61388ce40338de707f84851989f`, blob
+`cbbaaea8afa667112546c5ee6b85e945d6f306bd`, SHA-256
+`d8446bfdf22f2a345b019673fe93828d5f75024a87b530b100eb6c027da9a863`.
+The exact guard and sanitized environment in `setup()` were read directly;
+the helper was neither imported nor executed. Ancestor instruction checks
+found no `AGENTS.md`. No task/worktree/shell was created.
+
+The diagnostic rehashed `/opt/homebrew/bin/openssl` after resolving it to
+`/opt/homebrew/Cellar/openssl@3/3.6.4/bin/openssl`. Its 880512 bytes match
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+It then invoked the resolved executable with the sole argument `version`,
+using exactly the helper's inherited-environment filter: `PATH`, `HOME`,
+`TMPDIR`, `LANG`, `LC_ALL` only. All five keys were present; their values were
+not printed or copied into evidence. The native process had a five-second
+timeout, completed in 0.003956 seconds and was reaped. There was no timeout,
+second invocation or provider substitution.
+
+| Retained field | Actual observation |
+| --- | --- |
+| Numeric native return code | `0` |
+| ASCII stdout | `OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)` followed by one newline |
+| Full stdout length | 63 bytes; no truncation |
+| ASCII stderr | Empty |
+| Full stderr length | 0 bytes; no truncation |
+| Started UTC | `2026-10-02T14:23:52.077151+00:00` |
+| Completed UTC | `2026-10-02T14:23:52.082796+00:00` |
+
+The wrapper opened an exclusive, no-follow, owner-private metadata file before
+the invocation, then retained the numeric return code, bounded ASCII outputs,
+full byte lengths, digest, timing and disk sample and flushed/fsynced it
+**before any output assertion or comparison**. The per-stream retained limit
+was 4096 bytes. Readback verified mode `0600`, 1103 bytes and SHA-256
+`8f47d8fbd384ccf9746de938ef5c6e9cbba8d0e072484b443e2c2cbc4fa7439d`.
+The metadata is
+`deployment-private/d01-provider-version-diagnostic-20261002.json`, under the
+existing owned `0700` private directory, ignored by Git and not committed.
+Its contents contain provider metadata rather than credentials. The wrapper
+itself also exited 0. No exception, timeout or cleanup failure was recorded.
+
+After persistence, source-only AST extraction of `OPENSSL_VERSION` and metadata
+readback established that the current exact equality is false. The other
+existing version predicates pass: return code zero, stdout at most 256 bytes,
+stderr at most 4096 bytes and strict ASCII stdout. Source bytes/hash remain
+unchanged. These comparisons did not invoke any executable a second time.
+
+Root's prior read-only format-string observation is consistent with this new
+stdout, but the new diagnostic does not recover the first invocation's lost
+values or prove its exact failure cause. The earlier refusal and my corrected
+reporting error remain intact above.
+
+### Exact proposed source reservation, not an edit
+
+The concrete returned evidence warrants only this one-line change at
+`scripts/d01-confidential-browser-demo.py:41`:
+
+```diff
+-OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026"
++OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)"
+```
+
+This would retain exact full-text equality after `.strip()` and the existing
+path, regular-file/size, artifact hash, ASCII/length and timeout guards. It
+would also make the helper's provider-version evidence field contain the
+observed complete version text. No prefix match, normalization, alternate
+provider, hash relaxation, dependency or other source hunk is proposed. Root
+must reserve the source change separately; this turn makes no helper edit.
+
+### Capacity, bounded scope and handoff
+
+The authorized fresh read-only disk sample measured **11969429504 bytes /
+11.1474 GiB free**, above the 8.5 GiB launch margin. It is a point observation,
+not a continuous floor check or permission to start the fixture. No deletion
+or cache/artifact cleanup was performed here.
+
+An ancillary read-only `riwork orchestrator --help` request returned 2 because
+that subcommand is unsupported; no state changed. The explicit-project
+diagnostic/proposed-hunk handoff used the supported `orchestrator send`
+command and exited 0 before this append.
+
+No maintenance/server/CLI/helper, HTTP request, listener, browser, Driver,
+session, Cargo/build/test or whole-fixture runtime ran. No fixture reservation
+was acquired or released in this diagnostic phase. There was no second native
+provider invocation, source correction, guide/product/D05 edit, merge/reset,
+main/push/status change, new worker/task/worktree/shell or other-worker contact.
+RiWork Cua.ai Driver remains the sole future desktop provider. Root alone
+reserves any source correction and a new fixture release and decides D01/D05
+completion; accepted O06/I10/R05 DONE rows and prior dated evidence remain
+unchanged. The only tracked change is this report append.
+
+Evidence checks passed: all 48637 bytes of prior report commit `9364376` remain
+an exact prefix; helper bytes/SHA-256 and the private metadata bytes/hash/mode
+are unchanged. The pending diff contains only this report, Markdown fences
+and final newline pass, and `git diff --check` passed. These checks repeated
+no native invocation or fixture activity.
+
+## Reserved full-version guard correction, source only — 2026-10-02
+
+Root reserved `wave30_D01_provider_full_version_guard` with source approval
+true and runtime release false after independently reading the retained
+1103-byte `0600` diagnostic. This phase implements only the exact full-text
+literal proposed above. It neither repeats that diagnostic nor releases or
+runs the confidential fixture. The first invocation's lost values and my
+initial reporting error remain preserved in their dated phase.
+
+Source commit **`16395f1be5a65b0d3cb0a1ad2d88daa0c17b7e1b`**, parent
+`5c7665c0e1cd9f23ad6c8d912cdc67ab27609a2c`, changes exactly one line in
+`scripts/d01-confidential-browser-demo.py:41`:
+
+```diff
+-OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026"
++OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)"
+```
+
+The resulting helper is mode `100644`, 651 lines / 29970 bytes, blob
+`37c9136850c2522da1eaa5f31f8b94e70acc0886`, SHA-256
+`f94af72ab613bc332ea684e5c4244c38d53c6540e1ea3d883938aecd265ec6fc`.
+It still requires exact complete version equality after `.strip()`. Its
+provider evidence field will record that full constant if a later separately
+released helper run succeeds. This source-only check claims no such run.
+
+Actual static checks passed before the source commit:
+
+- Starting helper bytes were exactly the `0b0d15c` source blob and SHA-256
+  recorded above. Diagnostic readback matched its 1103 bytes, `0600` mode,
+  SHA-256 `8f47d8fbd384ccf9746de938ef5c6e9cbba8d0e072484b443e2c2cbc4fa7439d`,
+  exit 0 and exact 63-byte stdout. These were reads of retained data.
+- Original and changed literal each occur once, at line 41. Replacing the
+  original with the new literal reconstructs the entire new source; reversing
+  that replacement reconstructs **all original `0b0d15c` bytes exactly**.
+- Both sources parsed with `ast.parse`. Replacing only the changed AST string
+  value with its prior value produced the exact original AST dump without
+  source-position attributes.
+- `compile(source, filename, "exec", dont_inherit=True)` succeeded in memory.
+  Its code object was not executed; the helper was not imported, and no bytecode
+  artifact was written.
+- Pending scope was exactly the helper path; the whole prior report remained
+  unchanged. `git diff --check` passed. The source commit contains only that
+  path, one insertion/one deletion; tracked state was clean after commit.
+
+The byte-reversal proof covers every other equality/path/hash/ASCII/length,
+sanitized-environment, timeout, native verification, browser-flow and cleanup
+guard: their source bytes did not change. No guard relaxation, provider switch,
+custom crypto, dependency or second hunk was introduced.
+
+This phase makes no new provider call, helper/maintenance/CLI/server execution,
+HTTP request, listener, browser/Driver/session interaction, Cargo/build/test or
+fixture acquisition/release. The prior disk sample remains a dated point
+observation; it was not refreshed or substituted for a future fresh launch
+check. The independent A09 Cargo owner is unaffected.
+
+Root must review/publish this source and separately approve any one new
+confidential fixture with a fresh disk sample above 8.5 GiB. Runtime remains
+held. Existing receipt/header/PAM/removal/audit and held Group/nonrenewed
+60-second/paused-I/O contracts, D01/D05 root-owned decisions and closed
+O06/I10/R05 rows remain unchanged. No guide/product/D05/test/config/state edit,
+main/push/status action, merge/reset, new worker/task/worktree/shell or other
+worker contact occurred. This evidence is an append to the existing report,
+committed separately from the source.
+
+Evidence-append verification passed: all 54467 bytes of the preceding report
+remain an exact prefix; committed source and retained diagnostic bytes/hash/mode
+are unchanged. Pending scope contains only this report, balanced Markdown
+fences and final newline pass, and `git diff --check` passed. No runtime was
+used for these document checks.
