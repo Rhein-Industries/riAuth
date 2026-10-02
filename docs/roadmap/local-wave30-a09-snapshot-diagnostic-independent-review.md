@@ -252,3 +252,239 @@ The unstaged `git diff --no-index --check -- /dev/null` report comparison exited
 `git diff --cached --check` exited 0. The explicit scope witness also exited 0:
 only this new report is staged, its indexed/working bytes match, there are no
 unstaged or other untracked changes, and own HEAD/history remains unchanged.
+
+## Independent future-memory design review, 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, supporting worktree
+`42bb51c6-c198-4adb-bd92-0a5222853231`. Reservation:
+`wave30_A09_snapshot_memory_design_independent_review`. Own starting HEAD is
+`2c9e5eadb99350b9bd6f9845154bdbf1afe75ded`, clean. This append preserves the
+complete 16,004-byte original report, SHA256
+`49ca6404061f27178b1f89a9a2dfe892bc5b3c1d53b34a7e93987b2f7fe7939b`.
+The previous source-only recommendation remains its dated finding about
+`eae9415`; this phase reviews the newly archived validation program.
+
+### Recommendation: correct two future-payload blockers before release
+
+The archive is syntactically valid and its source pins match the reviewed
+implementation. Two concrete source defects prevent the proposed validation
+from reaching its intended oracles. They concern the future child payload,
+not the committed diagnostic helper/workflow or product authorization.
+Recommend one bounded archive correction containing these two hunks, followed
+by immutable static review. No correction or runtime is authorized here.
+
+1. **Strict selector rejects the legitimate probe default before cases.**
+   Archived payload line 168 calls `function(helper, "shared_probe")`.
+   `function` line 61 requires `not node.args.defaults`. The committed source
+   signature at helper line 195 is
+   `shared_probe(server, config, base, scratch, revoked_token=None)`:
+   its AST has one `Constant(value=None)` default. Thus the guard is false
+   before `STAGE = "cases"` at payload line 175. This is a deterministic
+   source-derived rejection, not an observed child execution. The smallest
+   seam is the payload's default guard: permit only this named probe's one
+   literal `None` default, retaining the strict rule for every other function,
+   decorators, keyword defaults and annotations. The probe definition must
+   remain unexecuted; only its unique equality handler is extracted.
+2. **The isolated packet validator lacks its required builtin `all`.**
+   The payload's explicit builtin tuple at lines 77–82 has `any` but no
+   `all`. Committed `failure_packet` calls `all` at extracted controller
+   line 323 when validating frames. The payload passes that unchanged
+   function to `isolated` at lines 156–158, with no other binding of `all`.
+   Valid-packet oracles would therefore encounter an unbound name if the first
+   blocker were repaired alone. The smallest seam is adding only `"all"`
+   beside `"any"` in that builtin tuple. Do not remove the namespace guard,
+   stub/replace the production packet function, or weaken positive assertions.
+
+A precise prospective selector guard is:
+
+```python
+defaults_ok = not node.args.defaults or (
+    name == "shared_probe" and len(node.args.defaults) == 1
+    and type(node.args.defaults[0]) is ast.Constant
+    and node.args.defaults[0].value is None
+)
+```
+
+Use `defaults_ok` only in place of `not node.args.defaults` in the existing
+`check`; all its other predicates stay intact. The second prospective hunk
+changes the builtin tuple prefix to `("type", "len", "any", "all", ... )`.
+These are proposals only; no archived source or harness was materialized.
+Changing the payload requires recomputing its full bytes/hash, updating the
+controller's `PAYLOAD_SHA`, then recomputing the controller and assembly hash
+chain and all corresponding archive tables. The six implementation-source
+pins must stay unchanged. A stale hash chain must continue refusing execution.
+
+The archived parent remains fail-closed around these defects: it requires a
+completed child, numeric actual exit 0, all eight groups attempted, zero
+recorded failures, matching sources, a reaped child and bounded completion.
+An early internal failure with no failed case records cannot become a pass.
+No actual case count, child exit or failure location was measured here.
+
+### Complete immutable material and source identity
+
+Read all 861 new lines in
+`1aed8a40728cfba555902dc2325bb0bab0cdb313`:
+`docs/roadmap/local-wave30-a09-shared-users-refusal-plan.md`, including the
+complete 414-line child, 219-line controller, assembly command, oracles and
+preparation limits. Its prior 96,475-byte prefix is unchanged, SHA256
+`190fa98b9fc23839bd83d9451293cf252256d3074d730fdf9617b3c7ec34104f`.
+The 50,525-byte append hashes to
+`48e2839a6dca84a878ded795afbb8e2c701f72d2910794948e13169ae8d36786`;
+the complete 147,000-byte object hashes to
+`facee1a45c8035887ece58bfd42885595a035c38a85ac92a8a104bce2a6e36f5`.
+The dated archive-construction delimiter failure remains in that report;
+it is not a candidate case result.
+
+| Complete future archive, including final LF | Bytes | SHA256 |
+| --- | ---: | --- |
+| Child payload | 24,494 | `1cd3442cb91d19de9c70134da763d072b9cc5ca317e2ed2bb633df2bb1c04181` |
+| Controller | 12,634 | `278060f3de48a133b017cffc188bf9adea200337e901370e97a1f1764ded44ee` |
+| Assembly command | 1,427 | `084ed5ae9d4417b4f6fbce9af8d43eb810bc2f29e7c8dea378ed256512e66653` |
+
+All six complete input objects at actual source
+`d00c9680004be856c387e4faf03c14c1e62d6b0c` match both archived `PINS` lists.
+Their sizes/digests equal the six earlier reviewed source rows above, including
+all four imported-script hashes. No imported helper module was loaded.
+The two diagnostic implementation objects exactly match the earlier reviewed
+prospective bytes and identities:
+
+| Actual source | Bytes | SHA256 | Git blob |
+| --- | ---: | --- | --- |
+| PostgreSQL helper | 26,547 | `4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa` | `af764b71b95f8ad4d5e1d9b26d094dfa2eaafe49` |
+| Shared workflow | 82,149 | `226483dd9edcd5e566b6c5de9f7ab2a36ebdf0c0f204f8ec992645542a3f395f` | `f63110098c13d717446a198c487c00678cfeb60a` |
+
+The actual extracted controller is 66,841 bytes / SHA256
+`bda0a0fa30db096d92404de22dd5193c91d111c3890e30fe43034405abdd2369`;
+bootstrap is 5,111 bytes / SHA256
+`a8f7df1a172e1dc89672d2be54fa147eabf6a61864935e82fd86e2cf64839d33`.
+Both match `eae9415` and the complete-body review in `2c9e5ea`.
+The decoded five-script `FIXED` import map is exact; bootstrap/controller
+validator ASTs match. This byte identity carries forward the prior full
+reversal/protected-body proof; it is not new runtime evidence.
+
+### Extraction, oracles, privacy and protected comparator
+
+Independent structural inspection finds exactly one outer `AssertionError`
+handler in the committed probe containing `after_refusal`. Its decisive call
+still compares complete `after_refusal == before_refusal` bytes with the
+original message and bare re-raise. There are exactly two snapshot calls.
+The capture query still selects every ordered Store key/value hex row, without
+`WHERE`, collection exclusions or a row limit. The memory child extracts only
+that handler; the surrounding probe, SQL, subprocesses and request are not
+part of its executable seam. The protected assertion's strictness is not
+redefined by a passing counts projection.
+
+The counter retains the exact six-category partition, thirty integer counts,
+8 MiB per-input bound, canonical hex/UTF-8/duplicate checks, full value-byte
+changes and catch-all `protected_or_other`. Packet/schema projections retain
+exact built-in types, boolean/subclass refusal, fixed keys, duplicate hook,
+optional fallback and 2,048-byte cap described in the original review.
+All identity, authorization, credential, audit, receipt, revision and unknown
+records remain fully compared. No namespace or allowed mutation is added.
+
+The counts oracle is hand-written from synthetic before/after membership and
+value changes. Negative parser/schema/packet cases exercise malformed hex,
+duplicates, aliases, boundaries and optional fallback; positive cases include
+the exact four-row 8 MiB capture, 4,096-byte key, 1 MiB value and maximum fixed
+packet. Equality cases separately require byte-identical success, preservation
+of the same original error object/message on a change, and denial after row
+reordering despite zero projected changes. Forced projection errors and an
+assertion subclass test fallback. These are reviewed proposed oracles, not
+executed passes or an independent production-authorization acceptance suite.
+
+The source-selected producer's last statement is the complete private writer
+`if` at bootstrap line 82. The proposal removes that entire block and adds
+only `return payload` after the preceding nine statements. Static inspection
+of that retained prefix finds no filesystem/runtime names. `InertPath` only
+joins, resolves to itself and returns strings/parents. A controlled synthetic
+raise/recursive descent gives a genuine traceback under the fixed inert helper
+filename; no fabricated traceback object or bootstrap main is needed. Trusted
+frame naming, 64 examined/eight retained bounds and original serializer remain
+source-backed. The proposed frame test observes retained frames; it does not
+independently measure every examined frame without execution.
+
+Sentinel checks cover key/value/hex, URI, private path and exception message
+in fixed projections. Child results contain fixed group/name/status/class,
+source digests and timing, never exception `str`/`repr` or actual Store data.
+The parent re-parses and validates fixed result schema, unique case names,
+derived totals/groups, exact types and source digests. Matching duplicate
+validators and repeated implementation tests are diagnostic-compatibility
+checks, not evidence that the original shared gate passed.
+
+### Prospective retention, deadlines and owned cleanup
+
+The archive assembly verifies a unique section/controller and exact hash
+before executing anything. The prospective controller verifies the payload
+hash, Python 3.11+ prerequisite, capacity and fresh private directory. The
+source-binding child reads bounded/no-follow regular files and checks all six
+hashes before executing isolated definitions. Parent source/result grading
+occurs later. These launch paths were read as source, never run here.
+
+There is exactly one prospective `subprocess.Popen`, controller line 83: the
+same Python executable with `-I -B -c`, DEVNULL stdin, minimal environment and
+`start_new_session=True`. The payload has no subprocess call. Source functions
+are extracted rather than imported; helper main, bootstrap runpy/writer,
+controller construction, native binaries, SQL/PG/HTTP and product CLI remain
+outside the memory child. This is an inspection of fixed trusted source, not
+a general sandbox guarantee for arbitrary replacement code.
+
+The controller retains actual outcome before grading: normal path line 195
+calls `retain_outcome`, then line 197 rehashes sources and line 198 grades.
+Retention exclusively writes/fsyncs `child-exit.json` with actual exit/reaping,
+the complete captured `child.json`, and private `child-stderr.bin` in that order.
+Stdout/stderr caps are 64 KiB/8 KiB; cap failures retain bounded partial evidence
+and cannot pass. Setup without a child records null exit. No case metadata,
+expected-source comparison or JSON-result grading substitutes for raw outcome
+retention. Each save is no-follow, exclusive 0600; the directory is fresh 0700
+and preserved, not reused or deleted.
+
+The child has a 30-second alarm/persistent exhaustion flag. The controller's
+outer clock starts before assembly, requires 30 seconds left during preparation, samples
+pipes at most every 50 ms, and accepts only completion below 35 seconds. On
+stop/cap/timeout it signals only its exact unreaped owned group; finally it
+kills/waits if needed and closes child streams. A bounded five-second emergency
+reap can make completion late, which final acceptance rejects. The last clock
+is after all receipt fsyncs; no receipt write follows it. Actual timing,
+capacity, allocation, reaping and retained files remain unmeasured. Future
+bounded memory validation and any remote diagnostic repeat remain HELD.
+
+### Historical boundary, actual static checks and handoff
+
+The archived finite evidence for `37060776569` establishes actual CLI exit 4 /
+HTTP 403 / `access_denied`, then failed full Store equality in the first
+Essentials probe. It does not disclose changed rows/keys or their cause.
+The archived product-`9a81931` trace identifies an independently committed
+HTTP admission rate writer before Core authorization, separate from the
+denied Core transaction. That source-derived admission explanation is not
+proof of the observed writes or their exclusivity. I did not replay that run,
+read private records/logs or freshly audit those product bodies in this phase.
+All earlier remote/assembly failures remain dated evidence. Original A09's
+shared gate stays open, the closed rows/primary assignment stay unchanged,
+and no container, tenant, provider or official-release success is inferred.
+
+Actual independent checks in this phase used Git objects and stdlib source
+data only. `ast.parse` succeeded for the complete child/controller and the
+assembly's Python heredoc, and for the actual helper/embedded source strings.
+Archive/source hash checks, exact selector/default and missing-builtin
+witnesses, raw equality/SQL preservation, before-writer cut, retention ordering,
+fsync/final-clock structure and one-child-site checks exited 0. An AST witness
+found 46 syntactic case-call sites; this is not an attempted case total or a
+pass/fail result. No proposed selector/function, controller, assembly, candidate
+case or bootstrap was compiled/evaluated/executed by this review.
+
+Only this append is permitted. No product/source/harness/test/workflow edit,
+alignment, other-worker contact, new worker/task/worktree/managed shell, native
+tool/product/PG/HTTP/Cargo/CLI/browser/Driver/network query or runtime slot,
+main/push/board change occurred. Driver-only preference remains for any future
+separately authorized desktop work. Root owns archive correction reservation,
+independent review, release, integration and status.
+
+Final static report checks: `git diff --check` exited 0. Explicit prefix/scope
+assertions exited 0 and preserve every byte of the original `2c9e5ea` report;
+only this report has an append. `python3 scripts/check-docs.py` exited 1 solely
+for the same five pre-existing private target directories listed in the prior
+review, with no Markdown link failure. No directory or checker was altered.
+These static successes do not negate the two payload blockers or establish
+zero runtime failures. Staged whitespace and clean commit scope are checked
+before handing the immutable report to root.

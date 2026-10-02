@@ -817,3 +817,1356 @@ accepted for one separately reviewed build-free archive/synthetic validation.
 No candidate serializer/archive validation or Docker runtime ran in this review;
 the retained370613 container cohort remains failed and all downstream gates
 remain unreached. Its complete payload/controller design is still pending.
+
+
+## Build-free validation bundle design — no implementation/execution, 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing supporting WTe1.
+Reservation `wave30_A09_legacy_archive_build_free_design` authorizes ONLY
+this report appendix. The complete54888-byte prior report remains exact.
+The following two complete source listings are **design text**, not installed
+files, imports, case execution, a release request or a claimed result. Root
+must independently review these complete bodies, the independent source review
+and candidate source before separately reserving staging/one invocation.
+
+### Inputs, transport and exact assembly boundary
+
+Use only committed59f5 source text99566bytes, SHA-256
+`c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837`,
+which is byte-equivalent to accepted a645449. Current helper/workflow4573bytes
+remain unchanged; no source alignment is required or performed in this design.
+The source content hash is authoritative if a later mutable working copy has
+changed: refuse rather than import another revision. Root can separately stage
+an exact immutable source copy before runtime; no Git child is part of this
+one-child design. This version's supervisor reads the existing helper and pins
+its complete bytes before freezing controller.txt. It requires that helper
+still be exact59f5; otherwise the proposed command refuses before launch.
+
+Outer transport is the sole retained artifact ZIP at
+`/tmp/riauth-wave30-container-37061329815/artifact.zip`:49206215bytes, SHA-256
+`d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6`.
+Only the unique literal member `local-essentials-x86_64.docker.tar.gz` may be
+streamed to a fresh private regular file:48934031bytes, SHA-256
+`e9e1291895a1cf6c894147acaa0b4efca4a885d4f07dc88f5aee2152c9604905`.
+The design hashes the opened outer descriptor before opening ZipFile, checks
+one matching member/declared size/unencrypted regular-or-unspecified ZIP mode,
+streams bounded bytes without extract/extractall, checks the inner hash and
+then checks outer descriptor identity/size/times. An unspecified ZIP Unix mode
+is not interpreted as a filesystem object: the target is always an exclusive
+0600 regular file. Any explicit nonregular ZIP mode refuses. Other members
+are never opened. All transport pins precede candidate calls.
+
+Receipt16872bytes SHAab7c5ce7…86ab7d and public-small metadata17651bytes
+SHA430471f2…e5b4 are frozen as0600 copies after exact hash checks. Root owner,
+tag and image are bound to literal published public values, not invented peers.
+The actual selected image is
+`sha256:6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a`.
+This is solely the retained x86 export; no ARM fixture may be reported as an
+actual ARM pass.
+
+AST assembly selects only complete original Refusal/require/digest definitions
+and complete Cohort.check_budget/validate_image_tar/expected_v28_legacy_members.
+It constructs an ArchiveSlice class with no constructor or other Cohort method,
+binds existing literal IMAGE_CAP=2GiB/LOG_CAP=8MiB/owner-label/repository and
+stdlib modules, and allocates with object.__new__. No cohort module is imported,
+no top-level imports/main/constructor, HTTP/Docker/native/CLI method or other
+source definition is executed. The four closed source call hooks remain
+require, digest, check_budget and expected_v28_legacy_members. Their bodies and
+the full validator come from the pinned source AST; no cap/budget/hash helper
+is replaced. ArchiveSlice uses the existing x86 selected architecture/source,
+real monotonic deadline, an ordinary stop Event and fixture_deadline=None.
+
+The complete original validator is the decisive first positive. A subsequent
+independent bounded outer-tar pass streams opaque regular-file hashes and
+retains ONLY the twelve known public metadata payloads, checked against the
+pinned public metadata sizes/hashes. It never parses or extracts a layer's
+filesystem; the original validator's small opaque-layer buffers likewise are
+not examined or emitted. One explicit helper call must return exactly the six
+externally pinned V1 member names. Its actual count/canonical set digest is
+fsynced before comparing to that literal expected set; names are not output. Its returned set is not reused as its own
+oracle.
+
+### Finite synthetic seam and independent fixture construction
+
+Only after both retained positive observations pass, use one small two-layer
+synthetic tar fixture. Its tiny layer strings are framing/hash inputs, not
+filesystem archives or executable images. V1 expected blobs are constructed
+from **literal CreateID/V1 byte templates** and actual observed Go Config
+fragments from the already pinned retained metadata, outside candidate code.
+No candidate encode/exact/legacy-derivation routine constructs the fixture or
+expected refusal table. A tiny baseline pass establishes that mutations begin
+with a usable complete-validator input; it is not deployment/peer evidence.
+The retained real export remains the independent decisive positive oracle.
+
+The extra JSON case retains the full plausible V1 shape with an unrelated
+64-hex ID. The duplicate-key case retains every decoded top field/value and
+adds a duplicate equal-valued id; it tests exact bytes rather than an already
+invalid shape. Duplicate/nonregular tar cases target a required legacy member.
+The full case sequence below has no inflated coverage score. Each rehashed
+metadata field tests a specified binding; other entries hit distinct schema,
+framing, identity, cap, compatibility or original refusal boundaries. All
+expected codes are literal, source-derived values. First unexpected outcome
+stops without another case/correction/retry. Correctly expected negative
+results are journaled, not relabeled successful operations.
+
+| Family | Cases and required observations |
+| --- | --- |
+| Real input | retained_archive pass, then retained_derived_six count6/exact known set |
+| Tiny control | tiny_baseline pass, with independent literal V1 templates |
+| Unreferenced/digest | extra_correctly_hashed → image_tar_unreferenced_member; wrong_metadata_digest_path / altered_under_old_path → image_legacy_metadata_binding |
+| Legacy binding | rehash id,parent,created,os,config,unknown → image_legacy_metadata_binding; malformed/scalar/duplicate-key metadata and missing metadata → same binding refusal |
+| Tar framing | duplicate/nonregular/path → image_tar_member; truncated payload → closed tar_read_error |
+| Ordered/config schema | manifest order → oci_image_manifest_binding; streamed mismatch / rootfs order/duplicate → image_legacy_layers; wrong rootfs shape /129 layers → image_legacy_rootfs; bool-as-int → image_legacy_config; top unknown → image_legacy_profile; invalid/noncanonical time → image_legacy_created |
+| Limits | advertised compressed stat overflow → image_archive_size, without a2GiB physical file; oversized tar header → image_tar_expanded_cap before payload allocation; manifest payload8MiB+1 → docker_archive_manifest because it is not retained as small metadata |
+| Original identity | wrong tag → image_tar_exact_tag; wrong selected image → image_tar_config_layers; OCI config/index/ref/payload → their original distinct refusal codes |
+| Compatibility and final guards | unsupported daemon **with legacy extras** → image_tar_unreferenced_member; a no-legacy wrong layer digest under that profile reaches original image_blob_digest; set ordinary stop Event → original resource_monitor_refused |
+
+This does not promise that all unknown daemon formats refuse: source retains
+its earlier handling of archives without unknown extras. The selected unknown
+profile case specifically refuses admission of the V1 extras. No source cap
+is lowered. Compressed-stat overflow is a labeled scalar boundary probe,
+not a real giant-file measurement. The8MiB+1 payload streams zeros through a
+single gzip fixture; no large archive copy is generated. Calendar tests alter
+synthetic config fields, not the system clock. The stop-Event test simulates
+budget refusal, not an observed disk shortage.
+
+A local read-only primary-source check of installed Python3.14 tarfile.py
+_FileInFile.read (684–707) confirms that short underlying data raises ReadError
+before the validator's copied-size comparison. The truncation oracle therefore
+uses closed tar_read_error and does not manufacture image_tar_truncated.
+That explicit controller code remains unmodified and allowed in observed
+outcomes; no fake source reader is substituted to force it. No tar/library
+function was invoked during this design read.
+
+### Future staging/ownership, deadlines and result order
+
+Root must separately approve creation of the one fresh private directory
+`target/a09-v28-legacy-build-free-59f5c6b-v1` beneath this own worktree, mode0700,
+with the exact marker and two0600 listings below. None exists by action of this
+design. Staging is a future root-owned operation, not a shell/script run here.
+Refuse preexisting runtime output names, symlinked/foreign/multiply linked
+inputs or wrong marker/permissions. Root must independently hash both exact
+listings before invoking them; their content hashes are recorded after the
+listings. Source/receipt/metadata snapshots are exclusive0600 files; the inner
+archive is the only sizable new file. The existing outer artifact is retained.
+
+Propose exactly one Python parent and one owned Python child. Both use
+`-I -S -B` to exclude environment/user-site/project import injection and bytecode
+cache writes; only the reviewed stdlib and explicitly selected candidate AST
+definitions execute. No import of a staged/project shadow module is permitted. No Git/pkg-config/
+compiler/native/library/CLI/Docker/service/provider helper is a child. Require
+fresh minimum10GiB free across output and retained-input filesystems before
+launch, retaining2GiB planning allowance above8GiB floor. Copying the49MB inner,
+three small snapshots, one reused tiny case file and bounded captures is the
+expected disk footprint; this is an estimate, not measured peak/RSS or a disk
+quota. The parent samples every2seconds and stops below8GiB; child budget checks
+occur between transport/tar blocks and fixture steps. Concurrent drain can
+outpace sampling. Root may later approve a measured allowance; this proposal
+never reduces its guard automatically.
+
+The120-second child deadline begins at parent start; setup consumes that
+budget. Parent has125seconds total, leaving up to5seconds for owned-group
+termination, joined IO and reaping. Require the locally reviewed Python3.14.6 and reject platforms without
+waitid/WNOWAIT/getpgid/getsid rather than use a new process provider. No version
+command is part of this plan; the future parent reads its own sys.version_info. The leader remains
+unreaped while any group signal is needed; exact PID=PGID=SID is checked.
+Signals never target a reaped/reused group. A remaining group or failed join
+cannot be reported passed. SIGINT/SIGTERM use the same owned cleanup. These
+are logical deadlines/checks, not a claim that fsync or uninterruptible kernel
+IO has a measured hard upper bound. Parent SIGKILL cannot complete its own
+cleanup; only actual joined evidence could establish completion.
+
+Child stdout/stderr are each capped64KiB, retained0600 without public replay.
+Case/pin observations are closed JSONL capped128KiB, fsynced **before** their
+oracle comparisons. Setup/pin guards can refuse before any candidate call.
+The parent's closed JSONL is capped32KiB; it fsyncs actual numeric exit/signal,
+minimum sampled free bytes, elapsed time, capture sizes and owned cleanup
+**before** comparing the final child completion envelope. The parent reads the bounded closed child journal/envelope even for a nonzero
+exit, to retain partial count and a validated first-failure/outcome. Public output
+is only fixed result/failure enums, numeric counts and cleanup booleans. No raw exception,
+path, dynamic member name, protocol/data byte or opaque layer content appears
+in case output. Files stay retained under the owned private directory; no
+cache deletion, image rewrite/filter, archive cleanup or global prune occurs.
+One reused tiny case file preserves its first unexpected failing input; prior
+expected cases are reconstructible from exact design text and per-case hashes.
+
+### Complete future payload listing
+
+```python
+# DESIGN ONLY: reviewed future payload; not installed or executed in this phase.
+import ast, copy, datetime, gzip, hashlib, io, json, os, pathlib, re
+import stat, sys, tarfile, threading, time, zipfile
+
+ROOT = pathlib.Path(__file__).resolve().parent
+PUBLIC = pathlib.Path("/tmp/riauth-wave30-container-37061329815")
+DEADLINE = float(sys.argv[1])
+G = 1024 ** 3
+SOURCE = "b619fe25269ccc150e473bbcde47cdb3623ef810"
+OWNER = "a09-2ad626a6017c4815a4bd2b89d496ed4e"
+TAG = "riauth-local/" + OWNER + ":essentials"
+IMAGE = "sha256:6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a"
+MEMBER = "local-essentials-x86_64.docker.tar.gz"
+INNER_SIZE = 48934031
+INNER_SHA = "e9e1291895a1cf6c894147acaa0b4efca4a885d4f07dc88f5aee2152c9604905"
+PINS = {
+    "controller.txt": (99566, "c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837"),
+    "receipt.json": (16872, "ab7c5ce7b87e672db255edc4393ccb27348cb777b14f5f7880f87a68a986ab7d"),
+    "small.json": (17651, "430471f20c63eb533003415c19c3d19c8f83b542af7acb75621cfe150040e5b4"),
+}
+LEGACY = frozenset("blobs/sha256/" + x for x in (
+    "f2c95b27390582a885e249206a4731e5d6100ff9a77cd39d9bb0eeec3afd422c",
+    "bfac4c35c38484d57b91e117ef48571d183808557de737290a2db1033a858be9",
+    "42e47bd0cf542b5dc4810ade3689b6809f7b6f2b7a0dd9421cf841a7fc70cc6a",
+    "403d14cad84ab235eb47caa1c6dc4633ed2666b726a8fcacf871de50f9bb72ff",
+    "1de23d2d3e2ecafe29ef6e2cfbc28f43a2e220b87aa6fdd0aa2bbdf06da2cc24",
+    "e9c7179eb746fed1f7cd9b4a0111ac84b505bb79166553e1bbd3aa8f481b05b5"))
+REFUSALS = frozenset((
+    "image_archive_size", "image_tar_member", "image_tar_expanded_cap", "image_tar_truncated",
+    "docker_archive_manifest", "image_tar_exact_tag", "image_tar_config_layers", "saved_config_identity",
+    "saved_oci_index", "oci_manifest_digest", "oci_manifest_payload", "oci_image_manifest_binding",
+    "image_tar_unreferenced_member", "image_blob_digest", "image_legacy_profile", "image_legacy_rootfs",
+    "image_legacy_layers", "image_legacy_config", "image_legacy_created", "image_legacy_metadata_binding",
+    "resource_monitor_refused", "controller_deadline", "fixture_deadline"))
+CASE_ORDER = (
+    'retained_archive', 'retained_derived_six', 'tiny_baseline', 'extra_correctly_hashed',
+    'wrong_metadata_digest_path', 'altered_under_old_path', 'rehash_id', 'rehash_parent',
+    'rehash_created', 'rehash_os', 'rehash_config', 'rehash_unknown',
+    'duplicate_json_keys', 'malformed_metadata', 'scalar_metadata', 'missing_metadata',
+    'duplicate_member', 'nonregular_member', 'path_member', 'manifest_layer_order',
+    'streamed_layer_mismatch', 'rootfs_layer_order', 'rootfs_duplicate', 'rootfs_schema',
+    'bool_as_int', 'top_unknown_schema', 'invalid_calendar', 'noncanonical_time',
+    'layer_count_129', 'compressed_stat_cap', 'expanded_header_cap', 'small_payload_cap',
+    'truncated_payload', 'wrong_tag', 'wrong_config_image', 'wrong_oci_config',
+    'wrong_oci_index', 'wrong_oci_reference', 'missing_oci_payload', 'unsupported_daemon_with_legacy',
+    'original_blob_digest_loop', 'original_resource_budget',
+)
+CASE_NAMES = frozenset(CASE_ORDER)
+SETUP_NAMES = frozenset(("setup", "transport", "assembly", "metadata_read", "synthetic_setup"))
+PHASE = "setup"
+FIRST = None
+COUNT = 0
+JOURNAL = None
+
+
+def H(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+class DriverRefusal(Exception):
+    pass
+
+
+def budget():
+    if time.monotonic() >= DEADLINE:
+        raise DriverRefusal("driver_deadline")
+    s = os.statvfs(ROOT)
+    if s.f_bavail * s.f_frsize < 8 * G:
+        raise DriverRefusal("driver_disk_floor")
+
+
+def fresh(name):
+    return os.fdopen(os.open(ROOT / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb")
+
+
+def record(data):
+    raw = (json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    if JOURNAL.tell() + len(raw) > 128 * 1024:
+        raise RuntimeError("closed journal cap")
+    JOURNAL.write(raw); JOURNAL.flush(); os.fsync(JOURNAL.fileno())
+
+
+def read_owned(path, cap):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as f:
+        s = os.fstat(f.fileno())
+        if not stat.S_ISREG(s.st_mode) or s.st_uid != os.getuid() or s.st_nlink != 1 or stat.S_IMODE(s.st_mode) != 0o600 or s.st_size > cap:
+            raise RuntimeError("closed input refusal")
+        data = f.read(cap + 1)
+        if len(data) != s.st_size:
+            raise RuntimeError("closed input change")
+        return data
+
+
+def pinned(name):
+    size, sha = PINS[name]
+    data = read_owned(ROOT / name, size)
+    record({"kind": "pin", "input": name, "bytes": len(data), "sha256": H(data)})
+    if len(data) != size or H(data) != sha:
+        raise RuntimeError("closed pin refusal")
+    return data
+
+
+def copy_inner():
+    path = PUBLIC / "artifact.zip"
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as f:
+        before = os.fstat(f.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or before.st_nlink != 1:
+            raise RuntimeError("closed transport type")
+        h = hashlib.sha256(); n = 0
+        while block := f.read(1024 * 1024):
+            budget(); n += len(block); h.update(block)
+            if n > 49206215:
+                raise RuntimeError("closed transport cap")
+        record({"kind": "pin", "input": "outer_zip", "bytes": n, "sha256": h.hexdigest()})
+        if n != 49206215 or h.hexdigest() != "d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6":
+            raise RuntimeError("closed transport pin")
+        f.seek(0)
+        with zipfile.ZipFile(f) as z:
+            matches = [x for x in z.infolist() if x.filename == MEMBER]
+            if len(matches) != 1:
+                raise RuntimeError("closed member cardinality")
+            info = matches[0]
+            kind = stat.S_IFMT(info.external_attr >> 16)
+            if (info.is_dir() or info.flag_bits & 1 or kind not in (0, stat.S_IFREG)
+                    or info.file_size != INNER_SIZE or info.compress_size > 49206215):
+                raise RuntimeError("closed member metadata")
+            with z.open(info) as incoming, fresh("inner.docker.tar.gz") as out:
+                h = hashlib.sha256(); n = 0
+                while block := incoming.read(1024 * 1024):
+                    budget(); n += len(block)
+                    if n > INNER_SIZE:
+                        raise RuntimeError("closed inner cap")
+                    h.update(block); out.write(block)
+                out.flush(); os.fsync(out.fileno())
+            record({"kind": "pin", "input": "inner_archive", "bytes": n, "sha256": h.hexdigest()})
+            if n != INNER_SIZE or h.hexdigest() != INNER_SHA:
+                raise RuntimeError("closed inner pin")
+        after = os.fstat(f.fileno())
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise RuntimeError("closed transport change")
+    return ROOT / "inner.docker.tar.gz"
+
+
+def assembly(raw):
+    tree = ast.parse(raw)
+    defs = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+    methods = {n.name: n for n in defs["Cohort"].body if isinstance(n, ast.FunctionDef)}
+    names = ("check_budget", "validate_image_tar", "expected_v28_legacy_members")
+    for name, argc in zip(names, (1, 4, 8)):
+        node = methods[name]
+        if node.decorator_list or node.args.defaults or node.args.kwonlyargs or len(node.args.args) != argc:
+            raise RuntimeError("closed assembly signature")
+    support = [defs["Refusal"], defs["require"], defs["digest"]]
+    cls = ast.ClassDef(name="ArchiveSlice", bases=[], keywords=[], body=[methods[x] for x in names], decorator_list=[], type_params=[])
+    module = ast.fix_missing_locations(ast.Module(body=support + [cls], type_ignores=[]))
+    ns = {"__name__": "a09_pinned_archive_slice", "__builtins__": __builtins__, "hashlib": hashlib, "json": json, "pathlib": pathlib,
+          "re": re, "tarfile": tarfile, "datetime": datetime, "time": time,
+          "IMAGE_CAP": 2 * G, "LOG_CAP": 8 * 1024 ** 2,
+          "OWNER_LABEL": "org.riauth.local.owner", "REPOSITORY": "Rhein-Industries/riAuth"}
+    exec(compile(module, "<pinned-59f5-archive-slice>", "exec"), ns)
+    obj = object.__new__(ns["ArchiveSlice"])
+    obj.stop_event = threading.Event(); obj.deadline = DEADLINE; obj.fixture_deadline = None
+    obj.selected = {"oci_arch": "amd64", "source": SOURCE}
+    obj.owner = OWNER; obj.tags = {"essentials": TAG}
+    obj.receipt = {"daemon": {"ServerVersion": "28.0.4"}}
+    return ns, obj
+
+
+def observe(name, expected, operation):
+    global FIRST, COUNT, PHASE
+    if name not in CASE_NAMES or name != CASE_ORDER[COUNT]:
+        raise RuntimeError("closed case order")
+    PHASE = name
+    try:
+        operation(); actual = "pass"
+    except NS["Refusal"] as error:
+        actual = error.args[0] if len(error.args) == 1 and error.args[0] in REFUSALS else "unclassified_refusal"
+    except DriverRefusal as error:
+        actual = error.args[0] if error.args in (("driver_deadline",), ("driver_disk_floor",)) else "unclassified_exception"
+    except tarfile.ReadError:
+        actual = "tar_read_error"
+    except json.JSONDecodeError:
+        actual = "json_decode_error"
+    except Exception:
+        actual = "unclassified_exception"
+    COUNT += 1
+    record({"kind": "case", "case": name, "actual": actual})  # fsync before comparison
+    if actual != expected:
+        FIRST = name
+        raise RuntimeError("closed unexpected case outcome")
+
+
+def maps_from_retained(path, small):
+    members, hashes, payloads = {}, {}, {}
+    with tarfile.open(path, "r:gz") as t:
+        for member in t:
+            budget(); name = member.name.rstrip("/"); members[name] = member
+            if not member.isfile():
+                continue
+            h = hashlib.sha256(); n = 0; raw = bytearray()
+            with t.extractfile(member) as f:
+                while block := f.read(1024 * 1024):
+                    budget(); n += len(block); h.update(block)
+                    if name in small:
+                        if n > small[name]["bytes"]:
+                            raise RuntimeError("closed metadata size")
+                        raw.extend(block)
+            hashes[name] = h.hexdigest()
+            if name in small:
+                payloads[name] = bytes(raw)
+                record({"kind": "metadata_pin", "ordinal": sorted(small).index(name), "bytes": n, "sha256": h.hexdigest()})
+                if n != small[name]["bytes"] or h.hexdigest() != small[name]["sha256"]:
+                    raise RuntimeError("closed metadata pin")
+    if set(payloads) != set(small):
+        raise RuntimeError("closed metadata presence")
+    manifest = json.loads(payloads["manifest.json"])[0]
+    settings = json.loads(payloads[manifest["Config"]])
+    index = json.loads(payloads["index.json"])
+    oci_name = "blobs/sha256/" + index["manifests"][0]["digest"][7:]
+    ordinary = {"manifest.json", manifest["Config"], *manifest["Layers"], "index.json", "oci-layout", "repositories", oci_name}
+    return [settings, manifest["Layers"], members, hashes, payloads, "essentials", ordinary]
+
+
+def derived_oracle(args):
+    got = OBJ.expected_v28_legacy_members(*args)
+    # The expected set is externally pinned public metadata, not candidate output reused as an oracle.
+    if type(got) is not set or len(got) > 128 or any(type(x) is not str or re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", x) is None for x in got):
+        raise RuntimeError("closed derived observation shape")
+    actual_digest = H("\n".join(sorted(got)).encode("ascii"))
+    record({"kind": "witness", "derived_count": len(got), "derived_set_sha256": actual_digest})
+    if got != LEGACY:
+        raise RuntimeError("closed derived set mismatch")
+
+
+def fragment(raw, key):
+    text = raw.decode("ascii"); marker = '"' + key + '":'
+    start = text.index(marker) + len(marker)
+    _, length = json.JSONDecoder().raw_decode(text[start:])
+    return text[start:start + length].encode("ascii")
+
+
+def J(value):
+    return json.dumps(value, separators=(",", ":"), sort_keys=True, allow_nan=False).encode("ascii")
+
+
+def tiny_fixture(args):
+    # Independent literal Go-ID/V1 templates use observed Moby fragments, never candidate codecs.
+    zero = fragment(args[4]["blobs/sha256/f2c95b27390582a885e249206a4731e5d6100ff9a77cd39d9bb0eeec3afd422c"], "container_config")
+    run = fragment(args[4]["blobs/sha256/e9c7179eb746fed1f7cd9b4a0111ac84b505bb79166553e1bbd3aa8f481b05b5"], "config")
+    data = [b"synthetic-layer-one\n", b"synthetic-layer-two\n"]
+    d0, d1 = ["sha256:" + H(x) for x in data]
+    base_id = H(b'{"container_config":' + zero + b',"created":"1970-01-01T00:00:00Z","layer_id":"' + d0.encode() + b'"}')
+    base = b'{"id":"' + base_id.encode() + b'","created":"1970-01-01T00:00:00Z","container_config":' + zero + b',"os":"linux"}'
+    chain = "sha256:" + H((d0 + " " + d1).encode())
+    top_id = H(b'{"architecture":"amd64","config":' + run + b',"container_config":' + zero + b',"created":"1970-01-01T00:00:00Z","layer_id":"' + chain.encode() + b'","os":"linux","parent":"sha256:' + base_id.encode() + b'"}')
+    top = b'{"id":"' + top_id.encode() + b'","parent":"' + base_id.encode() + b'","created":"1970-01-01T00:00:00Z","container_config":' + zero + b',"config":' + run + b',"architecture":"amd64","os":"linux"}'
+    config = copy.deepcopy(args[0]); config["created"] = "1970-01-01T00:00:00Z"
+    config["history"] = []; config["rootfs"]["diff_ids"] = [d0, d1]
+    fs = {"blobs/sha256/" + H(raw): raw for raw in data + [base, top]}
+    legacy = ["blobs/sha256/" + H(raw) for raw in (base, top)]
+    return make_case(config, ["blobs/sha256/" + d0[7:], "blobs/sha256/" + d1[7:]], fs, legacy)
+
+
+def make_case(config, layers, files, legacy):
+    fs = dict(files); raw = J(config); image = "sha256:" + H(raw); cn = "blobs/sha256/" + H(raw)
+    fs[cn] = raw
+    oci = {"schemaVersion": 2, "config": {"digest": image}, "layers": [{"digest": "sha256:" + x[13:]} for x in layers]}
+    on = "blobs/sha256/" + H(J(oci)); fs[on] = J(oci)
+    fs["index.json"] = J({"schemaVersion": 2, "manifests": [{"digest": "sha256:" + on[13:]}]})
+    fs["manifest.json"] = J([{"Config": cn, "RepoTags": [TAG], "Layers": layers}])
+    return {"files": fs, "image": image, "config": cn, "oci": on, "legacy": legacy}
+
+
+def change_config(case, change):
+    fs = dict(case["files"]); cfg = json.loads(fs.pop(case["config"])); change(cfg)
+    fs.pop(case["oci"]); fs.pop("index.json"); manifest = json.loads(fs.pop("manifest.json"))[0]
+    return make_case(cfg, manifest["Layers"], fs, list(case["legacy"]))
+
+
+def replace_oci(case, change):
+    fs = case["files"]; oci = json.loads(fs.pop(case["oci"])); change(oci)
+    name = "blobs/sha256/" + H(J(oci)); fs[name] = J(oci); case["oci"] = name
+    fs["index.json"] = J({"schemaVersion": 2, "manifests": [{"digest": "sha256:" + name[13:]}]})
+
+
+def write_case(case, special=None):
+    budget(); path = ROOT / "case.tar.gz"
+    if path.exists():
+        s = path.lstat()
+        if not stat.S_ISREG(s.st_mode) or s.st_uid != os.getuid() or s.st_nlink != 1 or stat.S_IMODE(s.st_mode) != 0o600:
+            raise RuntimeError("closed case ownership")
+        fd = os.open(path, os.O_WRONLY | os.O_TRUNC | os.O_NOFOLLOW)
+    else:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as raw:
+        with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0, filename="") as g:
+            if special in ("expanded_cap", "truncated", "metadata_cap"):
+                t = tarfile.TarInfo("manifest.json")
+                t.size = 2 * G + 1 if special == "expanded_cap" else (128 if special == "truncated" else 8 * 1024 ** 2 + 1)
+                g.write(t.tobuf(format=tarfile.USTAR_FORMAT))
+                if special == "truncated":
+                    g.write(b"x" * 63)
+                elif special == "metadata_cap":
+                    remaining = t.size
+                    while remaining:
+                        budget(); n = min(remaining, 1024 * 1024); g.write(b"\0" * n); remaining -= n
+                    g.write(b"\0" * ((-t.size) % 512 + 1024))
+            else:
+                with tarfile.open(fileobj=g, mode="w", format=tarfile.USTAR_FORMAT) as out:
+                    for name, data in sorted(case["files"].items()):
+                        budget(); t = tarfile.TarInfo(name)
+                        if special == "nonregular" and name == case["legacy"][-1]:
+                            t.type = tarfile.SYMTYPE; t.linkname = "forbidden"; out.addfile(t)
+                        else:
+                            t.size = len(data); out.addfile(t, io.BytesIO(data))
+                    if special == "duplicate":
+                        name = case["legacy"][-1]; data = case["files"][name]
+                        t = tarfile.TarInfo(name); t.size = len(data); out.addfile(t, io.BytesIO(data))
+                    if special == "path":
+                        t = tarfile.TarInfo("../forbidden"); out.addfile(t, io.BytesIO(b""))
+        raw.flush(); os.fsync(raw.fileno())
+    if path.stat().st_size > 1024 * 1024:
+        raise RuntimeError("closed synthetic compressed cap")
+    record({"kind": "synthetic_input", "bytes": path.stat().st_size, "sha256": H(path.read_bytes())})
+    return path
+
+
+def run_archive(case, special=None):
+    OBJ.validate_image_tar(write_case(case, special), "essentials", case["image"])
+
+
+class AdvertisedOversize:
+    def stat(self):
+        return type("DeclaredStat", (), {"st_size": 2 * G + 1})()
+
+
+def cases(base, retained_args):
+    observe("tiny_baseline", "pass", lambda: run_archive(base))
+    c = copy.deepcopy(base); extra = json.loads(c["files"][c["legacy"][0]]); extra["id"] = "f" * 64
+    raw = J(extra); c["files"]["blobs/sha256/" + H(raw)] = raw
+    observe("extra_correctly_hashed", "image_tar_unreferenced_member", lambda: run_archive(c))
+    c = copy.deepcopy(base); old = c["legacy"][-1]; c["files"]["blobs/sha256/" + "0" * 64] = c["files"].pop(old)
+    observe("wrong_metadata_digest_path", "image_legacy_metadata_binding", lambda: run_archive(c))
+    c = copy.deepcopy(base); c["files"][c["legacy"][-1]] += b" "
+    observe("altered_under_old_path", "image_legacy_metadata_binding", lambda: run_archive(c))
+    mutations = (("id", "0" * 64), ("parent", "1" * 64), ("created", "1970-01-02T00:00:00Z"),
+                 ("os", "other"), ("config", {}), ("unknown", True))
+    for key, value in mutations:
+        c = copy.deepcopy(base); old = c["legacy"][-1]; obj = json.loads(c["files"].pop(old)); obj[key] = value
+        raw = J(obj); c["files"]["blobs/sha256/" + H(raw)] = raw
+        observe("rehash_" + key, "image_legacy_metadata_binding", lambda: run_archive(c))
+    original_top = base["files"][base["legacy"][-1]]
+    duplicate_top = original_top[:-1] + b',"id":"' + json.loads(original_top)["id"].encode("ascii") + b'"}'
+    for label, raw in (("duplicate_json_keys", duplicate_top), ("malformed_metadata", b'{'), ("scalar_metadata", b'false')):
+        c = copy.deepcopy(base); c["files"].pop(c["legacy"][-1]); c["files"]["blobs/sha256/" + H(raw)] = raw
+        observe(label, "image_legacy_metadata_binding", lambda: run_archive(c))
+    c = copy.deepcopy(base); c["files"].pop(c["legacy"][-1])
+    observe("missing_metadata", "image_legacy_metadata_binding", lambda: run_archive(c))
+    for label, special in (("duplicate_member", "duplicate"), ("nonregular_member", "nonregular"), ("path_member", "path")):
+        observe(label, "image_tar_member", lambda: run_archive(base, special))
+    c = copy.deepcopy(base); manifest = json.loads(c["files"]["manifest.json"]); manifest[0]["Layers"].reverse(); c["files"]["manifest.json"] = J(manifest)
+    observe("manifest_layer_order", "oci_image_manifest_binding", lambda: run_archive(c))
+    c = copy.deepcopy(base); first_layer = json.loads(c["files"]["manifest.json"])[0]["Layers"][0]; c["files"][first_layer] += b"wrong"
+    observe("streamed_layer_mismatch", "image_legacy_layers", lambda: run_archive(c))
+    for label, change, expected in (
+        ("rootfs_layer_order", lambda x: x["rootfs"]["diff_ids"].reverse(), "image_legacy_layers"),
+        ("rootfs_duplicate", lambda x: x["rootfs"]["diff_ids"].__setitem__(1, x["rootfs"]["diff_ids"][0]), "image_legacy_layers"),
+        ("rootfs_schema", lambda x: x.__setitem__("rootfs", {"type": "layers", "diff_ids": False}), "image_legacy_rootfs"),
+        ("bool_as_int", lambda x: x["config"].__setitem__("ArgsEscaped", 1), "image_legacy_config"),
+        ("top_unknown_schema", lambda x: x.__setitem__("unknown", True), "image_legacy_profile"),
+        ("invalid_calendar", lambda x: x.__setitem__("created", "1970-13-01T00:00:00Z"), "image_legacy_created"),
+        ("noncanonical_time", lambda x: x.__setitem__("created", "1970-01-01T00:00:00.10Z"), "image_legacy_created")):
+        c = change_config(base, change); observe(label, expected, lambda: run_archive(c))
+    a = copy.deepcopy(retained_args); a[0]["rootfs"]["diff_ids"] = ["sha256:" + H(bytes([i])) for i in range(129)]
+    observe("layer_count_129", "image_legacy_rootfs", lambda: OBJ.expected_v28_legacy_members(*a))
+    observe("compressed_stat_cap", "image_archive_size", lambda: OBJ.validate_image_tar(AdvertisedOversize(), "essentials", base["image"]))
+    observe("expanded_header_cap", "image_tar_expanded_cap", lambda: run_archive(base, "expanded_cap"))
+    observe("small_payload_cap", "docker_archive_manifest", lambda: run_archive(base, "metadata_cap"))
+    observe("truncated_payload", "tar_read_error", lambda: run_archive(base, "truncated"))
+    c = copy.deepcopy(base); manifest = json.loads(c["files"]["manifest.json"]); manifest[0]["RepoTags"] = ["wrong"]; c["files"]["manifest.json"] = J(manifest)
+    observe("wrong_tag", "image_tar_exact_tag", lambda: run_archive(c))
+    observe("wrong_config_image", "image_tar_config_layers", lambda: OBJ.validate_image_tar(write_case(base), "essentials", "sha256:" + "0" * 64))
+    c = copy.deepcopy(base); replace_oci(c, lambda x: x["config"].__setitem__("digest", "sha256:" + "0" * 64))
+    observe("wrong_oci_config", "oci_image_manifest_binding", lambda: run_archive(c))
+    for label, index, expected in (
+        ("wrong_oci_index", {"schemaVersion": 1, "manifests": [{}]}, "saved_oci_index"),
+        ("wrong_oci_reference", {"schemaVersion": 2, "manifests": [{"digest": "invalid"}]}, "oci_manifest_digest"),
+        ("missing_oci_payload", {"schemaVersion": 2, "manifests": [{"digest": "sha256:" + "0" * 64}]}, "oci_manifest_payload")):
+        c = copy.deepcopy(base); c["files"]["index.json"] = J(index); observe(label, expected, lambda: run_archive(c))
+    OBJ.receipt["daemon"]["ServerVersion"] = "unrecognized"
+    observe("unsupported_daemon_with_legacy", "image_tar_unreferenced_member", lambda: run_archive(base))
+    c = copy.deepcopy(base)
+    for name in c["legacy"]:
+        c["files"].pop(name)
+    first_layer = json.loads(c["files"]["manifest.json"])[0]["Layers"][0]; c["files"][first_layer] += b"wrong"
+    observe("original_blob_digest_loop", "image_blob_digest", lambda: run_archive(c))
+    OBJ.receipt["daemon"]["ServerVersion"] = "28.0.4"
+    OBJ.stop_event.set()
+    observe("original_resource_budget", "resource_monitor_refused", lambda: run_archive(base))
+    OBJ.stop_event.clear()
+
+
+def main():
+    global NS, OBJ, JOURNAL, PHASE, FIRST
+    JOURNAL = fresh("actual.child.jsonl")
+    requested_exit = 2
+    try:
+        budget(); source = pinned("controller.txt"); receipt = json.loads(pinned("receipt.json")); small = json.loads(pinned("small.json"))
+        if (receipt["owner"] != OWNER or receipt["images"]["essentials"]["id"] != IMAGE
+                or receipt["images"]["essentials"]["tag"] != TAG or receipt["daemon"]["ServerVersion"] != "28.0.4"):
+            raise RuntimeError("closed receipt binding")
+        PHASE = "transport"; inner = copy_inner()  # all transport/archive pins before candidate calls
+        PHASE = "assembly"; NS, OBJ = assembly(source)
+        observe("retained_archive", "pass", lambda: OBJ.validate_image_tar(inner, "essentials", IMAGE))
+        PHASE = "metadata_read"; args = maps_from_retained(inner, small)
+        observe("retained_derived_six", "pass", lambda: derived_oracle(args))
+        PHASE = "synthetic_setup"; base = tiny_fixture(args); cases(base, args)
+        if COUNT != len(CASE_ORDER):
+            raise RuntimeError("closed incomplete case order")
+        requested_exit = 0
+    except BaseException:
+        if FIRST is None:
+            FIRST = PHASE
+        record({"kind": "stop", "phase": PHASE, "reason": "first_unexpected_or_setup_refusal"})
+    finally:
+        raw = J({"schema": "riauth.a09.build-free-child/v1", "count": COUNT,
+                 "first_failure": FIRST, "requested_exit": requested_exit})
+        with fresh("actual.child.json") as out:
+            out.write(raw); out.flush(); os.fsync(out.fileno())
+        JOURNAL.close()
+    return requested_exit
+
+
+if __name__ == "__main__":
+    try:
+        result = main()
+    except BaseException:
+        os.write(2, b"closed_payload_finalization_refusal\n"); result = 97
+    sys.exit(result)
+```
+
+### Complete future supervisor listing
+
+```python
+# DESIGN ONLY: one future owned child; this supervisor has not run.
+import hashlib, json, os, pathlib, selectors, shutil, signal, stat, subprocess, sys, time
+
+WT = pathlib.Path("/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27")
+ROOT = WT / "target/a09-v28-legacy-build-free-59f5c6b-v1"
+PUBLIC = pathlib.Path("/tmp/riauth-wave30-container-37061329815")
+PAYLOAD_SHA = "f6a57790e77e85153c0a2fa84f03c257fa80931621004a53d67946aa1c0db9e3"
+MARKER = b"891e7443-8dac-4c1b-897f-9e53cb59c7ee:59f5c6b:build-free-v1\n"
+G = 1024 ** 3
+START = time.monotonic()
+CHILD_END = START + 120
+OUTER_END = START + 125
+CANCELLED = False
+CASE_ORDER = (
+    'retained_archive', 'retained_derived_six', 'tiny_baseline', 'extra_correctly_hashed',
+    'wrong_metadata_digest_path', 'altered_under_old_path', 'rehash_id', 'rehash_parent',
+    'rehash_created', 'rehash_os', 'rehash_config', 'rehash_unknown',
+    'duplicate_json_keys', 'malformed_metadata', 'scalar_metadata', 'missing_metadata',
+    'duplicate_member', 'nonregular_member', 'path_member', 'manifest_layer_order',
+    'streamed_layer_mismatch', 'rootfs_layer_order', 'rootfs_duplicate', 'rootfs_schema',
+    'bool_as_int', 'top_unknown_schema', 'invalid_calendar', 'noncanonical_time',
+    'layer_count_129', 'compressed_stat_cap', 'expanded_header_cap', 'small_payload_cap',
+    'truncated_payload', 'wrong_tag', 'wrong_config_image', 'wrong_oci_config',
+    'wrong_oci_index', 'wrong_oci_reference', 'missing_oci_payload', 'unsupported_daemon_with_legacy',
+    'original_blob_digest_loop', 'original_resource_budget',
+)
+CASE_NAMES = frozenset(CASE_ORDER)
+SETUP_NAMES = frozenset(("setup", "transport", "assembly", "metadata_read", "synthetic_setup"))
+REFUSALS = frozenset((
+    "image_archive_size", "image_tar_member", "image_tar_expanded_cap", "image_tar_truncated",
+    "docker_archive_manifest", "image_tar_exact_tag", "image_tar_config_layers", "saved_config_identity",
+    "saved_oci_index", "oci_manifest_digest", "oci_manifest_payload", "oci_image_manifest_binding",
+    "image_tar_unreferenced_member", "image_blob_digest", "image_legacy_profile", "image_legacy_rootfs",
+    "image_legacy_layers", "image_legacy_config", "image_legacy_created", "image_legacy_metadata_binding",
+    "resource_monitor_refused", "controller_deadline", "fixture_deadline"))
+OUTCOMES = REFUSALS | {"pass", "tar_read_error", "json_decode_error", "unclassified_exception", "unclassified_refusal", "driver_deadline", "driver_disk_floor"}
+
+
+def cancel(signum, frame):
+    global CANCELLED
+    CANCELLED = True
+
+
+def owned_read(path, cap, private=False):
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as f:
+        s = os.fstat(f.fileno())
+        if not stat.S_ISREG(s.st_mode) or s.st_uid != os.getuid() or s.st_nlink != 1 or s.st_size > cap or (private and stat.S_IMODE(s.st_mode) != 0o600):
+            raise RuntimeError("closed owned input")
+        b = f.read(cap + 1)
+        if len(b) != s.st_size:
+            raise RuntimeError("closed changing input")
+        return b
+
+
+def create(name):
+    return os.fdopen(os.open(ROOT / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb")
+
+
+def free():
+    return min(shutil.disk_usage(ROOT).free, shutil.disk_usage(PUBLIC).free)
+
+
+def main():
+    proc = None; journal = None; logs = []; selector = selectors.DefaultSelector()
+    reason = None; code = None; reaped = False; empty = False; minimum = None; status = None
+    child_count = None; first_failure = None; first_outcome = None; phase = "preflight"
+    try:
+        if ROOT.resolve() != ROOT or pathlib.Path(__file__).resolve().parent != ROOT:
+            raise RuntimeError("closed root")
+        s = ROOT.lstat()
+        if not stat.S_ISDIR(s.st_mode) or s.st_uid != os.getuid() or stat.S_IMODE(s.st_mode) != 0o700:
+            raise RuntimeError("closed root ownership")
+        if owned_read(ROOT / ".marker", len(MARKER), private=True) != MARKER:
+            raise RuntimeError("closed marker")
+        if tuple(sys.version_info[:3]) != (3, 14, 6):
+            raise RuntimeError("closed reviewed Python version")
+        if not all(hasattr(os, x) for x in ("waitid", "WNOWAIT", "WEXITED", "WNOHANG", "getpgid", "getsid")):
+            raise RuntimeError("closed wait support")
+        minimum = free()
+        if minimum < 10 * G:
+            raise RuntimeError("closed capacity preflight")
+        for name in ("actual.outer.jsonl", "stdout.log", "stderr.log", "controller.txt", "receipt.json", "small.json",
+                     "inner.docker.tar.gz", "case.tar.gz", "actual.child.jsonl", "actual.child.json"):
+            if (ROOT / name).exists() or (ROOT / name).is_symlink():
+                raise RuntimeError("closed existing output")
+        journal = create("actual.outer.jsonl")
+        def note(data):
+            b = (json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            if journal.tell() + len(b) > 32 * 1024:
+                raise RuntimeError("closed outer journal cap")
+            journal.write(b); journal.flush(); os.fsync(journal.fileno())
+        note({"kind": "preflight", "free_bytes": minimum})
+        payload = owned_read(ROOT / "payload.py", 64 * 1024, private=True)
+        note({"kind": "pin", "input": "payload", "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
+        if hashlib.sha256(payload).hexdigest() != PAYLOAD_SHA:
+            raise RuntimeError("closed payload pin")
+        for src, name, size, sha in (
+            (WT / "scripts/check-local-container-cohort.py", "controller.txt", 99566, "c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837"),
+            (PUBLIC / "container-cohort.json", "receipt.json", 16872, "ab7c5ce7b87e672db255edc4393ccb27348cb777b14f5f7880f87a68a986ab7d"),
+            (PUBLIC / "essentials-small-metadata.json", "small.json", 17651, "430471f20c63eb533003415c19c3d19c8f83b542af7acb75621cfe150040e5b4")):
+            b = owned_read(src, size)
+            note({"kind": "pin", "input": name, "bytes": len(b), "sha256": hashlib.sha256(b).hexdigest()})
+            if len(b) != size or hashlib.sha256(b).hexdigest() != sha:
+                raise RuntimeError("closed source data pin")
+            with create(name) as out:
+                out.write(b); out.flush(); os.fsync(out.fileno())
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, cancel)
+        if CANCELLED or time.monotonic() >= CHILD_END or free() < 10 * G:
+            raise RuntimeError("closed prelaunch refusal")
+        logs = [create("stdout.log"), create("stderr.log")]
+        phase = "child"
+        proc = subprocess.Popen([sys.executable, "-I", "-S", "-B", str(ROOT / "payload.py"), str(CHILD_END)],
+            cwd=ROOT, env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1"},
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+            raise RuntimeError("closed child identity")
+        note({"kind": "launch", "pid": proc.pid, "pgid": proc.pid})
+        for stream, log in zip((proc.stdout, proc.stderr), logs):
+            os.set_blocking(stream.fileno(), False); selector.register(stream, selectors.EVENT_READ, log)
+        next_disk = time.monotonic(); terminated = None; killed = False
+        while True:
+            now = time.monotonic()
+            if now >= next_disk:
+                minimum = min(minimum, free()); next_disk = now + 2
+                if minimum < 8 * G:
+                    reason = "disk_floor"
+            if CANCELLED:
+                reason = "cancelled"
+            if now >= CHILD_END and reason is None:
+                reason = "child_deadline"
+            if reason is not None and terminated is None:
+                if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                    raise RuntimeError("closed cleanup identity")
+                os.killpg(proc.pid, signal.SIGTERM); terminated = now
+            if terminated is not None and now >= terminated + 1 and not killed:
+                if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                    raise RuntimeError("closed cleanup identity")
+                os.killpg(proc.pid, signal.SIGKILL); killed = True
+            for key, events in selector.select(timeout=0.05):
+                block = os.read(key.fileobj.fileno(), 65536)
+                if not block:
+                    selector.unregister(key.fileobj); key.fileobj.close(); continue
+                log = key.data
+                if log.tell() + len(block) > 64 * 1024:
+                    reason = "capture_cap"; block = block[:max(0, 64 * 1024 - log.tell())]
+                log.write(block)
+            status = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if status is not None and not selector.get_map():
+                break
+            if now >= OUTER_END - 1:
+                reason = reason or "outer_deadline"
+                break
+        phase = "join"
+    except BaseException:
+        reason = reason or "setup_or_supervisor_refusal"
+    finally:
+        # Never poll/wait/reap the leader before any required group signal; its PID pins ownership.
+        if proc is not None:
+            try:
+                status = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                if status is None:
+                    if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                        raise RuntimeError("closed cleanup identity")
+                    os.killpg(proc.pid, signal.SIGKILL)
+                code = proc.wait(timeout=max(0.01, OUTER_END - time.monotonic())); reaped = True
+                try:
+                    os.killpg(proc.pid, 0)
+                except ProcessLookupError:
+                    empty = True
+                if not empty:
+                    reason = reason or "owned_group_empty_not_proven"
+            except BaseException:
+                reason = reason or "join_or_group_refusal"
+            for stream in (proc.stdout, proc.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+        selector.close()
+        captures = []
+        for log in logs:
+            log.flush(); os.fsync(log.fileno()); captures.append(log.tell()); log.close()
+        observed = {"kind": "joined", "child_exit": code, "child_signal": -code if type(code) is int and code < 0 else None,
+                    "child_reaped": reaped, "owned_group_empty": empty, "minimum_free_bytes": minimum,
+                    "elapsed_seconds": round(time.monotonic() - START, 3), "capture_bytes": captures, "stop_reason": reason}
+        if journal is not None:
+            note(observed)  # observed numeric exit/cleanup fsynced before completion oracle comparisons
+            okay = False
+            try:
+                final = json.loads(owned_read(ROOT / "actual.child.json", 16 * 1024, private=True))
+                raw_rows = owned_read(ROOT / "actual.child.jsonl", 128 * 1024, private=True).splitlines()
+                if len(raw_rows) > 512:
+                    raise RuntimeError("closed child row count")
+                case_rows = []
+                for raw in raw_rows:
+                    row = json.loads(raw)
+                    if type(row) is not dict or "kind" not in row:
+                        raise RuntimeError("closed child row schema")
+                    kind = row["kind"]
+                    if kind == "case":
+                        if set(row) != {"kind", "case", "actual"} or row["case"] not in CASE_NAMES or row["actual"] not in OUTCOMES:
+                            raise RuntimeError("closed child case schema")
+                        case_rows.append(row)
+                    elif kind == "pin":
+                        if (set(row) != {"kind", "input", "bytes", "sha256"}
+                                or row["input"] not in {"controller.txt", "receipt.json", "small.json", "outer_zip", "inner_archive"}
+                                or type(row["bytes"]) is not int or not 0 <= row["bytes"] <= 49206215
+                                or type(row["sha256"]) is not str or len(row["sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed child pin schema")
+                    elif kind == "synthetic_input":
+                        if (set(row) != {"kind", "bytes", "sha256"} or type(row["bytes"]) is not int
+                                or not 0 <= row["bytes"] <= 1024 * 1024 or type(row["sha256"]) is not str
+                                or len(row["sha256"]) != 64 or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed synthetic row schema")
+                    elif kind == "metadata_pin":
+                        if (set(row) != {"kind", "ordinal", "bytes", "sha256"} or type(row["ordinal"]) is not int
+                                or not 0 <= row["ordinal"] < 12 or type(row["bytes"]) is not int or not 0 <= row["bytes"] <= 8 * 1024 ** 2
+                                or type(row["sha256"]) is not str or len(row["sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed metadata pin row")
+                    elif kind == "witness":
+                        if (set(row) != {"kind", "derived_count", "derived_set_sha256"}
+                                or type(row["derived_count"]) is not int or not 0 <= row["derived_count"] <= 128
+                                or type(row["derived_set_sha256"]) is not str or len(row["derived_set_sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["derived_set_sha256"])):
+                            raise RuntimeError("closed witness schema")
+                    elif kind == "stop":
+                        if (set(row) != {"kind", "phase", "reason"} or row["phase"] not in CASE_NAMES | SETUP_NAMES
+                                or row["reason"] != "first_unexpected_or_setup_refusal"):
+                            raise RuntimeError("closed stop schema")
+                    else:
+                        raise RuntimeError("closed unknown row kind")
+                if (type(final) is not dict or set(final) != {"schema", "count", "first_failure", "requested_exit"}
+                        or final["schema"] != "riauth.a09.build-free-child/v1" or type(final["count"]) is not int
+                        or final["count"] != len(case_rows) or final["first_failure"] not in CASE_NAMES | SETUP_NAMES | {None}
+                        or type(final["requested_exit"]) is not int or final["requested_exit"] not in {0, 2}
+                        or tuple(row["case"] for row in case_rows) != CASE_ORDER[:len(case_rows)]):
+                    raise RuntimeError("closed child completion schema")
+                child_count = final["count"]; first_failure = final["first_failure"]
+                if first_failure in CASE_NAMES:
+                    first_outcome = case_rows[-1]["actual"] if case_rows and case_rows[-1]["case"] == first_failure else "unclassified_exception"
+                okay = (reason is None and code == 0 and reaped and empty and first_failure is None
+                        and child_count == len(CASE_ORDER) and final["requested_exit"] == 0)
+            except BaseException:
+                reason = reason or "closed_child_envelope_refusal"
+            note({"kind": "decision", "result": "passed" if okay else "failed_or_refused", "count": child_count,
+                  "first_failure": first_failure, "first_outcome": first_outcome, "stop_reason": reason})
+            journal.close()
+        else:
+            okay = False
+        # Only closed results; no captured output, dynamic member names, paths or exception strings.
+        print(json.dumps({"result": "passed" if okay else "failed_or_refused", "exit": code,
+                          "count": child_count, "first_failure": first_failure, "first_outcome": first_outcome,
+                          "reaped": reaped, "group_empty": empty, "stop_reason": reason}, sort_keys=True))
+    return 0 if okay else 1
+
+
+if __name__ == "__main__":
+    try:
+        result = main()
+    except BaseException:
+        os.write(2, b"closed_supervisor_finalization_refusal\n"); result = 97
+    sys.exit(result)
+```
+
+### Immutable design-text pins and proposed one invocation
+
+The payload listing (from its first comment through its final newline, without
+Markdown fences) is 25305bytes, SHA-256 `f6a57790e77e85153c0a2fa84f03c257fa80931621004a53d67946aa1c0db9e3`.
+The supervisor listing with its actual payload hash embedded is 16622bytes,
+SHA-256 `af65db878cda7d529acfe2e4af1c46c3018e7bb9e3e2f42d0601460996b04385`. These are source-text identities, not files installed
+or executed by this design. Root must stage those exact bytes and independently
+verify the supervisor hash before its single invocation:
+
+```sh
+python3 -I -S -B "$PWD/target/a09-v28-legacy-build-free-59f5c6b-v1/supervisor.py"
+```
+
+The exact proposed marker is
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee:59f5c6b:build-free-v1` followed by one
+newline; marker0600, directory0700, listing files0600, same current UID, no
+symlinks/multiple links. No command/staging path has been created or invoked
+here. Root's separate release must identify the final reviewed design commit,
+both listing hashes, current capacity and absent fresh outputs. No automatic
+retry, alternative source/profile/feature, unsupported-host fallback or oracle
+relaxation is authorized. A finite setup or case refusal is an actual failure
+of that future invocation, not an inferred production/ARM/UID defect.
+
+Actual work in this design was pinned Git/source/public JSON reads, AST parser
+checks of the listings as text, and hashing that text. The original54888-byte
+report prefix,99566-byte helper and4573-byte workflow remain protected. The
+outer ZIP/member/layers were not opened; no candidate/module/driver/function/
+case/harness/stub/native/helper was executed or imported. No new resources,
+slot, deletion, source edit, network/download/dispatch, contact/new worker/
+task/worktree/managed shell, alignment/merge/main/push/status or service/browser/
+desktop action occurred. Root's independent source review is still separately
+attributed, not claimed by this design. Actual run37061329815 remains FAILED;
+all later UID/fixture gates remain unreached. Closed I04/other rows are unchanged.
+
+Final actual design checks: both complete fenced listings parsed as AST text;
+listing byte counts/hashes, mirrored closed registry and one-Popen declaration
+were checked statically, along with stdlib-only imports and isolated flags.
+No future listing/function/case was executed or compiled/imported. The complete
+54888-byte e603 report prefix is exact. Candidate99566/SHA c5ede631…2837 and
+workflow4573/SHA9af6d1d4…007d4 remain unchanged. `python3 scripts/check-docs.py`
+and final working/staged whitespace checks are run before the report-only commit;
+only this report may differ. These are documentation/parser/identity checks,
+not archive validation, process-supervision evidence or a runtime release.
+
+
+## Root retained-archive design review (2026-10-03)
+
+Root fully read cbf4560 payload25305B/f6a57790 and supervisor16622B/af65db87. The first actual-retained-archive check and independent pinned-member oracle precede the42-case synthetic/archive checks; no archive was opened or case run in this source phase. Scope keeps59f validator methods isolated, no constructor/Docker/native/build path, exclusive private captures and owner WNOWAIT cleanup. Root found a final post-persistence clock gap: an earlier deadline check cannot alone accept completion after the125-second bound. One narrow final-clock source design is separately reserved, with independent archive-design review active. No runtime/staging release follows from this report integration; historical image_tar_unreferenced_member failure remains failed.
+
+## Final post-save clock design correction (source text only)
+
+Reservation `wave30_A09_archive_final_clock_design`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. This appendix preserves every byte
+of the complete cbf4560d3ea097e122a092c0686ec3a424724311 report:112120 bytes,
+SHA-256 `fe32d99b55042f272bc7e4077ec254e8151b73b51ca6849407c738b2b2f13095`.
+It supersedes only that appendix's supervisor listing for future review and
+staging. The payload remains25305 bytes,
+SHA-256 `f6a57790e77e85153c0a2fa84f03c257fa80931621004a53d67946aa1c0db9e3`;
+all42 literal case oracles, candidate source59f5c6b, input identities, captures,
+resource thresholds, process ownership and invocation proposal remain exact.
+No design listing was installed, imported, compiled or executed.
+
+The prior supervisor could decide `okay`, then stall in decision-journal
+write/flush/fsync/close, and still print a successful result after OUTER_END.
+The smallest correction samples `time.monotonic()` after that journal closes
+(or after its absent-journal branch). At `final_clock >= OUTER_END`, it sets
+`okay = False` and the existing fixed reason `outer_deadline`, so the closed
+stdout result is `failed_or_refused` and the normal return is1. The added
+numeric `final_elapsed_seconds` is the unrounded measured difference between
+that final clock sample and START. Equality with the deadline refuses.
+
+The joined observation and decision journal rows are retained unchanged as
+pre-final observations. A fsynced decision row saying `passed` does not itself
+establish final acceptance: it precedes the new deadline admission check.
+A late final stdout result takes precedence, including when its
+`outer_deadline` reason supersedes an earlier reason retained in the journal.
+No evidence/log/regular-file write, flush, fsync, close, read, or new child
+operation occurs after the final clock sample. Only the required closed JSON
+stdout stream is emitted before the return; the unchanged exceptional wrapper
+can emit its fixed stderr refusal and exit97. There is no later receipt rewrite
+that could itself reopen the finalization gap.
+
+This is a final admission check after saving the receipts, not a hard kernel-I/O
+quota. A blocked kernel save/close may delay reaching the check; if it eventually
+completes late, the check refuses. The required final stdout stream and process
+exit can themselves be delayed after the sample. No guarantee of wall-clock
+termination by125 seconds, interruption of uninterruptible I/O, or delivery of
+a final receipt from an indefinitely blocked operation is made. The existing
+120-second child limit and125-second outer controls remain the same, including
+the documented limitations of user-space supervision.
+
+### Exact supervisor delta and static reversal
+
+The previous supervisor listing is16622 bytes,
+SHA-256 `af65db878cda7d529acfe2e4af1c46c3018e7bb9e3e2f42d0601460996b04385`.
+The complete replacement listing below is16833 bytes,
+SHA-256 `4b6ca88c509feeb0b0331c6e1ac970ac1e07d81fde2650e3685c8a86af8cb1bd`. Counts/hashes include its first comment and final newline,
+excluding Markdown fences. Its exact unified text diff is:
+
+```diff
+--- cbf4560-supervisor-design
++++ final-clock-supervisor-design
+@@ -250,2 +250,6 @@
+             okay = False
++        final_clock = time.monotonic()
++        if final_clock >= OUTER_END:
++            okay = False
++            reason = "outer_deadline"
+         # Only closed results; no captured output, dynamic member names, paths or exception strings.
+@@ -253,3 +257,4 @@
+                           "count": child_count, "first_failure": first_failure, "first_outcome": first_outcome,
+-                          "reaped": reaped, "group_empty": empty, "stop_reason": reason}, sort_keys=True))
++                          "reaped": reaped, "group_empty": empty, "stop_reason": reason,
++                          "final_elapsed_seconds": final_clock - START}, sort_keys=True))
+     return 0 if okay else 1
+```
+
+Actual static checks in this reservation parsed both supervisor listings and
+the unchanged payload as AST text only. Removing the four inserted clock/guard
+lines and reversing the final output-field change reconstructs the complete
+old16622-byte supervisor exactly. Separately removing the inserted assignment
+and conditional AST nodes and the final JSON key/value reconstructs its entire
+AST exactly (excluding parser location attributes). The payload remains
+byte/hash exact, and all three ASTs contain the identical42-entry CASE_ORDER.
+No prospective function or case was called to obtain those checks.
+
+The structural control-flow check found exactly one final-clock assignment in
+main's finalization block, immediately after the journal-present/absent branch.
+The journal-present branch ends with `journal.close()`; the absent branch sets
+`okay = False`. The post-sample conditional is precisely `final_clock >=
+OUTER_END`, with only `okay = False` and `reason = "outer_deadline"` in its body.
+After it, the only function calls in that finalization block are `print` and
+`json.dumps`; no file operation or new observation is performed. The final
+stdout `result` and normal return both use the resulting `okay`; no intervening
+assignment can restore it. The return remains `0 if okay else 1`. All preceding
+observations, receipt ordering, WNOWAIT/owned-group signals and reaping, caps,
+case comparisons, signal handling and the fixed exceptional exit97 are exact
+under whole-byte and whole-AST reversal.
+
+One initial documentation assembly attempt stopped at its pre-write
+trailing-whitespace assertion: the default three-line unified diff context
+represented an empty context line by a single space. No report bytes changed
+in that attempt. The displayed diff uses one context line and passes that
+check; this is a diff-format correction only, with identical supervisor bytes.
+
+### Complete corrected supervisor design listing
+
+```python
+# DESIGN ONLY: one future owned child; this supervisor has not run.
+import hashlib, json, os, pathlib, selectors, shutil, signal, stat, subprocess, sys, time
+
+WT = pathlib.Path("/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27")
+ROOT = WT / "target/a09-v28-legacy-build-free-59f5c6b-v1"
+PUBLIC = pathlib.Path("/tmp/riauth-wave30-container-37061329815")
+PAYLOAD_SHA = "f6a57790e77e85153c0a2fa84f03c257fa80931621004a53d67946aa1c0db9e3"
+MARKER = b"891e7443-8dac-4c1b-897f-9e53cb59c7ee:59f5c6b:build-free-v1\n"
+G = 1024 ** 3
+START = time.monotonic()
+CHILD_END = START + 120
+OUTER_END = START + 125
+CANCELLED = False
+CASE_ORDER = (
+    'retained_archive', 'retained_derived_six', 'tiny_baseline', 'extra_correctly_hashed',
+    'wrong_metadata_digest_path', 'altered_under_old_path', 'rehash_id', 'rehash_parent',
+    'rehash_created', 'rehash_os', 'rehash_config', 'rehash_unknown',
+    'duplicate_json_keys', 'malformed_metadata', 'scalar_metadata', 'missing_metadata',
+    'duplicate_member', 'nonregular_member', 'path_member', 'manifest_layer_order',
+    'streamed_layer_mismatch', 'rootfs_layer_order', 'rootfs_duplicate', 'rootfs_schema',
+    'bool_as_int', 'top_unknown_schema', 'invalid_calendar', 'noncanonical_time',
+    'layer_count_129', 'compressed_stat_cap', 'expanded_header_cap', 'small_payload_cap',
+    'truncated_payload', 'wrong_tag', 'wrong_config_image', 'wrong_oci_config',
+    'wrong_oci_index', 'wrong_oci_reference', 'missing_oci_payload', 'unsupported_daemon_with_legacy',
+    'original_blob_digest_loop', 'original_resource_budget',
+)
+CASE_NAMES = frozenset(CASE_ORDER)
+SETUP_NAMES = frozenset(("setup", "transport", "assembly", "metadata_read", "synthetic_setup"))
+REFUSALS = frozenset((
+    "image_archive_size", "image_tar_member", "image_tar_expanded_cap", "image_tar_truncated",
+    "docker_archive_manifest", "image_tar_exact_tag", "image_tar_config_layers", "saved_config_identity",
+    "saved_oci_index", "oci_manifest_digest", "oci_manifest_payload", "oci_image_manifest_binding",
+    "image_tar_unreferenced_member", "image_blob_digest", "image_legacy_profile", "image_legacy_rootfs",
+    "image_legacy_layers", "image_legacy_config", "image_legacy_created", "image_legacy_metadata_binding",
+    "resource_monitor_refused", "controller_deadline", "fixture_deadline"))
+OUTCOMES = REFUSALS | {"pass", "tar_read_error", "json_decode_error", "unclassified_exception", "unclassified_refusal", "driver_deadline", "driver_disk_floor"}
+
+
+def cancel(signum, frame):
+    global CANCELLED
+    CANCELLED = True
+
+
+def owned_read(path, cap, private=False):
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as f:
+        s = os.fstat(f.fileno())
+        if not stat.S_ISREG(s.st_mode) or s.st_uid != os.getuid() or s.st_nlink != 1 or s.st_size > cap or (private and stat.S_IMODE(s.st_mode) != 0o600):
+            raise RuntimeError("closed owned input")
+        b = f.read(cap + 1)
+        if len(b) != s.st_size:
+            raise RuntimeError("closed changing input")
+        return b
+
+
+def create(name):
+    return os.fdopen(os.open(ROOT / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb")
+
+
+def free():
+    return min(shutil.disk_usage(ROOT).free, shutil.disk_usage(PUBLIC).free)
+
+
+def main():
+    proc = None; journal = None; logs = []; selector = selectors.DefaultSelector()
+    reason = None; code = None; reaped = False; empty = False; minimum = None; status = None
+    child_count = None; first_failure = None; first_outcome = None; phase = "preflight"
+    try:
+        if ROOT.resolve() != ROOT or pathlib.Path(__file__).resolve().parent != ROOT:
+            raise RuntimeError("closed root")
+        s = ROOT.lstat()
+        if not stat.S_ISDIR(s.st_mode) or s.st_uid != os.getuid() or stat.S_IMODE(s.st_mode) != 0o700:
+            raise RuntimeError("closed root ownership")
+        if owned_read(ROOT / ".marker", len(MARKER), private=True) != MARKER:
+            raise RuntimeError("closed marker")
+        if tuple(sys.version_info[:3]) != (3, 14, 6):
+            raise RuntimeError("closed reviewed Python version")
+        if not all(hasattr(os, x) for x in ("waitid", "WNOWAIT", "WEXITED", "WNOHANG", "getpgid", "getsid")):
+            raise RuntimeError("closed wait support")
+        minimum = free()
+        if minimum < 10 * G:
+            raise RuntimeError("closed capacity preflight")
+        for name in ("actual.outer.jsonl", "stdout.log", "stderr.log", "controller.txt", "receipt.json", "small.json",
+                     "inner.docker.tar.gz", "case.tar.gz", "actual.child.jsonl", "actual.child.json"):
+            if (ROOT / name).exists() or (ROOT / name).is_symlink():
+                raise RuntimeError("closed existing output")
+        journal = create("actual.outer.jsonl")
+        def note(data):
+            b = (json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n").encode()
+            if journal.tell() + len(b) > 32 * 1024:
+                raise RuntimeError("closed outer journal cap")
+            journal.write(b); journal.flush(); os.fsync(journal.fileno())
+        note({"kind": "preflight", "free_bytes": minimum})
+        payload = owned_read(ROOT / "payload.py", 64 * 1024, private=True)
+        note({"kind": "pin", "input": "payload", "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()})
+        if hashlib.sha256(payload).hexdigest() != PAYLOAD_SHA:
+            raise RuntimeError("closed payload pin")
+        for src, name, size, sha in (
+            (WT / "scripts/check-local-container-cohort.py", "controller.txt", 99566, "c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837"),
+            (PUBLIC / "container-cohort.json", "receipt.json", 16872, "ab7c5ce7b87e672db255edc4393ccb27348cb777b14f5f7880f87a68a986ab7d"),
+            (PUBLIC / "essentials-small-metadata.json", "small.json", 17651, "430471f20c63eb533003415c19c3d19c8f83b542af7acb75621cfe150040e5b4")):
+            b = owned_read(src, size)
+            note({"kind": "pin", "input": name, "bytes": len(b), "sha256": hashlib.sha256(b).hexdigest()})
+            if len(b) != size or hashlib.sha256(b).hexdigest() != sha:
+                raise RuntimeError("closed source data pin")
+            with create(name) as out:
+                out.write(b); out.flush(); os.fsync(out.fileno())
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(sig, cancel)
+        if CANCELLED or time.monotonic() >= CHILD_END or free() < 10 * G:
+            raise RuntimeError("closed prelaunch refusal")
+        logs = [create("stdout.log"), create("stderr.log")]
+        phase = "child"
+        proc = subprocess.Popen([sys.executable, "-I", "-S", "-B", str(ROOT / "payload.py"), str(CHILD_END)],
+            cwd=ROOT, env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1"},
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+            raise RuntimeError("closed child identity")
+        note({"kind": "launch", "pid": proc.pid, "pgid": proc.pid})
+        for stream, log in zip((proc.stdout, proc.stderr), logs):
+            os.set_blocking(stream.fileno(), False); selector.register(stream, selectors.EVENT_READ, log)
+        next_disk = time.monotonic(); terminated = None; killed = False
+        while True:
+            now = time.monotonic()
+            if now >= next_disk:
+                minimum = min(minimum, free()); next_disk = now + 2
+                if minimum < 8 * G:
+                    reason = "disk_floor"
+            if CANCELLED:
+                reason = "cancelled"
+            if now >= CHILD_END and reason is None:
+                reason = "child_deadline"
+            if reason is not None and terminated is None:
+                if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                    raise RuntimeError("closed cleanup identity")
+                os.killpg(proc.pid, signal.SIGTERM); terminated = now
+            if terminated is not None and now >= terminated + 1 and not killed:
+                if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                    raise RuntimeError("closed cleanup identity")
+                os.killpg(proc.pid, signal.SIGKILL); killed = True
+            for key, events in selector.select(timeout=0.05):
+                block = os.read(key.fileobj.fileno(), 65536)
+                if not block:
+                    selector.unregister(key.fileobj); key.fileobj.close(); continue
+                log = key.data
+                if log.tell() + len(block) > 64 * 1024:
+                    reason = "capture_cap"; block = block[:max(0, 64 * 1024 - log.tell())]
+                log.write(block)
+            status = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if status is not None and not selector.get_map():
+                break
+            if now >= OUTER_END - 1:
+                reason = reason or "outer_deadline"
+                break
+        phase = "join"
+    except BaseException:
+        reason = reason or "setup_or_supervisor_refusal"
+    finally:
+        # Never poll/wait/reap the leader before any required group signal; its PID pins ownership.
+        if proc is not None:
+            try:
+                status = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                if status is None:
+                    if os.getpgid(proc.pid) != proc.pid or os.getsid(proc.pid) != proc.pid:
+                        raise RuntimeError("closed cleanup identity")
+                    os.killpg(proc.pid, signal.SIGKILL)
+                code = proc.wait(timeout=max(0.01, OUTER_END - time.monotonic())); reaped = True
+                try:
+                    os.killpg(proc.pid, 0)
+                except ProcessLookupError:
+                    empty = True
+                if not empty:
+                    reason = reason or "owned_group_empty_not_proven"
+            except BaseException:
+                reason = reason or "join_or_group_refusal"
+            for stream in (proc.stdout, proc.stderr):
+                if stream is not None and not stream.closed:
+                    stream.close()
+        selector.close()
+        captures = []
+        for log in logs:
+            log.flush(); os.fsync(log.fileno()); captures.append(log.tell()); log.close()
+        observed = {"kind": "joined", "child_exit": code, "child_signal": -code if type(code) is int and code < 0 else None,
+                    "child_reaped": reaped, "owned_group_empty": empty, "minimum_free_bytes": minimum,
+                    "elapsed_seconds": round(time.monotonic() - START, 3), "capture_bytes": captures, "stop_reason": reason}
+        if journal is not None:
+            note(observed)  # observed numeric exit/cleanup fsynced before completion oracle comparisons
+            okay = False
+            try:
+                final = json.loads(owned_read(ROOT / "actual.child.json", 16 * 1024, private=True))
+                raw_rows = owned_read(ROOT / "actual.child.jsonl", 128 * 1024, private=True).splitlines()
+                if len(raw_rows) > 512:
+                    raise RuntimeError("closed child row count")
+                case_rows = []
+                for raw in raw_rows:
+                    row = json.loads(raw)
+                    if type(row) is not dict or "kind" not in row:
+                        raise RuntimeError("closed child row schema")
+                    kind = row["kind"]
+                    if kind == "case":
+                        if set(row) != {"kind", "case", "actual"} or row["case"] not in CASE_NAMES or row["actual"] not in OUTCOMES:
+                            raise RuntimeError("closed child case schema")
+                        case_rows.append(row)
+                    elif kind == "pin":
+                        if (set(row) != {"kind", "input", "bytes", "sha256"}
+                                or row["input"] not in {"controller.txt", "receipt.json", "small.json", "outer_zip", "inner_archive"}
+                                or type(row["bytes"]) is not int or not 0 <= row["bytes"] <= 49206215
+                                or type(row["sha256"]) is not str or len(row["sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed child pin schema")
+                    elif kind == "synthetic_input":
+                        if (set(row) != {"kind", "bytes", "sha256"} or type(row["bytes"]) is not int
+                                or not 0 <= row["bytes"] <= 1024 * 1024 or type(row["sha256"]) is not str
+                                or len(row["sha256"]) != 64 or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed synthetic row schema")
+                    elif kind == "metadata_pin":
+                        if (set(row) != {"kind", "ordinal", "bytes", "sha256"} or type(row["ordinal"]) is not int
+                                or not 0 <= row["ordinal"] < 12 or type(row["bytes"]) is not int or not 0 <= row["bytes"] <= 8 * 1024 ** 2
+                                or type(row["sha256"]) is not str or len(row["sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["sha256"])):
+                            raise RuntimeError("closed metadata pin row")
+                    elif kind == "witness":
+                        if (set(row) != {"kind", "derived_count", "derived_set_sha256"}
+                                or type(row["derived_count"]) is not int or not 0 <= row["derived_count"] <= 128
+                                or type(row["derived_set_sha256"]) is not str or len(row["derived_set_sha256"]) != 64
+                                or any(c not in "0123456789abcdef" for c in row["derived_set_sha256"])):
+                            raise RuntimeError("closed witness schema")
+                    elif kind == "stop":
+                        if (set(row) != {"kind", "phase", "reason"} or row["phase"] not in CASE_NAMES | SETUP_NAMES
+                                or row["reason"] != "first_unexpected_or_setup_refusal"):
+                            raise RuntimeError("closed stop schema")
+                    else:
+                        raise RuntimeError("closed unknown row kind")
+                if (type(final) is not dict or set(final) != {"schema", "count", "first_failure", "requested_exit"}
+                        or final["schema"] != "riauth.a09.build-free-child/v1" or type(final["count"]) is not int
+                        or final["count"] != len(case_rows) or final["first_failure"] not in CASE_NAMES | SETUP_NAMES | {None}
+                        or type(final["requested_exit"]) is not int or final["requested_exit"] not in {0, 2}
+                        or tuple(row["case"] for row in case_rows) != CASE_ORDER[:len(case_rows)]):
+                    raise RuntimeError("closed child completion schema")
+                child_count = final["count"]; first_failure = final["first_failure"]
+                if first_failure in CASE_NAMES:
+                    first_outcome = case_rows[-1]["actual"] if case_rows and case_rows[-1]["case"] == first_failure else "unclassified_exception"
+                okay = (reason is None and code == 0 and reaped and empty and first_failure is None
+                        and child_count == len(CASE_ORDER) and final["requested_exit"] == 0)
+            except BaseException:
+                reason = reason or "closed_child_envelope_refusal"
+            note({"kind": "decision", "result": "passed" if okay else "failed_or_refused", "count": child_count,
+                  "first_failure": first_failure, "first_outcome": first_outcome, "stop_reason": reason})
+            journal.close()
+        else:
+            okay = False
+        final_clock = time.monotonic()
+        if final_clock >= OUTER_END:
+            okay = False
+            reason = "outer_deadline"
+        # Only closed results; no captured output, dynamic member names, paths or exception strings.
+        print(json.dumps({"result": "passed" if okay else "failed_or_refused", "exit": code,
+                          "count": child_count, "first_failure": first_failure, "first_outcome": first_outcome,
+                          "reaped": reaped, "group_empty": empty, "stop_reason": reason,
+                          "final_elapsed_seconds": final_clock - START}, sort_keys=True))
+    return 0 if okay else 1
+
+
+if __name__ == "__main__":
+    try:
+        result = main()
+    except BaseException:
+        os.write(2, b"closed_supervisor_finalization_refusal\n"); result = 97
+    sys.exit(result)
+```
+
+### Scope, checks and held execution
+
+The future staging/review must use this corrected supervisor hash rather than
+the old `af65db87` listing, alongside the unchanged `f6a57790` payload. The
+single proposed invocation, marker, private0700 directory/exclusive0600 files,
+10GiB start/8GiB floor,120-second child/125-second outer, capture bounds,
+ordered receipts, owned-group cleanup and all pinned archive/source inputs are
+unchanged. They remain a proposal; no staging directory or files were created
+and no archive, layer, validator, synthetic case, driver, helper, native tool,
+Docker, Cargo or prospective process supervisor was invoked here.
+
+Candidate helper remains99566 bytes,
+SHA-256 `c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837`;
+workflow remains4573 bytes,
+SHA-256 `9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4`.
+The source59f5c6b recipe, protected production and architecture handling are
+unchanged. Root's independent source/body reviews are separately attributed;
+this appendix does not claim to have performed that independent review or any
+future runtime. Documentation and whitespace checks are run before the
+report-only commit; exact prefix, text/AST reversal, pins and changed-file scope
+are checked again from the final report.
+
+The one future build-free invocation remains HELD pending root's final immutable
+source/design review and fresh capacity. Actual cohort37061329815 remains FAILED
+at `image_tar_unreferenced_member`; UID and fixture gates remain unreached.
+No new source/runtime success, ARM evidence, image execution, whole A09 closure,
+O07 remedy or task disposition is inferred. All earlier failure receipts and
+closed I04/other rows remain untouched. No runtime/preparation slot was acquired
+or released. Root alone owns integration, publication and task status.
+
+Actual final documentation check: `python3 scripts/check-docs.py` exited0 with
+"Markdown links and build-directory layout checked". `git diff --check` exited0.
+A readback of the persisted report passed exact112120-byte prefix preservation,
+both listing hashes, byte/AST reversal, exact displayed diff, final-clock
+control-flow and unchanged helper/workflow pins; the only changed tracked path
+was this report and the index was empty. No archive/case/supervisor runtime was
+performed. Staged whitespace and report-only scope are checked before commit,
+then the committed prefix/source pins and clean worktree are verified.
+
+
+## Root final-clock source review (2026-10-03)
+
+Root read complete511b32a prose/diff and independently reversed the entire16833B corrected supervisor4b6ca88c to the previously fully read16622B af65db87. Only the final post-journal clock/closed elapsed field changes; no regular-file operation follows that check. The unchanged25305B f6a57790 payload and42-case registry remain source-only. Saved observations precede final acceptance; a late final stdout refusal overrides an earlier saved pass decision. User-space checks do not impose a hard kernel/output exit deadline. Independent archive review and exact fresh capacity/staging still precede any separate release.
+
+An initial root reversal used an absent extraction filename block1 rather than actual block-1 and failed before writes; the corrected read completed the full inverse above. The no-op commit attempt made no history change. No candidate or runtime execution occurred.

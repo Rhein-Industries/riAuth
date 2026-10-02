@@ -9135,3 +9135,695 @@ adapters, partial-ownership cleanup, changed-cell verification and a separately
 released fixture remain prerequisites. No proposed controller, collector,
 marker, Driver call or helper was executed by this root review. Runtime remains
 held and original D01/D05 disposition remains open.
+
+## Dated source-only phase: successful-entry phase transition, 2026-10-03 (Europe/Vaduz)
+
+Reservation: wave30_D01_controller_entry_phase_design. Append ONLY this report,
+preserving all635391 bytes of immutable2e29c30d01ccd41a2aac3914e3ac20afa38d324f,
+SHA256c3d7d338676cc1156a9958253c2b51eab823eb25b7478c9ec1b0d4fba37c91a8.
+No controller/helper/source file, evidence record, history alignment or runtime
+was changed. No desktop/operator/Cargo slot was acquired or released.
+
+Root's source review found a lifecycle blocker in the463-line candidate:
+entry() populates helper_pid, fixture_ready and listener_pid_proof, but leaves
+own.phase as prepared_entry. A next invocation selects the prepared-entry gate
+and correctly refuses that now-populated context. This is a source-derived
+candidate defect, not an observed GUI failure, helper outcome or retrospective
+cause for any historic fixture.
+
+The smallest correction inserts ONE four-line guarded block immediately after
+entry's final poll and before the unchanged failure cleanup line. The test is
+exactly record.first_failure===null. Only own.phase becomes browser_decision
+and the same own object is stored under the existing key. Failed entry paths,
+including failures identified by the final poll, never enter that block.
+No await, tool call, output, deadline reset, marker, PID/ownership assertion,
+metadata field, ref consumption, failure latch or cleanup operation is added.
+The surrounding try/catch and all context gates remain exact.
+
+### Exact hunk and complete corrected candidate — NOT EXECUTED
+
+```diff
+--- immutable-2e29c30-cell-eff0cdad
++++ DESIGN-only-successful-entry-phase
+@@ -374,6 +374,10 @@
+   if(record.first_failure!==null){await cleanup();return;}
+   await navigateAndSnapshot("http://localhost:3000/","application");
+   if(record.first_failure===null)await pollController(); // ONE post-entry poll.
++  if(record.first_failure===null) {
++    own.phase="browser_decision";
++    store("d01_immediate_owned_handles",own);
++  }
+   if(record.first_failure!==null)await cleanup();
+ }
+ async function continuation() {
+```
+
+Complete467-line candidate31581B/SHA256
+d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d.
+Its final newline is part of the exact fenced source.
+
+```javascript
+// Prospective ONE functions.exec cell; NOT executed in this design phase.
+const CLOCK="import json,time\nprint(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))\n";
+const STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+const READBACK="import json,os,pathlib,stat,subprocess,sys,time\nc=json.loads(sys.argv[1])\nchildren=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        info=os.fstat(fd)\n        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):\n            raise ValueError('fixed_outer_evidence_invalid')\n        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)\n        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')\n        data=json.loads(raw_bytes)\n    finally:os.close(fd)\n    outer_observation=finite_observation(data.get('unexpected_failure_observation'))\n    projection=data.get('unexpected_observation_projection')\n    if projection not in ('unavailable','valid','invalid'):projection='invalid'\n    if projection=='valid' and outer_observation is None:projection='invalid'\n    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0\n    if started:allowed.add('helper')\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\n        helper_pid=data['helper_pid'] if started else None\npids=list(c['owned_pids'])\nif helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))\n";
+const MARKER="import os,pathlib,stat,sys\nlab=pathlib.Path(sys.argv[1]);guard=int(sys.argv[2]);server=int(sys.argv[3])\nif guard<=0 or server<=0 or guard==server:raise ValueError('owned_context_invalid')\ninfo=lab.lstat()\nif not (stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.getuid()):raise ValueError('owned_context_invalid')\nos.kill(guard,0);os.kill(server,0)\nif (lab/'stop').exists() or (lab/'ui-failure').exists():raise ValueError('owned_context_invalid')\nfd=os.open(lab/'browser-prepared',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nos.close(fd)\nprint('{\"prepared_marker_written\":true}')\n";
+const PERSIST="import json,os,pathlib,sys\npath=pathlib.Path(sys.argv[1])\nrecord=json.loads(sys.argv[2])\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\ndef clocks(value):\n    if isinstance(value,dict):\n        for k,v in list(value.items()):\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\n                value[k]=int(v)\n            else:clocks(v)\n    elif isinstance(value,list):\n        for v in value:clocks(v)\nclocks(record)\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'w',encoding='ascii') as f:\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\n');f.flush();os.fsync(f.fileno())\nprint(json.dumps({'written_exclusive':True}))\n";
+const own=load("d01_immediate_owned_handles");
+const OBSKEY="d01_immediate_observation_record";
+if (!own || own.runtime_release!==true || own.driver_owned!==true ||
+    own.exact_bound!==true || own.single_controller!==true ||
+    !["prepared_entry","browser_decision"].includes(own.phase) ||
+    (own.phase==="prepared_entry"&&(own.prepared_gate!==true||own.helper_pid!==null||
+      own.fixture_ready===true||own.listener_pid_proof===true)) ||
+    (own.phase==="browser_decision"&&(own.fixture_ready!==true||own.listener_pid_proof!==true)) ||
+    own.fresh_paths_preflight!==true ||
+    !Number.isSafeInteger(own.start_epoch_ms) || typeof own.workspace!=="string" ||
+    new Set([own.guard_pid,own.server_pid,own.browser_pid,
+       ...(own.helper_pid===null?[]:[own.helper_pid])]).size!==(own.helper_pid===null?3:4) ||
+    ![own.guard_pid,own.server_pid,own.browser_pid,own.exec_session,
+       ...(own.helper_pid===null?[]:[own.helper_pid])]
+       .every(v=>Number.isSafeInteger(v)&&v>0) ||
+    ![own.session,own.target_id,own.tab_id,own.lab,own.outer_out,
+       own.event_out,own.cleanup_out].every(v=>typeof v==="string"&&v.length>0)) {
+  text({proposal_refused:"fresh_owned_context_required"});exit();
+}
+const prior=load(OBSKEY);
+if(own.closed===true||prior?.cleanup_started===true){
+  text({proposal_refused:"fixture_already_stopped",resource_release_proven:false});exit();
+}
+const record=prior??{
+  schema:"riauth.d01-immediate-observation-cleanup/v1",
+  first_failure:null,first_observation_wall_ms:null,
+  first_event_proven:false,whole_cleanup_within60_proven:false,
+  unexpected_failure_observation:null,diagnostic_errors:[],cleanup_started:false,
+  first_clock:null,observation_receipts:[],controller_observations:[],local_tool_receipts:[],actions:[],cleanup_errors:[],
+  final_absence:null,owned_child_exits:null,controller_exit:null,
+  first_observation_to_final_wall_ms:null,latch_to_absence_ms:null
+};
+const sq=s=>"'"+String(s).replace(/'/g,"'\\''")+"'";
+const retain=()=>store(OBSKEY,record);
+const cleanupError=label=>{
+  if(!record.cleanup_errors.includes(label))record.cleanup_errors.push(label);
+  retain();
+};
+const local=async(source,arg)=>{
+  const cmd="python3 -c "+sq(source)+(arg===undefined?"":" "+sq(JSON.stringify(arg)));
+  const r=await tools.exec_command({cmd,workdir:own.workspace,
+    yield_time_ms:10000,max_output_tokens:2000});
+  record.local_tool_receipts.push({
+    label:source===CLOCK?"clock":source===STOP?"stop":source===READBACK?"readback":"unknown",
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    session_id:typeof r.session_id==="number"?r.session_id:null
+  });retain(); // Numeric collector receipt BEFORE comparisons.
+  if(r.session_id!==undefined) {
+    cleanupError("owned_local_command_unjoined");throw new Error("local_pending");
+  }
+  if(r.exit_code!==0)throw new Error("local_failed");
+  return JSON.parse(r.output);
+};
+function finiteObservation(value) {
+  const exact=(v,keys)=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&
+    Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
+  if(!exact(value,["observed","diagnostic"])||typeof value.observed!=="boolean")return null;
+  const d=value.diagnostic;
+  if(d===null)return {observed:value.observed,diagnostic:null};
+  if(!value.observed||!exact(d,["site","exception_class","own_function","own_line"])||
+     !["handler","server","main"].includes(d.site)||
+     !["AttributeError","TypeError","ValueError","KeyError","OSError","BrokenPipeError",
+       "ConnectionResetError","TimeoutError","other"].includes(d.exception_class))return null;
+  const functions=["HeaderReader.readline","DemoServer.process_request","Demo.begin","Demo.callback",
+    "Demo.invoke","Handler.handle_one_request","Handler.send_error","Handler.get","Handler.reply","main"];
+  if(!((d.own_function===null&&d.own_line===null)||
+       (functions.includes(d.own_function)&&Number.isSafeInteger(d.own_line)&&
+        d.own_line>=1&&d.own_line<=1024)))return null;
+  return {observed:true,diagnostic:{site:d.site,exception_class:d.exception_class,
+    own_function:d.own_function,own_line:d.own_line}};
+}
+function diagnostic(value,projection) {
+  const projected=finiteObservation(value);
+  if(projection==="invalid"||!["valid","unavailable"].includes(projection)||
+     (projection==="valid"&&projected===null)) {
+    if(!record.diagnostic_errors.includes("observer_projection_invalid"))
+      record.diagnostic_errors.push("observer_projection_invalid");
+  }
+  if(projected!==null&&record.unexpected_failure_observation===null)
+    record.unexpected_failure_observation=projected;
+  retain(); // No raw diagnostic fallback and no first-failure or outcome mutation.
+}
+const ns=c=>BigInt(c.monotonic_ns);
+const getClock=()=>local(CLOCK);
+let controllerJoined=false;
+let controllerPollAvailable=true;
+let controllerBuffer="";
+let cleanupStarted=false;
+let lastSnapshotFlags=null;
+function latch(label,receivedWall) {
+  if(record.first_failure===null) {
+    record.first_failure=label;
+    record.first_observation_wall_ms=receivedWall;
+    retain(); // Synchronous first-failure/wall latch BEFORE any new await/output.
+  }
+}
+function observeController(r,receivedWall) {
+  const observation={received_wall_ms:receivedWall,
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    helper_completed:false,helper_exit:null,fixture_finished:false};
+  // Complete numeric result projection is retained BEFORE comparisons.
+  record.controller_observations.push(observation);retain();
+  if(typeof r.exit_code==="number") {
+    controllerJoined=true;record.controller_exit=r.exit_code;retain();
+  }
+  controllerBuffer+=typeof r.output==="string"?r.output:"";
+  if(controllerBuffer.length>16384) {
+    latch("controller_observation_invalid",receivedWall);controllerBuffer="";return;
+  }
+  let cut;
+  while((cut=controllerBuffer.indexOf("\n"))>=0) {
+    const line=controllerBuffer.slice(0,cut);controllerBuffer=controllerBuffer.slice(cut+1);
+    if(!line.trim())continue;
+    let event;
+    try{event=JSON.parse(line);}catch{
+      latch("controller_observation_invalid",receivedWall);continue;
+    }
+    if(Object.hasOwn(event,"unexpected_failure_observation"))
+      diagnostic(event.unexpected_failure_observation,event.unexpected_observation_projection);
+    if(event.fixture_ready===true) {
+      if(event.guard_pid!==own.guard_pid||event.server_pid!==own.server_pid||
+         event.lab!==own.lab||!Number.isSafeInteger(event.helper_pid)||event.helper_pid<=0||
+         [own.guard_pid,own.server_pid,own.browser_pid].includes(event.helper_pid)||
+         (own.helper_pid!==null&&own.helper_pid!==event.helper_pid))
+        latch("fixture_ready_unconfirmed",receivedWall);
+      else {
+        own.helper_pid=event.helper_pid;own.fixture_ready=true;own.listener_pid_proof=true;
+        store("d01_immediate_owned_handles",own);
+      }
+    }
+    if(event.helper_completed===true) {
+      observation.helper_completed=true;
+      observation.helper_exit=typeof event.exit==="number"?event.exit:null;
+      retain();
+      if(event.exit!==0)latch("helper_failed",receivedWall);
+      else if(!cleanupStarted&&record.protected_after_page!==true)
+        latch("helper_completed_before_app_checkpoint",receivedWall);
+    }
+    if(event.fixture_finished===true) {
+      observation.fixture_finished=true;retain();
+      if(!cleanupStarted)latch("controller_completed_before_app_checkpoint",receivedWall);
+    }
+  }
+  if(controllerJoined&&!cleanupStarted)
+    latch("controller_completed_before_app_checkpoint",receivedWall);
+}
+async function pollController() {
+  if(controllerJoined||!controllerPollAvailable)return;
+  try {
+    const r=await tools.write_stdin({session_id:own.exec_session,
+      chars:"",yield_time_ms:5000,max_output_tokens:2000});
+    const receivedWall=Date.now();
+    observeController(r,receivedWall);
+  } catch {
+    controllerPollAvailable=false;
+    latch("controller_observation_unavailable",Date.now());
+    if(cleanupStarted)cleanupError("controller_join_unconfirmed");
+  }
+}
+async function timedDriver(label,allocation,operation,project) {
+  let start=null,end=null,result=null,state="unknown";
+  try{start=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label,start_clock:start,end_clock:null,allowed_ms:allocation,
+    result_state:"unknown",elapsed_ms:null,over_budget:null};
+  record.actions.push(action);retain(); // Start retained BEFORE entering Driver call.
+  try {
+    result=await operation();
+    state=result?.isError===true?"refused":"returned";
+  } catch {state="exception";}
+  try{end=await getClock();}catch{cleanupError("clock_unavailable");}
+  action.end_clock=end;action.result_state=state;
+  retain(); // End/result retained BEFORE budget comparison.
+  if(start&&end) {
+    const d=ns(end)-ns(start);
+    if(d>=0n) {
+      action.elapsed_ms=Number(d/1000000n);
+      action.over_budget=action.elapsed_ms>allocation;
+    } else cleanupError("clock_invalid");
+  }
+  if(action.over_budget)cleanupError("driver_operation_over_budget");
+  if(state!=="returned")cleanupError("driver_operation_unconfirmed");
+  if(project)project(result,state);
+  retain();
+}
+async function cleanup() {
+  if(cleanupStarted)return;
+  cleanupStarted=true;record.cleanup_started=true;retain();
+  try {
+    const r=await local(STOP,{
+      lab:own.lab,event_out:own.event_out,
+      first_failure:record.first_failure,
+      first_observation_wall_ms:record.first_observation_wall_ms
+    });
+    record.first_clock=r.clock;record.stop_state=r.marker_state;retain();
+    if(r.event_state!=="written")cleanupError("observation_metadata_write_unconfirmed");
+    if(r.marker_state==="stop_unconfirmed")cleanupError("stop_unconfirmed");
+    if(r.marker_state==="ownership_unknown")cleanupError("ownership_unknown");
+  } catch {cleanupError("stop_or_clock_record_unavailable");}
+  // No outstanding Driver call exists here: all page calls above were awaited.
+  // Original stop protocol already causes the controller's owned-child finally.
+  await timedDriver("kill_app",30000,
+    ()=>tools.mcp__cua_driver__kill_app({pid:own.browser_pid}));
+  await timedDriver("end_session",15000,
+    ()=>tools.mcp__cua_driver__end_session({session:own.session}),(r,state)=>{
+      record.session_ended=state==="returned"&&
+        r?.structuredContent?.active===false&&r.structuredContent.session===own.session;
+      retain();
+    });
+  await timedDriver("list_windows",5000,
+    ()=>tools.mcp__cua_driver__list_windows({pid:own.browser_pid}),(r,state)=>{
+      const windows=r?.structuredContent?.windows;
+      record.window_count=state==="returned"&&Array.isArray(windows)?windows.length:null;
+      retain();
+    });
+  let readStart=null;
+  try{readStart=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label:"owned_join_readback",start_clock:readStart,end_clock:null,
+    allowed_ms:null,elapsed_ms:null,over_budget:null,result_state:"unknown"};
+  record.actions.push(action);retain();
+  if(readStart&&record.first_clock) {
+    action.allowed_ms=Math.max(0,60000-Number((ns(readStart)-ns(record.first_clock))/1000000n));
+    retain();
+  }
+  // Continue essential join after60s if late; never claim that deadline enforced.
+  // Do not poll another exec session or send a manual process signal.
+  while(!controllerJoined&&controllerPollAvailable&&Date.now()<own.start_epoch_ms+900000) {
+    await pollController();
+    if(record.first_clock) {
+      try {
+        const c=await getClock();record.last_join_clock=c;retain();
+        if(ns(c)-ns(record.first_clock)>60000000000n)
+          cleanupError("cleanup_budget_exceeded");
+      } catch{cleanupError("clock_unavailable");}
+    }
+  }
+  if(!controllerJoined)cleanupError("child_reap_incomplete");
+  try {
+    const r=await local(READBACK,{
+      owned_pids:[own.guard_pid,own.server_pid,own.browser_pid,
+        ...(own.helper_pid===null?[]:[own.helper_pid])],
+      lab:own.lab,outer_out:own.outer_out,helper_pid:own.helper_pid,server_pid:own.server_pid
+    });
+    action.end_clock=r.clock;action.result_state="returned";
+    record.owned_child_exits=r.owned_child_exits;
+    diagnostic(r.unexpected_failure_observation,r.unexpected_observation_projection);
+    if(Number.isSafeInteger(r.helper_pid)&&r.helper_pid>0)own.helper_pid=r.helper_pid;
+    record.final_absence={owned_pids:r.owned_pids,ports:r.ports,
+      lab:r.lab_absent,window_count:record.window_count??null,
+      session_ended:record.session_ended===true};
+    record.first_observation_to_final_wall_ms=record.first_observation_wall_ms===null?null:
+      Date.now()-record.first_observation_wall_ms;
+    retain(); // Full fixed readback/exits/clock BEFORE comparisons.
+    if(readStart) {
+      action.elapsed_ms=Number((ns(r.clock)-ns(readStart))/1000000n);
+      action.over_budget=action.allowed_ms===null?null:action.elapsed_ms>action.allowed_ms;
+    }
+    if(record.first_clock)
+      record.latch_to_absence_ms=Number((ns(r.clock)-ns(record.first_clock))/1000000n);
+    if(action.over_budget)cleanupError("cleanup_budget_exceeded");
+    const a=record.final_absence;
+    if(!controllerJoined||!Array.isArray(record.owned_child_exits)||
+       record.owned_child_exits.length!==(own.helper_pid===null?6:7))
+      cleanupError("child_reap_incomplete");
+    if(!Object.values(a.owned_pids).every(v=>v===true)||
+       !Object.values(a.ports).every(v=>v===true)||a.lab!==true||
+       a.window_count!==0||a.session_ended!==true)
+      cleanupError("owned_resource_absence_unproven");
+  } catch {action.result_state="exception";cleanupError("owned_readback_unavailable");}
+  cleanupError("first_event_unproven");
+  record.whole_cleanup_within60_proven=false;retain();
+  // Exclusive new file only; existing outer/helper/provider evidence untouched.
+  try {
+    const cmd="python3 -c "+sq(PERSIST)+" "+sq(own.cleanup_out)+" "+sq(JSON.stringify(record));
+    const r=await tools.exec_command({cmd,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500});
+    record.local_tool_receipts.push({label:"persist",
+      exit:typeof r.exit_code==="number"?r.exit_code:null,
+      session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+    if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+    if(r.session_id!==undefined||r.exit_code!==0)
+      cleanupError("cleanup_metadata_write_unconfirmed");
+  } catch {cleanupError("cleanup_metadata_write_unconfirmed");}
+  controllerBuffer="";own.closed=true;store("d01_immediate_owned_handles",own);
+}
+async function checked(label,operation,predicate) {
+  if(record.first_failure!==null)return null;
+  if(Date.now()>=own.start_epoch_ms+840000) {
+    latch("browser_active_deadline",Date.now());await cleanup();return null;
+  }
+  let result,receivedWall;
+  try {
+    result=await operation();receivedWall=Date.now();
+    record.observation_receipts.push({kind:label,received_wall_ms:receivedWall});retain();
+    if(result?.isError===true)latch("browser_tool_refused",receivedWall);
+    else if(!predicate(result))latch("browser_decision_unconfirmed",receivedWall);
+  } catch {latch("browser_tool_or_decision_exception",Date.now());}
+  if(record.first_failure!==null)await cleanup();
+  return record.first_failure===null?result:null;
+}
+const snapshotArgs={session:own.session,target_id:own.target_id,tab_id:own.tab_id,
+  snapshot_format:"semantic_v2",include_screenshot:false};
+function page(result,kind) {
+  const s=result?.structuredContent,nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
+  const flags={
+    status_ok:result?.isError!==true&&s?.status==="ok",
+    complete:s?.snapshot?.complete===true,
+    heading_match:nodes.some(n=>n.role==="heading"&&n.name===
+      (kind==="protected_after"?"Protected application access":"Local demo")),
+    error_match:nodes.some(n=>n.name==="Local demo could not complete this request."),
+    required_text:nodes.some(n=>n.name===(kind==="protected_before"?"Sign in required.":
+      kind==="protected_after"?"Signed in. Protected application access is available.":
+      "Use Sign in to open this local application.")),
+    interactive_ref_present:Array.isArray(s?.refs)&&
+      s.refs.some(n=>Array.isArray(n.actions)&&n.actions.includes("click"))
+  };
+  record.last_page_flags={kind,...flags};retain();
+  // Only provider refs and fixed public-label matches survive this raw snapshot.
+  own.fresh_refs=Array.isArray(s?.refs)?s.refs.filter(n=>typeof n.ref==="string"&&
+    /^p[0-9]+:[0-9]+$/.test(n.ref)).map(n=>n.ref):[];
+  store("d01_immediate_owned_handles",own);
+  if(flags.error_match)return false;
+  if(!flags.status_ok||!flags.complete)return false;
+  if(kind==="generic_checked") {
+    if(nodes.some(n=>n.role==="heading"&&n.name==="Protected application access")&&
+       nodes.some(n=>n.name==="Signed in. Protected application access is available."))
+      record.protected_after_page=true;
+    return true;
+  }
+  const ok=flags.heading_match&&flags.required_text&&
+    (kind!=="application"||flags.interactive_ref_present);
+  if(ok&&kind==="protected_after")record.protected_after_page=true;
+  return ok;
+}
+async function navigateAndSnapshot(url,kind) {
+  if(await checked("browser_navigation",
+      ()=>tools.mcp__cua_driver__browser_navigate({session:own.session,
+        target_id:own.target_id,tab_id:own.tab_id,url}),
+      r=>r?.isError!==true)) {
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,kind));
+  }
+}
+async function entry() {
+  // The exact Driver-owned blank handles already exist while the180s gate waits.
+  // There is no model yield, tool-description load or rebind after this marker.
+  const markerCommand="python3 -c "+sq(MARKER)+" "+sq(own.lab)+" "+
+    sq(own.guard_pid)+" "+sq(own.server_pid);
+  await checked("prepared_marker",
+    ()=>tools.exec_command({cmd:markerCommand,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500}),r=>{
+      record.local_tool_receipts.push({label:"marker",
+        exit:typeof r.exit_code==="number"?r.exit_code:null,
+        session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+      if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+      return r.exit_code===0&&r.session_id===undefined&&
+        JSON.parse(r.output).prepared_marker_written===true;
+    });
+  const readyDeadline=Date.now()+30000;
+  while(record.first_failure===null&&own.fixture_ready!==true&&Date.now()<readyDeadline)
+    await pollController();
+  if(record.first_failure===null&&own.fixture_ready!==true)
+    latch("fixture_ready_unconfirmed",Date.now());
+  if(record.first_failure!==null){await cleanup();return;}
+  await pollController(); // ONE immediate pre-navigation poll, no RP HTTP probe.
+  if(record.first_failure!==null){await cleanup();return;}
+  await navigateAndSnapshot("http://localhost:3000/protected","protected_before");
+  if(record.first_failure===null)await pollController();
+  if(record.first_failure!==null){await cleanup();return;}
+  await navigateAndSnapshot("http://localhost:3000/","application");
+  if(record.first_failure===null)await pollController(); // ONE post-entry poll.
+  if(record.first_failure===null) {
+    own.phase="browser_decision";
+    store("d01_immediate_owned_handles",own);
+  }
+  if(record.first_failure!==null)await cleanup();
+}
+async function continuation() {
+  const spec=own.next_decision;
+  const allowedKinds=["click","username","password","snapshot","protected_after"];
+  if(!spec||!allowedKinds.includes(spec.kind)) {
+    latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+  }
+  await pollController();
+  if(record.first_failure!==null){await cleanup();return;}
+  if(spec.kind==="protected_after") {
+    // Read the fresh callback-following protected page; do not send another RP request.
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,"protected_after"));
+  } else if(spec.kind==="snapshot") {
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+      r=>page(r,"generic_checked")&&publicPredicate(r,spec));
+  } else {
+    if(typeof spec.ref!=="string"||!Array.isArray(own.fresh_refs)||
+       !own.fresh_refs.includes(spec.ref)) {
+      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+    }
+    own.fresh_refs=[];store("d01_immediate_owned_handles",own); // Single-use snapshot ref.
+    const args={session:own.session,target_id:own.target_id,tab_id:own.tab_id,ref:spec.ref};
+    const operation=spec.kind==="click"?
+      ()=>tools.mcp__cua_driver__browser_click({...args,input_route:"dom_event"}):
+      ()=>tools.mcp__cua_driver__browser_type({...args,replace:true,
+        text:spec.kind==="username"?"admin":load("d01_fresh_password_input")});
+    if(spec.kind==="password"&&(typeof load("d01_fresh_password_input")!=="string"||
+       !/^[A-Za-z0-9_-]{30,128}$/.test(load("d01_fresh_password_input")))) {
+      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+    }
+    await checked("browser_input",operation,r=>{
+      const s=r?.structuredContent;
+      return r?.isError!==true&&["confirmed","unverifiable"].includes(s?.effect);
+    }); // Dispatch alone never earns an application outcome or journey credit.
+    store("d01_fresh_password_input",null);
+    if(record.first_failure===null)
+      await checked("browser_snapshot",
+        ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+        r=>page(r,"generic_checked")&&publicPredicate(r,spec));
+  }
+  if(record.first_failure===null)await pollController();
+  if(record.first_failure!==null)await cleanup();
+  else if(spec.kind==="protected_after") {
+    record.cleanup_requested_wall_ms=Date.now();retain();
+    await cleanup();
+  }
+}
+function publicPredicate(result,spec) {
+  const nodes=result?.structuredContent?.content_refs;
+  // Root must pin one printed public expected label/role before that action.
+  // No raw field value, URL, subject, query or arbitrary regex predicate is allowed.
+  const roles=["heading","button","statictext","textbox"];
+  const labels=["Username","Password","Authenticator or recovery code","Sign in",
+    "Local demo","Protected application access",
+    "Signed in. Protected application access is available."];
+  return Array.isArray(nodes)&&roles.includes(spec.expected_role)&&
+    labels.includes(spec.expected_label)&&
+    nodes.some(n=>n.role===spec.expected_role&&n.name===spec.expected_label);
+}
+try {
+  if(own.phase==="prepared_entry")await entry();else await continuation();
+} catch {
+  latch("composed_decision_exception",Date.now());
+  await cleanup();
+}
+if(record.first_failure!==null) {
+  text({result:"failed",first_failure:record.first_failure,
+    unexpected_failure_observation:record.unexpected_failure_observation,
+    diagnostic_errors:record.diagnostic_errors,cleanup_errors:record.cleanup_errors,
+    final_absence:record.final_absence,controller_exit:record.controller_exit,
+    whole_cleanup_within60_proven:false,
+    resource_release_proven:record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v))});
+} else {
+  text({result:"browser_decision_observed_only",page_flags:record.last_page_flags??null,
+    journey_credit:false,cleanup_errors:record.cleanup_errors,
+    resource_release_proven:record.cleanup_started===true&&record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v)),
+    whole_cleanup_within60_proven:false});
+}
+```
+
+### Actual static byte and AST proofs
+
+Baseline is the complete literal candidate archived inside2e29c30:
+31461B/463lines/SHA256
+eff0cdad3981ce0ad57d355203b082e21371553408444bf46a3b4ecfcf5fea0a.
+It was extracted/matched against that immutable report, not a mutable worker
+partial file. Removing precisely the inserted120-byte block reconstructs
+the complete old candidate byte-for-byte. The outer controller5eb6ab2d,
+all collector literals, preparation boundary and every other source in the
+prior appendix remain unchanged.
+
+A static checker used the already installed Node bundled Acorn parser:
+parse old, corrected and byte-restored source without evaluation; normalize
+only AST location offsets and serialize source BigInt literals as labelled
+decimal strings; verify the added node exactly equals the expected guarded
+assignment/store node; verify it is immediately after the final awaited
+pollController and before the old cleanup line; remove only that node and
+compare the entire AST to baseline. All13 top-level function declarations
+and all remaining expressions/statements are therefore unchanged after that
+one-node reversal. No VM, mocked cell, helper/module main, collector, native
+provider, HTTP/socket/listener, CLI, Driver/browser or harness was executed.
+
+First static AST-checker invocation exited1 because plain JSON serialization
+cannot encode the existing source BigInt literals. No candidate code ran and
+no candidate bytes changed. The checker alone added a labelled decimal
+normalization for those literal AST values. Its corrected invocation exited0;
+node --check --input-type=module also exited0 with empty stdout/stderr.
+This static-check failure is retained separately from historical product/
+fixture failures. Neither syntax nor AST equivalence is a lifecycle memory
+execution or a journey pass.
+
+Complete static checker source2160B/SHA256
+c7d3d95eef92dee74d3cc3fb189d002e7d616c42c0af8836d0baaeaafc90bfff;
+it reads only public source JSON from stdin and parses it. Archive below is
+for reproducibility, not permission to execute a candidate or runtime fixture.
+
+```javascript
+const fs=require("node:fs"),crypto=require("node:crypto");
+const acorn=require("internal/deps/acorn/acorn/dist/acorn");
+const input=JSON.parse(fs.readFileSync(0,"utf8"));
+const parse=s=>acorn.parse(s,{ecmaVersion:"latest",sourceType:"module"});
+const normalize=value=>{
+  if(typeof value==="bigint")return {ast_bigint_decimal:value.toString(10)};
+  if(Array.isArray(value))return value.map(normalize);
+  if(value&&typeof value==="object")return Object.fromEntries(Object.entries(value)
+    .filter(([k])=>!["start","end","loc","range"].includes(k))
+    .map(([k,v])=>[k,normalize(v)]));
+  return value;
+};
+const baseline=normalize(parse(input.old)),candidate=normalize(parse(input.candidate));
+const restored=normalize(parse(input.candidate.replace(input.anchor+input.insert,input.anchor)));
+if(JSON.stringify(restored)!==JSON.stringify(baseline))throw Error("ast_reversal");
+const entry=candidate.body.find(n=>n.type==="FunctionDeclaration"&&n.id.name==="entry");
+const expected=normalize(parse(input.insert)).body[0];
+const matches=entry.body.body.map((n,i)=>JSON.stringify(n)===JSON.stringify(expected)?i:-1).filter(i=>i>=0);
+if(matches.length!==1||matches[0]!==entry.body.body.length-2)throw Error("entry_position");
+const preceding=entry.body.body[matches[0]-1];
+if(preceding.type!=="IfStatement"||preceding.consequent.type!=="ExpressionStatement"||
+   preceding.consequent.expression.type!=="AwaitExpression"||
+   preceding.consequent.expression.argument.callee.name!=="pollController")
+  throw Error("final_poll_precedes_phase");
+entry.body.body.splice(matches[0],1);
+if(JSON.stringify(candidate)!==JSON.stringify(baseline))throw Error("outside_branch_changed");
+const hash=v=>crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex");
+console.log(JSON.stringify({byte_and_ast_reversal:true,whole_ast_equal_outside_insert:true,
+  branch_after_final_poll:true,added_if_statements:1,added_assignment_statements:1,
+  added_store_calls:1,baseline_normalized_ast_sha256:hash(baseline),
+  restored_normalized_ast_sha256:hash(restored),
+  top_level_functions:baseline.body.filter(n=>n.type==="FunctionDeclaration").length,
+  cell_evaluated:false}));
+```
+
+Actual fixed static result:
+
+```json
+{
+  "ast": {
+    "added_assignment_statements": 1,
+    "added_if_statements": 1,
+    "added_store_calls": 1,
+    "baseline_normalized_ast_sha256": "103b85f3ea8e2b805af3afb031b56ac5378595130f9f8bac38d43df7695d472a",
+    "branch_after_final_poll": true,
+    "byte_and_ast_reversal": true,
+    "cell_evaluated": false,
+    "restored_normalized_ast_sha256": "103b85f3ea8e2b805af3afb031b56ac5378595130f9f8bac38d43df7695d472a",
+    "top_level_functions": 13,
+    "whole_ast_equal_outside_insert": true
+  },
+  "ast_parser_exit": 0,
+  "candidate_bytes": 31581,
+  "candidate_evaluated": false,
+  "candidate_lines": 467,
+  "candidate_sha256": "d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d",
+  "node_syntax_exit": 0,
+  "old_bytes": 31461,
+  "old_lines": 463,
+  "old_sha256": "eff0cdad3981ce0ad57d355203b082e21371553408444bf46a3b4ecfcf5fea0a",
+  "parser_driver_bytes": 2160,
+  "parser_driver_sha256": "c7d3d95eef92dee74d3cc3fb189d002e7d616c42c0af8836d0baaeaafc90bfff",
+  "prefix_bytes": 635391,
+  "prefix_sha256": "c3d7d338676cc1156a9958253c2b51eab823eb25b7478c9ec1b0d4fba37c91a8"
+}
+```
+
+### Dated published descriptor-memory receipt and remaining prerequisites
+
+Read the complete5638-byte immutable root receipt:
+35c3fd3007c52d8142c7bee1d69aee127cc42a95:
+docs/roadmap/evidence/wave30-d01-descriptor-memory-0ec651d.json,
+SHA2565df541995dd1f74bff9c91104400140040d986a98a9f13f8688fbcb82cc4782a.
+This updates the prior phase's dated pending/UNEXECUTED observation without
+rewriting it. Root executed ONE exact payload
+b10cf8376edbb80b00c051305f31643b04714494260c4a49576a354361048779:
+128/128 PASS (50 observer plus78 legacy), child exit0/reaped, spawn_count1,
+first_failure null, cleanup_failures empty, child elapsed0.101654s and
+controller0.201888s/within35 true. The actual1398-byte stdout SHA256 is
+006d33cc7314d7c483f99dcb8ed59d3b6b537571b5908ee4178d14c21094024f;
+stderr0. I read that published receipt; I did not independently run the payload.
+
+That result covers selected helper definitions and controlled Python memory
+sinks/native Python frame/traceback objects. It does not cover this corrected
+cell, actual browser/preparation/cleanup, OIDC crypto or a confidential
+application journey. Helper/module main and server constructor were not
+invoked. No provider/network/listener/CLI/Driver/browser/Cargo execution or
+full D01/D05 gate credit follows. All older failed/unexecuted outcomes remain
+dated and intact; historic cause/sender/first cleanup and whole60 remain unknown.
+
+Exact preparation adapter, private-input transfer and unknown/partial-ownership
+cleanup are still separate missing source prerequisites. No MCP response field,
+returned ownership, session-end guarantee or no-PID cleanup is assumed or
+implemented here. The four-line phase transition does not supply any of those
+bodies. The published descriptor-memory PASS does not authorize alignment,
+source materialization or runtime. Root must review this immutable correction
+and the missing source before any separate fixture release; entire fixture
+remains HELD. Root retains all original gate/status/integration decisions.
+
+Before this append, source/hash/mode checks verified local helper470 remains
+32723B/7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0
+and all12 older deployment-private metadata records retain exact bytes/hash/
+mode0600. The complete2e29 prefix, older500b/c88 failures, unknown sender,
+provider lost values/wrong report,61/76 failed and78-case memory histories,
+cleanup18-case receipt and all prior source/design outcomes are preserved.
+No guide/product/D05 artifact, helper/controller file, board/main/push/status,
+new worker/task/worktree or other-worker contact occurs. RiWork Cua.ai Driver
+MCP remains the sole future GUI provider; no GUI tool was called in this phase.
+
+Final append/archive/hash/AST/prefix/scope/whitespace/new-link checks and one
+local report-only commit are the handoff. The global documentation checker has
+a known false link in protected-prefix line2813, documented in2e29; no permission
+is inferred to rewrite that immutable prefix to make the global check pass.
+
+Final actual checks: archived corrected cell and static checker are byte-exact;
+fixed static JSON matches the retained result; four fence pairs are closed;
+only this report differs; new appendix link scan and git diff --check passed.
+python3 scripts/check-docs.py exited1 with the same known missing-target match
+from immutable prior-prefix line2813 (SimpleNamespace(demo=d). No new appendix
+link error exists and that protected source archive was not altered. The
+expected global docs failure and initial BigInt serializer failure remain
+reported, without being relabelled as candidate/runtime failures.
+
+
+### Root review of the successful-entry phase correction
+
+Root read the complete c5d4d17 appendix and verified the sole 120-byte phase
+block reverses the full 31,581-byte candidate to the prior 31,461-byte cell.
+It runs only after successful final entry polling and adds no tool call,
+deadline reset or failure-path change. All published report bytes are retained,
+followed by the exact author append. This is accepted as design evidence only.
+Independent review of the whole candidate and the missing preparation/input
+adapters remain pending; no changed cell or browser fixture was executed.
+
+
+## Root independent controller-boundary disposition (2026-10-03)
+
+Root read the complete [independent report](local-wave30-d01-controller-boundary-independent-review.md) at author309ee22. It finds four source paths in the archived2e29 cell: stored entry phase, premature private-password clearing, successful helper completion before the protected-page snapshot, and unretained partial controller events across invocations. The separately reviewed c5d4 phase-only design addresses only the first. Root reserves review/correction of the remaining three plus the missing exact preparation/private-input/partial-ownership body before any real fixture release. These are source findings, not retrospective attribution for c88 or the earlier Authorization failures. Actual128-case helper memory evidence supplies no changed controller/cell/GUI journey proof. Runtime remains HELD; no status changes.
