@@ -132,6 +132,66 @@ def ordinary_fixture(server, config, base, scratch):
         gate.remote(server, base, session, "logout")
 
 
+def refusal_snapshot_counts(before, after):
+    labels = ("http_rates", "http_rate_expiry", "http_rate_count",
+              "maintenance_cursors", "maintenance_bounds", "protected_or_other")
+    fields = ("before", "after", "added", "changed", "removed")
+
+    def read(raw):
+        if type(raw) is not bytes or len(raw) > 8 * 1024 ** 2 or raw and not raw.endswith(b"\n"):
+            raise ValueError("refusal_snapshot_shape")
+        result, cursor = {}, 0
+        while cursor < len(raw):
+            end = raw.find(b"\n", cursor)
+            split = raw.find(b"|", cursor, end)
+            key_size = split - cursor
+            value_size = end - split - 1
+            if (end < 0 or split < 0 or not 2 <= key_size <= 8192 or key_size % 2
+                    or not 0 <= value_size <= 2 * 1024 ** 2 or value_size % 2
+                    or len(result) >= 1_000_000):
+                raise ValueError("refusal_snapshot_shape")
+            key_hex, value_hex = raw[cursor:split], raw[split + 1:end]
+            if re.fullmatch(rb"[0-9a-f]+", key_hex) is None or re.fullmatch(rb"[0-9a-f]*", value_hex) is None:
+                raise ValueError("refusal_snapshot_shape")
+            key = bytes.fromhex(key_hex.decode("ascii"))
+            key.decode("utf-8")
+            bucket, separator, _ = key.partition(b"/")
+            if not bucket or not separator or b"\x00" in key or key in result:
+                raise ValueError("refusal_snapshot_shape")
+            result[key] = value_hex
+            cursor = end + 1
+        return result
+
+    def category(key):
+        if key.startswith(b"http_rates/"):
+            return "http_rates"
+        if key.startswith(b"index_expiry_http_rates/"):
+            return "http_rate_expiry"
+        if key == b"index_counts/http_rates":
+            return "http_rate_count"
+        if key.startswith(b"maintenance_cursors/"):
+            return "maintenance_cursors"
+        if key.startswith(b"maintenance_bounds/"):
+            return "maintenance_bounds"
+        return "protected_or_other"
+
+    before_rows, after_rows = read(before), read(after)
+    result = {label: {field: 0 for field in fields} for label in labels}
+    for key, value in before_rows.items():
+        counts = result[category(key)]
+        counts["before"] += 1
+        if key not in after_rows:
+            counts["removed"] += 1
+        elif after_rows[key] != value:
+            counts["changed"] += 1
+    for key in after_rows:
+        counts = result[category(key)]
+        counts["after"] += 1
+        if key not in before_rows:
+            counts["added"] += 1
+    return result
+
+
 def shared_probe(server, config, base, scratch, revoked_token=None):
     session = scratch / f"delegate-{time.monotonic_ns()}.json"
     admin = scratch / f"admin-{time.monotonic_ns()}.json"
@@ -174,8 +234,17 @@ def shared_probe(server, config, base, scratch, revoked_token=None):
                        and denied["error"]["code"] == "access_denied"
                        and denied["exit_code"] == 4,
                        "ordinary auditor gained user administration")
-        matrix.require(refusal_rows() == before_refusal,
-                       "refused user creation changed durable records")
+        after_refusal = refusal_rows()
+        try:
+            matrix.require(after_refusal == before_refusal,
+                           "refused user creation changed durable records")
+        except AssertionError as error:
+            if type(error) is AssertionError:
+                try:
+                    error.store_snapshot_counts = refusal_snapshot_counts(before_refusal, after_refusal)
+                except BaseException:
+                    pass  # Diagnostics must not replace the original complete-snapshot failure.
+            raise
         time.sleep(0.2)
         again = gate.remote(server, base, session, "whoami")
         matrix.require(again["expires_at"] == me["expires_at"], "session expiry was renewed")
