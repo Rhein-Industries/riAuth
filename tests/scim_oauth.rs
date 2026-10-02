@@ -62,6 +62,8 @@ async fn controller_modes_bind_plans_and_stop_at_removal_review_floor() {
         f.core.group_member(&f.admin, "staff", user, true).unwrap();
     }
     let agent = provisioner(&f, &name);
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
 
     let manual = f.core.provisioning_reconcile(&agent, &name).unwrap();
     assert_eq!(manual["decision"], "awaiting_review");
@@ -941,6 +943,8 @@ fn completed_job_history_is_compact_and_bounded() {
         },
     );
     let agent = provisioner(&f, &target_name);
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     let mut first_job_id = None;
     for index in 0..65 {
         let plan = f.core.provisioning_plan(&agent, &target_name).unwrap();
@@ -1016,6 +1020,8 @@ async fn client_credentials_provision_an_independent_scim_server() {
         .scim_targets
         .insert(name.clone(), target.clone());
     let agent = provisioner(&f, &name);
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     let plan = f.core.provisioning_plan(&agent, &name).unwrap();
     assert_eq!(plan["resources"].as_array().unwrap().len(), 1);
     f.core
@@ -1124,6 +1130,8 @@ async fn uncertain_patch_response_is_reconciled_without_a_second_patch() {
         },
     );
     let agent = provisioner(&f, &target_name);
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     deliver(&f, &agent, &target_name).await;
     f.core
         .update_user(
@@ -1513,6 +1521,8 @@ async fn secret_rotation_and_static_token_rotation_apply_on_next_acquisition() {
         },
     );
     let agent = provisioner(&f, &static_name);
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     deliver(&f, &agent, &static_name).await;
     assert!(
         scim.seen
@@ -2259,6 +2269,8 @@ async fn reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patc
         .group_member(&f.admin, "staff", "provisioned", true)
         .unwrap();
     let agent = provisioner(&f, &name);
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     deliver(&f, &agent, &name).await;
     f.core
         .group_member(&f.admin, "staff", "provisioned", false)
@@ -2353,7 +2365,7 @@ async fn reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patc
 async fn staff_removal_at_group_step(
     scim: &ScimState,
     scim_url: String,
-) -> (Fixture, tempfile::TempDir, String, String, String) {
+) -> (Fixture, tempfile::TempDir, String, String, String, Router) {
     let mut f = Fixture::new();
     let dir = tempfile::tempdir().unwrap();
     let name = unique("guarded-group");
@@ -2377,6 +2389,8 @@ async fn staff_removal_at_group_step(
             .unwrap();
     }
     let agent = provisioner(&f, &name);
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let source_router = riauth::api::router(f.core.clone());
     let plan = f.core.provisioning_plan(&agent, &name).unwrap();
     let id = text(&plan, "id");
     f.core.provisioning_apply(&agent, &id).unwrap();
@@ -2409,7 +2423,7 @@ async fn staff_removal_at_group_step(
     step(&f.core).await;
     step(&f.core).await;
     assert_eq!(job_record(&f, &id)["cursor"], 2);
-    (f, dir, agent, name, id)
+    (f, dir, agent, name, id, source_router)
 }
 
 fn remote_staff(scim: &ScimState) -> Value {
@@ -2445,7 +2459,8 @@ fn make_due(f: &Fixture, id: &str) {
 async fn reviewed_last_group_member_removal_requires_complete_remote_membership() {
     let scim = scim_state();
     let (_servers, scim_url, _) = serve(&token_state(), &scim).await;
-    let (f, _dir, agent, name, id) = staff_removal_at_group_step(&scim, scim_url).await;
+    let (f, _dir, agent, name, id, _source_router) =
+        staff_removal_at_group_step(&scim, scim_url).await;
     let job = |f: &Fixture| job_record(f, &id);
     let links = f.core.store.list::<Value>("provisioning_links").unwrap();
     let patches = scim.patch_hits.load(Ordering::SeqCst);
@@ -2503,7 +2518,8 @@ async fn reviewed_last_group_member_removal_requires_complete_remote_membership(
 async fn reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback() {
     let scim = scim_state();
     let (_servers, scim_url, _) = serve(&token_state(), &scim).await;
-    let (f, _dir, agent, name, id) = staff_removal_at_group_step(&scim, scim_url).await;
+    let (f, _dir, agent, name, id, _source_router) =
+        staff_removal_at_group_step(&scim, scim_url).await;
     let links = f.core.store.list::<Value>("provisioning_links").unwrap();
     let assert_unadvanced = |context: &str| {
         assert_eq!(
