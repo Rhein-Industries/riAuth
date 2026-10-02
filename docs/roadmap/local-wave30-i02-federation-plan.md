@@ -754,3 +754,85 @@ and all six source-commit SHA256 values recomputed exactly. Repeated rustfmt
 checks and Node syntax check exited0. The docs checker's actual captured exit
 was1, with exactly the same five directory-layout errors and zero missing links.
 These checks execute no product, test, provider or browser flow.
+
+## Approved non-root upstream fixture correction — source only
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original I02
+`cbe1e83d-b58c-4be7-ba6c-5fb8a73c9839`, supporting WT
+`42bb51c6-c198-4adb-bd92-0a5222853231`; primary a2dff16a is unchanged.
+Root reserved `wave30_I02_nonroot_upstream_fixture_correction` after identifying
+an **unrun fixture blocker**, not an observed test failure. Reviewed source is
+`36ccc64e4c4044491f55b68cf7fdcaeff992391c`; preceding static appendix is
+`130e1111d24a46b8d8fee97979b4f788b84d2410`. History is retained without another
+merge/reset. This correction does not authorize Cargo, type checking or runtime.
+
+### Concrete mismatch and exact bounded change
+
+The appended browser test selects `/identity` for its form_post issuer. Existing
+`Upstream::new` nevertheless asserted the root callback at its token endpoint.
+Unchanged `src/assembly/source_runtime.rs:433–438` derives the callback from
+`self.config.issuer.trim_end_matches('/')`; authorization at416 and token
+exchange at511–515 both use that same `source_callback_url` value. Source-runtime
+Git blob is `51a46db7a7ad3e46914146461c79c6ae42ab124a`. Thus the non-root fixture
+must expect `http://localhost:9000/identity/oauth/sources/upstream/callback`,
+while the root-issuer fixture still expects its original root callback.
+
+Correction commit `196ac2096f79e5cc3c7d53ffa990ccdeba11a439` changes only
+`tests/source_stage.rs`, three insertions/four deletions in `Upstream::new`:
+
+* Capture `f.core.source_callback_url("upstream")` before the token-route closure.
+* Clone that captured String beside the existing per-request records clone.
+* Compare `form["redirect_uri"]` to it with exact `assert_eq!`, replacing only the
+  hardcoded root value. No prefix matching or assertion removal.
+
+The fixture reads its configured issuer through the existing Core getter; no
+new global state, rate/clock/guard change or production edit. Authentication,
+grant-type, code-record removal, PKCE-verifier and token-response assertions and
+all other helper code remain byte-equivalent. The complete appended browser
+test remains unchanged; there is no new test body or runtime result.
+
+### Fresh immutable scope and reconstruction evidence
+
+Python byte assertions passed before the correction commit: each of the three
+reverse substitutions occurs exactly once, and their reversal reconstructs the
+**entire** reviewed166018-byte test file, SHA256
+`d3d44e96f461bb88626d73caf0a30ff1610187ca6f6338a9e8e1e5a1b28fb9a6`.
+Corrected test is166005 bytes, SHA256
+`0c5efa341f72922b3ef16cd92a6157200ab439b1860ad339c42d7b5ee83250b8`,
+Git blob `34ba37484ba3f9e4be13e27764eb77da45ffd1a3`. Its41399-byte appended test
+suffix exactly matches36ccc64 after accounting for the13-byte helper reduction.
+
+The earlier124619-byte original-prefix protection describes the **preceding
+source phase**. This expressly authorized correction changes that prefix's
+Upstream helper; it is no longer literally unchanged in the corrected file.
+Reversal restores both that full original prefix and the entire appended test.
+All five production implementation files, the sixteen held files listed above
+and Cargo.toml/Cargo.lock/rust-toolchain.toml still byte-match36ccc64. The sole
+pre-commit working-tree diff and the correction commit contain only the fixture
+file. No global checker, other helper, existing guide or source-profile doc edit.
+
+Direct installed1.98.1 `rustfmt --check --edition 2024 --config skip_children=true
+tests/source_stage.rs` exited0: parser/format check only. `git diff --check` and
+staged whitespace check exited0. The Python proof also verified single-file
+scope, exact appended-body bytes and all protected files/manifests. No compiler,
+test, JavaScript, browser, binary, provider or service was executed this phase.
+
+### Residual verification and original-row disposition
+
+No form_post pass is inferred from correcting the source mismatch. The named
+HTTP/rendering test and any type check remain unrun; independent full security
+review continues under root, with no reviewer/other-worker contact here. The
+previous exact held command/resource plan remains a proposal requiring root's
+separate release after immutable source review, even though the Cargo slot is
+reported free. All prior failures, historical execution pins and gate limitations
+remain intact. There is no original-I02 closure recommendation from this static
+correction, no release certification and no task-status change. Root alone
+integrates/publishes/statuses; Driver-only desktop preference is retained.
+
+Report preparation verified the correction commit's exact parent/single-file
+scope and immutable corrected-test hash, five referenced Git objects, and the
+entire65356-byte130e111 report prefix unchanged, with LF/fence/whitespace checks
+passing. `python3 scripts/check-docs.py` actually exited1, reporting only the
+same five pre-existing target-wave directories: target-wave29-source,
+target-wave28-scim, target-wave28-portal, target-wave28 and target-wave27.
+It reported zero missing Markdown links. No directory or checker was changed.
