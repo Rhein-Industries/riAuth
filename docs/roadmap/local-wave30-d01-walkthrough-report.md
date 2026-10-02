@@ -696,3 +696,200 @@ desktop, merge, main edit, push or board/status mutation occurred. This report
 is appended only after exit and cleanup. D01 stays in_progress against the
 original independent-user/operator gate; root alone owns integration and
 closure.
+
+## Original D01 disposition after independent browser evidence — 2026-10-02
+
+**Recommendation: original-scope DONE candidate for root review, not a status
+change or a release certification.** The live original row was reread for project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task
+`a96a1977-3210-4284-8f7d-645793369301`; it remains `in_progress` at this
+observation. Its wording is:
+
+- Outcome: “Keep the small-install experience free of unnecessary advanced setup.”
+- Workstream goal: “Document completed user and operator tasks, not merely available settings.”
+- Completion gate: “A new user and a new operator can independently complete the documented workflows.”
+
+The evidence clause requires relevant implementation/test/documentation/artifact
+review, actual checks and gaps, rather than completion from documentation or a
+worker report alone. The original prerequisites remain A02, A09, U10 and M02;
+the user's explicit cancellation of U10/accessibility is retained. This
+recommendation uses the accepted implementation and guide corrections, actual
+operator results, independent browser execution and bounded historical results.
+It does not reinterpret “new” as a recruited inexperienced-human study, require
+every host or every optional integration to be rerun, or absorb D05's wider
+acceptance categories and release/deployment gates into D01.
+
+### Fixed inputs and independence
+
+The disposition source is published
+`88790deb62d32c84fa17dceb12cd93a727224e94`, read through Git objects. Its
+pre-append version of this report is blob
+`92f85d5f4c242e221fded43635754f8f961ac294`, SHA-256
+`9d8dc3d135013efd88e91759d416effb7119eba0458524aec89494fc70481236`;
+it exactly matches own HEAD `9cde81dd93ff171fa54194b2ed514142451484d9`.
+No merge or replacement of accepted guide files is needed.
+
+| Published guide at the fixed pin | Exact blob / SHA-256 |
+| --- | --- |
+| Essentials | `e48371d3a34a7b6441cbcfce700daf954aa5f2ae` / `9df3c2861984751d48b28d284cfb47c07801fd3934072e2ccb829edeb35579a0` |
+| Platform | `8ec1ddb9a21210f96ef82d4d8b6b516b4bafd966` / `6b21707f484d31513d0f505f4cfd2ba79c98b18ac50b7c15187874abb55774fd` |
+
+This lane authored guide corrections in
+`6a5879f3877b1d780052f91fcafcf0a8933e38a7` and performed the 27-command
+operator checkpoint recorded in `9cde81d`. That execution is not independent
+of the guide author. Root separately reviewed its raw build/result records and
+redacted checkpoint evidence. The checkpoint's older guide blob and fixed
+Essentials guide have **30 byte-equivalent fenced blocks**; the accepted
+`fd6d8c8` paragraph qualification remains in force: only binaries supporting
+agreement formats 1/2 refuse 3, and rollback to those needs a compatible
+pre-command backup. Existing-store upgrade still requires both confirmations;
+missing-row adoption is not an incompatible-row bypass.
+
+The independent Sol worker used another existing worktree,
+`7c85f5ef-3fac-4f72-aaed-08474d7fb454`. Its complete report was read from
+`6837b745576552b0917b3bd1f1424515621a0a85:docs/roadmap/local-wave30-d01-user-browser-review.md`,
+blob `0beaceecb32b3fda2b6f06ff5bac2c26d6c3aee5`, SHA-256
+`68f4b61ed388d9a6ec980bc93a28eb6964c0ca75d36ac64ee4bd9108d837ffd4`.
+That report is a separate immutable input, not claimed to be in `88790deb`.
+Its guide pin `6b4db4f0317e4427c187f55e063989ccba124217` has exactly the
+same Essentials and Platform guide blobs as the fixed pin.
+
+The independent worker freshly hash-verified the c01-source Essentials server
+and maintenance artifacts listed above, performed the printed **interactive**
+hidden-password init without `--password-stdin`, started its fresh lab and
+passed readiness. Through RiWork Cua.ai Driver it signed in at `/apps` with
+the initialized password and an empty optional authenticator field, opened
+Sign-in and security, closed it, signed out, signed in again and finally signed
+out. All required page transitions passed without a guide correction. This is
+independent worker execution, not a human study or an ordinary non-admin run.
+The page had zero applications and no passkeys. Background DOM dispatch was
+reported `unverifiable`; fresh snapshots confirmed effects, not physical input
+or a trusted passkey ceremony. The worker's owned browser/server/lab were
+closed; Driver-managed profile-file erasure was not inspected or claimed.
+No desktop interaction occurred in this disposition; any future authorized
+desktop work retains **RiWork Cua.ai Driver only**, with descriptions/state
+inspection before input and no provider substitution.
+
+### Printed tasks mapped to actual execution
+
+“Historical” below retains the exact documentation/server/tool pins and
+limitations in the earlier eleven-row table; it is not a fresh execution of
+the fixed guides. The matching current walkthrough artifacts are source-built
+native c01 inputs, not official released artifacts or binaries built at
+`88790deb`.
+
+| Printed Essentials / Platform task | Accepted actual execution | Unexecuted or narrower part |
+| --- | --- | --- |
+| §1 / §1: select and install the edition | This lane's exact locked Essentials server/maintenance and base-client builds exited 0; historical Q08 records native explicit-edition builds, and the old catalog runs distinguish Essentials/Platform. Fixed manifests still require explicit Essentials selection, Platform includes Essentials, and the base client's defaults are empty. | The printed `cargo install` wrappers and an official package/image download were not executed by either fresh checkpoint. Build/catalog evidence is not an installation-wrapper pass. |
+| §2 / §2: initialize, serve, ready, CLI login/doctor, browser sign-in | Own checkpoint: fresh redb, ready, administrator server login/doctor. Independent worker: printed interactive init/serve/ready and password browser sign-in/security navigation/sign-out/relogin. Historical Platform setup and remote-administration runs also passed their recorded paths. | This independent browser account is the initialized administrator. Browser ownership-proof setup is historical CI evidence below, not part of this fresh run. |
+| §3 / §3: register the confidential application, discovery and identity | Own checkpoint: first-only `local-demo` creation, exact `http://localhost:3000/callback`, scopes, separate client session, discovery/whoami and private 0600 secret output. Historical remote-administration execution also covers those commands. Accepted R05 adds real synthetic RP execution described below. | Neither fresh D01 checkpoint launched the exact confidential `local-demo` app at port 3000 or completed its browser consent. R05 uses a public client and its own exact callback; it is not that printed confidential-app run. |
+| §4 / §4: enroll, rename, remove and use passkeys | Historical Platform manual run reached the chooser, canceled and confirmed an empty credential list. Historical executed browser CI covers virtual/simulated enrollment, rename, removal, remaining factors and credential refusal. | No physical/synced/phone passkey, terminal USB, Touch ID or fresh manual enrollment/rename/removal. Independent password-portal navigation is not a passkey result. |
+| §5 / §5: fresh login, keygen, online backup, offline restore/status | Own checkpoint executed every selected entry command: private key/archive, verified redb restore with `serving_allowed:false`, pending status, restored store left closed. Historical Platform backup entry run agrees. Accepted R05 separately executed gated recovery and actual RP access before/after restore. | No D01 attestation, restored-store service, break-glass administrator, escrow retrieval or deployment credential reconciliation. R05's synthetic attestation does not authorize any real restored store. |
+| §§6–8 / §§6–8: groups, claims preview and audit | Own checkpoint restarted only the original lab, renewed the client session, applied the printed keys/revisions/settings, confirmed membership, simulated staff/department claims, and correlated audit/inventory/0600 CSV. All 27 CLI/probe commands and both server lifecycles exited 0. Historical Platform/server and remote-client runs provide separate recorded support. | `explain` returned `token_issued:false`; it is not issued claims in an application token. The added fresh-login command was executed; §4 epoch revocation itself was skipped. |
+| §9 / §9: LDAP directory import | Historical `11f1f8eaeaf23008b94767bcdd310bd46501c182`: real disposable StartTLS OpenLDAP list/plan/apply imported alice/staff, revision 1→4. Historical CI independently passed real OpenLDAP login/MFA/fail-closed synchronization. | No fresh Essentials LDAP run or customer directory. The walkthrough's client StartTLS connection failure remains recorded. |
+| §10 / §10: outbound SCIM | Historical `a5769bb4e94e6adc8847c6d30d92782f3a3133b2`: loopback plan/apply/jobs, actual Users/Groups create requests, 2/2 processed and succeeded. | No named SaaS, later PATCH/deactivation/removal or exactly-once guarantee. Held Group and remote-IO/operator-settlement limitations remain intact. |
+| None / §11: configured password workflow | Historical `0add90f9febc5b00bbc37aed7099023ac1743737`: schema/validate/plan/apply, restart, active configured password step and export. Later exact W02 consent/TOTP fixtures actually passed as bounded below. | The historical printed start did not submit its password continuation. Later fixture assertions do not constitute a fresh interactive guide workflow run. |
+| None / §12: SAML preparation/source entry | Historical `298cbec18eeccc3235c64368df50e505f5946418`: both key imports, metadata conversion/review/apply, source put/list/metadata/start, xmlsec verification and actual local Lasso HTTP-POST acceptance. Historical CI separately passed independent XMLsec SAML/source/logout tests. | Printed `source finish`/ACS/browser source sign-in and a named customer IdP/SP were not executed. The initial metadata destination refusal and corrected filename remain historical results. |
+| None / §13: LDAP provider listener | Historical `1377732a9be531729789852cd6efca3d50bf4256`: real scoped service/user LDAPS binds/search, and wrong-password/nonmember/untrusted-CA refusals. | No production AD, fresh current listener or provider STARTTLS claim. |
+| §11 / §14: invitation acceptance | Historical `0791deb4737326c1bc2157a48a636decc1117a69`: loopback mail, browser password acceptance without session, replay refusal and later invited non-admin sign-in. Historical browser CI adds password expiry/replay and virtual/shim passkey invitation cases. | No real mailbox, fresh D01 invitation, physical invitation passkey or claim that the latest administrator portal run performed invitation acceptance. |
+
+### Precisely bounded RP, factor and source support
+
+Accepted R05 at the fixed pin is supported by the complete redacted JSON
+`docs/roadmap/evidence/r05-local-rp-2026-10-02.json`, SHA-256
+`5498bbf1f089224947ef3f0cbc7e163c4aa35683eb8d0256943100f49012df41`,
+and root disposition/worker appendix
+`0cc3515eb54a3bcbef83e7fbe03a00ddbcea6cbc`. One drill exited 0 with
+19/19 checks. Before backup and after restore, an actual callback received the
+authorization code; S256 exchange, native OpenSSL RS256/JWKS verification,
+issuer/audience/nonce/time/at_hash and userinfo checks passed. The protected
+RP denied no-cookie access with 403 and accepted its fresh RP cookie with 200.
+Stable subject was checked privately. Source was reviewed c01-equivalent
+Platform, runtime HEAD `b5cea614c4f46d82aff2380c052bd2dffc760f9e`, binary
+SHA-256 `0f137475af5a8040d96a794b1ad331e7430be4467046b81b1312fb974b7e8a6a`.
+This supports a real representative application task; service login alone
+was separately labeled and is not used as its proof. It supplies neither a
+remote deployment nor the latest D01 browser's missing application action.
+
+The existing historical raw integration log was reread and rehashed during
+this audit: 265770 bytes, SHA-256
+`458a30895b5987c0bebe2fb7368a1a32969fa0d41ce90acbfa56f43299ccd186`,
+run `36950097067`, successful named job `110661000640`, exact checkout
+`2d05c00deed3a6dafcd458a5f1a1a9beb17d0dd8`, default Platform edition.
+Actual result lines, not merely a CI definition, record:
+
+- Setup: 9 passes across Chromium/Firefox/WebKit for single-use private
+  ownership proof and subsequent cookie sign-in, missing-proof refusal and
+  expired-proof refusal.
+- Authenticator journeys: **22 passes and 2 skips**. Recorded successes cover
+  app enrollment/session revocation/one-use recovery, passkey rename preserving
+  another session, removal revoking sessions/credential, remaining passkey/app,
+  password-reset eligibility/replay, password invitation expiry/replay and
+  simulated invitation credentials. Chromium's invitation-passkey case passed;
+  Firefox/WebKit's corresponding cases were skipped. Chromium uses virtual
+  WebAuthn and other credential paths include shims; none proves physical keys,
+  synced/mobile passkeys or hardware/user-gesture performance.
+- Real OpenLDAP `openldap_plans_stable_ids_tls_login_mfa_and_fail_closed_sync`,
+  Rust browser `browser_terminal_login_callback_and_signed_backchannel_logout`
+  and portal `portal_terminal_sign_in_access_changes_and_responsive_interactions`
+  each passed once. The three independent XMLsec SAML/source/logout filters
+  each passed once. These are their selected historical fixtures, not fresh
+  printed source/browser procedures.
+
+The same run's separate all-target check failed the configured TOTP fixture;
+the successful integration job is not a whole-CI-green claim. Published
+`local-wave29-w02-browser-totp-ci-report.md` records the final fixture-only
+correction `e5513bf46213905a9c349eae862ca8ea215fc104`: exact
+`configured_browser_password_totp_consent_spends_exact_preparation_once`
+passed in `test-support,fuzzing` (3.58s) and default mode (3.70s), two modes
+of one test. Saved-code replay, fresh-step consumption, consent, denial and
+expiry assertions remained. The two diagnostic failures (rollover and the
+temporary clock's expiry mismatch), preceding 43-pass/1-fail/4-ignored CI
+target and existing macOS linker warning stay recorded. Source definitions
+and this later bounded fixture are not fresh browser or physical-factor passes.
+
+Earlier failed `riauthctl doctor`, canceled manual passkey chooser, LDAP client
+connection refusal, SAML destination overwrite refusal and unrun source finish
+remain in the immutable historical records. Earlier “D01 incomplete” statements
+describe the evidence available to those slices; this appended disposition
+adds subsequent accepted execution without rewriting those statements.
+
+### Original gate reasoning and residual scope
+
+The two edition guides now lead to a small local instance and completed tasks,
+not mandatory advanced settings: Essentials explicitly selects its feature;
+the base client has no USB default; generated configuration leaves external
+directories, SCIM/mail, workflow tables, listeners and signers unconfigured.
+The fixed source `Config::default` and init arguments support that distinction;
+they are inspected definitions, not additional runtime passes. The guide's
+basic init/password sign-in path actually worked in a fresh independent lab
+without those systems. Printed first-only credential output, renewed login and
+original-lab restart corrections actually worked in the accepted operator run.
+
+**No concrete remaining local printed-step defect or undeclared prerequisite
+was identified for that original small-install outcome.** The exact confidential
+application still needs the app serving its named callback when chosen; LDAP,
+SCIM, invitation mail and SAML/LDAPS tasks need their explicitly listed peers,
+credentials/certificates. Those are task inputs, not mandatory setup for the
+basic instance. Untested installation wrappers, physical devices, every optional
+continuation and real tenant/release/user-study ambitions remain coverage limits;
+their absence alone is not evidence of a broken printed step or an original
+requirement to add them. The matrix does not assert that all printed commands
+were run, or that every optional workflow was completed independently on this
+revision. The recommendation rests on reviewed task instructions plus actual
+basic user/operator completion and bounded representative factor/source/RP
+execution, rather than report existence or source-only graph counts.
+
+Root should decide the original-row interpretation using those accepted runs
+and the independent report before changing status. D05, physical-device,
+tenant interoperability, official artifacts and deployment acceptance are not
+closed here. Reviewed client-creation receipt-secret recovery remains distinct
+from direct issuance; route-specific headers, PAM fallback, held Group behavior,
+removal/audit/revision protections and honest at-least-once remote IO are unchanged.
+
+This phase performed only the live-row/guidance and fixed Git-object reads,
+complete independent report/R05 evidence inspection, historical raw-log hash and
+result inspection, exact guide/report blob and fenced-block comparisons, and
+append-only report scope/whitespace/link checks. No build, test, automation,
+binary/service/browser/desktop execution, secret inspection, guide/product edit,
+merge/reset, new worker/task/worktree, main/push or board/status mutation occurred.
