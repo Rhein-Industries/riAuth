@@ -376,6 +376,92 @@ pub(crate) fn supported_configured_passkey(definition: &Definition) -> bool {
 /// live session or fresh factor, or complete without registration capability.
 pub(crate) fn supported_configured_passkey_enrollment(definition: &Definition) -> bool {
     supported_configured_passkey_change(definition, Proof::Passkey)
+        || configured_conditional_passkey_enrollment(definition)
+}
+
+/// One session-bound enrollment choice: fresh UV proof when a passkey is
+/// enrolled, otherwise explicit denial. No alternative verifier is admitted.
+pub(crate) fn configured_conditional_passkey_enrollment(definition: &Definition) -> bool {
+    let [session, passkey, enroll] = definition.steps.as_slice() else {
+        return false;
+    };
+    let id = |value: &str| Id(value.to_owned());
+    let route = |signal, when, target| Transition {
+        on: Label::fixed(signal),
+        when,
+        to: id(target),
+    };
+    definition.origin == Origin::Configured
+        && definition.category == Category::Enrollment
+        && definition.revision > 0
+        && !definition.id.as_str().starts_with(BUILTIN_PREFIX)
+        && !matches!(
+            definition.id.as_str(),
+            "platform-source-reauthentication"
+                | "platform-source-totp-reauthentication"
+                | "platform-password-totp-reauthentication"
+                | "platform-invitation-password-enrollment"
+        )
+        && definition.entry == id("session")
+        && definition.limits.max_duration_seconds == 600
+        && definition.limits.max_executions == 5
+        && session.id == id("session")
+        && matches!(session.action, Action::ResumeSession {})
+        && session.max_attempts == 1
+        && session.timeout_seconds == 60
+        && session.cancellable
+        && session.transitions
+            == [
+                route(
+                    "verified",
+                    Some(Condition::AccountHas {
+                        credential: Credential::Passkey,
+                    }),
+                    "passkey",
+                ),
+                route("verified", None, "denied"),
+                route("failed", None, "denied"),
+            ]
+        && passkey.id == id("passkey")
+        && matches!(passkey.action, Action::VerifyPasskey {})
+        && passkey.max_attempts == 3
+        && passkey.timeout_seconds == 120
+        && passkey.cancellable
+        && passkey.transitions
+            == [
+                route("verified", None, "enroll"),
+                route("failed", None, "denied"),
+            ]
+        && enroll.id == id("enroll")
+        && matches!(
+            enroll.action,
+            Action::EnrollCredential {
+                credential: Credential::Passkey
+            }
+        )
+        && enroll.max_attempts == 1
+        && enroll.timeout_seconds == 120
+        && enroll.cancellable
+        && enroll.transitions
+            == [
+                route("completed", None, "success"),
+                route("failed", None, "denied"),
+            ]
+        && definition.terminals
+            == [
+                Terminal {
+                    id: id("success"),
+                    outcome: Outcome::Enrolled,
+                    requires: vec![vec![Proof::Session, Proof::Passkey, Proof::Enrolled]],
+                    max_proof_age_seconds: Some(120),
+                },
+                Terminal {
+                    id: id("denied"),
+                    outcome: Outcome::Denied,
+                    requires: vec![],
+                    max_proof_age_seconds: None,
+                },
+            ]
 }
 
 /// A local password-only account may add its first passkey only through a
