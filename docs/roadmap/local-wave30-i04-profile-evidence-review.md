@@ -1932,3 +1932,365 @@ network/EAP/source equality with the named failed-job checkout, selected primary
 archive/header hashes, and unchanged native helper/dylib and all six historical/
 new private capture hashes. No private protocol content was read or emitted.
 These are static checks and evidence identity checks, not new protocol execution.
+
+
+## Source-first Lasso IdP design — wave30_I04_lasso_idp_source_design
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original I04
+`dae9c528-9e32-462c-947f-661a571f136b`, supporting WT
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`; original primary a2dff16a unchanged.
+**Design only: recommend a narrowly reserved source phase. No implementation,
+compile, library loading, helper/protocol run or Cargo was performed.** The sole
+write is this appendix. No slot was acquired/released. Root's hosted37043196924
+ownership and the below-floor local capacity remain as supplied by root.
+
+Static source conclusion: selected Lasso2.9 has an assertion-signing context
+and a separately forced response-signing context, with recursive serialization
+that signs the assertion before signing its enclosing response. Its native
+signature templates match the required algorithms/transforms and response-first
+signature ordering. No concrete static barrier to the double-signed profile was
+found. That conclusion is **not** an IdP runtime result: the actual generated
+wire still must pass strict structure and both independent riAuth verifications.
+If it cannot, stop and report the precise incompatibility; do not hand-build,
+re-sign, strip unsupported nodes or relax the accepted verifier as a substitute.
+
+### Selected primary and installed metadata pins
+
+The complete primary archive `/tmp/riauth-i04-saml-sp/lasso-2.9.0.tar.gz` remains
+4053813 bytes, SHA-256
+`63816c8219df48cdefeccb1acb35e04014ca6395b5263c70aacd5470ea95c351`.
+Members were read in memory, without extracting or executing them. The installed
+selected dylib remains `/opt/homebrew/Cellar/lasso/2.9.0_4/lib/liblasso.3.dylib`,
+501600 bytes, SHA-256
+`0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde`.
+The selected `lasso.pc` was read as text (not through pkg-config): version2.9.0,
+SHA-256 `b33a6d16197865beda424287def683acd372026239b1725f08cbc06f3b6a452e`.
+No native/version, nm, otool, loader or library probe was invoked.
+
+| Primary member inspected | SHA-256 | Relevant source boundary |
+| --- | --- | --- |
+| `lasso/id-ff/login.h` | `65bf2fe07a7068caed8b30b803b05416c3f92559bbee633c50048a854802ee4d` | Public process/validate/build/assertion getter/login lifecycle declarations |
+| `lasso/id-ff/profile.h` | `18807d0d1a3dc8f83cd387d35080054a0ae90251f0ee5150913ac78a2087e5b5` | Forced signature/verification hints; identity/session and message fields |
+| `lasso/id-ff/server.h` | `0412c6097673ac2d63c38ba1f87224dc6e70a8dbbc1eb170082efdc0555ba676` | Buffer constructors, public signature method, provider role |
+| `lasso/id-ff/login.c` | `2185cbb63a3db2da13b87e5464f033a3248f9ac1224f7ee39bff9d1822fdaf9b` | SAML2 dispatch324/1249/2013/2574; assertion getter2649 returns a new reference |
+| `lasso/saml-2.0/login.c` | `e8fcf2df68ea9dc868206c6a130c0921c097be90ba2a5845008f77905159e687` | Complete request279–427, validate616–658/federation661–731, assertion747–924, POST builder1547–1611 |
+| `lasso/saml-2.0/profile.c` | `ede0876d5579253d94de6dc5197ea312b23a026d7377159822e56cf38da0e494` | Query signature_status655; POST base64 serializer1238; forced response signature1615 |
+| `lasso/saml-2.0/saml2_helper.c` | `5937549cf2ddc55cb440502e6bd1122ef0564a7fc6779792cd0baee151a48936` | Assertion signature setup666 |
+| `lasso/xml/xml.c` | `6d7a928df997fe302f7b5d1444046a400f07e270bc8a4f4bbee396a0ceddfb79` | export/base64171; signing804; recursive child serialization2826/2842; signature template2875 |
+| `lasso/xml/tools.c` | `2654ee54c73871b817186a8dfcca57e34efd5d1642bbfdbce1bc86193c92e58d` | Query verifier723/975; signing1228; native template3099–3207 |
+| `lasso/xml/saml-2.0/saml2_assertion.h` | `833f6f070e50430878a485f4a21b60e2e36b4ce846cd81137b43d27b7b569f30` | Public AuthnStatement list and assertion ID |
+| `lasso/xml/saml-2.0/saml2_authn_statement.h` | `d6790f1a0f1cd2373a7d2ec62ea842ed94ac26982f8f99c4e00dc6921c120e0d` | Public SessionIndex and SessionNotOnOrAfter fields |
+| `lasso/id-ff/profile.c` | `7a758a27705f54f968c3a2f4020aa0cc4f65e75e81eff80ddc598130620d0363` | Borrowed identity/session getters269/287; identity restore390 |
+| `lasso/id-ff/identity.c` | `44467989faa34ccae101faaa2204089f41762afba16ac792f3bd7e98ab4f7dd1` | Native federation persistence/dump/restore |
+| `lasso/id-ff/session.c` | `48b97bee44b9437f338c85aaffa7cef608149a244c0bc0b169abe6121d955003` | Native assertion/index insertion348 and private serialized dump1065 |
+
+The five selected installed headers (login/profile/server/assertion/authn-statement)
+were compared to those whole archive members and are byte-identical. Python read
+Mach-O `LC_SYMTAB` and the actual dyld export trie directly from file bytes.
+The export trie is offset369120/size13640. The24 selected prospective public exports below
+are present with flags0; canonical sorted name→(flags,address) selection SHA-256
+`c95a73ed143119bc97bb1b40b59a60593e93ecd4d70d4773216ef278b274c035`:
+
+`lasso_init`, `lasso_shutdown`, `lasso_server_new_from_buffers`,
+`lasso_server_add_provider_from_buffer`, `lasso_server_get_provider`,
+`lasso_server_destroy`, `lasso_login_new`,
+`lasso_login_process_authn_request_msg`, `lasso_login_validate_request_msg`,
+`lasso_login_build_assertion`, `lasso_login_get_assertion`,
+`lasso_login_build_authn_response_msg`, `lasso_login_destroy`,
+`lasso_profile_set_signature_hint`, `lasso_profile_set_signature_verify_hint`,
+`lasso_profile_get_signature_status`, `lasso_profile_set_identity_from_dump`,
+`lasso_profile_get_identity`, `lasso_identity_dump`, `lasso_profile_get_session`,
+`lasso_session_dump`, `lasso_saml2_assertion_get_type`,
+`lasso_saml2_authn_statement_get_type`, `lasso_samlp2_authn_request_get_type`.
+
+`lasso_set_min_signature_method` is absent from the export trie and will not be
+called. Metadata presence is not a successful load, ABI call or link result.
+The new mode would guard incoming SigAlg as exactly RSA-SHA256; it does not claim
+to change Lasso's global minimum. `lasso_flag_verify_signature` defaults true,
+but `LASSO_FLAG` can override it: the parent must use `env_clear()` so inherited
+flags cannot disable the independent request check.
+
+### Exact native signing and state sequence
+
+Proposed one additive `idp-login` mode, function `static void idp_login_mode(int
+argc, char **argv)`, with small new `idp_check`, `idp_require_request` and
+`idp_session_fields` helpers. Reuse unchanged `slo_limits`/`slo_read`/`slo_write`
+for bounded private files; no refactor or behavior change to any existing mode.
+Add only necessary public assertion/authn-statement includes and one dispatch
+branch. Removing those additions must reconstruct the entire23856-byte old C
+(SHA `c3d3a8f7d1d2d472e8b877a89ea2807d534921d88638661e8b251e2365906563`).
+
+1. Read owned private input buffers; `lasso_init`; create the IdP with
+   `lasso_server_new_from_buffers(IDP_METADATA,IDP_KEY,NULL,IDP_CERT)`, set
+   `server->signature_method = LASSO_SIGNATURE_METHOD_RSA_SHA256`; add trusted
+   SP metadata with `lasso_server_add_provider_from_buffer(...,ROLE_SP,...)`.
+   Validate the known SP entity exists. Buffer constructors avoid reopening
+   checked input paths. Existing SP `open_server` stays byte-exact.
+2. `lasso_login_new`; set both signature hint and verification hint FORCE.
+   Restore the optional native identity with `lasso_profile_set_identity_from_dump`
+   before validation. Pass the **original raw query** to
+   `lasso_login_process_authn_request_msg`, never reordered/re-encoded query/XML.
+   Require process rc0 and `lasso_profile_get_signature_status` rc0. Inspect the
+   resulting typed request: expected SP issuer/entity, correct IdP Destination,
+   ForceAuthn=true, IsPassive=false, persistent NameID/AllowCreate=true and POST
+   ACS matching the trusted SP metadata. Require BRWS_POST and exact relay.
+3. `lasso_login_validate_request_msg(login,TRUE,TRUE)`: this fixture application
+   supplies explicit successful local IdP authentication/consent for its selected
+   synthetic principal. Lasso creates/restores the persistent federation; it is
+   not a claimed browser/human authentication study. Fresh system UTC time is
+   generated after request receipt for AuthnInstant/NotBefore, expiry now+300s,
+   with PasswordProtectedTransport ACR and no MFA trust. Call the public
+   `lasso_login_build_assertion(login,ACR,auth_time,NULL,not_before,expiry)`;
+   SAML2 dispatch ignores the reauthenticateOnOrAfter argument.
+4. Obtain the native assertion via `lasso_login_get_assertion` (new reference),
+   require one typed AuthnStatement and persistent native NameID. **Necessary
+   application field:** Lasso2.9 sets SessionIndex automatically only when both
+   providers negotiate SLO (`saml-2.0/login.c:875–879`), whereas riAuth requires
+   it even for login-only sources (`source_saml_runtime.rs:646`). Leave SLO
+   unconfigured; set the public native AuthnStatement `SessionIndex` to its
+   assertion ID and `SessionNotOnOrAfter` to the same real expiry, before native
+   serialization/signing. These are Lasso object fields, not handcrafted protocol
+   XML or a re-signing substitute. Do not replace the native persistent NameID.
+5. `lasso_login_build_authn_response_msg` with FORCE sets a separate response
+   signature, derives Destination/Recipient from validated ACS and inserts the
+   assertion into the real native session. POST serializer uses Lasso's
+   `lasso_node_export_to_base64`. Native templates use RSA-SHA256, SHA-256,
+   exclusive C14N and exactly enveloped+exclusive reference transforms. Base
+   status-response snippets put Issuer/Signature/Status before its derived
+   Assertion child; child signing precedes enclosing response signing. Supplying
+   the IdP certificate avoids the unsupported KeyValue fallback. Actual output
+   must still have only allowed KeyInfo children; stop on incompatibility.
+6. Read finite profile fields and dump actual borrowed identity/session through
+   `lasso_identity_dump`/`lasso_session_dump` into fresh private outputs. Serialize
+   native state, not test-fabricated state. Compare persistent subjects only
+   inside private test memory when reloading identity on a later request. Free
+   returned dump strings, release the assertion getter reference and destroy
+   login/server/shutdown after writes. Do not free borrowed identity/session.
+   No memory-zeroization or atomic multi-file publication guarantee is claimed.
+
+### Private command and file schema — exactly one mode
+
+Prospective argv, `argc == 12`:
+
+```text
+lasso-saml-sp idp-login IDP_METADATA IDP_KEY IDP_CERT SP_METADATA SP_ENTITY QUERY_IN IDENTITY_IN_OR_DASH IDENTITY_OUT SESSION_OUT POST_OUT
+```
+
+Only the public SP entity and literal paths are arguments. Private keys,
+credentials, query/relay/NameID/session values never enter argv, logs or reports.
+`-` at argv8 means first native identity; later calls use the preceding private
+identity dump. A new native session is created for each fresh authentication;
+no session input, native logout mode or invented SLO endpoint is needed.
+
+| Position / artifact | Exact framing and bound |
+| --- | --- |
+| argv2–5 metadata/key/certificate inputs | Nonempty owned regular nonsymlink nlink1 mode0600, ≤128KiB, no NUL, in one own0700 TempDir; expected selected entity IDs/certificates |
+| argv6 SP_ENTITY | Public known configured SP entity, ≤1024 bytes, no newline/control; compare parsed remote entity exactly |
+| argv7 QUERY_IN | Private original UTF-8 Redirect query, ≤65536 bytes, one line/no NUL; exactly once each SAMLRequest, RelayState, SigAlg, Signature; reject extra/duplicate/semicolon fields and non-RSA256 SigAlg; preserve the original bytes for Lasso verification |
+| argv8 identity input or `-` | Actual preceding native identity dump using the same strict128KiB private-file checks; no raw riAuth store fixture write |
+| argv9/10 outputs | Fresh exclusive0600 native identity/session dump files, ≤128KiB each; never overwrite inputs or old output; parent checks distinct owned sibling paths and input immutability |
+| argv11 POST_OUT | Fresh exclusive0600 ≤128KiB file with exactly `target: VALUE`, `relay: VALUE`, `response: VALUE`, each one line with trailing newline; target≤1024, relay exactly original43-byte value, response native base64≤65536; decoded XML≤48KiB |
+| stdout | Only fixed `binding: post`, `request_signature: lasso`, `assertion_built: lasso`, `response_built: lasso`, `persisted: true` lines after complete output writes; no protocol/name/index/path values |
+| stderr projection | New `idp_check` emits only a literal stage from the finite called-operation allowlist and signed integer rc. Parent reports numeric exit/signal plus exact allowlisted stage/i32 if unambiguous; otherwise null/unclassified. Never echo raw stderr/strerror/protocol/path values. |
+
+The native-return diagnostic allowlist is exactly `lasso_init`,
+`lasso_server_add_provider_from_buffer`,
+`lasso_profile_set_identity_from_dump`,
+`lasso_login_process_authn_request_msg`, `lasso_profile_get_signature_status`,
+`lasso_login_validate_request_msg`, `lasso_login_build_assertion`,
+`lasso_login_build_authn_response_msg`. Only a nonzero actual integer return is
+emitted as `lasso idp FUNCTION (I32)`. Constructor NULL/type/framing/file guards
+use fixed guard labels without a fabricated native rc; their native-code
+projection is null. Duplicate/ambiguous native-stage frames also project null.
+The wrong-SP-pin oracle above requires the exact native function/102 tuple;
+it cannot pass from a guard, signal or arbitrary nonzero status.
+
+Existing exclusive writer gives per-file safety, not an atomic group of three
+outputs. On failure the parent performs no dependent Core callback and closes/
+cleans its owned TempDir, including partial outputs. Parent stdout/stderr each
+cap128KiB, null stdin, empty environment, ≤20s per helper (limited also by remaining
+whole-test budget), joined reader/EOF and hard deadline before acceptance.
+Helper keeps the existing15s alarm and128KiB RLIMIT_FSIZE. Native children remain
+inside the outer owned Cargo process group; no detached helper group may escape
+its cleanup. No secret socket/helper mounts, HTTP client/listener or external
+URL contact is involved. URLs in metadata/messages identify the synthetic profile.
+
+### One isolated public-Core ignored target and exact proposed oracles
+
+Prefer a **new** auto-discovered `tests/saml_source_peer.rs` (absent now), guarded
+by `#![cfg(feature = "platform")]`, with one ignored function:
+`lasso_idp_redirect_post_source_lifecycle_replays_and_live_trust`.
+It should not import `tests/common`, alter shared helpers, use `test-support`,
+add a direct dependency/Cargo feature, or import old source files. Existing
+`tests/saml_sp_peer.rs` stays exactly39541 bytes/SHA
+`897e778c2c53d6bc5ea943aefde46812a80cb73bafad82d1702a7529779ea20f`.
+
+Build a fresh Core through `Core::initialize` in an own0700 TempDir, using a
+synthetic HTTPS issuer and normal admin login/create-user/login calls for Alice
+and an unrelated factor-free local user. Generate test RSA2048 keys/certificates
+with the existing OpenSSL dev dependency. Import a separate SP signing domain
+through **public** `Core::configure_key` / `keyring::KeyInput` (`RS256`, own PEM,
+no remote_signer/kid), then public `source_put`. Do not read/extract server
+private keys or write any store/receipt/revision/index directly. Normal public
+in-process context-free calls remain available; this does not change or retest
+route-specific optional/required headers or credential receipt-secret exceptions.
+
+Selected Source: id `lasso-idp-source`, IdP issuer `urn:example:lasso:local-idp`,
+SP client entity `urn:example:riauth:lasso-source`, SSO
+`https://idp.example.test/sso`, persistent NameID, signing domain
+`lasso-source-sp`, current selected IdP certificate, unencrypted assertion,
+SLO endpoints=None, identity attribute mappings=None, auto_provision=false,
+enabled=true, groups/ACRs/scopes/JWKS empty, no OAuth/token endpoint/secret,
+allow_admin_login=false. IdP metadata is static fixture **configuration** with
+that certificate/entity/Redirect endpoint; SP metadata is the actual public
+`saml_source_metadata` output. The test builds no success protocol XML/signatures with `Upstream`, risaml or
+XMLsec/manual XML. The unchanged riAuth SP generates its own AuthnRequest and
+uses its existing verifier; the independent IdP messages come from Lasso. No
+manual-signing fallback is proposed.
+
+At most **five helper children** inside this one60-second test, with explicit
+expected-negative cases; this count is a proposed fixture design, not runtime
+permission. No automatic repeat, alternative peer or oracle correction after
+an unexpected failure. All assertions below are proposed, not execution evidence:
+
+1. Start explicit link with Alice's fresh local session (`source_start`, link=true).
+   Snapshot after the normal reservation. Child1 uses the genuine signed query
+   against SP metadata pinned to an unrelated valid certificate: exact selected
+   expected refusal is exit1 / `lasso_login_process_authn_request_msg` /102.
+   `provider.c:1612`→SAML2 query checker→`tools.c:834–835` maps wrong-key verify to
+   `LASSO_DS_ERROR_INVALID_SIGNATURE`, propagated by forced request processing.
+   No native outputs, all inputs and full Core snapshot unchanged; Core was not
+   called with any response. Child2 uses the correct pin and **same unclaimed
+   reservation**, produces actual double-signed POST and private native dumps.
+2. Require exact3-field private POST framing; parse without rewriting XML:
+   one response/one persistent assertion, exactly2 signatures attached to their
+   own parents, response signature first, RSA256/SHA256/exclusive transforms,
+   exact issuer/audience/ACS/Destination/InResponseTo and original relay, fresh
+   bounds, nonempty native SessionIndex, no encryption. Pass that unmodified
+   native base64 to public `saml_source_callback`: completed=true.
+   Duplicate callback returns the existing400 used-request error with full
+   snapshot unchanged. `source_finish(approve=false)` reports Alice/linking,
+   mfa=false and does not mutate; explicit approve=true creates exactly one link
+   and source session with `source.link` audit increment1. Spent finish refuses401
+   with full snapshot unchanged. Confirm the issued token resolves only to Alice.
+3. Unrelated local user and source-authenticated token cannot unlink Alice's
+   link (403, whole snapshot unchanged). Alice's fresh **local** session can
+   `source_unlink`, with one source.unlink audit, removal and only source-derived
+   token retirement. Alice/unrelated local identities remain valid. Context-free
+   second unlink refuses with unchanged snapshot; do not invent receipt-return
+   expectations for this context or reopen accepted context-bound receipt policy.
+4. Child3 restores the actual native identity, handles a new explicit link
+   reservation and issues the same persistent subject with fresh request/session.
+   Complete public callback/review/finish again to obtain a new source token.
+   Child4 prepares a later normal-login response for that same native identity
+   while current pins match, before delivery. Public admin `source_put` replaces
+   only IdP certificate pins with an unrelated valid certificate. The current
+   source-derived token is revoked; unrelated/local tokens remain valid.
+   Delivering child4's old-pin response now returns400 `SAML source changed;
+   restart login`, while committing the existing failed retirement/audit. Restore
+   old pins through normal `source_put`: callback retry stays used/400, finish401,
+   no new identity/link/session, and the revoked source token never resurrects.
+5. Child5 issues a fully native well-formed doubly signed response for a fresh
+   normal reservation using an unrelated IdP signing key/certificate with the
+   same entity and correct SP metadata, while riAuth's current pin remains the
+   original. Native request verification must succeed, but riAuth callback's
+   signature result seals failure: **Ok body completed=false**, not a fabricated
+   outer forbidden error. Finish401; duplicate callback400 and subsequent finish
+   have unchanged whole snapshots. No user/link/session/credential/configuration
+   change or assertion replay insertion from the rejected response; exactly one
+   source.login_failed event, unrelated/local identities still valid.
+
+First failed or retired callback is intentionally **not** a whole-store rollback:
+`source_saml_claim.rs` commits claimed/failed retirement and one denial audit;
+`source_saml_record.rs` commits failed verification and one denial audit. The
+fixture should inspect those exact control-record flags and action-count deltas,
+plus immutable protected domain projections (users, links, sessions/tokens,
+credentials, sources/keys and assertion replay records), using read-only snapshots
+without printing values. Full snapshot equality applies to review, permission
+refusals and subsequent spent retries. Initial successful callback records one
+`source.authenticated`, later explicit finish one `source.link`; receipt/audit/
+revision fields are not broadly excluded from comparisons. No forced clock,
+expiry-record mutation, sleep, raw ledger repair or bypass is proposed.
+
+### Protected production pin and exact future commands
+
+Design reads use immutable published `b5dcfa9dbb14e953d12edac6a6a1133ecb61033e`.
+Owned relevant production equals its blobs: source runtime
+`64c71e50b9e4ba88d66f9e3bad4e548565fbec5e`, catalog
+`321a045efe7a3916a3d691c178a1fc3c20787c8f`, finish
+`339e57f895b7203452f4ad6f384ac04e348fda19`, callback claim
+`ffc12d1006d539b2f9f874224d0b7dfe89575aac`, record
+`1fb80efdd0d98b0c44bd06dc1ee8d347ab65a4d1`, source key read
+`8113d3420ac672ae7a7315bdea4ee033f1b8a753`, public keyring adapter
+`792512ed72bf7f2caa183ed928835ac801e43cbc`, key input
+`5bb95f402c3c8a40c8151ffbe9738e9d8b81cfc8`, management writers
+`8ff588258fd859949015604518003c5950bcd2ad`. No such production file changes
+are proposed. Raw Core APIs are at source_catalog120/140,
+source_saml_runtime107/116, source_finish21, keyring adapter32; original
+Group/factor/permission bounds, source fingerprints/retirement, shared writers,
+route headers, credential non-disclosure/receipt-secret policy and PAM fallback
+remain unchanged. No workflow/activation, generic context or production schema
+hook is needed. No new whole-I04, Linux, browser, deployed/release or tenant claim.
+
+Proposed new compile directory `target/i04-lasso-idp-source-design-v1` is absent
+(and was not created). Old compiled helper18f148c remains immutable. After a
+separately reviewed source commit and explicit serialized runtime release:
+
+```text
+one metadata child: pkg-config --cflags --libs lasso gobject-2.0
+one compiler argv: /usr/bin/cc -O2 -o $PWD/target/i04-lasso-idp-source-design-v1/lasso-saml-sp $PWD/scripts/lasso-saml-sp.c <shlex-split selected metadata flags>
+```
+
+Use the previously reviewed bounded-wrapper pattern: selected lasso.pc path,
+5s metadata child and60s compiler child, new0700 output directory, exclusive0600
+capped captures, no C/helper version/protocol invocation; pin the future committed
+C/Rust and exact resolved flags before compiler acceptance. Historical selected
+917-byte flag capture SHA
+`8d8f51e95d756bdacbfaf1c3fb287970cb580ef1061c9f0c4207761950451a92`
+was read unchanged, not regenerated. The future compiler result cannot be claimed
+from the existing SP-only binary or its historical successful compile.
+
+Only after successful separately reviewed helper compilation and a new exact
+Cargo release, proposed **one** ignored default-Platform filter:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  RIAUTH_TEST_LASSO_IDP="$PWD/target/i04-lasso-idp-source-design-v1/lasso-saml-sp" \
+  cargo test --locked --test saml_source_peer \
+  lasso_idp_redirect_post_source_lifecycle_replays_and_live_trust \
+  -- --exact --ignored --test-threads=1
+```
+
+No compiler, pkg-config, helper, Cargo or this command ran now. The initial
+read-only capacity sample was3568246784 bytes (~3.32GiB), below8GiB floor.
+Future compiler preparation requires fresh capacity above9GiB stop margin and
+explicit release; future new target conservatively plans4GiB allowance and
+fresh≥13GiB, pending root's own source/cache check. This is an estimate, not
+reservation, guaranteed peak or permission to use another target. Existing
+private target/jobs1/inc0/dev+testdebug0, 2s disk sampling,9GiB stop/8GiB floor,
+1800s outer limit, owned Cargo PG termination/reap and capped16MiB exclusive0600
+redacted logs remain required. No capacity deletion, cache purge, fallback build,
+threshold reduction, competing Cargo, slot acquisition/release or automatic
+rerun is proposed. Actual source/artifact/toolchain/dynamic pins and exits/counts/
+minimum disk/elapsed/cleanup must be recorded separately after any authorized run.
+
+### Preservation and static-only disposition
+
+The full `ea24cb485f82534eac5298d308801d103c183619` report remains the exact139951-byte
+prefix, SHA-256 `5dc5a06ddc64794602e34dfed25f08fe4a18bc853137a8c0bae9ed36bf8527a0`.
+All prior actualpass/two failed receipts, first historical native unknown,
+compiler/inventory/setup limits, primary assignment and prior selected pins stay
+intact. No new test/helper/product file was written, no task/status/main/push/
+merge/reset/worker/managed-shell/provider/browser/service/contact operation was
+performed, and no private protocol contents were inspected. Read-only source
+and metadata checks are not runtime evidence. Root reviews this design before
+any source reservation; original I04 disposition remains root-owned.
+
+Actual static checks for this design: `python3 scripts/check-docs.py` exited0;
+`git diff --check` exited0. Python assertions passed for the full prior report
+prefix/sole report diff, unchanged selected C/Rust/helper/dylib pins, exact five
+installed-header/primary-member equality, actual Mach-O dyld export-trie presence
+and selected-symbol hash, production hook/writer blob equality, and absence of
+the proposed new test and compile directory. All findings and prospective
+commands above derive from file/object reads; no peer result is newly observed.
