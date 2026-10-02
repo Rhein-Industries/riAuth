@@ -3082,3 +3082,156 @@ native cause, source/preparation pin and disclosed scope exception. Source-ready
 does not authorize another invocation; root must independently review these
 immutable commits and separately release any later exact filter. There is no
 new I04 completion, profile/tenant/platform/release claim or status change.
+
+## Actual owned-Asn1Time single-filter receipt on 4ed5b49
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original I04 task
+`dae9c528-9e32-462c-947f-661a571f136b`; supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. Root explicitly released
+`wave30_I04_owned_asn1_single_filter` for one invocation on clean
+`4ed5b494454da33bd27bc046084522c05a55e2a5`, with source correction
+`24c0dc921703432ff04a5cab7cc771c0c9d7df3e`. This appendix records that
+invocation only; it does not reinterpret any earlier failed receipt.
+
+### Preflight and archived supervisor
+
+Fresh launch free space was 22564667392 bytes, exceeding the required13 GiB
+start threshold for the conservative4 GiB planning allowance above the9 GiB
+stop/8 GiB floor. No competing Cargo/rustc/rustdoc process was observed before
+launch. The clean source HEAD and test blob
+`bc127dbe6b6060f1e490cb59bea63fa9e7ee201d` matched; the test remained
+39539 bytes / SHA-256
+`b196cba1eea40a67c7d70c6b463ae50ec6897d68c5d81052e33eb3bec2ae5894`.
+
+All347 protected production/crates/manifests/toolchain/build-configuration tree
+entries equal `ae8937800254a1ad4296ea257de1eccc4780e45b`. The prior evidence's
+source/native/manifests/cache pins were rehashed, with only the approved test
+replacement substituted. The unchanged default-library fingerprint still
+records features `["default", "essentials", "platform"]`, the same profile,
+empty rustflags and53 dependency fingerprint entries. The library/fingerprint
+SHA-256 values and prior size/mtime/inode metadata were exact:
+
+| Protected artifact | SHA-256 |
+| --- | --- |
+| `target/debug/deps/libriauth-f685f1e2409027d4.rlib` | `05b5eba724e86dce72c1383f7285220641486ab879b05d6745f3b8b05743a13f` |
+| `target/debug/deps/libriauth-f685f1e2409027d4.rmeta` | `74653db21fa6164eff22072722090fbe9be2a10621c99db73cfac464975ad9c9` |
+| `target/debug/.fingerprint/riauth-f685f1e2409027d4/lib-riauth.json` | `78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af` |
+| `target/.rustc_info.json` | `27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4` |
+| `scripts/lasso-saml-sp.c` | `1b23f51314038ff15caa3aeb8c31acccb8bcd26d6fb702115767d0f68e4dc186` |
+| `target/i04-lasso-idp-source-design-v1/lasso-saml-sp` | `951465d744c1bf99e7ed91fc414337d00e960c24a1715977cce0e14535794bff` |
+| `/opt/homebrew/Cellar/lasso/2.9.0_4/lib/liblasso.3.dylib` | `0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde` |
+
+The fresh supervisor/log/evidence paths were absent before exclusive creation.
+The archived supervisor is a regular nonsymlink UID501/nlink1 mode0600 file;
+its only three literal changes from the reviewed prior supervisor are the fresh
+base path, source HEAD and expected test SHA-256. Reversing those replacements
+reconstructs the whole prior15033-byte wrapper / SHA-256
+`a63edfb5021666c8636579eaae49579a22d5037dbf95892966d32dfa7f0a3c1f`.
+Python AST parsing and control-flow reversal passed before invocation.
+The unchanged controls include1800-second outer deadline,2-second disk sampling,
+16 MiB private log cap,13 GiB start/9 GiB stop/8 GiB floor,4 GiB drain guard,
+unchanged warm-library metadata guard and cleanup limited to the captured owned
+process group with TERM/KILL/wait, a10-second cleanup deadline and bounded EOF
+drain. No native version/probe, compiler or helper rebuild preceded this run.
+
+### Exact single invocation and captured numeric result
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  RIAUTH_TEST_LASSO_IDP="$PWD/target/i04-lasso-idp-source-design-v1/lasso-saml-sp" \
+  cargo test --locked --test saml_source_peer \
+  lasso_idp_redirect_post_source_lifecycle_replays_and_live_trust \
+  -- --exact --ignored --test-threads=1
+```
+
+The supervisor launched this command once with null stdin and a new owned
+process group. UTC start/end were `2026-10-02T19:50:10.426059+00:00` and
+`2026-10-02T19:50:16.472821+00:00`; elapsed6.0465591247193515 seconds.
+Cargo and supervisor both exited0. The actual summary was **1 passed,0 failed,
+0 ignored,0 measured,0 filtered out; test duration2.63 seconds**. The only
+observed compile package header was `riauth`; Cargo reported a finished profile
+duration of2.59 seconds. No compiler error, panic location/label or emitted
+finite native refusal diagnostic was present. Complete bounded numeric outcomes
+and the private log were retained before pass expectations were checked.
+
+PID/PGID39829 was joined/reaped; the owned group was absent with no remaining
+members and pipe EOF observed. No cleanup signal was needed; cleanup elapsed
+0.054099041037261486 seconds. No process-metadata error, guard stop or supervisor
+exception occurred. Minimum observed free space was22505332736 bytes; final
+supervisor free space was22506319872 bytes. The disk minimum is a2-second host
+sample including other host activity, not a measurement of this build's peak.
+All monitored source/helper/library/manifests/cache/old-capture pins remained
+exact after the run. **SOLE CARGO/PREPARATION SLOT RELEASED** was reported
+immediately after joined exit and empty owned group, before this appendix.
+
+The actual test executable, read and hashed without a standalone invocation,
+is `target/debug/deps/saml_source_peer-edfdf6287bca6298`: 57972288 bytes,
+regular nonsymlink UID501/nlink1 mode0755, SHA-256
+`85934e3e5dc08e3409786228fc18fc1313443db640cea0512ecda5102d85c95f`.
+
+### Reached assertions and evidence limits
+
+The single PASS reaches the unchanged test's final exact five-child count and
+whole-test60-second acceptance check. Its source-defined oracles include:
+
+- Native wrong-SP signature refusal with exit1 and exact
+  `lasso_login_process_authn_request_msg`/102, no stdout/persisted outputs and
+  full Core snapshot equality. The fixed native stage/code is an assertion in
+  the passing test, not a separately emitted success diagnostic.
+- Native double-signed persistent-NameID POST structure, configured certificate,
+  signature/reference algorithms, Recipient/InResponseTo/audience/index/lifetime
+  checks, then independent public Core callback verification. Successful XML
+  is native Lasso output; no manual signing or response rewrite was introduced.
+- Explicit local link review/approval, one authenticated/replay/link/session
+  transition, consumed callback/finish refusals and full-snapshot retry/review
+  checks; unrelated and source-session unlink refusals preserve snapshots.
+- Fresh local unlink retires the linked source token with one unlink audit;
+  repeated unlink refuses; native federation restore retains persistent subject
+  while using a different request and SessionIndex for the second link.
+- Public trust withdrawal retires the current source session and marks its pin
+  retired before the pending native callback. The stale callback commits only
+  the expected failed terminal pending record and one denial audit, with exact
+  protected-domain equality. Restoring the pin resurrects neither callback nor
+  source token; their retries preserve full snapshots.
+- A native POST signed by the untrusted IdP key returns `completed:false` and
+  the same exact sealed-denial/protected-domain oracle. Repeated callback/finish
+  refuses without more mutation. The two independent local identities survive.
+
+This is selected local Lasso2.9/macOS public-Core lifecycle evidence using the
+reviewed helper. The runner retains env-clear, private/nofollow0600 bounded I/O,
+five-child maximum,60-second whole-test/20-second child/15-second C limits and
+owned-child reaping. Short helpers and TempDir cleanup are not independently
+enumerated by the2-second outer monitor; empty final owned group is observed.
+No browser, tenant, Linux/Windows, released/deployed artifact, alternate profile,
+real remote-peer or whole-I04 completion is inferred.
+
+### Private receipts and append-only history
+
+All new captures below are exclusive-created regular nonsymlink UID501/nlink1
+mode0600 files. Raw output/private protocol values were not printed or included
+in this report; only finite public headers, count/result and numeric metadata
+were projected.
+
+| Preserved own target file | Bytes / SHA-256 |
+| --- | --- |
+| `target/i04-lasso-idp-4ed5b49-owned-asn1-filter-supervisor.py` | 15046 / `fbccc3823b0fd978b22d243c56188d335dc077d9c79958b86b6d6462e3974d94` |
+| `target/i04-lasso-idp-4ed5b49-owned-asn1-filter.log` | 1055 / `f0807e70fc5ab811d18aa2daac6df649be29b47b5f69dc8975834c0958769602` |
+| `target/i04-lasso-idp-4ed5b49-owned-asn1-filter-evidence.json` | 12603 / `316302890bdc93373572c01dcbf5918d0a687b20146a0ba47b7d404f977a0288` |
+
+The entire `4ed5b494454da33bd27bc046084522c05a55e2a5` report remains the exact
+215211-byte prefix / SHA-256
+`f27ac8374c011a2c5b94d59c05e46aca3f3c531d02b2fa840c8ef3d1b2a1252e`.
+The `9ec96bc8` compile receipt still failed before any test/helper oracle ran;
+its original raw compiler log/evidence/supervisor were rehashed unchanged.
+Earlier SLO PASS and the two historical native failures (first cause unknown),
+all old source/preparation/actual receipts and disclosed scope exception remain
+intact. No retry, source correction, alignment, deletion, alternate feature/
+target/peer, standalone helper invocation, status change or main/push occurred.
+Only this reserved report is appended after runtime; root owns independent
+review, integration, future reservations and original I04 disposition.
+
+Actual report checks: `python3 scripts/check-docs.py` exited0 and
+`git diff --check` passed. Exact215211-byte prefix/sole-report scope, tested
+source and all monitored pins plus original failed raw captures were verified.
+These documentation checks execute no additional test or native helper.
