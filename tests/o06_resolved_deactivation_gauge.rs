@@ -315,6 +315,19 @@ async fn operator_resolution_updates_failed_gauge_and_rebuilds_legacy_indexes() 
     failed += 1;
     assert_failed(&f, failed);
 
+    // A present nonboolean cannot borrow serde's missing-field false default.
+    let id = "invalid-uncertainty";
+    let mut invalid = serde_json::to_value(row(&user, id, Status::Stale)).unwrap();
+    invalid["uncertain"] = json!("false");
+    invalid["resolution"] = serde_json::to_value(&ambiguous.resolution).unwrap();
+    f.core
+        .store
+        .write(|tx| tx.put(BUCKET, id, &invalid))
+        .unwrap();
+    assert!(serde_json::from_value::<Deactivation>(invalid).is_err());
+    failed += 1;
+    assert_failed(&f, failed);
+
     // Invalid persisted projections cannot turn a known failed row healthy.
     for (index, malformed) in [
         Value::Null,

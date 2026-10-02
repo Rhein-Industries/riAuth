@@ -58,7 +58,9 @@ fn queue_state(bucket: &str, value: &Value) -> (bool, bool, u64, u64) {
         // An attestation resolves attention, never the recorded remote outcome.
         // Uncertainty and malformed resolutions must keep failure visible.
         let failed = (value["status"] == "failed" || value["status"] == "stale")
-            && (value["uncertain"] == true
+            && (value
+                .get("uncertain")
+                .is_some_and(|uncertain| uncertain.as_bool() != Some(false))
                 || !value
                     .get("resolution")
                     .and_then(|resolution| {
