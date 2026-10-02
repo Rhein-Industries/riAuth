@@ -226,7 +226,7 @@ async fn readiness_causes_are_redacted_bounded_observations() {
     let harness = ReadinessProbeTest::new(app.clone());
     let capture = Capture::default();
     let dispatch = Dispatch::new(tracing_subscriber::registry().with(capture.clone()));
-    let parent = tracing::subscriber::with_default(&dispatch, || {
+    let parent = tracing::dispatcher::with_default(&dispatch, || {
         tracing::info_span!("synthetic_request", private = "SECRET_PARENT")
     });
     let initial_snapshot = fixture.snapshot().unwrap();
