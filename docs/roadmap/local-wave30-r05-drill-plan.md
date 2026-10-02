@@ -368,3 +368,89 @@ verifier/protocol run is inferred from these checks. Source and final report
 hashes are sent to root with project ID
 `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; the one build and one redb runtime
 command remain queued for separate explicit release.
+
+## Authorized matching-source build: actual outcome
+
+Root explicitly released the sole Cargo slot for exactly the previously
+proposed `cargo build --locked --bin riauth`, with private `.target-wave27`,
+jobs=1, incremental=0 and dev/test debug=0. **One invocation exited 0**, dev
+unoptimized, Cargo-reported duration **1m 23s**. No other bin, test, maintenance
+or client build was run. The redb RP drill was not released or executed.
+
+Build HEAD: `7229c6942dab2b874e182f3a1cba80a7f48fba18`. Before and after
+the build, the tracked tree was clean and the production/build-input diff
+against reviewed `c01c39ab4e092423d5522bedc50fff87656d8c0a` was empty.
+Both production `src` trees remain
+`3adc2b59c3547d22bff202daccfd8ad97f1e78ab`. This appendix changes only
+documentation; it does not rebuild or alter the artifact.
+
+| Build input | Git blob | SHA-256 |
+| --- | --- | --- |
+| `Cargo.toml` | `5660d4bb922fcdc5bfe05d7502585980f4720d06` | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| `Cargo.lock` | `f1b819d47d204d73617b095513f0c6ab6eb8aa4e` | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| `rust-toolchain.toml` | `c3f67b6771b777215340531caf051bc25cef066c` | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+
+Actual `rustc -Vv`: Rust **1.98.1**, commit
+`48a229ceaefd4985c50990b14116b6d856af0985`, commit date 2026-09-01,
+host `aarch64-apple-darwin`, LLVM 22.1.8. Actual `cargo -Vv`: Cargo
+**1.98.1**, commit `797e8a9bca276c1c9f9f738d2a20f484fa4eea9d`, commit date
+2026-08-05, host `aarch64-apple-darwin`. The full version outputs are retained
+in the private provenance file, including Cargo's reported native library/OS
+metadata. These are local build observations, not deployment/release evidence.
+
+The newly written `riauth-76fa2f24f27377d8/bin-riauth.json` Cargo fingerprint
+records actual features **`default`, `essentials`, `platform`**, without
+test-support/fuzzing. Its SHA-256 is
+`c6417922280c0fc42574e171e543783ee55756acb5224212dce685d6a2dc8339`.
+
+Built artifact **`.target-wave27/debug/riauth`**:
+
+- SHA-256 **`0f137475af5a8040d96a794b1ad331e7430be4467046b81b1312fb974b7e8a6a`**.
+- Size **260096784 bytes**; mtime_ns `1790941283520579084`.
+- Hash and source/manifest equality were checked after completion. The binary
+  itself was not executed. Both future drill phases must use this one artifact;
+  the old cached hash above is historical and was not used for an RP run.
+
+The build emitted one macOS linker warning: `__eh_frame` exceeded the 16 MiB
+compact-unwind encoding limit, with a possible exception-handling performance
+effect. Compilation/linking still exited 0. No build failure, retry or source
+correction was observed or made during this build.
+
+Disk was sampled before, during and after the build. Start free space:
+12934201344 bytes (**12.046 GiB**). Minimum sampled free space:
+11797745664 bytes (**10.988 GiB**). Post-build hash/provenance check:
+12891217920 bytes (**12.006 GiB**). Every sample stayed above the explicit
+**9 GiB stop threshold**, with an **8 GiB floor**; no stop was triggered.
+No cache, artifact or evidence was deleted. These are sampled measurements,
+not a continuous minimum or a throughput/memory benchmark.
+
+Immediately after exit/hash/disk inspection, root received the exact outcome
+with explicit project ID and **CARGO SLOT RELEASED**. The slot was released
+before this evidence append. No Cargo slot is retained for documentation or
+for the still-held drill.
+
+Private evidence retained under this worktree (exclusive mode 0600):
+
+| File | SHA-256 |
+| --- | --- |
+| `.target-wave27/r05-wave30-build-provenance.json` | `165badd69d553c8d786b66f5c390f1eda20b8e7e7558dfb3203e9b01e7e9a52d` |
+| `.target-wave27/r05-wave30-build.log` | `583316bcade84398d74abedcd329a278c7e4e1e1b3d277bdfe7f6743a7cf5620` |
+
+The log preserves normalized Cargo output. Evidence-log assembly initially
+hit a tool-host `TextEncoder` availability error after the provenance JSON
+was already safely written. Numeric code-point encoding corrected only that
+assembly step; the existing JSON was retained and no build/artifact was
+repeated, replaced or deleted. This is not a Cargo or product runtime failure.
+
+Remaining release dependency: root reviews this exact artifact and separately
+authorizes the one previously proposed redb RP drill. No riAuth/OpenSSL binary,
+service, protocol, protected-resource, signal, PostgreSQL, external escrow or
+browser/desktop outcome was tested in this build turn. R05 remains in_progress;
+W02/W05 remain DONE. Root alone owns integration/publication/status. Production,
+scripts, manifests and all accepted contracts remain unchanged by this appendix.
+
+Actual appendix checks: `python3 scripts/check-docs.py` exited 0; whitespace,
+balanced fences, byte-prefix retention, single-report scope and empty reviewed
+production/build-input diff checks passed. Both private evidence hashes/modes
+and provenance JSON fields were verified. These are evidence/document checks;
+no runtime release is implied.
