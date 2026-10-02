@@ -1271,3 +1271,185 @@ Root read all308 lines of `ef41fb2ba18533a11401261d9d1ec9b7de69c5cc`. Its append
 Exactly one native x86 run37061329815/job111018425393 on workflow56bd and productb619 concluded failure. Root downloaded artifact11252311290,49206215 bytes, and independently matched its outer ZIP to API digest `d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6`. Full public controller16872 bytes/SHA `ab7c5ce7b87e672db255edc4393ccb27348cb777b14f5f7880f87a68a986ab7d`, launch, image member inventory and bounded metadata were read; all recorded log hashes and888 resource samples were rechecked. Both image builds exited0 (762.677s/972.371s); the first save exited0, then the validator refused `image_tar_unreferenced_member`. Six additional hash-addressed V1 JSON objects are present outside its existing member allowlist. The actual Docker exporter source needs a strict, source-backed metadata binding before a correction; arbitrary extra blobs remain refused.
 
 UID probes, round-trip loading, application and shared-identity checks were not reached; `shared_full_gate=not_run`. All54 owned child groups report reaped/empty, cleanup_errors[], builder children removed, owned image inventory empty and zero remaining groups/containers/volumes. Root released the sole runtime slot immediately after validating those cleanup results, before this evidence append. Minimum sampled free space85502218240 bytes, reported maximum gap2.000433362s; no safety stop or repeat. [Exact root receipt](evidence/wave30-a09-container-37061329815.json) preserves identities, failure, cleanup and method limits. The initial metadata reader mistook a small layer TAR for JSON and stopped before writing; excluding referenced layers corrected only this read-only wrapper. No image was extracted into a filesystem, loaded or executed by root.
+
+## Closed ARM container source implementation, 2026-10-02
+
+Reservation `wave30_A09_closed_arm_container_architecture`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, supporting worktree
+`42bb51c6-c198-4adb-bd92-0a5222853231`; primary f2 unchanged. Root authorized
+only the existing workflow/helper and this appendix. Own starting HEADef41 was
+clean, with both source files equal tobe22. No alignment/merge/reset occurred.
+The entire **87,497-byte ef41 report**, SHA256
+`74913a80545658007c45297fc049462fee6e037b2eae958163b3045a3806f6c4`, remains
+this appendix's exact prefix; all earlier005c/85/3df/a7 evidence and failures
+remain intact.
+
+**Dated prerequisite resolution:** ef41's missing ARM tool metadata statements
+describe that design phase. Root has now published the independent read-only
+record at `b71b7b0041a549793233e8c7a81bbb61797e20f3` (author commit
+`17a033511b5daf7d23739a9fe38cdca152dfa58d`),
+`docs/roadmap/evidence/wave30-container-buildkit-arm64-source-pin.json`,
+**3653 bytes / SHA256
+`e234b809df9212785c818ace0a287eb356de0b9d5ca8560aab0818e5111d0de2`**.
+Its recorded UTC is2026-10-02T20:40:45.659513+00:00. The full record was read
+and its immutable JSON bytes independently hashed here; the raw registry
+response/config/layers were not fetched, downloaded or executed here.
+
+The record binds the same parent index `cec9f139…`, exact Linux/arm64 image
+descriptor/2261-byte response SHA256
+`3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768`, explicit
+`docker.io/moby/buildkit@sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768`,
+and config digest
+`sha256:f27f9c00a3aca2c219642d1500610eade3ddcb6b873ea8847852ab156663d32f`.
+Manifest config size2668 is recorded; no independent config payload rehash or
+native compatibility claim. A static serialization probe of the parsed manifest
+produced1921 bytes/SHA256`4441a2f26e11e492610a51b4134eac59d3aea85112e4bfa8119a04db3e808491`;
+reserializing parsed JSON does **not** recover the root's2261 raw response bytes.
+The implementation validates the separately hashed root record and its reported
+digest/header/size linkage, not that unrelated serialization. No failed runtime
+or new registry request is inferred from this source-only distinction.
+
+### Committed source and exact inputs
+
+Source commit **`d84d753912c8d920dd3f005d03024a9ad28841e4`**, parentef41, has only
+the following two modifications,172 insertions/50 deletions:
+
+| Committed source body | Lines / bytes | SHA256 |
+| --- | --- | --- |
+| `.github/workflows/check-local-container-cohort.yml` | 109 / 4573 | `9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4` |
+| `scripts/check-local-container-cohort.py` | 1617 / 92964 | `45353945c6d867039d29ada0f110cf2c2b85a907d179bb9049268046875ffc73` |
+
+The full two-file `git diff` fromef41 is30,313 bytes/SHA256
+`be00eb567344a4f0006949b623d0229a8b645532597d39ae855b7b9026752a66`.
+The source commit left this report exactly equal toef41; this report append is
+a separate commit. No other source/workflow/helper/manifest/guide/primary report
+was edited, no fixture body or command/assertion was added or removed.
+
+The workflow now has the approved required closed choice `[x86_64, arm64]`,
+**x86_64 default**, exact native runner expression and job architecture env.
+Bootstrap validates membership before host/capacity/data creation, chooses the
+fixed product/review refs and writes only those closed values to `GITHUB_ENV`.
+The helper independently validates membership as the first constructor action,
+before root guards/private creation. Unknown/missing values cannot become a
+fallback/emulated product execution. X86 keepsb619/treea627/review66c/native
+run37046857550/artifact11246575279; ARM keeps9a/tree1528/review**b71**/native
+run37016520583/artifact11232871527. The detailed exact architecture/provenance
+table above remains applicable, with the formerly pending ARM review nowb71.
+
+The three ARM root inputs were separately rehashed and are separately required:
+
+| Immutable b71 record | Bytes | SHA256 |
+| --- | ---: | --- |
+| `docs/roadmap/evidence/wave30-a09-native-arm64-37016520583.json` | 10559 | `2cbf8ee46dbdd8b2ab43ad933913dd0a16c20b3183497c2d3b9cf3d1287da227` |
+| `docs/roadmap/evidence/wave30-container-buildkit-source-pin.json` | 8628 | `4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0` |
+| `docs/roadmap/evidence/wave30-container-buildkit-arm64-source-pin.json` | 3653 | `e234b809df9212785c818ace0a287eb356de0b9d5ca8560aab0818e5111d0de2` |
+
+X86 still selects only its original66c native/tool records and exact hashes
+`ccf7c3fb…`/`4d263888…`. All selected product trees, seven source-input hashes,
+five product rows and eleven historical exit0 steps match the respective
+immutable records. These are static input checks, not new executions. The
+private serial Dockerfile prefix was extracted as AST bytes and reversed in
+memory for both product pins; both return the exact original recipe458ebb24….
+
+The ARM metadata adapter retains raw schema, copies products/inputs/steps intact
+and changes only the reviewed field names/fixed attempt/repository/platform and
+exact artifact/member metadata described above. Its API artifact view has
+exactly `id,name,size_in_bytes,digest`; private/raw attribution is not an invented
+API field. The source receipt records the raw schema and root outer-ZIP rehash
+attribution separately from the future controller's actual outer-ZIP rehash.
+X86's adapter branch returns its original record unchanged. No member exclusions,
+hash/size exceptions, alternate download or old-cohort fallback.
+
+The ARM tool check binds its own schema/source reference/manifest/config/response
+metadata to the exact descriptor in the separately hashed parent index and
+retains read-only/no-token-retention/no-layer/no-native-execution attribution.
+The old parent record's amd64 `source_reference` is validated as **amd64**, never
+reinterpreted as ARM. Runtime code still requires the actual native daemon arch,
+actual pulled config/image ID/OS/architecture, private builder image/node/config,
+every saved/loaded image's native architecture/revision and exact ELF183/62.
+It neither accepts a mutable tool tag nor enables emulation or architecture
+fallback. Those native checks have **not executed** in this phase.
+
+### Whole-source reversal and protected controls
+
+Actual in-memory normalization removed only the new closed map/three metadata
+functions, selection/provenance fields and explicitly declared literal/endpoint/
+ELF parameter substitutions. It reconstructed both **entire be22 source bodies**:
+
+| Reconstructed baseline | Bytes | Exact SHA256 |
+| --- | ---: | --- |
+| Workflow | 3398 | `7a0b7fb12a6c2650a1a7413e856ed6a9053aed7f5e1f06c2172413c7fdf84302` |
+| Helper | 85922 | `0f499284f5a053026230586f936b0ba38e58898a4f8fe36885efd30161bbbcfa` |
+
+No file was reverted or reset; normalization operated only on read strings.
+Helper ledger:34 replacement/deletion operations, ordered compact-JSON
+`{new_sha256,old_sha256,count}` plus newline, SHA256
+`503852a3afdfab611ffc040a8234f83bce1013ffc2f2d7995d7e7763605f85a4`.
+Workflow ledger:10 operations, same serialization, SHA256
+`aef5cf57558f57e422b268cf87b618f1cb1a442950962cccea8b6519d5748b09`.
+The normalized workflow also equals the entire parsed old workflow/defaultx86
+configuration. All remaining shell/control/action/context bodies are exact.
+
+All **39 protected methods**, in the preceding ordered-name list, compare
+byte-for-byte tobe22, including decorators/end-line/newlines. Full protected
+manifest remains
+`ef1daa6ffbec4f07caba3b91cf00c98abb81e30ee7e347a3996c36f7236b249f`.
+The entire `main` body is also byte-exact. Only existing methods changed are
+`__init__,source_check,native_transport,elf,capabilities,daemon_setup,
+recover_builder,image_identity,build_images,validate_image_tar,inspect_product,
+cleanup`, and their differences are the reviewed metadata substitutions/new
+read-only adapter binding. No new `Cohort` method or control redesign.
+
+Consequently the complete existing fixture/command/authorization/refusal/
+revision/header/credential/config/ownership/process/monitoring/time/archive/log/
+cleanup logic remains the same, including the39 protected body proof and inverse
+proof for the other declared spans. The new three module functions are limited
+to closed-map lookup and root-metadata validation/view construction; AST calls
+are only `require`, `all` and descriptor digest `split`. Verification read source
+and Git metadata only; no helper function/import or product IO/action executed.
+No new writer, Group materialization or credential/review/PAM/receipt bypass.
+
+### Actual static checks and limits
+
+- Full two-file source diff/new metadata bodies read. Python source and inline
+  bootstrap `ast.parse` PASS; independent AST literal resolution matched both
+  closed tables, ARM artifact/member view, native receipt fields and tool index/
+  manifest/config linkage. This parsed data; it did not call helper functions.
+- Psych/manual trigger/default choice/one job/read permissions/legacy concurrency/
+  no-auto-cancel/action pins/context/source refs/step deadlines PASS. Both
+  `bash -n` run blocks PASS, no shell block executed. Parsed full defaultx86
+  normalization and whole raw workflow/helper reversal PASS.
+- Exact39 body/main/prefix proofs, separately pinned root/source/input hashes,
+  five product metadata, recipe prefix reversal and two-path source scope PASS.
+  `git diff --check` and staged source whitespace PASS; source commit scope is
+  exactly the two reserved files. No untracked output/source alignment.
+
+The initial missing-prerequisite state and serialization observation remain
+dated source observations, not failed product runs. Earlier actual shared-helper
+FAILs/unlocated caller, dispatch failures, stale historical notices and O07
+UID0:0-versus10001/Desktop/classifier limitations are preserved; none was retried
+or reclassified. Root's x86 run37061329815 remains distinct and sole runtime;
+**no outcome was supplied or queried in this supporting source phase**.
+
+Source implementation is now committed; ARM-container native behavior,
+capacity/peak/tool/build/library/archive/UID/fixture/cleanup remain **UNRUN HERE**.
+Historical ARM credit remains five LOCAL native archives only. No shared-full-
+gate/official-release/container pass or whole-A09 closure/status recommendation
+comes from this source work. This reservation authorizes **no future runtime**;
+root source/independent review/integration and explicit serialization release
+remain separate. Driver-only desktop preference persists; no desktop was needed.
+
+Post-append report prefix/docs/whitespace/scope checks are recorded below. Zero
+helper import/main/fixture/tool/native/Docker/buildx/PG/network/HTTP/query/
+download/dispatch/Cargo/build/runner/service/browser execution, no runtime slot
+claimed/released, no deletion, other-worker contact, new task/worker/worktree/
+managed shell, main/push/status or production-file edit occurred.
+
+Post-append results: exactef41/005c/85/3df/a7 byte-prefix, report-only diff scope,
+no-untracked-file, both source bodies equal immutable source commitd84d753,
+Markdown fence/no-new-relative-link/whitespace and `git diff --check` **PASS**.
+`python3 scripts/check-docs.py` **EXIT1**, only the same existing five root build
+directories (`target-wave29-source`, `target-wave28-scim`, `target-wave28-portal`,
+`target-wave28`, `target-wave27`), **no Markdown-link errors**. No deletion or
+checker change; these static checks do not release native/container execution.
