@@ -225,6 +225,10 @@ fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
 
 const DIAGNOSTIC_ITEMS: usize = 50;
 const DIAGNOSTIC_TARGETS: usize = 32;
+/// Seconds past a job's due time before the diagnostics call it overdue. The
+/// maintenance pass that executes due jobs runs every 60 seconds, so this is
+/// five missed passes. Fixed, not configurable.
+const OVERDUE_GRACE_SECONDS: u64 = 300;
 const KNOWN_HOLDS: &[&str] = &[
     "unlinked_create_requires_settlement",
     "recovered_dispatch",
@@ -459,20 +463,36 @@ fn job_status_name(status: Status) -> &'static str {
     }
 }
 
-fn needs_attention(job: &Job, rollup: Option<&DownstreamRollup>) -> bool {
+/// Seconds since a non-terminal job became due, when that is more than
+/// [`OVERDUE_GRACE_SECONDS`] at `at`. A `scheduled` job is due at
+/// `max(execute_at, next_attempt)`, the instant a claim would accept it. A
+/// `running` job is due again when its lease expires (`lease_until`), the
+/// instant a claim would take it over. Stored local times only; a due time
+/// in the future is never overdue. Terminal jobs are never overdue.
+fn overdue_seconds(job: &Job, at: u64) -> Option<u64> {
+    let due = match job.status {
+        Status::Scheduled => job.execute_at.max(job.next_attempt),
+        Status::Running => job.lease_until,
+        Status::Done | Status::Cancelled | Status::Failed => return None,
+    };
+    (due.saturating_add(OVERDUE_GRACE_SECONDS) < at).then(|| at.saturating_sub(due))
+}
+
+fn needs_attention(job: &Job, rollup: Option<&DownstreamRollup>, overdue: bool) -> bool {
     match job.status {
         Status::Failed => true,
         Status::Done => matches!(
             rollup.map(|rollup| rollup.state),
             Some("pending" | "incomplete")
         ),
-        Status::Scheduled | Status::Running => job.last_error.is_some(),
+        Status::Scheduled | Status::Running => job.last_error.is_some() || overdue,
         Status::Cancelled => false,
     }
 }
 
-fn attention_rank(job: &Job, rollup: Option<&DownstreamRollup>) -> u8 {
-    if job.status == Status::Failed {
+fn attention_rank(job: &Job, rollup: Option<&DownstreamRollup>, overdue: bool) -> u8 {
+    // An overdue job has not committed its local revocation, like a failed one.
+    if job.status == Status::Failed || overdue {
         0
     } else if rollup.is_some_and(|rollup| rollup.state == "incomplete") {
         1
@@ -483,9 +503,14 @@ fn attention_rank(job: &Job, rollup: Option<&DownstreamRollup>) -> u8 {
     }
 }
 
-fn job_next_action(job: &Job, rollup: Option<&DownstreamRollup>) -> &'static str {
+fn job_next_action(job: &Job, rollup: Option<&DownstreamRollup>, overdue: bool) -> &'static str {
     if job.status == Status::Failed {
         return "inspect_local_failure";
+    }
+    if overdue {
+        // Due work that no maintenance pass has claimed: confirm that a process
+        // with the background-jobs duty runs and its maintenance pass succeeds.
+        return "check_worker_duty";
     }
     if matches!(job.status, Status::Scheduled | Status::Running) && job.last_error.is_some() {
         return if job.status == Status::Running {
@@ -563,6 +588,10 @@ struct DiagnosticCounts {
     attention: u64,
     withheld: u64,
     withheld_attention: u64,
+    /// Scheduled or running jobs past their due time by more than the grace.
+    overdue: u64,
+    /// Largest `overdue_seconds` among them; null when none is overdue.
+    oldest_overdue_seconds: Option<u64>,
 }
 
 struct ListedItem {
@@ -571,8 +600,21 @@ struct ListedItem {
     body: Value,
 }
 
-fn count_job(counts: &mut DiagnosticCounts, job: &Job, rollup: Option<&DownstreamRollup>) {
+fn count_job(
+    counts: &mut DiagnosticCounts,
+    job: &Job,
+    rollup: Option<&DownstreamRollup>,
+    late: Option<u64>,
+) {
     counts.jobs = counts.jobs.saturating_add(1);
+    if let Some(late) = late {
+        counts.overdue = counts.overdue.saturating_add(1);
+        counts.oldest_overdue_seconds = Some(
+            counts
+                .oldest_overdue_seconds
+                .map_or(late, |oldest| oldest.max(late)),
+        );
+    }
     let status = match job.status {
         Status::Scheduled => &mut counts.scheduled,
         Status::Running => &mut counts.running,
@@ -589,12 +631,12 @@ fn count_job(counts: &mut DiagnosticCounts, job: &Job, rollup: Option<&Downstrea
         _ => &mut counts.no_downstream_targets,
     };
     *downstream = downstream.saturating_add(1);
-    if needs_attention(job, rollup) {
+    if needs_attention(job, rollup, late.is_some()) {
         counts.attention = counts.attention.saturating_add(1);
     }
 }
 
-fn attention_item(job: &Job, rollup: Option<&DownstreamRollup>) -> ListedItem {
+fn attention_item(job: &Job, rollup: Option<&DownstreamRollup>, late: Option<u64>) -> ListedItem {
     let mut targets: Vec<&AttentionTarget> = rollup
         .map(|rollup| rollup.attention_targets.iter().collect())
         .unwrap_or_default();
@@ -610,7 +652,7 @@ fn attention_item(job: &Job, rollup: Option<&DownstreamRollup>) -> ListedItem {
         .map(|target| &target.body)
         .collect();
     ListedItem {
-        rank: attention_rank(job, rollup),
+        rank: attention_rank(job, rollup, late.is_some()),
         id: job.id.clone(),
         body: json!({
             "id": job.id,
@@ -624,7 +666,9 @@ fn attention_item(job: &Job, rollup: Option<&DownstreamRollup>) -> ListedItem {
             "recorded_targets": rollup.map(|rollup| rollup.recorded).unwrap_or(0),
             "hidden_targets": rollup.map(|rollup| rollup.hidden).unwrap_or(0),
             "remote_completion_verified": rollup.is_some_and(|rollup| rollup.state == "delivered"),
-            "next_action": job_next_action(job, rollup),
+            "next_action": job_next_action(job, rollup, late.is_some()),
+            "overdue": late.is_some(),
+            "overdue_seconds": late,
             "targets_omitted": targets_omitted,
             "targets": targets,
         }),
@@ -997,27 +1041,34 @@ impl Core {
     /// the caller may already inspect. `status: done` is local revocation only.
     /// A hidden target still decides `downstream_state`. `has_error` is presence
     /// of a stored `last_error`; the text is left on the job read. This read does
-    /// not change readiness, doctor, or queue indexes.
+    /// not change readiness, doctor, or queue indexes. A scheduled or running job
+    /// more than [`OVERDUE_GRACE_SECONDS`] past its due time is an attention item
+    /// even without a stored error: no claim has executed it. That job has not
+    /// committed its local revocation; whether the account is still usable
+    /// depends on other changes to it.
     pub fn offboarding_diagnostics(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.management(tx, token, "operations.read", "operations/offboarding")?;
+            let at = now();
             let mut counts = DiagnosticCounts::default();
             let mut listed = Vec::new();
             for (_, job) in tx.list::<Job>(BUCKET)? {
                 let rollup = downstream_rollup(tx, &job, Some(&actor))?;
-                count_job(&mut counts, &job, rollup.as_ref());
+                let late = overdue_seconds(&job, at);
+                count_job(&mut counts, &job, rollup.as_ref(), late);
+                let attention = needs_attention(&job, rollup.as_ref(), late.is_some());
                 let visible = actor.allows("user.offboard", &format!("user/{}", job.username));
                 if !visible {
                     counts.withheld = counts.withheld.saturating_add(1);
-                    if needs_attention(&job, rollup.as_ref()) {
+                    if attention {
                         counts.withheld_attention = counts.withheld_attention.saturating_add(1);
                     }
                     continue;
                 }
-                if !needs_attention(&job, rollup.as_ref()) {
+                if !attention {
                     continue;
                 }
-                listed.push(attention_item(&job, rollup.as_ref()));
+                listed.push(attention_item(&job, rollup.as_ref(), late));
             }
             listed.sort_by(|left, right| {
                 left.rank
@@ -1029,11 +1080,12 @@ impl Core {
             let items: Vec<Value> = listed.into_iter().map(|item| item.body).collect();
             Ok(json!({
                 "schema_version": "riauth.offboarding-diagnostics/v1",
-                "checked_at": now(),
+                "checked_at": at,
                 "affects_readiness": false,
                 "limits": {
                     "attention_items": DIAGNOSTIC_ITEMS,
                     "targets_per_item": DIAGNOSTIC_TARGETS,
+                    "overdue_grace_seconds": OVERDUE_GRACE_SECONDS,
                 },
                 "counts": counts,
                 "listed": items.len(),
