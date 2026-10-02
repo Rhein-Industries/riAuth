@@ -10,7 +10,7 @@ Root reserved only:
   `tests/reconciliation_safety.rs::expired_owner_cannot_enqueue_after_a_second_worker_reclaims_the_job`;
 - this report.
 
-Cargo is held. Nothing here was built or run.
+Root later released exactly one corrected test invocation; its result is under "Runtime". Nothing else was built or run.
 
 ## The failure
 
@@ -55,9 +55,54 @@ The claim returned `Ok(None)`.
 - **Test baseline:** `tests/reconciliation_safety.rs` is byte-identical at
   `c01c39a`, `2f9affb` and `fd4617b` (blob
   `60dc6eab60cfe7d0a6f75735b0b4d39786329f47`).
-- **No relevant change between the two commits:** from `c01c39a` to `2f9affb`,
-  only `src/api.rs` and `src/telemetry.rs` change. Neither change touches the
-  path below.
+- **Source delta between the two commits (corrected).** An earlier version of
+  this report said that only `src/api.rs` and `src/telemetry.rs` change from
+  `c01c39a` to `2f9affb`. That was wrong: the diff had been filtered to a few
+  paths.
+  - `git diff --name-status c01c39a 2f9affb` lists 29 files. 15 are
+    documentation.
+  - The 14 others are:
+    - `src/api.rs`, `src/api/observability.rs`, `src/api/probes.rs`;
+    - `src/config.rs`, `src/kms.rs`, `src/kms_essentials.rs`;
+    - `src/operations.rs`, `src/operations/storage_diagnostics.rs`, and the
+      new `src/operations/storage_diagnostics/tests.rs`;
+    - `src/telemetry.rs`;
+    - `scripts/recovery-drill.py` and the new `scripts/recovery-drill-oidc.py`;
+    - the new `tests/o06_readiness_cause_signal.rs` and
+      `tests/o06_remote_signing_attribution.rs`.
+  - These are readiness, storage-pressure, configuration, key-management,
+    recovery-drill and remote-signing additions. None of them is in this
+    fixture's path.
+- **Files on this path are byte-identical between the two commits.**
+
+  | File | Blob |
+  | --- | --- |
+  | `tests/reconciliation_safety.rs` | `60dc6eab60cf` |
+  | `src/reconciliation.rs` | `f15ef16a9709` |
+  | `src/background.rs` | `3c6a2e2d2a12` |
+  | `src/background/targets.rs` | `d1537a7a3592` |
+  | `src/provisioning.rs` | `e74509515119` |
+  | `src/recovery.rs` | `99718c37c4ec` |
+  | `src/store.rs` | `8e78d889220c` |
+  | `src/store/maintenance.rs` | `6d6999eaba0e` |
+  | `src/store/ownership.rs` | `081f13e81656` |
+  | `src/store/prepared.rs` | `d7387cd0a5c9` |
+  | `src/connector_guard.rs` | `5db8330a03f4` |
+  | `src/agent.rs` | `0ab2592fb624` |
+  | `src/core.rs` | `f02efcde5e96` |
+  | `Cargo.toml` | `5660d4bb922f` |
+  | `Cargo.lock` | `f1b819d47d20` |
+
+  These cover the claim, the admission and lease, the release, test-support,
+  store and recovery helpers, and the fixture.
+- **The two changed files that touch the holder do not change it.**
+  - In `src/api.rs`, the change adds a test-only re-export of
+    `probes::ReadinessProbeTest`, an `App.readiness` field and its
+    initializer. `App::new` still sets `background` from
+    `Background::shared(&core.store)` (`src/api.rs:72` at `2f9affb`).
+  - In `src/telemetry.rs`, the change adds the remote-signing reason enum,
+    counters, recorder, snapshot entry and render block. No changed line
+    touches `background_executor` or its `Weak` registry.
 
 ## Source trace (pins at `2f9affb`)
 
@@ -169,25 +214,51 @@ Commit `0557dc6fba654dcb3492274eb7e86170c999c999`, test file blob
 - No production code, test-support helper, raw admission row, clock, sleep,
   retry or budget changed. No other test changed.
 
-## Proposed runtime, held for root's release
+## Runtime
 
-Both runs would use this worktree's private `target/wave27` and
-`CARGO_BUILD_JOBS=1`, `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_DEV_DEBUG=0` and
-`CARGO_PROFILE_TEST_DEBUG=0`. Free disk would be monitored against the 8 GiB
-floor.
+### Historical failure (Linux CI, before the fix)
+
+The failing baseline is the public CI run above:
+
+- commit `c01c39a`, unchanged fixture blob `60dc6ea`;
+- Linux runner, full `cargo test --all-targets --features test-support,fuzzing
+  --locked`;
+- the panic at `tests/reconciliation_safety.rs:409:10` (`unwrap` on `None`),
+  with 0 passed and 1 failed in this target;
+- log SHA-256
+  `316ba5364a5c14e329a13465081496a1aa88c4365051ff83346fd7c68149840c`.
+
+Root verified that log and inspected how the fixture and source path carry
+over. As root instructed, the uncorrected file was **not** restored and the
+known failure was **not** rerun locally.
+
+### Current corrected result (local, one released run)
+
+Root released one invocation. It ran exactly as follows:
+
+- on committed `0557dc6`;
+- HEAD `250670c`, clean tree, test blob `1d5d410`, product bytes equal to
+  `0557dc6`;
+- this worktree's private `target/wave27`, with `CARGO_BUILD_JOBS=1`,
+  `CARGO_INCREMENTAL=0`, `CARGO_PROFILE_DEV_DEBUG=0` and
+  `CARGO_PROFILE_TEST_DEBUG=0`.
 
 ```sh
 env CARGO_TARGET_DIR="$PWD/target/wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test reconciliation_safety expired_owner_cannot_enqueue_after_a_second_worker_reclaims_the_job -- --exact --test-threads=1
 ```
 
-1. **Baseline.** Temporarily restore the uncorrected file with
-   `git show fd4617b:tests/reconciliation_safety.rs > tests/reconciliation_safety.rs`.
-   Run the command. Expect the same panic at `tests/reconciliation_safety.rs:409:10`
-   with `unwrap` on `None`. Then restore with
-   `git checkout HEAD -- tests/reconciliation_safety.rs` and confirm the blob
-   is `1d5d410` again.
-2. **Corrected.** Run the same command on committed `0557dc6`. Expect
-   1 passed.
+| Item | Result |
+| --- | --- |
+| Exit | 0 |
+| Test | `expired_owner_cannot_enqueue_after_a_second_worker_reclaims_the_job ... ok`; 1 passed, 0 failed, 0 ignored (1.07 s) |
+| Build | `Compiling riauth v0.1.1`, `Finished test profile in 1m 09s`, from 2026-10-02T11:44:02Z to 11:45:14Z |
+| Warnings | Only the existing macOS linker note for the `riauth` binary (`__eh_frame section too large`) |
+| Log | 14 lines, SHA-256 `8f1cc7852190ad6517719ea3237f9d833c44229fe63ca2b41b00a381c1e26164`, kept in the session scratchpad |
+| Disk | Free space was at least 12 GiB, checked every 15 seconds. The 9 GiB stop and the 8 GiB floor were not reached. No cache was deleted. |
+| Tree | Unchanged after the run |
+
+This shows the corrected fixture passes on macOS. It is not a rerun on the
+Linux CI runner; the next published CI run will show that.
 
 ## Checks actually run
 
@@ -197,6 +268,8 @@ env CARGO_TARGET_DIR="$PWD/target/wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0
 | `cargo fmt --all -- --check` (rustfmt only) | clean |
 | `git diff --check` | clean |
 | `python3 scripts/check-docs.py` | passed |
+| The released corrected test (above) | exit 0, 1 passed |
 
-No build, test or service was run, and no desktop work was done. Nothing was
+That one test was the only build or run. No baseline was restored and nothing
+else was run: no other test, clippy, service or desktop work. Nothing was
 written to main or pushed, and no task status changed.
