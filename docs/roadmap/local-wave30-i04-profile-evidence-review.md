@@ -383,3 +383,260 @@ Append-only original-prefix comparison, report-only diff name list and
 `git diff --check` passed before the separate report commit. Final staged and
 post-commit whitespace/scope checks also passed; no execution directory was
 created.
+
+
+## Approved preparation: exact published-source alignment, runtime still held
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original I04
+`dae9c528-9e32-462c-947f-661a571f136b`; same supporting worktree/branch.
+The current explicit approval permits history-preserving alignment and a
+read-only disk/target/fingerprint inventory, **not** native compilation,
+`pkg-config`, library/helper execution, Cargo or service runtime. Remote A09
+and the prospective whole24 SCIM work retain root's serialized scheduling.
+No execution slot was taken or released by this preparation.
+
+### Exact merge, conflict and source-equivalence proof
+
+Local merge commit: `abd01f6a51307011a7c41c711b3aeaec09341614`.
+Parents, in order:
+`1991672a3adf1ff9b3af5843013c009894ad3290` and the explicitly approved published
+pin `ae8937800254a1ad4296ea257de1eccc4780e45b`.
+Merge tree: `4989a8eb09e0ea8cccf6168d0deab32293d9481e`.
+The pre-merge branch was clean; no reset, rebase, stale production-file
+replacement, source-worker read or other-worker contact occurred.
+
+There was exactly **one add/add conflict**, in this reserved report. The
+published side was exactly the original `1e2fa64` report, 23966 bytes, SHA-256
+`6d9b322ed9d54a99c50a5395b1f1934d201bb95d9eb9c0d56746ea3fbd13120c`.
+The supporting side was the complete `1991672` report, 35724 bytes, SHA-256
+`6cf0b7997eb59125804e82b0dbd7c986d289e01c11a0e16b7778c35ae6a7dcf9`;
+its first 23966 bytes equal the published side. Resolution retained that
+complete supporting text byte-exact. Thus all published text and the entire
+original/source-phase report remain present; the published side contained no
+additional root text to reconcile. This preparation section is appended only.
+
+Before alignment, the 17 accepted production-path differences were:
+`src/api.rs`, `src/api/observability.rs`, `src/api/probes.rs`,
+`src/assembly/cloud_operations.rs`, `src/background.rs`, `src/config.rs`,
+`src/kms.rs`, `src/kms_essentials.rs`, `src/offboarding.rs`, `src/operations.rs`,
+`src/operations/key_diagnostics.rs`, `src/operations/storage_diagnostics.rs`,
+`src/operations/storage_diagnostics/tests.rs`, `src/provisioning.rs`,
+`src/reconciliation.rs`, `src/state.rs`, and `src/telemetry.rs`.
+The merge retained the published accepted versions of every one. No new
+implementation or new execution claim is attributed to these imported paths
+or reports.
+
+Index/tree comparison checked 347 tracked production/config paths, including
+all `src/`, `crates/`, root Cargo manifests/lock, toolchain and any tracked
+`.cargo`/build configuration: **all modes and object IDs equal the published
+pin**. Comparing the entire merged tree with that pin leaves exactly three
+paths: this report (174 additive source-report lines before this new append),
+`scripts/lasso-saml-sp.c` (267 added lines), and `tests/saml_sp_peer.rs`
+(450 added lines). No removed lines occur in those differences.
+
+| Protected subtree/file | Merged object, equal to published pin unless explicitly reserved |
+| --- | --- |
+| `src/` | tree `74f4d48544a7dc6728a00bd44a908d26c39c2b2d` |
+| `crates/` | tree `30affb89e98846c09b7e641ce303c2252fa118b0` |
+| `Cargo.toml` | blob `5660d4bb922fcdc5bfe05d7502585980f4720d06`; SHA-256 `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| `Cargo.lock` | blob `f1b819d47d204d73617b095513f0c6ab6eb8aa4e`; SHA-256 `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| `rust-toolchain.toml` | blob `c3f67b6771b777215340531caf051bc25cef066c`; SHA-256 `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167`; channel1.98.1 |
+| `src/saml/` | tree `72a64cc1ed0b5ae1d74bd1a8858b682b1efc4709` |
+| `src/workflow/` | tree `04694671da97b9b9f6754a433b247316adec108e` |
+| `src/store/maintenance.rs` | blob `6d6999eaba0eacecfc5587dcc1e94dd8a69e5f3e` |
+| `src/workflow/extension_gate.rs` | blob `a6d9876e5b44b65932a9f779f5e272a2eb6e5fd4` |
+| `tests/common/mod.rs` | blob `9a40464e4ca311c7c37fe7cee7d5616aeefb73c7` |
+| `.github/workflows/ci.yml` | blob `7c724fd7f4dc210a2268f5a702bdc09b1a10d76b` |
+| Reserved C helper | still blob `ce0a928adb22a4d00a612cf3fb7a113125303e48`, SHA-256 `c3d3a8f7d1d2d472e8b877a89ea2807d534921d88638661e8b251e2365906563`, 23856 bytes; equals `e028106` |
+| Reserved Rust fixture | still blob `917364806b5be106d9e102bd5d30ba93455a8f0f`, SHA-256 `b8596b050db87d921f83e6f0b03ebf76bb6fecd74a99e191adfef6b6c7b32c86`, 37798 bytes; equals `e028106` |
+
+The 14 original C function bodies were again compared byte-exact with the
+published pin. Removing just the three reserved new dispatch blocks makes the
+old `main` byte-exact too. The Rust file's original 19341-byte prefix is also
+byte-exact with that pin and retains the earlier SHA-256. One initial static
+proof command incorrectly counted only literal `#[ignore]` and exited1 because
+the new test uses `#[ignore = "requires ..."]`; a corrected annotation-prefix
+check passed. No C/Rust source changed to make that check pass.
+
+The live original RiWork row was read again, remains `in_progress` on primary
+`a2dff16a-c4b0-47fc-96de-ac85b1fb6d9e`, and retains the same requested outcome
+and real-peer gate quoted above. Its old scheduling paragraph does not supersede
+this explicit supporting preparation. No row/status mutation occurred. Root
+must import only the reserved reviewed source/report deltas if desired; this
+supporting merge is alignment evidence, **not a request to import its old branch
+history into main**.
+
+### Read-only private target, fingerprints and capacity estimate
+
+Inventory timestamp: **2026-10-02T14:39:11.866275+00:00**.
+Filesystem free space was **11949944832 bytes / 11.1293 GiB**; total filesystem
+size1995218165760 bytes. These are host observations, not reserved capacity.
+The existing `$PWD/target` is a real directory, UID501/effective-user-owned,
+mode0755, resolves inside this exact supporting worktree, and is not a symlink.
+Its descendants were inventoried by metadata only, without following symlinks
+or reading private protocol/session/evidence contents. No symlink was observed;
+12722 regular files and 2032 directories were counted.
+
+| Existing private cache grouping | Logical bytes | Allocated bytes (unique inode accounting) |
+| --- | --- | --- |
+| Entire target | 8222222827 | 8260694016 |
+| `wave29-workflow-retry/debug` | 3709693292 | 3722063872 |
+| `wave27/debug` | 2162741351 | 2173845504 |
+| Current `debug/deps` | 1793059924 | 1795297280 |
+| Current debug root files | 328211472 | 328216576 |
+| Current `debug/build` | 70342757 | 72212480 |
+| Current `debug/.fingerprint` | 560939 | 7163904 |
+| `wave28-m03-operations-port/debug` | 156928531 | 161132544 |
+
+Current `debug/deps` contains 335 rlibs (874076328 bytes), 335 rmeta files
+(307255308 bytes), 27 dylibs (80864304 bytes), and no `.o` files. Selected
+large artifact sizes are an existing riAuth rlib407106624 bytes, server
+259884832 bytes and gauge test200307328 bytes. These are size observations,
+not proof that Cargo can reuse them for the aligned source or requested filter.
+
+The current debug cache has441 fingerprint directories. Its one cached riAuth
+library fingerprint records profile12672335563272108896 and features
+`default, essentials, fuzzing, platform, test-support`. The proposed default
+Platform filter omits the two test feature flags, so cache reuse is uncertain.
+No `saml_sp_peer` fingerprint exists in the current debug cache or the two older
+private `wave27`/`wave29-workflow-retry` caches. No binary/fingerprint was
+executed. The `.rustc_info.json` was read only (1965 bytes, SHA-256
+`27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4`);
+it records rustc1.98.1 / commit48a229ceaefd4985c50990b14116b6d856af0985,
+aarch64-apple-darwin, LLVM22.1.8. This is historical cache metadata, not a fresh
+compiler-version execution or cache-validity claim.
+
+**Planning estimate, not a measured peak:** budget **2–4 GiB additional disk**
+for the focused filter, including a differently featured riAuth rlib/server/test,
+possible dependency cache misses and compiler/linker transient files. The
+existing active cache grouping is about2.06GiB; duplicating much of it plus
+transients explains the upper4GiB allowance. A cache-reusing run could be smaller.
+The tiny dynamically linked C helper and capped diagnostic captures are a much
+smaller allowance; they do not make the Cargo estimate a guarantee.
+
+At this observation there is only **2.1293 GiB headroom to the required9GiB
+stop point**, and3.1293GiB to the8GiB hard floor. Current free space therefore
+does **not** establish safe headroom for the upper estimate. Root should remeasure
+after the earlier serialized jobs, ideally with at least13GiB free for the4GiB
+planning allowance above the9GiB stop point. Later execution must monitor free
+disk, stop at9GiB, retain the8GiB floor, and preserve all existing cache/evidence;
+no automatic cleanup/deletion or retry is proposed. No target directory was
+created. `target/i04-lasso-slo-e028106` remains absent.
+
+The selected Lasso `.pc`, receipt and arm64 dylib were rehashed by file reads;
+all three still match the earlier2.9.0_4 pins, including dylib SHA-256
+`0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde`.
+No package metadata tool, compiler, version binary or library was executed.
+
+### Revised finite compiler proposal — NOT RUN / NOT RELEASED
+
+After root's exact release, reverify the aligned production/helper/test/library
+pins and current free disk before creating the one absent output directory.
+The following is one **proposed** Python-bounded compiler invocation: one
+5-second package-metadata read and one60-second native compiler, with at most
+10 seconds of captured process-group cleanup on a failed/deadline/disk outcome.
+It uses fixed file names under a freshly exclusive mode0700 owned directory;
+capture files are exclusive0600. Compiler output is not printed. Parent checks
+cap captures at128KiB; a16MiB child file-size limit also bounds between-check
+overshoot and artifact writes. No helper is executed by this command.
+
+```sh
+python3 - <<'PY'
+import os, resource, shlex, shutil, signal, stat, subprocess, time
+from pathlib import Path
+
+root = Path.cwd()
+target = root / 'target'
+s = target.lstat()
+assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode)
+assert s.st_uid == os.geteuid() and target.resolve() == target
+stop = 9 * 2**30
+assert shutil.disk_usage(root).free > stop
+out = target / 'i04-lasso-slo-e028106'
+out.mkdir(mode=0o700)  # exclusive; never reuse another attempt's output
+env = os.environ.copy()
+env['PKG_CONFIG_PATH'] = '/opt/homebrew/Cellar/lasso/2.9.0_4/lib/pkgconfig'
+
+def child_file_cap():
+    resource.setrlimit(resource.RLIMIT_FSIZE, (16 * 2**20, 16 * 2**20))
+
+def once(argv, seconds, label):
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW
+    with os.fdopen(os.open(out / (label + '.stdout'), flags, 0o600), 'wb') as so:
+        with os.fdopen(os.open(out / (label + '.stderr'), flags, 0o600), 'wb') as se:
+            p = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=so,
+                                 stderr=se, env=env, start_new_session=True,
+                                 preexec_fn=child_file_cap)
+            deadline = time.monotonic() + seconds
+            try:
+                while True:
+                    if shutil.disk_usage(root).free <= stop:
+                        raise SystemExit('compiler preparation: disk stop')
+                    if max(os.fstat(so.fileno()).st_size,
+                           os.fstat(se.fileno()).st_size) > 128 * 1024:
+                        raise SystemExit('compiler preparation: capture cap')
+                    left = deadline - time.monotonic()
+                    if left <= 0:
+                        raise SystemExit('compiler preparation: deadline')
+                    try:
+                        rc = p.wait(timeout=min(left, 0.1))
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
+                assert time.monotonic() <= deadline
+                assert shutil.disk_usage(root).free > stop
+                assert max(os.fstat(so.fileno()).st_size,
+                           os.fstat(se.fileno()).st_size) <= 128 * 1024
+                print(label + ': rc=' + str(rc))
+                return rc
+            finally:
+                if p.poll() is None:
+                    os.killpg(p.pid, signal.SIGTERM)
+                    try:
+                        p.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(p.pid, signal.SIGKILL)
+                        p.wait(timeout=5)
+
+assert once(['pkg-config', '--cflags', '--libs', 'lasso', 'gobject-2.0'],
+            5, 'pkg-config') == 0
+flags = (out / 'pkg-config.stdout').read_bytes()
+assert len(flags) <= 64 * 1024 and b'\0' not in flags
+assert once(['/usr/bin/cc', '-O2', '-o', str(out / 'lasso-saml-sp'),
+             'scripts/lasso-saml-sp.c'] + shlex.split(flags.decode('utf-8')),
+            60, 'cc') == 0
+PY
+```
+
+ONE ignored-filter proposal, after successful compiler outcome and exact root
+release, still uses **only the existing own `$PWD/target`**:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  RIAUTH_TEST_LASSO_SP="$PWD/target/i04-lasso-slo-e028106/lasso-saml-sp" \
+  cargo test --locked --test saml_sp_peer \
+  lasso_idp_initiated_redirect_logout_revokes_only_bound_session_and_consumes_response_once \
+  -- --exact --ignored --test-threads=1
+```
+
+Propose a root-owned1800-second outer Cargo/build/test budget, continuous9GiB
+disk stop monitoring, captured-process-group termination/reaping, and bounded
+private diagnostics. This is a scheduling proposal, not a runner started here;
+the test definition's existing60-second operation/20-second child/15-second C
+limits remain unchanged. No automatic rerun, cache deletion, feature change,
+artifact substitution, pin repair, forced clock or broad test is proposed.
+C syntax/linking, Rust type compatibility and all new peer/security oracles
+remain unexecuted. Production byte equality and cache inventory establish no
+new interoperability result or whole-I04 completion. D04/O06/I10/R05 DONE,
+O07's host-mapping blocker and the unchanged primary I04 ownership are preserved.
+
+Preparation checks actually run: `python3 scripts/check-docs.py` exited0;
+`git diff --check` and merge-commit whitespace checks passed. The proposed
+inline Python command was parsed with `ast.parse` only, not executed. Exact
+`1991672`/`1e2fa64` prefix checks, reserved C/Rust SHA checks, production/config
+working-tree equality and absent output-directory checks passed. A fresh disk
+read at2026-10-02T14:46:51.857858+00:00 reported11953029120 bytes /11.1321GiB
+free. No compiler/helper/Cargo execution, listener, new target directory or
+runtime result occurred. Final report-only staged/post-commit scope and whitespace
+checks are part of the handoff; all checks here are static/source preparation.
