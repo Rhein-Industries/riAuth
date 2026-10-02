@@ -221,6 +221,53 @@ class Budget:
             self.previous.clear()
 
 
+def observe_unexpected_failure(holder, site):
+    """First-only finite private observation; never replace the original outcome."""
+    try:
+        if holder["observed"] or site not in ("handler", "server", "main"):
+            return
+        holder["observed"] = True
+        error = sys.exc_info()[1]
+        label = "other"
+        for kind, name in ((AttributeError, "AttributeError"),
+                           (TypeError, "TypeError"), (ValueError, "ValueError"),
+                           (KeyError, "KeyError"), (OSError, "OSError"),
+                           (BrokenPipeError, "BrokenPipeError"),
+                           (ConnectionResetError, "ConnectionResetError"),
+                           (TimeoutError, "TimeoutError")):
+            if type(error) is kind:
+                label = name
+                break
+        own_function = own_line = None
+        codes = (
+            (HeaderReader.readline.__code__, "HeaderReader.readline"),
+            (DemoServer.process_request.__code__, "DemoServer.process_request"),
+            (Demo.begin.__code__, "Demo.begin"),
+            (Demo.callback.__code__, "Demo.callback"),
+            (Demo.invoke.__code__, "Demo.invoke"),
+            (Handler.handle_one_request.__code__, "Handler.handle_one_request"),
+            (Handler.send_error.__code__, "Handler.send_error"),
+            (Handler.get.__code__, "Handler.get"),
+            (Handler.reply.__code__, "Handler.reply"),
+            (main.__code__, "main"),
+        )
+        trace = error.__traceback__ if isinstance(error, BaseException) else None
+        for _ in range(64):
+            if trace is None:
+                break
+            for code, name in codes:
+                if trace.tb_frame.f_code is code and type(trace.tb_lineno) is int and 1 <= trace.tb_lineno <= 1024:
+                    own_function, own_line = name, trace.tb_lineno
+            trace = trace.tb_next
+        if trace is not None:
+            own_function = own_line = None
+        holder["diagnostic"] = {"site": site, "exception_class": label,
+                                "own_function": own_function, "own_line": own_line}
+    except BaseException:
+        # Projection/storage failures retain the first latch and original handler.
+        pass
+
+
 class Demo:
     def __init__(self, module, workspace, secret, budget, checks, statuses):
         self.module, self.workspace, self.secret = module, workspace, secret
@@ -233,6 +280,7 @@ class Demo:
         self.failure = None
         self.request_invalid_reason = None
         self.preflow_authorization_refusals = 0
+        self.unexpected_failure_observation = {"observed": False, "diagnostic": None}
 
     def invoke(self, stage, seconds, function, *args, **kwargs):
         self.stage = stage
@@ -377,6 +425,10 @@ class DemoServer(http.server.HTTPServer):
             self.active = None
 
     def handle_error(self, request, address):
+        try:
+            observe_unexpected_failure(self.demo.unexpected_failure_observation, "server")
+        except BaseException:
+            pass
         self.demo.failure, self.demo.done = "unexpected_failure", True
 
 
@@ -469,6 +521,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             demo.failure, demo.done = failure.tag, True
             self.reply(400, "Local demo could not complete this request.")
         except Exception:
+            try:
+                observe_unexpected_failure(demo.unexpected_failure_observation, "handler")
+            except BaseException:
+                pass
             demo.failure, demo.done = "unexpected_failure", True
             self.reply(400, "Local demo could not complete this request.")
 
@@ -557,6 +613,7 @@ def main():
     record = {"schema": "riauth.d01-confidential-browser/v1", "result": "failed",
               "failure_stage": None, "failure_tag": None, "checks": {}, "cleanup": {},
               "request_invalid_reason": None, "preflow_authorization_refusals": 0,
+              "unexpected_failure_observation": {"observed": False, "diagnostic": None},
               "source": {"verifier_commit": VERIFIER_COMMIT, "verifier_blob": VERIFIER_BLOB,
                          "verifier_expected_sha256": VERIFIER_SHA256},
               "provider": None,
@@ -597,6 +654,7 @@ def main():
                      "userinfo_subject_verified", "protected_with_fresh_cookie_accepted"):
             record["checks"][name] = name == "credential_private_validated"
         demo = Demo(module, workspace, secret, budget, record["checks"], record["http_statuses"])
+        record["unexpected_failure_observation"] = demo.unexpected_failure_observation
         secret = None
         demo.setup(args.openssl)
         record["provider"] = {"sha256": OPENSSL_SHA256, "version": OPENSSL_VERSION}
@@ -619,6 +677,10 @@ def main():
     except KeyboardInterrupt:
         record["failure_tag"], record["failure_stage"] = "interrupted", stage
     except Exception:
+        try:
+            observe_unexpected_failure(record["unexpected_failure_observation"], "main")
+        except BaseException:
+            pass
         record["failure_tag"] = "unexpected_failure"
         record["failure_stage"] = demo.stage if demo is not None else stage
     finally:
