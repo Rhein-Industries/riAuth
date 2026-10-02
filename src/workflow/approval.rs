@@ -772,6 +772,7 @@ fn adapter_label(definition: &Definition) -> Option<&'static str> {
         Some(ConfiguredPasswordPath::PasswordOnly) => return Some("password"),
         Some(ConfiguredPasswordPath::Totp) => return Some("password-totp"),
         Some(ConfiguredPasswordPath::TotpOrRecovery) => return Some("password-totp-recovery"),
+        Some(ConfiguredPasswordPath::ConditionalTotp) => return Some("password-conditional-totp"),
         None => {}
     }
     if supported_configured_password_totp_passkey_removal(definition) {

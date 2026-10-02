@@ -400,3 +400,146 @@ verifier chains, and it does not establish configurable-executor completeness.
 Root owns board reconciliation, integration and push. No new task, worktree,
 worker or managed shell was created, and no main/accepted files, external
 messages, cloud state or model configuration were changed.
+
+## Approved W02 slice: exact conditional local password and current TOTP
+
+Date: 2026-10-02. Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, W02 task
+`548d114f-9d0a-474a-a4c8-fa03af3ec3b1`, existing worktree
+`a1303b57-4a34-487e-9c63-a841f05b51a0`, branch
+`roadmap/local-workflow-safety-wave27`. Root approved the one exact next-slice
+proposal before implementation. W02 remains **in_progress** and W05
+`ceaddee1-2c9a-48d2-9ff4-d1f71396e954` remains root-reviewed **done**.
+
+### Implementation and files
+
+`3f069cd56028ca4bb04a4949c5f8ca8811ccee54` — **Execute the exact conditional
+password and current TOTP graph.** Files:
+
+- `src/workflow.rs`: strict `ConfiguredPasswordPath::ConditionalTotp` recognition
+  and account-aware `requires_mfa(has_totp)`. The existing three variants still
+  return their original fixed values regardless of the new argument.
+- `src/workflow/executor.rs`: derive/pin `requires_mfa` from the live enrolled
+  factor at start, reject protocol-bound starts and pending enrollment, and add
+  conditional-only binding/sealing helpers.
+- `src/workflow/executor/password.rs`: account-aware local verifier check and
+  committed conditional drift denial in both reservation and finalization writers.
+- `src/workflow/executor/totp.rs`: recheck the conditional binding before its
+  fresh exact password-primary receipt can authorize the current TOTP; commit
+  drift denial in challenge/submission writers. Recovery remains unavailable.
+- `src/workflow/approval.rs`: only one distinct adapter-label match arm,
+  `password-conditional-totp`; existing labels/digests and approval functions stay.
+- `tests/workflow_configured_conditional_totp.rs`: six focused regression
+  functions with local plaintext redb fixtures and synthetic credentials.
+
+The admitted graph has exactly `password:verify_password` then
+`totp:verify_totp`, authentication/configured origin, entry `password`, and the
+`success:authenticated` and `denied:denied` terminals. Both steps are cancellable,
+with three attempts and 120-second step deadlines. Whole-run limits are 600
+seconds and six executions; success requires `[[password]]` with a 120-second
+proof-age cap. The verifier and completion layer still require current TOTP
+proof for an enrolled account. Ordered password transitions are:
+
+1. `verified` with `account_has(totp)` to `totp`.
+2. `verified` with `request_requires_mfa` to `denied`.
+3. Unconditional `verified` to `success`.
+4. `failed` to `denied`.
+
+TOTP routes unconditional `verified` to `success` and `failed` to `denied` in
+that order. Reordered/extra conditions or steps, different actions, recovery,
+relaxed proof requirements and altered execution limits are refused. Identifier
+and revision retain the existing configured-workflow/version contracts; the
+complete canonical definition remains fingerprinted and pinned.
+
+### Binding and preserved contracts
+
+No storage bucket, schema or initializer was added. The existing request's
+`requires_mfa` pins factor presence; the run/request/session account epoch binds
+legitimate credential replacement. Both password writers and TOTP primary check
+the current account and pinned factor requirement. Conditional binding requires
+an enabled account at its original epoch, no pending factor enrollment, a matching
+run/request/session, and no browser, upstream, authorization, consent, SAML,
+recovery, invitation or removal binding. The ordinary verifier still checks live
+session ownership and local credential availability.
+
+When a conditional verifier observes account/factor or request-binding drift,
+it retires the open run through the existing denial/receipt-consumption helper
+and commits before returning an error. Restoring factor presence cannot revive
+that retired run. Policy/environment/history checks retain precedence; a higher
+retained floor plus simultaneous factor drift still yields `rolled_back`.
+Password hashing remains outside the writer, with the same reservation comparison,
+lockout/audit contracts, and a fresh binding check in its finalization writer.
+TOTP retains exact, fresh, account/session/request/run-bound one-use password
+receipts and challenge binding; partial password success cannot bypass MFA.
+
+This slice retires factor drift when a conditional verifier checks it. It does
+not add proactive factor scans to mutation writers or alter generic resume/cancel
+handling. Existing disablement and policy/rollback sealing remain in their
+accepted machinery. No forced mutation specifically during the hashing interval
+was executed: the two writer guards were inspected, while runtime regressions
+change the factor before password reservation and after password proof/challenge.
+
+Byte comparisons against reviewed main
+`ab4e1dfe3b3da4dc80d44268ded238281d5526f8` confirmed unchanged generic transition,
+retry, close, cleanup, deadline, resume and cancellation bodies; unchanged
+extension currency/process binding and configured-start body; unchanged recovery
+fallback; and unchanged `activate_or_replay_in`, `review_in`, `activate_in` and
+`revoke_in`. All three raw functions remain crate-visible. The approval file diff
+is exactly its new label arm. No API/client/browser/SAML/source/assembly/config,
+isolation or native-guest files were edited. Config and API admission use the
+existing recognizer/route; their implementations needed no change.
+
+### Actual focused checks
+
+All Cargo invocations used the existing private target prefix:
+
+```sh
+CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+```
+
+Free disk readings were 32–33 GiB, above the 8 GiB stop threshold.
+
+| Command after the prefix | Actual result |
+| --- | --- |
+| `cargo test --locked --test workflow_configured_conditional_totp -- --test-threads=1` | Initial compile failed: the test code helper returned TOTP `Token` instead of `String`. Added `.to_string()`; no production correction was required. Next run **6 passed**. Added outstanding-TOTP timeout/cancellation assertions to the existing focused test, then final rerun **6 passed**, no ignored/filtered cases. |
+| `cargo test --locked --test workflow_configured configured_password_totp_consumes_only_bound_fresh_verifiers -- --exact --test-threads=1` | **1 passed**, 3 filtered out. |
+| `cargo test --locked --test workflow_configured configured_recovery_choice_consumes_only_its_bound_code_after_restart -- --exact --test-threads=1` | **1 passed**, 3 filtered out. |
+| `cargo test --locked --test workflow_configured configured_password_run_loads_retries_resumes_and_cancels_with_session_binding -- --exact --test-threads=1` | **1 passed**, 3 filtered out. |
+
+Nine distinct test functions passed; repeated runs are not counted again.
+The new target covers strict graph refusals, both factor branches, restart,
+foreign-session and used challenge refusal, fresh receipt consumption, password
+and TOTP attempt/execution caps with shared lockout, step/global deadlines,
+cancellation with outstanding TOTP, real factor addition/removal, synthetic legacy
+presence/epoch drift, restoration after committed denial, browser-binding refusal,
+expired primary refusal without new proof or mutation, healthy approval replay
+with whole-store equality, issuer drift, and higher-floor conflict precedence.
+The higher pin and legacy/expired rows are synthetic state fixtures, not physical
+restore drills. API adapters/protocol bindings beyond the tested browser field
+were checked by source, not exercised through live protocol peers.
+
+`cargo fmt --all -- --check`, `git diff --check`,
+`python3 scripts/check-docs.py` and the byte comparisons passed.
+The existing macOS compact-unwind linker warning remained; final test processes
+passed. No broad suite, new API target, encrypted storage, PostgreSQL, Linux,
+deployed/multinode, release artifact, external peer or real cloud execution was
+performed in this slice. Earlier checks above remain historical evidence.
+
+### Review recommendation and remaining gates
+
+Recommend root review and integration of this focused implementation and its
+separate report commit. It connects one concrete conditional local authentication
+graph to the already implemented bounded retry/expiry/cancel/resume/transition
+machinery. It does not establish arbitrary-graph execution or conditional
+enrollment completeness. W02's remaining verifier chains, general conditional
+graphs, initial/upstream enrollment and external acceptance gates remain open;
+W05's reviewed done state is unchanged.
+
+Claude owns the management API adapter/tests and can continue using the unchanged
+shared activation hook. A03's reviewed source boundary cut was not imported or
+edited by this slice. Future conditional `verify_source` placement still needs
+coordination around canonical source factories, source-registration/account-link
+pins and the moved `source/workflow.rs` module context. No source adapter seam was
+changed. Official release/deployment/peer evidence and earlier W07 Linux runtime
+evidence remain separate pending work. Root owns integration, board status and
+push; no task was marked done and no new task, worktree, worker or managed shell,
+main edit, push, external message, cloud mutation or model change was performed.

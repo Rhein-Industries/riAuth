@@ -935,7 +935,7 @@ fn group_dependency_digest(
     }))
 }
 
-const CLIENT_NAME_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-name/v1";
+const CLIENT_NAME_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-name/v2";
 
 /// One existing client, and no other resource family. Secret rotation,
 /// delegated grants, SSF streams, and a target-state fingerprint stay on the
@@ -1129,12 +1129,18 @@ fn client_record_dependency_digest(
                 .map(|source| source.enabled),
         );
     }
+    let primary_issuer = tx.get::<String>("meta", "issuer")?;
     let mut issuer_claims = BTreeMap::new();
-    for (_, other) in tx.list::<Client>("clients")? {
-        if other.id != client.id
-            && let Some(issuer) = other.settings.issuer.clone()
-        {
-            issuer_claims.insert(other.id, issuer);
+    // Match issuer::validate: omitted and explicit-primary issuers do not
+    // claim unique ownership. Other custom issuers depend only on exact
+    // contenders, including disabled clients. Unrelated issuers stay out.
+    if let Some(issuer) = &client.settings.issuer
+        && Some(issuer) != primary_issuer.as_ref()
+    {
+        for (_, other) in tx.list::<Client>("clients")? {
+            if other.id != client.id && other.settings.issuer.as_ref() == Some(issuer) {
+                issuer_claims.insert(other.id, issuer.clone());
+            }
         }
     }
     dependency_digest(
@@ -1143,7 +1149,7 @@ fn client_record_dependency_digest(
             "client": client,
             "credential_version": tx.get::<Value>("credential_versions", &format!("client/{id}"))?,
             "signing_keys": signing_keys,
-            "primary_issuer": tx.get::<String>("meta", "issuer")?,
+            "primary_issuer": primary_issuer,
             "issuer_claims": issuer_claims,
             "groups": groups,
             "usernames": usernames,
@@ -1180,7 +1186,7 @@ fn client_name_dependencies(
     )?))
 }
 
-const CLIENT_DESCRIPTION_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-description/v1";
+const CLIENT_DESCRIPTION_DEPENDENCY_VERSION: &str = "riauth/desired-state-client-description/v2";
 
 /// One existing client, and no other resource family. Secret rotation,
 /// delegated grants, SSF streams, and a target-state fingerprint stay on the

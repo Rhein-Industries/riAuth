@@ -413,12 +413,18 @@ fn primary(
         (password::TOTP_WORKFLOW, false) => Proof::Password,
         (_, false)
             if configured_password_path(checked.definition())
-                .is_some_and(ConfiguredPasswordPath::requires_mfa) =>
+                .is_some_and(|path| path.requires_mfa(user.totp_secret.is_some())) =>
         {
             Proof::Password
         }
         _ => return Err(Error::forbidden()),
     };
+    if configured_password_path(checked.definition())
+        == Some(ConfiguredPasswordPath::ConditionalTotp)
+        && !conditional_session_agrees(&run.record, user, request)
+    {
+        return Err(Error::forbidden());
+    }
     if !request.requires_mfa || user.totp_secret.is_none() || at < run.step_started_at {
         return Err(Error::forbidden());
     }
@@ -507,6 +513,9 @@ impl Core {
             .write(|tx| {
                 let mut run = load_runtime(tx, id)?;
                 let checked = run.validated()?;
+                if commit_conditional_seal(self, tx, &mut run)?.is_some() {
+                    return Ok(None);
+                }
                 owned(self, tx, token, &run.record)?;
                 let at = now();
                 settle_time(self, tx, &checked, &mut run, at)?;
@@ -647,6 +656,9 @@ impl Core {
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
+            if let Some(error) = commit_conditional_seal(self, tx, &mut run)? {
+                return Ok(Err(error));
+            }
             owned(self, tx, token, &run.record)?;
             if run.record.state.is_final() {
                 return Err(Error::conflict("Workflow run is already final"));
