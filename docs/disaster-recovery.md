@@ -279,7 +279,7 @@ recovery ID.
 | Readiness | `curl --fail http://127.0.0.1:9000/readyz` on each node | Storage, schema, index and release activation match this binary |
 | Edition | `riauth --json capabilities` on each node | The same edition and capabilities everywhere |
 | Discovery and keys | `curl --fail https://<issuer>/.well-known/openid-configuration`, then fetch its `jwks_uri` | Issuer and published keys match what relying parties expect |
-| Administrator | `riauth --server https://<issuer> login admin`, then `riauth --server https://<issuer> doctor` | Sign-in works; `doctor` reports schema, admin count, signing-key health and storage encryption |
+| Administrator | `riauth --server https://<issuer> login admin`, then `riauth --server https://<issuer> doctor` | Sign-in works; `doctor` reports the schema, the enabled-administrator count behind `healthy`, the active signing key id once the stored active key yields its public JWK, and whether `database_key_file` is configured. It checks no remote signer, other signing domain, or key file contents; the next row proves signing |
 | Token signing | Complete one real OIDC sign-in, and on Platform a SAML one, per signing domain | Signing works, including Vault Transit. Restore and `doctor` never contact Vault. |
 | Mail, directories, provisioning | Send one invitation or reset mail; run one LDAP or SCIM plan; on Platform, one Workspace or Entra plan | The external secrets and endpoints are reachable |
 | Listeners (Platform) | Exercise RADIUS, LDAP provider, proxy or client-certificate login, if configured | Listener material is current |

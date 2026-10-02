@@ -24,7 +24,7 @@ The item omits the stored job result, dismissal and resolution records, target U
 
 `next_action` is a fixed token chosen from status, downstream state, known holds, error presence, and the overdue verdict. The token set includes `inspect_local_failure`, `check_worker_duty`, `wait_for_local_retry`, `wait_for_worker`, `confirm_waiver_not_delivery`, `review_provisioning_plan`, `attest_remote_state`, and `inspect_deactivation`. `check_worker_duty` marks a `scheduled` or `running` job more than 300 seconds past its stored due time, with or without a stored error: no maintenance pass has executed it. See [overdue offboarding](o06-offboarding-overdue.md). The wording of a stored error does not select the token. Per-job `GET /api/offboard/jobs/{id}` still returns the stored `last_error` and the full downstream record for a caller who may read that job. This aggregate is the redacted view.
 
-A serving Essentials process cannot retain `offboard_jobs`. The route is on the Platform router. `riauthctl` has no offboarding command.
+A serving Essentials process cannot retain `offboard_jobs`. The route is on the Platform router. `riauthctl offboard diagnostics` reads the same route, beside `riauthctl offboard list`, `get`, `schedule`, `reschedule` and `cancel`.
 
 The read does not write an audit event. It is not on the maintenance hot path and it does not publish a Prometheus series.
 

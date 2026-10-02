@@ -29,8 +29,10 @@ in `platform_routes` in [src/api.rs](../src/api.rs), compiled with the
 `riauth.offboarding-deactivation-diagnostics/v1`.
 
 Essentials keeps the shared `provisioning_deactivations` bucket and
-`GET /api/provisioning/deactivations`. The redacted aggregate is the
-Platform route above.
+`GET /api/provisioning/deactivations`. Both editions also serve the shared
+redacted aggregate `GET /api/operations/provisioning/deactivations`, on
+`operations.read` for `operations/provisioning`. The Platform route above is
+the offboarding-scoped aggregate.
 
 `riauth offboard diagnostics` calls `GET /api/operations/offboarding` and
 returns `riauth.offboarding-diagnostics/v1`. That is the scheduled-job

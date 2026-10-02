@@ -2931,3 +2931,507 @@ fn client_metadata_plans_track_only_competing_issuer_ownership() {
         }
     }
 }
+
+/// Deliberately scheduled local comparison, not a throughput or release benchmark.
+/// Both lanes retain every current security check and scoped digest; the control
+/// adds only conservative global-revision eligibility for matching-plan reuse.
+#[cfg(feature = "test-support")]
+#[test]
+#[ignore = "requires the reserved S04 Cargo slot; emits local cost observations"]
+fn s04_scoped_reuse_equivalent_authority_workload() {
+    use riauth::{core::Core, telemetry::ReadContext};
+    use std::{collections::BTreeMap, path::Path, sync::mpsc, thread, time::Instant};
+
+    const WRITES: usize = 8;
+    const FAMILIES: [&str; 4] = ["group", "client", "user", "description"];
+    const AGENT: &str = "s04-equivalent-planner";
+
+    fn fork(path: &Path, config: &Config, admin: &str) -> Fixture {
+        // The seed has no open Core/Store owner. Never copy a live redb store.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(path.join("riauth.redb"), dir.path().join("riauth.redb")).unwrap();
+        let mut config = config.clone();
+        config.data_dir = dir.path().into();
+        Fixture {
+            core: Core::open(config).unwrap(),
+            _dir: dir,
+            admin: admin.into(),
+        }
+    }
+    fn desired(f: &Fixture, family: &str) -> Manifest {
+        match family {
+            "group" => groups("ordinary", &["alice", "bob"]),
+            "client" => client_manifest(f, "portal", "Renamed", None),
+            "user" => named_user(f, "alice", "Renamed", None),
+            "description" => described_manifest(f, "portal", "New description"),
+            _ => unreachable!(),
+        }
+    }
+    fn reconcile(f: &Fixture, token: &str, input: Manifest, global: bool) -> Value {
+        let result = if global {
+            f.core.state_reconcile_global_fence_for_test(token, input)
+        } else {
+            f.core.state_reconcile(token, input)
+        }
+        .unwrap();
+        assert_eq!(result["decision"], "awaiting_review");
+        assert_eq!(result["reason"], "manual_mode");
+        result
+    }
+    fn counters(f: &Fixture) -> BTreeMap<String, u64> {
+        let t = f.core.store.telemetry();
+        let mut values = BTreeMap::from([
+            ("writer_wait_count".into(), t.write_wait.count()),
+            ("writer_wait_us".into(), t.write_wait.micros()),
+            ("writer_hold_count".into(), t.write_hold.count()),
+            ("writer_hold_us".into(), t.write_hold.micros()),
+            ("commit_count".into(), t.commit.count()),
+            ("commit_us".into(), t.commit.micros()),
+        ]);
+        for (label, context) in [
+            ("read", ReadContext::Read),
+            ("writer", ReadContext::Writer),
+            ("prepared", ReadContext::Prepared),
+        ] {
+            values.insert(format!("{label}_points"), t.reads.points(context));
+            values.insert(format!("{label}_bytes"), t.reads.bytes(context));
+            for (limit, bounded) in [("bounded", true), ("unbounded", false)] {
+                let scan = t.reads.scans(context, bounded);
+                values.insert(format!("{label}_{limit}_scans"), scan.count());
+                values.insert(format!("{label}_{limit}_rows"), scan.sum());
+            }
+        }
+        values
+    }
+    fn drift(f: &Fixture, family: &str, kind: &str) {
+        match kind {
+            "unrelated" => rename(f, "stranger", "Concurrent unrelated writer"),
+            "policy" => match family {
+                "group" => {
+                    f.core
+                        .group_member(&f.admin, "ordinary", "alice", true)
+                        .unwrap();
+                }
+                "user" => {
+                    f.core
+                        .update_user(
+                            &f.admin,
+                            "alice",
+                            UserPatch {
+                                enabled: Some(false),
+                                ..Default::default()
+                            },
+                        )
+                        .unwrap();
+                }
+                "client" | "description" => {
+                    // Retain the distinct author/reviewer/executor contract.
+                    common::client_policy::replace(&f.core, &f.admin, "portal", None, Some(true));
+                }
+                _ => unreachable!(),
+            },
+            "authority" => {
+                // Explicit stale/restored-state model: bypass revision only to
+                // prove ReviewBinding catches authority drift independently.
+                let base = revision(f);
+                f.core
+                    .store
+                    .write(|tx| {
+                        let mut agent: Agent = tx.get("agents", AGENT)?.unwrap();
+                        agent.permissions.clear();
+                        tx.put("agents", AGENT, &agent)
+                    })
+                    .unwrap();
+                assert_eq!(revision(f), base);
+            }
+            _ => unreachable!(),
+        }
+    }
+    fn security(
+        path: &Path,
+        config: &Config,
+        admin: &str,
+        token: &str,
+        family: &str,
+        global: bool,
+    ) {
+        let lane = if global { "global" } else { "scoped" };
+        for kind in ["policy", "authority"] {
+            let f = fork(path, config, admin);
+            let input = desired(&f, family);
+            let result = reconcile(&f, token, input.clone(), global);
+            let plan: Plan = serde_json::from_value(result["plan"].clone()).unwrap();
+            assert_scoped(&plan, family);
+            drift(&f, family, kind);
+            let after_drift = f.snapshot().unwrap();
+            let error = context::scope(
+                Some(RequestContext {
+                    revision: Some(revision(&f)),
+                    idempotency_key: Some("s04-refusal".into()),
+                    fingerprint: "s04-refusal".into(),
+                    ..Default::default()
+                }),
+                || f.core.apply_state(&token, request(&plan)),
+            )
+            .unwrap_err();
+            assert_eq!(error.code, "conflict", "{lane}/{family}/{kind}: {error}");
+            f.assert_snapshot(&after_drift);
+            assert_eq!(audits(&f, "state.apply"), 0);
+            assert_eq!(receipts(&f), 0);
+            // Both controllers must reject reuse of the old reviewed authority
+            // or dependencies. A permitted replacement is still pending review.
+            let result = if global {
+                f.core.state_reconcile_global_fence_for_test(token, input)
+            } else {
+                f.core.state_reconcile(token, input)
+            };
+            match result {
+                Ok(result) => {
+                    assert_eq!(result["decision"], "awaiting_review");
+                    assert_ne!(result["plan"]["plan_id"], plan.plan_id);
+                    assert_eq!(audits(&f, "state.apply"), 0);
+                    assert_eq!(receipts(&f), 0);
+                }
+                Err(_) => f.assert_snapshot(&after_drift),
+            }
+        }
+        for kind in ["unrelated", "policy", "authority"] {
+            let f = fork(path, config, admin);
+            let input = desired(&f, family);
+            let before_preview = f.snapshot().unwrap();
+            let base = revision(&f);
+            let (ready_tx, ready_rx) = mpsc::channel();
+            let (written_tx, written_rx) = mpsc::channel();
+            let mut after_write = None;
+            let planned = thread::scope(|scope| {
+                let writer_fixture = &f;
+                let writer = scope.spawn(move || {
+                    ready_rx.recv().unwrap();
+                    drift(writer_fixture, family, kind);
+                    written_tx.send(writer_fixture.snapshot().unwrap()).unwrap();
+                });
+                let planned = f.core.plan_state_interleaved_for_test(token, input, || {
+                    // Preview must have fully aborted before the second thread
+                    // commits; its snapshot becomes the refusal oracle.
+                    f.assert_snapshot(&before_preview);
+                    ready_tx.send(()).unwrap();
+                    after_write = Some(written_rx.recv().unwrap());
+                });
+                drop(ready_tx);
+                writer.join().unwrap();
+                planned
+            });
+            if kind == "unrelated" {
+                let plan = planned.unwrap();
+                assert_scoped(&plan, family);
+                assert_eq!(plan.base_revision, base);
+                assert!(revision(&f) > base);
+                f.assert_snapshot_except(after_write.as_ref().unwrap(), |key| {
+                    key == format!("plans/{}", plan.plan_id)
+                });
+                assert_eq!(
+                    f.core.plan_status(token, &plan.plan_id).unwrap()["plan"],
+                    json!(plan)
+                );
+                assert_eq!(f.core.store.list::<Value>("plans").unwrap().len(), 1);
+                assert_eq!(audits(&f, "state.apply"), 0);
+                assert_eq!(receipts(&f), 0);
+            } else {
+                let error = planned.err().unwrap();
+                assert_eq!(error.code, "conflict", "{lane}/{family}/{kind}: {error}");
+                assert_eq!(
+                    error.message,
+                    "Instance or plan authority changed during planning; plan again"
+                );
+                f.assert_snapshot(after_write.as_ref().unwrap());
+                assert!(f.core.store.list::<Value>("plans").unwrap().is_empty());
+            }
+        }
+        println!(
+            "S04_SECURITY {}",
+            json!({"family":family,"lane":lane,
+            "apply_refusals":2,"ordered_two_thread_cases":3,"snapshot_refusals":true})
+        );
+    }
+    fn apply_and_replay(f: &Fixture, token: &str, family: &str, plan: &Plan) {
+        let original_users: Vec<_> = ["admin", "alice", "bob", "stranger"]
+            .into_iter()
+            .map(|name| (name, user_record(f, name)))
+            .collect();
+        let original_client = client_record(f, "portal");
+        let before = f.snapshot().unwrap();
+        let credential_records = |snapshot: &BTreeMap<String, Value>| {
+            snapshot
+                .iter()
+                .filter(|(key, _)| {
+                    key.as_str() == "meta/keys"
+                        || key.starts_with("credential_versions/")
+                        || key.starts_with("passkeys/")
+                        || key.starts_with("credential_exposures/")
+                        || key.starts_with("agents/")
+                })
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect::<BTreeMap<_, _>>()
+        };
+        let ctx = RequestContext {
+            revision: Some(revision(f)),
+            idempotency_key: Some("s04-apply-once".into()),
+            fingerprint: riauth::crypto::digest(&apply_json(plan, None).to_string()),
+            ..Default::default()
+        };
+        let applied = context::scope(Some(ctx.clone()), || {
+            f.core.apply_state(token, request(plan))
+        })
+        .unwrap();
+        assert_eq!(applied["applied"], true);
+        assert_eq!(audits(f, "state.apply"), 1);
+        assert_eq!(receipts(f), 1);
+        match family {
+            "group" => assert_eq!(
+                members(f, "ordinary"),
+                BTreeSet::from([user_id(f, "alice"), user_id(f, "bob")])
+            ),
+            "client" => assert_eq!(client_record(f, "portal").name, "Renamed"),
+            "user" => assert_eq!(user_record(f, "alice").display_name, "Renamed"),
+            "description" => assert_eq!(
+                client_record(f, "portal").settings.app.unwrap().description,
+                "New description"
+            ),
+            _ => unreachable!(),
+        }
+        for (name, original) in original_users {
+            let mut current = user_record(f, name);
+            if family == "user" && name == "alice" {
+                current.display_name = original.display_name.clone();
+            }
+            assert!(
+                json!(current) == json!(original),
+                "Unexpected user or credential change: {family}/{name}"
+            );
+        }
+        let mut client = client_record(f, "portal");
+        if family == "client" {
+            client.name = original_client.name.clone();
+        }
+        if family == "description" {
+            let mut app = client.settings.app.take().unwrap();
+            let original_app = original_client.settings.app.clone().unwrap_or_default();
+            app.description = original_app.description.clone();
+            assert!(
+                json!(app) == json!(original_app),
+                "Other catalogue fields changed"
+            );
+            client.settings.app = original_client.settings.app.clone();
+        }
+        assert!(
+            json!(client) == json!(original_client),
+            "Unexpected client or credential change: {family}"
+        );
+        let committed = f.snapshot().unwrap();
+        assert!(
+            credential_records(&before) == credential_records(&committed),
+            "Credential records changed: {family}"
+        );
+        assert_eq!(
+            context::scope(Some(ctx.clone()), || f
+                .core
+                .apply_state(token, request(plan)))
+            .unwrap(),
+            applied
+        );
+        f.assert_snapshot(&committed);
+        assert_eq!(audits(f, "state.apply"), 1);
+        assert_eq!(receipts(f), 1);
+        drift(f, family, "authority");
+        let revoked = f.snapshot().unwrap();
+        assert!(context::scope(Some(ctx), || f.core.apply_state(token, request(plan))).is_err());
+        f.assert_snapshot(&revoked);
+    }
+
+    let seed = Fixture::new();
+    for name in ["alice", "bob", "stranger"] {
+        seed.user(name);
+    }
+    seed.client("portal", false);
+    seed.core.create_group(&seed.admin, "ordinary").unwrap();
+    let token = seed
+        .core
+        .create_agent(
+            &seed.admin,
+            NewAgent {
+                id: AGENT.into(),
+                ttl: 3600,
+                parent: None,
+                permissions: vec![
+                    Permission {
+                        action: "group.members".into(),
+                        resource: "group/ordinary".into(),
+                    },
+                    Permission {
+                        action: "client.write".into(),
+                        resource: "client/portal".into(),
+                    },
+                    Permission {
+                        action: "user.write".into(),
+                        resource: "user/alice".into(),
+                    },
+                ],
+            },
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        seed.core.config.state_reconciliation_mode,
+        ReconciliationMode::ManualReview
+    );
+    let initial = seed.snapshot().unwrap();
+    let Fixture {
+        _dir: seed_dir,
+        core,
+        admin,
+    } = seed;
+    let config = core.config.clone();
+    drop(core);
+    let mut observations: BTreeMap<&str, Vec<(u128, u64)>> = BTreeMap::new();
+    for batch in 0..3 {
+        for family in FAMILIES {
+            let scoped = fork(seed_dir.path(), &config, &admin);
+            let global = fork(seed_dir.path(), &config, &admin);
+            scoped.assert_snapshot(&initial);
+            global.assert_snapshot(&initial);
+            let normalized_config = |f: &Fixture| {
+                let mut config = f.core.config.clone();
+                config.data_dir = Default::default();
+                serde_json::to_value(config).unwrap()
+            };
+            assert!(normalized_config(&scoped) == normalized_config(&global));
+            assert!(scoped.admin == global.admin);
+            assert!(
+                scoped
+                    .core
+                    .store
+                    .get::<Agent>("agents", AGENT)
+                    .unwrap()
+                    .map(|a| json!(a))
+                    == global
+                        .core
+                        .store
+                        .get::<Agent>("agents", AGENT)
+                        .unwrap()
+                        .map(|a| json!(a))
+            );
+            let input = desired(&scoped, family);
+            assert!(json!(input) == json!(desired(&global, family)));
+            let first_scoped = reconcile(&scoped, &token, input.clone(), false);
+            let first_global = reconcile(&global, &token, input.clone(), true);
+            assert_eq!(
+                first_scoped["plan"]["review"]["authority_digest"],
+                first_global["plan"]["review"]["authority_digest"]
+            );
+            assert_eq!(
+                first_scoped["plan"]["changes"],
+                first_global["plan"]["changes"]
+            );
+            assert_eq!(
+                first_scoped["plan"]["removal_impact"],
+                first_global["plan"]["removal_impact"]
+            );
+            let order = if batch == 1 {
+                [true, false]
+            } else {
+                [false, true]
+            };
+            for control in order {
+                let (f, first, lane) = if control {
+                    (&global, &first_global, "global")
+                } else {
+                    (&scoped, &first_scoped, "scoped")
+                };
+                let mut aggregate = BTreeMap::<String, u64>::new();
+                let mut elapsed_us = 0;
+                let mut last: Plan = serde_json::from_value(first["plan"].clone()).unwrap();
+                let first_id = last.plan_id.clone();
+                let mut ids = BTreeSet::from([first_id.clone()]);
+                for write in 0..WRITES {
+                    rename(f, "stranger", &format!("Unrelated {write}"));
+                    let call_input = input.clone();
+                    let before = counters(f);
+                    let start = Instant::now();
+                    let result = if control {
+                        f.core
+                            .state_reconcile_global_fence_for_test(&token, call_input)
+                    } else {
+                        f.core.state_reconcile(&token, call_input)
+                    };
+                    let elapsed = start.elapsed().as_micros();
+                    let after = counters(f);
+                    // No store reads, assertions, writers or printing inside the
+                    // counter window; only the real controller call is timed.
+                    elapsed_us += elapsed;
+                    for (key, value) in after {
+                        *aggregate.entry(key.clone()).or_default() +=
+                            value.checked_sub(before[&key]).unwrap();
+                    }
+                    let result = result.unwrap();
+                    assert_eq!(result["decision"], "awaiting_review");
+                    assert_eq!(result["reason"], "manual_mode");
+                    last = serde_json::from_value(result["plan"].clone()).unwrap();
+                    assert_scoped(&last, family);
+                    if control {
+                        assert!(ids.insert(last.plan_id.clone()), "Control did not replan");
+                    } else {
+                        assert_eq!(last.plan_id, first_id);
+                    }
+                }
+                let rows = f.core.store.list::<Value>("plans").unwrap().len();
+                let expected_plans = if control { WRITES + 1 } else { 1 };
+                assert_eq!(ids.len(), expected_plans);
+                assert_eq!(rows, expected_plans);
+                assert_eq!(
+                    aggregate["writer_hold_count"],
+                    if control { (2 * WRITES) as u64 } else { 0 }
+                );
+                assert_eq!(
+                    aggregate["commit_count"],
+                    if control { WRITES as u64 } else { 0 }
+                );
+                println!(
+                    "S04_COST {}",
+                    json!({"batch":batch+1,"order":if batch==1 {"BA"}else{"AB"},
+                    "family":family,"lane":lane,"calls":WRITES,"elapsed_us":elapsed_us,
+                    "created_plans":rows-1,"retained_plans":rows,"native":aggregate})
+                );
+                observations
+                    .entry(lane)
+                    .or_default()
+                    .push((elapsed_us, aggregate["writer_hold_us"]));
+                apply_and_replay(f, &token, family, &last);
+            }
+            // Security work is outside every measurement window and bounded to
+            // one matrix per family/lane, independent of measurement repeats.
+            if batch == 0 {
+                for control in [false, true] {
+                    security(seed_dir.path(), &config, &admin, &token, family, control);
+                }
+            }
+        }
+    }
+    let totals = |lane: &str| {
+        let samples = &observations[lane];
+        let mut times: Vec<_> = samples.iter().map(|(elapsed, _)| *elapsed).collect();
+        times.sort_unstable();
+        json!({"batches":samples.len(),"calls":samples.len()*WRITES,
+            "elapsed_us":times.iter().sum::<u128>(),"median_batch_elapsed_us":(times[5]+times[6])/2,
+            "writer_hold_us":samples.iter().map(|(_, hold)| hold).sum::<u64>()})
+    };
+    let scoped = totals("scoped");
+    let global = totals("global");
+    println!(
+        "S04_TOTAL {}",
+        json!({"scoped":scoped,"global":global,
+        "writer_cost_reduced":global["writer_hold_us"].as_u64().unwrap()>scoped["writer_hold_us"].as_u64().unwrap(),
+        "limits":"same-build redb debug profile; no historical-binary, throughput, statistical, deployed or large-Group claim"})
+    );
+}

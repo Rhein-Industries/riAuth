@@ -185,6 +185,45 @@ printf '\n'
 A refused connection stops this block at the first `curl`. Run the `readyz`
 line on its own after `livez` has answered.
 
+## Reconciliation controllers
+
+A controller in `reconciliation_controllers` reconciles one LDAP, Workspace,
+Entra or SCIM scope on a schedule, as the agent named by its `agent_id`. Its
+incidents appear on `GET /api/operations/reconciliation`, which has no
+`riauth` command and needs `operations.read` on `operations/reconciliation`.
+That read is redacted. The stored error is on `GET /api/reconciliation/jobs`
+and `GET /api/reconciliation/schedules`, which list only the scopes the
+caller may sync:
+
+- LDAP: `directory.sync` on `directory/<id>`.
+- Platform cloud controllers: `directory.sync` on `workspace/<id>` or
+  `entra/<id>`.
+- SCIM: `provisioner.sync` on `provisioner/<id>`.
+
+What still answers is unchanged: the probes and sign-in paths above do not
+call a controller. A `failed` or `stale` job is not retried. At its next due
+time, an enabled schedule enqueues a new job unless one for that scope and
+configuration is already queued or running. No operator command re-runs a job.
+`POST /api/reconciliation/{kind}/{id}/events` accepts only the controller
+agent's own token.
+
+1. Read the attention rows and their `next_action` on
+   `GET /api/operations/reconciliation`.
+2. Read `last_error` on the matching job or schedule row of the scoped reads.
+3. Apply the token's action from
+   [diagnostic next actions](operations.md#diagnostic-next-actions).
+4. For a `stale` job, or a schedule that cannot enqueue, check the controller
+   agent first. It must exist, be enabled and unexpired, and hold the scope
+   permission above. The controller's `credential_file` must hold that agent's
+   current token.
+5. For a `failed` job, read its error with the connector's section below
+   ([LDAP](#ldap), [outbound SCIM](#outbound-scim),
+   [Workspace and Entra](#workspace-and-entra)).
+6. Before trusting the next run, inspect the directory or target state. A job
+   whose lease expired after its final attempt may already have committed
+   local changes or queued SCIM delivery. `riauth provision jobs` lists that
+   delivery.
+
 ## LDAP
 
 Upstream LDAP is `[directories]` import and password authentication. The

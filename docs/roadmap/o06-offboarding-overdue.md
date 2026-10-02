@@ -13,7 +13,7 @@ published main `44c0909`.
 ## Operator symptom before this slice
 
 Scheduled offboarding is Platform only. The maintenance pass executes it: on
-every pass, `Core::maintenance` calls `crate::offboarding::cleanup`, which runs
+every pass, `Core::cleanup` (through its `cleanup_pass`) calls `crate::offboarding::cleanup`, which runs
 up to 8 claims. The pass runs every 60 seconds in a process with the
 background-jobs duty.
 
