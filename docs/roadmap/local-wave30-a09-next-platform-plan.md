@@ -287,3 +287,126 @@ network/browser/desktop or other-worker contact. RiWork Cua.ai Driver remains
 the only permitted desktop provider if a future separately authorized task
 needs desktop use. Root alone may reserve the proposed workflow slice/runtime
 and reconcile A09 status.
+
+## Approved closed architecture implementation: source/static evidence
+
+Reservation `wave30_A09_closed_native_architecture_workflow`, same project,
+original task and supporting/primary worktrees. Root approved the above plan
+for source implementation only. Source commit
+`3c211369856b1e4c54b2ba8d39404635ccfddaea` changes only
+`.github/workflows/check-local-artifacts.yml` (37 additions, 14 deletions).
+This appendix is a separate report-only commit. The original `85b06e3` report
+remains an exact 20,136-byte prefix, SHA256
+`cfc3522ada0fcadc15fe180a36d903e2ee6663f999195aed4afcc7ec9e140a5b`;
+its proposal-phase checks/limits are historical, not overwritten by this phase.
+
+### Immutable base and exact scope
+
+Actual fixed source `b619fe25269ccc150e473bbcde47cdb3623ef810` resolved locally.
+Its complete manual workflow is byte-identical to published `b5dcfa9d`, own
+`85b06e3` HEAD and the clean working file: 18,186 bytes, SHA256
+`0a98865e5ee25d2f94b745b32602949553bf4f4e3b83d8bd302fade98eafd948`.
+No alignment/merge or whole-file replacement was needed. `b619` contains no
+AGENTS.md. Server/client manifests and locks, Rust toolchain and focused checker
+also equal `b5` byte-for-byte, with the hashes already reported above. This
+comparison is current source evidence, not a build of either product pin.
+
+The committed workflow is 19,487 bytes, SHA256
+`62c378975021066d62d5b32d0eee2c87de8501d01ded1ae0fae8147e920e58d7`.
+Its full diff consists only of the approved header/name, closed-map, additive
+selected-platform metadata, native-host, target/ELF/capability/archive and upload
+name substitutions. The source commit diff is the exact reviewable change;
+no shared launcher, checker, helper, product, guide or primary A09 report changed.
+All other tracked own files remained unchanged. No main/accepted edits,
+history rewrite, status mutation or other-worker contact occurred.
+
+### Implemented selection and preservation
+
+One manual job is now named `native-linux`; the workflow is `Check local Linux
+artifacts`. Required choice `architecture` defaults to `arm64` and admits only
+`arm64`/`x86_64`. The job expression selects `ubuntu-24.04-arm` or
+`ubuntu-24.04`; the value reaches Python through `ARCHITECTURE`, not shell
+interpolation. The exact closed map in the earlier table supplies runner label,
+machine, runner token, triple and ELF value. Missing or unknown input raises
+`unsupported_native_architecture` before root/data initialization or any driver
+guard/command. That refusal does not create driver JSON; do not infer a receipt
+upload for an invalid selector. The legitimate host guard still requires Linux,
+the exact selected machine/token and `github-hosted` before checkout/setup/build.
+Its ARM failure label stays `not_native_hosted_arm64`.
+
+All existing provenance fields and assertions remain; additive
+`selected_platform` records requested architecture, derived triple and ELF
+machine. Actual runner system/machine/token/CPU/RAM and GitHub source/workflow/run
+fields remain observed, not fabricated. Both feature-selected servers and both
+maintenance tools use the chosen triple; the standalone base client keeps empty
+default features. All five archive names and checker paths use the same map's
+machine. Default ARM target, capability metadata, product/archive names, upload
+name and error labels match the original, aside from intentional human/job names
+and additive selection metadata.
+
+One source-equivalence detail differs from the proposal's integer-decoding
+example: the implementation compares
+`header[18:20] == native['elf_machine'].to_bytes(2, 'little')`. This preserves the
+original exact two-byte check. Decoding a truncated one-byte field could instead
+accept `b'\xb7'` as 183; it must remain rejected. The closed values encode exactly
+ARM `b'\xb7\x00'` and x86-64 `b'\x3e\x00'`. ELF64/little-endian prefix matching
+is unchanged. This is preservation within the claimed ELF hunk, not a new
+validation or helper scope.
+
+### Static checks actually executed
+
+- `ruby -rpsych -rjson -e 'puts JSON.generate(Psych.load(STDIN.read))'` parsed
+  both immutable original and changed YAML through stdin, exit zero. Parsed
+  workflow records were used for the static comparisons below. No dispatch or
+  hosted workflow validation was performed.
+- `bash -n` through stdin passed each of the **four** `run` blocks in the seven
+  YAML steps; none was executed. An initial success message mistakenly printed
+  “five”; a counted recheck asserted four and passed. This was a reporting-label
+  error, not a hidden fifth command or failed shell block.
+- Python `ast.parse` accepted original/changed inline driver. No driver bytecode
+  or module execution occurred. Literal-map/AST checks established the
+  two exact mappings, early missing/unknown-input refusal, and encoded ELF
+  constants including the short-field rejection.
+- Complete source segments of all eight functions are byte-identical:
+  `interrupted`, `save`, `require`, `sha`, `capacity`, `stop_owned`, `command`,
+  `source_check`. Thus command argv/deadlines/logging, owned cleanup, source/tree
+  and seven-input hashing, sampling and threshold bodies remain intact.
+- Full default-ARM driver AST normalization replaced only closed-map references
+  with verified ARM literals, folded the resulting string/byte constants, and
+  removed only the selector prelude/additive `selected_platform` field. The
+  result equals the complete original driver AST. Workflow normalization of
+  names/job key, default runner, new input/env, driver and upload label equals
+  the entire original parsed workflow; other steps/keys remain equal.
+- Exact reverse substitution of 13 declared hunk groups reconstructs **every
+  byte** of the immutable `b619`/`b5` workflow, SHA256 `0a98865e…`. The heredoc
+  prefix/suffix also match after their declared header/upload substitutions.
+- Context/negative checks passed: one manual job; only `workflow_dispatch`;
+  `contents: read`; unchanged legacy concurrency key and no automatic cancel;
+  150-minute bound; unchanged jobs=1/incremental=0/debug=0 env, all three private
+  targets, four 30 GiB preflights, 10 GiB sample stop and action pins. Expressions
+  use only approved input/GitHub/env fields and `always()`; the corrected
+  shell-local `$RUNNER_TEMP` root setup is intact with no job-level runner.temp
+  context reintroduced.
+- `git diff --check` and source-stage `git diff --cached --check` exited zero.
+  Staged source scope contained only the workflow; before append, the original
+  report was byte-identical to `85b06e3` and all other tracked files were protected.
+- `python3 scripts/check-docs.py` exited **1**, reporting only five pre-existing
+  root build directories: `target-wave29-source`, `target-wave28-scim`,
+  `target-wave28-portal`, `target-wave28`, `target-wave27`. No Markdown link errors
+  were reported. These directories and the checker were not changed or deleted.
+  Separate report whitespace/fence/no-relative-link checks and the exact original
+  prefix check passed; the appendix was the sole unstaged change after the source
+  commit. Report-stage `git diff --cached --check` exited zero.
+
+The previous ARM run/receipt remains product `9a819317`, workflow `036a3926`;
+it does not execute this new source. No new run/job/artifact ID, digest, tag,
+release or container identity exists. X86 availability/capacity/versions,
+dependency setup/build time/transient peak and checker success remain unmeasured.
+The same future 30 GiB launch/10 GiB owned stop/8 GiB floor, serialized root
+runtime release and receipt review are required. No build, Cargo, dependency
+installation, artifact execution/download, runner query, Docker/service/network,
+browser/desktop, new worker/task/worktree/managed shell or PG overlap occurred.
+Root alone performs independent source review/integration and may release a
+future x86 run. Primary A09 ownership/status and all original shared/container/
+official-artifact evidence limits remain unchanged; Driver-only preference is
+retained.
