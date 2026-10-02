@@ -82,3 +82,9 @@ Root read all137 lines of `772c8cdbfd02e2bf3f28212884aebe5ef9f03849` and rehashe
 ## Report publication encoding correction
 
 The first root batch docs check exited1 because its link scanner interpreted the archived Python indexing call as a Markdown link. Root inserted one separating space in that report call and documented the exact reconstruction normalization. Removing that space restores the complete reviewed logic SHA `98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb`; whole-report reversal also passes. The checker and actual helper/payload/results are unchanged. Author prefix proofs remain statements about their immutable commits, before this explicit report-only publication encoding.
+
+## Fresh bounded confidential fixture: capacity refusal
+
+Root read the full `3f70cb1f9cffb19ea3f4e537030083b1ebda0ab3` appendix. The released fixture was not started: fresh free space 4,741,165,056 bytes, then cleanup readback 4,446,744,576 bytes, both below the 8 GiB floor and 8.5 GiB launch margin. No controller, provider, product command, helper, listener or browser was launched; no fresh binary/hash evidence is borrowed. A Driver metadata lifecycle session was ended without preparing a browser. Ports 9000/3000 and requested fresh metadata paths were absent; no owned app resources existed. Desktop/operator ownership was released before the report.
+
+The memory 78-case pass remains limited to guards and sinks, and the confidential browser workflow remains unexecuted. Historical refusals, unknown sender and lost first provider output remain unchanged. A separate read-only capacity inventory is reserved; no deletion or relaxed guard is authorized by this result. D01/D05 status is unchanged.

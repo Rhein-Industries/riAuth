@@ -1,0 +1,137 @@
+{
+  "run_id": 37042000805,
+  "actual_public_documents": {
+    "controller.json": {
+      "action_pins": {
+        "checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "upload": "ea165f8d65b6e75b540449e92b4886f43607fa02"
+      },
+      "artifact_id": 11232871527,
+      "artifact_name": "riauth-local-arm64-37016520583-1",
+      "build_job": 110868629053,
+      "build_run": 37016520583,
+      "build_workflow_sha": "036a392656b4b5070cc86a11d5ca3258b7b868d2",
+      "cleanup_failures": [],
+      "controller_exit_code": 1,
+      "controller_sha256": "b84868ddce285e3c2979318b778bbb4d522ca0d212a1310c59d25c12bbd8f9e3",
+      "event": "workflow_dispatch",
+      "expected_validator_sha256": "575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1",
+      "expected_zip_sha256": "fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30",
+      "first_failure": {
+        "code": "source_roles_must_be_distinct",
+        "exit_code": null,
+        "phase": "validator_source"
+      },
+      "full_shared_gate": "not_certified",
+      "github_sha": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+      "global_timeout_seconds": 1080,
+      "helper_timeout_seconds": 600,
+      "maximum_actual_gap_seconds": 2.0004846349999994,
+      "minimum_free_bytes": {
+        "host_root": 115846656000,
+        "private": 115846656000,
+        "workspace": 115846656000
+      },
+      "official_release": false,
+      "phases": [],
+      "product_sha": "9a819317efb3a13fa27cd86f884be2be00898fc0",
+      "repository": "Rhein-Industries/riAuth",
+      "resource_policy": {
+        "floor_bytes": 8589934592,
+        "intended_interval_seconds": 2.0,
+        "maximum_gap_seconds": 6.0,
+        "start_bytes": 32212254720,
+        "stop_bytes": 10737418240
+      },
+      "resource_samples": 3,
+      "run_attempt": 1,
+      "run_id": 37042000805,
+      "sample_result": "not_run",
+      "schema": "riauth.local-build-free-shared-controller/v1",
+      "validator_source_sha": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+      "workflow_sha": "b619fe25269ccc150e473bbcde47cdb3623ef810"
+    },
+    "cleanup.json": {
+      "failures": [],
+      "owned_fixture_removed": false,
+      "owned_private_scratch_removed": true,
+      "owned_processes_reaped": 0,
+      "postgres_pidfile_verified": false,
+      "postgres_state": "no_live_owned_postgres",
+      "remaining_owned_processes": 0,
+      "schema": "riauth.local-build-free-cleanup/v1"
+    },
+    "helper-redacted.json": {
+      "result": "not_run",
+      "schema": "riauth.local-build-free-pending/v1"
+    },
+    "resources.jsonl": [
+      {
+        "actual_gap_seconds": 0.0,
+        "at_utc": "2026-10-02T17:37:53.472895+00:00",
+        "device_ids": {
+          "host_root": 2049,
+          "private": 2049,
+          "workspace": 2049
+        },
+        "free_bytes": {
+          "host_root": 115879399424,
+          "private": 115879399424,
+          "workspace": 115879399424
+        },
+        "monotonic_seconds": 0.051499715000002055
+      },
+      {
+        "actual_gap_seconds": 2.0004846349999994,
+        "at_utc": "2026-10-02T17:37:55.473410+00:00",
+        "device_ids": {
+          "host_root": 2049,
+          "private": 2049,
+          "workspace": 2049
+        },
+        "free_bytes": {
+          "host_root": 115846656000,
+          "private": 115846656000,
+          "workspace": 115846656000
+        },
+        "monotonic_seconds": 2.0519843500000015
+      },
+      {
+        "actual_gap_seconds": 0.022972683999999077,
+        "at_utc": "2026-10-02T17:37:55.496351+00:00",
+        "device_ids": {
+          "host_root": 2049,
+          "private": 2049,
+          "workspace": 2049
+        },
+        "free_bytes": {
+          "host_root": 115846656000,
+          "private": 115846656000,
+          "workspace": 115846656000
+        },
+        "monotonic_seconds": 2.0749570340000005
+      }
+    ]
+  },
+  "capture_hashes": {
+    "controller.json": {
+      "bytes": 1821,
+      "sha256": "a8c3508f2654bf40a5d0aef71e778b1f2a89553cb6a7d115f3b948a1e0e0cdf5"
+    },
+    "cleanup.json": {
+      "bytes": 295,
+      "sha256": "012ab6f866ccf6f7163430a0a8d8945383c1e044f025f186a51de67639a369db"
+    },
+    "helper-redacted.json": {
+      "bytes": 70,
+      "sha256": "ea7793e91dfdf9fc5f1d08bacad8429368cd69cd2131927da2ccf74b330c8f08"
+    },
+    "resources.jsonl": {
+      "bytes": 877,
+      "sha256": "23874319699a86a2c9d355654c985d6d65c63f972289730e6fb87b59d4a3a773"
+    }
+  },
+  "root_local_archive_zip_rehashed": false,
+  "official_release": false,
+  "full_shared_gate": "not_certified"
+}
