@@ -1574,3 +1574,886 @@ accepted as source; full raw Store comparison/public403/re-raised original
 error remain authoritative. The separately reserved complete memory design
 is pending; no counts or writer cause is inferred from37060776569 and no new
 hosted shared-gate invocation is released.
+
+## Exact memory-validation design archive, 2026-10-03
+
+Project 891e7443-8dac-4c1b-897f-9e53cb59c7ee; original A09 task
+506e3979-a590-4af3-8fa8-ee90d3a517f2; existing isolated worktree
+a1303b57-4a34-487e-9c63-a841f05b51a0. Reservation:
+wave30_A09_snapshot_counts_memory_design. This is an unexecuted exact future
+memory-validation design, ready for independent source review. No child,
+candidate case, source definition, bootstrap, helper module, controller,
+native executable, database, HTTP request or hosted run was evaluated.
+
+The source remains the reviewed d00c9680004be856c387e4faf03c14c1e62d6b0c tree.
+This append preserves all 96,475 bytes of report 95965eb69f2a26477a81d6ed196131d8c5b976ca
+(SHA256 190fa98b9fc23839bd83d9451293cf252256d3074d730fdf9617b3c7ec34104f).
+No alignment or source edit is involved. I02/I10/R05/W02/W05 stay closed;
+original A09/shared gate and root runtime decisions are unchanged.
+
+### Source pins and executable archive identity
+
+All six inputs below are read as bounded regular files with no-follow opens
+by the future child. Their hashes must match before any isolated source
+definition is executed. They are never imported as modules. The parent
+recomputes these source hashes only after retaining actual child output and
+exit. This ordering separates pre-execution source binding from post-outcome
+grading; a source mismatch fails closed and cannot manufacture a pass.
+
+| Input | Bytes | SHA256 |
+| --- | ---: | --- |
+| scripts/check-local-edition-transition-postgres.py | 26547 | 4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa |
+| .github/workflows/check-local-shared-handoff.yml | 82149 | 226483dd9edcd5e566b6c5de9f7ab2a36ebdf0c0f204f8ec992645542a3f395f |
+| scripts/check-exact-edition-matrix.py | 18394 | f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887 |
+| scripts/check-installed-release-gate.py | 22321 | cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5 |
+| scripts/check-local-encrypted-edition-transition.py | 22045 | 09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e |
+| scripts/spdx_sbom.py | 36727 | ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c |
+
+The workflow controller literal is 66,841 bytes, SHA256
+bda0a0fa30db096d92404de22dd5193c91d111c3890e30fe43034405abdd2369;
+its bootstrap literal is 5,111 bytes, SHA256
+a8f7df1a172e1dc89672d2be54fa147eabf6a61864935e82fd86e2cf64839d33.
+The source-created FIXED import map must equal the helper plus the same four
+other imported-script pins. These hashes bind static source, not runtime results.
+
+The three complete UTF-8/LF archives below each include their final newline.
+
+| Future archive | Bytes | SHA256 |
+| --- | ---: | --- |
+| Child payload | 24494 | 1cd3442cb91d19de9c70134da763d072b9cc5ca317e2ed2bb633df2bb1c04181 |
+| Controller | 12634 | 278060f3de48a133b017cffc188bf9adea200337e901370e97a1f1764ded44ee |
+| Assembly command | 1427 | 084ed5ae9d4417b4f6fbce9af8d43eb810bc2f29e7c8dea378ed256512e66653 |
+
+### Isolation and case design
+
+The future child AST-selects only helper refusal_snapshot_counts, controller
+snapshot_counts/failure_packet and the bootstrap snapshot_counts/failure_source
+prefix. The prefix ends before the final os.open/private-file-write block;
+only a return of its existing payload is added. The bootstrap is parsed as a
+string, never imported. InertPath supplies joining/string/parent/resolve
+semantics without filesystem operations. Controlled synthetic raises produce
+genuine traceback chains bound to inert filenames. No surrounding shared_probe,
+SQL, sleep, HTTP or CLI path is evaluated. The isolated equality try/except is
+selected by its exact AssertionError handler; synthetic matrix.require stubs
+retain and raise the same error object. Source module imports, entry points,
+controller construction and bootstrap writer blocks remain outside the child.
+
+The future executable scope is stdlib parsing, hashing and pure memory work,
+plus the parent's single Python child and bounded private evidence writes.
+The archive does not authorize its execution. The child rejects imports and
+IO names within extracted definitions, uses an explicit builtin namespace,
+and binds its six complete source files before definition execution.
+
+Cases have actual group/name records and derived totals; there is no padded
+case-count target or predetermined pass receipt. The proposed groups are:
+
+- source_binding: six complete inputs, controller/bootstrap literal identity
+  and unchanged five-script import map.
+- counts: all six categories/five counts, exact namespace aliases, actual
+  opaque non-JSON and ciphertext-like synthetic bytes, and unchanged full values.
+- parser: malformed/duplicate/noncanonical hex, missing collection, invalid UTF-8,
+  NUL keys, CRLF/partial records and wrong input types; valid 4,096-byte key,
+  1 MiB value and exact 8 MiB four-row capture; individual over-limit refusals.
+- schema: exact integer 0/1,000,000 boundaries and bool/int-subclass/float/string/null/
+  negative/oversize rejection, missing/unknown categories and fields, dict subclass.
+- packet: valid counts, maximal eight-frame packet with thirty 1,000,000 counts,
+  exact 2,048-byte boundary and 2,049-byte refusal, duplicate keys, unknown root/
+  frame keys, unknown fixed frame/class, non-integer/out-of-range frame lines,
+  malformed/invalid-UTF-8/deep JSON; forced MemoryError/KeyboardInterrupt
+  projection failure retains original fixed class/frames.
+- producer: genuine trusted synthetic traceback, invalid/missing attachment,
+  exact AssertionError-only attachment and subclass exclusion, bounded 64-frame
+  examination/eight retained frames; forced MemoryError/KeyboardInterrupt
+  projection failure retains original fixed class/frames.
+- equality: byte-identical success; complete-change failure preserving error
+  identity/message; reordered rows still fail byte equality although projected
+  added/changed/removed counts are zero; parser/ValueError/MemoryError/
+  KeyboardInterrupt fallback and AssertionError subclass exclusion.
+- privacy: synthetic key/value/hex/path/URI/message sentinels never appear in
+  projected fixed packets or public child/controller results. Input rows are
+  synthetic only; no actual database/evidence row is read.
+
+Projection remains optional. Counts are diagnostics, never authority for
+snapshot equality: even a valid zero-change projection does not resolve a
+reordered or otherwise byte-different complete snapshot. Controller fallback
+retains only the original fixed class/frames; equality re-raises the original
+AssertionError object. No key, row digest, raw value, URI, private path or
+exception message is emitted by the child. A failed case exposes only its
+fixed group/name/status and allowlisted exception class, never str/repr(error).
+
+### Future command, limits and outcome retention
+
+Only the exact archived assembly command is prospective. It extracts the
+unique archived controller and verifies its hash before executing it. The
+controller extracts and binds the exact child payload. It creates one new
+0700 evidence directory under this worktree's existing private .target-wave27:
+a09-snapshot-counts-memory-d00c968-wave30. Every evidence file uses exclusive
+0600/no-follow creation and fsync; an existing directory causes refusal, not
+reuse/deletion. Capacity below 8 GiB refuses this tiny memory/evidence run.
+No capacity was measured or runtime slot acquired in this design phase.
+
+One isolated Python 3.11+ child uses -I/-B/-c, DEVNULL stdin, private bounded
+stdout (64 KiB) and stderr (8 KiB), a minimal fixed environment, and its own
+process group. Child wall budget is at most 30 seconds including startup;
+the payload also has a 30-second alarm/persistent budget flag. Outer elapsed
+time begins before assembly extraction and has a 35-second alarm/acceptance
+ceiling. A fresh setup must leave at least 30 seconds for the child.
+Selectors sample at most every 50 ms and stop the exact unreaped owned process
+group on interruption, cap or timeout. No broad PID discovery or pkill occurs.
+An emergency bounded five-second wait is permitted solely to reap the owned
+child after kill; any late completion fails the final 35-second acceptance
+check rather than claiming bounded success.
+
+At child exit, the controller first saves child-exit.json with the actual
+numeric exit and reaping state, then the full bounded child.json and private
+child-stderr.bin. These saves precede outcome/schema/expected-source grading.
+Unexpected stderr is private failure evidence and is not published. The
+parent rechecks source hashes only afterward and saves its grading receipt.
+Setup refusals report no child/null exit, never a fabricated numeric result.
+The final post-save monotonic clock follows every receipt fsync; no evidence
+write follows that clock. Outer timeout/interruption/receipt failure rejects
+the run. Final stdout is fixed JSON containing actual exit/reaping/save/time
+and memory-only grading. It never emits arbitrary errors, paths or payloads.
+
+No actual result exists yet. The prospective acceptance means isolated
+synthetic diagnostic compatibility only, not native/shared gate success,
+hosted compatibility, actual mutated-row diagnosis or provider evidence.
+
+### Static preparation evidence and limits
+
+The first archive-build tool request encountered a shell here-document
+delimiter collision (zsh parse error near a closing parenthesis) before any
+report write. A subsequent check confirmed the clean HEAD 95965eb and unchanged
+96,475-byte report/source. This was an archive construction failure, not a
+candidate case or runtime failure. The corrected static build uses a distinct
+outer delimiter.
+
+Static source review also replaced an ambiguous nested-Try AST selector with
+the exact outer AssertionError-handler selector. Static inspection finds one
+matching equality block and confirms the bootstrap prefix ends before its
+os/private writer. No selector or candidate definition was executed.
+
+The preparation parses the archived child/controller/assembly body into AST,
+hashes complete UTF-8/LF source, verifies one future Popen site, extracts the
+controller/bootstrap literals without evaluation, and compares the six pinned
+source bytes to d00c968. It does not compile, exec, eval, import or run the
+candidate payload/controller. These are static witnesses, not case passes.
+
+All earlier source/runtime failures remain dated in the prefix, including
+37060776569's passed CLI4/HTTP403/access_denied refusal followed by failed full
+Store equality. Actual changed rows and origin remain unknown. Pure projection
+validation cannot establish that HTTP bookkeeping caused that failure and
+cannot establish the A09 shared gate. No hosted repeat is authorized.
+
+### Full future child payload
+
+```python
+import time
+STARTED = time.monotonic()
+import ast, builtins, copy, hashlib, json, os, pathlib, re, signal, stat, sys
+
+REPO = pathlib.Path("/Users/dominik/orca/projects/riAuth-public-preview-local-workflow-safety-wave27")
+PINS = [('helper', 'scripts/check-local-edition-transition-postgres.py', 26547, '4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa'), ('workflow', '.github/workflows/check-local-shared-handoff.yml', 82149, '226483dd9edcd5e566b6c5de9f7ab2a36ebdf0c0f204f8ec992645542a3f395f'), ('matrix', 'scripts/check-exact-edition-matrix.py', 18394, 'f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887'), ('gate', 'scripts/check-installed-release-gate.py', 22321, 'cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5'), ('encrypted', 'scripts/check-local-encrypted-edition-transition.py', 22045, '09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e'), ('spdx', 'scripts/spdx_sbom.py', 36727, 'ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c')]
+LABELS = ("http_rates", "http_rate_expiry", "http_rate_count",
+          "maintenance_cursors", "maintenance_bounds", "protected_or_other")
+FIELDS = ("before", "after", "added", "changed", "removed")
+HELPER = "check-local-edition-transition-postgres.py"
+FILES = (HELPER, "check-exact-edition-matrix.py", "check-installed-release-gate.py",
+         "check-local-encrypted-edition-transition.py", "spdx_sbom.py", "bootstrap.py")
+GROUPS = ("source_binding", "counts", "parser", "schema", "packet", "producer", "equality", "privacy")
+MESSAGE = "refused user creation changed durable records"
+SENTINELS = ("A09_PRIVATE_KEY_SENTINEL", "A09_PRIVATE_VALUE_SENTINEL",
+             "https://a09-private-uri.invalid/secret", "/a09-private-path-sentinel",
+             "A09_PRIVATE_MESSAGE_SENTINEL")
+EXPIRED = False
+CASES = []
+OBSERVED = {}
+STAGE = "initial"
+
+class Budget(BaseException): pass
+class Halt(Exception): pass
+
+def alarm(signum, frame):
+    global EXPIRED
+    EXPIRED = True
+    raise Budget()
+
+def clock():
+    if EXPIRED or time.monotonic() - STARTED >= 30: raise Budget()
+
+def check(value):
+    if not value: raise AssertionError()
+
+def failure_class(error):
+    return {AssertionError: "AssertionError", ValueError: "ValueError", TypeError: "TypeError",
+            KeyError: "KeyError", MemoryError: "MemoryError", KeyboardInterrupt: "KeyboardInterrupt",
+            Budget: "Budget"}.get(type(error), "Other")
+
+def case(group, name, work):
+    clock()
+    status, error_class = "pass", "None"
+    try: work()
+    except BaseException as error: status, error_class = "fail", failure_class(error)
+    if EXPIRED: status, error_class = "fail", "Budget"
+    CASES.append({"group": group, "name": name, "status": status, "failure_class": error_class})
+    clock()
+
+def read_source(relative, size):
+    fd = os.open(REPO / relative, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as incoming:
+        if not stat.S_ISREG(os.fstat(incoming.fileno()).st_mode): raise Halt()
+        return incoming.read(size + 1)
+
+def function(tree, name):
+    nodes = [n for n in tree.body if type(n) is ast.FunctionDef and n.name == name]
+    check(len(nodes) == 1)
+    node = nodes[0]
+    check(not node.decorator_list and not node.args.defaults and not node.args.kw_defaults
+          and node.returns is None and all(a.annotation is None for a in node.args.args))
+    return copy.deepcopy(node)
+
+def assignment(tree, name):
+    nodes = [n for n in tree.body if type(n) is ast.Assign
+             and any(type(t) is ast.Name and t.id == name for t in n.targets)]
+    check(len(nodes) == 1)
+    return nodes[0]
+
+def isolated(nodes, namespace, filename):
+    for node in nodes:
+        for part in ast.walk(node):
+            check(type(part) not in (ast.Import, ast.ImportFrom))
+            if type(part) is ast.Name:
+                check(part.id not in ("os", "open", "subprocess", "runpy", "tempfile", "socket", "urllib", "print"))
+    names = ("type", "len", "any", "set", "dict", "bytes", "str", "int", "getattr",
+             "AssertionError", "BaseException", "ValueError", "UnicodeError", "RecursionError",
+             "RuntimeError", "TypeError", "KeyError", "IndexError", "NameError", "ImportError",
+             "ModuleNotFoundError", "OSError", "FileNotFoundError", "PermissionError", "SyntaxError",
+             "SystemExit", "KeyboardInterrupt")
+    namespace["__builtins__"] = {name: getattr(builtins, name) for name in names}
+    module = ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[]))
+    exec(compile(module, filename, "exec"), namespace)
+    return namespace
+
+class InertPath:
+    def __init__(self, text): self.text = text
+    def __str__(self): return self.text
+    def __truediv__(self, name): return InertPath(self.text + "/" + name)
+    def resolve(self): return self
+    @property
+    def parent(self): return InertPath(self.text.rsplit("/", 1)[0])
+
+def snapshot(items):
+    return b"".join(key.hex().encode("ascii") + b"|" + value.hex().encode("ascii") + b"\n"
+                    for key, value in items)
+
+def zeros():
+    return {label: {field: 0 for field in FIELDS} for label in LABELS}
+
+def base_packet():
+    return {"exception_class": "AssertionError", "frames": [{"file": HELPER, "line": 1}]}
+
+def wire(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+
+def clean(value):
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("ascii")
+    for marker in SENTINELS:
+        check(marker.encode() not in encoded and marker.encode().hex().encode() not in encoded)
+
+def rejected_parser(counts, raw):
+    try: counts(raw, b"")
+    except BaseException as error:
+        check(type(error) in (ValueError, UnicodeDecodeError))
+        return
+    raise AssertionError()
+
+def main():
+    global STAGE
+    STAGE = "source_binding"
+    texts = {}
+    for name, relative, size, digest in PINS:
+        raw = read_source(relative, size)
+        OBSERVED[name] = hashlib.sha256(raw).hexdigest()
+        matched = len(raw) == size and OBSERVED[name] == digest
+        case("source_binding", name, lambda matched=matched: check(matched))
+        if not matched: raise Halt()
+        texts[name] = raw.decode("utf-8")
+    helper = ast.parse(texts["helper"])
+    workflow = texts["workflow"]
+    marker = '          cat > "$A09_ROOT/controller.py" <<\'PY\'\n'
+    begin = workflow.index(marker) + len(marker)
+    end = workflow.index('          PY\n', begin)
+    controller = "".join(line[10:] if line.startswith("          ") else line
+                         for line in workflow[begin:end].splitlines(keepends=True))
+    controller_tree = ast.parse(controller)
+    bootstrap = ast.literal_eval(assignment(controller_tree, "BOOTSTRAP").value)
+    bootstrap_tree = ast.parse(bootstrap)
+    case("source_binding", "controller_string", lambda: check(
+        hashlib.sha256(controller.encode()).hexdigest() == "bda0a0fa30db096d92404de22dd5193c91d111c3890e30fe43034405abdd2369"))
+    case("source_binding", "bootstrap_string", lambda: check(
+        hashlib.sha256(bootstrap.encode()).hexdigest() == "a8f7df1a172e1dc89672d2be54fa147eabf6a61864935e82fd86e2cf64839d33"))
+    if any(item["status"] != "pass" for item in CASES): raise Halt()
+    validator = function(controller_tree, "snapshot_counts")
+    check(ast.dump(validator) == ast.dump(function(bootstrap_tree, "snapshot_counts")))
+    fixed = json.loads(ast.literal_eval(assignment(controller_tree, "FIXED").value.args[0]))
+    expected_imports = {pathlib.PurePosixPath(relative).name: digest
+                        for name, relative, size, digest in PINS if name != "workflow"}
+    case("source_binding", "import_map", lambda: check(fixed["imports"] == expected_imports))
+    if any(item["status"] != "pass" for item in CASES): raise Halt()
+    trace_root = InertPath(SENTINELS[3])
+    trace_helper = trace_root / HELPER
+    counts = isolated([function(helper, "refusal_snapshot_counts")], {"re": re},
+                      str(trace_helper))["refusal_snapshot_counts"]
+    packet_ns = isolated([validator, function(controller_tree, "failure_packet")],
+                         {"json": json, "FIXED": {"imports": expected_imports}},
+                         str(trace_root / "bootstrap.py"))
+    validate, consume = packet_ns["snapshot_counts"], packet_ns["failure_packet"]
+    producer_node = function(bootstrap_tree, "failure_source")
+    writer = producer_node.body[-1]
+    check(type(writer) is ast.If and any(type(n) is ast.Name and n.id == "os" for n in ast.walk(writer)))
+    producer_node.body = producer_node.body[:-1] + [ast.Return(value=ast.Name(id="payload", ctx=ast.Load()))]
+    producer = isolated([function(bootstrap_tree, "snapshot_counts"), producer_node],
+                        {"json": json, "root": trace_root, "helper": trace_helper},
+                        str(trace_root / "bootstrap.py"))["failure_source"]
+    probe = function(helper, "shared_probe")
+    equality_nodes = [n for n in ast.walk(probe) if type(n) is ast.Try
+                      and any(type(h.type) is ast.Name and h.type.id == "AssertionError" for h in n.handlers)]
+    check(len(equality_nodes) == 1)
+    check(any(type(n) is ast.Name and n.id == "after_refusal" for n in ast.walk(equality_nodes[0])))
+    equality_code = compile(ast.fix_missing_locations(ast.Module(
+        body=[copy.deepcopy(equality_nodes[0])], type_ignores=[])), str(trace_helper), "exec")
+    STAGE = "cases"
+    keys = (b"http_rates/a", b"index_expiry_http_rates/a", b"index_counts/http_rates",
+            b"maintenance_cursors/a", b"maintenance_bounds/a", b"users/a")
+    before = snapshot([(key, b"A") for key in keys])
+    after = snapshot([(key, b"B") for key in keys[:-1]]
+                     + [(b"unknown_bucket/b", b"B"), (b"http_rates/b", b"B")])
+    expected = {label: dict(zip(FIELDS, (1, 1, 0, 1, 0))) for label in LABELS}
+    expected["http_rates"] = dict(zip(FIELDS, (1, 2, 1, 1, 0)))
+    expected["protected_or_other"] = dict(zip(FIELDS, (1, 1, 1, 0, 1)))
+    case("counts", "six_categories", lambda: check(counts(before, after) == expected))
+    aliases = (b"index_counts/mail_limits", b"index_counts/http_rates-extra", b"http_rates2/x",
+               b"maintenance_cursors-extra/x", "unadvertised/\u00e9".encode())
+    def alias_case():
+        actual = counts(snapshot([(key, b"A") for key in aliases]), b"")
+        oracle = zeros(); oracle["protected_or_other"].update(before=5, removed=5)
+        check(actual == oracle)
+    case("counts", "exact_namespace_boundaries", alias_case)
+    for name, value in (("opaque_non_json", b"\x00\xffA"), ("opaque_ciphertext", bytes(range(128)))):
+        def opaque(value=value):
+            actual = counts(snapshot([(b"users/a", value)]), snapshot([(b"users/a", value[:-1] + b"B")]))
+            oracle = zeros(); oracle["protected_or_other"].update(before=1, after=1, changed=1)
+            check(actual == oracle)
+        case("counts", name, opaque)
+    def identical():
+        oracle = zeros()
+        for label in LABELS: oracle[label].update(before=1, after=1)
+        check(counts(before, before) == oracle)
+    case("counts", "identical_complete_values", identical)
+    malformed = (
+        ("wrong_type", bytearray(b"61|00\n")), ("partial_line", b"752f61|00"),
+        ("blank_line", b"\n"), ("crlf", b"752f61|00\r\n"),
+        ("odd_key_hex", b"752f6|00\n"), ("odd_value_hex", b"752f61|0\n"),
+        ("nonhex_key", b"zz|00\n"), ("nonhex_value", b"752f61|zz\n"),
+        ("uppercase_key", b"752F61|00\n"), ("uppercase_value", b"752f61|FF\n"),
+        ("extra_separator", b"752f61|00|00\n"), ("duplicate_key", b"752f61|00\n752f61|01\n"),
+        ("invalid_utf8", b"ff2f61|00\n"), ("nul_key", b"752f0061|00\n"),
+        ("missing_collection", b"2f61|00\n"), ("no_separator", b"7561|00\n"))
+    for name, raw in malformed:
+        case("parser", name, lambda raw=raw: rejected_parser(counts, raw))
+    case("parser", "input_over_cap", lambda: rejected_parser(counts, b"x" * (8 * 1024 ** 2 + 1)))
+    case("parser", "key_over_cap", lambda: rejected_parser(counts, snapshot([(b"u/" + b"a" * 4095, b"")])))
+    case("parser", "value_over_cap", lambda: rejected_parser(counts, snapshot([(b"u/a", b"A" * (1024 ** 2 + 1))])))
+    def boundary(key, value):
+        oracle = zeros(); oracle["protected_or_other"].update(before=1, removed=1)
+        check(counts(snapshot([(key, value)]), b"") == oracle)
+    case("parser", "key_4096", lambda: boundary(b"u/" + b"a" * 4094, b""))
+    case("parser", "value_1mib", lambda: boundary(b"u/a", b"A" * 1024 ** 2))
+    case("parser", "empty_value", lambda: boundary(b"u/a", b""))
+    case("parser", "empty_snapshot", lambda: check(counts(b"", b"") == zeros()))
+    def full_capture():
+        cap = 8 * 1024 ** 2
+        head = [snapshot([(b"u/0" + bytes([48 + i]), b"\x00" * 1024 ** 2)]) for i in range(3)]
+        overhead = len(snapshot([(b"u/03", b"")]))
+        tail_size = (cap - sum(map(len, head)) - overhead) // 2
+        raw = b"".join(head) + snapshot([(b"u/03", b"\x00" * tail_size)])
+        check(len(raw) == cap)
+        del head
+        oracle = zeros(); oracle["protected_or_other"].update(before=4, removed=4)
+        check(counts(raw, b"") == oracle)
+    case("parser", "input_8mib_exact", full_capture)
+    for name, value in (("zero", 0), ("one_million", 1_000_000)):
+        case("schema", name, lambda value=value: check(validate(
+            {label: {field: value for field in FIELDS} for label in LABELS}) is not None))
+    class IntSubclass(int): pass
+    class DictSubclass(dict): pass
+    bad_scalars = (("negative", -1), ("over_million", 1_000_001), ("bool", True),
+                   ("int_subclass", IntSubclass(1)), ("float", 1.0), ("string", "1"), ("null", None))
+    for name, scalar in bad_scalars:
+        def bad(scalar=scalar):
+            value = zeros(); value["http_rates"]["before"] = scalar
+            check(validate(value) is None)
+        case("schema", name, bad)
+    def wrong_keys(kind):
+        value = zeros()
+        if kind == "missing_category": del value["http_rates"]
+        elif kind == "unknown_category": value[SENTINELS[0]] = value.pop("http_rates")
+        elif kind == "missing_field": del value["http_rates"]["before"]
+        else: value["http_rates"][SENTINELS[1]] = value["http_rates"].pop("before")
+        check(validate(value) is None)
+    for name in ("missing_category", "unknown_category", "missing_field", "unknown_field"):
+        case("schema", name, lambda name=name: wrong_keys(name))
+    case("schema", "dict_subclass", lambda: check(validate(DictSubclass(zeros())) is None))
+    base = base_packet()
+    projected = dict(base, store_snapshot_counts=zeros())
+    case("packet", "valid_projection", lambda: check(consume(wire(projected)) == projected))
+    maximum = {"exception_class": "AssertionError",
+               "frames": [{"file": max(FILES, key=len), "line": 4096} for _ in range(8)],
+               "store_snapshot_counts": {label: {field: 1_000_000 for field in FIELDS} for label in LABELS}}
+    case("packet", "maximum_fixed_packet", lambda: check(len(wire(maximum)) <= 2048 and consume(wire(maximum)) == maximum))
+    def padded():
+        raw = wire(base).rstrip(b"\n")
+        check(consume(raw + b" " * (2048 - len(raw))) == base)
+        check(consume(raw + b" " * (2049 - len(raw))) is None)
+    case("packet", "2048_and_2049", padded)
+    case("packet", "unknown_root_fallback", lambda: check(consume(wire(dict(projected, private=SENTINELS[2]))) == base))
+    for name, old, new in (
+        ("duplicate_category", '"http_rates":', '"http_rates":{},"http_rates":'),
+        ("duplicate_field", '"before":0', '"before":0,"before":0'),
+        ("duplicate_root", '"exception_class":"AssertionError"', '"exception_class":"AssertionError","exception_class":"AssertionError"')):
+        raw = wire(projected).replace(old.encode(), new.encode(), 1)
+        case("packet", name, lambda raw=raw: check(consume(raw) == base))
+    for name, field, value in (("unknown_file", "file", SENTINELS[3]), ("bool_line", "line", True),
+                               ("zero_line", "line", 0), ("over_line", "line", 4097)):
+        def bad_frame(field=field, value=value):
+            packet = base_packet(); packet["frames"][0][field] = value
+            check(consume(wire(packet)) is None)
+        case("packet", name, bad_frame)
+    def extra_frame():
+        packet = base_packet(); packet["frames"][0]["private"] = SENTINELS[4]
+        check(consume(wire(packet)) is None)
+    case("packet", "unknown_frame_field", extra_frame)
+    case("packet", "unknown_class", lambda: check(consume(wire(dict(base, exception_class=SENTINELS[4]))) is None))
+    case("packet", "nine_frames", lambda: check(consume(wire(dict(base, frames=base["frames"] * 9))) is None))
+    case("packet", "wrong_class_no_projection", lambda: check(consume(wire(
+        dict(projected, exception_class="RuntimeError"))) == dict(base, exception_class="RuntimeError")))
+    for name, raw in (("invalid_utf8", b"\xff"), ("malformed_json", b"{"),
+                      ("deep_json", b"[" * 1000 + b"]" * 1000)):
+        case("packet", name, lambda raw=raw: check(consume(raw) is None))
+    for name, error_type in (("projection_memory_error", MemoryError), ("projection_keyboard_interrupt", KeyboardInterrupt)):
+        def packet_fallback(error_type=error_type):
+            original = packet_ns["snapshot_counts"]
+            def failed_projection(value): raise error_type()
+            packet_ns["snapshot_counts"] = failed_projection
+            try: check(consume(wire(projected)) == base)
+            finally: packet_ns["snapshot_counts"] = original
+        case("packet", name, packet_fallback)
+    def traced(error_type=AssertionError, depth=0):
+        space = {"Error": error_type, "MESSAGE": SENTINELS[4], "DEPTH": depth, "__builtins__": {}}
+        code = "def descend(n):\n    if n:\n        return descend(n-1)\n    raise Error(MESSAGE)\ndescend(DEPTH)\n"
+        try: exec(compile(code, str(trace_helper), "exec"), space)
+        except BaseException as error: return error
+        raise AssertionError()
+    def produced(error):
+        value = json.loads(producer(error)); clean(value)
+        return value
+    def producer_valid():
+        error = traced(); error.store_snapshot_counts = zeros()
+        packet = produced(error)
+        check(packet["store_snapshot_counts"] == zeros() and packet["frames"])
+        check(all(frame["file"] in FILES and type(frame["line"]) is int for frame in packet["frames"]))
+    case("producer", "genuine_bound_trace", producer_valid)
+    def producer_bad():
+        error = traced(); error.store_snapshot_counts = {SENTINELS[0]: SENTINELS[1]}
+        packet = produced(error)
+        check(set(packet) == {"exception_class", "frames"} and packet["frames"])
+    case("producer", "invalid_attachment_fallback", producer_bad)
+    case("producer", "missing_attachment_fallback", lambda: check(set(produced(traced())) == {"exception_class", "frames"}))
+    class AssertionSubclass(AssertionError): pass
+    for name, error_type in (("runtime_error", RuntimeError), ("assertion_subclass", AssertionSubclass)):
+        def no_projection(error_type=error_type):
+            error = traced(error_type); error.store_snapshot_counts = zeros()
+            check("store_snapshot_counts" not in produced(error))
+        case("producer", name, no_projection)
+    def many_frames():
+        error = traced(depth=80); error.store_snapshot_counts = zeros()
+        value = produced(error)
+        check(len(value["frames"]) == 8 and len(wire(value)) <= 2048)
+    case("producer", "examined64_retained8", many_frames)
+    for name, error_type in (("projection_memory_error", MemoryError), ("projection_keyboard_interrupt", KeyboardInterrupt)):
+        def producer_fallback(error_type=error_type):
+            original = producer.__globals__["snapshot_counts"]
+            def failed_projection(value): raise error_type()
+            producer.__globals__["snapshot_counts"] = failed_projection
+            try:
+                error = traced(); error.store_snapshot_counts = zeros()
+                packet = produced(error)
+                check(set(packet) == {"exception_class", "frames"} and packet["frames"])
+            finally: producer.__globals__["snapshot_counts"] = original
+        case("producer", name, producer_fallback)
+    def compare(left, right, parser=counts, error_type=AssertionError, expected_counts=True):
+        held, calls = error_type(MESSAGE), []
+        class Matrix:
+            @staticmethod
+            def require(ok, message):
+                calls.append(ok); check(message == MESSAGE)
+                if not ok: raise held
+        ns = {"matrix": Matrix, "before_refusal": left, "after_refusal": right,
+              "refusal_snapshot_counts": parser, "AssertionError": AssertionError,
+              "type": type, "BaseException": BaseException, "__builtins__": {}}
+        try: exec(equality_code, ns)
+        except BaseException as observed:
+            check(observed is held and observed.args == (MESSAGE,) and calls == [False])
+            check(hasattr(observed, "store_snapshot_counts") is expected_counts)
+            if expected_counts: clean(observed.store_snapshot_counts)
+            return observed
+        check(left == right and calls == [True])
+        return None
+    case("equality", "identical_success", lambda: check(compare(before, before) is None))
+    case("equality", "same_object_complete_change", lambda: check(compare(before, after).store_snapshot_counts == expected))
+    reordered = b"".join(reversed(before.splitlines(keepends=True)))
+    def row_reorder():
+        error = compare(before, reordered)
+        check(all(c["added"] == c["changed"] == c["removed"] == 0 for c in error.store_snapshot_counts.values()))
+    case("equality", "row_reorder_still_denied", row_reorder)
+    case("equality", "malformed_counts_same_error", lambda: compare(b"broken", after, expected_counts=False))
+    for name, error_type in (("value_error", ValueError), ("memory_error", MemoryError), ("keyboard_interrupt", KeyboardInterrupt)):
+        def fallback(error_type=error_type):
+            def failed_parser(left, right): raise error_type()
+            compare(before, after, parser=failed_parser, expected_counts=False)
+        case("equality", name, fallback)
+    case("equality", "subclass_excluded", lambda: compare(before, after, error_type=AssertionSubclass, expected_counts=False))
+    def privacy():
+        raw = snapshot([(b"users/" + SENTINELS[0].encode(), SENTINELS[1].encode() + SENTINELS[2].encode())])
+        clean(counts(raw, b""))
+        error = traced(); error.store_snapshot_counts = {SENTINELS[0]: SENTINELS[1]}
+        clean(consume(wire(produced(error))))
+        untrusted = dict(projected, private_uri=SENTINELS[2], private_path=SENTINELS[3], private_message=SENTINELS[4])
+        sanitized = consume(wire(untrusted))
+        check(sanitized == base); clean(sanitized)
+    case("privacy", "sentinels_and_hex_absent", privacy)
+    STAGE = "completed"
+
+signal.signal(signal.SIGALRM, alarm)
+signal.alarm(30)
+try: main()
+except Budget: STAGE = "budget"
+except Halt: STAGE = "source_refusal"
+except BaseException: STAGE = "internal_failure"
+finally: signal.alarm(0)
+elapsed = time.monotonic() - STARTED
+if EXPIRED or elapsed >= 30: STAGE = "budget"
+passed = sum(item["status"] == "pass" for item in CASES)
+groups = [{"name": name, "attempted": sum(c["group"] == name for c in CASES),
+           "passed": sum(c["group"] == name and c["status"] == "pass" for c in CASES),
+           "failed": sum(c["group"] == name and c["status"] == "fail" for c in CASES)}
+          for name in GROUPS]
+result = {"schema": "riauth.a09-snapshot-memory/v1", "stage": STAGE,
+          "attempted": len(CASES), "passed": passed, "failed": len(CASES) - passed,
+          "groups": groups, "cases": CASES, "source_sha256": OBSERVED,
+          "elapsed_seconds": elapsed, "budget_exhausted": EXPIRED,
+          "native_runtime": False, "shared_gate": "not_measured"}
+encoded = (json.dumps(result, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+exit_code = 0 if STAGE == "completed" and result["failed"] == 0 else 1
+if len(encoded) > 65536:
+    encoded = b'{"schema":"riauth.a09-snapshot-memory/v1","stage":"output_cap"}\n'
+    exit_code = 1
+try:
+    sys.stdout.buffer.write(encoded); sys.stdout.buffer.flush()
+except BaseException: exit_code = 70
+raise SystemExit(exit_code)
+```
+
+### Full future controller
+
+```python
+import hashlib, json, math, os, pathlib, re, selectors, signal, stat, subprocess, sys, time
+
+REPO = pathlib.Path("/Users/dominik/orca/projects/riAuth-public-preview-local-workflow-safety-wave27")
+REPORT = REPO / "docs/roadmap/local-wave30-a09-shared-users-refusal-plan.md"
+EVIDENCE = REPO / ".target-wave27/a09-snapshot-counts-memory-d00c968-wave30"
+PINS = [('helper', 'scripts/check-local-edition-transition-postgres.py', 26547, '4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa'), ('workflow', '.github/workflows/check-local-shared-handoff.yml', 82149, '226483dd9edcd5e566b6c5de9f7ab2a36ebdf0c0f204f8ec992645542a3f395f'), ('matrix', 'scripts/check-exact-edition-matrix.py', 18394, 'f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887'), ('gate', 'scripts/check-installed-release-gate.py', 22321, 'cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5'), ('encrypted', 'scripts/check-local-encrypted-edition-transition.py', 22045, '09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e'), ('spdx', 'scripts/spdx_sbom.py', 36727, 'ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c')]
+PAYLOAD_SHA = "1cd3442cb91d19de9c70134da763d072b9cc5ca317e2ed2bb633df2bb1c04181"
+GROUPS = ("source_binding", "counts", "parser", "schema", "packet", "producer", "equality", "privacy")
+STARTED = globals().get("_A09_ASSEMBLY_STARTED", time.monotonic())
+DEADLINE = STARTED + 35
+STOP = False
+CHILD = None
+CHILD_STARTED = None
+REAPED = False
+RAW_EXIT = None
+CAPS = {"stdout": 65536, "stderr": 8192}
+BUFFERS = {"stdout": bytearray(), "stderr": bytearray()}
+REASON = "none"
+READY = False
+OUTCOME_SAVED = False
+
+def signal_stop(signum, frame):
+    global STOP
+    STOP = True
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+
+def save(name, data):
+    if len(data) > 131072: raise ValueError()
+    fd = os.open(EVIDENCE / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "wb") as out:
+        out.write(data); out.flush(); os.fsync(out.fileno())
+
+def kill_owned():
+    if CHILD is None or REAPED: return
+    try:
+        # This Popen child has not been waited/reaped, so its PID cannot be reused.
+        if os.getpgid(CHILD.pid) != CHILD.pid: raise ValueError()
+        os.killpg(CHILD.pid, signal.SIGKILL)
+    except ProcessLookupError: pass
+
+def source_hashes():
+    result = {}
+    for name, relative, size, expected in PINS:
+        try:
+            fd = os.open(REPO / relative, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd, "rb") as incoming:
+                if not stat.S_ISREG(os.fstat(incoming.fileno()).st_mode): raise ValueError()
+                data = incoming.read(size + 1)
+            result[name] = hashlib.sha256(data).hexdigest() if len(data) == size else None
+        except Exception: result[name] = None
+    return result
+
+def prepare():
+    global READY, REASON
+    if sys.version_info < (3, 11): raise ValueError()
+    fd = os.open(REPORT, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as incoming:
+        if not stat.S_ISREG(os.fstat(incoming.fileno()).st_mode): raise ValueError()
+        archive = incoming.read(524289)
+    if len(archive) > 524288: raise ValueError()
+    section = archive.decode("utf-8").split("## Exact memory-validation design archive, 2026-10-03\n", 1)[1]
+    fence = chr(96) * 3
+    marker = "### Full future child payload\n\n" + fence + "python\n"
+    payload = section.split(marker, 1)[1].split("\n" + fence + "\n", 1)[0] + "\n"
+    # Executable integrity precedes launch; measured-source/result grading follows retention.
+    if hashlib.sha256(payload.encode()).hexdigest() != PAYLOAD_SHA: raise ValueError()
+    space = os.statvfs(REPO)
+    if space.f_bavail * space.f_frsize < 8 * 1024 ** 3:
+        REASON = "capacity_refusal"; raise ValueError()
+    if EVIDENCE.parent.is_symlink() or not EVIDENCE.parent.is_dir(): raise ValueError()
+    if STOP or DEADLINE - time.monotonic() < 30:
+        REASON = "setup_budget"; raise ValueError()
+    EVIDENCE.mkdir(mode=0o700, exist_ok=False)
+    READY = True
+    if stat.S_IMODE(EVIDENCE.stat().st_mode) != 0o700: raise ValueError()
+    return payload
+
+def capture(payload):
+    global CHILD, CHILD_STARTED, RAW_EXIT, REAPED, REASON
+    CHILD_STARTED = time.monotonic()
+    CHILD = subprocess.Popen([sys.executable, "-I", "-B", "-c", payload], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True,
+                             env={"LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin"})
+    child_deadline = min(DEADLINE, CHILD_STARTED + 30)
+    selector = selectors.DefaultSelector()
+    for name, stream in (("stdout", CHILD.stdout), ("stderr", CHILD.stderr)):
+        os.set_blocking(stream.fileno(), False)
+        selector.register(stream, selectors.EVENT_READ, name)
+    try:
+        while selector.get_map():
+            remaining = child_deadline - time.monotonic()
+            if STOP or remaining <= 0:
+                REASON = "interrupted" if STOP else "child_budget"
+                kill_owned(); break
+            for key, _ in selector.select(min(remaining, 0.05)):
+                name = key.data
+                block = os.read(key.fd, min(4096, CAPS[name] - len(BUFFERS[name]) + 1))
+                if not block:
+                    selector.unregister(key.fileobj)
+                elif len(BUFFERS[name]) + len(block) > CAPS[name]:
+                    BUFFERS[name].extend(block[:CAPS[name] - len(BUFFERS[name])])
+                    REASON = name + "_cap"; kill_owned(); break
+                else:
+                    BUFFERS[name].extend(block)
+            if REASON != "none": break
+        try:
+            RAW_EXIT = CHILD.wait(timeout=max(0.001, child_deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            REASON = "child_budget"; kill_owned()
+            RAW_EXIT = CHILD.wait(timeout=5)
+        REAPED = True
+    finally:
+        selector.close()
+
+def retain_outcome():
+    global OUTCOME_SAVED
+    # No result/schema/expected-source comparison precedes these exclusive fsynced files.
+    save("child-exit.json", encoded({"schema": "riauth.a09-memory-exit/v1", "exit_code": RAW_EXIT,
+                                    "owned_pid": CHILD.pid, "owned_reaped": REAPED, "stop_reason": REASON,
+                                    "stdout_bytes": len(BUFFERS["stdout"]), "stderr_bytes": len(BUFFERS["stderr"]),
+                                    "child_wall_seconds": time.monotonic() - CHILD_STARTED}))
+    save("child.json", bytes(BUFFERS["stdout"]))
+    save("child-stderr.bin", bytes(BUFFERS["stderr"]))
+    OUTCOME_SAVED = True
+
+def unique_pairs(items):
+    result = {}
+    for key, value in items:
+        if key in result: raise ValueError()
+        result[key] = value
+    return result
+
+def grade(actual_sources):
+    try:
+        value = json.loads(bytes(BUFFERS["stdout"]), object_pairs_hook=unique_pairs)
+        keys = {"schema", "stage", "attempted", "passed", "failed", "groups", "cases", "source_sha256",
+                "elapsed_seconds", "budget_exhausted", "native_runtime", "shared_gate"}
+        valid = type(value) is dict and set(value) == keys and value["schema"] == "riauth.a09-snapshot-memory/v1"
+        valid = valid and type(value["cases"]) is list and type(value["groups"]) is list
+        valid = valid and all(type(c) is dict and set(c) == {"group", "name", "status", "failure_class"}
+                              and type(c["group"]) is str and c["group"] in GROUPS
+                              and type(c["name"]) is str and re.fullmatch("[a-z0-9_]{1,64}", c["name"])
+                              and type(c["status"]) is str and c["status"] in ("pass", "fail")
+                              and type(c["failure_class"]) is str and c["failure_class"] in
+                              ("None", "AssertionError", "ValueError", "TypeError", "KeyError",
+                               "MemoryError", "KeyboardInterrupt", "Budget", "Other")
+                              for c in value["cases"])
+        valid = valid and len({(c["group"], c["name"]) for c in value["cases"]}) == len(value["cases"])
+        valid = valid and all(type(value[k]) is int and 0 <= value[k] <= 1000 for k in ("attempted", "passed", "failed"))
+        valid = valid and value["attempted"] == len(value["cases"])
+        valid = valid and value["passed"] == sum(c["status"] == "pass" for c in value["cases"])
+        valid = valid and value["failed"] == sum(c["status"] == "fail" for c in value["cases"])
+        computed_groups = [{"name": name, "attempted": sum(c["group"] == name for c in value["cases"]),
+                            "passed": sum(c["group"] == name and c["status"] == "pass" for c in value["cases"]),
+                            "failed": sum(c["group"] == name and c["status"] == "fail" for c in value["cases"])}
+                           for name in GROUPS] if valid else []
+        valid = valid and all(type(g) is dict and set(g) == {"name", "attempted", "passed", "failed"}
+                              and type(g["name"]) is str and g["name"] in GROUPS
+                              and all(type(g[k]) is int and 0 <= g[k] <= 1000
+                                      for k in ("attempted", "passed", "failed"))
+                              for g in value["groups"])
+        valid = valid and value["groups"] == computed_groups and all(g["attempted"] > 0 for g in computed_groups)
+        expected_sources = {name: digest for name, relative, size, digest in PINS}
+        valid = valid and value["source_sha256"] == expected_sources and actual_sources == expected_sources
+        valid = valid and value["stage"] == "completed" and value["failed"] == 0
+        valid = valid and type(value["elapsed_seconds"]) in (int, float) and math.isfinite(value["elapsed_seconds"])
+        valid = valid and 0 <= value["elapsed_seconds"] < 30 and value["budget_exhausted"] is False
+        valid = valid and value["native_runtime"] is False and value["shared_gate"] == "not_measured"
+        valid = valid and type(RAW_EXIT) is int and RAW_EXIT == 0 and REASON == "none" and not BUFFERS["stderr"]
+        return bool(valid)
+    except Exception: return False
+
+for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM): signal.signal(sig, signal_stop)
+signal.alarm(max(1, math.ceil(DEADLINE - time.monotonic())))
+setup_failed = False
+try:
+    capture(prepare())
+except BaseException:
+    setup_failed = True
+    if REASON == "none": REASON = "controller_failure"
+finally:
+    if CHILD is not None and not REAPED:
+        try:
+            kill_owned(); RAW_EXIT = CHILD.wait(timeout=5); REAPED = True
+        except BaseException: pass
+    if CHILD is not None:
+        for stream in (CHILD.stdout, CHILD.stderr):
+            if stream is not None: stream.close()
+
+accepted, grading = False, "setup_refusal"
+try:
+    if CHILD is not None and READY:
+        retain_outcome()
+        after_outcome_save = time.monotonic() - STARTED
+        actual_sources = source_hashes()
+        accepted = not setup_failed and REAPED and grade(actual_sources)
+        grading = "accepted_memory_only" if accepted else "outcome_refusal"
+        save("controller.json", encoded({"schema": "riauth.a09-memory-controller/v1", "grading": grading,
+                                        "actual_exit_code": RAW_EXIT, "owned_reaped": REAPED,
+                                        "after_outcome_save_seconds": after_outcome_save,
+                                        "source_sha256": actual_sources, "payload_sha256": PAYLOAD_SHA,
+                                        "memory_only": True, "shared_gate": "not_measured"}))
+    elif READY:
+        save("controller-setup-refusal.json", encoded({"schema": "riauth.a09-memory-setup/v1",
+                                                      "actual_exit_code": None, "stop_reason": REASON}))
+except BaseException:
+    accepted, grading = False, "receipt_failure"
+
+# This final clock is AFTER all receipt writes/fsyncs. No file writes follow it.
+final_clock = time.monotonic() - STARTED
+accepted = accepted and OUTCOME_SAVED and not STOP and final_clock < 35
+signal.alarm(0)
+print(json.dumps({"schema": "riauth.a09-memory-final/v1", "accepted_memory_only": accepted,
+                  "actual_exit_code": RAW_EXIT, "owned_reaped": REAPED, "outcome_saved": OUTCOME_SAVED,
+                  "final_postsave_seconds": final_clock, "grading": grading, "shared_gate": "not_measured"},
+                 sort_keys=True, separators=(",", ":")))
+raise SystemExit(0 if accepted else 1)
+```
+
+### Full future assembly command
+
+```bash
+python3 -I -B - <<'PY'
+import time
+_A09_ASSEMBLY_STARTED = time.monotonic()
+import hashlib, os, pathlib, stat
+report = pathlib.Path("/Users/dominik/orca/projects/riAuth-public-preview-local-workflow-safety-wave27/docs/roadmap/local-wave30-a09-shared-users-refusal-plan.md")
+try:
+    fd = os.open(report, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as incoming:
+        if not stat.S_ISREG(os.fstat(incoming.fileno()).st_mode): raise ValueError()
+        archive = incoming.read(524289)
+    if len(archive) > 524288: raise ValueError()
+    heading = "## Exact memory-validation design archive, 2026-10-03\n"
+    if archive.decode("utf-8").count(heading) != 1: raise ValueError()
+    section = archive.decode("utf-8").split(heading, 1)[1]
+    fence = chr(96) * 3
+    marker = "### Full future controller\n\n" + fence + "python\n"
+    if section.count(marker) != 1: raise ValueError()
+    controller = section.split(marker, 1)[1].split("\n" + fence + "\n", 1)[0] + "\n"
+    if hashlib.sha256(controller.encode()).hexdigest() != "278060f3de48a133b017cffc188bf9adea200337e901370e97a1f1764ded44ee": raise ValueError()
+except BaseException:
+    print('{"schema":"riauth.a09-memory-assembly/v1","stage":"assembly_refusal","shared_gate":"not_measured"}')
+    raise SystemExit(2)
+exec(compile(controller, "<a09-memory-controller>", "exec"),
+     {"__name__": "__main__", "_A09_ASSEMBLY_STARTED": _A09_ASSEMBLY_STARTED})
+PY
+```
+
+### Actual static checks for this append
+
+The archive build and independent re-extraction both exited 0. Only AST parsing,
+source/literal reads, hashes and byte comparisons ran. All three full archived
+payload/controller/assembly hashes matched their tables; the sole future Popen
+site was verified statically. The complete 96,475-byte 95965 prefix reversed
+exactly, and all six source files remained byte-identical to d00c968. The working
+change scope was this report alone (843 appended lines before this receipt).
+No case count or case result was produced.
+
+Actual commands python3 scripts/check-docs.py and git diff --check exited 0;
+the docs checker reported Markdown links and build-directory layout checked.
+The static source/archive inspection was executed through Python stdlib
+ast.parse/hashlib and Git object reads; candidate compile/exec/eval/import and
+runtime were absent. A final docs/whitespace/scope check will cover this receipt
+before the report-only commit. Runtime remains HELD pending root and independent
+review; no slot was taken or released and no hosted rerun was requested.
+
+
+### Root review of the first snapshot memory archive
+
+Root read the complete 24,494-byte child, 12,634-byte controller, 1,427-byte
+assembly command and all selected count/packet/bootstrap function bodies.
+The exact 50,525-byte author append from 1aed8a4 follows the complete published
+report. Comparing the prior author report to publication found only three
+inserted root sections; all original lines and all published bytes remain.
+An initial root contiguous-prefix assertion refused before writing because it
+did not account for those existing root sections. No source was changed.
+
+A pre-execution harness blocker was found: `failure_packet` calls builtin
+`all`, but the isolated builtin name tuple omits it. Evaluating the valid
+packet under that namespace would raise `NameError`; this is a source-derived
+finding, not an executed case result. Root reserved only an append-only design
+correction for that builtin plus the consequent archived hash substitutions.
+Independent review of the first archive remains separate. No child, case,
+traceback fixture, SQL, PostgreSQL helper, bootstrap or native command ran.
+The actual remote changed rows and cause remain unknown, and the shared gate
+remains open. Runtime remains held pending the corrected immutable archive,
+independent review and a separate release.
