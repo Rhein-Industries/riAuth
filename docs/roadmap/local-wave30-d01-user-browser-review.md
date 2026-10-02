@@ -834,3 +834,73 @@ an exact prefix; helper bytes/SHA-256 and the private metadata bytes/hash/mode
 are unchanged. The pending diff contains only this report, Markdown fences
 and final newline pass, and `git diff --check` passed. These checks repeated
 no native invocation or fixture activity.
+
+## Reserved full-version guard correction, source only — 2026-10-02
+
+Root reserved `wave30_D01_provider_full_version_guard` with source approval
+true and runtime release false after independently reading the retained
+1103-byte `0600` diagnostic. This phase implements only the exact full-text
+literal proposed above. It neither repeats that diagnostic nor releases or
+runs the confidential fixture. The first invocation's lost values and my
+initial reporting error remain preserved in their dated phase.
+
+Source commit **`16395f1be5a65b0d3cb0a1ad2d88daa0c17b7e1b`**, parent
+`5c7665c0e1cd9f23ad6c8d912cdc67ab27609a2c`, changes exactly one line in
+`scripts/d01-confidential-browser-demo.py:41`:
+
+```diff
+-OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026"
++OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)"
+```
+
+The resulting helper is mode `100644`, 651 lines / 29970 bytes, blob
+`37c9136850c2522da1eaa5f31f8b94e70acc0886`, SHA-256
+`f94af72ab613bc332ea684e5c4244c38d53c6540e1ea3d883938aecd265ec6fc`.
+It still requires exact complete version equality after `.strip()`. Its
+provider evidence field will record that full constant if a later separately
+released helper run succeeds. This source-only check claims no such run.
+
+Actual static checks passed before the source commit:
+
+- Starting helper bytes were exactly the `0b0d15c` source blob and SHA-256
+  recorded above. Diagnostic readback matched its 1103 bytes, `0600` mode,
+  SHA-256 `8f47d8fbd384ccf9746de938ef5c6e9cbba8d0e072484b443e2c2cbc4fa7439d`,
+  exit 0 and exact 63-byte stdout. These were reads of retained data.
+- Original and changed literal each occur once, at line 41. Replacing the
+  original with the new literal reconstructs the entire new source; reversing
+  that replacement reconstructs **all original `0b0d15c` bytes exactly**.
+- Both sources parsed with `ast.parse`. Replacing only the changed AST string
+  value with its prior value produced the exact original AST dump without
+  source-position attributes.
+- `compile(source, filename, "exec", dont_inherit=True)` succeeded in memory.
+  Its code object was not executed; the helper was not imported, and no bytecode
+  artifact was written.
+- Pending scope was exactly the helper path; the whole prior report remained
+  unchanged. `git diff --check` passed. The source commit contains only that
+  path, one insertion/one deletion; tracked state was clean after commit.
+
+The byte-reversal proof covers every other equality/path/hash/ASCII/length,
+sanitized-environment, timeout, native verification, browser-flow and cleanup
+guard: their source bytes did not change. No guard relaxation, provider switch,
+custom crypto, dependency or second hunk was introduced.
+
+This phase makes no new provider call, helper/maintenance/CLI/server execution,
+HTTP request, listener, browser/Driver/session interaction, Cargo/build/test or
+fixture acquisition/release. The prior disk sample remains a dated point
+observation; it was not refreshed or substituted for a future fresh launch
+check. The independent A09 Cargo owner is unaffected.
+
+Root must review/publish this source and separately approve any one new
+confidential fixture with a fresh disk sample above 8.5 GiB. Runtime remains
+held. Existing receipt/header/PAM/removal/audit and held Group/nonrenewed
+60-second/paused-I/O contracts, D01/D05 root-owned decisions and closed
+O06/I10/R05 rows remain unchanged. No guide/product/D05/test/config/state edit,
+main/push/status action, merge/reset, new worker/task/worktree/shell or other
+worker contact occurred. This evidence is an append to the existing report,
+committed separately from the source.
+
+Evidence-append verification passed: all 54467 bytes of the preceding report
+remain an exact prefix; committed source and retained diagnostic bytes/hash/mode
+are unchanged. Pending scope contains only this report, balanced Markdown
+fences and final newline pass, and `git diff --check` passed. No runtime was
+used for these document checks.
