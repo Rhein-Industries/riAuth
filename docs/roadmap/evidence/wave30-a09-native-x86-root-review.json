@@ -1,0 +1,335 @@
+{
+  "schema": "riauth.wave30.native-x86-root-review/v1",
+  "reviewed_utc": "2026-10-02T19:00:28.460814+00:00",
+  "run_id": 37046857550,
+  "job_id": 110970324302,
+  "conclusion": "success",
+  "workflow_source": "0d090169f20f61f7cb59b685dccb13203526539f",
+  "workflow_sha256": "62c378975021066d62d5b32d0eee2c87de8501d01ded1ae0fae8147e920e58d7",
+  "product_source": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+  "product_tree": "a627df2ce21a4d255b8c1914d4f543e32f40f4de",
+  "artifact": {
+    "id": 11246575279,
+    "name": "riauth-local-x86_64-37046857550-1",
+    "size_in_bytes": 52428080,
+    "digest": "sha256:7c1bcad0f78d90eb611ab76d67943a32a0d691cd5bbd9e5588512bdde635e2a0"
+  },
+  "outer_zip_digest_evidence": "GitHub API/upload reported; gh run download extracted members, root did not retain or hash outer ZIP",
+  "selected_platform": {
+    "architecture": "x86_64",
+    "elf_machine": 62,
+    "target": "x86_64-unknown-linux-gnu"
+  },
+  "runner": {
+    "arch": "X64",
+    "cpus": 4,
+    "environment": "github-hosted",
+    "label": "ubuntu-24.04",
+    "machine": "x86_64",
+    "memory_bytes": 16766414848,
+    "system": "Linux"
+  },
+  "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+  "products": [
+    {
+      "archive": "local-riauth-essentials-x86_64.tar.gz",
+      "archive_bytes": 14976946,
+      "archive_sha256": "975253463d65629c676e1b60a8dcf37b30977d313c7b7958af86c00884feffff",
+      "binary": "riauth",
+      "binary_bytes": 43213608,
+      "binary_sha256": "fd1f3d44a96608bb244b6ddf5e278859168b599a77a14027a4fee4e2cfade380",
+      "declared_build_features": [
+        "essentials"
+      ],
+      "edition": "essentials",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "archive": "local-riauth-platform-x86_64.tar.gz",
+      "archive_bytes": 19597581,
+      "archive_sha256": "2aa43e440dd0810d27c487ec8cabf6654782deecde7788f92ff1bffd2f5365a3",
+      "binary": "riauth",
+      "binary_bytes": 57221824,
+      "binary_sha256": "2081cc2441e4e592a80241f1720b194c23b1a4ccf4a04aa0985330d28f238e1b",
+      "declared_build_features": [
+        "essentials",
+        "platform"
+      ],
+      "edition": "platform",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "archive": "local-riauth-maintenance-essentials-x86_64.tar.gz",
+      "archive_bytes": 6419716,
+      "archive_sha256": "bbe16ce2c0579bd72f0f5b4df4b49bcf30b90b63d82443aa0c0b98dce3f4a178",
+      "binary": "riauth-maintenance",
+      "binary_bytes": 16534968,
+      "binary_sha256": "b3b4988b5eed0a647753be4a4c459e6ddcbf14e3bb7e85ce4bf1805c62a9e472",
+      "declared_build_features": [
+        "essentials"
+      ],
+      "edition": "essentials",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "archive": "local-riauth-maintenance-platform-x86_64.tar.gz",
+      "archive_bytes": 7350363,
+      "archive_sha256": "b911daf1c08515c4a7eb35454e5cb7672e6fd6c465c8183d84cc35ded6c0a9f7",
+      "binary": "riauth-maintenance",
+      "binary_bytes": 19029784,
+      "binary_sha256": "f95e1bd46cb08d35481c554747719bf4440c2e9fd8de8cd549712a8cab9aa5cd",
+      "declared_build_features": [
+        "essentials",
+        "platform"
+      ],
+      "edition": "platform",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "archive": "local-riauthctl-x86_64.tar.gz",
+      "archive_bytes": 3737340,
+      "archive_sha256": "e71303ba722e4e68f3f0f681a55671c73b55201d5dc63f35a2d8607342a73b71",
+      "binary": "riauthctl",
+      "binary_bytes": 10494624,
+      "binary_sha256": "b3544a747ee0421df5dd0c44a8befa949ac16e3108fbd4db65617ccb4eef2a05",
+      "declared_build_features": [],
+      "edition": "client",
+      "target": "x86_64-unknown-linux-gnu"
+    }
+  ],
+  "steps": [
+    {
+      "argv": [
+        "sudo",
+        "apt-get",
+        "update"
+      ],
+      "elapsed_seconds": 8.004,
+      "exit_code": 0,
+      "log_bytes": 2546,
+      "log_sha256": "8f24837195bec8f97997b19dac2682ef62dbc98a2999930b334ae1565a88d415",
+      "name": "apt-update",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "sudo",
+        "env",
+        "DEBIAN_FRONTEND=noninteractive",
+        "apt-get",
+        "install",
+        "-y",
+        "--no-install-recommends",
+        "ca-certificates",
+        "cmake",
+        "libssl-dev",
+        "clang",
+        "pkg-config"
+      ],
+      "elapsed_seconds": 10.073,
+      "exit_code": 0,
+      "log_bytes": 5333,
+      "log_sha256": "7a54ed21d9fcc9089a9b607dd3708c68fdcbc2f04d7541e5da0ca31746633613",
+      "name": "apt-install",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "dpkg-query",
+        "-W",
+        "ca-certificates",
+        "cmake",
+        "libssl-dev",
+        "clang",
+        "pkg-config"
+      ],
+      "elapsed_seconds": 2.011,
+      "exit_code": 0,
+      "log_bytes": 142,
+      "log_sha256": "d65c08105902f28a7071eb789f9badcb99a88a869d4762d2790eb0f25c3bce24",
+      "name": "native-dependency-versions",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "rustc",
+        "+1.98.1",
+        "--version"
+      ],
+      "elapsed_seconds": 2.002,
+      "exit_code": 0,
+      "log_bytes": 36,
+      "log_sha256": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376",
+      "name": "rustc-version",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "cat",
+        "/etc/os-release"
+      ],
+      "elapsed_seconds": 2.002,
+      "exit_code": 0,
+      "log_bytes": 400,
+      "log_sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763",
+      "name": "linux-baseline",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "cargo",
+        "+1.98.1",
+        "build",
+        "--release",
+        "--locked",
+        "--no-default-features",
+        "--features",
+        "essentials",
+        "--bins",
+        "--target",
+        "x86_64-unknown-linux-gnu"
+      ],
+      "elapsed_seconds": 720.55,
+      "exit_code": 0,
+      "log_bytes": 28384,
+      "log_sha256": "2f8412d433b4d25204017b3286e8e17cc2cdad4a7b435dbba8e68eb2944d587b",
+      "name": "build-essentials",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "cargo",
+        "+1.98.1",
+        "build",
+        "--release",
+        "--locked",
+        "--no-default-features",
+        "--features",
+        "platform",
+        "--bins",
+        "--target",
+        "x86_64-unknown-linux-gnu"
+      ],
+      "elapsed_seconds": 882.526,
+      "exit_code": 0,
+      "log_bytes": 17533,
+      "log_sha256": "ad0ff307cbfe80ae0450d1afe14424dceb528f4ff8348ddf30d895b3fd53297e",
+      "name": "build-platform",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "cargo",
+        "+1.98.1",
+        "build",
+        "--manifest-path",
+        "crates/riauthctl/Cargo.toml",
+        "--release",
+        "--locked",
+        "--no-default-features",
+        "--target",
+        "x86_64-unknown-linux-gnu"
+      ],
+      "elapsed_seconds": 140.072,
+      "exit_code": 0,
+      "log_bytes": 5282,
+      "log_sha256": "9e16ea966a2e03b6b45ec63714aadeb590321b09ffa6d4bf54890857b6e9ef84",
+      "name": "build-client",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "/home/runner/work/_temp/riauth-a09-37046857550-1/target/essentials/x86_64-unknown-linux-gnu/release/riauth",
+        "--json",
+        "capabilities"
+      ],
+      "elapsed_seconds": 2.002,
+      "exit_code": 0,
+      "log_bytes": 13182,
+      "log_sha256": "c7e45f085a61ad46a409c434f1f64ed59855d1061f7aeae113e37989c3f1c25a",
+      "name": "capabilities-essentials",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "/home/runner/work/_temp/riauth-a09-37046857550-1/target/platform/x86_64-unknown-linux-gnu/release/riauth",
+        "--json",
+        "capabilities"
+      ],
+      "elapsed_seconds": 2.003,
+      "exit_code": 0,
+      "log_bytes": 14615,
+      "log_sha256": "ea24a5ae2c9099e5cfd7ef588316f02fc1e7a55757efd0a4fe0d2b44d8252e88",
+      "name": "capabilities-platform",
+      "status": "passed"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/check-edition-artifacts.py",
+        "--essentials-archive",
+        "/home/runner/work/_temp/riauth-a09-37046857550-1/evidence/archives/local-riauth-essentials-x86_64.tar.gz",
+        "--platform-archive",
+        "/home/runner/work/_temp/riauth-a09-37046857550-1/evidence/archives/local-riauth-platform-x86_64.tar.gz",
+        "--essentials-maintenance-archive",
+        "/home/runner/work/_temp/riauth-a09-37046857550-1/evidence/archives/local-riauth-maintenance-essentials-x86_64.tar.gz",
+        "--platform-maintenance-archive",
+        "/home/runner/work/_temp/riauth-a09-37046857550-1/evidence/archives/local-riauth-maintenance-platform-x86_64.tar.gz",
+        "--riauthctl-archive",
+        "/home/runner/work/_temp/riauth-a09-37046857550-1/evidence/archives/local-riauthctl-x86_64.tar.gz"
+      ],
+      "elapsed_seconds": 4.005,
+      "exit_code": 0,
+      "log_bytes": 76,
+      "log_sha256": "d0b3f6ce4435ad1d80cdbdaff55477e24ce2942ac26d512761a27b598d49ef48",
+      "name": "focused-native-archive-smoke",
+      "status": "passed"
+    }
+  ],
+  "inputs": {
+    "Cargo.lock": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426",
+    "Cargo.toml": "58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8",
+    "LICENSE": "ef79ab7079893da02af81ebb8a57bec27dc7a601d505b228b1d5356a3aa5b1a9",
+    "THIRD_PARTY_NOTICES.md": "142c0e5150de9436513d9f6f215c5422b8a3af84d4eb7d0708f155e3e18fce05",
+    "crates/riauthctl/Cargo.lock": "2998555ddb2d00e8130a970fcacfed19dfee7a0b2e3305011ebd40746f67b4db",
+    "crates/riauthctl/Cargo.toml": "af385d4d989c53987396edfdfa684cd3902a603d1cf65dd31ac72da7f08de9ea",
+    "scripts/check-edition-artifacts.py": "2f477665ed584bc148fb230c0658f6d0cc66aceaa5af631c4dc467872fa9ecce"
+  },
+  "root_checks": {
+    "archive_sha_sizes": true,
+    "three_regular_tar_members_each": true,
+    "all_five_binary_sha_sizes_and_elf_62": true,
+    "source_license_notices_identity": true,
+    "all_seven_inputs_git_object_identity": true,
+    "all_eleven_log_exit_hashes": true,
+    "both_capability_envelopes_equal_recorded": true
+  },
+  "resource_sample_count": 918,
+  "minimum_free_bytes": {
+    "host_root": 88505176064,
+    "private": 88505176064,
+    "workspace": 88505176064
+  },
+  "maximum_sample_gap_seconds": 6.585916,
+  "cleanup_errors": [],
+  "native_archive_slice": "passed",
+  "official_release": false,
+  "shared_full_gate": "not_run",
+  "files": {
+    "evidence.json": {
+      "bytes": 60389,
+      "sha256": "1527aa7388a13554d3699f4869af12d7f91d3fbe1fe8ebf18e18b50c0c31b986"
+    },
+    "resources.jsonl": {
+      "bytes": 195534,
+      "sha256": "74606c2c2709d4a02664e7c66367acf9eb8b61898abb28e8d040c37f9f4937bc"
+    }
+  },
+  "root_binary_execution": false,
+  "limits": [
+    "no shared identity/authorization/config pass",
+    "no container/TLS/passkey/tenant/official release",
+    "source notices later found stale by CI, historical archives retained at exact source",
+    "sampling not hard quota; maximum gap recorded"
+  ]
+}
