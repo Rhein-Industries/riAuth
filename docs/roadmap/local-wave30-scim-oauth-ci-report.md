@@ -397,3 +397,41 @@ so it adds mainly a new `scim_oauth` test binary of about 200 MB.
 3. report the freed bytes and the new free space.
 
 Approval for any other set or wildcard is not implied.
+
+## Option B cleanup (root-approved), evidence only
+
+Root approved **Option B only**: exactly the 16 basenames listed in the
+inventory above. Root had independently rehashed, checked and live-tested them
+against manifest `b5fd6399c9fc1b2a47498eba342d58956aa8cf8e3bb3dff5e17d75e83831c113`.
+Its receipt is `planning/evidence/wave30-ci-scim-prune-review.json`
+(SHA-256 `4f42dd1b222652eca9c20ec94150acd5a0cefad8aac1efafe2afe267318440d7`).
+
+**Re-checks before removal.** Immediately before removal, each of the 16 files
+was checked against the manifest, which was still unchanged with
+SHA-256 `b5fd6399…` and permissions 0600:
+
+- its parent resolved exactly to this worktree's `target/wave27/debug/deps`;
+- it was a regular file, not a symlink, executable, with one link;
+- its size, mtime and SHA-256 equalled the manifest;
+- its fingerprint showed features without `fuzzing`;
+- `lsof` and `pgrep` showed no reference.
+
+All 16 passed, totalling 3,390,210,480 bytes.
+
+**Removal.** One `rm` with the 16 literal absolute paths exited 0. No safety
+check rejected it.
+
+**Result:**
+
+- all 16 files are gone, and the deps directory went from 2059 to 2043
+  entries;
+- shared free disk went from 8.04 GiB (8,427,928 KiB) to 11.19 GiB
+  (11,729,840 KiB), measured at 2026-10-02T14:21:24Z;
+- the manifest is kept unchanged.
+
+Nothing else was deleted: no wildcard, other cache, evidence, log, archive,
+source or other worktree's file.
+
+**Runtime is still held.** The cleanup approval does not authorize any test,
+build or run. The whole 24-test `scim_oauth` run waits for root's separate
+release after A09 remote run `37016520583` exits. No Cargo command has run.
