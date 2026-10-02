@@ -220,3 +220,380 @@ report fence/whitespace and new-file-only scope checks passed. Reviewed source
 pins and the entire prior I04 report remain exact. Staged `git diff --check`
 passes before the report-only commit. These checks supply no Docker/native
 runtime outcome or execution authorization.
+
+
+## Archive failure diagnosis — source-only reservation, 2026-10-02
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`; existing supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. Reservation
+`wave30_A09_container_archive_failure_source_diagnosis` authorizes this
+append-only diagnosis/design. It does not authorize a validator change or
+execution. Primary `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2` remains assigned.
+The original row in the planning snapshot still asks for produced/tested
+server, client, container and maintenance artifacts for explicitly supported
+Linux x86-64 and ARM64, with shared identity/authorization/configuration
+semantics. Its snapshot status is in_progress; no status change was made.
+
+**Concrete blocker:** immutable controller
+`56bd0829514ed8014cc9563fc7b0e727dba46d1d`,
+`scripts/check-local-container-cohort.py::Cohort.validate_image_tar`
+(929–996), rejects the selected Docker export's six legitimate legacy V1
+metadata blobs at `image_tar_unreferenced_member`. The source handles legacy
+`VERSION`/`json` only under non-blob layer directories. The smallest proposed
+correction is one strict expected-member derivation at this function's
+allowlist boundary, plus its pure serializer/derivation helper in the same
+script. No changes to builds, fixture, production, workflow or cleanup are
+proposed. This supersedes the earlier runtime-unknown/no-observed-blocker
+assessment for this concrete failure, while preserving that historical
+static review and its limitations verbatim.
+
+### Actual evidence read, with provenance and reached boundary
+
+Root's actual native x86 container run `37061329815`, job `111018425393`,
+used controller56bd and product
+`b619fe25269ccc150e473bbcde47cdb3623ef810`, tree
+`a627df2ce21a4d255b8c1914d4f543e32f40f4de`.
+I read the complete bounded public metadata bodies below, parsed their JSON,
+and independently rehashed these files and the outer ZIP. I did not open the
+ZIP, read image/layer payloads, extract a filesystem, read private rows or
+execute any controller/validator. The outer ZIP hash supplies retained-artifact
+identity, not an independent image-archive content verification.
+
+| Retained public file under `/tmp/riauth-wave30-container-37061329815` | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `artifact.zip` (root artifact11252311290; `riauth-local-container-x86_64-37061329815-1`) | 49206215 | `d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6` |
+| `container-cohort.json` | 16872 | `ab7c5ce7b87e672db255edc4393ccb27348cb777b14f5f7880f87a68a986ab7d` |
+| `launch.json` | 163 | `cf616ca243565a9e433e40fcfef3b61d80571c15b0e551a27121a8f94ecbb672` |
+| `resources.jsonl` | 158341 | `c778352aaf5dc0babdf08fada27f1af1bb2047eafe35a79c32025e4a099039ef` |
+| `essentials-image-inventory.json` | 3222 | `11f3352299d6715750b7f2547df31e0df85dc62f1e110b5c2cc5e4a7c9c57258` |
+| `essentials-small-metadata.json` | 17651 | `430471f20c63eb533003415c19c3d19c8f83b542af7acb75621cfe150040e5b4` |
+
+The controller's entire85922-byte script is byte-identical to the prior
+reviewed be22 source, SHA-256
+`0f499284f5a053026230586f936b0ba38e58898a4f8fe36885efd30161bbbcfa`.
+The receipt workflow hash is the prior reviewed
+`7a0b7fb12a6c2650a1a7413e856ed6a9053aed7f5e1f06c2172413c7fdf84302`.
+This is actual pinned-source reading, not reliance on the old hold.
+
+| Actual receipt step / boundary | Observed outcome |
+| --- | --- |
+| Build Essentials | exit0, 762.677seconds |
+| Build Platform | exit0, 972.371seconds |
+| Save Essentials | exit0, 17.976seconds |
+| Validate Essentials | `image_tar_unreferenced_member`, failed phase `images` |
+| Save Platform, remove/load/revalidate/inspect image product, UID/mount probes, E→P→E fixture | unreached |
+| Shared full gate | `not_run` |
+| Cleanup | `cleanup_errors=[]`; builder children removed; owned image inventory empty; pending/tracked containers/volumes empty; remaining owned CLI groups/containers/volumes0 |
+| Command cleanup proof in receipt | all54 recorded command children reaped and groups empty |
+
+Expected absence checks with exit1 are recorded as absence steps and do not
+contradict the successful build/save exits. `checks=[]` and `uid_probes=[]`.
+Launch free space was92410826752bytes at each recorded path. All888 resource
+samples were read; each category's observed minimum was85502218240bytes.
+JSONL gaps round to maximum2.0seconds; the receipt's unrounded maximum is
+2.0004333619999954seconds. These are observed samples, not a hard disk quota.
+The receipt marks the cohort local/not official release and explicitly
+retains the later-discovered stale b619 native notices limitation. Earlier
+native run37046857550 and its archive/root receipts remain separate evidence;
+this container failure does not inherit their smoke outcome as container proof.
+Root already released its runtime. This worker acquired/released no slot.
+
+### Immutable official exporter source and identity limit
+
+Read-only official GitHub API resolution returned annotated tag object
+`3bfe60f8c91fca3ea00d87273756372fae7e1f5d` for v28.0.4 and commit
+`6430e49a55babd9b8f4d08e70ecb2b68900770fe`. The API describes this tag as
+unsigned; no signature attestation is invented. Tag-path `save.go` was also
+fetched and matched the immutable commit's full bytes. [Official tag ref](https://api.github.com/repos/moby/moby/git/ref/tags/v28.0.4),
+[official tag object](https://api.github.com/repos/moby/moby/git/tags/3bfe60f8c91fca3ea00d87273756372fae7e1f5d).
+
+| Official file at commit6430e49 | Bytes / SHA-256 | Bodies read for this diagnosis |
+| --- | --- | --- |
+| `image/tarexport/save.go` | 17887 / `c0647f2f2678b8e17d287ad6c2f0af0317c4299903debab4d40f49d326aa4abd` | manifest construction246–257, saveImage412–499, saveConfigAndLayer502–610, saveConfig612–638; tag and commit byte comparison |
+| `image/v1/imagev1.go` | 3343 / `429b4af4df0599bdd04fb10e5c40160e69dc9d8d4283d5644ca92f68eae9f8a5` | CreateID42–69, including its top-level RawMessage map |
+| `image/image.go` | 8780 / `937db2805c103aa87cf820e742f25850c2c35dc328eaa202ebcbe9a23bb3da27` | V1Image31–82, Image embedding84–114 and RawJSON126–129 |
+| `image/rootfs.go` | 1702 / `74f0339a27b21bf775c9874e1bd3e788eb939a7c15a56b4ec56789809172b0cc` | complete54-line file, ChainID47–54 |
+| `layer/layer.go` | 6938 / `ac1abe2e3a1bc610d15d225b7db277504e7cdba33f82cb96525842a8c308bfef` | CreateChainID193–207 |
+| `api/types/container/config.go` | 4243 / `304609117ec70c5eacb643be06b961445192ab68101a3d412ca5d0366762bf1a` | complete73-line file, Config field order/defaults44–73 |
+
+Line numbers above are actual immutable raw-source numbers. The web text
+renderer elides some blank lines and reports different display numbers.
+Some large combined tool output was truncated; bounded subsequent reads
+covered the exact relevant spans before this body-coverage claim.
+
+The retained daemon metadata reports `ServerVersion=28.0.4`, linux/x86_64,
+Ubuntu24.04.5. It does **not** contain daemon GitCommit/build bytes; therefore
+this establishes official version-source compatibility, not proof that the
+selected daemon binary is built from commit6430e49. No daemon invocation was
+made to fill that limit.
+
+Moby creates a V1 object for each ordered DiffID, calculates its legacy ID,
+then serializes its metadata under the SHA-256 of those JSON bytes. The
+intermediate objects begin with epoch creation and a zero ContainerConfig;
+the final object uses the selected image's V1 fields. OS is assigned after
+CreateID for intermediate objects. These blobs are separate from the layer
+archives and OCI manifest. [Pinned exporter](https://github.com/moby/moby/blob/6430e49a55babd9b8f4d08e70ecb2b68900770fe/image/tarexport/save.go#L412-L499).
+
+CreateID clears `id`, serializes V1, adds `layer_id` and a prefixed parent
+through a sorted top-level RawMessage map, and hashes it. Nested ContainerConfig
+serialization remains in struct order. Intermediate OS must be absent from
+that pre-ID object; top OS is already present. [Pinned CreateID](https://github.com/moby/moby/blob/6430e49a55babd9b8f4d08e70ecb2b68900770fe/image/v1/imagev1.go#L42-L69),
+[pinned V1 fields](https://github.com/moby/moby/blob/6430e49a55babd9b8f4d08e70ecb2b68900770fe/image/image.go#L31-L82).
+
+ChainID starts with the first DiffID; each successor hashes the previous
+prefixed ChainID, one space and the next prefixed DiffID. [Pinned ChainID](https://github.com/moby/moby/blob/6430e49a55babd9b8f4d08e70ecb2b68900770fe/layer/layer.go#L193-L207).
+Config's mandatory zero-valued fields serialize even when omitted in the
+selected OCI config; optional ExposedPorts/ArgsEscaped have their declared
+positions. Map-valued Labels/Volumes/ExposedPorts require sorted keys, without
+recursively sorting the struct fields. [Pinned Config schema](https://github.com/moby/moby/blob/6430e49a55babd9b8f4d08e70ecb2b68900770fe/api/types/container/config.go#L44-L73).
+
+### Exact public metadata correspondence; no prospective validator run
+
+The inventory has20 entries: two directories and18 regular files. The selected
+config blob is `6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a`
+(3946bytes). The OCI manifest is
+`d2d43e3a3f2cacc1c7d5aa3d446d548f846f8e60beacbe1f1c8912ada2a75458`
+(1162bytes). It selects that config and the same six ordered uncompressed
+layers listed in `manifest.json` and config.rootfs.diff_ids. The OCI index,
+layout and repositories metadata account for the remaining ordinary metadata.
+
+The six extra blobs total3525bytes. Following their **observed** parent fields
+produces this base-to-top sequence; these legacy IDs were not independently
+recomputed by executing a proposed validator during this reservation.
+
+| Layer ordinal | Extra `blobs/sha256/` basename | Bytes | Observed V1 `id` |
+| --- | --- | ---: | --- |
+| 1 | `f2c95b27390582a885e249206a4731e5d6100ff9a77cd39d9bb0eeec3afd422c` | 401 | `985f6de088aa0092b0205cbd28cef38331ebd1200a372782562f92d2067463e1` |
+| 2 | `bfac4c35c38484d57b91e117ef48571d183808557de737290a2db1033a858be9` | 477 | `5123e9bebb510daa6215abe65735aa6ee7d86ce01421a1844cf59e123e75bbe0` |
+| 3 | `42e47bd0cf542b5dc4810ade3689b6809f7b6f2b7a0dd9421cf841a7fc70cc6a` | 477 | `df05de371732dc0b2dfa5b9bfe65cad8d95fdd6e88a1d945d5cfdf31bd08fde4` |
+| 4 | `403d14cad84ab235eb47caa1c6dc4633ed2666b726a8fcacf871de50f9bb72ff` | 477 | `ba8215617ef9b6c8bcfc3404cf3db67a3698faf6367064b1acedcbb7690d6394` |
+| 5 | `1de23d2d3e2ecafe29ef6e2cfbc28f43a2e220b87aa6fdd0aa2bbdf06da2cc24` | 477 | `94f0f9a780d06a31df8b14daf4c205026009a17655bc05e97ebb9aaf48aa652f` |
+| 6 | `e9c7179eb746fed1f7cd9b4a0111ac84b505bb79166553e1bbd3aa8f481b05b5` | 1216 | `fe9fd051b6d4fd29879e4da7d859543445e9108fb4eaaef0fbdb845f73f3b5d5` |
+
+Base has no parent; each successor names the preceding observed V1 ID.
+Intermediate schema is exactly `id,created,container_config,os`, plus parent
+for ordinals2–5. Top adds `config,architecture`, preserving the selected
+created timestamp `2026-10-02T20:46:21.377343067Z` and selected runtime config.
+All intermediate created values are epoch and OS is linux. Their17-field
+ContainerConfig has the declared zero values. No additional legacy fields
+are present. These public objects match the official exporter mechanism;
+shape/parent correspondence alone is insufficient to authorize extra blobs.
+
+### One prospective validator hunk and strict helper contract
+
+Design only, not implementation or runtime evidence. At the allowlist boundary
+before the existing non-blob legacy loop, add:
+
+```diff
++        if (self.receipt.get("daemon", {}).get("ServerVersion") == "28.0.4"
++                and all(re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", x) for x in layers)):
++            allowed |= self.expected_v28_legacy_members(
++                settings, layers, members, hashes, payloads, edition, allowed)
+         for layer in layers:
+```
+
+The new pure `expected_v28_legacy_members` would derive required paths and
+compare exact bytes rather than classify unknown candidates. It must not
+scan-and-allow every JSON blob, accept just an `id`/`parent` shape, or accept
+self-consistent metadata unrelated to the selected config/layers. Unsupported
+extra metadata retains the existing final refusal. This narrow profile is for
+the selected v28.0.4 linux/amd64 save and fixed b619 resource-only recipe, not
+a generic guarantee for all Docker/containerd exporters.
+
+Exact prospective helper design:
+
+1. Reuse the selected config already bound to `image` by its SHA-256. Require
+   its top-level key set to be exactly
+   `architecture,config,created,history,os,rootfs` for this profile, with
+   linux/amd64 and history a list. Require rootfs to have exactly `type` and
+   `diff_ids`, type `layers`, and a nonempty list of at most128 canonical
+   prefixed SHA-256 strings. Require the ordered `layers` names to equal
+   `blobs/sha256/` plus each corresponding DiffID. Require that each layer is
+   regular and its previously streamed content hash equals that DiffID. This
+   binds ChainID inputs to the actual selected layer bytes, not arbitrary
+   JSON claims. The128 limit is a proposed finite helper guard, not a new
+   observed test result; current export has six.
+2. Require the selected config's nine-field schema and typed values to match
+   the fixed recipe: User10001:10001, Cmd[serve], Entrypoint[riauth,--config,
+   /data/riauth.toml], WorkingDir/data, Volumes{/data:{}},
+   ExposedPorts{9000/tcp:{}}, the fixed PATH Env list, boolean ArgsEscaped=true,
+   and exactly the four source/revision/edition/owner labels. Bind SOURCE,
+   REPOSITORY, edition and owner to the current controller. Type-sensitive
+   compact sorted JSON comparison can reject `1` for `true`, null/map/list
+   substitutions and unknown fields; plain Python dict equality cannot.
+   Require edition essentials/platform and owner `a09-[0-9a-f]{32}`. This
+   confines all serialized values to the known ASCII profile; do not claim
+   an unreviewed general Python replacement for Go JSON/time marshaling.
+3. Require created to be canonical UTC RFC3339Nano: valid date/time, Z suffix,
+   optional1–9 fractional digits without trailing zero. Use existing datetime
+   for calendar validation, retaining all original fractional digits. Refuse
+   unsupported/malformed timestamp profiles rather than normalizing a value
+   silently. Other V1 fields are absent by the exact selected key set.
+4. Construct zero ContainerConfig in this pinned declaration order:
+   Hostname,Domainname,User,AttachStdin,AttachStdout,AttachStderr,Tty,OpenStdin,
+   StdinOnce,Env,Cmd,Image,Volumes,WorkingDir,Entrypoint,OnBuild,Labels.
+   Strings are empty, booleans false, slices/maps null. The runtime Config
+   uses those mandatory defaults overlaid with the selected typed config;
+   insert ExposedPorts after AttachStderr and ArgsEscaped after Cmd. Sort keys
+   only inside its map fields; retain the declared struct order. This finite
+   serialization has no floats, non-ASCII or HTML-sensitive values and uses
+   compact JSON with no newline. Correct default fields/order are required,
+   not merely semantic JSON equality.
+5. For each ordered DiffID, derive the ChainID from the selected chain. Set
+   the pre-ID V1 fields to created=epoch and zero ContainerConfig for all
+   intermediate objects; for the last, use selected created, zero
+   ContainerConfig, expanded runtime Config, architecture=amd64,os=linux.
+   Construct CreateID's top-level map of RawMessage-equivalent serialized
+   values, add `layer_id`=prefixed ChainID and, except at base,
+   `parent`=prefixed previous **computed** V1 ID. Sort only that top-level
+   map's keys. Hash those exact bytes to derive the expected legacy ID.
+6. Serialize the expected saved object in V1 struct order: id, optional
+   unprefixed parent, created, container_config, optional top config and
+   architecture, os. OS is inserted only after intermediate ID calculation;
+   the top already included it. Hash these exact metadata bytes to derive
+   the sole permitted `blobs/sha256/<hash>` member for this layer. Require
+   this path not already allowed/derived, to be an existing regular member,
+   with matching size, streamed hash and **exact payload bytes**. Require
+   payload available within the existing small-payload cap. Return exactly
+   these derived member names after the entire ordered chain passes.
+
+The decisive hash/allowlist portion, in prospective pseudocode, is:
+
+```python
+chain = None
+previous = None
+expected_members = set()
+for ordinal, diff_id in enumerate(selected_diff_ids):
+    self.check_budget()
+    chain = diff_id if chain is None else "sha256:" + digest(
+        (chain + " " + diff_id).encode("ascii"))
+    pre_id = intermediate_v1() if ordinal + 1 < len(selected_diff_ids) else top_v1()
+    id_map = dict(pre_id)
+    id_map["layer_id"] = chain
+    if previous is not None:
+        id_map["parent"] = "sha256:" + previous
+    legacy_id = digest(sorted_top_map_with_struct_ordered_values(id_map))
+    saved = ordered_v1_with_id_parent_and_os(pre_id, legacy_id, previous, "linux")
+    expected = compact_finite_go_v1_bytes(saved)
+    name = "blobs/sha256/" + digest(expected)
+    require(name not in expected_members and name not in ordinary_allowed
+            and name in members and members[name].isfile()
+            and members[name].size == len(expected)
+            and hashes.get(name) == digest(expected)
+            and payloads.get(name) == expected, "image_legacy_metadata_binding")
+    expected_members.add(name)
+    previous = legacy_id
+return expected_members
+```
+
+The exact prospective helper signature is
+`expected_v28_legacy_members(self, settings, layers, members, hashes, payloads,
+edition, ordinary_allowed)`. It receives the current ordinary allowlist without
+mutating it and returns only the verified expected metadata member set. Named
+serializer routines above describe the finite exact construction in steps2–6,
+not existing callable functions or executed implementation. No data-dependent
+JSON snippets may supply values/order for these routines. Generated exact-byte comparison also refuses duplicate JSON
+keys, unknown fields, extra whitespace or metadata reserialization instead
+of allowing a lossy parser to erase them. Intermediate/top schema and hashes
+are derived from selected config and layers, not from observed legacy IDs.
+
+Keep the existing final `set(hashes) <= allowed` and every existing
+`image_blob_digest` check unchanged. Retain archive compressed/expanded caps,
+streamed hashing/budget checks, path canonicalization, duplicate tar-member
+refusal, regular/directory restrictions, truncation/size checks, exact tag,
+config image identity, source/owner/edition identity, OCI index/manifest/layer
+binding, and existing non-blob legacy compatibility. Do not add a blanket
+allowance for `blobs/sha256/*`, arbitrary metadata JSON, parent directories,
+symlinks/hardlinks or extra image manifests. No extraction or Docker fallback.
+The required new metadata size/content checks are additive. Unrelated existing
+validator hardening is not reserved here.
+
+### Smallest build-free future validation seam — not run or released
+
+After root reserves/independently reviews the exact source hunk, a single
+bounded standard-library validation invocation can test only the corrected
+pure member validator against the retained Essentials archive
+`local-essentials-x86_64.docker.tar.gz`. Root must first identify its exact
+outer-ZIP member and pin its bytes/size/hash under the already verified
+artifact. The failed controller never reached the receipt's archive hash
+update; no inner archive hash is invented here. This audit did not open the
+outer ZIP or execute such a validator.
+
+Proposed one future entrypoint: `python3 <root-reviewed-build-free-driver.py>
+--controller-revision <corrected-full-pin> --retained-artifact
+/tmp/riauth-wave30-container-37061329815/artifact.zip --artifact-sha256
+d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6
+--selected-image sha256:6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a`.
+This is a design placeholder, not a created driver/current command or runtime
+reservation. Pinning/driver ownership/output path requires root approval.
+
+Driver scope would be AST-extracted definitions only, without controller
+main/import side effects, public config metadata and streamed opaque layer
+hashes; never iterate/extract layer filesystems. Use no Docker/native tools,
+network, build, daemon, listener, secrets or fixture. Prefer memory-backed
+synthetic metadata/member cases, no copied large archive. Bound one process to
+120seconds, existing2GiB compressed/expanded archive ceiling and8MiB metadata
+capture, fixed result codes and bounded0600 evidence. A proposed2GiB remaining
+margin above the existing8GiB floor must be freshly justified before any future
+invocation; no slot or threshold change is made in this audit.
+
+Required future cases in that one invocation:
+
+| Future case | Required outcome |
+| --- | --- |
+| Retained selected Essentials archive | strict validation succeeds, exactly six derived V1 blobs; no load/UID/fixture inference |
+| One extra correctly content-addressed JSON blob with plausible V1 shape | final no-extra refusal |
+| Metadata at a wrong digest path / altered payload under old path | digest/content binding refusal |
+| Rehash changed id, parent, created, os, top config or unknown field | expected-member/content refusal, even if internally self-consistent |
+| Reordered/mismatched DiffIDs/layers or metadata chain from another config | selected chain/config binding refusal |
+| Malformed/duplicate-key metadata, JSON scalar/list, bool-vs-number substitution | exact generated-byte/schema refusal |
+| Omit one expected blob, duplicate tar member, nonregular/path traversal member | required metadata/member refusal |
+| Existing wrong tag/config/OCI binding and cap/truncation negatives | existing refusal behavior preserved |
+
+Synthetic cases are definitions only; none was built, loaded or validated.
+An unexpected positive retained-archive failure must stop with a fixed public
+reason, preserving original evidence; no schema loosening, automatic repair,
+new image build or broad cohort rerun is implied.
+
+### Actual review checks and handoff limit
+
+Actual work: complete allowlisted public metadata JSON reading, outer/file
+SHA-256 identity checks, all54 step cleanup flags and888 resource sample
+summaries, immutable controller body/byte comparison, official read-only API
+and raw primary-source fetches, and source/schema reasoning. The web tool could
+not access the tag API; a bounded read-only standard-library request to the
+same official API succeeded. No authentication, image/layer download, private
+protocol output or daemon query was used. Read output initially exceeded the
+tool cap; subsequent bounded field/body reads covered the required material.
+The observed parent-chain table is metadata analysis, not a run of the proposed
+validator or proof of recomputed expected IDs.
+
+Recommendation: reserve the narrow strict metadata-binding correction for
+source review and then the single build-free retained-archive/negative seam.
+**Do not accept the failed cohort as passed.** No production defect, UID/CLI/
+fixture outcome or shared gate completion is established by this diagnosis.
+No whole A09/Linux ARM64/release/tenant completion claim is made. Original A09
+and O07 gates remain root-owned; I04's accepted DONE disposition and all prior
+PASS/failure receipts are untouched. The earlier Desktop UID failures remain
+failures, not repaired by the native-host export diagnosis. Source/license
+staleness already named in the actual receipt remains a separate limit.
+
+Only this report is appended. No source, workflow, helper, product, existing
+other report, private evidence, manifest or accepted/main file was edited.
+No validator/helper/native/Docker/Cargo/service/fixture/browser/desktop or slot
+operation, source alignment/reset/merge, deletion, worker contact/new task/
+worker/worktree/managed shell, status mutation or push occurred. The sole
+network operations were read-only official Moby source/API reads. Receipt,
+route-header, credential, PAM, Group and60-second contracts are unchanged.
+Static report checks and exact prefix/scope results are recorded below after
+completion; they cannot supply unperformed runtime evidence.
+
+Final actual checks for this appendix: `python3 scripts/check-docs.py` exited0;
+`git diff --check` passed; Markdown fences balanced and the prospective Python
+pseudocode parsed as an AST without execution/import. The controller AST/pin
+check passed. The original17994-byte report prefix (SHA-256
+`0e20c5083bbc8200b315eada712eccb59359aa14dde35bb06d4d141a4f3ec85c`)
+remains byte-exact. The only changed file is this reserved report; no source
+or runtime validation occurred. Final staged whitespace/scope checks are
+required before the report-only commit.

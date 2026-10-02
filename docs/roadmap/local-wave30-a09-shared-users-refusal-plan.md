@@ -707,3 +707,751 @@ Static checks actually completed in this diagnosis phase:
 ### Root review of snapshot diagnosis
 
 Root read the complete195-line `5c9776ed18a0148aa7bfb0c663fbe4f8cc7d0e3d` appendix and the exact retained failure boundary. The public user-create refusal passed; complete Store equality failed. The separately committed PostgreSQL rate writer supplies a source-backed distinction between HTTP bookkeeping and Core mutation rollback, without identifying the actual changed rows. Root reserves only an exact source-first diagnostic design for the existing full comparison: fixed collection/count projection propagated through both finite observer stages, no comparator exclusion or new request. Source ownership and any hosted repeat remain separately held. The report cherry-pick had an append conflict with root's prior receipt; concatenating the entire existing report and the exact195-line author appendix preserved both in full.
+
+## Exact snapshot-counts design archive, 2026-10-02
+
+Reservation: `wave30_A09_snapshot_counts_exact_design`. Project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`; A09 support, existing worktree
+`a1303b57-4a34-487e-9c63-a841f05b51a0`. This append is design only.
+Starting own HEAD is `5c9776ed18a0148aa7bfb0c663fbe4f8cc7d0e3d`. No source/workflow file was changed,
+no validation harness or proposed function was executed, and no runtime slot
+was taken or released. Remote container run `37061329815` owns the
+runtime lane; this design does not overlap it.
+
+The prospective two-file patch below applies against immutable
+`f7af6cc85b938738e6152b4b0e5109e36a3abdec`, whose helper/workflow are byte-identical to current own
+source and the preceding report's `d86d9a99...` / `5290d7a5...`
+pins. It leaves the complete snapshot byte comparator, actual public CLI
+4 / HTTP 403 / `access_denied` checks, all E-P-E checks and successful
+return data intact. There are no exclusions, new SQL, requests, retries,
+sleeps or clock/due-state writes. Actual changed rows and origin in hosted
+run `37060776569` remain UNKNOWN.
+
+### Exact prospective identities, not implemented bytes
+
+| Prospective source | Bytes | SHA-256 | Prospective Git blob |
+| --- | --- | --- | --- |
+| scripts/check-local-edition-transition-postgres.py | 26,547 | `4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa` | `af764b71b95f8ad4d5e1d9b26d094dfa2eaafe49` |
+| .github/workflows/check-local-shared-handoff.yml | 82,149 | `226483dd9edcd5e566b6c5de9f7ab2a36ebdf0c0f204f8ec992645542a3f395f` | `f63110098c13d717446a198c487c00678cfeb60a` |
+
+The helper patch is 3,516 bytes /
+SHA-256 `181f58bf3a54dc08b9161324f7047e709111e86f9b26d00a25310b55f1f3082a`; the workflow patch is
+7,647 bytes / SHA-256 `d58a77d3f4073a508de5eb2cbdf955fe468ce36ee0fac73cadd98798de52726a`.
+Each diff fence contains that exact UTF-8 patch, including its final newline.
+They are zero-context unified diffs, intended for later
+`git apply --unidiff-zero --check` against the exact baseline only.
+Neither git apply nor a source-file write was performed in this design phase.
+
+The prospective extracted inline controller is 66,841 bytes / SHA-256
+`bda0a0fa30db096d92404de22dd5193c91d111c3890e30fe43034405abdd2369`;
+its bootstrap string is 5,111 bytes / SHA-256
+`a8f7df1a172e1dc89672d2be54fa147eabf6a61864935e82fd86e2cf64839d33`.
+These are complete source-string identities, not executed controller/helper
+or produced runtime artifact identities.
+
+### Bounded parsing and fallback contract
+
+The new parser accepts only exact `bytes` captures. Each capture is
+bounded at 8 MiB before parsing; there are at most 1,000,000 unique rows per
+capture. Every row must end with LF and have exactly two canonical lowercase,
+even-length hex fields separated by `|`. Key hex is 2–8,192 bytes
+(1–4,096 decoded bytes); value hex is 0–2,097,152 bytes (at most 1 MiB decoded).
+Keys must be valid UTF-8, have a nonempty collection before `/`, have
+no NUL, and be unique. Blank, truncated, CRLF, odd/invalid/uppercase hex,
+extra separators, duplicate key, wrong input type or oversize input/key/value
+omits the optional diagnostic. Empty raw captures are supported by this pure
+parser; the unchanged live `refusal_rows` still requires a nonempty
+successful capture.
+
+Hex values are validated and retained only in memory as complete canonical
+hex, without decoding JSON or decrypting/normalizing stored values. Equality
+of canonical value hex is equality of the full encoded Store value. The
+original raw snapshot byte equality remains the authority: even a formatting
+difference that projects to zero row changes is still a failure. The parser
+neither serializes nor logs its internal keys/hex values.
+
+Six categories and five count fields are exactly the reviewed schema.
+`protected_or_other` counts every remaining Store row; an unknown
+Store collection is counted there and does not become a new public label.
+In contrast, any unknown/missing diagnostic category/field is invalid.
+Every count is an exact built-in integer (not bool/subclass/float/string),
+0–1,000,000. Consumers copy only the thirty accepted integers under fixed
+labels. No keys/digests/values, URI, subject, timestamps, private paths,
+arbitrary namespace names or raw error messages enter the optional packet.
+
+Only an exact built-in `AssertionError` from the full equality check
+gets an attempted attachment. Any parser/projection exception, including
+interrupt/memory failures during optional observation, leaves that same
+original error to be re-raised. Other assertions/subclasses receive no counts.
+The bootstrap independently validates the attachment before serialization,
+keeps its original fixed class/frames payload ready, and replaces it only if
+the projected packet is valid and <=2,048 bytes. Failure retains the original
+fixed packet and exception. Existing 64 examined / 8 trusted frame bounds,
+exclusive 0600/O_NOFOLLOW output creation and original re-raise stay intact.
+
+Controller reads at most 2,049 bytes after the existing regular-file/size
+check; >2,048 bytes is refused. A local JSON pairs hook detects duplicate keys
+anywhere in the packet without retaining their names in diagnostics. Duplicate
+or unknown keys, invalid optional counts, wrong exception class or a projection
+failure suppress only the optional counts when the original class/frames
+remain valid. The controller reconstructs that fixed base packet explicitly.
+Invalid/unreadable base JSON, invalid fixed frames/class or an oversized
+packet cannot safely yield a recovered base packet: original phase_exit and
+cleanup are preserved, and no unvalidated observation is published. The
+existing observer file and four-file upload allowlist do not change.
+
+Controller/global `read_json` is unchanged: this stricter, finite
+reader is isolated to the failure observer. The helper fixed import digest
+is prospectively updated to `4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa` only; the other four
+imports, product/artifact/build/validator roles, resource bounds, deadlines,
+ownership, retention and finalization logic remain byte-exact.
+
+### Exact zero-context helper patch
+
+```diff
+--- a/scripts/check-local-edition-transition-postgres.py
++++ b/scripts/check-local-edition-transition-postgres.py
+@@ -132,0 +133,60 @@
++
++
++def refusal_snapshot_counts(before, after):
++    labels = ("http_rates", "http_rate_expiry", "http_rate_count",
++              "maintenance_cursors", "maintenance_bounds", "protected_or_other")
++    fields = ("before", "after", "added", "changed", "removed")
++
++    def read(raw):
++        if type(raw) is not bytes or len(raw) > 8 * 1024 ** 2 or raw and not raw.endswith(b"\n"):
++            raise ValueError("refusal_snapshot_shape")
++        result, cursor = {}, 0
++        while cursor < len(raw):
++            end = raw.find(b"\n", cursor)
++            split = raw.find(b"|", cursor, end)
++            key_size = split - cursor
++            value_size = end - split - 1
++            if (end < 0 or split < 0 or not 2 <= key_size <= 8192 or key_size % 2
++                    or not 0 <= value_size <= 2 * 1024 ** 2 or value_size % 2
++                    or len(result) >= 1_000_000):
++                raise ValueError("refusal_snapshot_shape")
++            key_hex, value_hex = raw[cursor:split], raw[split + 1:end]
++            if re.fullmatch(rb"[0-9a-f]+", key_hex) is None or re.fullmatch(rb"[0-9a-f]*", value_hex) is None:
++                raise ValueError("refusal_snapshot_shape")
++            key = bytes.fromhex(key_hex.decode("ascii"))
++            key.decode("utf-8")
++            bucket, separator, _ = key.partition(b"/")
++            if not bucket or not separator or b"\x00" in key or key in result:
++                raise ValueError("refusal_snapshot_shape")
++            result[key] = value_hex
++            cursor = end + 1
++        return result
++
++    def category(key):
++        if key.startswith(b"http_rates/"):
++            return "http_rates"
++        if key.startswith(b"index_expiry_http_rates/"):
++            return "http_rate_expiry"
++        if key == b"index_counts/http_rates":
++            return "http_rate_count"
++        if key.startswith(b"maintenance_cursors/"):
++            return "maintenance_cursors"
++        if key.startswith(b"maintenance_bounds/"):
++            return "maintenance_bounds"
++        return "protected_or_other"
++
++    before_rows, after_rows = read(before), read(after)
++    result = {label: {field: 0 for field in fields} for label in labels}
++    for key, value in before_rows.items():
++        counts = result[category(key)]
++        counts["before"] += 1
++        if key not in after_rows:
++            counts["removed"] += 1
++        elif after_rows[key] != value:
++            counts["changed"] += 1
++    for key in after_rows:
++        counts = result[category(key)]
++        counts["after"] += 1
++        if key not in before_rows:
++            counts["added"] += 1
++    return result
+@@ -177,2 +237,11 @@
+-        matrix.require(refusal_rows() == before_refusal,
+-                       "refused user creation changed durable records")
++        after_refusal = refusal_rows()
++        try:
++            matrix.require(after_refusal == before_refusal,
++                           "refused user creation changed durable records")
++        except AssertionError as error:
++            if type(error) is AssertionError:
++                try:
++                    error.store_snapshot_counts = refusal_snapshot_counts(before_refusal, after_refusal)
++                except BaseException:
++                    pass  # Diagnostics must not replace the original complete-snapshot failure.
++            raise
+```
+
+### Exact zero-context workflow patch
+
+```diff
+--- a/.github/workflows/check-local-shared-handoff.yml
++++ b/.github/workflows/check-local-shared-handoff.yml
+@@ -239 +239 @@
+-              "check-local-edition-transition-postgres.py": "d86d9a99c9e09e29eb43af52f409332e11a70caaed90b5545bf132df1f2a1982",
++              "check-local-edition-transition-postgres.py": "4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa",
+@@ -314,0 +315,67 @@
++
++
++          def snapshot_counts(value):
++              labels = ("http_rates", "http_rate_expiry", "http_rate_count",
++                        "maintenance_cursors", "maintenance_bounds", "protected_or_other")
++              fields = ("before", "after", "added", "changed", "removed")
++              if (type(value) is not dict or len(value) != len(labels)
++                      or any(type(key) is not str for key in value) or set(value) != set(labels)):
++                  return None
++              result = {}
++              for label in labels:
++                  counts = value[label]
++                  if (type(counts) is not dict or len(counts) != len(fields)
++                          or any(type(key) is not str for key in counts) or set(counts) != set(fields)
++                          or any(type(counts[field]) is not int or not 0 <= counts[field] <= 1_000_000
++                                 for field in fields)):
++                      return None
++                  result[label] = {field: counts[field] for field in fields}
++              return result
++
++
++          def failure_packet(raw):
++              if type(raw) is not bytes or len(raw) > 2048:
++                  return None
++              duplicate = False
++
++              def pairs(items):
++                  nonlocal duplicate
++                  result = {}
++                  for key, value in items:
++                      if key in result:
++                          duplicate = True
++                      result[key] = value
++                  return result
++
++              try:
++                  value = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs)
++              except (UnicodeError, ValueError, RecursionError):
++                  return None
++              classes = {"AssertionError", "RuntimeError", "ValueError", "TypeError", "KeyError",
++                         "IndexError", "NameError", "ImportError", "ModuleNotFoundError", "OSError",
++                         "FileNotFoundError", "PermissionError", "SyntaxError", "SystemExit",
++                         "KeyboardInterrupt", "Other"}
++              base_keys = {"exception_class", "frames"}
++              if (type(value) is not dict or not base_keys <= set(value)
++                      or type(value["exception_class"]) is not str or value["exception_class"] not in classes
++                      or type(value["frames"]) is not list or len(value["frames"]) > 8
++                      or not all(type(frame) is dict and set(frame) == {"file", "line"}
++                                 and type(frame["file"]) is str
++                                 and frame["file"] in set(FIXED["imports"]) | {"bootstrap.py"}
++                                 and type(frame["line"]) is int and 1 <= frame["line"] <= 4096
++                                 for frame in value["frames"])):
++                  return None
++              result = {"exception_class": value["exception_class"],
++                        "frames": [{"file": frame["file"], "line": frame["line"]} for frame in value["frames"]]}
++              if duplicate or set(value) != base_keys | {"store_snapshot_counts"} or value["exception_class"] != "AssertionError":
++                  return result
++              try:
++                  counts = snapshot_counts(value["store_snapshot_counts"])
++                  if counts is not None:
++                      projected = dict(result, store_snapshot_counts=counts)
++                      payload = (json.dumps(projected, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
++                      if len(payload) <= 2048:
++                          result = projected
++              except BaseException:
++                  pass  # Retain only the original fixed class/frames if projection fails.
++              return result
+@@ -538,0 +606,18 @@
++          def snapshot_counts(value):
++              labels = ("http_rates", "http_rate_expiry", "http_rate_count",
++                        "maintenance_cursors", "maintenance_bounds", "protected_or_other")
++              fields = ("before", "after", "added", "changed", "removed")
++              if (type(value) is not dict or len(value) != len(labels)
++                      or any(type(key) is not str for key in value) or set(value) != set(labels)):
++                  return None
++              result = {}
++              for label in labels:
++                  counts = value[label]
++                  if (type(counts) is not dict or len(counts) != len(fields)
++                          or any(type(key) is not str for key in counts) or set(counts) != set(fields)
++                          or any(type(counts[field]) is not int or not 0 <= counts[field] <= 1_000_000
++                                 for field in fields)):
++                      return None
++                  result[label] = {field: counts[field] for field in fields}
++              return result
++
+@@ -562,0 +648,10 @@
++              if type(error) is AssertionError:
++                  try:
++                      counts = snapshot_counts(getattr(error, "store_snapshot_counts", None))
++                      if counts is not None:
++                          projected = dict(value, store_snapshot_counts=counts)
++                          optional = (json.dumps(projected, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
++                          if len(optional) <= 2048:
++                              payload = optional
++                  except BaseException:
++                      pass  # Keep the original fixed class/frames and original failure.
+@@ -971,12 +1066,5 @@
+-                          value = read_json(PRIVATE / "helper-failure-source.json", 2048)
+-                          classes = {"AssertionError", "RuntimeError", "ValueError", "TypeError", "KeyError",
+-                                     "IndexError", "NameError", "ImportError", "ModuleNotFoundError", "OSError",
+-                                     "FileNotFoundError", "PermissionError", "SyntaxError", "SystemExit",
+-                                     "KeyboardInterrupt", "Other"}
+-                          require(type(value) is dict and set(value) == {"exception_class", "frames"} and
+-                                  type(value["exception_class"]) is str and value["exception_class"] in classes and
+-                                  type(value["frames"]) is list and len(value["frames"]) <= 8 and
+-                                  all(type(frame) is dict and set(frame) == {"file", "line"} and
+-                                      type(frame["file"]) is str and frame["file"] in set(FIXED["imports"]) | {"bootstrap.py"} and
+-                                      type(frame["line"]) is int and 1 <= frame["line"] <= 4096
+-                                      for frame in value["frames"]), "helper_failure_source_shape")
++                          observer = PRIVATE / "helper-failure-source.json"
++                          require(regular(observer).st_size <= 2048, "json_size_limit")
++                          with observer.open("rb") as source:
++                              value = failure_packet(source.read(2049))
++                          require(value is not None, "helper_failure_source_shape")
+```
+
+### Complete new/changed executable function bodies
+
+These are lexical source segments from the in-memory candidate ASTs, not
+imports or executions. Nested functions are included in their full parent
+body. The identical validator appears twice in actual candidate source,
+once in the controller and once inside the bootstrap; its complete body is
+shown once below. No executable body is omitted from the changed-function
+inventory.
+
+#### Helper: refusal_snapshot_counts (including read/category)
+
+```python
+def refusal_snapshot_counts(before, after):
+    labels = ("http_rates", "http_rate_expiry", "http_rate_count",
+              "maintenance_cursors", "maintenance_bounds", "protected_or_other")
+    fields = ("before", "after", "added", "changed", "removed")
+
+    def read(raw):
+        if type(raw) is not bytes or len(raw) > 8 * 1024 ** 2 or raw and not raw.endswith(b"\n"):
+            raise ValueError("refusal_snapshot_shape")
+        result, cursor = {}, 0
+        while cursor < len(raw):
+            end = raw.find(b"\n", cursor)
+            split = raw.find(b"|", cursor, end)
+            key_size = split - cursor
+            value_size = end - split - 1
+            if (end < 0 or split < 0 or not 2 <= key_size <= 8192 or key_size % 2
+                    or not 0 <= value_size <= 2 * 1024 ** 2 or value_size % 2
+                    or len(result) >= 1_000_000):
+                raise ValueError("refusal_snapshot_shape")
+            key_hex, value_hex = raw[cursor:split], raw[split + 1:end]
+            if re.fullmatch(rb"[0-9a-f]+", key_hex) is None or re.fullmatch(rb"[0-9a-f]*", value_hex) is None:
+                raise ValueError("refusal_snapshot_shape")
+            key = bytes.fromhex(key_hex.decode("ascii"))
+            key.decode("utf-8")
+            bucket, separator, _ = key.partition(b"/")
+            if not bucket or not separator or b"\x00" in key or key in result:
+                raise ValueError("refusal_snapshot_shape")
+            result[key] = value_hex
+            cursor = end + 1
+        return result
+
+    def category(key):
+        if key.startswith(b"http_rates/"):
+            return "http_rates"
+        if key.startswith(b"index_expiry_http_rates/"):
+            return "http_rate_expiry"
+        if key == b"index_counts/http_rates":
+            return "http_rate_count"
+        if key.startswith(b"maintenance_cursors/"):
+            return "maintenance_cursors"
+        if key.startswith(b"maintenance_bounds/"):
+            return "maintenance_bounds"
+        return "protected_or_other"
+
+    before_rows, after_rows = read(before), read(after)
+    result = {label: {field: 0 for field in fields} for label in labels}
+    for key, value in before_rows.items():
+        counts = result[category(key)]
+        counts["before"] += 1
+        if key not in after_rows:
+            counts["removed"] += 1
+        elif after_rows[key] != value:
+            counts["changed"] += 1
+    for key in after_rows:
+        counts = result[category(key)]
+        counts["after"] += 1
+        if key not in before_rows:
+            counts["added"] += 1
+    return result
+```
+
+#### Helper: complete shared_probe
+
+```python
+def shared_probe(server, config, base, scratch, revoked_token=None):
+    session = scratch / f"delegate-{time.monotonic_ns()}.json"
+    admin = scratch / f"admin-{time.monotonic_ns()}.json"
+    with gate.serving(server, config, base, scratch / f"shared-{time.monotonic_ns()}.log"):
+        if revoked_token is not None:
+            matrix.require(authenticated_status(base, "/api/me", revoked_token) == 401,
+                           "previously logged-out session became valid")
+        gate.remote(server, base, session, "login", "delegate", "--password-stdin",
+                    input="q08-delegate-disposable-password\n")
+        me = gate.remote(server, base, session, "whoami")
+        matrix.require(me["user"]["username"] == "delegate" and not me["user"]["admin"],
+                       "ordinary credential did not identify the same non-admin user")
+        token = json.loads(session.read_text())["token"]
+        matrix.require(authenticated_status(base, "/api/audit?limit=1", token) == 200,
+                       "active auditor grant stopped authorizing audit read")
+        # Collection reads filter visible users; creation is the administration boundary.
+        connection = config.parent / tomllib.loads(config.read_text())["postgres"]["connection_file"]
+        target = re.fullmatch(r"host=127\.0\.0\.1 port=([0-9]+) dbname=riauth_transition "
+                              r"user=riauth_test sslmode=disable", connection.read_text().strip())
+        matrix.require(target is not None and 0 < int(target[1]) <= 65535,
+                       "unexpected user-create refusal snapshot target")
+
+        def refusal_rows():
+            result = subprocess.run([
+                "psql", "-h", "127.0.0.1", "-p", target[1], "-U", "riauth_test", "-d", "riauth_transition",
+                "-X", "--no-password", "-v", "ON_ERROR_STOP=1", "-At", "-F", "|", "-c",
+                "SELECT encode(key,'hex'),encode(value,'hex') FROM riauth_store.records_v1 ORDER BY key",
+            ], capture_output=True, timeout=5)
+            matrix.require(result.returncode == 0 and result.stdout,
+                           "full user-create refusal snapshot unavailable")
+            return result.stdout
+
+        revision = gate.remote(server, base, session, "revision")["revision"]
+        before_refusal = refusal_rows()
+        denied = gate.remote(server, base, session, "--if-revision", revision,
+                             "--idempotency-key", os.urandom(16).hex(),
+                             "user", "create", "shared-refused-user", "--password-stdin",
+                             input="q08-refused-disposable-password\n", expected=4)
+        matrix.require(denied["error"]["http_status"] == 403
+                       and denied["error"]["code"] == "access_denied"
+                       and denied["exit_code"] == 4,
+                       "ordinary auditor gained user administration")
+        after_refusal = refusal_rows()
+        try:
+            matrix.require(after_refusal == before_refusal,
+                           "refused user creation changed durable records")
+        except AssertionError as error:
+            if type(error) is AssertionError:
+                try:
+                    error.store_snapshot_counts = refusal_snapshot_counts(before_refusal, after_refusal)
+                except BaseException:
+                    pass  # Diagnostics must not replace the original complete-snapshot failure.
+            raise
+        time.sleep(0.2)
+        again = gate.remote(server, base, session, "whoami")
+        matrix.require(again["expires_at"] == me["expires_at"], "session expiry was renewed")
+        gate.remote(server, base, session, "logout")
+        matrix.require(authenticated_status(base, "/api/me", token) == 401,
+                       "logout failed to revoke the session")
+        gate.remote(server, base, admin, "login", "admin", "--password-stdin",
+                    input="q08-disposable-password\n")
+        grants = gate.remote(server, base, admin, "grants", "get", "delegate")
+        matrix.require(grants["grants"] == [{"role": "auditor", "scope": "audit/events",
+                                            "target_id": "events"}], "auditor grant changed")
+        group = gate.remote(server, base, admin, "get", "group", "shared-fixture")
+        matrix.require(me["groups"], "ordinary membership missing")
+        gate.remote(server, base, admin, "logout")
+        return {"user": me["user"], "groups": me["groups"], "group": group,
+                "grants": grants, "audit_status": 200, "users_status": 403}, token
+```
+
+#### Inline controller AND bootstrap: snapshot_counts (identical complete body)
+
+```python
+def snapshot_counts(value):
+    labels = ("http_rates", "http_rate_expiry", "http_rate_count",
+              "maintenance_cursors", "maintenance_bounds", "protected_or_other")
+    fields = ("before", "after", "added", "changed", "removed")
+    if (type(value) is not dict or len(value) != len(labels)
+            or any(type(key) is not str for key in value) or set(value) != set(labels)):
+        return None
+    result = {}
+    for label in labels:
+        counts = value[label]
+        if (type(counts) is not dict or len(counts) != len(fields)
+                or any(type(key) is not str for key in counts) or set(counts) != set(fields)
+                or any(type(counts[field]) is not int or not 0 <= counts[field] <= 1_000_000
+                       for field in fields)):
+            return None
+        result[label] = {field: counts[field] for field in fields}
+    return result
+```
+
+#### Inline controller: failure_packet (including pairs)
+
+```python
+def failure_packet(raw):
+    if type(raw) is not bytes or len(raw) > 2048:
+        return None
+    duplicate = False
+
+    def pairs(items):
+        nonlocal duplicate
+        result = {}
+        for key, value in items:
+            if key in result:
+                duplicate = True
+            result[key] = value
+        return result
+
+    try:
+        value = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs)
+    except (UnicodeError, ValueError, RecursionError):
+        return None
+    classes = {"AssertionError", "RuntimeError", "ValueError", "TypeError", "KeyError",
+               "IndexError", "NameError", "ImportError", "ModuleNotFoundError", "OSError",
+               "FileNotFoundError", "PermissionError", "SyntaxError", "SystemExit",
+               "KeyboardInterrupt", "Other"}
+    base_keys = {"exception_class", "frames"}
+    if (type(value) is not dict or not base_keys <= set(value)
+            or type(value["exception_class"]) is not str or value["exception_class"] not in classes
+            or type(value["frames"]) is not list or len(value["frames"]) > 8
+            or not all(type(frame) is dict and set(frame) == {"file", "line"}
+                       and type(frame["file"]) is str
+                       and frame["file"] in set(FIXED["imports"]) | {"bootstrap.py"}
+                       and type(frame["line"]) is int and 1 <= frame["line"] <= 4096
+                       for frame in value["frames"])):
+        return None
+    result = {"exception_class": value["exception_class"],
+              "frames": [{"file": frame["file"], "line": frame["line"]} for frame in value["frames"]]}
+    if duplicate or set(value) != base_keys | {"store_snapshot_counts"} or value["exception_class"] != "AssertionError":
+        return result
+    try:
+        counts = snapshot_counts(value["store_snapshot_counts"])
+        if counts is not None:
+            projected = dict(result, store_snapshot_counts=counts)
+            payload = (json.dumps(projected, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+            if len(payload) <= 2048:
+                result = projected
+    except BaseException:
+        pass  # Retain only the original fixed class/frames if projection fails.
+    return result
+```
+
+#### Bootstrap: complete failure_source
+
+```python
+def failure_source(error):
+    names = ("check-local-edition-transition-postgres.py", "check-exact-edition-matrix.py",
+             "check-installed-release-gate.py", "check-local-encrypted-edition-transition.py",
+             "spdx_sbom.py")
+    trusted = {str(root / "bootstrap.py"): "bootstrap.py",
+               str(helper): "check-local-edition-transition-postgres.py"}
+    trusted.update({str(helper.resolve().parent / name): name for name in names})
+    classes = {AssertionError: "AssertionError", RuntimeError: "RuntimeError",
+               ValueError: "ValueError", TypeError: "TypeError", KeyError: "KeyError",
+               IndexError: "IndexError", NameError: "NameError", ImportError: "ImportError",
+               ModuleNotFoundError: "ModuleNotFoundError", OSError: "OSError",
+               FileNotFoundError: "FileNotFoundError", PermissionError: "PermissionError",
+               SyntaxError: "SyntaxError", SystemExit: "SystemExit",
+               KeyboardInterrupt: "KeyboardInterrupt"}
+    frames, examined, tb = [], 0, error.__traceback__
+    while tb is not None and examined < 64:
+        name = trusted.get(tb.tb_frame.f_code.co_filename)
+        line = tb.tb_lineno
+        if name is not None and type(line) is int and 1 <= line <= 4096:
+            frames.append({"file": name, "line": line})
+            frames = frames[-8:]
+        tb, examined = tb.tb_next, examined + 1
+    value = {"exception_class": classes.get(type(error), "Other"), "frames": frames}
+    payload = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+    if type(error) is AssertionError:
+        try:
+            counts = snapshot_counts(getattr(error, "store_snapshot_counts", None))
+            if counts is not None:
+                projected = dict(value, store_snapshot_counts=counts)
+                optional = (json.dumps(projected, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+                if len(optional) <= 2048:
+                    payload = optional
+        except BaseException:
+            pass  # Keep the original fixed class/frames and original failure.
+    if len(payload) <= 2048:
+        fd = os.open(private / "helper-failure-source.json",
+                     os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "wb") as out:
+            out.write(payload)
+```
+
+#### Inline controller: complete Controller.helper
+
+```python
+def helper(self, installed, env):
+        self.guard()
+        require(self.deadline - time.monotonic() >= 660, "full_helper_budget_unavailable")
+        bootstrap = ROOT / "bootstrap.py"
+        with bootstrap.open("x") as out:
+            out.write(BOOTSTRAP)
+        bootstrap.chmod(0o600)
+        env["A09_ROOT"] = str(ROOT)
+        helper = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "scripts" / HELPER
+        try:
+            self.command("focused-shared-helper",
+                         [sys.executable, "-I", "-B", str(bootstrap), str(helper), str(installed),
+                          FIXED["imports"][HELPER], FIXED["product_sha"]], 600, env)
+        except Refusal:
+            try:
+                observer = PRIVATE / "helper-failure-source.json"
+                require(regular(observer).st_size <= 2048, "json_size_limit")
+                with observer.open("rb") as source:
+                    value = failure_packet(source.read(2049))
+                require(value is not None, "helper_failure_source_shape")
+                self.data["helper_failure_source"] = value
+                self.save()
+            except Exception:
+                pass  # Missing or malformed diagnostics preserve phase_exit and cleanup.
+            raise
+        report = read_json(PRIVATE / "helper.json", 64 * 1024)
+        booleans = ("other_client_refused", "issuer_and_authentication_preserved", "all_effective_rates_preserved",
+                    "active_capabilities_switched", "edition_and_version_metadata_coordinated")
+        literals = {"schema": "riauth.local-native-postgres-transition/v1", "release_gate_result": False,
+                    "architecture": "linux/aarch64", "backend": "postgresql", "agreement_format": 3,
+                    "source_revision": FIXED["product_sha"], "validator_sha256": FIXED["imports"][HELPER],
+                    "shared_configuration_refusals": ["authentication", "general_rate"],
+                    "shared_identity_authorization_sample": "passed", "full_shared_gate": "not_certified",
+                    "editions": ["essentials", "platform", "essentials"]}
+        counts = ("baseline_rows", "upgrade_preserved_rows", "downgrade_preserved_rows")
+        expected_keys = set(literals) | set(booleans) | set(counts) | {"postgres_version", "binary_sha256", "shared_sample_sha256"}
+        require(set(report) == expected_keys and all(report.get(key) == value and type(report[key]) is type(value)
+                                                   for key, value in literals.items()), "helper_report_literals")
+        require(all(report[key] is True for key in booleans) and
+                all(type(report[key]) is int and report[key] > 0 for key in counts) and
+                report["baseline_rows"] == report["upgrade_preserved_rows"] and
+                report["downgrade_preserved_rows"] >= report["baseline_rows"] and
+                isinstance(report["shared_sample_sha256"], str) and
+                re.fullmatch("[0-9a-f]{64}", report["shared_sample_sha256"]) is not None, "helper_report_assertions")
+        binary_hashes = {edition: {product["binary"]: product["binary_sha256"] for product in FIXED["products"]
+                                  if product["edition"] == edition}
+                         for edition in ("essentials", "platform")}
+        require(report["binary_sha256"] == binary_hashes, "helper_binary_hashes")
+        require(type(report["postgres_version"]) is str and
+                report["postgres_version"] == (PRIVATE / "postgres-version-psql.stdout").read_text().strip(),
+                "helper_postgres_version")
+        sanitized = {key: report[key] for key in sorted(expected_keys - {"postgres_version"})}
+        sanitized["postgres_version"] = self.data["postgres_versions"]["psql"]["version"]
+        sanitized["raw_postgres_version_output_sha256"] = self.data["postgres_versions"]["psql"]["output_sha256"]
+        sanitized["helper_evidence_sha256"] = digest(PRIVATE / "helper.json")
+        atomic(PUBLIC / "helper-redacted.json", sanitized)
+        for name, expected in FIXED["imports"].items():
+            self.guard()
+            path = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "scripts" / name
+            regular(path)
+            require(digest(path) == expected, "validator_import_changed_during_helper")
+        self.data["sample_result"] = "passed"
+        self.save()
+```
+
+
+### Proposed one stdlib, synthetic-only memory validation envelope
+
+This is a proposed later reservation, NOT an executed harness or runtime pass.
+One isolated Python 3.11+ process, using only ast/copy/json/re/hashlib/difflib
+and inert pathlib paths, receives the immutable baseline and candidate text
+plus both archived patches. Use -I -B; no candidate module/helper/bootstrap
+import, module top-level evaluation, sys.argv entry point or Controller
+construction. An outer 30-second timeout and one fixed pass are proposed;
+no automatic retry. Synthetic captures together should peak below 32 MiB;
+reserve a conservative 128 MiB process envelope for source/AST/stdlib objects,
+but actual process memory/time has not been measured.
+
+Static phase of that future envelope: verify the exact identities above,
+apply/reverse both zero-context patches entirely in memory, and compare full
+bytes and normalized ASTs to the baseline. Reject every changed protected
+body/map entry. A whole helper/workflow compile or import is not needed.
+
+Dynamic phase, only if root separately authorizes it:
+
+* Extract only refusal_snapshot_counts from the helper AST, and only the
+  pure snapshot_counts/failure_packet definitions from the controller AST.
+  Execute those isolated definitions with explicit stdlib globals (re/json
+  and the fixed import-name map); imports, source load(), subprocess, filesystem,
+  environment and networking globals are absent. Compare the bootstrap and
+  controller validator ASTs exactly before using the one definition.
+* For producer fallback, extract only failure_source's in-memory prefix
+  ending before its file-write conditional; add a return of payload to that
+  synthetic AST copy. Supply inert root/helper paths and trusted filename
+  fixtures. No os/open/write block, runpy, tempfile adapter or bootstrap
+  module is executed. This measures serialization/fallback, not exclusive-file
+  creation, native cleanup or the hosted gate.
+* For same-error preservation, extract just the new equality try/except
+  statement from shared_probe, supplying fixed matrix.require and parser
+  stubs plus synthetic before/after bytes. Assert identity of the raised
+  original AssertionError, unchanged message, no counts on subclasses,
+  and fallback when the parser raises ValueError/MemoryError/KeyboardInterrupt.
+  Do not execute the surrounding probe, CLI calls, captures or sleep.
+
+Minimum meaningful synthetic cases and independently specified expectations:
+
+| Area | Inputs / required observation |
+| --- | --- |
+| Counts | Six baseline keys, one per category, all value A. After: each retained key changes to B except protected key removed/replaced by a different protected key, plus one new http_rates key. Expected http_rates = (before 1, after 2, added 1, changed 1, removed 0); four middle categories each (1,1,0,1,0); protected_or_other = (1,1,1,0,1). Sums before 6 / after 7; complete captures remain unequal. |
+| Exact category boundaries | index_counts/http_rates is the only count-row category. index_counts/mail_limits, index_counts/http_rates-extra, http_rates2/x, maintenance_cursors-extra/x and an unadvertised valid UTF-8 bucket all remain protected_or_other. No dynamic label is emitted. |
+| Full opaque values | Change one byte in a synthetic non-JSON value and a synthetic ciphertext-like value: each is changed. Identical snapshots produce only equal before/after counts and zeros. Formatting-only valid row reorder projects no value changes, but the unchanged raw equality still raises. |
+| Parser failures | Wrong raw type; trailing partial line; blank/CRLF lines; odd/nonhex/uppercase fields; extra separator; duplicate canonical key; invalid UTF-8/NUL/no collection separator; input 8 MiB+1; decoded key 4,097 bytes; value 1 MiB+1. Each must omit projection via the wrapper and preserve the original error. |
+| Boundaries | Valid key at 4,096 bytes, value at 1 MiB, empty value and empty pure-parser snapshot are bounded valid inputs. Validate integer 0 and 1,000,000; reject -1, 1,000,001, bool, int subclass, float, string, None and dict subclass. No need to allocate one million records to test schema bounds. |
+| Unknown/duplicate schema | Missing/extra category or field suppresses counts. Literal duplicate JSON category/field/root key suppresses counts while valid fixed class/frames survive. Unknown extra root field suppresses counts and is stripped, not published. |
+| Packet fallback | Valid AssertionError gets counts; RuntimeError, AssertionError subclass and missing/bad attachment do not. Invalid base class/frame/file/line returns no packet. >2,048-byte raw packet returns no packet. Invalid UTF-8, malformed/deep JSON yields no packet and no raw content. |
+| Privacy / transport cap | Put distinctive synthetic key/value/URI/path/message sentinels in captures and invalid optional JSON. Parsed public packets contain only fixed classes/files/labels/field names and numeric line/counts. Inspect structure and serialized bytes; none of the sentinels or hex forms may appear. Verify all thirty counts at 1,000,000 and eight longest fixed frame names at 4096 fit 2,048 bytes. |
+| Failure identity | The original complete-equality AssertionError remains the raised object with the unchanged fixed message whether counts succeed or fail. A valid projection never changes equality outcome or permits further probe actions. |
+
+A later harness may report only fixed case labels/pass totals/time/exit and
+sanitized assertion identifiers; never repr of snapshots, schema inputs,
+captured keys/values or candidate exception messages. No actual Store data,
+provider/PG/HTTP fixture, native binary, release/tenant evidence or new success
+claim belongs in that envelope. Hosted runtime and source materialization
+still require separate root decisions.
+
+### Static design checks actually performed
+
+Only source-text operations, hashes, ast.parse/literal_eval, exact in-memory
+substitutions and zero-context forward/reverse application were executed.
+No code object for the proposed functions was compiled or executed.
+
+* Full forward and reverse zero-context patch checks restore both complete
+  baseline files, not merely changed functions. The current disk source
+  remains exactly the immutable baseline.
+* Helper AST restoration removes only the new refusal_snapshot_counts and
+  restores shared_probe, yielding the entire baseline AST. Imports/constants/
+  all other functions are identical. The original SQL/capture function,
+  public refusal assertions, all later probe actions and return remain
+  byte-exact outside the new comparison/attachment block.
+* Controller AST restoration removes only snapshot_counts/failure_packet,
+  restores FIXED/BOOTSTRAP literals and Controller.helper, yielding the full
+  baseline controller AST. Bootstrap restoration removes its validator and
+  restores failure_source, yielding its full baseline AST.
+* Both validator ASTs are identical. After normalizing only the helper digest,
+  complete FIXED maps are equal. All four other imported source files and
+  hashes match own disk and immutable f7af6cc objects, byte for byte.
+* Complete changed bodies are archived above; all successful helper report
+  validation/output and Controller.helper suffix are unchanged. No product,
+  source role, resource/ownership/finalization or cleanup function is altered.
+
+The first design-assembly tool request failed JavaScript parsing with
+Unexpected token if before any shell or filesystem operation ran. Correcting
+only that request text permitted this static construction. It was not a
+candidate parser/function/harness failure, and no source edit or borrowed
+runtime result followed it.
+
+The earlier source finding, all remote failures and unknown changed-row cause
+are preserved. This exact design is not implementation or runtime evidence.
+Original A09 shared full gate stays open; I02/I10/R05/W02/W05 remain DONE.
+Root owns later source reservation, independent full-body review, publication,
+distinct validator-source selection, memory validation and hosted release.
+
+Archive-only verification independently re-extracted the two diff fences
+and six complete function fences from this report. It reconstructed the
+candidate files, verified all exact file/patch/blob/controller/bootstrap
+identities, reversed both patches to full baseline bytes, and matched every
+function fence to its candidate lexical body. Both validator bodies are
+also byte-equal after extracting their source contexts. The complete
+44,904-byte previous report prefix is unchanged (SHA-256
+`e8077e7f985ff88d3db10e8b3faaf7385ba729c43d64bcf147b18048126882de`).
+The isolated pure-function ASTs contain no imports or I/O/runtime names;
+this is a static source witness, not sandbox enforcement or dynamic privacy
+validation. `python3 scripts/check-docs.py` and `git diff --check` both exited
+0. Own helper/workflow remain the full immutable baseline; this report is
+the only changed file. No prospective function or synthetic case was run.
