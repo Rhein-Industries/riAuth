@@ -342,3 +342,65 @@ The prospective connection setup was narrowed during static design from
 environment connection-string expansion to the exact existing loopback
 fixture shape; only the report's archived virtual proposal changed.
 No production or fixture failure was observed locally because none was run.
+
+## Implementation reservation: baseline preflight and held helper, 2026-10-02
+
+Root approved the exact archived helper/workflow source delta in
+`wave30_A09_shared_user_create_refusal_implementation`, with runtime held.
+The starting branch was clean at the report commit
+`5515a317070f9a35b51134721acc4c35cf4babcf`. No alignment was performed.
+
+The published baseline was independently resolved and read from Git at
+`69f46cf75390cde70a992eb528c7ee5f769aeeca`. Its helper is exactly 21,716
+bytes / SHA-256 `575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1`,
+and its workflow is exactly 77,543 bytes / SHA-256
+`45304da275d3072c2c0de9f6debed1acc335ffa99e0ed6baa15064549bab5574`.
+These match the archived validator/workflow objects byte for byte.
+
+The local helper instead remains 13,127 bytes / SHA-256
+`d6b0d023164756b2fcabe1a89794400d5ee70b43b6b4874abed3fd2f6a2cce7d`.
+It lacks the archived user-list refusal hunk. This is a baseline mismatch,
+not a runtime or authorization failure; the current published source was
+not mistaken for this older branch's file. All four other local imports
+match their fixed hashes exactly. The local workflow was absent.
+
+The explicit absent-workflow preparation permission was exercised:
+`eba66b4931b1de1400a79c183743e40fbc17d4ce` adds only the exact published
+workflow baseline. **Root must not integrate this preparation commit.**
+It includes no fixed-hash correction or new executable body. It preserves
+the own older helper and all other source/history.
+
+Static checks completed for this prepared baseline: installed Ruby Psych
+parsed the complete YAML; all three extracted run blocks passed `bash -n`;
+complete controller and bootstrap strings passed Python `ast.parse` without
+imports/execution; staged whitespace passed. The actual Ruby/Psych and bash
+invocations were syntax parsers only, not workflow/controller execution.
+The two archived diffs were also reconstructed in memory against published
+`69f46cf...`: their expected complete prospective hashes, exact reversals,
+helper AST-only change, normalized complete controller AST, unchanged
+bootstrap bytes and four other import hashes all passed.
+
+The approved helper edit remains held. Applying only its archived one-hunk
+delta cannot transform the local older file into the approved 23,518-byte
+result. The reservation explicitly authorized baseline materialization for
+an absent workflow, but did not explicitly authorize replacing the older
+helper with the published baseline. A clarification was requested before
+that additional existing-file preparation. No helper replacement, stale
+whole-file import, merge or reset was used as a workaround.
+
+The smallest necessary extension is exact materialization of **only** the
+21,716-byte published helper above in a separate preparation commit that
+root will not integrate; then the already approved two-file delta can be
+committed independently for integration. Its result must still match the
+archived `d86d9a99...` helper and `5290d7a5...` workflow in full, with every
+protected function/import/product span unchanged. A different baseline or
+broader edit is not proposed. No helper/module/harness/native product,
+PostgreSQL/HTTP/Cargo/network/remote/service/browser action occurred, and no
+runtime slot was acquired or released. Prior failure interpretations and
+closed-task statuses remain unchanged; no source implementation or A09
+shared full-gate completion is claimed by this preparation phase.
+
+The appended report passed `python3 scripts/check-docs.py` and staged
+`git diff --cached --check` (both exit 0). An explicit byte comparison
+preserved the full original 20,060-byte / 344-line report prefix and the
+original local helper. This evidence append adds no existing-source change.
