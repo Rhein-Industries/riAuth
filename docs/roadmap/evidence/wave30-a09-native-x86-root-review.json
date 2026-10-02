@@ -331,5 +331,11 @@
     "no container/TLS/passkey/tenant/official release",
     "source notices later found stale by CI, historical archives retained at exact source",
     "sampling not hard quota; maximum gap recorded"
-  ]
+  ],
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "attempt": 1,
+  "repository": "Rhein-Industries/riAuth",
+  "native_run_evidence_relative_path": "evidence.json",
+  "native_run_resources_relative_path": "resources.jsonl",
+  "workflow_run_conclusion": "success"
 }
