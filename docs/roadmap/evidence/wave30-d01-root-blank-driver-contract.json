@@ -1,0 +1,136 @@
+{
+  "schema": "riauth.root-d01-driver-blank-contract/v1",
+  "session": "d01-root-blank-contract-20261003",
+  "scope": "ONE isolated_new about:blank preparation/binding/snapshot survey; no IdP, lab, credential, helper, navigation or journey.",
+  "prepare": {
+    "action": "launched_isolated_browser",
+    "attachment": null,
+    "endpoint_ownership": {
+      "detail": "driver-owned profile port file plus live loopback socket owner",
+      "method": "spawned_by_driver",
+      "owner_pid": 77592
+    },
+    "message": "Launched a separate driver-owned isolated Chromium process; no existing browser process was modified or terminated.",
+    "prepared": true,
+    "prepared_pid": 77592,
+    "side_effects": {
+      "changed_preferences": false,
+      "closed_setup_page": false,
+      "copied_profile_data": false,
+      "created_profile": true,
+      "displayed_consent_prompt": false,
+      "enabled_remote_debugging": false,
+      "focused_setup_address_field": false,
+      "foregrounded_window": false,
+      "injected_global_input": false,
+      "launched_browser": true,
+      "opened_setup_page": false,
+      "restarted_browser": false,
+      "reused_driver_profile": false,
+      "used_bounded_pixel_fallback": false
+    },
+    "status": "ok"
+  },
+  "pid": 77592,
+  "window_id": 104061,
+  "bind": {
+    "binding_quality": "exact",
+    "binding_route": "native_cdp_window",
+    "endpoint_access_class": "driver_owned",
+    "endpoint_transport": "legacy_json_version",
+    "mode": "bind",
+    "mutation_allowed": true,
+    "native_title": "about:blank",
+    "status": "ok",
+    "tabs": [
+      {
+        "active": true,
+        "tab_id": "tab-49dc3fab-47c0-443f-b836-149238f9f0e2",
+        "title": "about:blank",
+        "url": "about:blank"
+      }
+    ],
+    "target_id": "bt-685b156b-2412-42a0-89fb-a665adb04312"
+  },
+  "snapshot": {
+    "content_refs": [
+      {
+        "actions": [],
+        "frame": "main",
+        "name": null,
+        "ref": "p860:0",
+        "role": "rootwebarea",
+        "states": {
+          "focusable": true
+        },
+        "value": null,
+        "visibility": "in_viewport"
+      }
+    ],
+    "mode": "snapshot",
+    "oopif": {
+      "frames": 0,
+      "status": "attached"
+    },
+    "outline": "",
+    "page": {
+      "title": "about:blank",
+      "url": "about:blank"
+    },
+    "refs": [],
+    "snapshot": {
+      "complete": true,
+      "continuation": null,
+      "format": "semantic_v2",
+      "id": "p860",
+      "node_budget": 300,
+      "omitted": {
+        "budget": 0,
+        "css_hidden": 0,
+        "no_layout": 0,
+        "offscreen": 0,
+        "page_occluded": 0,
+        "unknown": 0,
+        "unprovable_frame": 0
+      },
+      "scope": "viewport",
+      "selected_nodes": 1,
+      "total_nodes": 1
+    },
+    "status": "ok",
+    "tab_id": "tab-49dc3fab-47c0-443f-b836-149238f9f0e2",
+    "target_id": "bt-685b156b-2412-42a0-89fb-a665adb04312"
+  },
+  "cooperative_close": {
+    "effect": "unverifiable",
+    "route": "synthetic_events",
+    "delivery": {
+      "mode": "background"
+    },
+    "escalation": {
+      "reason": "delivery_failed",
+      "target": "foreground"
+    },
+    "remaining_pid_windows": 11
+  },
+  "cleanup": {
+    "exact_owned_pid_kill": true,
+    "end": {
+      "active": false,
+      "session": "d01-root-blank-contract-20261003"
+    },
+    "final_windows": {
+      "current_space_id": 1,
+      "windows": []
+    },
+    "pid_absent": true,
+    "desktop_slot_released": true
+  },
+  "limits": [
+    "No preparation adapter or c5 continuation executed.",
+    "Cooperative cmd+q did not close owned browser; exact-owned kill escalation used.",
+    "Returned snapshot omitted is a seven-field count map and content_refs contains a single inert rootwebarea.",
+    "Observed successful raw contract does not establish all failure variants.",
+    "No hard MCP call deadline or resource peak is inferred."
+  ]
+}

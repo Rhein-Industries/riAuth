@@ -9827,3 +9827,1435 @@ adapters remain pending; no changed cell or browser fixture was executed.
 ## Root independent controller-boundary disposition (2026-10-03)
 
 Root read the complete [independent report](local-wave30-d01-controller-boundary-independent-review.md) at author309ee22. It finds four source paths in the archived2e29 cell: stored entry phase, premature private-password clearing, successful helper completion before the protected-page snapshot, and unretained partial controller events across invocations. The separately reviewed c5d4 phase-only design addresses only the first. Root reserves review/correction of the remaining three plus the missing exact preparation/private-input/partial-ownership body before any real fixture release. These are source findings, not retrospective attribution for c88 or the earlier Authorization failures. Actual128-case helper memory evidence supplies no changed controller/cell/GUI journey proof. Runtime remains HELD; no status changes.
+
+## 2026-10-03 — D01 preparation, private-input and partial-ownership adapter design only
+
+
+Reservation wave30_D01_preparation_private_input_adapter_design is report-only.
+This appendix proposes one preparation prefix, a bounded private-file reader and
+partial cleanup. It does not materialize or evaluate a controller, adapter,
+collector, helper, harness or browser fixture. The complete immutable c5d4d173857d040947a8cb3780c47c7141f98336 report prefix is preserved:
+678273 bytes, SHA256 cfb1ded0643943622720322cba7d59dc0ef44fd09977c15cf97951dfa93ef910.
+
+Concrete disposition: the available contracts do not supply an exact successful
+raw preparation/binding/snapshot decoder or a documented non-logging private
+file-to-cell transport. The archived finite candidate consequently has four
+literal null interfaces and refuses before browser preparation. These are
+missing source inputs, not new product or whole-D01 acceptance gates. A runtime
+flag or positive PID cannot enable those interfaces. This appendix is complete
+as a bounded refusal/control-flow and reader proposal; it is NOT a completed
+operational adapter or execution-ready fixture. Root must resolve/review those
+exact source bodies before a later source reservation or fixture release.
+
+The proposed seam is a prefix before the literal unchanged c5 entry cell.
+No controller/cell/collector substitution is proposed. The successful path is:
+one isolated_new browser_prepare; the proven returned owned PID; exact
+pid-filtered list_windows with exactly one about:blank window; exact PID/window
+binding with status ok, exact quality, mutation allowed, driver_owned endpoint,
+one returned active blank tab; then a fresh semantic_v2 snapshot of that returned
+target/tab. Only after these and a bounded private password transfer succeed
+does the prefix store prepared_entry and immediately fall through into c5 entry
+in the SAME functions.exec invocation. There is no text/yield/model wait between
+successful transfer, the existing exclusive marker and entry. The unchanged
+controller's 180-second browser-prepared barrier remains before helper Popen and
+port3000. No extra RP readiness HTTP, browser CLI, raw CDP, physical click,
+personal-profile attachment, permission/profile change or fallback is added.
+
+### Contracts actually read; local pack versus historical daemon
+
+Read the installed SKILL.md, BROWSER.md and MACOS.md from the following local
+paths. SKILL.md reports pack0.29.1. Earlier retained actual health receipts
+reported daemon0.30.4; that is dated prior observation, not a current live sample.
+No health/history/session/preparation/browser/window/permissions or other Driver
+tool was called in this phase. Metadata-only ALL_TOOLS descriptions were read;
+the table fingerprints the complete current descriptions, not observed outputs.
+Initial combined file/description reads were truncated and applicable local
+browser/platform text was reread in bounded complete chunks. Truncated output
+is not counted as a complete body review.
+
+| Installed source | Bytes / lines | SHA256 |
+| --- | --- | --- |
+| /Users/dominik/.agents/skills/cua-driver/SKILL.md | 8915 / 107 | 593466f73db9e063b3d18a7a939fec79e7e171fe1f2da486f0b780e223426abe |
+| /Users/dominik/.agents/skills/cua-driver/BROWSER.md | 25260 / 507 | 865da3b26f49f9a4dcdcdcfd245783e604ba81563b19e566579a17a1b46c3ba7 |
+| /Users/dominik/.agents/skills/cua-driver/MACOS.md | 30592 / 504 | c3fe476a0321fef996e82cbe0ab06d75a44cf1298daaec24ed681efb9a3b2cc5 |
+
+BROWSER.md lines98-100 require status ok, binding_quality exact and
+mutation_allowed true; lines145-146 explicitly document prepared_pid for
+isolated preparation. Lines202-203 describe endpoint_access_class without
+exposing ports/profile paths. Lines216-220 describe setting-restoration cleanup,
+not browser process termination. Lines239-241 define active true/false/null;
+selection cannot be inferred from array order. Lines281-283 require completeness,
+omitted/continuation inspection and snapshot-bound action refs. MACOS.md supplies
+the background exact-target hotkey route and prohibits shell/foreground/desktop
+fallback. The latest assignment's metadata-only limit overrides the skill's
+ordinary history/health/recovery workflow; none was invoked.
+
+| Metadata description | UTF-8 bytes | SHA256 |
+| --- | --- | --- |
+| mcp__cua_driver__browser_prepare | 4001 | 5d9a74064d34647ee6309fec7f0bfa05fc9ab4d266a3550599f0344a7241c8eb |
+| mcp__cua_driver__get_browser_state | 3637 | a72c3b43703c18a5882579f4052c8453a0f8ffb52be110d07a88e54c3e7b46ae |
+| mcp__cua_driver__list_windows | 3500 | 0f51a050b0ef2cc052fbe8d55b684185d6ef4eb04fdd4313eb386cce9a7f81b3 |
+| mcp__cua_driver__hotkey | 6212 | 27f771bbb546640c9e6868a167c7d4f45b4c38e482251218460be9a4ca5d25cf |
+| mcp__cua_driver__kill_app | 2087 | 0279f01cfee6c0bd0e0da7193fbc224c8a20ae78495bb431940878275c87233f |
+| mcp__cua_driver__end_session | 2233 | 0d544d65c546af719f26f20f5f1b99adc8a913776d0c0d2d3d75808fde77e245 |
+| mcp__cua_driver__escalate_session | 2630 | 5305be939306a73adca2c2362e0656801652cb1e46ea66e337dda88b52adcc39 |
+| mcp__cua_driver__get_session | 2469 | 9edf43122b0d1cb84a68ba0ea4339cc029c9dc82166601e5f0cabe385bfae258 |
+| mcp__cua_driver__get_session_state | 2464 | 09fd82192bdc4391f843852550e838da01df30fb9503e8af130e7b33f554d746 |
+| mcp__cua_driver__get_window_state | 10550 | 65095cad2931d8ac2751c13b283733c3fa2ca6189ab75d35d854043c5daa3cb4 |
+| mcp__cua_driver__list_sessions | 2616 | 34979bc1f4ac42a1a7c59149a58d1b3b9d62d4a574d59f987229664d74258ea7 |
+| mcp__cua_driver__start_session | 3479 | 33a3ed5b011c38e6997e72b3f1cc51bc7cbf9c9264e6ee81961492ff0e591caf |
+| mcp__cua_driver__verify_state | 4071 | d81f773d0508208081a998d4afc5dcb8cbd301c803583758d3335f48559041d0 |
+
+The browser_prepare and get_browser_state declarations return generic
+Promise<CallToolResult>. They do not type prepared success/action/ownership,
+PID nesting, target/tab nesting, snapshot identity or all failure variants.
+BROWSER documents prepared_pid, but supplies no complete raw structured schema.
+The previous report's descriptions of prepared true, launched_isolated_browser,
+spawned_by_driver and exact bindings are semantic observations, not an archived
+complete raw response sufficient to fill those decoders. No mapping from a
+session, title, raw CDP ID, transport success or guessed alias is permitted.
+
+The candidate's pPrepareProjection, pBindProjection and pSnapshotProjection
+validate explicitly NORMALIZED adapter-interface schemas. They are NOT claims
+that MCP returns those property names/nesting. The missing immutable decoders
+must independently validate one recognized successful structuredContent shape,
+reject isError/refusal/missing/ambiguous/unknown relevant fields, attest returned
+PID ownership for the requested isolated_new launch, and produce only the fixed
+normalized fields. They must not parse a text content part as a success fallback
+or preserve raw content, side-effects, errors, header/URL/profile data. No decoder
+body or accepted raw-field allowlist is invented here; literal nulls make that
+absence operationally fail closed. A future source review must verify exact
+raw-to-normalized mappings against authoritative schema or a sufficiently complete
+already retained successful public receipt before inserting any decoder.
+
+list_windows does advertise per-record pid/window_id/title and a PID filter.
+The candidate uses exactly that filter, checks every returned PID and unique
+window ID, refuses zero/multiple/nonblank preparation candidates, and never ranks
+by z_index, array position, process name or geometry. Native about:blank title is
+only a candidate filter; the exact bind and fresh tab snapshot must separately
+prove the blank page. The proposed normalized snapshot requires complete with
+omitted0, null continuation and no refs/content_refs; unfamiliar blank shapes
+would be refused, not silently adapted.
+
+The state/session contracts have named lifecycle status but no owned-process
+identity. They cannot supply a PID. end_session advertises active:false plus the
+named session, not a browser-kill guarantee. Unknown output/exception/refusal
+cannot prove that lifecycle ended. The candidate never enumerates sessions or
+broadly scans windows as a PID substitute. All six relevant advertised signatures
+are archived below verbatim from metadata; no callable was invoked.
+
+#### mcp__cua_driver__browser_prepare
+
+```ts
+declare const tools: { mcp__cua_driver__browser_prepare(args: {
+  // Allow a separate driver-owned isolated Chromium process to be launched (default false).
+  allow_launch?: boolean;
+  // Browser process id to prepare. Required except for a driver-owned isolated_new/isolated_named launch with allow_launch=true.
+  pid?: number;
+  profile?: {
+  mode: "isolated_new" | "isolated_named";
+  // Required only for isolated_named; 1-64 path-safe ASCII characters.
+  name?: string;
+};
+  // For multi-call work, prefer a short public session label and repeat it on every call that accepts it. Omit it to use the authenticated transport's implicit lifecycle session. Browser targets, tabs, and refs belong to the resolved lifecycle session.
+  session?: string;
+  strategy?: { kind: "existing_profile"; };
+  // Exact native window approval anchor; required for strategy.kind=existing_profile.
+  window_id?: number;
+  [key: string]: unknown;
+}): Promise<CallToolResult>; };
+```
+
+#### mcp__cua_driver__get_browser_state
+
+```ts
+declare const tools: { mcp__cua_driver__get_browser_state(args: {
+  // Opaque continuation minted by an earlier semantic_v2 response.
+  continuation?: string;
+  // Capture the exact tab viewport as PNG through CDP without selecting the tab or foregrounding its native window. The request refuses if capture cannot be completed.
+  include_screenshot?: boolean;
+  // Native browser process id (bind mode).
+  pid?: number;
+  // Read-only semantic match over role, accessible name, and visible text.
+  query?: string;
+  // Current semantic/content ref whose subtree should be observed.
+  scope_ref?: string;
+  // For multi-call work, prefer a short public session label and repeat it on every call that accepts it. Omit it to use the authenticated transport's implicit lifecycle session. Browser targets, tabs, and refs belong to the resolved lifecycle session.
+  session?: string;
+  // Versioned snapshot contract. dom_refs_v1 remains the compatibility default.
+  snapshot_format?: "dom_refs_v1" | "semantic_v2";
+  // Opaque tab id from get_browser_state (session-scoped).
+  tab_id?: string;
+  // Opaque browser target id minted by get_browser_state (session-scoped; never a CDP id).
+  target_id?: string;
+  // Native window id owned by pid (bind mode).
+  window_id?: number;
+  [key: string]: unknown;
+}): Promise<CallToolResult>; };
+```
+
+#### mcp__cua_driver__list_windows
+
+```ts
+declare const tools: { mcp__cua_driver__list_windows(args: {
+  // When true, drop windows not on the current Space. Default false.
+  on_screen_only?: boolean;
+  // Optional pid filter. When set, only this pid's windows are returned.
+  pid?: number;
+}): Promise<CallToolResult<{ current_space_id?: number | null; windows: Array<{
+  app_name: string;
+  bounds: { height: number; width: number; x: number; y: number; };
+  current_space_id?: number | null;
+  is_on_screen: boolean;
+  layer?: number | null;
+  minimized?: boolean | null;
+  on_current_space?: boolean | null;
+  pid: number | null;
+  space_ids?: Array<number> | null;
+  title: string;
+  window_id: number;
+  // Higher values are closer to the front. Null means the provider cannot observe stacking order; callers must not infer an order from array position or treat null as zero.
+  z_index: number | null;
+}>; [key: string]: unknown; } | { [key: string]: unknown; } | { [key: string]: unknown; } | { [key: string]: unknown; }>>; };
+```
+
+#### mcp__cua_driver__hotkey
+
+```ts
+declare const tools: { mcp__cua_driver__hotkey(args: {
+  // Best-effort-background ladder rung (default "background"). "background": inject without fronting or raising the target — no focus steal. "foreground": briefly front the target, act, then restore the prior frontmost — the explicit last resort when a background attempt didn't land. Re-call with "foreground" only for the action that needs it.
+  delivery_mode?: "background" | "foreground";
+  // Element index from get_window_state. Requires the matching `snapshot_id` alongside it. Prefer `element_token`, which carries both values.
+  element_index?: number;
+  // Opaque per-snapshot element handle from `structuredContent.elements[].element_token`. If element_index, snapshot_id, or window_id are also supplied they must agree. Returns an explicit stale error once a newer snapshot supersedes it.
+  element_token?: string;
+  // Modifier(s) and one non-modifier key, e.g. ["cmd", "c"].
+  keys: Array<string>;
+  // Target process ID.
+  pid?: number;
+  // Use desktop with no pid/window_id to send the chord to the frontmost application.
+  scope?: "window" | "desktop";
+  // For multi-call work, prefer a short public session label and repeat it on every call that accepts it. Omit it to use the authenticated transport's implicit lifecycle session.
+  session?: string;
+  // Snapshot handle from get_window_state. Required when targeting by element_index; stale snapshots fail closed.
+  snapshot_id?: string;
+  target?: { kind: "window"; pid: number; window_id: number; [key: string]: unknown; } | { display_id: string; kind: "desktop"; [key: string]: unknown; } | null;
+  // Target window. Required for delivery_mode:"foreground" (the NSMenu activation needs a window). Does NOT itself raise the window — raising is gated on delivery_mode.
+  window_id?: number;
+  // Screenshot-pixel X — the element px action form: pixel-click there to focus, then send the combo (so e.g. Cmd+V pastes into that field). Pass with y. Use for Chromium/Electron surfaces the background combo can't reach.
+  x?: number;
+  // Screenshot-pixel Y (see x).
+  y?: number;
+}): Promise<CallToolResult<{ delivery?: { delivered_count?: number | null; mode: "background" | "foreground" | "not_applicable" | "unknown"; } | null; effect: "confirmed" | "partial" | "unverifiable" | "suspected_noop" | "refused"; error?: { code: string; hint?: string | null; } | null; escalation?: { reason: "route_unavailable" | "delivery_failed" | "effect_unconfirmed" | "suspected_noop" | "permission_required"; target: "pixel" | "foreground" | "page" | "session"; } | null; evidence?: Array<{ detail?: string | null; kind: "value_readback" | "window_change"; }> | null; route: "accessibility" | "synthetic_events" | "global_input" | "system_api" | "dom" | "trusted_input"; summary?: string | null; } | { [key: string]: unknown; } | { [key: string]: unknown; } | { [key: string]: unknown; }>>; };
+```
+
+#### mcp__cua_driver__kill_app
+
+```ts
+declare const tools: { mcp__cua_driver__kill_app(args: {
+  // PID of the process to terminate.
+  pid: number;
+}): Promise<CallToolResult>; };
+```
+
+#### mcp__cua_driver__end_session
+
+```ts
+declare const tools: { mcp__cua_driver__end_session(args: {
+  // Optional public label to end. When omitted, end the caller's attached
+  // implicit session.
+  session?: string;
+  [key: string]: unknown;
+}): Promise<CallToolResult<{ active: false; session: string; [key: string]: unknown; } | { [key: string]: unknown; } | { [key: string]: unknown; } | { [key: string]: unknown; }>>; };
+```
+
+
+### Exact owned-controller seed interface and unresolved source input
+
+The prefix accepts ONLY d01_preparation_seed with pSeedValid's exact public key
+set. guard_pid/server_pid/lab must match one canonical browser_prepare_required
+event from the just-executed owned controller and exec_session must be its
+actual returned pending exec handle. An exec session number is NOT a PID.
+The upstream root-owned launcher must retain/hash the exact actual payload before
+execution, reverse only the approved fresh START/output substitutions to the
+pinned controller template, retain numeric returned exec receipt, parse its
+bounded canonical event, and store only the validated public seed. No arbitrary
+tool result, raw output, secret or environment is a seed. The source that performs
+that upstream seed production/ownership attestation is not present in the
+retained controller/c5 cell; it remains an explicit source input. Setting booleans
+to true or supplying PID-shaped integers alone would NOT establish ownership.
+
+The consumer schema pins controller TEMPLATE SHA256
+5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0,
+c5 entry SHA256 d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d,
+future helper SHA25675bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1,
+and a separately archived actual-controller payload SHA. Paths must be four
+distinct direct children of this WT's deployment-private directory, no slash/
+traversal/NUL, and the lab must have the controller's fixed fresh-lab prefix.
+All actual outputs/session/START remain future release inputs; none was allocated
+or populated now. Invalid or unavailable seed refuses with release UNKNOWN and
+does not signal guessed processes or write into an unproven lab. A partial
+launcher result with no validated seed requires its separately reviewed owned
+exec-join path; this appendix does not invent ownership or claim cleanup of it.
+
+Published74e106b819e7186d0ac41964cedbe8217fa7e881 helper object is35749B and hashes
+75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1.
+Local helper470 remains32723B/SHA7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0.
+This phase only checked immutable object/local identities; it neither aligned nor
+merged them, executed helper main nor independently body-reviewed Sol3's work.
+Root alone decides any separately authorized history-preserving alignment.
+
+### Private-input source and transfer contract
+
+The exact48-line Python reader below contains no module entry point, print,
+logging, subprocess, environment or network operation. It opens the fixed lab
+with O_DIRECTORY/O_NOFOLLOW; validates regular directory/owner/mode0700 and
+named-path versus fd inode identity. It opens only browser-password relative to
+that fd with O_NOFOLLOW/O_NONBLOCK; requires regular file/uid/mode0600/nlink1 and
+size30..128. It reads at most129 bytes and checks pre/post fd and named-path
+device/inode/mode/uid/nlink/size/mtime/ctime, parent directory identity and exact
+size. ASCII plus the fixed synthetic password alphabet is mandatory. It returns
+only after all proofs. Error paths use one fixed label; no path/error/value is
+logged. Mutable byte buffers are overwritten in finally; immutable Python/JS
+strings cannot be promised cryptographically erased and only reference clearing
+is claimed.
+
+The V8/functions cell has no filesystem access. Exposed exec_command returns
+stdout in a tool result; its metadata supplies no confidential direct transfer
+into store. Printing the password to stdout/JSON, passing it in command arguments/
+environment, persisting it in redacted evidence, or retaining an arbitrary tool
+result is not proposed. The fourth null interface private_transfer must be a
+separately reviewed non-logging host bridge invoking this exact reader and a
+single synchronous sink. Such a callable is NOT advertised and is not invented
+as tools.* in the candidate. Its implementation/transport confidentiality is a
+concrete missing source prerequisite. The source below is a return function and
+sink contract, not a claim that this bridge currently exists.
+
+A reviewed bridge would retain only the validated string under
+d01_fresh_password_input, clear its transient source/return/local references,
+and return no credential. The prefix keeps only private_input_proven boolean in
+evidence. It rejects repeated/invalid sink calls and clears the store on any
+preparation failure. The secret would be required until the actual password
+action. UNRESOLVED: unchanged c5 continuation clears this key after username/click
+as well as password. This adapter does not repair or route around that finding,
+add a duplicate secret key or claim retention-to-action already works. Root's
+separate review/reservation of that cell finding is required before a journey.
+
+```python
+# Source proposal only: return through a separately reviewed private bridge.
+# No module entry point, print, logging, subprocess, environment or network.
+import os,re,stat
+
+def read_browser_password_private(lab):
+    if type(lab) is not str or not 1<=len(lab)<=4096 or "\x00" in lab:
+        raise ValueError("private_input_refused")
+    directory=os.open(lab,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    fd=None;raw=None;value=None
+    try:
+        before_dir=os.fstat(directory)
+        named_dir=os.stat(lab,follow_symlinks=False)
+        if (named_dir.st_dev,named_dir.st_ino,named_dir.st_mode,named_dir.st_uid)!=(before_dir.st_dev,before_dir.st_ino,before_dir.st_mode,before_dir.st_uid):
+            raise ValueError("private_input_refused")
+        if not (stat.S_ISDIR(before_dir.st_mode) and stat.S_IMODE(before_dir.st_mode)==0o700 and before_dir.st_uid==os.getuid()):
+            raise ValueError("private_input_refused")
+        fd=os.open("browser-password",os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+        before=os.fstat(fd)
+        if not (stat.S_ISREG(before.st_mode) and stat.S_IMODE(before.st_mode)==0o600 and before.st_uid==os.getuid() and before.st_nlink==1 and 30<=before.st_size<=128):
+            raise ValueError("private_input_refused")
+        raw=bytearray()
+        while len(raw)<=128:
+            block=os.read(fd,129-len(raw))
+            if not block:break
+            raw.extend(block)
+            block=None
+        after=os.fstat(fd)
+        named=os.stat("browser-password",dir_fd=directory,follow_symlinks=False)
+        after_dir=os.fstat(directory)
+        final_named_dir=os.stat(lab,follow_symlinks=False)
+        identity=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns)
+        if identity(before)!=identity(after) or identity(after)!=identity(named) or not stat.S_ISREG(named.st_mode) or (after_dir.st_dev,after_dir.st_ino,after_dir.st_mode,after_dir.st_uid)!=(before_dir.st_dev,before_dir.st_ino,before_dir.st_mode,before_dir.st_uid) or (final_named_dir.st_dev,final_named_dir.st_ino,final_named_dir.st_mode,final_named_dir.st_uid)!=(before_dir.st_dev,before_dir.st_ino,before_dir.st_mode,before_dir.st_uid):
+            raise ValueError("private_input_refused")
+        if len(raw)!=before.st_size or not 30<=len(raw)<=128:
+            raise ValueError("private_input_refused")
+        value=raw.decode("ascii")
+        if re.fullmatch(r"[A-Za-z0-9_-]{30,128}",value) is None:
+            raise ValueError("private_input_refused")
+        return value
+    except (OSError,UnicodeError,ValueError):
+        value=None
+        raise ValueError("private_input_refused") from None
+    finally:
+        if raw is not None:
+            for i in range(len(raw)):raw[i]=0
+        raw=None
+        if fd is not None:os.close(fd)
+        os.close(directory)
+```
+
+### Partial ownership and immediate cleanup
+
+All failed decisions latch one finite first_failure and receipt wall clock before
+cleanup/output. Preparation exceptions/refusals/ambiguous windows/binding/
+snapshot/private reads cannot start marker/entry/navigation/flow. There is one
+prepare, one initial PID-filtered window read, one bind and one fresh snapshot;
+no retry/rebind/reprepare/fallback occurs. Helper listener remains behind marker.
+
+After a valid controller seed exists, partial cleanup calls the unchanged STOP
+collector first. Exclusive first-observation metadata failure does not prevent
+its original ui-failure/stop request. The original controller's owned-child
+finally performs termination/join and lab removal; this adapter does NOT signal
+or delete anything itself. Own controller join uses only its returned exec
+session, max180 finite polls while before START+900. Numeric exit/session receipts
+are kept before comparisons; incomplete join remains UNKNOWN.
+
+When the decoder has proven an owned browser PID but no exact usable window
+exists, the candidate proposes ONE exact kill_app with that PID because no
+cooperative window route is available. This is an explicit future source-policy
+choice for root review, not a fabricated cooperative refusal or a broad process
+kill. With a valid cached exact window, ONE background cmd+q uses that exact
+PID/window/named lifecycle. ONE exact PID-filtered readback follows. Only a
+documented refusal plus still-present owned windows enables ONE kill_app. An
+unverifiable hotkey dispatch or unknown window read is not a refusal; no second
+hotkey, foreground fallback or automatic escalation occurs. Process/window
+absence is still read independently after the cleanup calls.
+
+If preparation was called but ownership was not returned/proven, no kill_app,
+hotkey or broad window enumeration occurs. The exact named lifecycle is ended
+once and its active:false/session match is checked, but browser ownership/absence
+remains UNKNOWN regardless of that session result. If preparation was never
+called, no Driver lifecycle was initiated by this prefix and none is ended.
+A session name never becomes PID ownership evidence.
+
+The reviewed READBACK is reused unchanged with only known owned PIDs (guard/
+server, optional returned owned browser, optional helper learned from canonical
+controller child exits). It requires canonical6 pre-helper or7 post-helper named
+exit receipts, exact server/helper matches, PID absence, ports9000+3000 absence
+and lab absence. Browser window absence and named lifecycle completion remain
+separate. All actual join/absence proofs, including browser ownership when a
+launch may have occurred, must exist for resource release PROVEN. Missing PID/
+window/session/port/lab/child proof stays UNKNOWN. Late/refused/exceptional Driver
+operations can leave cleanup errors/budget failed while complete independent
+absence still permits resource release; this preserves root's18-case distinction.
+No release means journey success; journey_credit is always false.
+
+30/15/5/remaining60 allocations are observational, not hard MCP timeout/cancel
+capabilities. Cooperative close adds its own observed action within the same
+cleanup horizon, never resets START or first_clock. The stop collector records
+a monotonic clock, final readback records another, and elapsed/budget errors are
+kept separately from first failure/absence. A blocked/late Driver call cannot
+be forcibly interrupted using this schema. Essential cleanup may overrun; historic
+first-event and whole60 remain unknown, and the candidate always reports
+whole_cleanup_within60_proven false. No timeout or ability to cancel is invented.
+
+### Complete finite candidate, exact source boundaries
+
+This FULL archive consists of340-line preparation prefix plus literal467-line
+c5 entry cell. Removing EXACTLY the first25920 UTF-8 bytes restores the entire
+31581-byte c5 cell byte-for-byte. Removing its32 added top-level AST nodes restores
+the entire c5 AST, including all13 original functions. All existing CLOCK/STOP/
+READBACK/PERSIST and marker literals, phase transition, ref consumption, deadlines,
+metadata/crypto/HTTP predicates and failure latches remain unchanged. The prefix
+reuses four collector literals under distinct P_ names; no interface substitution
+or controller hunk occurs. The independent whole2e29 review is still pending.
+
+UNRESOLVED: the unchanged cell's helper_completed exit0 before the fresh protected
+page flag can latch helper_completed_before_app_checkpoint. This source finding,
+like unconditional password clearing, remains blocked, not an explanation of any
+historic unexpected/Authorization failure. No actual sender, request origin,
+old first-event timestamp or actual failure cause is inferred.
+
+The future controller would retain exactly START+840 active/inclusive900,
+prepare180, helper600/pending180, native+HTTP5, CLI60, readiness/page30,
+disk1s/8.5GiB stop before8 floor, fixed issuer9000/client/callback3000/state/
+nonce/S256/confidential POST/native verifier/full63-byte OpenSSL equality and
+first3 stateless Authorization403/fourth terminal403/post-flow400/Host bounds.
+All c01/server/maintenance/basectl/verifier/provider pins from prior appendices
+remain required; this phase invoked none. The prefix contains no direct HTTP,
+service-session approval or scripted sign-in substitute. RiWork Cua.ai Driver MCP
+is the sole future GUI provider.
+
+| Source archive | Bytes / lines | SHA256 |
+| --- | --- | --- |
+| base | 31581 / 467 | d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d |
+| checker | 2184 / 38 | a34ded3734ba96be7c6eba1de5a1d2665bc6ba749b88d367fd0c75d3cb5fa964 |
+| full | 57501 / 807 | 401af55e346a9f55da682ca2de1762d8416da509816c52ef47e844c1fb8e6aeb |
+| prefix | 25920 / 340 | cbc5d71e6ba0a9ff98fb4a4145b82342149da3192a72d9fb053515f2b3fbd25f |
+| reader | 2859 / 48 | d441ddf5838fc331faa32a5f343c1ff8f377e029c21ac478b6c0f2e6cd4e70d5 |
+
+The archive is non-executed source. Four null interfaces are intentional fixed
+source gaps; no flag can turn them into implementations. Syntax acceptance is
+not preparation/binding/transport ownership, a memory execution, a crypto pass,
+a browser journey or original D01/D05 completion.
+
+```javascript
+// D01 preparation adapter SOURCE PROPOSAL ONLY. Not execution-ready.
+// These missing interfaces cannot be enabled by a runtime flag or tool success.
+// Root must supply/review exact immutable decoder/transport source separately.
+const P_REQUIRED_INTERFACES=Object.freeze({
+  prepare_decoder:null,bind_decoder:null,snapshot_decoder:null,private_transfer:null
+});
+const P_CLOCK="import json,time\nprint(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))\n";
+const P_STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+const P_READBACK="import json,os,pathlib,stat,subprocess,sys,time\nc=json.loads(sys.argv[1])\nchildren=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        info=os.fstat(fd)\n        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):\n            raise ValueError('fixed_outer_evidence_invalid')\n        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)\n        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')\n        data=json.loads(raw_bytes)\n    finally:os.close(fd)\n    outer_observation=finite_observation(data.get('unexpected_failure_observation'))\n    projection=data.get('unexpected_observation_projection')\n    if projection not in ('unavailable','valid','invalid'):projection='invalid'\n    if projection=='valid' and outer_observation is None:projection='invalid'\n    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0\n    if started:allowed.add('helper')\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\n        helper_pid=data['helper_pid'] if started else None\npids=list(c['owned_pids'])\nif helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))\n";
+const P_PERSIST="import json,os,pathlib,sys\npath=pathlib.Path(sys.argv[1])\nrecord=json.loads(sys.argv[2])\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\ndef clocks(value):\n    if isinstance(value,dict):\n        for k,v in list(value.items()):\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\n                value[k]=int(v)\n            else:clocks(v)\n    elif isinstance(value,list):\n        for v in value:clocks(v)\nclocks(record)\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'w',encoding='ascii') as f:\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\n');f.flush();os.fsync(f.fileno())\nprint(json.dumps({'written_exclusive':True}))\n";
+const pSeed=load("d01_preparation_seed");
+const pObsKey="d01_preparation_observation_record";
+const pContext=load("d01_immediate_owned_handles");
+const pRecord={
+  schema:"riauth.d01-preparation-adapter/v1",first_failure:null,
+  first_observation_wall_ms:null,first_event_proven:false,
+  whole_cleanup_within60_proven:false,journey_credit:false,
+  actions:[],local_tool_receipts:[],cleanup_errors:[],
+  prepare_invoked:false,prepare_owned:false,exact_bound:false,
+  private_input_proven:false,cleanup_started:false,controller_exit:null,
+  owned_child_exits:null,final_absence:null,release:"UNKNOWN"
+};
+const pKeep=()=>store(pObsKey,pRecord);
+const pLabelError=label=>{
+  if(!pRecord.cleanup_errors.includes(label))pRecord.cleanup_errors.push(label);
+  pKeep();
+};
+const pLatch=(label,wall)=>{
+  if(pRecord.first_failure===null) {
+    pRecord.first_failure=label;pRecord.first_observation_wall_ms=wall;pKeep();
+  }
+};
+const pExact=(v,keys)=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&
+  Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
+const pPositive=v=>Number.isSafeInteger(v)&&v>0;
+const pName=v=>typeof v==="string"&&/^[A-Za-z0-9_.-]{1,64}$/.test(v);
+const pCapability=v=>typeof v==="string"&&v.length>0&&v.length<=256&&
+  /^[A-Za-z0-9:_-]+$/.test(v);
+const pSq=s=>"'"+String(s).replace(/'/g,"'\\''")+"'";
+let pBrowserPid=null,pWindowId=null,pTargetId=null,pTabId=null;
+let pControllerJoined=false,pControllerPollAvailable=true,pWindowCount=null;
+let pSessionEnded=false,pFirstClock=null,pCleanupStarted=false;
+function pSeedValid(s) {
+  const keys=["runtime_release","single_controller","fresh_paths_preflight",
+    "start_epoch_ms","workspace","exec_session","guard_pid","server_pid",
+    "lab","outer_out","event_out","cleanup_out","session",
+    "controller_template_sha256","controller_payload_sha256","entry_source_sha256","helper_source_sha256",
+    "gate_event","controller_pending","interfaces_source_sha256"];
+  if(!pExact(s,keys)||s.runtime_release!==true||s.single_controller!==true||
+     s.fresh_paths_preflight!==true||s.controller_pending!==true||
+     !Number.isSafeInteger(s.start_epoch_ms)||!pPositive(s.exec_session)||
+     !pPositive(s.guard_pid)||!pPositive(s.server_pid)||s.guard_pid===s.server_pid||
+     s.workspace!=="/Users/dominik/orca/projects/riAuth-public-preview-sol-management-wave30"||
+     !pName(s.session)||
+     !["lab","outer_out","event_out","cleanup_out"].every(k=>
+       typeof s[k]==="string"&&s[k].startsWith(s.workspace+"/deployment-private/")&&
+       /^[A-Za-z0-9._-]{1,128}$/.test(s[k].slice((s.workspace+"/deployment-private/").length))&&
+       ![".",".."].includes(s[k].slice((s.workspace+"/deployment-private/").length)))||
+     new Set([s.lab,s.outer_out,s.event_out,s.cleanup_out]).size!==4||
+     !s.lab.slice((s.workspace+"/deployment-private/").length).startsWith("d01-confidential-browser-diagnostic.")||
+     s.controller_template_sha256!=="5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0"||
+     !/^[a-f0-9]{64}$/.test(s.controller_payload_sha256)||
+     s.entry_source_sha256!=="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"||
+     s.helper_source_sha256!=="75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1")
+    return false;
+  const e=s.gate_event;
+  return pExact(e,["browser_prepare_required","guard_pid","server_pid","lab"])&&
+    e.browser_prepare_required===true&&e.guard_pid===s.guard_pid&&
+    e.server_pid===s.server_pid&&e.lab===s.lab;
+}
+async function pLocal(label,source,arg) {
+  const r=await tools.exec_command({
+    cmd:"python3 -c "+pSq(source)+(arg===undefined?"":" "+pSq(JSON.stringify(arg))),
+    workdir:pSeed.workspace,yield_time_ms:10000,max_output_tokens:2000});
+  pRecord.local_tool_receipts.push({label,
+    exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+    session_id:pPositive(r.session_id)?r.session_id:null});pKeep();
+  if(r.session_id!==undefined) {
+    pLabelError("owned_local_command_unjoined");throw Error("local_pending");
+  }
+  if(r.exit_code!==0||typeof r.output!=="string"||r.output.length>16384)
+    throw Error("collector_unconfirmed");
+  return JSON.parse(r.output);
+}
+async function pDriver(label,allowed,operation) {
+  const action={label,start_wall_ms:Date.now(),end_wall_ms:null,
+    result_state:"pending",allowed_ms:allowed,elapsed_ms:null,over_budget:null};
+  pRecord.actions.push(action);pKeep();
+  let result=null,state="returned";
+  try{result=await operation();}catch{state="exception";}
+  action.end_wall_ms=Date.now();action.result_state=state;
+  action.elapsed_ms=action.end_wall_ms-action.start_wall_ms;
+  pKeep(); // Receipt/first failure before comparisons and subsequent await.
+  if(state==="exception") {
+    if(pCleanupStarted)pLabelError("driver_operation_unconfirmed");
+    else pLatch("driver_preparation_exception",action.end_wall_ms);
+  } else if(result?.isError===true) {
+    action.result_state="refused";
+    if(pCleanupStarted)pLabelError("driver_operation_unconfirmed");
+    else pLatch("driver_preparation_refused",action.end_wall_ms);
+  }
+  action.over_budget=action.elapsed_ms<0?null:action.elapsed_ms>allowed;
+  if(action.elapsed_ms<0)pLabelError("clock_invalid");
+  if(action.over_budget)pLabelError("driver_operation_over_budget");
+  if(!pCleanupStarted&&Date.now()>=pSeed.start_epoch_ms+840000)
+    pLatch("preparation_active_deadline",action.end_wall_ms);
+  return result;
+}
+function pWindows(result,requireBlank) {
+  const s=result?.structuredContent;
+  if(result?.isError===true||!s||!Array.isArray(s.windows)||s.windows.length>32)
+    return null;
+  if(!s.windows.every(w=>w!==null&&typeof w==="object"&&w.pid===pBrowserPid&&
+     pPositive(w.window_id)&&typeof w.title==="string"&&w.title.length<=512)||
+     new Set(s.windows.map(w=>w.window_id)).size!==s.windows.length)return null;
+  if(requireBlank&&(s.windows.length!==1||s.windows[0].title!=="about:blank"))
+    return null;
+  return s.windows.map(w=>({pid:w.pid,window_id:w.window_id}));
+}
+function pPrepareProjection(value) {
+  return pExact(value,["success","owned_pid","isolated_new","spawned_by_driver"])&&
+    value.success===true&&value.isolated_new===true&&value.spawned_by_driver===true&&
+    pPositive(value.owned_pid)&&![pSeed.guard_pid,pSeed.server_pid].includes(value.owned_pid)
+    ?value.owned_pid:null;
+}
+function pBindProjection(value) {
+  return pExact(value,["status","binding_quality","mutation_allowed",
+      "endpoint_access_class","pid","window_id","target_id","tabs"])&&
+    value.status==="ok"&&value.binding_quality==="exact"&&value.mutation_allowed===true&&
+    value.endpoint_access_class==="driver_owned"&&value.pid===pBrowserPid&&
+    value.window_id===pWindowId&&pCapability(value.target_id)&&
+    Array.isArray(value.tabs)&&value.tabs.length===1&&
+    pExact(value.tabs[0],["tab_id","active","url"])&&
+    pCapability(value.tabs[0].tab_id)&&value.tabs[0].active===true&&
+    value.tabs[0].url==="about:blank"
+    ?{target_id:value.target_id,tab_id:value.tabs[0].tab_id}:null;
+}
+function pSnapshotProjection(value) {
+  return pExact(value,["status","target_id","tab_id","url","complete",
+      "omitted","continuation","refs","content_refs"])&&
+    value.status==="ok"&&value.target_id===pTargetId&&value.tab_id===pTabId&&
+    value.url==="about:blank"&&value.complete===true&&value.omitted===0&&
+    value.continuation===null&&Array.isArray(value.refs)&&value.refs.length===0&&
+    Array.isArray(value.content_refs)&&value.content_refs.length===0;
+}
+async function pCleanup() {
+  if(pCleanupStarted)return;
+  pCleanupStarted=true;pRecord.cleanup_started=true;pKeep();
+  store("d01_fresh_password_input",null);
+  try {
+    const r=await pLocal("stop",P_STOP,{lab:pSeed.lab,event_out:pSeed.event_out,
+      first_failure:pRecord.first_failure,
+      first_observation_wall_ms:pRecord.first_observation_wall_ms});
+    pFirstClock=r.clock;pRecord.first_clock=r.clock;pRecord.stop_state=r.marker_state;pKeep();
+    if(r.event_state!=="written")pLabelError("observation_metadata_write_unconfirmed");
+    if(!["stop_requested","lab_absent"].includes(r.marker_state))
+      pLabelError("owned_stop_unconfirmed");
+  } catch {pLabelError("stop_or_clock_record_unavailable");}
+  // A known lifecycle is not proof of a launched process's ownership/absence.
+  if(pBrowserPid!==null) {
+    let cooperativeRefused=false,stillPresent=false;
+    if(pWindowId!==null) {
+      const q=await pDriver("cooperative_close",30000,()=>tools.mcp__cua_driver__hotkey({
+        session:pSeed.session,pid:pBrowserPid,window_id:pWindowId,
+        target:{kind:"window",pid:pBrowserPid,window_id:pWindowId},
+        delivery_mode:"background",keys:["cmd","q"]}));
+      cooperativeRefused=q?.isError===true||q?.structuredContent?.effect==="refused";
+      // An unverifiable dispatch is not a refusal. No automatic replay/escalation.
+      const w=await pDriver("cooperative_readback",5000,
+        ()=>tools.mcp__cua_driver__list_windows({pid:pBrowserPid}));
+      const rows=pWindows(w,false);stillPresent=rows!==null&&rows.length>0;
+    }
+    if(pWindowId===null)
+      await pDriver("kill_app_no_exact_cooperative_window",30000,
+        ()=>tools.mcp__cua_driver__kill_app({pid:pBrowserPid}));
+    else if(cooperativeRefused&&stillPresent)
+      await pDriver("kill_app",30000,()=>tools.mcp__cua_driver__kill_app({pid:pBrowserPid}));
+    else if(stillPresent)pLabelError("cooperative_close_unconfirmed");
+  }
+  if(pRecord.prepare_invoked) {
+    const ended=await pDriver("end_session",15000,
+      ()=>tools.mcp__cua_driver__end_session({session:pSeed.session}));
+    pSessionEnded=ended?.isError!==true&&ended?.structuredContent?.active===false&&
+      ended.structuredContent.session===pSeed.session;pKeep();
+    if(!pSessionEnded)pLabelError("session_end_unconfirmed");
+  } else {pSessionEnded=true;pKeep();} // No preparation call/lifecycle was initiated.
+  if(pBrowserPid!==null) {
+    const w=await pDriver("window_readback",5000,
+      ()=>tools.mcp__cua_driver__list_windows({pid:pBrowserPid}));
+    const rows=pWindows(w,false);pWindowCount=rows===null?null:rows.length;pKeep();
+  }
+  for(let attempts=0;attempts<180&&!pControllerJoined&&pControllerPollAvailable&&
+        Date.now()<pSeed.start_epoch_ms+900000;attempts++) {
+    try {
+      let r=await tools.write_stdin({session_id:pSeed.exec_session,chars:"",
+        yield_time_ms:5000,max_output_tokens:2000});
+      pRecord.local_tool_receipts.push({label:"controller_join",
+        exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+        session_id:pPositive(r.session_id)?r.session_id:null});pKeep();
+      if(Number.isInteger(r.exit_code)) {
+        pControllerJoined=true;pRecord.controller_exit=r.exit_code;pKeep();
+      }
+      // Do not retain/print arbitrary controller output; canonical fixed readback below.
+      r=null;
+    } catch {pControllerPollAvailable=false;pLabelError("controller_join_unconfirmed");}
+  }
+  if(!pControllerJoined)pLabelError("child_reap_incomplete");
+  try {
+    const r=await pLocal("readback",P_READBACK,{
+      owned_pids:[pSeed.guard_pid,pSeed.server_pid,...(pBrowserPid===null?[]:[pBrowserPid])],
+      lab:pSeed.lab,outer_out:pSeed.outer_out,helper_pid:null,server_pid:pSeed.server_pid});
+    pRecord.owned_child_exits=r.owned_child_exits;
+    pRecord.final_absence={owned_pids:r.owned_pids,ports:r.ports,lab:r.lab_absent,
+      window_count:pWindowCount,session_ended:pSessionEnded,
+      browser_ownership_known:pBrowserPid!==null||!pRecord.prepare_invoked};
+    pRecord.final_clock=r.clock;pKeep(); // Evidence retained BEFORE comparisons.
+    const a=pRecord.final_absence;
+    const childCount=r.helper_pid===null?6:7;
+    const joined=pControllerJoined&&Array.isArray(r.owned_child_exits)&&
+      r.owned_child_exits.length===childCount;
+    const browserAbsent=!pRecord.prepare_invoked||
+      (pBrowserPid!==null&&a.owned_pids[String(pBrowserPid)]===true&&pWindowCount===0);
+    const known=[pSeed.guard_pid,pSeed.server_pid,...(pBrowserPid===null?[]:[pBrowserPid]),
+      ...(r.helper_pid===null?[]:[r.helper_pid])];
+    const absent=known.every(pid=>a.owned_pids[String(pid)]===true)&&
+      a.ports["9000"]===true&&a.ports["3000"]===true&&a.lab===true;
+    if(joined&&browserAbsent&&absent&&pSessionEnded&&
+       !pRecord.cleanup_errors.includes("owned_local_command_unjoined"))
+      pRecord.release="PROVEN";
+    else pLabelError("owned_resource_absence_unproven");
+    if(pFirstClock) {
+      pRecord.latch_to_absence_ms=Number(
+        (BigInt(r.clock.monotonic_ns)-BigInt(pFirstClock.monotonic_ns))/1000000n);
+      if(pRecord.latch_to_absence_ms>60000)pLabelError("cleanup_budget_exceeded");
+    }
+    pKeep();
+  } catch {pLabelError("owned_readback_unavailable");}
+  pLabelError("first_event_unproven");
+  try {
+    const cmd="python3 -c "+pSq(P_PERSIST)+" "+pSq(pSeed.cleanup_out)+" "+
+      pSq(JSON.stringify(pRecord));
+    const r=await tools.exec_command({cmd,workdir:pSeed.workspace,
+      yield_time_ms:10000,max_output_tokens:500});
+    pRecord.local_tool_receipts.push({label:"persist",
+      exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+      session_id:pPositive(r.session_id)?r.session_id:null});pKeep();
+    if(r.exit_code!==0||r.session_id!==undefined)
+      pLabelError("cleanup_metadata_write_unconfirmed");
+    if(r.session_id!==undefined) {
+      pRecord.release="UNKNOWN";pLabelError("owned_local_command_unjoined");
+    }
+  } catch {pLabelError("cleanup_metadata_write_unconfirmed");}
+}
+async function pPrepareEntry() {
+  // SOURCE GAPS: all four implementations absent from the advertised contracts.
+  // No guessed raw Driver fields, stdout secret bridge or runtime-enabled bypass.
+  if(Object.values(P_REQUIRED_INTERFACES).some(v=>typeof v!=="function")||
+     !/^[a-f0-9]{64}$/.test(pSeed.interfaces_source_sha256)) {
+    pLatch("preparation_source_prerequisite_missing",Date.now());return;
+  }
+  if(Date.now()>=pSeed.start_epoch_ms+840000) {
+    pLatch("preparation_active_deadline",Date.now());return;
+  }
+  let raw=null,projection=null;
+  try {
+    pRecord.prepare_invoked=true;pKeep();
+    raw=await pDriver("browser_prepare",30000,()=>tools.mcp__cua_driver__browser_prepare({
+      session:pSeed.session,allow_launch:true,profile:{mode:"isolated_new"}}));
+    if(pRecord.first_failure!==null)return;
+    projection=P_REQUIRED_INTERFACES.prepare_decoder(raw);
+    pBrowserPid=pPrepareProjection(projection);raw=null;projection=null;
+    if(pBrowserPid===null){pLatch("prepared_owned_pid_unconfirmed",Date.now());return;}
+    pRecord.prepare_owned=true;pKeep();
+    raw=await pDriver("prepare_windows",5000,
+      ()=>tools.mcp__cua_driver__list_windows({pid:pBrowserPid}));
+    if(pRecord.first_failure!==null)return;
+    const windows=pWindows(raw,true);raw=null;
+    if(windows===null){pLatch("prepared_window_ambiguous",Date.now());return;}
+    pWindowId=windows[0].window_id;
+    raw=await pDriver("prepare_bind",30000,()=>tools.mcp__cua_driver__get_browser_state({
+      session:pSeed.session,pid:pBrowserPid,window_id:pWindowId,
+      snapshot_format:"semantic_v2",include_screenshot:false}));
+    if(pRecord.first_failure!==null)return;
+    projection=P_REQUIRED_INTERFACES.bind_decoder(raw);raw=null;
+    const identity=pBindProjection(projection);projection=null;
+    if(identity===null){pLatch("prepared_binding_unconfirmed",Date.now());return;}
+    pTargetId=identity.target_id;pTabId=identity.tab_id;
+    raw=await pDriver("prepare_snapshot",30000,()=>tools.mcp__cua_driver__get_browser_state({
+      session:pSeed.session,target_id:pTargetId,tab_id:pTabId,
+      snapshot_format:"semantic_v2",include_screenshot:false}));
+    if(pRecord.first_failure!==null)return;
+    projection=P_REQUIRED_INTERFACES.snapshot_decoder(raw);raw=null;
+    const blank=pSnapshotProjection(projection);projection=null;
+    if(!blank){pLatch("prepared_snapshot_unconfirmed",Date.now());return;}
+    pRecord.exact_bound=true;pKeep();
+    // Private bridge calls the archived bounded Python reader without stdout,
+    // ToolResult content, durable metadata, environment or arbitrary response storage.
+    // It must call this sink synchronously once and clear its transient return.
+    let transferred=false;
+    await P_REQUIRED_INTERFACES.private_transfer({
+      lab:pSeed.lab,name:"browser-password",
+      maximum_bytes:128,sink:value=>{
+        if(transferred||typeof value!=="string"||!/^[A-Za-z0-9_-]{30,128}$/.test(value))
+          throw Error("private_input_refused");
+        store("d01_fresh_password_input",value);value=null;transferred=true;
+      }});
+    if(!transferred){pLatch("private_input_unconfirmed",Date.now());return;}
+    pRecord.private_input_proven=true;pKeep();
+    // Same cell immediately enters c5; no text/yield/model wait and no RP HTTP.
+    store("d01_immediate_owned_handles",{
+      runtime_release:true,driver_owned:true,exact_bound:true,single_controller:true,
+      fresh_paths_preflight:true,phase:"prepared_entry",prepared_gate:true,
+      fixture_ready:false,listener_pid_proof:false,helper_pid:null,
+      start_epoch_ms:pSeed.start_epoch_ms,workspace:pSeed.workspace,
+      guard_pid:pSeed.guard_pid,server_pid:pSeed.server_pid,
+      browser_pid:pBrowserPid,window_id:pWindowId,exec_session:pSeed.exec_session,
+      session:pSeed.session,target_id:pTargetId,tab_id:pTabId,
+      lab:pSeed.lab,outer_out:pSeed.outer_out,event_out:pSeed.event_out,
+      cleanup_out:pSeed.cleanup_out
+    });
+  } catch {pLatch("preparation_projection_or_private_transfer_exception",Date.now());}
+  finally {raw=null;projection=null;}
+}
+if(!pSeedValid(pSeed)||pContext!==undefined&&pContext!==null||
+   load("d01_fresh_password_input")!==undefined&&load("d01_fresh_password_input")!==null||
+   load(pObsKey)!==undefined&&load(pObsKey)!==null) {
+  // Ownership source unavailable: no guessed stop/PID/session and no release claim.
+  pLatch("preparation_seed_unconfirmed",Date.now());
+  text({proposal_refused:"preparation_seed_unconfirmed",resource_release_proven:false});
+  exit();
+}
+try{await pPrepareEntry();}catch{pLatch("preparation_adapter_exception",Date.now());}
+if(pRecord.first_failure!==null) {
+  await pCleanup();
+  text({result:"preparation_failed",first_failure:pRecord.first_failure,
+    cleanup_errors:pRecord.cleanup_errors,resource_release_proven:pRecord.release==="PROVEN",
+    whole_cleanup_within60_proven:false,journey_credit:false});
+  exit();
+}
+// Literal unchanged c5 entry cell begins next. Do not evaluate this design.
+// Prospective ONE functions.exec cell; NOT executed in this design phase.
+const CLOCK="import json,time\nprint(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))\n";
+const STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+const READBACK="import json,os,pathlib,stat,subprocess,sys,time\nc=json.loads(sys.argv[1])\nchildren=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        info=os.fstat(fd)\n        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):\n            raise ValueError('fixed_outer_evidence_invalid')\n        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)\n        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')\n        data=json.loads(raw_bytes)\n    finally:os.close(fd)\n    outer_observation=finite_observation(data.get('unexpected_failure_observation'))\n    projection=data.get('unexpected_observation_projection')\n    if projection not in ('unavailable','valid','invalid'):projection='invalid'\n    if projection=='valid' and outer_observation is None:projection='invalid'\n    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0\n    if started:allowed.add('helper')\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\n        helper_pid=data['helper_pid'] if started else None\npids=list(c['owned_pids'])\nif helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))\n";
+const MARKER="import os,pathlib,stat,sys\nlab=pathlib.Path(sys.argv[1]);guard=int(sys.argv[2]);server=int(sys.argv[3])\nif guard<=0 or server<=0 or guard==server:raise ValueError('owned_context_invalid')\ninfo=lab.lstat()\nif not (stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.getuid()):raise ValueError('owned_context_invalid')\nos.kill(guard,0);os.kill(server,0)\nif (lab/'stop').exists() or (lab/'ui-failure').exists():raise ValueError('owned_context_invalid')\nfd=os.open(lab/'browser-prepared',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nos.close(fd)\nprint('{\"prepared_marker_written\":true}')\n";
+const PERSIST="import json,os,pathlib,sys\npath=pathlib.Path(sys.argv[1])\nrecord=json.loads(sys.argv[2])\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\ndef clocks(value):\n    if isinstance(value,dict):\n        for k,v in list(value.items()):\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\n                value[k]=int(v)\n            else:clocks(v)\n    elif isinstance(value,list):\n        for v in value:clocks(v)\nclocks(record)\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'w',encoding='ascii') as f:\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\n');f.flush();os.fsync(f.fileno())\nprint(json.dumps({'written_exclusive':True}))\n";
+const own=load("d01_immediate_owned_handles");
+const OBSKEY="d01_immediate_observation_record";
+if (!own || own.runtime_release!==true || own.driver_owned!==true ||
+    own.exact_bound!==true || own.single_controller!==true ||
+    !["prepared_entry","browser_decision"].includes(own.phase) ||
+    (own.phase==="prepared_entry"&&(own.prepared_gate!==true||own.helper_pid!==null||
+      own.fixture_ready===true||own.listener_pid_proof===true)) ||
+    (own.phase==="browser_decision"&&(own.fixture_ready!==true||own.listener_pid_proof!==true)) ||
+    own.fresh_paths_preflight!==true ||
+    !Number.isSafeInteger(own.start_epoch_ms) || typeof own.workspace!=="string" ||
+    new Set([own.guard_pid,own.server_pid,own.browser_pid,
+       ...(own.helper_pid===null?[]:[own.helper_pid])]).size!==(own.helper_pid===null?3:4) ||
+    ![own.guard_pid,own.server_pid,own.browser_pid,own.exec_session,
+       ...(own.helper_pid===null?[]:[own.helper_pid])]
+       .every(v=>Number.isSafeInteger(v)&&v>0) ||
+    ![own.session,own.target_id,own.tab_id,own.lab,own.outer_out,
+       own.event_out,own.cleanup_out].every(v=>typeof v==="string"&&v.length>0)) {
+  text({proposal_refused:"fresh_owned_context_required"});exit();
+}
+const prior=load(OBSKEY);
+if(own.closed===true||prior?.cleanup_started===true){
+  text({proposal_refused:"fixture_already_stopped",resource_release_proven:false});exit();
+}
+const record=prior??{
+  schema:"riauth.d01-immediate-observation-cleanup/v1",
+  first_failure:null,first_observation_wall_ms:null,
+  first_event_proven:false,whole_cleanup_within60_proven:false,
+  unexpected_failure_observation:null,diagnostic_errors:[],cleanup_started:false,
+  first_clock:null,observation_receipts:[],controller_observations:[],local_tool_receipts:[],actions:[],cleanup_errors:[],
+  final_absence:null,owned_child_exits:null,controller_exit:null,
+  first_observation_to_final_wall_ms:null,latch_to_absence_ms:null
+};
+const sq=s=>"'"+String(s).replace(/'/g,"'\\''")+"'";
+const retain=()=>store(OBSKEY,record);
+const cleanupError=label=>{
+  if(!record.cleanup_errors.includes(label))record.cleanup_errors.push(label);
+  retain();
+};
+const local=async(source,arg)=>{
+  const cmd="python3 -c "+sq(source)+(arg===undefined?"":" "+sq(JSON.stringify(arg)));
+  const r=await tools.exec_command({cmd,workdir:own.workspace,
+    yield_time_ms:10000,max_output_tokens:2000});
+  record.local_tool_receipts.push({
+    label:source===CLOCK?"clock":source===STOP?"stop":source===READBACK?"readback":"unknown",
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    session_id:typeof r.session_id==="number"?r.session_id:null
+  });retain(); // Numeric collector receipt BEFORE comparisons.
+  if(r.session_id!==undefined) {
+    cleanupError("owned_local_command_unjoined");throw new Error("local_pending");
+  }
+  if(r.exit_code!==0)throw new Error("local_failed");
+  return JSON.parse(r.output);
+};
+function finiteObservation(value) {
+  const exact=(v,keys)=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&
+    Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
+  if(!exact(value,["observed","diagnostic"])||typeof value.observed!=="boolean")return null;
+  const d=value.diagnostic;
+  if(d===null)return {observed:value.observed,diagnostic:null};
+  if(!value.observed||!exact(d,["site","exception_class","own_function","own_line"])||
+     !["handler","server","main"].includes(d.site)||
+     !["AttributeError","TypeError","ValueError","KeyError","OSError","BrokenPipeError",
+       "ConnectionResetError","TimeoutError","other"].includes(d.exception_class))return null;
+  const functions=["HeaderReader.readline","DemoServer.process_request","Demo.begin","Demo.callback",
+    "Demo.invoke","Handler.handle_one_request","Handler.send_error","Handler.get","Handler.reply","main"];
+  if(!((d.own_function===null&&d.own_line===null)||
+       (functions.includes(d.own_function)&&Number.isSafeInteger(d.own_line)&&
+        d.own_line>=1&&d.own_line<=1024)))return null;
+  return {observed:true,diagnostic:{site:d.site,exception_class:d.exception_class,
+    own_function:d.own_function,own_line:d.own_line}};
+}
+function diagnostic(value,projection) {
+  const projected=finiteObservation(value);
+  if(projection==="invalid"||!["valid","unavailable"].includes(projection)||
+     (projection==="valid"&&projected===null)) {
+    if(!record.diagnostic_errors.includes("observer_projection_invalid"))
+      record.diagnostic_errors.push("observer_projection_invalid");
+  }
+  if(projected!==null&&record.unexpected_failure_observation===null)
+    record.unexpected_failure_observation=projected;
+  retain(); // No raw diagnostic fallback and no first-failure or outcome mutation.
+}
+const ns=c=>BigInt(c.monotonic_ns);
+const getClock=()=>local(CLOCK);
+let controllerJoined=false;
+let controllerPollAvailable=true;
+let controllerBuffer="";
+let cleanupStarted=false;
+let lastSnapshotFlags=null;
+function latch(label,receivedWall) {
+  if(record.first_failure===null) {
+    record.first_failure=label;
+    record.first_observation_wall_ms=receivedWall;
+    retain(); // Synchronous first-failure/wall latch BEFORE any new await/output.
+  }
+}
+function observeController(r,receivedWall) {
+  const observation={received_wall_ms:receivedWall,
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    helper_completed:false,helper_exit:null,fixture_finished:false};
+  // Complete numeric result projection is retained BEFORE comparisons.
+  record.controller_observations.push(observation);retain();
+  if(typeof r.exit_code==="number") {
+    controllerJoined=true;record.controller_exit=r.exit_code;retain();
+  }
+  controllerBuffer+=typeof r.output==="string"?r.output:"";
+  if(controllerBuffer.length>16384) {
+    latch("controller_observation_invalid",receivedWall);controllerBuffer="";return;
+  }
+  let cut;
+  while((cut=controllerBuffer.indexOf("\n"))>=0) {
+    const line=controllerBuffer.slice(0,cut);controllerBuffer=controllerBuffer.slice(cut+1);
+    if(!line.trim())continue;
+    let event;
+    try{event=JSON.parse(line);}catch{
+      latch("controller_observation_invalid",receivedWall);continue;
+    }
+    if(Object.hasOwn(event,"unexpected_failure_observation"))
+      diagnostic(event.unexpected_failure_observation,event.unexpected_observation_projection);
+    if(event.fixture_ready===true) {
+      if(event.guard_pid!==own.guard_pid||event.server_pid!==own.server_pid||
+         event.lab!==own.lab||!Number.isSafeInteger(event.helper_pid)||event.helper_pid<=0||
+         [own.guard_pid,own.server_pid,own.browser_pid].includes(event.helper_pid)||
+         (own.helper_pid!==null&&own.helper_pid!==event.helper_pid))
+        latch("fixture_ready_unconfirmed",receivedWall);
+      else {
+        own.helper_pid=event.helper_pid;own.fixture_ready=true;own.listener_pid_proof=true;
+        store("d01_immediate_owned_handles",own);
+      }
+    }
+    if(event.helper_completed===true) {
+      observation.helper_completed=true;
+      observation.helper_exit=typeof event.exit==="number"?event.exit:null;
+      retain();
+      if(event.exit!==0)latch("helper_failed",receivedWall);
+      else if(!cleanupStarted&&record.protected_after_page!==true)
+        latch("helper_completed_before_app_checkpoint",receivedWall);
+    }
+    if(event.fixture_finished===true) {
+      observation.fixture_finished=true;retain();
+      if(!cleanupStarted)latch("controller_completed_before_app_checkpoint",receivedWall);
+    }
+  }
+  if(controllerJoined&&!cleanupStarted)
+    latch("controller_completed_before_app_checkpoint",receivedWall);
+}
+async function pollController() {
+  if(controllerJoined||!controllerPollAvailable)return;
+  try {
+    const r=await tools.write_stdin({session_id:own.exec_session,
+      chars:"",yield_time_ms:5000,max_output_tokens:2000});
+    const receivedWall=Date.now();
+    observeController(r,receivedWall);
+  } catch {
+    controllerPollAvailable=false;
+    latch("controller_observation_unavailable",Date.now());
+    if(cleanupStarted)cleanupError("controller_join_unconfirmed");
+  }
+}
+async function timedDriver(label,allocation,operation,project) {
+  let start=null,end=null,result=null,state="unknown";
+  try{start=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label,start_clock:start,end_clock:null,allowed_ms:allocation,
+    result_state:"unknown",elapsed_ms:null,over_budget:null};
+  record.actions.push(action);retain(); // Start retained BEFORE entering Driver call.
+  try {
+    result=await operation();
+    state=result?.isError===true?"refused":"returned";
+  } catch {state="exception";}
+  try{end=await getClock();}catch{cleanupError("clock_unavailable");}
+  action.end_clock=end;action.result_state=state;
+  retain(); // End/result retained BEFORE budget comparison.
+  if(start&&end) {
+    const d=ns(end)-ns(start);
+    if(d>=0n) {
+      action.elapsed_ms=Number(d/1000000n);
+      action.over_budget=action.elapsed_ms>allocation;
+    } else cleanupError("clock_invalid");
+  }
+  if(action.over_budget)cleanupError("driver_operation_over_budget");
+  if(state!=="returned")cleanupError("driver_operation_unconfirmed");
+  if(project)project(result,state);
+  retain();
+}
+async function cleanup() {
+  if(cleanupStarted)return;
+  cleanupStarted=true;record.cleanup_started=true;retain();
+  try {
+    const r=await local(STOP,{
+      lab:own.lab,event_out:own.event_out,
+      first_failure:record.first_failure,
+      first_observation_wall_ms:record.first_observation_wall_ms
+    });
+    record.first_clock=r.clock;record.stop_state=r.marker_state;retain();
+    if(r.event_state!=="written")cleanupError("observation_metadata_write_unconfirmed");
+    if(r.marker_state==="stop_unconfirmed")cleanupError("stop_unconfirmed");
+    if(r.marker_state==="ownership_unknown")cleanupError("ownership_unknown");
+  } catch {cleanupError("stop_or_clock_record_unavailable");}
+  // No outstanding Driver call exists here: all page calls above were awaited.
+  // Original stop protocol already causes the controller's owned-child finally.
+  await timedDriver("kill_app",30000,
+    ()=>tools.mcp__cua_driver__kill_app({pid:own.browser_pid}));
+  await timedDriver("end_session",15000,
+    ()=>tools.mcp__cua_driver__end_session({session:own.session}),(r,state)=>{
+      record.session_ended=state==="returned"&&
+        r?.structuredContent?.active===false&&r.structuredContent.session===own.session;
+      retain();
+    });
+  await timedDriver("list_windows",5000,
+    ()=>tools.mcp__cua_driver__list_windows({pid:own.browser_pid}),(r,state)=>{
+      const windows=r?.structuredContent?.windows;
+      record.window_count=state==="returned"&&Array.isArray(windows)?windows.length:null;
+      retain();
+    });
+  let readStart=null;
+  try{readStart=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label:"owned_join_readback",start_clock:readStart,end_clock:null,
+    allowed_ms:null,elapsed_ms:null,over_budget:null,result_state:"unknown"};
+  record.actions.push(action);retain();
+  if(readStart&&record.first_clock) {
+    action.allowed_ms=Math.max(0,60000-Number((ns(readStart)-ns(record.first_clock))/1000000n));
+    retain();
+  }
+  // Continue essential join after60s if late; never claim that deadline enforced.
+  // Do not poll another exec session or send a manual process signal.
+  while(!controllerJoined&&controllerPollAvailable&&Date.now()<own.start_epoch_ms+900000) {
+    await pollController();
+    if(record.first_clock) {
+      try {
+        const c=await getClock();record.last_join_clock=c;retain();
+        if(ns(c)-ns(record.first_clock)>60000000000n)
+          cleanupError("cleanup_budget_exceeded");
+      } catch{cleanupError("clock_unavailable");}
+    }
+  }
+  if(!controllerJoined)cleanupError("child_reap_incomplete");
+  try {
+    const r=await local(READBACK,{
+      owned_pids:[own.guard_pid,own.server_pid,own.browser_pid,
+        ...(own.helper_pid===null?[]:[own.helper_pid])],
+      lab:own.lab,outer_out:own.outer_out,helper_pid:own.helper_pid,server_pid:own.server_pid
+    });
+    action.end_clock=r.clock;action.result_state="returned";
+    record.owned_child_exits=r.owned_child_exits;
+    diagnostic(r.unexpected_failure_observation,r.unexpected_observation_projection);
+    if(Number.isSafeInteger(r.helper_pid)&&r.helper_pid>0)own.helper_pid=r.helper_pid;
+    record.final_absence={owned_pids:r.owned_pids,ports:r.ports,
+      lab:r.lab_absent,window_count:record.window_count??null,
+      session_ended:record.session_ended===true};
+    record.first_observation_to_final_wall_ms=record.first_observation_wall_ms===null?null:
+      Date.now()-record.first_observation_wall_ms;
+    retain(); // Full fixed readback/exits/clock BEFORE comparisons.
+    if(readStart) {
+      action.elapsed_ms=Number((ns(r.clock)-ns(readStart))/1000000n);
+      action.over_budget=action.allowed_ms===null?null:action.elapsed_ms>action.allowed_ms;
+    }
+    if(record.first_clock)
+      record.latch_to_absence_ms=Number((ns(r.clock)-ns(record.first_clock))/1000000n);
+    if(action.over_budget)cleanupError("cleanup_budget_exceeded");
+    const a=record.final_absence;
+    if(!controllerJoined||!Array.isArray(record.owned_child_exits)||
+       record.owned_child_exits.length!==(own.helper_pid===null?6:7))
+      cleanupError("child_reap_incomplete");
+    if(!Object.values(a.owned_pids).every(v=>v===true)||
+       !Object.values(a.ports).every(v=>v===true)||a.lab!==true||
+       a.window_count!==0||a.session_ended!==true)
+      cleanupError("owned_resource_absence_unproven");
+  } catch {action.result_state="exception";cleanupError("owned_readback_unavailable");}
+  cleanupError("first_event_unproven");
+  record.whole_cleanup_within60_proven=false;retain();
+  // Exclusive new file only; existing outer/helper/provider evidence untouched.
+  try {
+    const cmd="python3 -c "+sq(PERSIST)+" "+sq(own.cleanup_out)+" "+sq(JSON.stringify(record));
+    const r=await tools.exec_command({cmd,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500});
+    record.local_tool_receipts.push({label:"persist",
+      exit:typeof r.exit_code==="number"?r.exit_code:null,
+      session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+    if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+    if(r.session_id!==undefined||r.exit_code!==0)
+      cleanupError("cleanup_metadata_write_unconfirmed");
+  } catch {cleanupError("cleanup_metadata_write_unconfirmed");}
+  controllerBuffer="";own.closed=true;store("d01_immediate_owned_handles",own);
+}
+async function checked(label,operation,predicate) {
+  if(record.first_failure!==null)return null;
+  if(Date.now()>=own.start_epoch_ms+840000) {
+    latch("browser_active_deadline",Date.now());await cleanup();return null;
+  }
+  let result,receivedWall;
+  try {
+    result=await operation();receivedWall=Date.now();
+    record.observation_receipts.push({kind:label,received_wall_ms:receivedWall});retain();
+    if(result?.isError===true)latch("browser_tool_refused",receivedWall);
+    else if(!predicate(result))latch("browser_decision_unconfirmed",receivedWall);
+  } catch {latch("browser_tool_or_decision_exception",Date.now());}
+  if(record.first_failure!==null)await cleanup();
+  return record.first_failure===null?result:null;
+}
+const snapshotArgs={session:own.session,target_id:own.target_id,tab_id:own.tab_id,
+  snapshot_format:"semantic_v2",include_screenshot:false};
+function page(result,kind) {
+  const s=result?.structuredContent,nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
+  const flags={
+    status_ok:result?.isError!==true&&s?.status==="ok",
+    complete:s?.snapshot?.complete===true,
+    heading_match:nodes.some(n=>n.role==="heading"&&n.name===
+      (kind==="protected_after"?"Protected application access":"Local demo")),
+    error_match:nodes.some(n=>n.name==="Local demo could not complete this request."),
+    required_text:nodes.some(n=>n.name===(kind==="protected_before"?"Sign in required.":
+      kind==="protected_after"?"Signed in. Protected application access is available.":
+      "Use Sign in to open this local application.")),
+    interactive_ref_present:Array.isArray(s?.refs)&&
+      s.refs.some(n=>Array.isArray(n.actions)&&n.actions.includes("click"))
+  };
+  record.last_page_flags={kind,...flags};retain();
+  // Only provider refs and fixed public-label matches survive this raw snapshot.
+  own.fresh_refs=Array.isArray(s?.refs)?s.refs.filter(n=>typeof n.ref==="string"&&
+    /^p[0-9]+:[0-9]+$/.test(n.ref)).map(n=>n.ref):[];
+  store("d01_immediate_owned_handles",own);
+  if(flags.error_match)return false;
+  if(!flags.status_ok||!flags.complete)return false;
+  if(kind==="generic_checked") {
+    if(nodes.some(n=>n.role==="heading"&&n.name==="Protected application access")&&
+       nodes.some(n=>n.name==="Signed in. Protected application access is available."))
+      record.protected_after_page=true;
+    return true;
+  }
+  const ok=flags.heading_match&&flags.required_text&&
+    (kind!=="application"||flags.interactive_ref_present);
+  if(ok&&kind==="protected_after")record.protected_after_page=true;
+  return ok;
+}
+async function navigateAndSnapshot(url,kind) {
+  if(await checked("browser_navigation",
+      ()=>tools.mcp__cua_driver__browser_navigate({session:own.session,
+        target_id:own.target_id,tab_id:own.tab_id,url}),
+      r=>r?.isError!==true)) {
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,kind));
+  }
+}
+async function entry() {
+  // The exact Driver-owned blank handles already exist while the180s gate waits.
+  // There is no model yield, tool-description load or rebind after this marker.
+  const markerCommand="python3 -c "+sq(MARKER)+" "+sq(own.lab)+" "+
+    sq(own.guard_pid)+" "+sq(own.server_pid);
+  await checked("prepared_marker",
+    ()=>tools.exec_command({cmd:markerCommand,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500}),r=>{
+      record.local_tool_receipts.push({label:"marker",
+        exit:typeof r.exit_code==="number"?r.exit_code:null,
+        session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+      if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+      return r.exit_code===0&&r.session_id===undefined&&
+        JSON.parse(r.output).prepared_marker_written===true;
+    });
+  const readyDeadline=Date.now()+30000;
+  while(record.first_failure===null&&own.fixture_ready!==true&&Date.now()<readyDeadline)
+    await pollController();
+  if(record.first_failure===null&&own.fixture_ready!==true)
+    latch("fixture_ready_unconfirmed",Date.now());
+  if(record.first_failure!==null){await cleanup();return;}
+  await pollController(); // ONE immediate pre-navigation poll, no RP HTTP probe.
+  if(record.first_failure!==null){await cleanup();return;}
+  await navigateAndSnapshot("http://localhost:3000/protected","protected_before");
+  if(record.first_failure===null)await pollController();
+  if(record.first_failure!==null){await cleanup();return;}
+  await navigateAndSnapshot("http://localhost:3000/","application");
+  if(record.first_failure===null)await pollController(); // ONE post-entry poll.
+  if(record.first_failure===null) {
+    own.phase="browser_decision";
+    store("d01_immediate_owned_handles",own);
+  }
+  if(record.first_failure!==null)await cleanup();
+}
+async function continuation() {
+  const spec=own.next_decision;
+  const allowedKinds=["click","username","password","snapshot","protected_after"];
+  if(!spec||!allowedKinds.includes(spec.kind)) {
+    latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+  }
+  await pollController();
+  if(record.first_failure!==null){await cleanup();return;}
+  if(spec.kind==="protected_after") {
+    // Read the fresh callback-following protected page; do not send another RP request.
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,"protected_after"));
+  } else if(spec.kind==="snapshot") {
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+      r=>page(r,"generic_checked")&&publicPredicate(r,spec));
+  } else {
+    if(typeof spec.ref!=="string"||!Array.isArray(own.fresh_refs)||
+       !own.fresh_refs.includes(spec.ref)) {
+      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+    }
+    own.fresh_refs=[];store("d01_immediate_owned_handles",own); // Single-use snapshot ref.
+    const args={session:own.session,target_id:own.target_id,tab_id:own.tab_id,ref:spec.ref};
+    const operation=spec.kind==="click"?
+      ()=>tools.mcp__cua_driver__browser_click({...args,input_route:"dom_event"}):
+      ()=>tools.mcp__cua_driver__browser_type({...args,replace:true,
+        text:spec.kind==="username"?"admin":load("d01_fresh_password_input")});
+    if(spec.kind==="password"&&(typeof load("d01_fresh_password_input")!=="string"||
+       !/^[A-Za-z0-9_-]{30,128}$/.test(load("d01_fresh_password_input")))) {
+      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+    }
+    await checked("browser_input",operation,r=>{
+      const s=r?.structuredContent;
+      return r?.isError!==true&&["confirmed","unverifiable"].includes(s?.effect);
+    }); // Dispatch alone never earns an application outcome or journey credit.
+    store("d01_fresh_password_input",null);
+    if(record.first_failure===null)
+      await checked("browser_snapshot",
+        ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+        r=>page(r,"generic_checked")&&publicPredicate(r,spec));
+  }
+  if(record.first_failure===null)await pollController();
+  if(record.first_failure!==null)await cleanup();
+  else if(spec.kind==="protected_after") {
+    record.cleanup_requested_wall_ms=Date.now();retain();
+    await cleanup();
+  }
+}
+function publicPredicate(result,spec) {
+  const nodes=result?.structuredContent?.content_refs;
+  // Root must pin one printed public expected label/role before that action.
+  // No raw field value, URL, subject, query or arbitrary regex predicate is allowed.
+  const roles=["heading","button","statictext","textbox"];
+  const labels=["Username","Password","Authenticator or recovery code","Sign in",
+    "Local demo","Protected application access",
+    "Signed in. Protected application access is available."];
+  return Array.isArray(nodes)&&roles.includes(spec.expected_role)&&
+    labels.includes(spec.expected_label)&&
+    nodes.some(n=>n.role===spec.expected_role&&n.name===spec.expected_label);
+}
+try {
+  if(own.phase==="prepared_entry")await entry();else await continuation();
+} catch {
+  latch("composed_decision_exception",Date.now());
+  await cleanup();
+}
+if(record.first_failure!==null) {
+  text({result:"failed",first_failure:record.first_failure,
+    unexpected_failure_observation:record.unexpected_failure_observation,
+    diagnostic_errors:record.diagnostic_errors,cleanup_errors:record.cleanup_errors,
+    final_absence:record.final_absence,controller_exit:record.controller_exit,
+    whole_cleanup_within60_proven:false,
+    resource_release_proven:record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v))});
+} else {
+  text({result:"browser_decision_observed_only",page_flags:record.last_page_flags??null,
+    journey_credit:false,cleanup_errors:record.cleanup_errors,
+    resource_release_proven:record.cleanup_started===true&&record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v)),
+    whole_cleanup_within60_proven:false});
+}
+```
+
+### Actual static checks and proof archive
+
+node --check --input-type=module exited0, empty stdout/stderr. Installed Node
+bundled Acorn parsed prefix/base/full as modules; the exact source/whole-AST inverse,
+13 unchanged functions, all four collector literals and four literal null
+interfaces were checked without evaluating any candidate. Python ast.parse and
+in-memory compile passed for the reader and four unchanged collectors; code
+objects were not executed/imported. Static checker source is below. Its AST hash
+is for the corrected c5 baseline (including phase update), distinct from the
+older uncorrected103b85 AST in the prior dated report.
+
+```javascript
+const fs=require("node:fs"),crypto=require("node:crypto");
+const acorn=require("internal/deps/acorn/acorn/dist/acorn");
+const input=JSON.parse(fs.readFileSync(0,"utf8"));
+const parse=s=>acorn.parse(s,{ecmaVersion:"latest",sourceType:"module"});
+const norm=v=>{
+  if(typeof v==="bigint")return {ast_bigint_decimal:v.toString(10)};
+  if(Array.isArray(v))return v.map(norm);
+  if(v&&typeof v==="object")return Object.fromEntries(Object.entries(v)
+    .filter(([k])=>!["start","end","loc","range"].includes(k))
+    .map(([k,x])=>[k,norm(x)]));
+  return v;
+};
+if(input.full!==input.prefix+input.base)throw Error("byte_prefix_boundary");
+if(input.full.slice(input.prefix.length)!==input.base)throw Error("byte_inverse");
+const base=parse(input.base),prefix=parse(input.prefix),full=parse(input.full);
+if(full.body.length!==prefix.body.length+base.body.length)throw Error("ast_boundary");
+const restored={...full,body:full.body.slice(prefix.body.length)};
+if(JSON.stringify(norm(restored))!==JSON.stringify(norm(base)))throw Error("ast_inverse");
+for(const [name,value] of Object.entries(input.collectors)) {
+  const declaration=prefix.body.find(n=>n.type==="VariableDeclaration"&&
+    n.declarations.some(d=>d.id.name==="P_"+name.toUpperCase()));
+  if(!declaration||declaration.declarations[0].init.value!==value)
+    throw Error("collector_literal_changed");
+}
+const declaration=prefix.body.find(n=>n.type==="VariableDeclaration"&&
+  n.declarations[0].id.name==="P_REQUIRED_INTERFACES");
+const properties=declaration.declarations[0].init.arguments[0].properties;
+if(properties.length!==4||properties.some(n=>n.value.value!==null))
+  throw Error("missing_interface_gate_not_closed");
+const hash=v=>crypto.createHash("sha256").update(JSON.stringify(norm(v))).digest("hex");
+console.log(JSON.stringify({
+  cell_evaluated:false,full_byte_inverse:true,full_ast_inverse:true,
+  existing_functions_unchanged:base.body.filter(n=>n.type==="FunctionDeclaration").length,
+  prefix_top_level_nodes:prefix.body.length,base_normalized_ast_sha256:hash(base),
+  restored_normalized_ast_sha256:hash(restored),
+  unchanged_collector_literals:Object.keys(input.collectors).length,
+  absent_interfaces:4
+}));
+```
+
+```json
+{
+  "adapter_cell_reader_collectors_evaluated": false,
+  "ast": {
+    "absent_interfaces": 4,
+    "base_normalized_ast_sha256": "28a72ac4b2b27a5c6f6aeee63883557580e4b63e9de097c9339e9dd9fd33d750",
+    "cell_evaluated": false,
+    "existing_functions_unchanged": 13,
+    "full_ast_inverse": true,
+    "full_byte_inverse": true,
+    "prefix_top_level_nodes": 32,
+    "restored_normalized_ast_sha256": "28a72ac4b2b27a5c6f6aeee63883557580e4b63e9de097c9339e9dd9fd33d750",
+    "unchanged_collector_literals": 4
+  },
+  "collector_sha256": {
+    "clock": "cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d",
+    "persist": "819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30",
+    "readback": "b7d3504245ae94a584b455fa65826fbaa7759ec7a50a7b81c2cf8284c9f9051f",
+    "stop": "5de5244440b134689bedfb1235e805c65a8b726e753cbdac1d0831ef1c83d071"
+  },
+  "four_collectors_ast_compile": true,
+  "helper_bytes": 32723,
+  "helper_sha256": "7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0",
+  "metadata_count": 12,
+  "metadata_mode_hashes_preserved": true,
+  "node_ast_exit": 0,
+  "node_syntax_exit": 0,
+  "prefix_bytes": 678273,
+  "prefix_sha256": "cfb1ded0643943622720322cba7d59dc0ef44fd09977c15cf97951dfa93ef910",
+  "python_reader_ast_compile": true,
+  "sources": {
+    "base": {
+      "bytes": 31581,
+      "lines": 467,
+      "sha256": "d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"
+    },
+    "checker": {
+      "bytes": 2184,
+      "lines": 38,
+      "sha256": "a34ded3734ba96be7c6eba1de5a1d2665bc6ba749b88d367fd0c75d3cb5fa964"
+    },
+    "full": {
+      "bytes": 57501,
+      "lines": 807,
+      "sha256": "401af55e346a9f55da682ca2de1762d8416da509816c52ef47e844c1fb8e6aeb"
+    },
+    "prefix": {
+      "bytes": 25920,
+      "lines": 340,
+      "sha256": "cbc5d71e6ba0a9ff98fb4a4145b82342149da3192a72d9fb053515f2b3fbd25f"
+    },
+    "reader": {
+      "bytes": 2859,
+      "lines": 48,
+      "sha256": "d441ddf5838fc331faa32a5f343c1ff8f377e029c21ac478b6c0f2e6cd4e70d5"
+    }
+  }
+}
+```
+
+Three static orchestration failures are retained separately: first functions.exec
+refused serialization of an accidentally stored JS encoder function before any
+shell/checker; next functions.exec rejected an unescaped backtick in its static
+wrapper source before any shell/checker; a metadata-only hash wrapper then exited1
+with UnicodeDecodeError because its encoder treated non-ASCII description text
+as ASCII bytes. Only wrapper serialization/fence spelling/JSON Unicode escaping
+were corrected. Candidate/reader/collector code was not evaluated in any of these
+attempts; the subsequent source syntax/AST and metadata hashes passed. No failed
+runtime/fixture is converted into a pass.
+
+Read/fingerprinted published35c3fd3007c52d8142c7bee1d69aee127cc42a95 descriptor
+receipt5638B/SHA5df541995dd1f74bff9c91104400140040d986a98a9f13f8688fbcb82cc4782a:
+root's128/128 memory-only PASS remains dated actual evidence. Prior cleanup18/18,
+286 stub tool calls, memory78 PASS and failed61/76 remain intact. None executed
+this adapter, private reader/bridge, current cell or a real GUI/crypto/journey.
+
+Before append, all12 historical deployment-private metadata files retained exact
+bytes/hash/mode0600; local helper470 retained32723B/7fbc. Entire c5 prefix, lost
+first provider values/wrong reporting correction, capacity refusal, preparation
+deadline/69.766s readback limit, unknown-sender Authorization refusals, c88
+protected403/genericunexpected0Auth and119s final-absence limit remain unchanged.
+No source/helper/controller/product/guide/D05/evidence JSON, board/status/main/
+push, worktree/worker/task or other-worker contact is changed. No runtime slot
+was acquired/released. All real runtime remains HELD; root alone decides
+ownership, source alignment/integration and original acceptance gates.
+
+Final append-only archive/prefix/hash/scope/docs/whitespace checks and one local
+report-only commit follow. The global docs check's already documented protected
+line2813 false link is preserved; no prefix correction is authorized.
+
+Final actual handoff checks: complete source/reader/checker archives match the
+reported hashes; ten fence pairs close; the entire678273-byte c5 prefix and
+all12 historical metadata hashes/modes remain exact; only this report differs.
+New-append link scan and git diff --check exited0. python3 scripts/check-docs.py
+exited1 solely with the known protected-prefix SimpleNamespace(demo=d false
+link at prior line2813. That prefix was not corrected and this expected global
+docs failure is retained. Final source syntax/AST/compile checks are static only;
+no adapter/reader/collector/cell/harness/provider/CLI/HTTP/Driver/browser/Cargo
+execution, source materialization, runtime slot or journey credit occurred.
+
+
+## Root review: incomplete preparation design and blank Driver contract survey (2026-10-03)
+
+Full `504a0c2a4cee19358580db2653451e065baf11ce` appendix, 340-line preparation prefix, 48-line bounded private reader and their contracts were read. Removing the exact 25920-byte prefix restores the entire phase-corrected c5 cell. Its four literal null interfaces and absent owned-controller seed producer make this a fail-closed, non-execution-ready design. The independently reported password/final-page/partial-output issues remain separate and assigned only as source design. No archived preparation/reader/c5 cell was executed by root. Exact author suffix is appended to all prior published bytes; the existing publication-only Markdown encoding remains intact.
+
+Root separately performed ONE RiWork Cua.ai Driver MCP isolated blank-browser contract survey after reading tool descriptions and live health/state. [Closed public receipt](evidence/wave30-d01-root-blank-driver-contract.json), 3893 bytes, SHA256 `b8145f029796a2063dfe167f026fe299d85afcaedbec5a7abacbeb5bf1a5ea27`, records the actual structured success fields. Driver 0.30.4 reported macOS26.2 ARM64 and grants. No caller-visible lifecycle existed before the fresh named session. Returned owned PID77592, uniquely matched about:blank window104061, exact driver-owned bind and single active returned tab were inspected; a fresh semantic snapshot was complete. The blank page has zero action refs and one inert rootwebarea content ref; omitted is a seven-field all-zero count map. A zero-content-ref/scalar-omitted decoder would therefore refuse this observed blank contract. Generic successful descriptions cannot substitute for these observed field mappings or unknown failure shapes.
+
+One background exact-window cmd+q returned unverifiable with delivery_failed escalation, and the owned browser still had windows. Root escalated once through Driver kill_app for the proven isolated PID, then ended the exact session. Fresh PID absence, zero PID-filtered windows and active:false/session match establish resource release. No other process was signaled. Desktop was released before this receipt integration. No IdP, password, private lab, helper, controller, HTTP navigation, screenshot, recording, browser CLI/CDP or sign-in/consent/callback/journey ran. The survey is contract/ownership evidence only.
+
+The next source seam can fill closed Driver decoders from this receipt, accept only the observed inert blank root, explicitly handle failed cooperative delivery plus observed owned presence, and provide a concrete bounded seed/private transfer implementation. Any internal exec tool result used to carry the private value must remain transient inside the functions cell, never text/notify/store as an arbitrary result or in durable evidence. The earlier imaginary no-stdout host bridge is not treated as available. Exact code and separate review remain required before a real fixture release. No original-row status was changed.
