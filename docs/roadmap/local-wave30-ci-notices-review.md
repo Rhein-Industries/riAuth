@@ -406,3 +406,148 @@ prefix and capacity report `717cc58` remain unchanged. Root owns release,
 generated-diff review, integration and CI interpretation. I10/R05/W02/W05/I02
 remain DONE; the independently running `b619` CI has no newly observed
 outcome in this preparation.
+
+## Actual released offline refresh/check evidence
+
+2026-10-02. Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, reservation
+`wave30_CI_notices_actual_offline_refresh_check`, same WT/branch. Root
+explicitly released one reviewed sequential pair after its native-host lane
+finished and released. Starting HEAD was
+`8af944cc8c6d956120d50534432ed6144474c7d8`, clean. The preceding 408 lines /
+25,150 bytes, SHA-256
+`7ab9303d6259ae04c7b42706ffd791da5c02409a47c4cbada216b9ba886ba9b8`,
+remain byte-identical. No prior finding/failure/preparation/capacity evidence
+was rewritten.
+
+**Actual result: refresh EXIT 0; exact expected generated output; check EXIT
+0; safe empty second-pass diff; both owned groups empty and waited.** The
+sole metadata/Cargo preparation slot was explicitly **RELEASED immediately
+after completion and cleanup**, before source/report commits. No additional
+generator, metadata, tree, compiler/version, build or test command was run.
+
+### Fresh preflight and exact executed pair
+
+Rechecked the seven generator-facing inputs plus all 14 override/source-list
+files, 21 total, against exact `b5dcfa9`/`b619` Git bytes and their SHA-256s.
+All matched before launch. No source alignment was needed. Refreshed static
+cache preflight found all 470 locked manifest/extraction/archive inputs and
+all matching cached index/version/checksum records present; installed
+1.98.1 toolchain metadata remained present. Process-name/PID/PPID/PGID-only
+inspection found zero competing Cargo/rustc processes. No raw process
+arguments, unrelated environment or credentials were printed.
+
+The first capacity check at 18:57:18.702711Z found 22,611,296,256 bytes free
+(21.058411 GiB). The inline supervisor then repeated clean HEAD/input/capacity
+checks immediately before execution. The exact environment and two argv are
+the literal offline pair documented above, unchanged: explicit Cargo/Rustup
+homes, `RUSTUP_TOOLCHAIN=1.98.1-aarch64-apple-darwin`, sparse protocol,
+`CARGO_NET_OFFLINE=true`, own `.target-wave27`, jobs 1, incremental 0 and
+dev/test debug 0. No fallback/download/manual render/notice-field edit was
+used. The generator's own write produced the source delta.
+
+| Invocation | Start UTC | Finish UTC including group cleanup/log accounting | Actual exit | Elapsed seconds | Owned PID / PGID |
+| --- | --- | --- | ---: | ---: | --- |
+| `python3 scripts/generate-third-party-notices.py` | 19:00:47.423524Z | 19:00:48.348827Z | 0 | 0.925293 | 79983 / 79983 |
+| `python3 scripts/generate-third-party-notices.py --check` | 19:00:48.361233Z | 19:00:48.854238Z | 0 | 0.492997 | 79994 / 79994 |
+
+The pair supervisor ran from 19:00:47.040638Z to 19:00:48.921597Z,
+1.881185 seconds inclusive of its immediate preflight/comparison/cleanup,
+below the reviewed 300-second pair and 120-second per-command limits. It
+used new owned process groups, not a new RiWork shell or persistent helper.
+Source flow entails four locked metadata/tree calls per generator pass,
+eight across this successful pair; no compilation/test subcommand exists in
+that flow. Process polling observed one Cargo child during refresh and the
+generator parents; it is not an exhaustive per-subprocess trace or eight
+independent raw Cargo logs. Cargo's permitted implicit target-information
+probes were not converted into standalone version evidence.
+
+The full bounded raw output was:
+
+```text
+refresh: Wrote THIRD_PARTY_NOTICES.md (752651 bytes)
+check: Third-party notices match Cargo.lock and the Linux dependency graph
+```
+
+Both complete logs were independently re-read and hash-verified after slot
+release; they contain no download/build/test output. The environment enforced
+offline Cargo operation. No provider/remote CI query, dependency installation,
+service, browser or native product runtime was requested or launched.
+
+### Retained private evidence and measured resource/ownership bounds
+
+All three artifacts remain under this own ignored `.target-wave27`, created
+with exclusive creation and mode 0600; no existing artifact was overwritten.
+Prefix: `notices-wave30-offline-20261002T190047Z`.
+
+| Artifact suffix | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `.refresh.log` | 44 | `0be9d085c4924bfc0565d17127c99cc7015f8fef69bf876c07623696008443b2` |
+| `.check.log` | 68 | `b12128865f537ef423df8129c761b4d5e12453a05dfa1fec571d90855bbcd471` |
+| `.observation.json` | 8,321 | `9bcbed772a4cb45033f2233c6da820c520510b38de32298270fa5b92ef42265d` |
+
+The observation records exact supplied environment/argv, all 21 input
+hashes, command/cleanup timestamps, observed group members, output identity
+and disk samples. Output caps were 8 MiB per invocation; neither was
+approached. No cap termination, timeout, interruption, retry, disk stop or
+cleanup signal was needed.
+
+Five disk samples were captured, maximum measured separation 0.937976
+seconds (within the required 2 seconds):
+
+| Actual UTC sample | Free bytes | Free GiB |
+| --- | ---: | ---: |
+| 19:00:47.070853Z | 22,605,152,256 | 21.052689 |
+| 19:00:47.423104Z | 22,605,152,256 | 21.052689 |
+| 19:00:47.423123Z | 22,605,152,256 | 21.052689 |
+| 19:00:48.361122Z | 22,604,484,608 | 21.052067 |
+| 19:00:48.921645Z | 22,605,238,272 | 21.052769 |
+
+The launch preflight was above 11 GiB; the minimum was 21.052067 GiB,
+above the 9 GiB stop and 8 GiB floor. Shared-volume changes are not attributed
+to this pair or used to recast the earlier capacity incident. No cache
+deletion/move/cleanup or evidence pruning occurred.
+
+Each direct generator child was waited/reaped. Fresh own-group enumeration
+reported `[]`, and process-group existence checks after waiting reported
+false for both groups. Cleanup completed at 19:00:48.348661Z and
+19:00:48.854065Z, respectively; `cleanup_errors=[]` and
+`all_owned_groups_empty=true`. Only owned process groups were eligible for
+termination; no global process kill was used. The wrapper itself completed
+EXIT 0. Slot release was reported before any documentation commit.
+
+### Generated delta, focused checks and exact source commit
+
+After command one, the whole generated file was exactly 752,651 bytes,
+SHA-256 `8a92f38f2a648d08aa21f415f9ad34b966ee7df6bbf6ba89ddd926ef8833efa2`,
+Git blob `d747d40297dd8aa6ebd0978f82bd4c012a6ccb36`. Comparison with the
+whole baseline established only the existing client-lock digest substitution
+`6f546c966c70505b8ef204cea811f7300b1b359de63f01a8389caadc3164b964`
+to `2998555ddb2d00e8130a970fcacfed19dfee7a0b2e3305011ebd40746f67b4db`.
+Reversing that field reconstructs the complete original file. This actual
+generated result now verifies the earlier prospective source hash.
+
+Only after that exact whole-file/diff guard passed did command two run. It
+exited 0 and left the complete generated bytes unchanged. All other 20
+generator-facing inputs remained unchanged after both commands; no
+lock/manifest/generator/override/toolchain/source/helper/workflow change
+occurred. Git scope showed only `THIRD_PARTY_NOTICES.md` before its commit.
+Whitespace and complete delta checks passed. Generated source commit:
+**`41eea6a09148dc2c496f39f5010306ba68332534`**, parent `8af944c`, one file,
+one insertion/one deletion, header line 5 only.
+
+The separate evidence commit appends only this report. Its checks cover
+Markdown/fence/whitespace, exact preceding-prefix preservation, unchanged
+capacity report, retained log/observation hashes/modes, generated-file
+identity/reversal and source-only/report-only commit scope. No broad docs,
+Rust/native tests or repeated generator checks were needed or run.
+
+This is a successful **local Darwin-host offline generation and check for
+the generator's explicitly selected Linux x86_64 release inventory**. It is
+not a new Linux-runner result, release validation, license-compliance review,
+full CI gate or universal cross-host graph proof. Root now reports the
+separate `b619` CI completed FAIL in the docs/notices step after Rust tests
+PASS, with its log download pending; that supplied update is not an
+independently downloaded/verified result here and does not alter the earlier
+dated evidence. Root owns review/integration/publication and later CI
+interpretation. No main/push/task-status/new worker/task/WT/shell/contact
+action occurred. I02/I10/R05/W02/W05 remain DONE.
