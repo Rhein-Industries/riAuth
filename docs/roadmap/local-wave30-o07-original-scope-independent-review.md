@@ -305,3 +305,95 @@ native/PG/Docker/provider/browser/service/Cargo command, desktop/network action,
 worker contact, task/board mutation, merge/alignment, main edit or push occurred.
 All authorization/receipt/removal/audit/credential, Group hold, shared admission,
 SCIM cache/generation, header and PAM contracts remain untouched.
+
+## Applied distributed forward-auth paragraph correction, 2026-10-02
+
+Reservation `wave30_O07_distributed_forward_counter_correction`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original O07
+`6c981199-62dd-464d-a12a-4ce4e27f428f`, existing independent support WTed9.
+Root approved exactly the two-line proposal in report commit
+`674af2cfcbdd92f8c72b0309866b866044d14e78`. This appendix records its application;
+the full preceding 307-line, 26732-byte report remains unchanged, SHA-256
+`5c1a35a6bc712e7d8d8c64bb2b6411b8ce076af58b1b3395f55e5a070cc8447b`,
+blob `ecbb87f48c283a11301cdc3410753edec7d05b01`. Its proposed/unapplied wording
+and pin-specific recommendation remain historical. No failed runtime receipt
+or older execution limit is superseded by this documentation correction.
+
+### Immutable applied hunk and byte preservation
+
+Current published baseline was resolved to
+**`94054b3c9b674e445893b52c1d7de29703fca73c`**. Its complete deployment guide
+equaled own parent674af2cf's guide blob, so no merge/alignment/import was needed.
+Applied guide-only commit:
+**`35fb124b4759f22450e72ec6855af15fd134fa61`**, parent674af2cf.
+It changes only [the deployment guide](../deployment-examples.md), exactly
+two insertions/two deletions at lines190–191. The old/new text is precisely the
+approved pair already printed above; this applied record uses the immutable
+commit/hunk mapping rather than embedding another Markdown diff.
+
+| Exact guide | Git blob | Bytes | SHA-256 |
+| --- | --- | --- | --- |
+| Published94054b3 and own674af2cf before correction | `a773996bd0f73e2f7591f6226a450fda1a68a0d5` | 12004 | `be5b5cf733d5f015c4ee5aa59ea95551b2a02b64dc361f7a28e7c9814bb1223b` |
+| Applied35fb124 guide | `2c7c23fa4fe2a2506761fa304fe6542ffdf5dcda` | 12040 | `eaabf9409dfc7f508efd7522f29d47a194be72036e6c3c24ac5b1f66daa2cb82` |
+
+Actual in-memory verification found exactly one old pair, replaced it with the
+approved new pair, and confirmed that reversing only that pair reproduces the
+complete published baseline. The following `Platform connector, device,`
+sentence through EOF is byte-identical, including the availability/limitations
+links. Every other guide byte, default, command, template restriction and
+historical fixture limitation is preserved. The original report was unchanged
+through the guide commit. Its full prefix is preserved by this separate append.
+
+### Current published source witnesses actually read
+
+The following published94054b3 bodies were read, not only hash-compared. Their
+whole blobs also equal the earlier immutable0d090169 witnesses:
+
+| File and read interval | Published94054b3 blob | Contract supporting the correction |
+| --- | --- | --- |
+| `src/api.rs`140–147/1101–1135 | `a19ed8e0e875acec096ce55e665f90997a18760c` | Outpost authorization uses category forward_auth; every PG category uses the shared counter. Forward-auth counting uses reserved forward admission; redb counting uses the App's local map. |
+| `src/store.rs`736–770 | `8e78d889220c9e956fe00a4f7a69b603063d3ebf` | Address/category counter is committed in a bounded writer under a 60-second window before returning. |
+| `src/config.rs`186–204/525–547 | `0fc0b9a530440c66555eae9d9ee976d1c03549c3` | Same semantic resolver supplies all sixteen effective defaults/overrides, including forward_auth6000; omission equals the explicit default. |
+| `src/node_security.rs`86–103/184–223 | `da029997ad9c1a805cc3c6a1f6a50954f79a16c3` | Recorded agreement compares effective rates, issuer, active capabilities and authentication policy; mismatch retains the recorded policy and supplies category/action diagnostics. |
+| `src/core.rs`216–239 | `f02efcde5e9604b7251a8171e0aa437dbd8d8ae2` | Agreement enforcement precedes startup migration/backfill/activation writes. |
+| `docs/availability.md` opening paragraph | `c557be3aa89a6ceaa2290f46b8bd2c2f5fc45378` | PG shares forward_auth; adding nodes does not raise the configured shared limit; redb counts in its owning process. |
+
+These source reads and identity checks add no new execution. They justify the
+guide's shared-counter wording under agreed effective limits. No production
+API/store/config/agreement behavior, stopped-node adoption/rollback procedure,
+writer, permission, receipt or admission contract changed.
+
+### Actual static checks and remaining original scope
+
+Before the guide commit, exact proposal/reversal/whole-blob checks passed;
+`git diff --cached --name-only` contained only the guide, and the reviewed diff
+had precisely the approved two lines. `git diff --cached --check` and committed
+`git show --format= --check` passed. Actual commands:
+
+- `python3 scripts/check-docs.py`: exit0,
+  `Markdown links and build-directory layout checked`.
+- `python3 scripts/check-repo-hygiene.py`: exit0,
+  `Tracked-file hygiene checked (943 files)`.
+
+Neither checker had preexisting flags, and no checker/cache cleanup occurred.
+The guide commit left a clean worktree. Final append checks verify the full
+original report byte-prefix, immutable applied-guide/source pins, only-report
+append scope, guide preservation, docs/hygiene and staged/committed whitespace.
+No failed static check or correction occurred in this slice.
+
+The local guide misconception identified by the independent audit is corrected.
+**O07 remains open pending root's assessment of the separately owned Sol6
+container cohort.** The two failed small-container receipts remain failed at
+their exact recorded sizes/hashes/classification limits; all historical
+PG/R05/b5/b619 command/count/source boundaries above remain intact. This paragraph
+does not create a runtime pass, close the original tested-configuration outcome,
+or imply deployed HA, renewed admission or paused-process external-IO exclusion.
+No additional host/provider/browser/release campaign is proposed.
+
+Only the guide-only commit and this separate report append are produced. No
+other paragraph/index/template/helper/script/product/test/artifact or report
+changed; no runtime/Cargo/Docker/native/library/provider/browser/network/desktop
+action, slot, worker contact, new task/worktree/shell, status/board change,
+merge/alignment, main edit or push occurred. Closed I02/I10/D03/D04/O06/R05/W02/W05
+and all prior security contracts remain preserved. Root alone reviews,
+integrates, publishes and decides original O07 status.
