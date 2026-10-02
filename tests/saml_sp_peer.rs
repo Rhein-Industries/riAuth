@@ -935,7 +935,8 @@ fn lasso_idp_initiated_redirect_logout_revokes_only_bound_session_and_consumes_r
         projected
     }
     assert!(
-        status.code() == Some(1) && stderr.contains("(-111)"),
+        status.code() == Some(1)
+            && refusal_projection(&stderr) == Some(("lasso_logout_process_request_msg", 102)),
         "pinned signature refusal: exit={:?} signal={:?} projection={:?}",
         status.code(),
         status.signal(),
