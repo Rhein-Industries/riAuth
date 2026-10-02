@@ -175,6 +175,15 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
         )
         .unwrap();
     let original: Value = f.core.store.get("workflow_runs", &run.id).unwrap().unwrap();
+    let registration_key = riauth::crypto::digest(&text(&original["in_flight"], "enrollment"));
+    assert!(
+        f.core
+            .store
+            .get::<Value>("passkey_registration", &registration_key)
+            .unwrap()
+            .is_some()
+    );
+    let credentials = f.core.store.list::<Value>("passkeys").unwrap();
     let mut changed = original.clone();
     changed["definition"]["steps"][2]["max_attempts"] = json!(2);
     f.core
@@ -182,10 +191,108 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
         .write(|tx| tx.put("workflow_runs", &run.id, &changed))
         .unwrap();
     assert!(f.core.workflow_resume(&alice, &run.id).is_err());
+    let sealed: Value = f.core.store.get("workflow_runs", &run.id).unwrap().unwrap();
+    assert_eq!(sealed["record"]["state"]["state"], "finished");
+    assert_eq!(sealed["record"]["state"]["outcome"], "denied");
+    assert_eq!(sealed["reviewed_failure"], "policy_changed");
+    assert!(sealed["in_flight"].is_null());
+    assert!(sealed["credential_mutation"].is_null());
+    let primary: Vec<_> = f
+        .core
+        .store
+        .list::<Value>("workflow_evidence")
+        .unwrap()
+        .into_iter()
+        .filter(|(_, receipt)| receipt["run"] == run.id)
+        .collect();
+    assert_eq!(primary.len(), 2);
+    for proof in ["session", "passkey"] {
+        assert!(primary.iter().any(|(_, receipt)| receipt["proof"] == proof));
+    }
+    assert!(
+        primary
+            .iter()
+            .all(|(_, receipt)| receipt["consumed"] == true)
+    );
+    assert!(
+        f.core
+            .store
+            .get::<Value>("passkey_registration", &registration_key)
+            .unwrap()
+            .is_none()
+    );
+    assert!(f.core.store.list::<Value>("passkeys").unwrap() == credentials);
+    assert_eq!(
+        f.core
+            .store
+            .get::<User>("users", &user_id)
+            .unwrap()
+            .unwrap()
+            .epoch,
+        before.epoch
+    );
+    // Repair only the corrupted definition. The committed seal, consumed
+    // evidence and discarded ceremony must survive canonical validation.
     f.core
         .store
-        .write(|tx| tx.put("workflow_runs", &run.id, &original))
+        .write(|tx| {
+            let mut repaired: Value = tx.get("workflow_runs", &run.id)?.unwrap();
+            repaired["definition"] = original["definition"].clone();
+            tx.put("workflow_runs", &run.id, &repaired)
+        })
         .unwrap();
+    let repaired: Value = f.core.store.get("workflow_runs", &run.id).unwrap().unwrap();
+    let mut expected = sealed;
+    expected["definition"] = original["definition"].clone();
+    assert!(repaired == expected, "Only the definition may be repaired");
+    assert!(matches!(
+        f.core.workflow_resume(&alice, &run.id).unwrap().state,
+        RunState::Finished {
+            outcome: Outcome::Denied,
+            ..
+        }
+    ));
+    let retired_snapshot = f.snapshot().unwrap();
+    assert!(
+        f.core
+            .workflow_passkey_enroll(&alice, &run.id, response)
+            .is_err()
+    );
+    f.assert_snapshot(&retired_snapshot);
+
+    // Complete through new public operations, never by reviving the old row.
+    let retired_id = run.id;
+    let run = f
+        .core
+        .workflow_configured_start(&alice, "local-passkey-enrollment")
+        .unwrap();
+    assert_ne!(run.id, retired_id);
+    let passkey = f.core.workflow_passkey_challenge(&alice, &run.id).unwrap();
+    let verified = existing
+        .do_authentication(
+            "http://localhost:9000".parse().unwrap(),
+            serde_json::from_value(passkey.public_key).unwrap(),
+        )
+        .unwrap();
+    let ready = f.core.workflow_passkey(&alice, &run.id, verified).unwrap();
+    assert!(matches!(
+        ready.state,
+        RunState::Active { ref step, .. } if step.as_str() == "enroll"
+    ));
+    let registration = f
+        .core
+        .workflow_passkey_enrollment_challenge(&alice, &run.id, "Added key".into())
+        .unwrap();
+    let mut added = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let response = added
+        .do_registration(
+            "http://localhost:9000".parse().unwrap(),
+            serde_json::from_value(registration.public_key).unwrap(),
+        )
+        .unwrap();
+    let fresh: Value = f.core.store.get("workflow_runs", &run.id).unwrap().unwrap();
+    assert!(fresh["record"]["request"] != original["record"]["request"]);
+    assert!(fresh["in_flight"]["enrollment"] != original["in_flight"]["enrollment"]);
     let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
     let f = f.reopen_with(|config| assert!(config.workflows["local-passkey-enrollment"].active));
     for wrong in [&bob, &second] {
