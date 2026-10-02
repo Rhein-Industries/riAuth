@@ -31,13 +31,15 @@ alone for an account without TOTP, password followed by enrolled local TOTP,
 password with a TOTP or recovery-code choice, or one user-verified passkey step
 for an account with an enrolled passkey.
 Platform also supports the three exact configured consent shapes described below.
-It supports eight configured enrollment shapes: a live session and fresh verified
+It supports nine configured enrollment shapes: a live session and fresh verified
 existing passkey followed by passkey registration, a new TOTP secret or TOTP
 replacement; or a password-only account's live session and fresh local-password
 proof followed by its first passkey or TOTP secret; or a local TOTP account
 without a passkey using its current TOTP to enroll a first passkey, or fresh
 password and current-TOTP proofs to replace TOTP; or a linked upstream-only
-account using a fresh source assertion to enroll its first passkey.
+account using a fresh source assertion to enroll its first passkey. The ninth
+shape conditionally requires that existing passkey or ends in explicit denial,
+as described under configured passkey enrollment below.
 It also supports one configured recovery shape: explicit reset-mail verification
 and password reset in the same transaction, plus two exact configured sensitive
 action paths for passkey removal: a live session with fresh verified passkey
@@ -606,7 +608,22 @@ real ceremonies. The definition and request remain pinned across restart;
 cancellation or expiry discards a pending ceremony, and completion uses the
 same atomic epoch change and session revocation described above. Config,
 start and resume reject other configured passkey enrollment shapes except the
-three exact first-passkey paths below.
+conditional shape and three exact first-passkey paths below.
+
+The same endpoints also admit one exact conditional `session → passkey → enroll`
+shape. Its ordered session routes are `verified` with `account_has: passkey`
+to `passkey`, then unconditional `verified` to `denied`, then `failed` to
+`denied`. Passkey verification routes `verified` to `enroll` and `failed` to
+`denied`; enrollment routes `completed` to `success` and `failed` to `denied`.
+The run limits are exactly 600 seconds and five executions. Session has one
+attempt and a 60-second timeout, passkey has three attempts and a 120-second
+timeout, and enrollment has one attempt and a 120-second timeout; all are
+cancellable. Success requires exactly session, passkey and enrolled proofs
+with a 120-second maximum proof age. Denied has no proof requirement or age.
+A live session without a passkey reaches that declared denial without opening
+a verification or registration ceremony. An account with a passkey uses the
+existing UV and atomic registration path. Additional conditions, reordered
+routes, alternate factors and changed bounds are refused.
 
 ### Password-only first-passkey enrollment
 
