@@ -183,7 +183,8 @@ async fn direct_http_and_cli_report_unavailable_pressure_without_mutation() {
         true,
     )
     .unwrap();
-    let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_riauth"))
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_riauth"));
+    command
         .args(["--server", &origin, "--session-file"])
         .arg(&session)
         .args([
@@ -196,8 +197,8 @@ async fn direct_http_and_cli_report_unavailable_pressure_without_mutation() {
         .env_remove("RIAUTH_AGENT_FILE")
         .env_remove("RIAUTH_RUN_ID")
         .current_dir(f._dir.path())
-        .stdin(std::process::Stdio::null())
-        .output()
+        .stdin(std::process::Stdio::null());
+    let output = tokio::task::spawn_blocking(move || command.output().unwrap())
         .await
         .unwrap();
     server.abort();
