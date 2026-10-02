@@ -508,3 +508,116 @@ checked before its separate report commit. These checks run no product, engine
 fixture or additional test. The initial failure/cleanup/evidence hash was sent
 promptly to the existing explicit-project orchestrator; the report commit and
 bounded diagnostic proposal follow in a separate handoff.
+
+
+## Reserved empty-setup diagnostics: source ready, runtime held, 2026-10-02
+
+Root accepted the classifier limitation in the preceding failed-run report and
+reserved only the empty ownership setup diagnostic hunks in
+`scripts/check-deployment-small.py` plus this append. Code commit
+`c8a34c8df5184d89f7a36d933f2ec172d01471cd` changes that script alone, with
+29 insertions and 8 deletions; blob
+`fa77efc53aefcf167bd4f1ce8cb2f60d62bdbb74`, SHA-256
+`7e6e2265dad539356a4566131d62dd7904e19df7bba451d4e44588a23c77837d`.
+No product, Compose, other documentation, main or board edit was made. Prior
+branch history and the failed observation remain intact. **Runtime is held
+until root reviews this immutable correction and releases one exact command.**
+
+### Diagnostic contract and bounded scope
+
+The future evidence has `ownership_setup.stage: "empty_directory_ownership"`.
+Once the same bounded child call returns after joined IO, its actual integer
+status is saved as `ownership_setup.child_rc`; an unavailable/deadline/cancelled
+child that never returns a status does not receive a fabricated one. Booleans
+are rejected as numeric status values. No generic nonzero result is taken as
+evidence of unsupported mapping:
+
+| Initial empty-setup observation | Fixed refusal and allowlisted evidence |
+| --- | --- |
+| Nonzero joined child status | `ownership_helper_command_failed`; fixed stage and actual integer `child_rc` only. Child output is not decoded or echoed. |
+| Successfully decoded, handled chown/chmod/stat OSError | `ownership_setup_syscall_failed`; fixed stage, `child_rc: 0`, one of the literal operations `chown`, `chmod`, `stat`, and integer errno only. No error message, filename or traceback is retained. |
+| Validated numeric UID/GID/mode differ from 10001/10001/0700 | `uid_mapping_unsupported`; stage, zero rc and the observed numeric fields. This is a postcondition mismatch, not inferred syscall causality. |
+| Invalid JSON, duplicate keys, wrong shape/extra fields or invalid numeric diagnostic | Fixed decode/validation refusal; only already established stage/rc can persist. Arbitrary diagnostic values do not enter evidence. |
+| Validated numeric UID/GID/mode equal the required values | Continue to the existing port-selection path; retain numeric observations without claiming any later check passed. |
+
+The embedded setup preserves the original empty-directory check and exact
+chown/chmod/stat calls. It catches OSError only for those three operations and
+prints a two-field fixed-operation/integer-errno object. That handled branch
+exits zero to deliver structured data; the parent explicitly refuses it, so
+zero is never sufficient for ownership acceptance. Unhandled errors such as an
+initial listdir failure still become a generic command failure, with no claim
+about which syscall ran. Errno must be a nonboolean integer in 1..2^31-1.
+UID/GID must be nonboolean integers in 0..2^32-1; mode must be a nonboolean
+integer in 0..0777. Exact key sets prevent extra/private fields from surviving.
+Numeric observations are copied only after validation.
+
+Only the `SETUP_EMPTY` literal, the `Deployment.helper` empty-mount branch and
+initial `Deployment.run` setup validation changed. The helper launch still has
+the same pinned image, explicit fresh EMPTY mount, root-only setup user,
+network none, read-only root, cap-drop ALL plus CHOWN/FOWNER/DAC_OVERRIDE,
+no-new-privileges, pids/memory limits, pull-never, stdin/output bounds and
+8-second child/global deadlines. Runner, cleanup, nonempty helpers, application
+model and all later operations are unchanged. In particular, this reservation
+does not change the later application-tool `FILE_MODES` failure classifier.
+Raw stdout/stderr/error strings/paths/URLs/private values are not stored or
+printed by the new diagnostic branches.
+
+### Checks actually run before the source commit
+
+Python AST parsing passed for the corrected script and embedded setup. After
+masking only the reserved setup literal and the two containing methods, the
+complete old/new module ASTs were equal. Every byte starting at the existing
+`port_info = self.helper(PROBE, {"kind": "port"})` through the end of the script
+was also equal to original harness commit `97a30bd`. This separately verifies
+no change to later postconditions, application control or cleanup. A mocked
+old/new empty-helper invocation produced identical launch argv/options except
+for the reserved inline setup code.
+
+One local in-memory guard check passed **32 mocked controller cases** and
+**4 mocked embedded setup outcomes**. It covered generic rc 1/125/126/127/-9,
+boolean rc refusal, the exact valid postcondition, individual UID/GID/mode
+mismatches, all three fixed errno operations, boolean/float/string/negative/
+out-of-range numeric refusal, absent/wrong/extra shapes, unknown operations,
+duplicate keys and malformed JSON. Fake OSError messages and filenames carrying
+a private marker did not appear in helper JSON or retained diagnostics. The
+mocked embedded success/chown/chmod/stat cases called fake os functions only;
+the accepted controller case stopped before port selection. No subprocess,
+Docker command, mount, real ownership syscall or product was executed by these
+checks. They are local diagnostic guard evidence, not a second mechanics run
+or host-mapping proof.
+
+Source-only Git whitespace and sole-script scope checks passed; no Compose
+render rerun, Cargo, image pull/build, container, service, daemon/context change
+or alternative topology was invoked. The original 1745-byte failure JSON still
+has mode 0600 and SHA-256
+`308dfe8d3b424ff9a4e54369d809f560847b6aefda43a83ca229842b34068adc`.
+It remains at `target/o07-small-60437b5-f3aba63.json`; the original report prefix
+and complete failed evidence are not rewritten.
+
+### One proposed identical mechanics command after separate release
+
+The original template/source/image/edition/probe/timeout tuple remains fixed.
+Only the evidence destination is new; its absence was checked without creating
+it. Proposed command, **not executed**:
+
+```sh
+python3 scripts/check-deployment-small.py \
+  --template-revision 60437b59933cadd40a1f5fbbb91ba153aee56456 \
+  --image sha256:ae84172a41d2dbe607a581d48fcde79cd1d293e00244994e257a757fd6def842 \
+  --image-source-revision f3aba63ac3b824843a40b99623f1619ef8edc19f \
+  --edition essentials --artifact-kind local-source \
+  --probe-image sha256:9d2e5553305c7c7b0097999bb17187c69b921ccd6bc9d40e4bb5ebe652c00285 \
+  --timeout-seconds 180 \
+  --evidence "$PWD/target/o07-small-60437b5-f3aba63-ownership-diagnostic.json"
+```
+
+If separately released, keep the private target and 8 GiB floor, a fresh owned
+random fixture, the same controls and ownership-checked cleanup, and preserve
+every failed result. No automatic retry/fallback follows from this correction.
+The prior runtime failed early; this source-only change adds no actual mapping,
+host visibility, service, TLS, current/release binary, distributed/HA/recovery or
+whole O07 evidence. The original task acceptance and component/evidence/safety/
+remedy gate remain open to root's review; no task/status claim is made here.
+The immutable code pins/scope and exact new-path command, followed by this
+separate append-only report commit, are handed to the explicit project
+orchestrator before any further runtime authorization.
