@@ -832,3 +832,203 @@ automatic retry, deletion, external provider, other-worker contact or task
 status mutation occurred. This is a failed native target run, not Linux or
 full-suite success. I10/R05/W02/W05 remain DONE; further diagnosis/correction
 and runtime require a separate root reservation and release.
+
+## Scheduler-helper review: read-only proposal, no implementation
+
+Reservation `wave30_CI_scim_oauth_scheduler_helper_review` permits only this
+report append. Project and existing worktree are unchanged. Source inspection
+used clean HEAD `bee4b5f7f53f192feb61727f0a106b1c79e8ff90`, fixture blob
+`ba09a980b248ce1be742d60a3f82a4f3f5fbea81` and the same fixed9b-equivalent
+production blobs recorded above. No fixture/product edit, Cargo, typecheck,
+test, service, provider invocation or worker contact occurred. The two actual
+native 22/2 receipts, historical Linux 16/8, f89 synchronous history calls,
+prior source proof and prune evidence remain unchanged.
+
+**Recommendation for a later reservation:** change only the existing private
+`step(core: &Core)` helper in `tests/scim_oauth.rs`. Preserve its first public
+Core call. Permit at most one additional scheduling pass when a cursor existed
+before that first call and is absent after it. This handles cohort exhaustion
+wherever the helper is used without adding calls to individual failure bodies.
+It does not poll, make jobs due, change time, swallow errors or retry a selected
+resource. No counterexample was found within the audited sequential fixture
+callers under their existing live-authority and ordinary-clock assumptions.
+
+### Why the guard cannot dispatch a second resource
+
+The claim selection in `src/store/maintenance.rs:642` first sets
+`last = Some(key)`. On a successful callback it sets `selected = Some(result)`
+and unconditionally sets `exhausted = false`. The wrap condition requires
+`selected.is_none()`, so it cannot restart after this selection. The final
+`last.filter(|_| !exhausted)` must therefore take the `put(CURSORS, bucket,
+&(last, cutoff))` branch at line 667. `Store::write` commits that cursor before
+`claim_provisioning` returns the selected job and permit. A failed cursor
+write/commit propagates an error before dispatch.
+
+`provisioning_step` subsequently reaches either the empty-resource finish,
+normal finish or its durable error path. None deletes the due cursor:
+
+- Finish at `src/provisioning.rs:1923` writes the link, job, possible downstream
+  intent and audit. Its queue-index updates remove/rewrite **due-index rows**,
+  rather than `connector_due_cursors/provisioning_jobs`.
+- The error writer at line 1784 clears the job lease, records uncertainty/error
+  and backoff, then writes that same job; it retains the parked cursor.
+- Missing/lost job-lease finish and other propagated errors likewise do not
+  delete the cursor. A propagated error prevents the helper's conditional
+  second call. A handled remote failure returns `Ok(())` with a parked cursor,
+  so it also prevents that second call and preserves attempt/HTTP counts.
+- `TargetPermit::drop` only clears the local slot and queues an exact
+  owner/generation admission release. `try_target_in` settles the admission
+  ledger; neither touches the due cursor. The retained 20dd routers preserve
+  this release state in all same-target repeated-step fixtures.
+
+The queue/index, identity-transition, inbound-SCIM-transition and audit paths
+were inspected as dependencies: none deletes this cursor as an indirect
+effect of finish/error. Searching production references to
+`connector_due_cursors` found the connector selector, recovery's allowed
+collection declaration and an internal assertion. Recovery is not invoked by
+any helper caller. The deactivation selector uses the separate
+`provisioning_deactivations` key.
+
+Consequently, with no competing cursor writer, a selected first claim always
+leaves `Some` after the public Core call. The `Some-before / None-after` guard
+can only follow a first pass that selected **no** resource. Its optional second
+pass uses the unmodified production selector and can select at most one job
+resource. This argument also bounds dispatch with multiple queued jobs: it
+does not promise which eligible target that selector chooses or full queue
+progress.
+
+| Before cursor | After successful first Core call | Additional pass |
+| --- | --- | --- |
+| `None` | Either state | None |
+| `Some` | `Some` (claim or nonexhausted scan) | None |
+| `Some` | `None` (exhaustion, no selected claim) | At most one |
+| Either | First Core call errors | None; propagate original error |
+| `Some` | Cursor read errors | None; fail closed through existing unwraps |
+
+### All helper callers and protected expectations
+
+Source enumeration found **26 `step(&...)` call sites**, five `deliver` call
+sites and two `staff_removal_at_group_step` callers, reaching 12 tests. The
+table uses line numbers in immutable fixture `ba09a980`. Every call is awaited
+sequentially. Each fixture has its own store; the loopback peers hold only
+`TokenState`/`ScimState`, not the source Core/store. Core open and the unserved
+router do not start provisioning workers. The overlapping-bearer tests do not
+call this helper.
+
+| Caller | Step/delivery sites | Preserved outcome and scheduling assumptions |
+| --- | --- | --- |
+| `controller_modes_bind_plans_and_stop_at_removal_review_floor` | 96, 97, 133, 134 | One active job with two resources per phase; each logical step advances at most one. Manual/guarded approval refusals occur before stepping. Preserve two remote users, later one active user and completion/removal gates. |
+| `ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link` | 414 | Fresh one-job store, no prior cursor; first call unchanged. Preserve one lookup, conflict, no remote create/link or identity/group changes. |
+| `client_credentials_provision_an_independent_scim_server` | 1032, 1093 | Sequential one-resource create then one-resource 204 PATCH job. A prior cutoff can be exhausted before the latter claim. Preserve OAuth/cache/redaction, completion, changed display name and read-back HTTP counts. |
+| `uncertain_patch_response_is_reconciled_without_a_second_patch` | deliver 1137; steps 1153, 1169, 1171 | Sole job; failed dispatched PATCH parks a cursor, so no extra retry then. Preserve the existing three-second wait and both f89 step calls; equal retry read-back completes with exactly one PATCH. A subsequent empty pass may cause only another empty scheduling pass. |
+| `wrong_secret_server_errors_and_rejected_tokens_do_not_call_scim` | 1287, inside cases | Fresh store/one job per case. Preserve attempts=1, token-endpoint counts, error and zero SCIM requests; selected remote errors keep a cursor and never trigger a second attempt. |
+| `token_endpoint_failure_retries_once_then_can_succeed` | 1349 | Fresh sole one-resource job; two token requests are the existing in-operation retry. No second selected resource from the helper. |
+| `secret_rotation_and_static_token_rotation_apply_on_next_acquisition` | deliver 1530, 1549 | OAuth acquisition-only rotation is untouched; sequential static-token jobs use a retained router. Preserve old/new token observations and terminal completion without rereading credentials after a selected dispatch. |
+| `jwt_scope_and_audience_claims_must_cover_configuration` | 1677, inside cases | Fresh one-job store for each mismatch. Selected token refusal parks the cursor; preserve diagnostic/redaction and zero SCIM requests. |
+| `scim_unauthorized_acquires_once_more_then_stops` | deliver 1740; step 1792 | Two configured targets, but the first job is terminal before the denied target is applied. The prior job has no due-index row; the new target may need cohort exhaustion. Preserve exactly two denied token/SCIM requests, one job attempt and incomplete outcome. Distinct target admission scopes remain unchanged. |
+| `reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch` | deliver 2278; steps 2315, 2345, 2356 | One active removal job. Preserve wrong/unconfirmed-plan refusal and unchanged snapshots, partial-read errors, zero PATCH until a complete source, then exactly one disable PATCH. Existing explicit due writes are untouched; errors park the cursor, so the guard cannot repeat a refused dispatch. |
+| `reviewed_last_group_member_removal_requires_complete_remote_membership` | setup 2467; steps 2479, 2504 | Seed/helper described below, then sole reviewed group-removal item. Preserve every incomplete/null/paged membership refusal, unchanged links and zero additional PATCH; final complete membership permits exactly one removal. Existing `make_due` calls are untouched. |
+| `reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback` | setup 2526; steps 2570, 2589, 2605 | Sole reviewed item; preserve one applied PATCH per deliberately reset case, cursor=2/lease cleared/stale=false and ambiguous error, no second PATCH on incomplete retry, then verified completion without another PATCH. Error/finish retains the cursor, so the guard adds no second resource or operation attempt. |
+| `deliver` | 2201; five callers above | Public plan/apply and authority gates remain before its single helper call. No assertion/order/body change. |
+| `staff_removal_at_group_step` | 2402 (existing three-iteration loop), 2427, 2428; two callers above | One job with user + two groups; each logical step selects at most one item, even across a clock second. Preserve seed completion, exact confirmed removal, and the subsequent two unchanged-item steps stopping at cursor=2 before staff removal. No resource can be skipped by a guarded second pass after a selection. |
+
+The synchronous history fixture at lines 961/963 calls Core directly and is
+outside this helper proposal; both f89 calls remain. The other tests do not
+reach this helper, including `reconcile_stales_incompatible_backoff_jobs_and_replans_without_dispatch`
+and the plan/apply authority/fingerprint tests. Their expected no-dispatch,
+stale/lease and snapshot behavior remains byte-identical.
+
+For unselected stale/quarantine or busy-admission outcomes, the guard could
+allow one new scheduling scan after an exhausted cohort. It cannot authorize
+a stale job, steal a lease, change a retry time or bypass review: those same
+production checks run again. It does not guarantee progress against a live
+busy target or beyond a nonexhausted 16-row page. No current caller expects
+an intentionally eligible job to remain unprocessed merely because the prior
+cutoff is exhausted, and no caller has competing active jobs or a concurrent
+Core dispatcher. Introducing a concurrent cursor writer would invalidate
+the observation premise: it could delete a cursor after a first dispatch.
+This private fixture proposal must not become a production hook or be used
+in such a fixture without a new audit.
+
+### Exact prospective diff, not applied
+
+```diff
+--- a/tests/scim_oauth.rs
++++ b/tests/scim_oauth.rs
+@@ -2206,4 +2206,20 @@
+-    tokio::task::spawn_blocking(move || core.provisioning_step())
+-        .await
+-        .unwrap()
+-        .unwrap();
++    tokio::task::spawn_blocking(move || {
++        let had_due_cursor = core
++            .store
++            .get::<(String, u64)>("connector_due_cursors", "provisioning_jobs")?
++            .is_some();
++        core.provisioning_step()?;
++        // A claim parks the cursor; only exhaustion can remove a prior one.
++        if had_due_cursor
++            && core
++                .store
++                .get::<(String, u64)>("connector_due_cursors", "provisioning_jobs")?
++                .is_none()
++        {
++            core.provisioning_step()?;
++        }
++        Ok::<(), Error>(())
++    })
++    .await
++    .unwrap()
++    .unwrap();
+```
+
+All work would stay in the existing blocking closure. The first Core call is
+preserved, its error propagates before any optional pass, and the existing
+JoinError/operation-result unwraps remain. New read failures also propagate;
+none is ignored. `Error` is already imported, so there is no import or global
+helper change. Added reads only observe scheduling metadata. The optional
+Core call uses its ordinary writer/cursor/admission effects, which may include
+no-op cursor deletion, queued admission settlement or one properly fenced
+resource outcome. This is not a store-write-free helper.
+
+### Protected byte and parser/AST witnesses
+
+The proposal was constructed only in memory by replacing the unique 178-byte
+helper body. The unchanged 73,163-byte prefix and 21,236-byte suffix cover
+every other item/import/helper/caller, all 244 assertion-macro sites
+(57 `assert!`, 181 `assert_eq!`, six `assert_ne!`), clock/sleep/due-write code,
+20dd holders and f89 additions. Replacing the proposed helper with the original
+reconstructs the entire 94,577-byte fixture and original Git blob `ba09a980`.
+No proposed test file or Git object was written.
+
+For the syntax/AST parser witness, the in-memory whole proposal was sent to
+`rustfmt --edition 2024 --emit stdout --config skip_children=true` through stdin.
+It exited 0 with output byte-identical to that proposal and no diagnostics;
+no child module/file was formatted or edited. This verifies Rust parsing and
+formatting, not type checking or runtime behavior. The prospective helper AST
+adds a boolean cursor read, preserves the first Core call as a `?` expression,
+adds one short-circuit conditional containing the second `?` call, and returns
+`Ok::<(), Error>(())`. Exact bytes outside that single parsed function ensure
+the other AST items are unchanged; no independent AST dump was produced.
+
+| Witness | Value |
+| --- | --- |
+| Existing helper SHA-256 | `d9d44680054331710ac34430d8a4400e48ed6610f7e7c23c3b4e8d939c6bcc51` |
+| Prospective helper SHA-256 | `16803ef0254984d00a0ffcdad0c0d836525dd3d93128e851e4a07d48dc09c272` |
+| Prospective whole-file Git blob ID, computed only | `55a59a6e87f5085a938fa3338c694241fe176f27` |
+| Prospective whole-file SHA-256 | `ee69d6311be8bcbe697a902586acb070dfc55a7769758c7ccdd3b41f8f30b218` |
+| Unchanged actual fixture SHA-256 | `0add72238e820a170d273f8a1f0330baef803a90f7314c01b3a79fb21e4281e9` |
+
+The cursor-observation guard is the smallest substantiated helper-only seam.
+An unconditional second call could advance the next resource after success;
+clock manipulation would add cross-thread timing requirements; per-failure
+extra calls would leave the same scheduling assumption in other callers.
+Those alternatives are not proposed. The bounded guard still has no fresh
+typecheck or runtime evidence, and does not promise arbitrary concurrent
+queue behavior or universal CI success.
+
+Static checks for this report append are docs/link validation, whitespace,
+exact prior-report prefix preservation, report-only changed-path checks and
+actual source/fixture blob equality. Root owns the subsequent exact helper
+implementation reservation and any one-target runtime release. Cargo remains
+FREE and unused; I10/R05/W02/W05 stay DONE.
