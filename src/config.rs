@@ -90,6 +90,10 @@ pub struct Config {
     pub signers: std::collections::BTreeMap<String, crate::kms::VaultSigner>,
     #[serde(default)]
     pub postgres: Option<crate::postgres_store::PostgresConfig>,
+    /// Diagnostic allocation budget for exactly the declared store scope.
+    /// Excludes WAL, backups and files outside that sample; never a write limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_allocation_budget: Option<StorageAllocationBudget>,
     #[serde(default)]
     pub mail: Option<crate::lifecycle::MailConfig>,
     #[serde(default)]
@@ -135,6 +139,31 @@ pub struct Config {
     /// Streamed backup export quotas. Omitted means the built-in defaults.
     #[serde(default, skip_serializing_if = "BackupConfig::is_default")]
     pub backup: BackupConfig,
+}
+
+/// Operator-declared bytes for one allocation sample, not filesystem capacity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StorageAllocationBudget {
+    pub scope: StorageAllocationScope,
+    pub bytes: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StorageAllocationScope {
+    #[serde(rename = "redb_file_including_free_pages")]
+    RedbFileIncludingFreePages,
+    #[serde(rename = "postgresql_owned_relations_and_indexes")]
+    PostgresqlOwnedRelationsAndIndexes,
+}
+
+impl StorageAllocationScope {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::RedbFileIncludingFreePages => "redb_file_including_free_pages",
+            Self::PostgresqlOwnedRelationsAndIndexes => "postgresql_owned_relations_and_indexes",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -438,6 +467,7 @@ impl Default for Config {
             reconciliation_quotas: ReconciliationQuotas::default(),
             signers: Default::default(),
             postgres: None,
+            storage_allocation_budget: None,
             mail: None,
             tls_cert_file: None,
             tls_key_file: None,
@@ -756,6 +786,12 @@ impl Config {
             if !(1..=100_000).contains(limit) {
                 bail!("Rate limit {category} must be from 1 through 100000 requests per minute");
             }
+        }
+        if self
+            .storage_allocation_budget
+            .is_some_and(|budget| budget.bytes == 0)
+        {
+            bail!("storage_allocation_budget.bytes must be positive");
         }
         self.backup.validate()?;
         let url = validate_server_url(&self.issuer)?;

@@ -123,7 +123,10 @@ impl Core {
             self.management(tx, token, "operations.read", "operations/storage")?;
             Ok(())
         })?;
-        Ok(storage_diagnostics::with_pressure(self.store.allocation()))
+        Ok(storage_diagnostics::with_pressure(
+            self.store.allocation(),
+            self.config.storage_allocation_budget.as_ref(),
+        ))
     }
     pub fn backup(&self, token: &str, encryption_key: &str) -> Result<Value> {
         let key = decode_key(encryption_key)?;
