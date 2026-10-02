@@ -227,15 +227,26 @@ async fn operator_resolution_updates_failed_gauge_and_rebuilds_legacy_indexes() 
         f.assert_snapshot(&snapshot);
         assert_failed(&f, failed);
     }
-    for (index, malformed) in [
-        json!({"observed": "succeeded", "evidence": "OPS-42"}),
-        json!({"observed": null, "evidence": "OPS-42"}),
-        json!({"evidence": "OPS-42"}),
+    for (index, (malformed, expected_status)) in [
+        (
+            json!({"observed": "succeeded", "evidence": "OPS-42"}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        // The locked JSON enum parser rejects null as syntax (400), while
+        // unknown string variants and missing fields are data errors (422).
+        (
+            json!({"observed": null, "evidence": "OPS-42"}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            json!({"evidence": "OPS-42"}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
     ]
     .iter()
     .enumerate()
     {
-        let (status, _) = resolve(
+        let (status, body) = resolve(
             &f,
             &operator,
             &rows[0].0.id,
@@ -243,7 +254,8 @@ async fn operator_resolution_updates_failed_gauge_and_rebuilds_legacy_indexes() 
             malformed,
         )
         .await;
-        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(status, *expected_status);
+        assert_eq!(body["error"], "invalid_request");
         f.assert_snapshot(&snapshot);
         assert_failed(&f, failed);
     }
