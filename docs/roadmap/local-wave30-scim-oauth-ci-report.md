@@ -304,3 +304,96 @@ There was no baseline run, repeat, compiler run, test run or cache deletion.
 The historical Linux result stands as recorded: 8 failed at `9a81931`, with
 earlier CI reach of this target unknown. This report does not claim CI is
 green.
+
+## Read-only resource inventory of the private target (no cleanup approved)
+
+The whole-target `scim_oauth` run is still held behind A09 remote run
+`37016520583`. Shared free disk was only 8.27 GiB, and it read 8.26 GiB when
+the inventory finished. That is already below this run's own 9 GiB Cargo stop.
+
+Root therefore asked for one read-only inventory of this worktree's own
+`target/wave27`. Nothing was deleted, no Cargo command or product binary was
+run, no code changed, and the authorization for the earlier ten-file prune is
+used up.
+
+**Manifest.** The private 0600 manifest, written once and not modified since, is
+`/private/tmp/claude-501/-Users-dominik-orca-projects-riAuth-public-preview-local-management-wave27/0b84257b-28b0-4c0b-96b9-ddeec3ba4789/scratchpad/target-wave27-inventory-manifest.tsv`,
+SHA-256 `b5fd6399c9fc1b2a47498eba342d58956aa8cf8e3bb3dff5e17d75e83831c113`.
+For each candidate it records:
+
+- the absolute path and basename;
+- size, mode, link count and mtime;
+- SHA-256;
+- the feature set and fingerprint time from
+  `.fingerprint/riauth-<hash>/test-integration-test-<name>.json`;
+- the result of the live `lsof`/`pgrep` check;
+- why the file is superseded.
+
+**What was scanned.** `target/wave27/debug/deps` held 73 regular executables
+larger than 100 MiB.
+
+**Excluded (not candidates):**
+
+- six binaries from today's recorded runs, built 13:15-15:11 local:
+  `o06_remote_signing_attribution`, `reconciliation_safety`, `reports`, and three
+  `riauth-*`, which include the current `test-support,fuzzing` binary and the
+  library test binary;
+- one 04:33 `riauth-*` binary, excluded as a product-binary name;
+- the two executables that produced accepted activation-run evidence,
+  `workflow_approval` and `workflow_approval_api`;
+- any `scim_oauth` binary. None over 100 MiB exists, because the early prewarm
+  stopped on the old `m03_cli_limits` compile error.
+
+Retained logs, evidence, archives, provenance and other lanes' files were not
+examined as candidates.
+
+**Candidates: 64 files, 13,039,646,240 bytes (12.14 GiB).**
+
+- Each is a regular file, not a symlink, with one link and mode 755, larger
+  than 100 MiB, with no live `lsof` or `pgrep` reference.
+- All are integration-test executables built during the early-session `--tests`
+  prewarm (04:xx local, 02:xx UTC), with features
+  `default,essentials,platform,test-support`.
+- They are superseded for three reasons:
+  - **Features.** Every current CI-parity command adds `fuzzing`, which gives a
+    different metadata hash, so the queued run cannot reuse them.
+  - **Never run.** None was executed or cited as evidence.
+  - **Source has changed.** `src/` and the tests have changed since 02:xx UTC,
+    so any later build of these targets recompiles them anyway.
+- None is the queued `scim_oauth` target.
+
+**Proposed bounded cleanup, for root to decide. Nothing is approved.**
+
+- **Option A, all 64 candidates:** about 12.14 GiB reclaimed, leaving shared
+  free disk at about 20.4 GiB.
+- **Option B, the 16 largest:** 3,390,210,480 bytes (3.16 GiB), leaving about
+  11.4 GiB. The 16 are:
+  - `identity-5825512830e5933d`
+  - `storage_allocation-705a28d93df14c28`
+  - `contracts-9854becde4829c49`
+  - `operations-aab16977037e62e2`
+  - `mtls-ba0d7973ec5749f2`
+  - `state_reconciliation-ba66912044d6f483`
+  - `outpost-7a5e96700113e86d`
+  - `workflow_configured-b41a0d611efcf821`
+  - `offboarding-f4c96c1ec34016dd`
+  - `o06_operations_evidence-ae9cfd5a0a2c6495`
+  - `bootstrap-42adaa046032ce01`
+  - `reports-7a486fffb2ab8b5c`
+  - `source_stage-51034130e831fdee`
+  - `signin_core-236315abcaf34b70`
+  - `removal_safeguards-ff6096e8b1752fc1`
+  - `worker_capacity-8612094f858b2c77`
+
+The queued run itself should need well under 1 GiB. The library and binaries
+for `test-support,fuzzing` were built at 15:10 local for an unchanged `src/`,
+so it adds mainly a new `scim_oauth` test binary of about 200 MB.
+
+**If root approves a cleanup**, it would repeat the earlier procedure:
+
+1. re-validate each file against the manifest entry: parent, regular file,
+   one link, executable, size, SHA-256, and no live reference;
+2. remove the files with a single `rm` of literal absolute paths;
+3. report the freed bytes and the new free space.
+
+Approval for any other set or wildcard is not implied.
