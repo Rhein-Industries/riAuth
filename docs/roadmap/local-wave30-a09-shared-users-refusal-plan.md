@@ -702,3 +702,8 @@ Static checks actually completed in this diagnosis phase:
   observer cap. This evaluates no helper/controller function and proves
   only the prospective fixed packet's capacity, not an implementation,
   observed counts, redaction enforcement or runtime compatibility.
+
+
+### Root review of snapshot diagnosis
+
+Root read the complete195-line `5c9776ed18a0148aa7bfb0c663fbe4f8cc7d0e3d` appendix and the exact retained failure boundary. The public user-create refusal passed; complete Store equality failed. The separately committed PostgreSQL rate writer supplies a source-backed distinction between HTTP bookkeeping and Core mutation rollback, without identifying the actual changed rows. Root reserves only an exact source-first diagnostic design for the existing full comparison: fixed collection/count projection propagated through both finite observer stages, no comparator exclusion or new request. Source ownership and any hosted repeat remain separately held. The report cherry-pick had an append conflict with root's prior receipt; concatenating the entire existing report and the exact195-line author appendix preserved both in full.
