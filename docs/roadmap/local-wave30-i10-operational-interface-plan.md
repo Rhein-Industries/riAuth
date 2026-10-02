@@ -812,3 +812,94 @@ The named local diagnostic seam is corrected in committed source, pending the
 focused compile/runtime review. Original I10 completion remains root-owned;
 tenant/deployment/Groups/full-crawl/provider/release prerequisites are still
 distinct and unmeasured here. W02/W05/R05 remain closed.
+
+## Explicitly released Entra diagnostic regression — 2026-10-02
+
+Root independently reviewed immutable source/test
+`ef80983e13fa5923ae5c2a29b520e415e1205240`, the exact production reconstruction
+and original-test prefix, then marked the reserved ledger runtime released and
+assigned the sole Cargo slot to this lane. This section records that subsequent
+execution. Prior proposal, disposition, source-only phases, historical failures
+and actual SCIM evidence remain byte-for-byte intact.
+
+Actual run HEAD was `0e0d658f1f148d16db50c7f9efa6e78f6b8e6502`; its source/test/
+manifest bytes match the reviewed implementation. Preflight was clean and
+confirmed 11,901,898,752 bytes free (11.085 GiB). The existing private target
+occupied 6,356,312 KiB, had 18 integration fingerprints and three compiled
+riAuth libraries, with largest library 408,663,032 bytes. This particular
+integration target still required compilation/linking. Launch free disk was
+11.072 GiB; the requested near-eleven-GiB margin was met. No deletion or
+unrelated build was used to create headroom.
+
+The one actual command, launched as argv with the private path resolved from
+the current worktree, was exactly the released filter:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test cloud_directory cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted -- --exact --test-threads=1
+```
+
+Native environment was Darwin 25.2.0/arm64, `rustc 1.98.1 (48a229cea 2026-09-01)`
+and `cargo 1.98.1 (797e8a9bc 2026-08-05)`. Compilation succeeded in the recorded
+**1m 06s**. The exact function passed: **1 passed, 0 failed, 0 ignored,
+0 measured, 47 filtered out**, finished in **2.12s**. The monitored invocation
+exited **0** after **72.178s**. No other function/filter/target/edition, separate
+build, correction or automatic repeat was run. The 47 filtered functions were
+compiled as part of their target and were not executed.
+
+The same native linker warning appeared for Cargo's automatically built
+`riauth` binary: `__eh_frame` exceeded the compact-unwind encoding limit, with
+possible exception-handling performance impact. There was no compile/test
+error and no extra action for that warning.
+
+### Actual evidence and immediate slot release
+
+Exclusive private mode-0600 evidence was retained and independently hashed and
+permission-checked after exit:
+
+| Evidence | SHA-256 |
+| --- | --- |
+| `.target-wave27/i10-wave30-entra-diagnostics-20261002T135449Z.log` | `8561bc484c37c18e7589924c5e4b84d18d86e5a77b9734dfdc9cfdd264468502` |
+| `.target-wave27/i10-wave30-entra-diagnostics-20261002T135449Z.json` | `11d09656ca2681b3600dd6260ce4852ed7c38401462b811b837f428b0e531a48` |
+
+The observation retains exact command/HEAD/source, host/tools, owned Cargo PID
+50974, exit/time/counts, log hash and 37 disk samples. Sampling was every two
+seconds; maximum observed interval was 2.006s. Minimum free disk was
+10,429,796,352 bytes (**9.714 GiB**), and completion free disk was
+10,688,733,184 bytes (**9.955 GiB**). The nine-GiB stop threshold and mandatory
+eight-GiB floor were not breached. No signal or cache/evidence deletion was
+needed. Cargo was reaped and its exact owned process group was subsequently
+confirmed absent. The test reused existing private-loopback fixture cleanup;
+the test completed and its peer worker/listener lifetime ended with that
+fixture. No external service/provider was used.
+
+The result, source, counts/time, hashes, warning and disk were sent to the
+explicit project orchestrator immediately at completion with **CARGO SLOT
+RELEASED**, before this append. The lane retains no slot. Post-run assertions
+verified exactly the one passing function, log/observation hashes and mode,
+sample intervals/floor, clean worktree, unchanged reviewed source/manifests and
+absent owned process group. Report-prefix/source-byte/scope assertions,
+`python3 scripts/check-docs.py` and working/staged whitespace checks pass for
+this separate report delta. Only the existing report is appended.
+
+### What this observed pass proves and disposition limit
+
+The actual function now verifies readable active Entra certificate private-file
+status, exact modified metadata through actual pair rotation, 16-KiB boundary/
+oversize, missing/nonregular/Unix permission refusal, restored readability,
+unchanged 4-KiB shared-secret behavior, fixed redaction/unverified output,
+scoped refusal and full durable snapshot preservation. Its peer token/directory
+counters and paths remain empty: file status contacts no provider and does not
+fabricate a connection check, job or schedule. Readability still asserts no PEM
+or certificate-pair validity and no provider acceptance. The earlier static
+authority-before-selector proof and protected byte-equivalence remain intact.
+
+The last demonstrated local diagnostic residual now has its approved source
+correction and focused passing evidence. Together with the preceding seven-
+facet mapping, accepted historical lifecycle checks and eight fresh SCIM cases,
+this supports root's original local-completion review. Root alone interprets
+the all-advertised integration gate, integrates and changes I10 status. No
+tenant, Linux, Groups/full-crawl, real remote delivery, multi-node deployment
+or released-artifact evidence is invented or substituted; other original
+protocol/tenant rows keep their own gates. There was no production change
+after review, broad campaign, new worker/task/worktree, main/push/status or
+external contact. W02/W05/R05 remain closed.
