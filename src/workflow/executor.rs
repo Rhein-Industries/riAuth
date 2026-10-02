@@ -41,6 +41,7 @@ use super::{
     Action, ConfiguredPasswordPath, Credential, Definition, Environment, Facts, Id, Label, Proof,
     RunBinding, RunState, SourceRegistrationBinding, StagePermission, Target, Validated, builtin,
     configured_environment, configured_password_path, configured_source_first_passkey_enrollment,
+    configured_source_totp_authentication,
     evidence::{CompletionStore, StoredEvidence, StoredRun, StoredStep, TrustedFacts},
     extension_gate, supported_configured_consent, supported_configured_extension_password,
     supported_configured_passkey, supported_configured_passkey_consent,
@@ -235,6 +236,7 @@ impl RuntimeRun {
             || supported_configured_password_passkey_enrollment(&self.definition)
             || supported_configured_totp_first_passkey_enrollment(&self.definition)
             || configured_source_first_passkey_enrollment(&self.definition).is_some()
+            || configured_source_totp_authentication(&self.definition).is_some()
             || supported_configured_totp_enrollment(&self.definition)
             || supported_configured_password_totp_enrollment(&self.definition)
             || supported_configured_totp_replacement(&self.definition)
@@ -516,6 +518,66 @@ fn commit_conditional_seal(
     }
     version::seal_reviewed(tx, run, version::ReviewedFailure::PolicyChanged)?;
     Ok(Some(Error::conflict("Workflow account or factor changed")))
+}
+
+/// The configured source chain never accepts a browser or protocol request.
+/// Live authority checks additionally bind the session, source and account epoch.
+fn source_totp_session_agrees(run: &RuntimeRun, user: &User, request: &RequestAuthority) -> bool {
+    user.id == run.record.account
+        && user.enabled
+        && user.epoch == run.record.account_epoch
+        && user.totp_secret.is_some()
+        && user.totp_pending.is_none()
+        && request.requires_mfa
+        && request.source.as_ref().is_some_and(|pin| {
+            configured_source_totp_authentication(&run.definition).as_ref() == Some(&pin.source)
+                && run
+                    .record
+                    .binding
+                    .source_registration
+                    .as_ref()
+                    .is_some_and(|registered| {
+                        registered.source == pin.source && registered.fingerprint == pin.fingerprint
+                    })
+        })
+        && request.browser_hash.is_none()
+        && request.authorization.is_none()
+        && request.consent.is_none()
+        && request.saml_consent.is_none()
+        && request.recovery.is_none()
+        && request.invitation.is_none()
+        && request.removal.is_none()
+}
+
+/// Verifier writers commit the returned conflict before exposing it. Reviewed
+/// history/policy failures retain precedence over account, factor or request drift.
+fn commit_source_totp_seal(
+    core: &Core,
+    tx: &Tx<'_>,
+    run: &mut RuntimeRun,
+) -> Result<Option<Error>> {
+    if configured_source_totp_authentication(&run.definition).is_none()
+        || run.record.state.is_final()
+    {
+        return Ok(None);
+    }
+    if let Some(error) = version::commit_reviewed_seal(core, tx, run)? {
+        return Ok(Some(error));
+    }
+    let at = now();
+    if at >= run.record.started_at.saturating_add(600) {
+        // Let the unchanged deadline machinery close an expired run.
+        return Ok(None);
+    }
+    match authority(core, tx, &run.record, at) {
+        Ok((user, request)) if source_totp_session_agrees(run, &user, &request) => return Ok(None),
+        Err(error) if error.status.is_server_error() => return Err(error),
+        _ => {}
+    }
+    version::seal_reviewed(tx, run, version::ReviewedFailure::PolicyChanged)?;
+    Ok(Some(Error::conflict(
+        "Workflow account, factor or request changed",
+    )))
 }
 
 fn owned(core: &Core, tx: &Tx<'_>, token: &str, run: &StoredRun) -> Result<()> {

@@ -150,6 +150,118 @@ pub(super) fn discard(tx: &Tx<'_>, run: &RuntimeRun) -> Result<()> {
 }
 
 impl Core {
+    /// Start only the exact configured source/current-TOTP bearer chain. Source
+    /// registration, reviewed policy and verifier reservation share one writer.
+    pub fn workflow_configured_source_totp_start(
+        &self,
+        token: &str,
+        workflow: &str,
+    ) -> Result<SourceStart> {
+        let definition = self.configured_definition(workflow)?;
+        let source = configured_source_totp_authentication(&definition)
+            .ok_or_else(|| Error::conflict("Configured workflow is unavailable"))?;
+        let environment = configured_environment(&definition);
+        let checked = validate(definition, &environment).map_err(invalid_error)?;
+        if checked.definition().id.as_str() != workflow {
+            return Err(Error::conflict("Configured workflow is unavailable"));
+        }
+        version::seal_stale_session(self, token)?;
+        self.store.write(|tx| {
+            let (user, session) = self.session(tx, token)?;
+            if user.totp_secret.is_none() || user.totp_pending.is_some() {
+                return Err(Error::forbidden());
+            }
+            let pin = upstream::pin(tx, &source)?;
+            upstream::authority(tx, &pin, &user)?;
+            let checked = bind_registration(checked.clone(), &pin)?;
+            let reviewed = version::review_pin(self, tx, &checked, true)?;
+            let at = now();
+            if let Some(active_id) = tx.get::<String>(ACTIVE_SESSIONS, &session.id)? {
+                if let Some(mut active) = tx.get::<RuntimeRun>(RUNS, &active_id)? {
+                    owned(self, tx, token, &active.record)?;
+                    let validated = active.validated()?;
+                    settle_time(self, tx, &validated, &mut active, at)?;
+                    if !active.record.state.is_final() {
+                        return Err(Error::conflict(
+                            "A workflow is already active for this session",
+                        ));
+                    }
+                }
+                tx.delete(ACTIVE_SESSIONS, &session.id)?;
+            }
+            let run_id = crypto::id();
+            let request_id = crypto::id();
+            let expires_at = at.saturating_add(600).min(session.expires_at);
+            let mut run = RuntimeRun {
+                record: StoredRun {
+                    id: run_id.clone(),
+                    account: user.id.clone(),
+                    account_epoch: user.epoch,
+                    session: Some(session.id.clone()),
+                    request: request_id.clone(),
+                    binding: checked.binding(),
+                    started_at: at,
+                    state: RunState::Active {
+                        step: checked.definition().entry.clone(),
+                        attempt: 1,
+                    },
+                    steps: vec![],
+                },
+                definition: checked.definition().clone(),
+                step_started_at: at,
+                executions: 1,
+                attempts: vec![],
+                in_flight: None,
+                authorization_response: None,
+                credential_mutation: None,
+                reviewed,
+                reviewed_failure: None,
+            };
+            let request = RequestAuthority {
+                id: request_id.clone(),
+                run: run_id.clone(),
+                account: user.id,
+                account_epoch: user.epoch,
+                session: session.id.clone(),
+                token_hash: digest(token),
+                browser_hash: None,
+                expires_at,
+                requires_mfa: true,
+                source: Some(pin.clone()),
+                authorization: None,
+                consent: None,
+                saml_consent: None,
+                recovery: None,
+                invitation: None,
+                removal: None,
+            };
+            let mut reservation = InFlight {
+                nonce: crypto::id(),
+                step: checked.definition().entry.clone(),
+                attempt: 1,
+                step_started_at: at,
+                source: None,
+                passkey: None,
+                totp: None,
+                recovery_code: None,
+                enrollment: None,
+                totp_enrollment: None,
+            };
+            let (attempt, authorization_url) =
+                self.begin_workflow_source(tx, &pin, binding(&run, &reservation)?, expires_at)?;
+            reservation.source = Some(attempt);
+            run.in_flight = Some(reservation);
+            tx.put(REQUESTS, &request_id, &request)?;
+            tx.put(RUNS, &run_id, &run)?;
+            tx.put(ACTIVE_SESSIONS, &session.id, &run_id)?;
+            version::track_account_run(tx, &run.record.account, &run_id)?;
+            Ok(SourceStart {
+                workflow: run.view(&checked)?,
+                authorization_url,
+            })
+        })
+    }
+
     /// The session receipt and upstream reservation are created in one writer.
     /// Any failure leaves no active run that could block this bearer.
     pub fn workflow_configured_source_passkey_start(
@@ -412,18 +524,23 @@ impl Core {
         self.store.write(|tx| {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
+            if let Some(error) = commit_source_totp_seal(self, tx, &mut run)? {
+                return Ok(Err(error));
+            }
             owned(self, tx, token, &run.record)?;
             if run.record.state.is_final() {
                 return Err(Error::conflict("Workflow run is already final"));
             }
             settle_time(self, tx, &checked, &mut run, now())?;
             let RunState::Active { step, attempt } = &run.record.state else {
-                return run.view(&checked);
+                return run.view(&checked).map(Ok);
             };
             let reservation = run.in_flight.clone().ok_or_else(Error::forbidden)?;
             let source_attempt = reservation.source.as_ref().ok_or_else(Error::forbidden)?;
             let (user, request) = authority(self, tx, &run.record, now())?;
             let pin = request.source.as_ref().ok_or_else(Error::forbidden)?;
+            let configured_totp =
+                configured_source_totp_authentication(checked.definition()).is_some();
             if reservation.step != *step
                 || reservation.passkey.is_some()
                 || reservation.totp.is_some()
@@ -437,7 +554,8 @@ impl Core {
                         source: pin.source.clone(),
                     })
                 || ((user.totp_secret.is_some() || request.requires_mfa)
-                    && checked.definition().id.as_str() != TOTP_WORKFLOW)
+                    && checked.definition().id.as_str() != TOTP_WORKFLOW
+                    && !configured_totp)
                 || (checked.definition().id.as_str() == TOTP_WORKFLOW
                     && (user.totp_secret.is_none() || !request.requires_mfa))
                 || (configured_source_first_passkey_enrollment(checked.definition()).is_some()
@@ -449,19 +567,26 @@ impl Core {
                 return Err(Error::forbidden());
             }
             let at = now();
-            let verified = upstream::consume(
+            let verified = match upstream::consume(
                 tx,
                 pin,
                 source_attempt,
                 &binding(&run, &reservation)?,
                 &user,
                 at,
-            )?;
+            ) {
+                Ok(verified) => verified,
+                Err(error) if configured_totp && !error.status.is_server_error() => {
+                    version::seal_reviewed(tx, &mut run, version::ReviewedFailure::PolicyChanged)?;
+                    return Ok(Err(error));
+                }
+                Err(error) => return Err(error),
+            };
             let (source, auth_time, expires_at) = match verified {
-                upstream::Verification::Pending => return run.view(&checked),
+                upstream::Verification::Pending => return run.view(&checked).map(Ok),
                 upstream::Verification::Failed => {
                     fail_attempt(self, tx, &checked, &mut run, AttemptResult::Failed, at)?;
-                    return run.view(&checked);
+                    return run.view(&checked).map(Ok);
                 }
                 upstream::Verification::Verified {
                     authority,
@@ -515,7 +640,7 @@ impl Core {
                 Some(receipt),
                 at,
             )?;
-            run.view(&checked)
-        })
+            run.view(&checked).map(Ok)
+        })?
     }
 }

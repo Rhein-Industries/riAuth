@@ -10,12 +10,13 @@
 
 use super::{
     Action, ConfiguredPasswordPath, Definition, MAX_DOCUMENT_BYTES, configured_environment,
-    configured_password_path, configured_source_first_passkey_enrollment, extension_gate,
-    supported_configured_consent, supported_configured_extension_password,
-    supported_configured_passkey, supported_configured_passkey_consent,
-    supported_configured_passkey_enrollment, supported_configured_passkey_removal,
-    supported_configured_password_passkey_enrollment, supported_configured_password_reset,
-    supported_configured_password_totp_consent, supported_configured_password_totp_enrollment,
+    configured_password_path, configured_source_first_passkey_enrollment,
+    configured_source_totp_authentication, extension_gate, supported_configured_consent,
+    supported_configured_extension_password, supported_configured_passkey,
+    supported_configured_passkey_consent, supported_configured_passkey_enrollment,
+    supported_configured_passkey_removal, supported_configured_password_passkey_enrollment,
+    supported_configured_password_reset, supported_configured_password_totp_consent,
+    supported_configured_password_totp_enrollment,
     supported_configured_password_totp_passkey_removal,
     supported_configured_password_totp_replacement, supported_configured_session_consent,
     supported_configured_totp_enrollment, supported_configured_totp_first_passkey_enrollment,
@@ -783,6 +784,9 @@ fn adapter_label(definition: &Definition) -> Option<&'static str> {
     }
     if configured_source_first_passkey_enrollment(definition).is_some() {
         return Some("source-passkey-enrollment");
+    }
+    if configured_source_totp_authentication(definition).is_some() {
+        return Some("source-totp");
     }
     if supported_configured_password_passkey_enrollment(definition) {
         return Some("password-passkey-enrollment");

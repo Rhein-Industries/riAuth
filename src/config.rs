@@ -661,6 +661,8 @@ impl Config {
                     checked.definition(),
                 )
                 .is_none()
+                && crate::workflow::configured_source_totp_authentication(checked.definition())
+                    .is_none()
                 && !crate::workflow::supported_configured_totp_enrollment(checked.definition())
                 && !crate::workflow::supported_configured_password_totp_enrollment(
                     checked.definition(),
