@@ -82,3 +82,26 @@ Root read all137 lines of `772c8cdbfd02e2bf3f28212884aebe5ef9f03849` and rehashe
 ## Report publication encoding correction
 
 The first root batch docs check exited1 because its link scanner interpreted the archived Python indexing call as a Markdown link. Root inserted one separating space in that report call and documented the exact reconstruction normalization. Removing that space restores the complete reviewed logic SHA `98b19b4d422067b0d49ea7eb1035a719d88bda672dc36579c6cf5c47cb0924eb`; whole-report reversal also passes. The checker and actual helper/payload/results are unchanged. Author prefix proofs remain statements about their immutable commits, before this explicit report-only publication encoding.
+
+## Fresh bounded confidential fixture: capacity refusal
+
+Root read the full `3f70cb1f9cffb19ea3f4e537030083b1ebda0ab3` appendix. The released fixture was not started: fresh free space 4,741,165,056 bytes, then cleanup readback 4,446,744,576 bytes, both below the 8 GiB floor and 8.5 GiB launch margin. No controller, provider, product command, helper, listener or browser was launched; no fresh binary/hash evidence is borrowed. A Driver metadata lifecycle session was ended without preparing a browser. Ports 9000/3000 and requested fresh metadata paths were absent; no owned app resources existed. Desktop/operator ownership was released before the report.
+
+The memory 78-case pass remains limited to guards and sinks, and the confidential browser workflow remains unexecuted. Historical refusals, unknown sender and lost first provider output remain unchanged. A separate read-only capacity inventory is reserved; no deletion or relaxed guard is authorized by this result. D01/D05 status is unchanged.
+
+## Root remaining prewarm cleanup and separate capacity release
+
+Root checked all 34 remaining exact files from the unchanged private inventory SHA256 `b5fd6399c9fc1b2a47498eba342d58956aa8cf8e3bb3dff5e17d75e83831c113`. Exact parent, regular/non-symlink/single-link/owner/mode, size/mtime/hash and no-fuzzing fingerprints matched; lsof and exact process path/basename checks found no current use, and the accepted reports contain no exact basename references. Historical nonexecution is credited to the retained early no-run prewarm provenance, not inferred from metadata or absence of open files. An initial fingerprint lookup used the executable name rather than riauth-hash directory and stopped before review/write/removal; the metadata lookup was corrected.
+
+A new precise root reservation removed only those 34 unused executables in one non-shell rm argv containing their literal absolute file paths. Exit0, 6,813,678,128 logical bytes removed; directory entries2029→1995 differ by exactly the allowlist, with no other file changed. Free space before2,807,332,864 bytes and after9,621,676,032 bytes. Earlier10/16/14 approvals remain exhausted; this new approval is also consumed. Source, cited runtime artifacts, evidence, logs, archives, libraries, dependencies and fingerprints remain. [Exact receipt](evidence/wave30-root-remaining-unused-prewarm-prune.json).
+
+A subsequent independent host snapshot rebounded to15,041,105,920 bytes. The ongoing pressure's cause is not established; an unrelated Rust1.95 Cargo process and active Docker backing-file metadata were observed without reading args/env or signaling anything. Root separately released one unchanged bounded D01 fixture, requiring its own fresh8.5GiB gate, one-second monitor and owned-stop before8GiB. The prior refused attempt remains not started. No new runtime result is credited at this entry.
+
+
+## Capacity-ready attempt and fourth refusal (2026-10-02)
+
+Root read the complete append at authored `500b2b67ac5630a9feb10d21be6d97ab997ef6f0`, including the retained public controller and Driver method limits. Private 4125-byte result and359-byte provider observation were independently rehashed with mode0600. Helper470/SHA `7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0` is unchanged. Exactly one released attempt failed: helper exit1/request_invalid/authorization/count4; all six HTTP observations null and later journey checks false. Sender remains unknown. Bound Driver navigation observed ERR_CONNECTION_REFUSED, not application sign-in. Five CLI prerequisites exited0, owned server exited0, all seven children reaped and Driver-owned browser/session/lab cleaned. Desktop/operator release was received before evidence publication. No further attempt is released.
+
+The first-three refusal allowance did not complete a journey. Root retains the fourth-refusal terminal guard and every earlier failure; neither more refusals nor alternate credentials/provider/transport are authorized by this evidence. The confidential browser checkpoint remains unpassed; original D01/D05 statuses are unchanged.
+
+The shared-capacity report `717cc58fa154e6723f1eefe9f5c6e083cabd4992` predates root's exact34-file cleanup and capacity rebound. Its own no-safe-cleanup finding remains dated and intact; root's separate allowlist does not confer authorization or identify the external writer. Root's first append wrapper guessed an absent root-review filename and stopped before any write; using the actual existing report path corrected that static wrapper only.
