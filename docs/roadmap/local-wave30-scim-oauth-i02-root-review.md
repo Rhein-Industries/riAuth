@@ -425,3 +425,19 @@ is retained privately; [terminal receipt](evidence/wave30-ci-56bd-terminal-root-
 records exact provenance and missing evidence. Root reserved read-only startup
 source diagnosis; no new test or source correction ran. The genuine whole
 940 CI success remains dated to its pin; later/current source is not all-green.
+
+## Later exact b71 CI success, 2026-10-02
+
+Root read terminal run `37063876066`: audit `111027210441`, integration
+`111027210794`, and check `111027210609` all completed successfully at exact
+`b71b7b0041a549793233e8c7a81bbb61797e20f3`. The retained check log is852480 bytes,
+SHA-256 `a7f6383497ccbf4b9149ec7bdeb290a4ca8245d77e2d7273d518ecd3b56aae1f`,
+mode0600, with203 successful Rust summaries and zero failed summaries. Named CLI
+certificate startup, background capacity, reports attribution, Entra diagnostic and
+I02 browser-stage HTTP/rendering filters passed. Clippy, USB boundary, standalone
+client/dependency/real-server checks, docs/notices and release build succeeded.
+
+[The exact root receipt](evidence/wave30-ci-b71-terminal-root-review.json) preserves
+job/step/source identities and bounded body-read limits. This dated success does not
+change the earlier56 startup failure or borrow runtime for later source. No board
+status changed; the separate readiness probe correction remains source-first.
