@@ -597,3 +597,201 @@ check passed. The original17994-byte report prefix (SHA-256
 remains byte-exact. The only changed file is this reserved report; no source
 or runtime validation occurred. Final staged whitespace/scope checks are
 required before the report-only commit.
+
+
+## Reserved v28 legacy metadata binding — source implementation, 2026-10-02
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. Root reservation
+`wave30_A09_v28_legacy_metadata_binding` authorizes this source-only script
+change and append-only report. No validator/controller import, native tool,
+archive inspection or execution reservation accompanies it. I04's original
+DONE disposition and primary assignments are unchanged.
+
+### Exact alignment and authorized conflict resolution
+
+Own HEAD05187 was merged with fixed published main
+`74e106b819e7186d0ac41964cedbe8217fa7e881`, preserving both histories.
+The first merge stopped on one add/add source conflict in
+`tests/saml_source_peer.rs`; no other file was unmerged. Root independently
+reviewed and explicitly authorized choosing the exact published blob, already
+accepted as unused-constant removal23814ab. Deleting only the unique69-byte
+`const POST` line from own39539-byte file yields the entire39470-byte published
+file, SHA-256
+`610e29c32d7eed456c33493aea2bb1eab52fc7a5791d36db5686c59532fc5512`.
+The root-selected blob was restored for that sole conflict, staged and the
+merge continued. No test operation/assertion/native runner changed, and the
+old constant remains in preserved source history. Merge commit:
+`effbeacbd1231aa848588cb0aa0870c6b5a0bf6f`.
+
+Before the helper edit, `src/`, `crates/`, every `tests/` path, Cargo manifests/
+lock, toolchain, `.cargo/`, build.rs, cohort helper and workflow all matched
+fixed74 exactly. The independent review report also matched fixed74 exactly,
+including the full prior42881-byte prefix. There was no report conflict.
+The helper matched accepted architecture source
+`d84d753912c8d920dd3f005d03024a9ad28841e4` byte-for-byte:
+92964bytes, SHA-256
+`45353945c6d867039d29ada0f110cf2c2b85a907d179bb9049268046875ffc73`.
+Workflow4573bytes retains SHA-256
+`9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4`.
+No reset/rebase or unrelated conflict resolution occurred.
+
+One prior read-only Git lookup failed: the audit attempted to read
+`scripts/check-local-container-cohort.py` from own05187, where that path did
+not yet exist. Git exited128 and the inspection script exited1. Subsequent
+fixed74/d84 blob reads established the correct baseline; no source was changed
+by that failed lookup. This is a provenance/read failure, not a product or
+container outcome.
+
+### Immutable code slice and selected-platform contract
+
+Code commit `59f5c6b465a380d270acf68ba7a1719a41998673` changes only
+`scripts/check-local-container-cohort.py`:117 added lines, no removals. The
+result is99566bytes, SHA-256
+`c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837`.
+The five-line hook is at1090–1094; the new111-line method
+`Cohort.expected_v28_legacy_members` is at1104–1214, plus its separating blank
+line. No new imports were added. The method receives settings, ordered layers,
+TarInfo members, streamed hashes, bounded payloads, edition and the current
+ordinary allowlist; it returns a new verified metadata-name set without
+mutating that ordinary set or changing archive contents.
+
+The accepted code calls its closed platform choice `self.selected`, initialized
+from `closed_platform(args.architecture)`. The new method uses that existing
+`self.selected["oci_arch"]` and `self.selected["source"]`, rather than inventing
+`self.platform` or introducing an x86 fallback. Existing PLATFORMS/selection,
+all architecture helpers and workflow remain exact:
+
+| Existing selection | Bound OCI architecture | Bound product revision | New runtime evidence |
+| --- | --- | --- | --- |
+| x86_64 | amd64 | `b619fe25269ccc150e473bbcde47cdb3623ef810` | none |
+| arm64 | arm64 | `9a819317efb3a13fa27cd86f884be2be00898fc0` | none |
+
+This is a literal adaptation of the approved finite serializer profile to the
+existing selected values. It supplies no synthetic ARM pass or claim that an
+unobserved ARM export has already matched the strict schema.
+
+The hook activates only with daemon ServerVersion28.0.4 and canonical SHA-256
+blob layer names. Existing unknown-extra refusal remains for other formats.
+The helper requires exactly the selected config's six-field top schema,
+linux/selected architecture, a list-valued history, exactly rootfs.type/diff_ids,
+1–128 canonical distinct DiffIDs and identical ordered layer names. Each layer
+must be regular with its already-streamed hash matching the corresponding
+DiffID before ChainID derivation. Wrong/missing/reordered layers fail closed.
+
+The exact typed nine-field runtime config binds fixed user, command,
+entrypoint, working directory, volume, exposed port, PATH, boolean ArgsEscaped
+and four source/edition/owner/revision labels. A bounded-depth type-aware
+comparison to that fixed expected structure rejects bool/int equivalence,
+unknown fields and wrong dict/list/null shapes. Owner is canonical ASCII
+`a09-` plus32 lowercase hex characters; edition is essentials/platform.
+Creation time must be valid canonical UTC RFC3339Nano, with optional1–9
+fractional digits ending nonzero. Existing datetime parses only the calendar/
+whole-second portion; original fractional digits are retained. There is no
+wall-clock change, sleep, timestamp repair or normalization.
+
+The zero ContainerConfig retains all17 mandatory fields in pinned Go
+structure order. Runtime Config overlays only the fixed expected values,
+inserts ExposedPorts and ArgsEscaped in their pinned positions, and explicitly
+sorts its Labels map. Other two map fields have one fixed key and an empty
+object. All constructed strings are the approved ASCII profile; there are
+no floats, arbitrary JSON fragments or unreviewed general Go-JSON substitute.
+Compact encoding uses the existing json module without recursively sorting
+struct keys or adding a newline.
+
+For each selected DiffID, the method derives the ordered ChainID, then hashes
+CreateID's sorted top-level map while preserving nested struct order. It uses
+epoch/zero ContainerConfig for intermediates and selected created/runtime
+config/architecture/OS for the top. The previous **computed** V1 ID is prefixed
+for the next CreateID parent; saved metadata uses the unprefixed parent.
+Intermediate OS is added only after computing that ID, as the pinned exporter
+requires. Generated saved V1 bytes in declared order determine the expected
+metadata filename/content hash. Each required member must be new/distinct,
+regular, have an integer matching size within LOG_CAP, matching streamed hash
+and exact bounded payload bytes. It never derives names/IDs from observed
+extra JSON. Missing, duplicate, unknown/malformed/re-encoded or wrong-parent
+metadata cannot acquire allowlist membership through a shape check; exact
+bytes also prevent lossy duplicate-JSON-key acceptance.
+
+The original final `set(hashes) <= allowed` and blob digest loop are exact.
+Original path/member/duplicate/regular/truncation/cap/deadline/tag/config/OCI
+checks, non-blob legacy handling, archive producer, image remove/load flow,
+UID/fixture/public-CLI protections and cleanup remain unchanged. There is no
+image content rewrite, filtering, deletion, expanded extra-JSON allowance or
+fallback to another architecture/daemon.
+
+### Actual static proof and preserved methods
+
+Actual checks were source reading and standard-library AST parsing, a static
+new-method call/signature check (seven explicit call arguments; self plus
+seven formal arguments), unchanged-import comparison, exact whole-file
+reversal, protected-path Git comparisons and whitespace checks. No module was
+imported or method executed. Removing only the five-line hook and new helper/
+separator reproduces the entire92964-byte d84/fixed74 source and its SHA-256.
+That is stronger than a normalized-AST equivalence claim.
+
+The aligned class has51 existing methods. Besides the authorized hook in
+validate_image_tar, all50 other existing method source bodies are byte-exact,
+covering the reserved protected control methods as well as the remaining
+methods: __init__, save, capacity, sample_loop, check_budget,
+process_identity, kill_group, command, docker, inspect, absent, prove_absent,
+git, source_check, http, github_json, native_transport, elf, capabilities,
+daemon_setup, recover_builder, create_volume, confirm_volume,
+create_container, confirm_container, remove_container, tool, image_identity,
+build_images, inspect_product, maintenance, shell, new_fixture, start_app,
+stop_app, client, login, mutate, token, revoked, snapshot, revoke_copy,
+offline_hashes, direct_refusal, plan, config_refusals, handoff,
+platform_refusal_fixture, fixture_gate and cleanup. Whole-source reversal also
+preserves every top-level import/function/constant and the closed platform map.
+All protected production/test/manifest/toolchain/workflow paths still match
+fixed74 after the code commit.
+
+The first static reversal audit failed an assertion because its extraction
+included two separator newlines instead of the one actually added. Only the
+audit slice was corrected; the source was unchanged. The corrected audit
+passed exact byte reversal, all50 method comparisons, signature/import/parser
+checks and protected-path/single-file scope. This is an audit-check failure,
+not a validator execution or evidence that the new code accepts the archive.
+Code commit staging `git diff --check` passed; its sole changed file was the
+reserved script. No Rust/Python typecheck, runtime test or compile was run.
+
+### Retained archive identity and pending validation boundary
+
+Root supplies the exact retained ZIP member
+`local-essentials-x86_64.docker.tar.gz`,48934031bytes, SHA-256
+`e9e1291895a1cf6c894147acaa0b4efca4a885d4f07dc88f5aee2152c9604905`,
+inside artifact11252311290's49206215-byte ZIP with SHA-256
+`d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6`.
+The earlier appendix independently rehashed the outer ZIP/public metadata;
+this source phase did **not** open the ZIP/member/layers or independently
+recompute that inner archive identity. Attribution stays root-supplied.
+
+The earlier bounded build-free validation proposal remains design only.
+Immutable source is now ready for root's separate review and reservation of
+that exact retained-archive/synthetic negative seam. No driver, harness,
+validator execution, import, probe, download or other runtime was created or
+run in this source phase; no next execution command is authorized here.
+Strict real-byte agreement with the selected exporter remains unverified
+until that separately reserved validation occurs. A mismatch must stop and
+retain its precise public refusal, not silently loosen the profile.
+
+Actual container run37061329815 remains FAILED at images/
+image_tar_unreferenced_member. Successful builds/save do not imply a validated
+archive, image reload, UID/mount gate, E→P→E fixture, shared gate, release or
+whole A09 closure. All those later checks remain unreached in that receipt.
+Earlier Desktop UID failures and I04 failed/PASS receipts and DONE disposition
+are unchanged. Root alone owns future integration, runtime and original task
+status. No main/push/status/worker contact/new resource/slot/cache deletion,
+network query, Docker/native/Cargo/compiler/provider/browser/service or
+unreviewed source edit occurred.
+
+Final actual report checks: `python3 scripts/check-docs.py` exited0 and
+`git diff --check` passed. The complete42881-byte published report prefix
+(SHA-256 `f6c6c39cef63bcd3742f6d84c4ce29ae90c84d7efda4e9a1a8092a4fd84f610e`)
+is exact; fences balance, the code blob equals immutable59f5, and protected
+production/test/manifest/toolchain/workflow comparisons to fixed74 remain empty.
+The source commit contains only the reserved script; this report commit contains
+only this append. Merge-parent history is verified. Final staged whitespace
+checks passed before committing. These static checks supply no archive/runtime
+outcome, import/execution authorization or task closure.
