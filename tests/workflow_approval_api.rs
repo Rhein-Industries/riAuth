@@ -199,7 +199,11 @@ async fn bearer_approval_reaches_the_same_state_as_the_portal_services() {
         .unwrap();
     let revoked = portal
         .core
-        .revoke_workflow_approval(&portal_executor, "approved-password")
+        .revoke_workflow_approval_targeted(
+            &portal_executor,
+            "approved-password",
+            activated["approval_id"].as_str().unwrap(),
+        )
         .unwrap();
     let portal_state = approval_state(&portal.core, &planned.plan_id, "approved-password");
 
@@ -236,7 +240,7 @@ async fn bearer_approval_reaches_the_same_state_as_the_portal_services() {
         REVOKE,
         &executor,
         &context("revoke-1", before_revoke),
-        &json!({"workflow_id": "approved-password"}),
+        &json!({"workflow_id": "approved-password", "approval_id": bearer_activation["approval_id"]}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{bearer_revocation}");
@@ -327,7 +331,10 @@ async fn only_a_full_human_administrator_may_use_the_bearer_routes() {
         for (path, body) in [
             (REVIEW, review.clone()),
             (ACTIVATE, json!({"plan_id": planned.plan_id})),
-            (REVOKE, json!({"workflow_id": "approved-password"})),
+            (
+                REVOKE,
+                json!({"workflow_id": "approved-password", "approval_id": "not-recorded"}),
+            ),
         ] {
             let (status, value) = call(&f.core, path, token, &context(who, at), &body).await;
             assert_eq!(status, StatusCode::FORBIDDEN, "{who} {path}: {value}");
@@ -468,7 +475,7 @@ async fn the_envelope_needs_an_idempotency_key_and_the_current_revision() {
 }
 
 #[tokio::test]
-async fn an_exact_retry_returns_the_recorded_outcome() {
+async fn an_exact_retry_revalidates_the_recorded_domain_outcome() {
     let f = Fixture::new();
     let reviewer = administrator(&f.core, &f.admin, "reviewer");
     let executor = administrator(&f.core, &f.admin, "executor");
@@ -498,7 +505,7 @@ async fn an_exact_retry_returns_the_recorded_outcome() {
     assert!(after_activation > at);
     let settled = f.snapshot().unwrap();
 
-    // A review retry answers from its receipt even though the revision has moved on.
+    // A review retry revalidates its decision even though the revision has moved on.
     let (status, again) = call(
         &f.core,
         REVIEW,
@@ -538,8 +545,9 @@ async fn an_exact_retry_returns_the_recorded_outcome() {
         "Idempotency key was used for a different request"
     );
 
-    // Revocation does not repeat by itself, so its receipt is what answers the retry.
-    let revoke = json!({"workflow_id": "approved-password"});
+    // The completed targeted retirement is revalidated without another mutation.
+    let revoke =
+        json!({"workflow_id": "approved-password", "approval_id": activated["approval_id"]});
     let (status, revoked) = call(
         &f.core,
         REVOKE,
@@ -569,7 +577,7 @@ async fn an_exact_retry_returns_the_recorded_outcome() {
             .len(),
         1
     );
-    // A new key is a new command: nothing is active any more.
+    // A new key also reaches the same live completed retirement.
     let (status, value) = call(
         &f.core,
         REVOKE,
@@ -578,7 +586,8 @@ async fn an_exact_retry_returns_the_recorded_outcome() {
         &revoke,
     )
     .await;
-    assert_eq!(status, StatusCode::CONFLICT, "{value}");
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert_eq!(value, revoked);
     // The same key from another administrator is not the first one's receipt.
     let (status, _) = call(
         &f.core,
@@ -632,7 +641,7 @@ async fn a_failed_command_leaves_no_receipt_and_its_key_stays_usable() {
         "a success stores its receipt with the write"
     );
     // A refused operation stores nothing either.
-    let revoke = json!({"workflow_id": "approved-password"});
+    let revoke = json!({"workflow_id": "approved-password", "approval_id": "not-recorded"});
     let (status, _) = call(
         &f.core,
         REVOKE,
@@ -1282,7 +1291,7 @@ async fn an_activation_retry_after_revocation_is_refused_and_writes_nothing() {
         REVOKE,
         &a.executor,
         &context("revoke-1", revision(&a.f.core)),
-        &json!({"workflow_id": "environment-password"}),
+        &json!({"workflow_id": "environment-password", "approval_id": a.first["approval_id"]}),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{revoked}");
@@ -1659,6 +1668,8 @@ fn the_server_cli_reviews_activates_and_revokes_over_the_bearer_routes() {
             "workflow",
             "revoke",
             "cli-approved",
+            "--approval-id",
+            activated["approval_id"].as_str().unwrap(),
         ],
     ));
     assert!(
@@ -1677,6 +1688,8 @@ fn the_server_cli_reviews_activates_and_revokes_over_the_bearer_routes() {
         "workflow",
         "revoke",
         "cli-approved",
+        "--approval-id",
+        activated["approval_id"].as_str().unwrap(),
     ];
     let revoked = success(cli(&executor, &revoke_args));
     assert_eq!(revoked["selection"], "revoked");
@@ -1693,4 +1706,786 @@ fn the_server_cli_reviews_activates_and_revokes_over_the_bearer_routes() {
     assert_eq!(count("workflow.review"), 1);
     assert_eq!(count("workflow.activate"), 1);
     assert_eq!(count("workflow.revoke"), 1);
+}
+
+// ---- R1 shared live review/targeted-retirement retry envelope ----
+
+fn r1_cookie(core: &Core, token: &str) -> String {
+    let request = core.portal_sign_in().unwrap();
+    core.portal_decide(token, request.body["code"].as_str().unwrap(), true)
+        .unwrap();
+    let binding = request.cookies[0]
+        .split(';')
+        .next()
+        .unwrap()
+        .split_once('=')
+        .unwrap()
+        .1;
+    core.portal_poll(request.body["id"].as_str().unwrap(), Some(binding))
+        .unwrap()
+        .cookies
+        .iter()
+        .find(|cookie| cookie.starts_with("riauth_sso="))
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned()
+}
+
+/// Core receives caller-scoped attempt metadata; HTTP uses the actual middleware
+/// fingerprint. This does not claim canonical fingerprints across different routes.
+async fn r1_submit(
+    core: &Core,
+    mode: &str,
+    token: &str,
+    cookie: &str,
+    path: &str,
+    headers: &[(&str, String)],
+    body: &Value,
+) -> (StatusCode, Value) {
+    if mode == "core" {
+        let validator = headers.iter().find(|(name, _)| *name == "if-match");
+        let context = riauth::context::RequestContext {
+            idempotency_key: headers
+                .iter()
+                .find(|(name, _)| *name == "idempotency-key")
+                .map(|(_, v)| v.clone()),
+            revision: validator.map(|(_, v)| v.trim_matches('"').parse().unwrap()),
+            fingerprint: format!("core-attempt:{path}:{body}:{validator:?}"),
+            ..Default::default()
+        };
+        let result = riauth::context::scope(Some(context), || match path {
+            REVIEW => core.review_workflow(
+                token,
+                body["plan_id"].as_str().unwrap(),
+                body["decision"].as_str().unwrap(),
+            ),
+            REVOKE => match body["approval_id"].as_str() {
+                Some(id) => core.revoke_workflow_approval_targeted(
+                    token,
+                    body["workflow_id"].as_str().unwrap(),
+                    id,
+                ),
+                None => core.revoke_workflow_approval(token, body["workflow_id"].as_str().unwrap()),
+            },
+            _ => unreachable!(),
+        });
+        return match result {
+            Ok(view) => (StatusCode::OK, view),
+            Err(error) => (
+                error.status,
+                json!({"error": error.code, "error_description": error.message}),
+            ),
+        };
+    }
+    if mode == "bearer" {
+        return call(core, path, token, headers, body).await;
+    }
+    let path = match path {
+        REVIEW => "/api/admin/workflows/review",
+        REVOKE => "/api/admin/workflows/revoke",
+        _ => unreachable!(),
+    };
+    let mut request = Request::post(path)
+        .header("content-type", "application/json")
+        .header("cookie", cookie)
+        .header("origin", &core.config.issuer)
+        .header("x-riauth-portal", "1")
+        .header("sec-fetch-site", "same-origin");
+    for (name, value) in headers {
+        request = request.header(*name, value);
+    }
+    let response = riauth::api::router(core.clone())
+        .oneshot(request.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+struct R1Review {
+    f: Fixture,
+    reviewer: String,
+    executor: String,
+    reviewer_cookie: String,
+    executor_cookie: String,
+    plan: Plan,
+    at: u64,
+    first: Value,
+}
+
+impl R1Review {
+    async fn new(mode: &str) -> Self {
+        Self::new_decision(mode, "approve").await
+    }
+
+    async fn new_decision(mode: &str, decision: &str) -> Self {
+        let f = Fixture::new();
+        let reviewer = administrator(&f.core, &f.admin, "reviewer");
+        let executor = administrator(&f.core, &f.admin, "executor");
+        let reviewer_cookie = r1_cookie(&f.core, &reviewer);
+        let executor_cookie = r1_cookie(&f.core, &executor);
+        let plan = plan(&f.core, &f.admin, "r1-password");
+        if decision == "refuse" {
+            // A staged, unactivated desired-state catalog row matching this plan.
+            f.core
+                .store
+                .write(|tx| {
+                    tx.put(
+                        "workflow_definitions",
+                        "r1-password",
+                        &plan.manifest.workflows[0],
+                    )
+                })
+                .unwrap();
+        }
+        let at = revision(&f.core);
+        let (status, first) = r1_submit(
+            &f.core,
+            mode,
+            &reviewer,
+            &reviewer_cookie,
+            REVIEW,
+            &context("r1-review", at),
+            &json!({"plan_id": plan.plan_id, "decision": decision}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {first}");
+        Self {
+            f,
+            reviewer,
+            executor,
+            reviewer_cookie,
+            executor_cookie,
+            plan,
+            at,
+            first,
+        }
+    }
+
+    fn review_body(&self) -> Value {
+        json!({"plan_id": self.plan.plan_id, "decision": self.first["decision"]})
+    }
+}
+
+fn r1_corrupt_receipt(core: &Core, user: &str, key: &str, field: &str, value: Value) {
+    let id = riauth::crypto::digest(&format!("{}\0{key}", user_id(core, user)));
+    core.store
+        .write(|tx| {
+            let mut row: Value = tx.get("receipts", &id)?.unwrap();
+            row[field] = value;
+            tx.put("receipts", &id, &row)
+        })
+        .unwrap();
+}
+
+fn r1_epoch(core: &Core, user: &str) {
+    let id = user_id(core, user);
+    core.store
+        .write(|tx| {
+            let mut row: riauth::model::User = tx.get("users", &id)?.unwrap();
+            row.epoch += 1;
+            tx.put("users", &id, &row)
+        })
+        .unwrap();
+}
+
+fn r1_login(core: &Core, user: &str) -> String {
+    text(
+        &core.login(user.into(), PASSWORD.into(), None).unwrap(),
+        "session_token",
+    )
+}
+
+#[tokio::test]
+async fn r1_browser_bearer_core_share_live_review_and_targeted_retirement() {
+    for mode in ["browser", "bearer", "core"] {
+        let a = R1Review::new(mode).await;
+        r1_corrupt_receipt(
+            &a.f.core,
+            "reviewer",
+            "r1-review",
+            "result",
+            json!({"historical": "must-not-return"}),
+        );
+        let settled = a.f.snapshot().unwrap();
+        for key in ["r1-review", "new-review"] {
+            let (status, view) = r1_submit(
+                &a.f.core,
+                mode,
+                &a.reviewer,
+                &a.reviewer_cookie,
+                REVIEW,
+                &context(key, a.at),
+                &a.review_body(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+            assert_eq!(view, a.first);
+            a.f.assert_http_mutation_snapshot(&settled);
+        }
+        assert!(receipt(&a.f.core, "reviewer", "new-review").is_none());
+        assert_eq!(audits(&a.f.core, &a.f.admin, "workflow.review"), 1);
+        let activated =
+            a.f.core
+                .activate_workflow(&a.executor, &a.plan.plan_id)
+                .unwrap();
+        let body = json!({"workflow_id": "r1-password", "approval_id": activated["approval_id"]});
+        let at = revision(&a.f.core);
+        let (status, first) = r1_submit(
+            &a.f.core,
+            mode,
+            &a.executor,
+            &a.executor_cookie,
+            REVOKE,
+            &context("r1-retire", at),
+            &body,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {first}");
+        assert_eq!(revision(&a.f.core), at + 1);
+        assert_eq!(revocations(&a.f.core), 1);
+        assert_eq!(audits(&a.f.core, &a.f.admin, "workflow.revoke"), 1);
+        r1_corrupt_receipt(
+            &a.f.core,
+            "executor",
+            "r1-retire",
+            "result",
+            json!({"historical": "must-not-return"}),
+        );
+        let settled = a.f.snapshot().unwrap();
+        for (key, revision) in [("r1-retire", at), ("new-retire", at + 100)] {
+            let (status, view) = r1_submit(
+                &a.f.core,
+                mode,
+                &a.executor,
+                &a.executor_cookie,
+                REVOKE,
+                &context(key, revision),
+                &body,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{mode}: {view}");
+            assert_eq!(view, first);
+            a.f.assert_http_mutation_snapshot(&settled);
+        }
+        assert!(receipt(&a.f.core, "executor", "new-retire").is_none());
+        // A current review decision remains a decision, not an active selection.
+        let (status, review) = r1_submit(
+            &a.f.core,
+            mode,
+            &a.reviewer,
+            &a.reviewer_cookie,
+            REVIEW,
+            &context("r1-review", a.at),
+            &a.review_body(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(review, a.first);
+        a.f.assert_http_mutation_snapshot(&settled);
+        // Accepted optional-header policy: raw/browser can retry without headers.
+        if mode != "bearer" {
+            let (status, view) = r1_submit(
+                &a.f.core,
+                mode,
+                &a.executor,
+                &a.executor_cookie,
+                REVOKE,
+                &[],
+                &body,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(view, first);
+            a.f.assert_http_mutation_snapshot(&settled);
+        }
+        let (status, _) = r1_submit(
+            &a.f.core,
+            mode,
+            &a.executor,
+            &a.executor_cookie,
+            REVOKE,
+            &context("untargeted", at),
+            &json!({"workflow_id": "r1-password"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        a.f.assert_http_mutation_snapshot(&settled);
+    }
+}
+
+#[tokio::test]
+async fn r1_review_replays_check_live_author_reviewer_and_environment() {
+    for mode in ["browser", "bearer", "core"] {
+        for changed in ["author", "reviewer", "environment"] {
+            let mut a = R1Review::new(mode).await;
+            match changed {
+                "author" => r1_epoch(&a.f.core, "admin"),
+                "reviewer" => {
+                    r1_epoch(&a.f.core, "reviewer");
+                    a.reviewer = r1_login(&a.f.core, "reviewer");
+                    a.reviewer_cookie = r1_cookie(&a.f.core, &a.reviewer);
+                }
+                "environment" => a.f.core.config.issuer = "http://changed.example.com".into(),
+                _ => unreachable!(),
+            }
+            let settled = a.f.snapshot().unwrap();
+            for key in ["r1-review", "changed-new-key"] {
+                let (status, view) = r1_submit(
+                    &a.f.core,
+                    mode,
+                    &a.reviewer,
+                    &a.reviewer_cookie,
+                    REVIEW,
+                    &context(key, a.at),
+                    &a.review_body(),
+                )
+                .await;
+                assert_eq!(status, StatusCode::CONFLICT, "{mode}/{changed}: {view}");
+                a.f.assert_http_mutation_snapshot(&settled);
+            }
+            assert!(receipt(&a.f.core, "reviewer", "changed-new-key").is_none());
+        }
+    }
+}
+
+#[tokio::test]
+async fn r1_retirement_target_withdrawal_authority_and_floors_are_live() {
+    for changed in [
+        "replacement",
+        "newer-floor",
+        "revoker",
+        "missing",
+        "duplicate",
+        "malformed",
+        "reappeared",
+        "approval",
+        "association",
+    ] {
+        let mut a = Approved::new().await;
+        let body =
+            json!({"workflow_id": "environment-password", "approval_id": a.first["approval_id"]});
+        let at = revision(&a.f.core);
+        let pointer: Value =
+            a.f.core
+                .store
+                .get("workflow_activation", "environment-password")
+                .unwrap()
+                .unwrap();
+        let (status, retired) = call(
+            &a.f.core,
+            REVOKE,
+            &a.executor,
+            &context("r1-retire", at),
+            &body,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{retired}");
+        let row_id = retired["revocation_id"].as_str().unwrap();
+        match changed {
+            "replacement" | "newer-floor" => {
+                let higher = plan_revision(&a.f.core, &a.f.admin, "environment-password", 2);
+                a.f.core
+                    .review_workflow(&a.reviewer, &higher.plan_id, "approve")
+                    .unwrap();
+                let b =
+                    a.f.core
+                        .activate_workflow(&a.executor, &higher.plan_id)
+                        .unwrap();
+                if changed == "newer-floor" {
+                    a.f.core
+                        .revoke_workflow_approval_targeted(
+                            &a.executor,
+                            "environment-password",
+                            b["approval_id"].as_str().unwrap(),
+                        )
+                        .unwrap();
+                }
+            }
+            "revoker" => {
+                r1_epoch(&a.f.core, "executor");
+                a.executor = r1_login(&a.f.core, "executor");
+            }
+            _ => a
+                .f
+                .core
+                .store
+                .write(|tx| {
+                    match changed {
+                        "missing" => tx.delete("workflow_revocations", row_id)?,
+                        "duplicate" => {
+                            let mut row: Value = tx.get("workflow_revocations", row_id)?.unwrap();
+                            row["id"] = json!("duplicate-retirement");
+                            tx.put("workflow_revocations", "duplicate-retirement", &row)?;
+                        }
+                        "malformed" => {
+                            let mut row: Value = tx.get("workflow_revocations", row_id)?.unwrap();
+                            row["actor"] = json!(42);
+                            tx.put("workflow_revocations", row_id, &row)?;
+                        }
+                        "reappeared" => {
+                            tx.put("workflow_activation", "environment-password", &pointer)?
+                        }
+                        "association" => {
+                            let mut row: Value = tx.get("workflow_revocations", row_id)?.unwrap();
+                            row["workflow_id"] = json!("wrong-workflow");
+                            tx.put("workflow_revocations", row_id, &row)?;
+                            tx.put("workflow_activation", "environment-password", &pointer)?;
+                            tx.put("meta", "revision", &at)?;
+                        }
+                        "approval" => tx.delete(
+                            "workflow_approvals",
+                            a.first["approval_id"].as_str().unwrap(),
+                        )?,
+                        _ => unreachable!(),
+                    }
+                    Ok(())
+                })
+                .unwrap(),
+        }
+        let settled = a.f.snapshot().unwrap();
+        for key in ["r1-retire", "changed-retire"] {
+            let (status, view) =
+                call(&a.f.core, REVOKE, &a.executor, &context(key, at), &body).await;
+            if changed == "malformed" {
+                assert!(status.is_server_error(), "{changed}: {view}");
+            } else {
+                assert_eq!(status, StatusCode::CONFLICT, "{changed}: {view}");
+            }
+            a.f.assert_http_mutation_snapshot(&settled);
+        }
+        assert!(receipt(&a.f.core, "executor", "changed-retire").is_none());
+    }
+}
+
+#[tokio::test]
+async fn r1_matched_receipt_without_record_rolls_back_tentative_review_and_retirement() {
+    for mode in ["browser", "bearer", "core"] {
+        let a = R1Review::new(mode).await;
+        let review: Value =
+            a.f.core
+                .store
+                .get("workflow_reviews", &a.plan.plan_id)
+                .unwrap()
+                .unwrap();
+        a.f.core
+            .store
+            .write(|tx| tx.delete("workflow_reviews", &a.plan.plan_id))
+            .unwrap();
+        let before = a.f.snapshot().unwrap();
+        let (status, view) = r1_submit(
+            &a.f.core,
+            mode,
+            &a.reviewer,
+            &a.reviewer_cookie,
+            REVIEW,
+            &context("r1-review", a.at),
+            &a.review_body(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{view}");
+        assert!(
+            view["error_description"]
+                .as_str()
+                .unwrap()
+                .contains("not recorded")
+        );
+        a.f.assert_http_mutation_snapshot(&before);
+        a.f.core
+            .store
+            .write(|tx| tx.put("workflow_reviews", &a.plan.plan_id, &review))
+            .unwrap();
+        let activated =
+            a.f.core
+                .activate_workflow(&a.executor, &a.plan.plan_id)
+                .unwrap();
+        let pointer: Value =
+            a.f.core
+                .store
+                .get("workflow_activation", "r1-password")
+                .unwrap()
+                .unwrap();
+        let body = json!({"workflow_id": "r1-password", "approval_id": activated["approval_id"]});
+        let at = revision(&a.f.core);
+        let (status, first) = r1_submit(
+            &a.f.core,
+            mode,
+            &a.executor,
+            &a.executor_cookie,
+            REVOKE,
+            &context("r1-retire", at),
+            &body,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        // Emulate an inconsistent restore. The old exact receipt is retained,
+        // but its operation record is missing and first-operation guards hold.
+        a.f.core
+            .store
+            .write(|tx| {
+                tx.delete(
+                    "workflow_revocations",
+                    first["revocation_id"].as_str().unwrap(),
+                )?;
+                tx.put("workflow_activation", "r1-password", &pointer)?;
+                tx.put("meta", "revision", &at)
+            })
+            .unwrap();
+        let before = a.f.snapshot().unwrap();
+        let (status, view) = r1_submit(
+            &a.f.core,
+            mode,
+            &a.executor,
+            &a.executor_cookie,
+            REVOKE,
+            &context("r1-retire", at),
+            &body,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT, "{view}");
+        assert!(
+            view["error_description"]
+                .as_str()
+                .unwrap()
+                .contains("not recorded")
+        );
+        a.f.assert_http_mutation_snapshot(&before);
+    }
+}
+
+#[tokio::test]
+async fn r1_late_retirement_error_rolls_back_sealing_audit_revision_and_receipt() {
+    for mode in ["browser", "bearer", "core"] {
+        let a = Approved::new().await;
+        let cookie = r1_cookie(&a.f.core, &a.executor);
+        let run = a.start_run();
+        a.f.core
+            .store
+            .write(|tx| tx.put("meta", "revision", &u64::MAX))
+            .unwrap();
+        let before = a.f.snapshot().unwrap();
+        let body =
+            json!({"workflow_id": "environment-password", "approval_id": a.first["approval_id"]});
+        let (status, view) = r1_submit(
+            &a.f.core,
+            mode,
+            &a.executor,
+            &cookie,
+            REVOKE,
+            &context("overflow-retire", u64::MAX),
+            &body,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{view}");
+        assert_eq!(
+            view["error_description"],
+            "Configuration revision exhausted"
+        );
+        a.f.assert_http_mutation_snapshot(&before);
+        assert_open(&a.f.core, &run);
+        assert!(receipt(&a.f.core, "executor", "overflow-retire").is_none());
+    }
+}
+
+#[tokio::test]
+async fn r1_receipt_expiry_fingerprint_permissions_and_required_headers_remain_enforced() {
+    let a = R1Review::new("bearer").await;
+    let original = receipt(&a.f.core, "reviewer", "r1-review").unwrap();
+    let id = riauth::crypto::digest(&format!("{}\0r1-review", user_id(&a.f.core, "reviewer")));
+    for (field, value, expected) in [
+        ("expires_at", json!(0), StatusCode::CONFLICT),
+        (
+            "fingerprint",
+            json!("different-request"),
+            StatusCode::CONFLICT,
+        ),
+        (
+            "permissions",
+            json!(["different-permission"]),
+            StatusCode::FORBIDDEN,
+        ),
+    ] {
+        r1_corrupt_receipt(&a.f.core, "reviewer", "r1-review", field, value);
+        let before = a.f.snapshot().unwrap();
+        let (status, view) = call(
+            &a.f.core,
+            REVIEW,
+            &a.reviewer,
+            &context("r1-review", a.at),
+            &a.review_body(),
+        )
+        .await;
+        assert_eq!(status, expected, "{view}");
+        a.f.assert_http_mutation_snapshot(&before);
+        a.f.core
+            .store
+            .write(|tx| tx.put("receipts", &id, &original))
+            .unwrap();
+    }
+    let before = a.f.snapshot().unwrap();
+    let (status, _) = call(
+        &a.f.core,
+        REVIEW,
+        &a.reviewer,
+        &context("r1-review", a.at + 1),
+        &a.review_body(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let (status, _) = call(&a.f.core, REVIEW, &a.reviewer, &[], &a.review_body()).await;
+    assert_eq!(status, StatusCode::PRECONDITION_REQUIRED);
+    a.f.assert_http_mutation_snapshot(&before);
+}
+
+#[tokio::test]
+async fn r1_emergency_retirement_ignores_former_author_environment_without_repairing_pin() {
+    for mode in ["browser", "bearer", "core"] {
+        let mut a = Approved::new().await;
+        let cookie = r1_cookie(&a.f.core, &a.executor);
+        // Former author/environment no longer support execution, but retirement
+        // must still work. A legacy missing pin is retained once, not on replay.
+        r1_epoch(&a.f.core, "admin");
+        a.f.core.config.issuer = "http://changed.example.com".into();
+        a.f.core
+            .store
+            .write(|tx| tx.delete("workflow_reviewed", "environment-password"))
+            .unwrap();
+        let at = revision(&a.f.core);
+        let body =
+            json!({"workflow_id": "environment-password", "approval_id": a.first["approval_id"]});
+        let (status, first) = r1_submit(
+            &a.f.core,
+            mode,
+            &a.executor,
+            &cookie,
+            REVOKE,
+            &context("emergency", at),
+            &body,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{mode}: {first}");
+        let pin: Value =
+            a.f.core
+                .store
+                .get("workflow_reviewed", "environment-password")
+                .unwrap()
+                .unwrap();
+        assert_eq!(pin["approval"], a.first["approval_id"]);
+        assert!(pin["environment"].is_null());
+        // Missing retained pin on replay is not repaired; immutable approval
+        // history still supplies the fence.
+        a.f.core
+            .store
+            .write(|tx| tx.delete("workflow_reviewed", "environment-password"))
+            .unwrap();
+        let before = a.f.snapshot().unwrap();
+        for key in ["emergency", "emergency-new"] {
+            let (status, replay) = r1_submit(
+                &a.f.core,
+                mode,
+                &a.executor,
+                &cookie,
+                REVOKE,
+                &context(key, at),
+                &body,
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{mode}: {replay}");
+            assert_eq!(replay, first);
+            a.f.assert_http_mutation_snapshot(&before);
+        }
+    }
+}
+
+#[tokio::test]
+async fn r1_paged_ledger_refuses_duplicate_target_across_the_128_row_boundary() {
+    let a = Approved::new().await;
+    let body =
+        json!({"workflow_id": "environment-password", "approval_id": a.first["approval_id"]});
+    let at = revision(&a.f.core);
+    let (status, first) = call(
+        &a.f.core,
+        REVOKE,
+        &a.executor,
+        &context("paged-retire", at),
+        &body,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    a.f.core
+        .store
+        .write(|tx| {
+            let original: Value = tx
+                .get(
+                    "workflow_revocations",
+                    first["revocation_id"].as_str().unwrap(),
+                )?
+                .unwrap();
+            // This duplicate sorts before the fillers; the canonical UUID sorts
+            // after them. Detecting both requires continuing beyond the first page.
+            let mut duplicate = original.clone();
+            duplicate["id"] = json!(".0-target");
+            tx.put("workflow_revocations", ".0-target", &duplicate)?;
+            for i in 0..128 {
+                let id = format!(".filler-{i:03}");
+                let mut row = original.clone();
+                row["id"] = json!(id);
+                row["workflow_id"] = json!("unrelated-workflow");
+                row["approval_id"] = json!("unrelated-approval");
+                tx.put("workflow_revocations", &id, &row)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let before = a.f.snapshot().unwrap();
+    let (status, view) = call(
+        &a.f.core,
+        REVOKE,
+        &a.executor,
+        &context("paged-retire", at),
+        &body,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{view}");
+    assert_eq!(
+        view["error_description"],
+        "Workflow revocation history changed"
+    );
+    a.f.assert_http_mutation_snapshot(&before);
+}
+
+#[tokio::test]
+async fn r1_refusal_replay_does_not_repeat_catalog_rollback_or_first_guards() {
+    for mode in ["browser", "bearer", "core"] {
+        let a = R1Review::new_decision(mode, "refuse").await;
+        assert!(
+            a.f.core
+                .store
+                .get::<Value>("workflow_definitions", "r1-password")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(revision(&a.f.core), a.at + 1);
+        assert_eq!(audits(&a.f.core, &a.f.admin, "workflow.review"), 1);
+        let before = a.f.snapshot().unwrap();
+        for key in ["r1-review", "refusal-new"] {
+            let (status, review) = r1_submit(
+                &a.f.core,
+                mode,
+                &a.reviewer,
+                &a.reviewer_cookie,
+                REVIEW,
+                &context(key, a.at),
+                &a.review_body(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{mode}: {review}");
+            assert_eq!(review, a.first);
+            a.f.assert_http_mutation_snapshot(&before);
+        }
+        assert!(receipt(&a.f.core, "reviewer", "refusal-new").is_none());
+    }
 }

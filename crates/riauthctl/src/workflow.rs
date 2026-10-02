@@ -46,17 +46,19 @@ pub(crate) enum WorkflowCommand {
         #[arg(allow_hyphen_values = true)]
         plan_id: String,
     },
-    /// Retire the current approval of a workflow.
+    /// Retire exactly the named immutable approval of a workflow.
     Revoke {
         #[arg(allow_hyphen_values = true)]
         workflow_id: String,
+        #[arg(long, allow_hyphen_values = true)]
+        approval_id: String,
     },
 }
 
 /// The server's bounds on an identifier in a workflow approval body.
 fn bounded(value: &str, name: &str) -> Result<()> {
     if value.is_empty() || value.len() > 128 || value.chars().any(char::is_control) {
-        bail!("Invalid {name}: 1-128 characters without control characters");
+        bail!("Invalid {name}: 1-128 bytes without control characters");
     }
     Ok(())
 }
@@ -103,9 +105,13 @@ pub(crate) async fn run(
             named(&activated, "plan_id", &plan_id, "Activation")?;
             Ok(activated)
         }
-        WorkflowCommand::Revoke { workflow_id } => {
+        WorkflowCommand::Revoke {
+            workflow_id,
+            approval_id,
+        } => {
             bounded(&workflow_id, "workflow_id")?;
-            let body = json!({"workflow_id": workflow_id});
+            bounded(&approval_id, "approval_id")?;
+            let body = json!({"workflow_id": workflow_id, "approval_id": approval_id});
             let revoked = mutate(
                 remote,
                 Method::POST,
@@ -115,6 +121,7 @@ pub(crate) async fn run(
             )
             .await?;
             named(&revoked, "workflow_id", &workflow_id, "Revocation")?;
+            named(&revoked, "approval_id", &approval_id, "Revocation")?;
             Ok(revoked)
         }
     }

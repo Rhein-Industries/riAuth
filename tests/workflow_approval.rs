@@ -363,7 +363,11 @@ fn approval_http_restart_seal_and_resume(backend: Backend) {
         .unwrap();
     let revoked = hosted
         .core
-        .revoke_workflow_approval(&executor, "approved-password")
+        .revoke_workflow_approval_targeted(
+            &executor,
+            "approved-password",
+            higher_approval["approval_id"].as_str().unwrap(),
+        )
         .unwrap();
     assert_eq!(revoked["selection"], "revoked");
     assert_eq!(revoked["approval_id"], higher_approval["approval_id"]);
@@ -873,7 +877,14 @@ fn activation_retains_revision_before_first_run_and_revocation() {
         );
 
         hosted = hosted.reopen_edited(|_| {});
-        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        hosted
+            .core
+            .revoke_workflow_approval_targeted(
+                &executor,
+                id,
+                activated["approval_id"].as_str().unwrap(),
+            )
+            .unwrap();
         assert_eq!(
             hosted
                 .core
@@ -944,7 +955,14 @@ fn activation_retains_revision_before_first_run_and_revocation() {
             renewed_approval["approval_id"]
         );
         let started = hosted.core.workflow_configured_start(&alice, id).unwrap();
-        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        hosted
+            .core
+            .revoke_workflow_approval_targeted(
+                &executor,
+                id,
+                renewed_approval["approval_id"].as_str().unwrap(),
+            )
+            .unwrap();
         assert_denied(&hosted.core, &started.id);
         assert!(
             hosted
@@ -1118,7 +1136,14 @@ fn legacy_approval_retirement_keeps_floor_without_live_dependencies() {
                 .unwrap()
                 .is_none()
         );
-        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        hosted
+            .core
+            .revoke_workflow_approval_targeted(
+                &executor,
+                id,
+                activated["approval_id"].as_str().unwrap(),
+            )
+            .unwrap();
         let retired: Value = hosted
             .core
             .store
@@ -1157,8 +1182,8 @@ fn legacy_approval_retirement_keeps_floor_without_live_dependencies() {
                 .is_empty()
         );
 
-        // A restored older pointer can be revoked without lowering a newer,
-        // legitimately adopted floor or granting the older workflow authority.
+        // A restored pointer for a completed retirement is inconsistent. A retry
+        // must refuse without lowering the newer, legitimately adopted floor.
         hosted.core.config.workflows.get_mut(id).unwrap().definition = definition(id, 5, 120);
         let fresh = hosted.core.workflow_configured_start(&alice, id).unwrap();
         let higher: Value = hosted
@@ -1172,7 +1197,18 @@ fn legacy_approval_retirement_keeps_floor_without_live_dependencies() {
             .store
             .write(|tx| tx.put("workflow_activation", id, &pointer))
             .unwrap();
-        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        assert_eq!(
+            hosted
+                .core
+                .revoke_workflow_approval_targeted(
+                    &executor,
+                    id,
+                    activated["approval_id"].as_str().unwrap(),
+                )
+                .unwrap_err()
+                .status,
+            StatusCode::CONFLICT,
+        );
         assert_eq!(
             hosted
                 .core
@@ -1181,6 +1217,11 @@ fn legacy_approval_retirement_keeps_floor_without_live_dependencies() {
                 .unwrap(),
             Some(higher)
         );
+        hosted
+            .core
+            .store
+            .write(|tx| tx.delete("workflow_activation", id))
+            .unwrap();
         hosted.core.workflow_cancel(&alice, &fresh.id).unwrap();
         hosted.core.config.workflows.get_mut(id).unwrap().definition = definition(id, 4, 120);
         assert_message(&hosted.core, &alice, id, "Workflow version was rolled back");
@@ -1243,7 +1284,10 @@ fn revoked_approval_history_fences_legacy_runs_and_new_activation() {
             .get("workflow_approvals", approval_id)
             .unwrap()
             .unwrap();
-        hosted.core.revoke_workflow_approval(&executor, id).unwrap();
+        hosted
+            .core
+            .revoke_workflow_approval_targeted(&executor, id, approval_id)
+            .unwrap();
 
         // Emulate older code's revoked approval and older open configured run.
         // These authority rows were generated through the real public start.

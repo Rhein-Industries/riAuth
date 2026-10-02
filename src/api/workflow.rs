@@ -6,7 +6,6 @@ use crate::{
     core::Core,
     crypto::digest,
     error::{Error, Result},
-    store::Tx,
     workflow::{
         approval::{self, Activation},
         executor::{PasskeyChallenge, RecoveryChallenge, SourceStart, TotpChallenge, View},
@@ -546,6 +545,7 @@ struct ApprovalActivate {
 #[serde(deny_unknown_fields)]
 struct ApprovalRevoke {
     workflow_id: String,
+    approval_id: Option<String>,
 }
 
 /// Review the stored plan of one workflow. The same service as the portal.
@@ -562,9 +562,15 @@ async fn approval_review(
                 "Workflow review decision must approve or refuse",
             ));
         }
-        approval_command(core, &token, |tx| {
-            approval::review_in(core, tx, &token, &input.plan_id, &input.decision)
-        })
+        approval::retry_command(
+            core,
+            &token,
+            approval::RetryCommand::Review {
+                plan_id: &input.plan_id,
+                decision: &input.decision,
+            },
+            approval::RetryHeaders::Required,
+        )
         .map(Json)
     })
     .await
@@ -584,7 +590,7 @@ async fn approval_activate(
     .await
 }
 
-/// Retire the current approval of one workflow. The same service as the portal.
+/// Retire the explicitly targeted approval. The same service as the portal.
 async fn approval_revoke(
     State(app): State<App>,
     headers: HeaderMap,
@@ -593,9 +599,19 @@ async fn approval_revoke(
     let token = bearer(&headers)?;
     app.run(move |core| {
         bounded(&input.workflow_id, "workflow_id")?;
-        approval_command(core, &token, |tx| {
-            approval::revoke_in(core, tx, &token, &input.workflow_id)
-        })
+        let approval_id = input
+            .approval_id
+            .as_deref()
+            .ok_or_else(|| Error::bad("Workflow revocation requires approval_id"))?;
+        approval::retry_command(
+            core,
+            &token,
+            approval::RetryCommand::Revoke {
+                workflow_id: &input.workflow_id,
+                approval_id,
+            },
+            approval::RetryHeaders::Required,
+        )
         .map(Json)
     })
     .await
@@ -609,46 +625,7 @@ fn bounded(value: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
-/// The bearer envelope around one review or revocation: a human administrator,
-/// an `Idempotency-Key`, and an `If-Match` naming the current management
-/// revision, like other administrator writes. The receipt replay, the revision
-/// comparison, the operation and the receipt all share one store transaction,
-/// so an exact retry returns the recorded outcome (before the revision is
-/// compared) and a failed operation leaves no receipt behind. The operation is
-/// the portal's own, unchanged. Activation does not use this envelope, because
-/// a stored receipt must never answer for a selection that may have gone stale:
-/// see `activate_command`.
-fn approval_command(
-    core: &Core,
-    token: &str,
-    run: impl FnOnce(&Tx<'_>) -> Result<Value>,
-) -> Result<Value> {
-    core.mutation_checked(
-        token,
-        |tx, actor, context| {
-            let (Some(_), Some(revision)) = (
-                context.and_then(|context| context.idempotency_key.as_ref()),
-                context.and_then(|context| context.revision),
-            ) else {
-                return Err(Error::new(
-                    StatusCode::PRECONDITION_REQUIRED,
-                    "precondition_required",
-                    "Workflow approval requires Idempotency-Key and If-Match with the current revision",
-                ));
-            };
-            if actor.agent || actor.delegated {
-                return Err(Error::forbidden());
-            }
-            if tx.get::<u64>("meta", "revision")?.unwrap_or(0) != revision {
-                return Err(Error::conflict("Configuration revision changed"));
-            }
-            Ok(())
-        },
-        run,
-    )
-}
-
-/// The bearer envelope around one activation. Unlike review and revocation it
+/// The bearer envelope around one activation. Like review and revocation it
 /// never answers from a stored receipt: a receipt only proves that this key and
 /// request were seen, and every retry is revalidated against the live selection
 /// by the shared hook, in the one writer that also holds the receipt.

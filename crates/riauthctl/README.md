@@ -151,12 +151,34 @@ riauthctl --server https://id.example.com provision resolve JOB_ID --observed ap
 
 `directory plan`, `directory workspace|entra plan` and `provision plan` page the server's snapshot until it completes and save the reviewed plan to a new owner-only file; an existing output, and an `--out` path that is not valid UTF-8 (the summary names the file as JSON text), are refused before any request or write. The same UTF-8 check applies to `plan --out`. `apply` takes that file, checks it against the server's copy of the plan (a changed or foreign plan is refused), and applies exactly that plan id. These plan and apply requests carry no revision or request key, as the server CLI sends none: a plan is bound by its id, and a repeated page request must not replay an old page. For that reason `plan` and `apply` (desired state), `directory plan|apply` (LDAP, Workspace and Entra) and `provision plan|apply` refuse a global `--if-revision` or `--idempotency-key` locally with an explanatory message instead of silently ignoring it; the server checks the revision a plan was made at when it applies it. A plan that removes users, memberships or access is refused locally unless `--confirm-removals PLAN_ID` names its exact id, which also goes out in the two confirmation headers; nothing is confirmed implicitly. These directories and provisioning targets are configured on the server; this client lists, plans and applies their existing operations. `provision resolve`, `resolve-deactivation`, `dismiss-deactivation` and the two `recover-dispatch` commands take the server's enumerations (`applied`, `not_applied`, `absent`; `remote_absent`, `permanently_unverifiable`; `worker_lost`, `legacy_untracked`), 1 to 280 characters of evidence without control characters, and the two attestation flags that recovery requires. `offboard schedule` sends unix seconds as a number and any other value as text; the server accepts only an absolute instant. `--timezone` is an audit label that follows the server's grammar: one to three slash-separated components, each 1 to 64 characters from `A-Z a-z 0-9 _ + -` (the bound is per component, so `<32 characters>/<32 characters>` is valid); a label outside it, such as one with four components, an empty component, a leading or trailing slash, a space, a dot or a non-ASCII character, is refused locally before any request.
 
-Workflow approval (Platform) uses the same services as `riauth workflow`: `POST /api/workflow-approvals/review`, `/activate` and `/revoke`. The workflow definition is authored in a desired-state plan that holds exactly one workflow (`riauthctl plan`); a second enabled administrator reviews that stored plan and a third activates it, so the three parties are three different people on three sessions. Every one of these writes sends an `Idempotency-Key` and a quoted `If-Match` with the current management revision, and the server refuses an agent, a delegated human or a non-administrator. Plan and workflow ids are sent in the JSON body, may start with a hyphen, and are checked locally only against the server's bounds (1 to 128 characters, no control characters). A response is accepted only when it names the requested `plan_id` (and, for a review, the requested decision) or `workflow_id`. For `review` and `revoke`, `--idempotency-key KEY` repeats an exact attempt and gets the recorded outcome. An `activate` retry is never answered from the stored receipt: the server revalidates it against the live selection, returns the current approval view when the selection still holds, and answers 409 when it is stale (open runs are sealed), revoked or superseded; to retry after the revision moved, use a new key. The plan itself is bound to the revision it was made at, so review and a first activation need that revision to be current.
+Workflow approval (Platform) uses the same services as `riauth workflow`:
+`POST /api/workflow-approvals/review`, `/activate` and `/revoke`. Author one workflow
+in a desired-state plan; a second enabled administrator reviews it and a third
+activates it. Every client write sends an `Idempotency-Key` and quoted `If-Match`;
+the current revision is a first-operation guard. The server refuses agent and
+delegated callers before receipts. Plan, workflow and approval IDs are JSON body
+fields bounded to 1-128 bytes without controls, and may start with a hyphen.
+Responses must name the requested plan/decision or both workflow and approval.
+Revocation requires `--approval-id` from the inspected activation result; old
+untargeted requests fail closed with 400. Never fetch-and-retarget on retry.
+
+Every retry validates its receipt's expiry, exact request fingerprint and
+permissions, then reconstructs its outcome from live service checks. Review
+revalidates author/reviewer authority and dependencies; its decision view does
+not assert an active selection. A completed retirement must still match its
+canonical ledger, live revoker authority, current withdrawal and retained fence;
+a replacement or inconsistent state conflicts. Former execution dependencies
+may be unavailable during retirement. Valid same/new-key replay creates no new
+review/revocation, audit, revision or receipt and does not reserve a new key.
+Activation retains its separate live selection and stale-run sealing rules. A
+same-key retry must retain its original request and If-Match bytes; refreshing
+the validator is a fingerprint conflict. The plan's expiry/base revision is
+checked for a first review/activation. Review/revoke errors roll back all writes.
 
 ```sh
 riauthctl --server https://id.example.com workflow review PLAN_ID --decision approve
 riauthctl --server https://id.example.com workflow activate PLAN_ID
-riauthctl --server https://id.example.com workflow revoke WORKFLOW_ID
+riauthctl --server https://id.example.com workflow revoke WORKFLOW_ID --approval-id APPROVAL_ID
 ```
 
 Shared Signals streams (Platform) and the encrypted backup use the same routes as `riauth ssf stream` and `riauth backup`.

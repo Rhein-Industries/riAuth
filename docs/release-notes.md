@@ -1,3 +1,21 @@
+# Unreleased targeted workflow retirement and live review retries
+
+- Workflow review and retirement retries reconstruct a currently validated
+  domain outcome; stored receipt responses are never returned. Bearer commands
+  still require the existing retry headers, and current revision checks apply
+  only before the first operation.
+- Retirement now requires `workflow_id` and `approval_id` on browser/bearer
+  requests, and `--approval-id` in both CLIs. Untargeted requests return 400.
+  Inspect the intended approval and submit a new explicit intent. Adding the
+  target to an old idempotency key is a different request and returns 409;
+  clients never select a replacement approval automatically.
+- An inconsistent restored pointer for an already retired approval refuses
+  with 409. Preserve evidence and reconcile the store through a reviewed
+  recovery/activation procedure; the command does not repair that pointer.
+- Retirement scans the revocation ledger; completed retry also scans approval
+  history while holding the writer. Undecodable records refuse the operation.
+  This slice makes no production-scale traversal or deployed-peer claim.
+
 # Unreleased Chrome Verified Access v2 adapter (I07)
 
 - Platform can select `google_verified_access_v2` beside the existing local

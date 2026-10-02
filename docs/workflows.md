@@ -1487,29 +1487,46 @@ a changed digest refuses with `Workflow approval authority changed` before the
 plan base revision is compared. An agent caller is forbidden. The portal routes
 are `POST /api/admin/workflows/review` (`plan_id`, `decision`),
 `POST /api/admin/workflows/activate` (`plan_id`), and
-`POST /api/admin/workflows/revoke` (`workflow_id`), under the same same-origin
+`POST /api/admin/workflows/revoke` (`workflow_id`, `approval_id`), under the same same-origin
 writer guard as plan and apply. Configured execution stays
 `POST /api/workflows/configured/{workflow}`.
 
 A bearer session reaches the same three services through
 `POST /api/workflow-approvals/review` (`plan_id`, `decision`),
 `POST /api/workflow-approvals/activate` (`plan_id`), and
-`POST /api/workflow-approvals/revoke` (`workflow_id`). Each needs a full human
-administrator: an agent, a delegated human, or a non-administrator is refused
-with 403. Each also needs an `Idempotency-Key` and an `If-Match` naming the
-management revision (current for review, revocation and first activation), or it
-returns 428 `precondition_required`; a stale revision on those first operations is
-`409 Configuration revision changed`. The services are the portal's
-own, unchanged, so the three distinct administrators, the plan content check,
-and the authority digests are identical, and a plan still binds the revision it
-was planned at: review and activation need that revision to be current. A
-review or revocation retry by the same administrator with the same key and
-request returns the recorded outcome before the revision is compared, and the
-same key with another request is `409 Idempotency key was used for a different
-request`. Their receipt replay, revision comparison, operation, and receipt share
-one store transaction, like other management writes: a command that fails stores
-no receipt and its key stays usable, and a revocation retry is answered from its
-receipt rather than by repeating.
+`POST /api/workflow-approvals/revoke` (`workflow_id`, `approval_id`). Each needs a
+full human administrator before receipt lookup; agent/delegated callers are
+refused with 403. Bearer attempts always need an `Idempotency-Key` and parsed
+`If-Match`, or return 428. Browser/Core retain optional headers; supplied headers
+are honored. The management revision is compared only for a first operation.
+A first review/activation also needs the stored plan's expiry/base revision to
+hold. Same-key retries must keep the original request and If-Match bytes: a
+changed URI, body or validator is a different-request conflict, even if the new
+validator names the current revision. Cross-route reuse of one actor/key also
+conflicts. Receipt expiry and exact permissions remain enforced.
+
+Review and targeted revocation share one writer for human authority, receipt
+validation, live domain checks, first-only guards, mutation, audit and receipt
+save. A receipt never supplies their outcome. Review replay checks the exact
+plan/decision, author and saved reviewer authority, configuration and current
+dependencies before returning the decision view. The decision does not claim an
+active selection: it may still validate after retirement or replacement, while
+activation of that old plan follows the separate live activation checks. Refusal
+replay never repeats its catalog rollback.
+
+Revocation requires the immutable `approval_id` returned by the inspected
+activation. Missing targets, including the old untargeted Core entry point, fail
+closed with 400. Never fetch a replacement ID or silently change a key on retry.
+A first retirement requires that exact current pointer; it remains possible with
+changed or unavailable former dependencies. Replay requires the same canonical
+retirement and revoker authority, no current pointer, and a retained version
+fence that still permits this target. A replacement, reappearing pointer, missing
+or duplicate record, changed revoker authority or newer floor conflicts. Replay
+never repairs pins, rebinds dependencies or retires a replacement. It returns the
+same validated revocation ID without another audit, revision or receipt. Valid
+new-key domain replay does not reserve that key. All review/revoke errors roll
+back every tentative write, including sealing and receipt save; neither uses
+activation's commit-on-stale denial convention.
 
 An activation retry is never answered from a receipt. A human administrator is
 required first (403 before any receipt work, so a receipt held for the key never
@@ -1533,12 +1550,12 @@ first activation stores its receipt in the same transaction; a first activation
 that fails stores none.
 The server CLI runs them as `riauth --if-revision REVISION --idempotency-key KEY
 workflow review PLAN_ID --decision approve|refuse`, `workflow activate PLAN_ID`,
-and `workflow revoke WORKFLOW_ID`, each from a different administrator's
+and `workflow revoke WORKFLOW_ID --approval-id APPROVAL_ID`, each from a different administrator's
 session. The plan itself is made with the existing desired-state `plan` command.
 The standalone client sends the same requests as `riauthctl workflow review
 PLAN_ID --decision approve|refuse`, `workflow activate PLAN_ID` and `workflow
-revoke WORKFLOW_ID`, always with `If-Match` and an `Idempotency-Key`, and
-accepts a response only if it names the requested plan or workflow id.
+revoke WORKFLOW_ID --approval-id APPROVAL_ID`, always with `If-Match` and an `Idempotency-Key`, and
+accepts a response only if it names the requested plan/decision or workflow and approval IDs.
 
 Review and activation require the plan hash to match its content digest. A
 mutated plan returns `Plan was modified; create a new plan` and writes no
