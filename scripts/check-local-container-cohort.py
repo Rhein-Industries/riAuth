@@ -1,0 +1,1516 @@
+#!/usr/bin/env python3
+"""ONE manual native LOCAL container cohort, not a release or full shared gate.
+
+No imports from other gate helpers. All product calls use existing public CLI
+or HTTP contracts. Secrets and application replies stay in bounded memory.
+The workflow requires separate root review and runtime release before dispatch.
+"""
+
+import argparse
+import datetime
+import gzip
+import hashlib
+import json
+import os
+import pathlib
+import platform
+import re
+import selectors
+import shutil
+import signal
+import socket
+import stat
+import subprocess
+import tarfile
+import threading
+import time
+import tomllib
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+import zipfile
+
+
+PROJECT = "891e7443-8dac-4c1b-897f-9e53cb59c7ee"
+REPOSITORY = "Rhein-Industries/riAuth"
+SOURCE = "b619fe25269ccc150e473bbcde47cdb3623ef810"
+TREE = "a627df2ce21a4d255b8c1914d4f543e32f40f4de"
+REVIEW = "66c814a339665e6b3f8e6c22bc59d4f6f0aa224c"
+NATIVE_RECEIPT = "docs/roadmap/evidence/wave30-a09-native-x86-root-review.json"
+BUILDKIT_RECEIPT = "docs/roadmap/evidence/wave30-container-buildkit-source-pin.json"
+RECEIPT_HASHES = {
+    NATIVE_RECEIPT: "ccf7c3fb6c0bd85816097c32a24a1c1b0a67b9597346d571cd68975a4680b1af",
+    BUILDKIT_RECEIPT: "4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0",
+}
+BUILDKIT = "docker.io/moby/buildkit@sha256:98cc6a3fc46220d00f8224ae483f3274fc874e9be8d7dd1e2e2c5481209228b5"
+DOCKERFILE_HASH = "458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb"
+WORKFLOW = ".github/workflows/check-local-container-cohort.yml"
+OWNER_LABEL = "org.riauth.local.owner"
+GiB = 1024**3
+NATIVE_CAP = 512 * 1024**2
+IMAGE_CAP = 2 * GiB
+LOG_CAP = 8 * 1024**2
+RATE_DEFAULTS = {"portal_start": 10, "portal_approve": 20, "login": 20,
+                 "passkey": 30, "account": 10, "source_start": 30,
+                 "source_callback": 30, "saml": 30, "mfa": 10,
+                 "device_start": 30, "device_verify": 20,
+                 "browser_decision": 60, "browser_state": 1200,
+                 "forward_auth": 6000, "outpost_start": 30, "general": 600}
+USER_FIELDS = {"id", "username", "email", "display_name", "enabled", "admin",
+               "mfa_enabled", "password_available", "created_at", "attributes",
+               "email_verified", "subjects"}
+
+
+class Refusal(Exception):
+    """Only fixed public phase/reason identifiers, never external output."""
+
+
+def require(condition, code):
+    if not condition:
+        raise Refusal(code)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def file_hash(path):
+    h = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def private_write(path, data):
+    with path.open("xb") as out:
+        os.chmod(path, 0o600)
+        out.write(data)
+
+
+def json_bytes(data):
+    return (json.dumps(data, sort_keys=True, indent=2) + "\n").encode()
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class Cohort:
+    def __init__(self, args):
+        self.args = args
+        self.root = args.root.resolve(strict=True)
+        expected_root = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve() / (
+            "riauth-container-" + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"])
+        require(self.root == expected_root, "exclusive_workflow_root")
+        self.evidence = self.root / "evidence"
+        require(self.root.is_dir() and not args.root.is_symlink()
+                and stat.S_IMODE(self.root.stat().st_mode) == 0o700,
+                "private_root_required")
+        self.started = time.monotonic()
+        self.deadline = self.started + 7200
+        self.fixture_deadline = None
+        self.cleanup_deadline = None
+        self.phase = "source"
+        self.owner = "a09-" + uuid.uuid4().hex
+        self.builder = self.owner + "-builder"
+        self.builder_container = "buildx_buildkit_" + self.builder + "0"
+        self.builder_volume = self.builder_container + "_state"
+        self.builder_attempted = False
+        self.daemon_seen = False
+        self.builder_id = None
+        self.builder_volume_record = None
+        self.builder_created_after = None
+        self.builder_instance = None
+        self.containers = {}
+        self.volumes = {}
+        self.images = {}
+        self.tags = {e: "riauth-local/" + self.owner + ":" + e
+                     for e in ("essentials", "platform")}
+        self.active = {}
+        self.lock = threading.Lock()
+        self.stop_event = threading.Event()
+        self.monitor_end = threading.Event()
+        self.resource_error = None
+        self.storage_paths = {"host": pathlib.Path("/"), "private": self.root,
+                              "workspace": pathlib.Path(os.environ["GITHUB_WORKSPACE"]),
+                              "docker_storage": pathlib.Path("/var/lib/docker")}
+        self.home = self.root / "home"
+        self.home.mkdir(mode=0o700)
+        self.config = self.root / "docker-config"
+        self.config.mkdir(mode=0o700)
+        private_write(self.config / "config.json", b"{}\n")
+        # Explicit allowlist: no CI transport token or operator Docker/riAuth env.
+        self.child_env = {"PATH": os.environ["PATH"], "HOME": str(self.home),
+                          "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
+                          "DOCKER_HOST": "unix:///var/run/docker.sock",
+                          "DOCKER_CONFIG": str(self.config),
+                          "BUILDX_CONFIG": str(self.config / "buildx")}
+        self.receipt = {"schema": "riauth.local-container-cohort/v1", "project": PROJECT,
+                        "repository": REPOSITORY, "official_release": False,
+                        "shared_full_gate": "not_run", "source": SOURCE,
+                        "source_tree": TREE, "root_review": REVIEW,
+                        "steps": [], "checks": [], "cleanup_errors": [],
+                        "images": {}, "resources": {}, "result": "not_run",
+                        "limits": ["native x86 LOCAL cohort only",
+                                   "resource-only Dockerfile variant",
+                                   "format3 enforcement through pinned public entrypoints",
+                                   "no raw agreement or credential-row probe",
+                                   "b619 native notices were later found stale; retained, not regenerated",
+                                   "sampling is not a hard quota",
+                                   "no registry/tag/release/tenant/device claim"]}
+        self.receipt.update(owner=self.owner, expected_builder={"name": self.builder,
+            "container": self.builder_container, "volume": self.builder_volume},
+            planned_image_tags=self.tags, creation_records={"containers": {}, "volumes": {}},
+            uid_probes=[])
+        self.receipt["github"] = {k: os.environ.get(k) for k in (
+            "GITHUB_REPOSITORY", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB",
+            "GITHUB_WORKFLOW_REF", "GITHUB_WORKFLOW_SHA", "GITHUB_SHA", "GITHUB_REF",
+            "GITHUB_EVENT_NAME")}
+        self.capacity(30 * GiB)
+        self.monitor = threading.Thread(target=self.sample_loop, daemon=True)
+        self.monitor.start()
+
+    def save(self):
+        target = self.evidence / "container-cohort.json"
+        temporary = self.evidence / "container-cohort.tmp"
+        self.receipt["pending_owned_containers"] = {name: {k: value[k] for k in
+            ("pending", "after", "image") if k in value} for name, value in self.containers.items()
+            if value.get("pending")}
+        self.receipt["pending_owned_volumes"] = {name: {"after": value["after"]}
+            for name, value in self.volumes.items() if value.get("pending")}
+        payload = json_bytes(self.receipt)
+        require(len(payload) <= LOG_CAP, "evidence_cap")
+        with temporary.open("wb") as out:
+            os.chmod(temporary, 0o600)
+            out.write(payload)
+        temporary.replace(target)
+
+    def capacity(self, threshold=10 * GiB):
+        with self.lock:
+            paths = dict(self.storage_paths)
+        free = {name: shutil.disk_usage(path).free for name, path in paths.items()}
+        require(min(free.values()) >= threshold, "capacity_refusal")
+        return free
+
+    def sample_loop(self):
+        path = self.evidence / "resources.jsonl"
+        count, previous, maximum_gap = 0, None, 0.0
+        try:
+            with path.open("xb") as stream:
+                os.chmod(path, 0o600)
+                while not self.monitor_end.is_set():
+                    now = time.monotonic()
+                    gap = 0 if previous is None else now - previous
+                    previous = now
+                    maximum_gap = max(gap, maximum_gap)
+                    free = self.capacity(0)
+                    sample = {"elapsed": round(now - self.started, 3), "free_bytes": free,
+                              "phase": self.phase, "gap_seconds": round(gap, 3)}
+                    stream.write(json.dumps(sample).encode() + b"\n")
+                    stream.flush()
+                    count += 1
+                    require(stream.tell() <= LOG_CAP, "resource_log_cap")
+                    self.receipt["resources"] = {"samples": count,
+                        "maximum_gap_seconds": maximum_gap,
+                        "minimum_free_bytes": {k: min(v, self.receipt.get("resources", {})
+                            .get("minimum_free_bytes", {}).get(k, v)) for k, v in free.items()}}
+                    if min(free.values()) < 10 * GiB and not self.stop_event.is_set():
+                        self.stop_event.set()
+                        with self.lock:
+                            for group in list(self.active):
+                                self.kill_group(group)
+                    self.monitor_end.wait(2)
+        except BaseException:
+            self.resource_error = "resource_monitor_refused"
+            self.stop_event.set()
+            with self.lock:
+                for group in list(self.active):
+                    self.kill_group(group)
+
+    def check_budget(self):
+        require(not self.stop_event.is_set(), "resource_monitor_refused")
+        require(time.monotonic() < self.deadline, "controller_deadline")
+        require(self.fixture_deadline is None or time.monotonic() < self.fixture_deadline,
+                "fixture_deadline")
+
+    @staticmethod
+    def process_identity(pid):
+        try:
+            text = pathlib.Path("/proc/" + str(pid) + "/stat").read_text()
+        except FileNotFoundError:
+            return None
+        fields = text[text.rfind(")") + 2:].split()
+        return {"state": fields[0], "group": int(fields[2]), "session": int(fields[3]),
+                "start_ticks": int(fields[19])}
+
+    def kill_group(self, group, sig=signal.SIGTERM):
+        # Caller holds lock. The leader remains unreaped until the last signal,
+        # so its PID/session cannot be reused for an unrelated process group.
+        owned = self.active.get(group)
+        current = self.process_identity(group)
+        if owned is None or current is None:
+            return False
+        original = owned["identity"]
+        if any(current[k] != original[k] for k in ("group", "session", "start_ticks")):
+            return False
+        try:
+            os.killpg(group, sig)
+        except ProcessLookupError:
+            pass
+        return True
+
+    def command(self, name, argv, *, timeout=60, input_data=None, public=False,
+                cleanup=False, consumer=None, output_cap=LOG_CAP):
+        require(re.fullmatch(r"[a-z0-9_-]+", name) is not None, "unsafe_phase_name")
+        if not cleanup:
+            self.check_budget()
+        start = time.monotonic()
+        end = start + timeout
+        if not cleanup:
+            end = min(end, self.deadline, self.fixture_deadline or self.deadline)
+        elif self.cleanup_deadline is not None:
+            end = min(end, self.cleanup_deadline)
+        log = None
+        if public:
+            log = (self.evidence / (name + ".log")).open("xb")
+            os.chmod(log.name, 0o600)
+        outputs = {"stdout": bytearray(), "stderr": bytearray()}
+        process = subprocess.Popen([str(x) for x in argv], cwd=self.args.product,
+                                   env=self.child_env, stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   start_new_session=True)
+        try:
+            with self.lock:
+                identity = self.process_identity(process.pid)
+                require(identity is not None and identity["group"] == identity["session"] == process.pid,
+                        "owned_group_creation_identity")
+                self.active[process.pid] = {"process": process, "identity": identity}
+        except BaseException:
+            # No group proof: signal/reap only the Popen child, never a guessed group.
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+            for stream in (process.stdin, process.stdout, process.stderr):
+                stream.close()
+            if log is not None:
+                log.close()
+            self.receipt["cleanup_errors"].append("group_creation_identity_unproven")
+            raise
+        status = None
+        try:
+            require(input_data is None or len(input_data) <= 65536, "stdin_cap")
+            if input_data:
+                process.stdin.write(input_data)
+            process.stdin.close()
+            with selectors.DefaultSelector() as selector:
+                for field in ("stdout", "stderr"):
+                    stream = getattr(process, field)
+                    os.set_blocking(stream.fileno(), False)
+                    selector.register(stream, selectors.EVENT_READ, field)
+                total, logged = 0, 0
+                while selector.get_map() or self.process_identity(process.pid)["state"] != "Z":
+                    if not cleanup:
+                        self.check_budget()
+                    require(time.monotonic() < end, "command_timeout")
+                    for key, _ in selector.select(0.2):
+                        chunk = os.read(key.fileobj.fileno(), 65536)
+                        if not chunk:
+                            selector.unregister(key.fileobj)
+                            continue
+                        if key.data == "stdout" and consumer is not None:
+                            consumer(chunk)
+                        else:
+                            total += len(chunk)
+                            require(total <= output_cap, "command_output_cap")
+                            outputs[key.data].extend(chunk)
+                        if log is not None:
+                            logged += len(chunk)
+                            require(logged <= LOG_CAP, "public_log_cap")
+                            log.write(chunk)
+        finally:
+            # Reap the direct process and eliminate descendants in this exact group.
+            with self.lock:
+                self.kill_group(process.pid)
+            grace = time.monotonic() + 2
+            while time.monotonic() < grace:
+                current = self.process_identity(process.pid)
+                if current is None or current["state"] == "Z":
+                    break
+                time.sleep(0.05)
+            with self.lock:
+                self.kill_group(process.pid, signal.SIGKILL)
+                status = process.wait(timeout=5)  # No group signal after this reap.
+            empty = False
+            group_deadline = time.monotonic() + 2
+            while time.monotonic() < group_deadline:
+                try:
+                    os.killpg(process.pid, 0)
+                except ProcessLookupError:
+                    empty = True
+                    break
+                time.sleep(0.05)
+            with self.lock:
+                if empty:
+                    self.active.pop(process.pid, None)
+            for stream in (process.stdout, process.stderr):
+                stream.close()
+            if log is not None:
+                log.close()
+            item = {"name": name, "exit": status, "elapsed": round(time.monotonic() - start, 3),
+                    "output_recorded": public, "owned_child_reaped": process.returncode is not None,
+                    "owned_group_empty": empty}
+            if public:
+                item.update(log_bytes=pathlib.Path(log.name).stat().st_size,
+                            log_sha256=file_hash(pathlib.Path(log.name)))
+            self.receipt["steps"].append(item)
+            require(empty, "owned_cli_group_remains")
+        return status, bytes(outputs["stdout"]), bytes(outputs["stderr"])
+
+    def docker(self, name, *args, **options):
+        return self.command(name, ["docker", *args], **options)
+
+    def inspect(self, kind, identifier, cleanup=False):
+        code, out, _ = self.docker("inspect-" + kind, kind, "inspect", identifier,
+                                   timeout=20, cleanup=cleanup)
+        require(code == 0, "owned_inspection_failed")
+        value = json.loads(out)
+        require(isinstance(value, list) and len(value) == 1, "inspection_shape")
+        return value[0]
+
+    def absent(self, kind, name):
+        self.prove_absent(kind, name)
+
+    def prove_absent(self, kind, name, cleanup=False):
+        code, _, error = self.docker("check-absent-" + kind, kind, "inspect", name,
+                                      timeout=20, cleanup=cleanup)
+        markers = {"container": (b"No such container", b"No such object"),
+                   "image": (b"No such image", b"No such object"),
+                   "volume": (b"no such volume",)}
+        require(code == 1 and any(marker in error for marker in markers[kind]),
+                "resource_preexists_or_daemon_unavailable")
+        code, _, _ = self.docker("absence-daemon-check", "info", "--format", "{{.OSType}}",
+                                  timeout=20, cleanup=cleanup)
+        require(code == 0, "absence_not_proven_daemon_unavailable")
+
+    def git(self, path, *args):
+        code, out, _ = self.command("git-source", ["git", "-C", path, *args], timeout=20)
+        require(code == 0, "immutable_git_read_failed")
+        return out
+
+    def source_check(self):
+        require((platform.system(), platform.machine(), os.environ.get("RUNNER_ARCH"),
+                 os.environ.get("RUNNER_ENVIRONMENT")) == ("Linux", "x86_64", "X64", "github-hosted"),
+                "unsupported_native_host")
+        require(os.environ.get("GITHUB_REPOSITORY") == REPOSITORY
+                and os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+                and os.environ.get("GITHUB_REF", "").startswith("refs/heads/"), "manual_repository")
+        controller = self.git(self.args.controller, "rev-parse", "HEAD").decode().strip()
+        require(re.fullmatch(r"[0-9a-f]{40}", controller) is not None
+                and controller == os.environ.get("GITHUB_SHA")
+                and controller == os.environ.get("GITHUB_WORKFLOW_SHA"), "controller_identity")
+        for path, pin in ((self.args.product, SOURCE), (self.args.review, REVIEW),
+                          (self.args.controller, controller)):
+            require(not path.is_symlink() and self.git(path, "rev-parse", "HEAD").decode().strip() == pin
+                    and self.git(path, "status", "--porcelain") == b"", "clean_exact_checkout")
+        require(self.git(self.args.product, "rev-parse", "HEAD^{tree}").decode().strip() == TREE,
+                "product_tree")
+        self.native = json.loads((self.args.review / NATIVE_RECEIPT).read_bytes())
+        for relative, expected in RECEIPT_HASHES.items():
+            require(file_hash(self.args.review / relative) == expected, "root_receipt_hash")
+        tool = json.loads((self.args.review / BUILDKIT_RECEIPT).read_bytes())
+        require(tool["source_reference"] == BUILDKIT and tool["layers_downloaded"] is False
+                and tool["native_image_executed"] is False, "tool_pin_scope")
+        r = self.native
+        require(r["schema"] == "riauth.wave30.native-x86-root-review/v1"
+                and r["project"] == PROJECT and r["repository"] == REPOSITORY
+                and r["product_source"] == SOURCE and r["product_tree"] == TREE
+                and r["run_id"] == 37046857550 and r["attempt"] == 1
+                and r["job_id"] == 110970324302 and r["workflow_run_conclusion"] == "success"
+                and r["selected_platform"] == {"architecture": "x86_64", "elf_machine": 62,
+                    "target": "x86_64-unknown-linux-gnu"} and r["shared_full_gate"] == "not_run",
+                "root_native_identity")
+        require(len(r["products"]) == 5 and len(r["steps"]) == 11
+                and all(x["exit_code"] == 0 for x in r["steps"]), "root_native_outcome")
+        for path, expected in r["inputs"].items():
+            require(file_hash(self.args.product / path) == expected, "product_input_identity")
+        original = (self.args.product / "Dockerfile").read_bytes()
+        require(digest(original) == DOCKERFILE_HASH, "dockerfile_identity")
+        needle = b'cargo build --release --locked --no-default-features --features "$RIAUTH_EDITION" --bin riauth'
+        prefix = (b'CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target '
+                  b'CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 '
+                  b'CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_RELEASE_DEBUG=0 ')
+        require(original.count(needle) == 1, "serial_recipe_span")
+        recipe = original.replace(needle, prefix + needle, 1)
+        require(recipe.replace(prefix + needle, needle, 1) == original, "recipe_reversal")
+        self.recipe = self.root / "Dockerfile.serial"
+        private_write(self.recipe, recipe)
+        self.receipt.update(controller=controller,
+            helper_sha256=file_hash(pathlib.Path(__file__)),
+            workflow_sha256=file_hash(self.args.controller / WORKFLOW),
+            native_input={"receipt_sha256": RECEIPT_HASHES[NATIVE_RECEIPT],
+                          "run": r["run_id"], "artifact": r["artifact"]},
+            tool_pin={"reference": BUILDKIT, "receipt_sha256": RECEIPT_HASHES[BUILDKIT_RECEIPT]},
+            recipe={"variant": "private-serial-resource-prefix", "original_sha256": digest(original),
+                    "derived_sha256": digest(recipe), "exact_reverse": True})
+        # Credentials are outside product; only the Dockerfile's unchanged COPY set is sent.
+        require(self.root not in self.args.product.resolve().parents
+                and self.args.product.resolve() not in self.root.parents
+                and self.root != self.args.product.resolve(), "private_context_overlap")
+        self.save()
+
+    def http(self, url, *, token=None, data=None, method="GET", cap=LOG_CAP, extra_headers=None):
+        self.check_budget()
+        headers = {"Accept": "application/json"}
+        if extra_headers:
+            require(set(extra_headers) <= {"If-Match", "Idempotency-Key"}, "closed_route_headers")
+            headers.update(extra_headers)
+        if token is not None:
+            headers["Authorization"] = "Bearer " + token
+        if data is not None:
+            headers["Content-Type"] = "application/json"
+            data = json.dumps(data).encode()
+        request = urllib.request.Request(url, data=data, headers=headers, method=method)
+        opener = urllib.request.build_opener(NoRedirect())
+        try:
+            response = opener.open(request, timeout=15)
+        except urllib.error.HTTPError as error:
+            response = error
+        with response:
+            body = bytearray()
+            end = min(time.monotonic() + 60, self.deadline, self.fixture_deadline or self.deadline)
+            while True:
+                self.check_budget()
+                require(time.monotonic() < end, "http_deadline")
+                block = response.read1(65536)
+                if not block:
+                    break
+                body.extend(block)
+                require(len(body) <= cap, "http_body_cap")
+            self.check_budget()
+            return response.status, bytes(body), dict(response.headers)
+
+    def github_json(self, suffix):
+        url = "https://api.github.com/repos/" + REPOSITORY + suffix
+        code, body, _ = self.http(url, token=os.environ["A09_GH_TOKEN"])
+        require(code == 200, "github_metadata_refused")
+        return json.loads(body)
+
+    def native_transport(self):
+        self.phase = "native-transport"
+        self.capacity(30 * GiB)
+        r = self.native
+        run = self.github_json("/actions/runs/37046857550/attempts/1")
+        artifact = self.github_json("/actions/artifacts/11246575279")
+        require(run["id"] == r["run_id"] and run["run_attempt"] == 1
+                and run["conclusion"] == "success" and run["status"] == "completed"
+                and run["head_sha"] == r["workflow_source"]
+                and run["repository"]["full_name"] == REPOSITORY
+                and run["path"] == ".github/workflows/check-local-artifacts.yml", "native_run_metadata")
+        expected = r["artifact"]
+        require(all(artifact.get(k) == v for k, v in expected.items())
+                and artifact["expired"] is False
+                and artifact["workflow_run"]["id"] == r["run_id"]
+                and artifact["workflow_run"]["head_sha"] == r["workflow_source"], "native_artifact_metadata")
+        # Authenticated API redirect only; signed storage GET has no bearer header.
+        code, _, headers = self.http("https://api.github.com/repos/" + REPOSITORY
+            + "/actions/artifacts/11246575279/zip", token=os.environ["A09_GH_TOKEN"], cap=65536)
+        location = headers.get("Location") or headers.get("location")
+        require(code == 302 and isinstance(location, str), "artifact_redirect")
+        target = urllib.parse.urlsplit(location)
+        require(target.scheme == "https" and target.username is None and target.password is None
+                and target.port in (None, 443) and target.hostname is not None
+                and (target.hostname.endswith(".blob.core.windows.net")
+                     or target.hostname.endswith(".githubusercontent.com")), "artifact_storage_origin")
+        outer = self.root / "native.zip"
+        limit = time.monotonic() + 180
+        opener = urllib.request.build_opener(NoRedirect())
+        with opener.open(location, timeout=15) as response, outer.open("xb") as out:
+            os.chmod(outer, 0o600)
+            require(response.status == 200, "artifact_storage_status")
+            count = 0
+            while True:
+                self.check_budget()
+                require(time.monotonic() < limit, "artifact_download_deadline")
+                block = response.read1(65536)
+                if not block:
+                    break
+                count += len(block)
+                require(count <= NATIVE_CAP, "artifact_compressed_cap")
+                out.write(block)
+        require(count == expected["size_in_bytes"]
+                and "sha256:" + file_hash(outer) == expected["digest"], "outer_zip_digest")
+        self.receipt["native_input"]["outer_zip_rehashed"] = True
+        unpacked = self.root / "native"
+        unpacked.mkdir(mode=0o700)
+        allowed = {"evidence.json", "resources.jsonl"}
+        allowed |= {x["name"] + ".log" for x in r["steps"]}
+        allowed |= {"archives/" + x["archive"] for x in r["products"]}
+        with zipfile.ZipFile(outer) as source:
+            files, size = set(), 0
+            for info in source.infolist():
+                require(info.filename == "archives/" or info.filename in allowed, "zip_member_path")
+                require(not (info.flag_bits & 1), "encrypted_zip_member")
+                mode = info.external_attr >> 16
+                require(stat.S_IFMT(mode) in (0, stat.S_IFDIR if info.is_dir() else stat.S_IFREG),
+                        "zip_member_type")
+                if info.is_dir():
+                    require(info.filename == "archives/", "zip_directory")
+                    continue
+                require(info.filename not in files, "duplicate_zip_member")
+                files.add(info.filename)
+                size += info.file_size
+                require(size <= NATIVE_CAP, "artifact_expanded_cap")
+                destination = unpacked / info.filename
+                destination.parent.mkdir(mode=0o700, exist_ok=True)
+                with source.open(info) as incoming, destination.open("xb") as out:
+                    os.chmod(destination, 0o600)
+                    copied = 0
+                    while block := incoming.read(1024 * 1024):
+                        self.check_budget()
+                        copied += len(block)
+                        require(copied <= info.file_size, "zip_payload_size")
+                        out.write(block)
+                    require(copied == info.file_size, "zip_payload_truncated")
+            require(files == allowed, "native_zip_inventory")
+        for name, declared in r["files"].items():
+            p = unpacked / name
+            require(p.stat().st_size == declared["bytes"] and file_hash(p) == declared["sha256"],
+                    "native_evidence_identity")
+        native_evidence = json.loads((unpacked / "evidence.json").read_bytes())
+        require(native_evidence["source_sha"] == SOURCE and native_evidence["source_tree"] == TREE
+                and native_evidence["native_archive_slice"] == "passed"
+                and [{k: v for k, v in p.items() if k != "observed_server_capabilities"}
+                     for p in native_evidence["products"]] == r["products"], "native_evidence_outcome")
+        for step in r["steps"]:
+            log = unpacked / (step["name"] + ".log")
+            require(log.stat().st_size == step["log_bytes"] and file_hash(log) == step["log_sha256"],
+                    "native_log_identity")
+        self.bins = {}
+        expanded = 0
+        for product in r["products"]:
+            archive = unpacked / "archives" / product["archive"]
+            require(archive.stat().st_size == product["archive_bytes"]
+                    and file_hash(archive) == product["archive_sha256"], "native_archive_identity")
+            directory = unpacked / (product["edition"] + "-" + product["binary"])
+            directory.mkdir(mode=0o700)
+            with tarfile.open(archive, "r:gz") as source:
+                members = source.getmembers()
+                require(len(members) == 3 and {m.name for m in members}
+                    == {product["binary"], "LICENSE", "THIRD_PARTY_NOTICES.md"}
+                    and all(m.isfile() for m in members), "native_tar_members")
+                for member in members:
+                    expanded += member.size
+                    require(expanded <= NATIVE_CAP, "native_tar_expanded_cap")
+                    with source.extractfile(member) as incoming:
+                        payload = incoming.read(member.size + 1)
+                    require(len(payload) == member.size, "native_tar_payload")
+                    destination = directory / member.name
+                    private_write(destination, payload)
+                    if member.name != product["binary"]:
+                        require(digest(payload) == r["inputs"][member.name], "native_license_identity")
+                binary = directory / product["binary"]
+                require(binary.stat().st_size == product["binary_bytes"]
+                        and file_hash(binary) == product["binary_sha256"], "native_binary_identity")
+                self.elf(binary)
+                binary.chmod(0o755)  # Public executable; enclosing host directories stay private.
+                self.bins[(product["edition"], product["binary"])] = binary
+        self.native_caps = {}
+        for edition in ("essentials", "platform"):
+            code, output, _ = self.command("native-capabilities", [self.bins[(edition, "riauth")],
+                "--json", "capabilities"])
+            envelope = json.loads(output)
+            require(code == 0 and envelope["ok"] is True, "native_capabilities_status")
+            recorded = json.loads((unpacked / ("capabilities-" + edition + ".log")).read_bytes())
+            require(envelope == recorded, "native_capabilities_exact")
+            observed = next(p["observed_server_capabilities"] for p in native_evidence["products"]
+                            if p["edition"] == edition and p["binary"] == "riauth")
+            require(observed == envelope["data"], "native_product_capability_record")
+            self.capabilities(envelope["data"], edition)
+            self.native_caps[edition] = envelope["data"]
+        self.save()
+
+    @staticmethod
+    def elf(path):
+        with path.open("rb") as stream:
+            header = stream.read(20)
+        require(len(header) == 20 and header[:6] == b"\x7fELF\x02\x01"
+                and header[18:20] == (62).to_bytes(2, "little"), "native_elf62")
+
+    def capabilities(self, data, edition):
+        require(data["edition"] == edition and data["build_features"]
+                == (["essentials"] if edition == "essentials" else ["essentials", "platform"]),
+                "capability_features")
+        version = tomllib.loads((self.args.product / "Cargo.toml").read_text())["package"]["version"]
+        require(data["version"] == version and data["target"] == {"arch": "x86_64", "os": "linux"},
+                "capability_native_target_version")
+        return data
+
+    def daemon_setup(self):
+        self.phase = "builder-setup"
+        self.capacity(30 * GiB)
+        require(stat.S_ISSOCK(pathlib.Path("/var/run/docker.sock").stat().st_mode), "native_socket")
+        code, out, _ = self.docker("daemon-info", "info", "--format", "{{json .}}", timeout=30)
+        require(code == 0, "native_daemon_unavailable")
+        info = json.loads(out)
+        require(info["OSType"] == "linux" and info["Architecture"] == "x86_64"
+                and "desktop" not in info["OperatingSystem"].lower(), "native_daemon_required")
+        self.daemon_seen = True
+        storage = pathlib.Path(info["DockerRootDir"])
+        require(storage.is_absolute() and storage.is_dir(), "daemon_storage_unmeasurable")
+        with self.lock:
+            self.storage_paths["docker_storage"] = storage
+        self.capacity(30 * GiB)
+        self.receipt["daemon"] = {k: info[k] for k in
+            ("OSType", "Architecture", "DockerRootDir", "ServerVersion", "OperatingSystem")}
+        self.absent("container", self.builder_container)
+        self.absent("volume", self.builder_volume)
+        code, out, _ = self.docker("builder-list", "buildx", "ls", "--format", "{{json .}}")
+        require(code == 0 and self.builder.encode() not in out, "builder_preexists")
+        # Pull a content-addressed tool, never a mutable tag. No registry writes.
+        code, _, _ = self.docker("pull-pinned-buildkit", "image", "pull", BUILDKIT,
+                                  timeout=300, public=True)
+        require(code == 0, "buildkit_pull_failed")
+        tool = self.inspect("image", BUILDKIT)
+        pin = json.loads((self.args.review / BUILDKIT_RECEIPT).read_bytes())
+        require(tool["Id"] == pin["linux_amd64_manifest"]["config"]["digest"]
+                and tool["Os"] == "linux" and tool["Architecture"] == "amd64", "buildkit_actual_identity")
+        self.receipt["tool_pin"]["actual_config_id"] = tool["Id"]
+        self.builder_created_after = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        self.builder_attempted = True
+        self.save()  # Expected exclusive names retained even if setup loses its response.
+        code, _, _ = self.docker("builder-create", "buildx", "create", "--name", self.builder,
+            "--driver", "docker-container", "--driver-opt", "image=" + BUILDKIT,
+            "--driver-opt", "memory=8g", "--driver-opt", "cpu-period=100000",
+            "--driver-opt", "cpu-quota=300000", timeout=60, public=True)
+        require(code == 0, "builder_create_failed")
+        instance = self.config / "buildx" / "instances" / self.builder
+        require(instance.is_file() and not instance.is_symlink(), "private_builder_instance")
+        self.builder_instance = file_hash(instance)
+        code, _, _ = self.docker("builder-bootstrap", "buildx", "inspect", self.builder,
+                                  "--bootstrap", timeout=180, public=True)
+        require(code == 0, "builder_bootstrap_failed")
+        self.recover_builder()
+        require(self.builder_id is not None, "bootstrapped_builder_identity_missing")
+        self.save()
+
+    def recover_builder(self):
+        """Creation interval + exclusive name + private instance + actual mounts.
+
+        Also used on a failed bootstrap, before any cleanup of daemon children.
+        Failure to prove these identities blocks deletion, never triggers prune.
+        """
+        if not self.builder_attempted:
+            return
+        code, out, error = self.docker("recover-builder-inspect", "container", "inspect",
+                                      self.builder_container, timeout=20, cleanup=True)
+        if code == 1 and any(x in error for x in (b"No such container", b"No such object")):
+            self.prove_absent("container", self.builder_container, cleanup=True)
+            self.prove_absent("volume", self.builder_volume, cleanup=True)
+            # No daemon child was created. The private builder instance can be removed later.
+            return
+        require(code == 0, "builder_recovery_unavailable")
+        instance = self.config / "buildx" / "instances" / self.builder
+        require(instance.is_file() and not instance.is_symlink(), "builder_identity_unavailable")
+        config = json.loads(instance.read_bytes())
+        require(config["Name"] == self.builder and config["Driver"] == "docker-container"
+                and len(config["Nodes"]) == 1
+                and config["Nodes"][0]["Endpoint"] in {"default", "unix:///var/run/docker.sock"}
+                and config["Nodes"][0]["DriverOpts"]["image"] == BUILDKIT,
+                "private_builder_binding")
+        if self.builder_instance is not None:
+            require(file_hash(instance) == self.builder_instance, "builder_instance_changed")
+        self.builder_instance = file_hash(instance)
+        item = json.loads(out)[0]
+        created = datetime.datetime.fromisoformat(item["Created"].replace("Z", "+00:00")).timestamp()
+        require(item["Name"] == "/" + self.builder_container
+                and item["Config"]["Image"] == BUILDKIT
+                and created >= self.builder_created_after
+                and (self.builder_id is None or item["Id"] == self.builder_id), "builder_creation_identity")
+        mounts = [m for m in item["Mounts"] if m["Type"] == "volume"]
+        require(len(mounts) == 1 and mounts[0]["Name"] == self.builder_volume
+                and mounts[0]["Destination"] == "/var/lib/buildkit", "builder_state_mount")
+        volume = self.inspect("volume", self.builder_volume, cleanup=True)
+        volume_created = datetime.datetime.fromisoformat(volume["CreatedAt"].replace("Z", "+00:00")).timestamp()
+        require(volume_created >= self.builder_created_after, "builder_volume_creation_identity")
+        self.builder_id = item["Id"]
+        self.builder_volume_record = volume
+        self.receipt["builder"] = {"name": self.builder, "container_id": item["Id"],
+            "created": item["Created"], "state_volume": volume["Name"],
+            "state_created": volume["CreatedAt"], "instance_sha256": self.builder_instance,
+            "privileged_tool_only": item["HostConfig"]["Privileged"]}
+
+    def create_volume(self, suffix):
+        name = self.owner + "-" + suffix
+        self.absent("volume", name)
+        created_after = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        self.volumes[name] = {"pending": True, "after": created_after}
+        self.save()
+        code, _, _ = self.docker("volume-create", "volume", "create", "--label",
+                                  OWNER_LABEL + "=" + self.owner, name)
+        require(code == 0, "volume_create_failed")
+        self.confirm_volume(name)
+        return name
+
+    def confirm_volume(self, name, missing_ok=False):
+        code, out, error = self.docker("volume-owner-inspect", "volume", "inspect", name,
+                                      timeout=20, cleanup=True)
+        if missing_ok and code == 1 and b"no such volume" in error:
+            self.prove_absent("volume", name, cleanup=True)
+            return None
+        require(code == 0, "volume_inspection_failed")
+        item = json.loads(out)[0]
+        require(item["Name"] == name and (item.get("Labels") or {}).get(OWNER_LABEL) == self.owner,
+                "volume_owner_mismatch")
+        old = self.volumes[name]
+        if not old.get("pending"):
+            require(item["CreatedAt"] == old["CreatedAt"] and item["Mountpoint"] == old["Mountpoint"],
+                    "volume_replaced")
+        else:
+            created = datetime.datetime.fromisoformat(item["CreatedAt"].replace("Z", "+00:00")).timestamp()
+            require(created >= old["after"], "volume_creation_interval")
+        self.volumes[name] = item
+        self.receipt["creation_records"]["volumes"][name] = {k: item[k]
+            for k in ("Name", "CreatedAt", "Mountpoint", "Driver")}
+        return item
+
+    def create_container(self, image, suffix, entrypoint, args, *, mounts=(), network="none"):
+        name = self.owner + "-" + suffix + "-" + uuid.uuid4().hex[:12]
+        self.absent("container", name)
+        before = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        self.containers[name] = {"pending": True, "after": before, "image": image}
+        self.save()
+        argv = ["container", "create", "--name", name, "--label", OWNER_LABEL + "=" + self.owner,
+                "--user", "10001:10001", "--network", network, "--read-only", "--cap-drop", "ALL",
+                "--security-opt", "no-new-privileges", "--pids-limit", "256", "--memory", "2g",
+                "--cpus", "2", "--log-driver", "none", "--tmpfs", "/tmp:rw,nosuid,noexec,size=16m",
+                "--interactive", "--entrypoint", entrypoint]
+        for mount in mounts:
+            argv += ["--mount", mount]
+        if not any("dst=/data" in m for m in mounts):
+            argv += ["--mount", "type=tmpfs,dst=/data,tmpfs-size=16777216"]
+        argv += [image, *args]
+        code, _, _ = self.docker("container-create", *argv)
+        require(code == 0, "container_create_failed")
+        self.confirm_container(name)
+        return name
+
+    def confirm_container(self, name, missing_ok=False):
+        code, out, error = self.docker("container-owner-inspect", "container", "inspect", name,
+                                      timeout=20, cleanup=True)
+        if missing_ok and code == 1 and any(x in error for x in (b"No such container", b"No such object")):
+            self.prove_absent("container", name, cleanup=True)
+            return None
+        require(code == 0, "container_inspection_failed")
+        item = json.loads(out)[0]
+        require(item["Name"] == "/" + name
+                and (item["Config"].get("Labels") or {}).get(OWNER_LABEL) == self.owner,
+                "container_owner_mismatch")
+        old = self.containers[name]
+        if not old.get("pending"):
+            require(item["Id"] == old["Id"] and item["Created"] == old["Created"], "container_replaced")
+        else:
+            created = datetime.datetime.fromisoformat(item["Created"].replace("Z", "+00:00")).timestamp()
+            require(created >= old["after"] and item["Image"] == old["image"], "container_creation_identity")
+        require(item["Config"]["User"] == "10001:10001"
+                and item["HostConfig"]["ReadonlyRootfs"] and not item["HostConfig"]["Privileged"]
+                and "ALL" in item["HostConfig"]["CapDrop"]
+                and not any(m.get("Source") == "/var/run/docker.sock" for m in item["Mounts"]),
+                "application_controls")
+        self.containers[name] = item
+        self.receipt["creation_records"]["containers"][name] = {k: item[k]
+            for k in ("Id", "Created", "Image", "Name")}
+        return item
+
+    def remove_container(self, name, cleanup=False):
+        item = self.confirm_container(name, missing_ok=cleanup)
+        if item is None:
+            del self.containers[name]
+            return
+        if item["State"]["Running"]:
+            code, _, _ = self.docker("owned-container-stop", "container", "stop", "--time", "5",
+                                      item["Id"], timeout=25, cleanup=cleanup)
+            require(code == 0 and not self.confirm_container(name)["State"]["Running"],
+                    "owned_writer_stop_failed")
+        code, _, _ = self.docker("container-remove", "container", "rm", "--force", item["Id"],
+                                  timeout=30, cleanup=cleanup)
+        require(code == 0, "owned_container_remove_failed")
+        self.prove_absent("container", item["Id"], cleanup=cleanup)
+        del self.containers[name]
+
+    def tool(self, image, entrypoint, args, *, mounts=(), input_data=None, timeout=60):
+        name = self.create_container(image, "tool", entrypoint, args, mounts=mounts)
+        try:
+            result = self.docker("container-tool", "container", "start", "--attach", "--interactive",
+                                 name, input_data=input_data, timeout=timeout)
+            state = self.confirm_container(name)["State"]
+            require(not state["Running"] and result[0] in (0, state["ExitCode"]), "tool_exit_identity")
+            # Product exit is State.ExitCode, independently of attach transport status.
+            return state["ExitCode"], result[1], result[2]
+        finally:
+            self.remove_container(name, cleanup=True)
+
+    def image_identity(self, edition, identifier):
+        item = self.inspect("image", identifier)
+        labels = item["Config"].get("Labels") or {}
+        require(re.fullmatch(r"sha256:[0-9a-f]{64}", item["Id"]) is not None
+                and item["Os"] == "linux" and item["Architecture"] == "amd64"
+                and item["Config"]["User"] == "10001:10001"
+                and item["Config"]["Entrypoint"] == ["riauth", "--config", "/data/riauth.toml"]
+                and item["Config"]["Cmd"] == ["serve"]
+                and item["Config"]["WorkingDir"] == "/data"
+                and item["Config"]["Volumes"] == {"/data": {}}
+                and labels.get(OWNER_LABEL) == self.owner
+                and labels.get("org.riauth.edition") == edition
+                and labels.get("org.opencontainers.image.revision") == SOURCE
+                and labels.get("org.opencontainers.image.source") == "https://github.com/" + REPOSITORY,
+                "image_product_identity")
+        return item
+
+    def build_images(self):
+        self.phase = "images"
+        for edition, tag in self.tags.items():
+            self.capacity(30 * GiB)
+            self.absent("image", tag)
+            iid = self.root / (edition + ".iid")
+            code, _, _ = self.docker("build-" + edition, "buildx", "build", "--builder", self.builder,
+                "--platform", "linux/amd64", "--load", "--progress", "plain", "--file", self.recipe,
+                "--build-arg", "RIAUTH_EDITION=" + edition, "--build-arg", "RIAUTH_COMMIT=" + SOURCE,
+                "--label", OWNER_LABEL + "=" + self.owner, "--tag", tag, "--iidfile", iid,
+                self.args.product, timeout=1800, public=True)
+            require(code == 0 and iid.is_file(), "image_build_failed")
+            identifier = iid.read_text().strip()
+            item = self.image_identity(edition, identifier)
+            require(tag in item["RepoTags"], "owned_image_tag")
+            self.images[edition] = item["Id"]
+            self.receipt["images"][edition] = {"id": item["Id"], "tag": tag,
+                "os": item["Os"], "architecture": item["Architecture"],
+                "labels": item["Config"]["Labels"], "recipe": self.receipt["recipe"]}
+            self.save()
+        for edition, image in self.images.items():
+            self.capacity(30 * GiB)
+            archive = self.evidence / ("local-" + edition + "-x86_64.docker.tar.gz")
+            size = 0
+            with archive.open("xb") as raw:
+                os.chmod(archive, 0o600)
+                with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0, filename="") as out:
+                    def consume(block):
+                        nonlocal size
+                        size += len(block)
+                        require(size <= IMAGE_CAP, "image_archive_expanded_cap")
+                        out.write(block)
+                        require(raw.tell() <= IMAGE_CAP, "image_archive_compressed_cap")
+                    code, _, _ = self.docker("save-" + edition, "image", "save", self.tags[edition],
+                                              timeout=300, consumer=consume)
+                    require(code == 0, "image_save_failed")
+            self.validate_image_tar(archive, edition, image)
+            self.receipt["images"][edition].update(archive=archive.name,
+                archive_bytes=archive.stat().st_size, archive_sha256=file_hash(archive))
+        for edition, image in self.images.items():
+            self.image_identity(edition, image)
+            code, _, _ = self.docker("remove-for-reload", "image", "rm", "--no-prune", self.tags[edition])
+            require(code == 0, "image_remove_for_reload_failed")
+        for edition, image in self.images.items():
+            self.capacity(30 * GiB)
+            archive = self.evidence / self.receipt["images"][edition]["archive"]
+            require(file_hash(archive) == self.receipt["images"][edition]["archive_sha256"], "image_archive_changed")
+            self.validate_image_tar(archive, edition, image)
+            code, _, _ = self.docker("load-" + edition, "image", "load", "--input", archive, timeout=300)
+            require(code == 0 and self.image_identity(edition, self.tags[edition])["Id"] == image,
+                    "loaded_image_identity")
+            self.inspect_product(edition, image)
+        self.save()
+
+    def validate_image_tar(self, archive, edition, image):
+        require(archive.stat().st_size <= IMAGE_CAP, "image_archive_size")
+        members, hashes, payloads = {}, {}, {}
+        total = 0
+        with tarfile.open(archive, "r:gz") as source:
+            for member in source:
+                self.check_budget()
+                name = member.name.rstrip("/")
+                path = pathlib.PurePosixPath(name)
+                require(name and not path.is_absolute() and ".." not in path.parts
+                        and name == str(path) and name not in members
+                        and (member.isfile() or member.isdir()), "image_tar_member")
+                members[name] = member
+                if member.isdir():
+                    continue
+                total += member.size
+                require(total <= IMAGE_CAP, "image_tar_expanded_cap")
+                h, copied = hashlib.sha256(), 0
+                small = bytearray()
+                with source.extractfile(member) as incoming:
+                    while block := incoming.read(1024 * 1024):
+                        self.check_budget()
+                        copied += len(block)
+                        h.update(block)
+                        if member.size <= LOG_CAP:
+                            small.extend(block)
+                require(copied == member.size, "image_tar_truncated")
+                hashes[name] = h.hexdigest()
+                if member.size <= LOG_CAP:
+                    payloads[name] = bytes(small)
+        require("manifest.json" in payloads, "docker_archive_manifest")
+        manifest = json.loads(payloads["manifest.json"])
+        require(isinstance(manifest, list) and len(manifest) == 1
+                and manifest[0]["RepoTags"] == [self.tags[edition]], "image_tar_exact_tag")
+        config, layers = manifest[0]["Config"], manifest[0]["Layers"]
+        require(config in payloads and "sha256:" + hashes[config] == image
+                and isinstance(layers, list) and layers and len(set(layers)) == len(layers)
+                and all(layer in hashes for layer in layers), "image_tar_config_layers")
+        settings = json.loads(payloads[config])
+        require(settings["os"] == "linux" and settings["architecture"] == "amd64"
+                and settings["config"]["Labels"][OWNER_LABEL] == self.owner
+                and settings["config"]["Labels"]["org.riauth.edition"] == edition
+                and settings["config"]["Labels"]["org.opencontainers.image.revision"] == SOURCE,
+                "saved_config_identity")
+        allowed = {"manifest.json", config, *layers}
+        # Docker save can include OCI index/layout or legacy per-layer metadata.
+        allowed |= {"index.json", "oci-layout", "repositories"}
+        if "index.json" in payloads:
+            index = json.loads(payloads["index.json"])
+            require(index["schemaVersion"] == 2 and len(index["manifests"]) == 1, "saved_oci_index")
+            descriptor = index["manifests"][0]
+            ref = descriptor["digest"]
+            require(re.fullmatch(r"sha256:[0-9a-f]{64}", ref) is not None, "oci_manifest_digest")
+            name = "blobs/sha256/" + ref.split(":")[1]
+            require(name in payloads and hashes[name] == ref.split(":")[1], "oci_manifest_payload")
+            oci = json.loads(payloads[name])
+            require(oci["schemaVersion"] == 2 and oci["config"]["digest"] == image
+                    and ["blobs/sha256/" + x["digest"].split(":")[1] for x in oci["layers"]] == layers,
+                    "oci_image_manifest_binding")
+            allowed.add(name)
+        for layer in layers:
+            parent = str(pathlib.PurePosixPath(layer).parent)
+            if parent != "." and not layer.startswith("blobs/sha256/"):
+                allowed |= {parent + "/VERSION", parent + "/json"}
+        require(set(hashes) <= allowed, "image_tar_unreferenced_member")
+        for name, actual in hashes.items():
+            if name.startswith("blobs/sha256/"):
+                require(name == "blobs/sha256/" + actual, "image_blob_digest")
+
+    def inspect_product(self, edition, image):
+        # Copy public product bytes from a never-started, controlled container.
+        name = self.create_container(image, "product-copy", "/bin/true", [])
+        try:
+            paths = {"server": "/usr/local/bin/riauth", "license": "/usr/share/doc/riauth/LICENSE",
+                     "notices": "/usr/share/doc/riauth/THIRD_PARTY_NOTICES.md"}
+            for kind, source in paths.items():
+                destination = self.root / (edition + "-image-" + kind)
+                code, _, _ = self.docker("copy-product", "container", "cp", name + ":" + source, destination)
+                require(code == 0 and destination.is_file() and not destination.is_symlink(), "image_public_file")
+                destination.chmod(0o600)
+                if kind == "server":
+                    self.elf(destination)
+                    self.receipt["images"][edition]["server_sha256"] = file_hash(destination)
+                else:
+                    source_name = "LICENSE" if kind == "license" else "THIRD_PARTY_NOTICES.md"
+                    require(file_hash(destination) == self.native["inputs"][source_name], "image_notices_identity")
+        finally:
+            self.remove_container(name, cleanup=True)
+        code, out, _ = self.tool(image, "/usr/local/bin/riauth", ["--json", "capabilities"])
+        envelope = json.loads(out)
+        require(code == 0 and envelope["ok"] is True, "image_capabilities_status")
+        self.capabilities(envelope["data"], edition)
+        require(envelope["data"] == self.native_caps[edition], "native_image_capability_parity")
+        self.receipt["images"][edition]["capabilities"] = envelope["data"]
+        code, server_version, _ = self.tool(image, "/usr/local/bin/riauth", ["--version"])
+        require(code == 0 and re.fullmatch(rb"riauth [0-9]+\.[0-9]+\.[0-9]+\s*", server_version), "server_version")
+        self.version = server_version.decode().split()[1]
+        for product in (self.bins[(edition, "riauth-maintenance")], self.bins[("client", "riauthctl")]):
+            code, output, _ = self.command("native-tool-version", [product, "--version"])
+            require(code == 0 and output.decode().split() == [product.name, self.version], "cohort_tool_version")
+
+    def maintenance(self, fixture, edition, command, *, config="riauth.toml", input_data=None):
+        mount = "type=bind,src=" + str(self.bins[(edition, "riauth-maintenance")])
+        mount += ",dst=/cohort/riauth-maintenance,readonly"
+        mounts = list(fixture["mounts"])
+        if command[0] not in {"init", "keygen"}:
+            mounts[0] += ",readonly"
+        return self.tool(self.images[edition], "/cohort/riauth-maintenance",
+                         ["--config", "/config/" + config, "--json", "--non-interactive", *command],
+                         mounts=mounts + [mount], input_data=input_data, timeout=120)
+
+    def shell(self, fixture, script, *, input_data=None):
+        # Scripts are fixed controller literals; no user/record content is interpolated.
+        code, out, _ = self.tool(self.images["essentials"], "/bin/sh", ["-c", script],
+                                 mounts=fixture["mounts"], input_data=input_data)
+        require(code == 0, "uid10001_fixture_io_failed")
+        return out
+
+    def new_fixture(self, suffix, edition):
+        config = self.create_volume(suffix + "-config")
+        data = self.create_volume(suffix + "-data")
+        for volume in (config, data):
+            code, out, _ = self.tool(self.images[edition], "/usr/bin/stat",
+                ["-c", "%u:%g:%a", "/data"],
+                mounts=["type=volume,src=" + volume + ",dst=/data"])
+            match = re.fullmatch(rb"([0-9]+):([0-9]+):([0-7]{3,4})", out.strip())
+            if code == 0 and match:
+                self.receipt["uid_probes"].append({"volume": volume, "uid": int(match[1]),
+                    "gid": int(match[2]), "mode": match[3].decode(), "before_credentials": True})
+                self.save()
+            require(code == 0 and out.strip() == b"10001:10001:700", "uid_mapping_unsupported")
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", 0))
+            port = listener.getsockname()[1]
+        fixture = {"base": "http://127.0.0.1:" + str(port), "port": port,
+                   "config_volume": config, "data_volume": data,
+                   "mounts": ["type=volume,src=" + config + ",dst=/config",
+                              "type=volume,src=" + data + ",dst=/data"], "app": None,
+                   "password": "Disposable-" + uuid.uuid4().hex}
+        code, out, _ = self.maintenance(fixture, edition, ["keygen", "--out", "/config/database.key"])
+        require(code == 0 and json.loads(out)["data"]["created"] is True, "keygen_status")
+        code, out, _ = self.maintenance(fixture, edition, ["init", "--issuer", fixture["base"],
+            "--listen", "127.0.0.1:" + str(port), "--data-dir", "/data",
+            "--database-key-file", "/config/database.key", "--password-stdin"],
+            input_data=(fixture["password"] + "\n").encode())
+        require(code == 0 and json.loads(out)["data"]["initialized"] is True, "first_init_status")
+        original = self.shell(fixture, "cat /config/riauth.toml")
+        parsed = tomllib.loads(original.decode())
+        require(parsed["issuer"] == fixture["base"] and parsed["data_dir"] == "/data"
+                and parsed["database_key_file"] == "/config/database.key"
+                and parsed.get("postgres") is None, "encrypted_redb_config")
+        rates = {**RATE_DEFAULTS, **parsed.get("rate_limits", {})}
+        require(set(rates) == set(RATE_DEFAULTS) and all(isinstance(v, int) and v > 0 for v in rates.values()),
+                "sixteen_effective_rates")
+        modes = self.shell(fixture, "stat -c '%u:%g:%a' /config /data /config/riauth.toml /config/database.key /data/riauth.redb")
+        require(modes.splitlines() == [b"10001:10001:700", b"10001:10001:700",
+            b"10001:10001:600", b"10001:10001:600", b"10001:10001:600"], "private_fixture_modes")
+        fixture["original_config"] = original
+        return fixture
+
+    def start_app(self, fixture, edition):
+        require(fixture["app"] is None, "writer_already_active")
+        with socket.socket() as listener:
+            listener.bind(("127.0.0.1", fixture["port"]))  # Never stop a competing listener.
+        mounts = [fixture["mounts"][0] + ",readonly", fixture["mounts"][1]]
+        name = self.create_container(self.images[edition], "server", "/usr/local/bin/riauth",
+                                    ["--config", "/config/riauth.toml", "serve"],
+                                    mounts=mounts, network="host")
+        fixture["app"] = name
+        code, _, _ = self.docker("server-start", "container", "start", name)
+        require(code == 0, "server_start_failed")
+        end = min(time.monotonic() + 45, self.fixture_deadline)
+        while time.monotonic() < end:
+            self.check_budget()
+            require(self.confirm_container(name)["State"]["Running"], "server_exited_before_ready")
+            try:
+                status, _, _ = self.http(fixture["base"] + "/readyz", cap=65536)
+                if status == 200:
+                    return
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                pass
+            time.sleep(0.2)
+        raise Refusal("server_readiness_deadline")
+
+    def stop_app(self, fixture):
+        if fixture["app"] is not None:
+            self.remove_container(fixture["app"], cleanup=True)
+            fixture["app"] = None
+
+    def client(self, fixture, session, command, *, input_data=None, expected=0):
+        argv = [self.bins[("client", "riauthctl")], "--server", fixture["base"],
+                "--session-file", session, "--json", "--non-interactive", "--request-timeout", "30", *command]
+        code, out, _ = self.command("base-client", argv, input_data=input_data, timeout=60)
+        envelope = json.loads(out)
+        require(code == expected and envelope["schema_version"] == "riauth.cli/v1", "client_status")
+        if expected == 0:
+            require(envelope["ok"] is True, "client_success_envelope")
+            return envelope["data"]
+        require(envelope["ok"] is False and envelope["error"]["http_status"]
+                == {3: 401, 4: 403}[expected] and envelope["exit_code"] == expected,
+                "client_refusal_is_server_status")
+        return envelope
+
+    def login(self, fixture, session, username, password):
+        return self.client(fixture, session, ["login", username, "--password-stdin"],
+                           input_data=(password + "\n").encode())
+
+    def mutate(self, fixture, session, command, *, input_data=None, expected=0):
+        revision = self.client(fixture, fixture["admin_session"], ["revision"])["revision"]
+        require(isinstance(revision, int) and revision >= 0, "revision_type")
+        return self.client(fixture, session, ["--if-revision", str(revision),
+            "--idempotency-key", "a09-" + uuid.uuid4().hex, *command],
+            input_data=input_data, expected=expected)
+
+    def token(self, fixture, session):
+        value = json.loads(session.read_bytes())
+        require(stat.S_IMODE(session.stat().st_mode) == 0o600
+                and value["issuer"] == fixture["base"] and value["api_base"] == fixture["base"]
+                and isinstance(value["token"], str) and value["token"], "issuer_bound_private_session")
+        return value["token"]
+
+    def revoked(self, fixture, session):
+        self.client(fixture, session, ["whoami"], expected=3)
+        status, _, _ = self.http(fixture["base"] + "/api/me", token=self.token(fixture, session))
+        require(status == 401, "revoked_session_http401")
+
+    def snapshot(self, fixture):
+        session = fixture["delegate_session"]
+        self.login(fixture, fixture["admin_session"], "admin", fixture["password"])
+        self.login(fixture, session, "delegate", fixture["delegate_password"])
+        discovery = self.client(fixture, session, ["discovery"])
+        require(discovery["issuer"] == fixture["base"] and discovery["jwks_uri"]
+                == fixture["base"] + "/oauth/jwks", "exact_discovery")
+        status, jwks, _ = self.http(discovery["jwks_uri"])
+        require(status == 200, "jwks_status")
+        me = self.client(fixture, session, ["whoami"])
+        require(set(me["user"]) == USER_FIELDS and me["user"]["admin"] is False
+                and me["user"]["password_available"] is True, "complete_ordinary_user")
+        user = self.client(fixture, fixture["admin_session"], ["user", "get", "delegate"])
+        group = self.client(fixture, fixture["admin_session"], ["group", "get", "local-team"])
+        grants = self.client(fixture, fixture["admin_session"], ["grants", "get", "delegate"])
+        require(user == me["user"] and group["members"] == [user["id"]]
+                and "local-team" in me["groups"] and grants["grants"]
+                == [{"role": "auditor", "scope": "audit/events", "target_id": "events"}],
+                "group_grant_subject_binding")
+        status, _, _ = self.http(fixture["base"] + "/api/audit?limit=1", token=self.token(fixture, session))
+        require(status == 200, "audit_events_allowed")
+        users_before = self.client(fixture, fixture["admin_session"], ["user", "list"])
+        self.mutate(fixture, session, ["user", "create", "forbidden-child", "--password-stdin"],
+            input_data=("Denied-" + uuid.uuid4().hex + "\n").encode(), expected=4)
+        require(self.client(fixture, fixture["admin_session"], ["user", "list"]) == users_before,
+                "denied_user_creation_wrote_nothing")
+        for saved in fixture.get("revoked", []):
+            self.revoked(fixture, saved)
+        # All 12 UserView fields and every me field except fresh session ID/expiry.
+        stable_me = {k: v for k, v in me.items() if k not in {"session_id", "expires_at"}}
+        return {"me": stable_me, "user": user, "group": group, "grants": grants,
+                "discovery": {k: discovery[k] for k in ("issuer", "jwks_uri")}, "jwks": json.loads(jwks)}
+
+    def revoke_copy(self, fixture):
+        session = self.root / ("revoking-session-" + uuid.uuid4().hex + ".json")
+        saved = self.root / ("revoked-session-" + uuid.uuid4().hex + ".json")
+        self.login(fixture, session, "delegate", fixture["delegate_password"])
+        private_write(saved, session.read_bytes())
+        self.client(fixture, session, ["logout"])
+        require(not session.exists(), "logout_session_removed")
+        fixture.setdefault("revoked", []).append(saved)
+        self.revoked(fixture, saved)
+
+    def offline_hashes(self, fixture):
+        require(fixture["app"] is None, "offline_writer_required")
+        # Comparison only in memory; neither key hash nor raw data is evidence.
+        return self.shell(fixture, "sha256sum /config/riauth.toml /config/database.key /data/riauth.redb")
+
+    def direct_refusal(self, fixture, edition, config="riauth.toml", marker=None):
+        require(fixture["app"] is None, "direct_refusal_requires_stopped_writer")
+        before = self.offline_hashes(fixture)
+        code, out, _ = self.tool(self.images[edition], "/usr/local/bin/riauth",
+            ["--config", "/config/" + config, "--json", "serve"],
+            mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1]], timeout=20)
+        envelope = json.loads(out)
+        require(code == 2 and envelope["ok"] is False, "direct_open_refusal")
+        if marker is not None:
+            require(marker in envelope["error"]["message"], "specific_direct_refusal")
+        require(self.offline_hashes(fixture) == before, "refused_open_changed_store_or_config")
+
+    def plan(self, fixture, target, *, config="riauth.toml", expected=0):
+        code, out, _ = self.maintenance(fixture, "platform", ["transition-plan", "--target", target],
+                                        config=config)
+        envelope = json.loads(out)
+        require(code == expected and envelope["schema_version"] == "riauth.cli/v1"
+                and envelope["ok"] == (expected == 0) and envelope["exit_code"] == expected
+                and envelope["data"]["ready"] == (expected == 0)
+                and envelope["data"]["read_only"] is True, "transition_plan_envelope")
+        return envelope["data"]
+
+    def config_refusals(self, fixture):
+        original = fixture["original_config"]
+        parsed = tomllib.loads(original.decode())
+        specifications = (
+            ("issuer", "meta/issuer", "Configured issuer does not match the initialized instance"),
+            ("policy", "meta/node_security", "Configured token lifetimes or password policy do not match the initialized instance"),
+            ("rate", "meta/node_security", "Configured HTTP rate limit for login"),
+        )
+        before = self.offline_hashes(fixture)
+        for name, resource, reason in specifications:
+            text = original.decode()
+            wanted = json.loads(json.dumps(parsed))
+            if name == "issuer":
+                wanted["issuer"] = fixture["base"] + "/different"
+                text, count = re.subn(r'(?m)^issuer = "[^"\n]+"$',
+                    "issuer = " + json.dumps(wanted["issuer"]), text)
+            elif name == "policy":
+                wanted["session_ttl"] += 1
+                text, count = re.subn(r"(?m)^session_ttl = [0-9]+$",
+                    "session_ttl = " + str(wanted["session_ttl"]), text)
+            else:
+                wanted.setdefault("rate_limits", {})["login"] = RATE_DEFAULTS["login"] + 1
+                require("login" not in parsed.get("rate_limits", {}), "fresh_default_rate_expected")
+                if "rate_limits" not in parsed:
+                    text += "\n[rate_limits]\nlogin = 21\n"
+                    count = 1  # Empty maps are omitted by Config serialization.
+                else:
+                    text, count = re.subn(r"(?m)^\[rate_limits\]$", "[rate_limits]\nlogin = 21", text)
+            require(count == 1 and tomllib.loads(text) == wanted, "candidate_exact_one_field")
+            filename = "candidate-" + name + ".toml"
+            # Closed filenames above; exclusive creation as the same unprivileged owner.
+            self.shell(fixture, "umask 077; set -C; cat > /config/" + filename,
+                       input_data=text.encode())
+            report = self.plan(fixture, "platform", config=filename, expected=5)
+            require(any(b["resource"] == resource and reason in b["reason"] for b in report["blockers"]),
+                    "specific_config_plan_blocker")
+            self.direct_refusal(fixture, "essentials", config=filename, marker=reason)
+            require(self.offline_hashes(fixture) == before, "config_refusal_changed_original")
+        require(self.shell(fixture, "cat /config/riauth.toml") == original, "original_config_preserved")
+
+    def handoff(self, fixture, target):
+        require(fixture["app"] is None, "handoff_writer_required_stopped")
+        before = self.offline_hashes(fixture)
+        report = self.plan(fixture, target)
+        require(report["target_edition"] == target and isinstance(report["transition_token"], str)
+                and report["transition_token"], "exact_plan_token")
+        require(self.offline_hashes(fixture) == before, "read_only_plan_changed_store")
+        code, out, _ = self.maintenance(fixture, "platform", ["transition-activate", "--target", target,
+            "--token", report["transition_token"]])
+        require(code == 0 and json.loads(out)["ok"] is True, "explicit_activation_status")
+        require(self.shell(fixture, "cat /config/riauth.toml") == fixture["original_config"],
+                "activation_changed_config")
+        require(self.offline_hashes(fixture).splitlines()[:2] == before.splitlines()[:2],
+                "activation_changed_config_or_key")
+
+    def platform_refusal_fixture(self):
+        fixture = self.new_fixture("platform-state", "platform")
+        self.start_app(fixture, "platform")
+        session = self.root / "platform-state-admin.json"
+        try:
+            self.login(fixture, session, "admin", fixture["password"])
+            bearer = self.token(fixture, session)
+            status, body, _ = self.http(fixture["base"] + "/api/state/revision", token=bearer)
+            require(status == 200, "agent_revision_status")
+            revision = json.loads(body)["revision"]
+            status, _, _ = self.http(fixture["base"] + "/api/agents", method="POST", token=bearer,
+                data={"id": "a09-platform-state", "ttl": 3600,
+                      "permissions": [{"action": "user.offboard", "resource": "*"}]},
+                extra_headers={"If-Match": '"' + str(revision) + '"',
+                               "Idempotency-Key": "a09-agent-" + uuid.uuid4().hex})
+            require(status == 200, "platform_agent_status")
+        finally:
+            self.stop_app(fixture)
+        before = self.offline_hashes(fixture)
+        self.direct_refusal(fixture, "essentials", marker="Platform")
+        code, out, _ = self.maintenance(fixture, "platform", ["transition-preflight", "--target", "essentials"])
+        envelope = json.loads(out)
+        require(code == 5 and envelope["ok"] is False and envelope["data"]["ready"] is False
+                and any(b["resource"].startswith("agents/") and "Platform build" in b["reason"]
+                        for b in envelope["data"]["blockers"])
+                and any(b["resource"] == "meta/edition_provenance" for b in envelope["data"]["blockers"]),
+                "platform_state_downgrade_blockers")
+        require(self.offline_hashes(fixture) == before, "platform_refusal_changed_store")
+
+    def fixture_gate(self):
+        self.phase = "fixture"
+        self.capacity(30 * GiB)
+        self.fixture_deadline = time.monotonic() + 1200
+        fixture = self.new_fixture("clean", "essentials")
+        fixture.update(admin_session=self.root / "admin-session.json",
+                       delegate_session=self.root / "delegate-session.json",
+                       delegate_password="Delegate-" + uuid.uuid4().hex)
+        self.start_app(fixture, "essentials")
+        try:
+            self.login(fixture, fixture["admin_session"], "admin", fixture["password"])
+            self.mutate(fixture, fixture["admin_session"], ["user", "create", "delegate", "--password-stdin"],
+                         input_data=(fixture["delegate_password"] + "\n").encode())
+            self.mutate(fixture, fixture["admin_session"], ["group", "create", "local-team"])
+            self.mutate(fixture, fixture["admin_session"], ["group", "add-member", "local-team", "delegate"])
+            grants = self.root / "grants.json"
+            private_write(grants, json_bytes([{"role": "auditor", "scope": "audit/events"}]))
+            self.mutate(fixture, fixture["admin_session"], ["grants", "set", "delegate", "--file", grants])
+            self.revoke_copy(fixture)
+            baseline = self.snapshot(fixture)
+        finally:
+            self.stop_app(fixture)
+        self.config_refusals(fixture)
+        self.direct_refusal(fixture, "platform", marker="Configured active capabilities")
+        self.handoff(fixture, "platform")
+        self.start_app(fixture, "platform")
+        try:
+            require(self.snapshot(fixture) == baseline, "platform_identity_authorization_config_changed")
+            self.revoke_copy(fixture)
+        finally:
+            self.stop_app(fixture)
+        self.direct_refusal(fixture, "essentials", marker="Platform")
+        self.handoff(fixture, "essentials")
+        self.start_app(fixture, "essentials")
+        try:
+            require(self.snapshot(fixture) == baseline, "returned_identity_authorization_config_changed")
+        finally:
+            self.stop_app(fixture)
+        self.platform_refusal_fixture()
+        self.receipt["checks"] = ["uid10001_copy_up_private_modes", "encrypted_redb_key_configured",
+            "pinned_format3_startup_and_sixteen_rates", "exact_discovery_and_jwks",
+            "all12_userview_fields_and_group_grant_subject", "audit_events200_user_create403_client4",
+            "two_logout401_client3_across_handoffs", "issuer_policy_loginrate_specific_offline_refusals",
+            "read_only_plan_exact_token_EPE", "wrong_direct_build_refused",
+            "isolated_platform_agent_and_downgrade_refusal"]
+        self.fixture_deadline = None
+
+    def cleanup(self):
+        """Only verified exact creation identities, including daemon children."""
+        self.phase = "cleanup"
+        self.fixture_deadline = None
+        cleanup_deadline = time.monotonic() + 240
+        self.cleanup_deadline = cleanup_deadline
+        # Commands below have independent small cleanup bounds, not a runtime retry.
+        for name in list(self.containers):
+            try:
+                require(time.monotonic() < cleanup_deadline, "cleanup_deadline")
+                self.remove_container(name, cleanup=True)
+            except BaseException:
+                self.receipt["cleanup_errors"].append("owned_container_cleanup_blocked")
+        if self.builder_attempted:
+            try:
+                self.recover_builder()
+                require(time.monotonic() < cleanup_deadline, "cleanup_deadline")
+                if self.builder_id is not None:
+                    code, _, _ = self.docker("builder-stop-remove", "container", "rm", "--force",
+                                              self.builder_id, timeout=30, cleanup=True)
+                    require(code == 0, "builder_container_cleanup_failed")
+                    current = self.inspect("volume", self.builder_volume, cleanup=True)
+                    require(all(current.get(k) == self.builder_volume_record.get(k)
+                                for k in ("Name", "Driver", "Mountpoint", "CreatedAt", "Labels", "Options")),
+                            "builder_volume_replaced")
+                    code, _, _ = self.docker("builder-volume-remove", "volume", "rm", self.builder_volume,
+                                              timeout=30, cleanup=True)
+                    require(code == 0, "builder_volume_cleanup_failed")
+                    # No global builder/cache operation; the instance is bound to private config.
+                    code, _, _ = self.docker("builder-instance-remove", "buildx", "rm", "--keep-state",
+                                              "--force", self.builder, timeout=30, cleanup=True)
+                    require(code == 0, "builder_instance_cleanup_failed")
+                    self.prove_absent("container", self.builder_id, cleanup=True)
+                    self.prove_absent("volume", self.builder_volume, cleanup=True)
+                else:
+                    self.prove_absent("container", self.builder_container, cleanup=True)
+                    self.prove_absent("volume", self.builder_volume, cleanup=True)
+                self.receipt["builder_children_removed"] = True
+            except BaseException:
+                self.receipt["cleanup_errors"].append("builder_cleanup_identity_blocked")
+        for name in list(self.volumes):
+            try:
+                require(time.monotonic() < cleanup_deadline, "cleanup_deadline")
+                if self.confirm_volume(name, missing_ok=True) is None:
+                    del self.volumes[name]
+                    continue
+                code, _, _ = self.docker("volume-remove", "volume", "rm", name, timeout=30, cleanup=True)
+                require(code == 0, "volume_cleanup_failed")
+                self.prove_absent("volume", name, cleanup=True)
+                del self.volumes[name]
+            except BaseException:
+                self.receipt["cleanup_errors"].append("owned_volume_cleanup_blocked")
+        for edition, tag in (self.tags.items() if self.daemon_seen else []):
+            try:
+                require(time.monotonic() < cleanup_deadline, "cleanup_deadline")
+                code, out, _ = self.docker("cleanup-image-inspect", "image", "inspect", tag,
+                                          timeout=20, cleanup=True)
+                if code == 0:
+                    item = json.loads(out)[0]
+                    require((item["Config"].get("Labels") or {}).get(OWNER_LABEL) == self.owner
+                            and item["Config"]["Labels"]["org.riauth.edition"] == edition
+                            and item["Config"]["Labels"]["org.opencontainers.image.revision"] == SOURCE
+                            and item["RepoTags"] == [tag], "image_cleanup_identity")
+                    code, _, _ = self.docker("owned-image-remove", "image", "rm", "--no-prune", tag,
+                                              timeout=60, cleanup=True)
+                    require(code == 0, "owned_image_remove_failed")
+                self.prove_absent("image", tag, cleanup=True)
+                if edition in self.images:
+                    self.prove_absent("image", self.images[edition], cleanup=True)
+            except BaseException:
+                self.receipt["cleanup_errors"].append("owned_image_cleanup_blocked")
+        try:
+            if not self.daemon_seen:
+                require(not self.containers and not self.volumes and not self.builder_attempted,
+                        "unverified_daemon_resources")
+                self.receipt["docker_cleanup"] = "no_docker_resource_creation_attempted"
+            else:
+                code, out, _ = self.docker("owned-image-inventory", "image", "ls", "--quiet", "--no-trunc",
+                    "--filter", "label=" + OWNER_LABEL + "=" + self.owner, timeout=20, cleanup=True)
+                require(code == 0 and not out.strip(), "owned_image_inventory_not_empty")
+                self.receipt["owned_image_inventory_empty"] = True
+        except BaseException:
+            self.receipt["cleanup_errors"].append("owned_image_inventory_unproven")
+        with self.lock:
+            groups = list(self.active)
+        with self.lock:
+            for group in groups:
+                self.kill_group(group)  # Refuses a missing/reused creation identity.
+        self.receipt["remaining_owned_containers"] = len(self.containers)
+        self.receipt["remaining_owned_volumes"] = len(self.volumes)
+        self.receipt["remaining_owned_cli_groups"] = len(self.active)
+        if self.active or self.containers or self.volumes:
+            self.receipt["cleanup_errors"].append("owned_resources_remain")
+        self.receipt["retained_inputs"] = "content-addressed tool/base image layers; no shared deletion"
+        self.monitor_end.set()
+        self.monitor.join(timeout=5)
+        if self.monitor.is_alive() or self.resource_error:
+            self.receipt["cleanup_errors"].append("resource_monitor_failed")
+        # Remove only private inputs/sessions/logless fixture state; public evidence remains.
+        for child in self.root.iterdir():
+            if child == self.evidence:
+                continue
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+        self.save()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("controller", "product", "review", "root"):
+        parser.add_argument("--" + name, type=pathlib.Path, required=True)
+    args = parser.parse_args()
+    os.umask(0o077)
+    gate = None
+    failure = None
+
+    def interrupted(signum, frame):
+        raise Refusal("controller_signal")
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, interrupted)
+    try:
+        gate = Cohort(args)
+        gate.source_check()
+        gate.native_transport()
+        gate.daemon_setup()
+        gate.build_images()
+        gate.fixture_gate()
+        # Recheck committed source and manifests after every product operation.
+        require(gate.git(args.product, "status", "--porcelain") == b"", "product_checkout_changed")
+        for relative, expected in gate.native["inputs"].items():
+            require(file_hash(args.product / relative) == expected, "product_input_changed")
+        gate.receipt["result"] = "passed"
+    except BaseException as error:
+        # Never format an external exception: it could contain a signed URL/token/reply.
+        failure = str(error) if isinstance(error, Refusal) else "unexpected_" + type(error).__name__
+        if gate is not None:
+            gate.receipt.update(result="failed_or_refused", failure=failure, failed_phase=gate.phase)
+    finally:
+        if gate is not None:
+            try:
+                gate.cleanup()
+            except BaseException:
+                gate.receipt["cleanup_errors"].append("private_cleanup_failed")
+                failure = failure or "private_cleanup_failed"
+            if gate.receipt["cleanup_errors"]:
+                gate.receipt["result"] = "failed_or_refused"
+                failure = failure or "owned_cleanup_failed"
+            try:
+                gate.save()
+            except BaseException:
+                failure = failure or "receipt_write_failed"
+    print(json.dumps({"result": "failed_or_refused" if failure else "passed",
+                      "failure": failure, "official_release": False}))
+    return 1 if failure else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
