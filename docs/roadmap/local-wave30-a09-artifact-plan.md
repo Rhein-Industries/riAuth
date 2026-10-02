@@ -843,3 +843,119 @@ identity/authorization/configuration full gate remain open; the format-2
 encrypted helper and separate later local-driver plan remain untouched. No new
 worker/task/worktree, Cargo, Docker/service, desktop, status, main or push action
 occurred. RiWork Cua.ai Driver preference persists.
+
+## Append: actual pre-runner rejection and environment-context correction
+
+Root reserved `wave30_A09_workflow_environment_correction` in the same WT/task:
+only the workflow's `A09_ROOT` environment seam and this append. All prior
+**845 report lines / 55,969 bytes** remain an exact prefix, SHA-256
+`a3744240c48dede62c64b81e07c8ae9264a5b6638d60e4900e67695ca08d1322`.
+The old proposal/materialization phases, earlier failures and resource blocker
+are preserved as dated evidence rather than rewritten to imply they succeeded.
+
+### Root's actual failure receipt, before any runner or build
+
+Root reports publication of the reviewed exact workflow at
+`3a57affd9023a48c32085d6bcfb1d17ca4feb901`, followed by **one manual dispatch
+rejected with HTTP 422 before runner allocation**. The diagnostic identified
+line 27, column 17: unrecognized named-value `runner` in `runner.temp` at
+`jobs.env`. The invalid-workflow push metadata entries `37014464740` (main)
+and `37014464605` (accepted) report failure. These IDs are root-reported failed
+metadata records, not a successful manual job, runner sample or build receipt.
+Root released the slot; no manual job, tool setup or Cargo/build ran.
+
+This worker independently read the published Git object: its workflow blob is
+the original `f3003eb4558f9f43ccc21be95283efb91fc70e91`, matching the pre-fix
+worker file exactly. This worker did not repeat a dispatch, query a runner, or
+independently fetch those failed run records; the HTTP/result observation above
+is explicitly attributed to root's supplied receipt. No partial artifact or
+capacity credit is inferred from either failed metadata entry.
+
+I missed key-specific GitHub context availability when proposing/materializing
+the workflow. The earlier Psych/bash/AST/exact-byte checks really passed their
+local syntax and preservation checks, but **did not validate GitHub expression
+contexts at each workflow key**. That omission allowed the invalid job-level
+`runner.temp` expression through. It is a source/check-coverage error, not a
+repository documentation-checker bug or evidence that GitHub had accepted the
+workflow. Those historical checks must not be treated as full semantic or
+dispatch validation.
+
+### Exact source correction and preserved controls
+
+[GitHub's context-availability table](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability)
+does not allow `runner` in `jobs.<job_id>.env`; it allows `env` in step `with`.
+The correction removes the one job-level `A09_ROOT` expression and, immediately
+after the initial `umask 077`, adds these two shell lines before `mkdir`:
+
+```sh
+export A09_ROOT="$RUNNER_TEMP/riauth-a09-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+printf 'A09_ROOT=%s\n' "$A09_ROOT" >> "$GITHUB_ENV"
+```
+
+`export` makes the actual runner-derived value available to the current shell
+and Python driver. The fixed name/value environment-file write makes it
+available to subsequent driver and upload steps; writing `GITHUB_ENV` alone
+does not update the writing step's environment. This follows
+[GitHub's environment-file documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#setting-an-environment-variable).
+There is no default path or fabricated runner/run value, no default-variable
+override, and no change to upload's `${{ env.A09_ROOT }}/evidence/` expression.
+
+| Corrected actual source pin | Value |
+| --- | --- |
+| Minimal source-only commit | `84c498a76f034d721e95c9d9e1979bdc178e15c3` |
+| Parent | `ea03829a51793b9e0cbcbfc680137dd76b8e9fc3` |
+| Sole source path | `.github/workflows/check-local-artifacts.yml` |
+| Git blob | `0e5426c9212433fffbbd578b71ec9fb682ad9c07` |
+| Bytes/lines | 18,186 bytes / 326 lines, terminal newline retained |
+| Corrected SHA-256 | `0a98865e5ee25d2f94b745b32602949553bf4f4e3b83d8bd302fade98eafd948` |
+| Source diff | Exactly 2 insertions / 1 deletion, only the authorized environment seam |
+
+Whole-file transformation comparison against published `3a57aff` passed:
+removing the old environment line and inserting only those two lines produces
+the complete corrected file exactly. All Python heredoc bytes and every later
+step are unchanged. The extracted Python body, excluding the final heredoc
+newline, retains SHA-256
+`1bc3624052342975132f72887f65146a8470331d04ebaf06b0035801b5ff258f`.
+Action pins, manual-only trigger, required full source SHA, native runner,
+read-only permission, real provenance fields, concurrency/time bounds, private
+jobs=1/sequential five binaries, local archives, focused smoke, failure upload,
+30 GiB start / 10 GiB stop / 8 GiB floor and complete driver remain unchanged.
+No alignment, other workflow/helper/product/guide/configuration/algorithm edit
+occurred. Root owns publication/integration of this delta; its worker commit
+is not a new published-main or runtime-source receipt.
+
+### Actual correction checks and their limits
+
+Installed Psych parsed the corrected YAML, all four shell `run` blocks passed
+`bash -n`, and the unchanged inline Python passed AST parsing, without executing
+any workflow block or driver phase. A static check using the official table
+detected exactly the old job-env unavailable context `runner` and none in the
+corrected job environment. The existing step `with` expressions use allowed
+`inputs`, `github` and `env` contexts. Ordering checks confirmed `umask`, export,
+fixed `GITHUB_ENV` write, then `mkdir`. Parsed structure normalization and byte
+comparison confirmed that no other workflow field or later step changed.
+
+`python3 scripts/check-docs.py`, staged `git diff --check`, exact source scope
+and `python3 scripts/check-repo-hygiene.py` passed with exit 0; hygiene checked
+963 files and printed no private material. The report was unchanged at the
+source commit, and the worktree was clean immediately afterward. All prior
+report prefixes are preserved for the separate append-only evidence commit.
+
+One initial **local validation snippet** exited 1 on invalid `assert` syntax
+before parsing the workflow; the snippet was corrected and the same static
+checks then passed, with no intervening workflow change. An optional official
+runner-source page read returned `Internal Error`; no source-code inspection is
+claimed from that request. Context/persistence conclusions use the independently
+read official documentation above. No dependency/checker was installed or
+changed, and no runtime failure was hidden by either local correction.
+
+These are source/syntax/context-availability checks, **not GitHub server
+acceptance, a dispatch success, native capacity, toolchain setup, artifact
+production or a passing smoke**. Root alone may re-release one corrected
+dispatch after immutable source review/publication. No retry/dispatch/build/
+download/tool setup/runner/runtime was performed here; the slot remains unused
+by this worker. No threshold/provider substitution, larger runner, cache
+deletion, new worker/task/worktree, Cargo/Docker/service, desktop, status, main
+or push action occurred. The original A09 artifact/shared gate, Linux x86-64/
+container/TLS/passkey scope and physical/tenant/escrow limits remain open.
+RiWork Cua.ai Driver preference persists.
