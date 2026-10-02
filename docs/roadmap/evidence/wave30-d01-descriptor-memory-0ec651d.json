@@ -1,0 +1,155 @@
+{
+  "schema": "riauth.root-reviewed-descriptor-memory/v1",
+  "design_commit": "0ec651d6f7b30e320a8840683bd1e2d2bab0e484",
+  "independent_commit": "0178404a53e5fdcbfef1e7ec59df20b7de9fef18",
+  "helper_commit": "f4ef05d8428b235511e81277ba6b4b72d5ec08ba",
+  "payload_sha256": "b10cf8376edbb80b00c051305f31643b04714494260c4a49576a354361048779",
+  "controller_sha256": "0e93e11f71f794770a60700760510f9d2893fa2bdfd044d09a5cb4c20ef555de",
+  "reservation": {
+    "schema": "riauth.root-memory-reservation/v1",
+    "design": "0ec651d6f7b30e320a8840683bd1e2d2bab0e484",
+    "independent": "0178404a53e5fdcbfef1e7ec59df20b7de9fef18",
+    "helper": "f4ef05d8428b235511e81277ba6b4b72d5ec08ba",
+    "payload_sha256": "b10cf8376edbb80b00c051305f31643b04714494260c4a49576a354361048779",
+    "controller_sha256": "0e93e11f71f794770a60700760510f9d2893fa2bdfd044d09a5cb4c20ef555de",
+    "preflight_free_bytes": 22246825984,
+    "child_seconds": 30,
+    "controller_seconds": 35,
+    "invocations": 1,
+    "utc": "2026-10-02T21:38:54.737937+00:00"
+  },
+  "retained_controller_record": {
+    "child_exit": 0,
+    "child_reaped": true,
+    "child_result": {
+      "completed_cases": 128,
+      "deadline_seconds": 30,
+      "elapsed_seconds": 0.101654,
+      "expected_response_timeouts": 1,
+      "expected_write_failures": 1,
+      "failed_case": null,
+      "failure_tag": null,
+      "helper_sha256": "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1",
+      "legacy_archive_sha256": "ce79aeb99fafaaeb265d6b7bff55f415e91825d83e9c650eed412825a5a9525f",
+      "legacy_completed": 78,
+      "legacy_groups": {
+        "authorization_bounds": 12,
+        "authorization_presence": 6,
+        "bounded_sequence": 4,
+        "controlled_parser_result": 2,
+        "counter_persistence": 1,
+        "first_reason": 1,
+        "header_free_bounds": 12,
+        "header_free_routes_guards": 25,
+        "parser_header_limits": 5,
+        "postflow": 7,
+        "record_copy": 1,
+        "response_failures": 2
+      },
+      "legacy_handler_calls": {
+        "baseline": 44,
+        "candidate": 80
+      },
+      "legacy_planned": 78,
+      "main_invoked": false,
+      "native_captures": {
+        "cloned": 1,
+        "trusted": 1,
+        "untrusted": 1
+      },
+      "network_listener_native_provider_cli_driver_browser_cargo": false,
+      "observer_completed": 50,
+      "observer_groups": {
+        "classes": 11,
+        "descriptor": 2,
+        "fallback": 10,
+        "faults": 5,
+        "first": 2,
+        "known": 3,
+        "privacy": 3,
+        "sites": 6,
+        "trace": 8
+      },
+      "observer_planned": 50,
+      "planned_cases": 128,
+      "private_format_traps": {
+        "repr": 0,
+        "str": 0,
+        "traceback": 0
+      },
+      "result": "passed",
+      "schema": "riauth.d01-observer-memory/v2",
+      "server_constructed": false,
+      "unchanged_sha256": "7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0"
+    },
+    "child_seconds": 30,
+    "cleanup_failures": [],
+    "controller_seconds": 35,
+    "elapsed_seconds": 0.201888,
+    "first_failure": null,
+    "payload_sha256": "b10cf8376edbb80b00c051305f31643b04714494260c4a49576a354361048779",
+    "schema": "riauth.d01-observer-memory-controller/v2",
+    "spawn_count": 1,
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 1398,
+    "stdout_sha256": "006d33cc7314d7c483f99dcb8ed59d3b6b537571b5908ee4178d14c21094024f",
+    "within35": true
+  },
+  "final_return_record": {
+    "schema": "riauth.root-descriptor-memory-return/v1",
+    "returned": {
+      "schema": "riauth.d01-observer-memory-review/v2",
+      "result": "passed",
+      "failure_tag": null,
+      "retained_before_expectations": true,
+      "child_exit": 0,
+      "child_reaped": true,
+      "within35": true,
+      "elapsed_seconds_before_review_save": 0.202133,
+      "elapsed_seconds": 0.202287
+    },
+    "root_invocation_elapsed_seconds": 0.2023538751527667,
+    "finished_at": "2026-10-02T21:38:54.951570+00:00",
+    "free_after_bytes": 22246817792
+  },
+  "private_files": {
+    "d01-memory-child.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0600"
+    },
+    "d01-memory-child.stdout": {
+      "bytes": 1398,
+      "sha256": "006d33cc7314d7c483f99dcb8ed59d3b6b537571b5908ee4178d14c21094024f",
+      "mode": "0600"
+    },
+    "d01-memory-retained.json": {
+      "bytes": 1965,
+      "sha256": "1373dd71cd7d96a4994a7a18d1fcf6e248d2ee7b81b6774b0b1927dc10faa3b8",
+      "mode": "0600"
+    },
+    "d01-memory-reviewed.json": {
+      "bytes": 235,
+      "sha256": "25fa161c7b4f2086c1d61905af274d9b25b62a2618093c37b9d3837917998189",
+      "mode": "0600"
+    },
+    "root-return.json": {
+      "bytes": 522,
+      "sha256": "36e3419c134e18a26f99ceca58ea3cfdb2c21421d468816252a93787739f225f",
+      "mode": "0600"
+    }
+  },
+  "actual_invocations": 1,
+  "root_runtime_slot": "none_acquired",
+  "no_provider_or_network_runtime": true,
+  "actual_scope": "selected helper definitions and Python memory sinks, genuine controlled native Python frame/traceback objects",
+  "limits": [
+    "no module main or server constructor",
+    "no HTTP/socket/listener/native provider/CLI/Driver/browser/Cargo execution",
+    "synthetic native line/depth annotations are not natural execution line/stack evidence",
+    "no confidential app journey/crypto/GUI/full D01 or D05 credit",
+    "all older failed and unexecuted records retain their dated outcomes",
+    "historic cause/sender/first cleanup start remain unknown"
+  ]
+}
