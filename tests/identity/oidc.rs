@@ -2346,15 +2346,25 @@ fn manifest_rotation_permission_precedes_secret_resolution() {
         }]
     }))
     .unwrap();
-    let plan = f.core.plan_state(&token, manifest).unwrap();
-    f.core
+    let plan = f.core.plan_state(&token, manifest.clone()).unwrap();
+    let base_revision = plan.base_revision;
+    let permissions = f
+        .core
         .store
         .write(|tx| {
             let mut agent: Agent = tx.get("agents", "rotation-manager")?.unwrap();
+            let permissions = agent.permissions.clone();
             agent.permissions.retain(|p| p.action != "client.rotate");
-            tx.put("agents", "rotation-manager", &agent)
+            tx.put("agents", "rotation-manager", &agent)?;
+            Ok(permissions)
         })
         .unwrap();
+    // The raw fixture write leaves the global revision current, but changes
+    // the plan's captured authority. That fence precedes reconciliation.
+    assert_eq!(
+        f.core.store.get::<u64>("meta", "revision").unwrap(),
+        Some(base_revision)
+    );
     let before = f.snapshot().unwrap();
     let error = f
         .core
@@ -2367,7 +2377,50 @@ fn manifest_rotation_permission_precedes_secret_resolution() {
             },
         )
         .unwrap_err();
+    assert_eq!(error.status.as_u16(), 409);
+    assert_eq!(error.code, "conflict");
+    assert_eq!(
+        error.message,
+        "Connector plan content or authority changed; create and review a new plan"
+    );
+    f.assert_snapshot(&before);
+
+    // Current reduced authority still refuses rotation before resolving the
+    // missing secret. Do not repair or forge the stale plan's review binding.
+    let error = f
+        .core
+        .plan_state(&token, manifest.clone())
+        .err()
+        .expect("rotation planning requires current permission");
     assert_eq!(error.status.as_u16(), 403);
+    f.assert_snapshot(&before);
+
+    // A newly authorized public plan can reach secret resolution; supplying
+    // no value must fail there and roll back every attempted write.
+    f.core
+        .store
+        .write(|tx| {
+            let mut agent: Agent = tx.get("agents", "rotation-manager")?.unwrap();
+            agent.permissions = permissions;
+            tx.put("agents", "rotation-manager", &agent)
+        })
+        .unwrap();
+    let plan = f.core.plan_state(&token, manifest).unwrap();
+    let before = f.snapshot().unwrap();
+    let error = f
+        .core
+        .apply_state(
+            &token,
+            ApplyRequest {
+                plan,
+                secrets: Default::default(),
+                run_id: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.status.as_u16(), 400);
+    assert_eq!(error.code, "invalid_request");
+    assert_eq!(error.message, "Required secret value was not supplied");
     f.assert_snapshot(&before);
 }
 
