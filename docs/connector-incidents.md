@@ -403,6 +403,16 @@ adds one to `runtime.signing_errors` and to
 `riauth_signing_errors_total`. Those counters stay until the process exits,
 including after Vault recovers.
 
+To see which step failed, read `riauth_remote_signing_failures_total{reason}`
+or `runtime.remote_signing_failures`. Each remote failure there has exactly one
+fixed reason, such as `configuration_binding`, `credential_read`, `transport`,
+`http_4xx`, `http_5xx` or `signature_verification`. Each failure also writes one
+`remote signing failed` warning naming only that reason. The public error above
+does not change. The [failure reasons](kms.md#failure-reasons) table lists every
+reason and what to check. Like the other counters, these are process-local. A
+zero count does not prove that Vault can sign, and a worker process has no
+metrics route, so its warnings are the only signal from it.
+
 A token file that cannot be opened as an owner-only regular file of at most
 4096 bytes fails before HTTP as `Vault credential must be a private file of
 at most 4096 bytes`. The missing-file, mode, and size reasons are not

@@ -380,6 +380,7 @@ pub(super) async fn metrics(State(app): State<App>, headers: HeaderMap) -> Resul
                 storage.then(|| {
                     crate::operations::storage_diagnostics::with_pressure(
                         core.store.cached_allocation(),
+                        core.config.storage_allocation_budget.as_ref(),
                     )
                 }),
             ))

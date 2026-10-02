@@ -7,6 +7,7 @@ archives, sessions and stores live in a private temporary directory.
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import secrets
@@ -21,9 +22,43 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+class DrillFailure(RuntimeError):
+    """Only the drill's own credential-free assertions may enter evidence."""
+
+
 def require(condition, message):
     if not condition:
-        raise RuntimeError(message)
+        raise DrillFailure(message)
+
+
+def load_oidc():
+    path = Path(__file__).with_name("recovery-drill-oidc.py")
+    spec = importlib.util.spec_from_file_location("recovery_drill_oidc", path)
+    require(spec is not None and spec.loader is not None, "RP helper unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def source_provenance():
+    repository = Path(__file__).resolve().parent.parent
+    environment = os.environ.copy()
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
+        environment.pop(name, None)
+
+    def git(*args):
+        result = subprocess.run(["git", "-C", str(repository), *args], capture_output=True,
+                                text=True, timeout=5, env=environment)
+        require(result.returncode == 0, "source provenance unavailable")
+        return result.stdout.strip()
+
+    require(not git("status", "--porcelain", "--untracked-files=no"),
+            "drill requires a clean tracked source tree")
+    # Observed source provenance; the operator must correlate the binary hash
+    # with an actual build of this tree. A cached executable is not attested here.
+    return {"repository_head": git("rev-parse", "HEAD"),
+            "production_src_tree": git("rev-parse", "HEAD:src"),
+            "tracked_tree_clean": True}
 
 
 def probe(url):
@@ -64,7 +99,7 @@ def wait_ready(process, url):
             return
         require(process.poll() is None, "service exited before readiness")
         time.sleep(0.1)
-    raise RuntimeError("service readiness timed out")
+    raise DrillFailure("service readiness timed out")
 
 
 def write_evidence(path, evidence):
@@ -74,7 +109,7 @@ def write_evidence(path, evidence):
         output.write(payload)
 
 
-def run(binary, evidence):
+def run(binary, evidence, oidc):
     with tempfile.TemporaryDirectory(prefix="riauth-recovery-drill-") as workspace:
         root = Path(workspace)
         config = root / "riauth.toml"
@@ -93,6 +128,7 @@ def run(binary, evidence):
         admin_password = secrets.token_urlsafe(28)
         user_password = secrets.token_urlsafe(28)
         service = None
+        relying_party = None
 
         def cli(args, *, session=admin_session, password=None, remote=False, timeout=60):
             argv = [str(binary), "--config", str(config), "--session-file", str(session),
@@ -149,13 +185,29 @@ def run(binary, evidence):
 
             success(["login", "admin", "--password-stdin"],
                     password=admin_password + "\n", remote=True)
-            success(["user", "create", "drill-user", "--password-stdin"],
+            revision = success(["revision"], remote=True)["revision"]
+            success(["user", "create", "drill-user", "--password-stdin",
+                     "--if-revision", str(revision), "--idempotency-key", secrets.token_hex(16)],
                     password=user_password + "\n", remote=True)
             success(["login", "drill-user", "--password-stdin"], session=user_session,
                     password=user_password + "\n", remote=True)
             identity = success(["whoami"], session=user_session, remote=True)
             require(identity["user"]["username"] == "drill-user", "source user identity mismatch")
-            passed("representative_login_before_backup", username="drill-user")
+            passed("representative_login_before_backup", username="drill-user",
+                   login_kind="identity_service")
+
+            relying_party = oidc.LocalRelyingParty(root, issuer, "recovery-drill-rp")
+            revision = success(["revision"], remote=True)["revision"]
+            client = success(["client", "create", relying_party.client_id,
+                              "--redirect-uri", relying_party.redirect_uri, "--scope", "openid,profile",
+                              "--if-revision", str(revision), "--idempotency-key", secrets.token_hex(16)],
+                             remote=True)
+            require(client["client"]["confidential"] is False and client["client_secret"] is None
+                    and client["client"]["redirect_uris"] == [relying_party.redirect_uri],
+                    "RP public client registration mismatch")
+            passed("local_rp_registered", public_client=True, exact_loopback_callback=True,
+                   **relying_party.provider())
+            passed("application_login_before_backup", **relying_party.login(user_session))
 
             backup = success(["backup", "--key-file", str(backup_key), "--out", str(archive)],
                              remote=True, timeout=120)
@@ -234,7 +286,8 @@ def run(binary, evidence):
                    gate_preserved=True)
 
             # This attestation is justified only for the synthetic fixture: both
-            # persistent passwords were just issued and verified above.
+            # persistent passwords were just issued and verified above, and the
+            # public fixture client has no secret or post-snapshot policy changes.
             completed = success(["recovery", "complete", "--recovery-id", recovery_id,
                                  "--persistent-credentials-reconciled"])
             require(completed["serving_allowed"] is True, "completion did not open gate")
@@ -262,11 +315,17 @@ def run(binary, evidence):
                     "restored discovery failed")
             require(keys_status == 200 and len(keys["keys"]) > 0, "restored JWKS failed")
             passed("restored_service_and_login", ready_http_status=200, username="drill-user",
+                   login_kind="identity_service",
                    doctor_healthy=True, doctor_encrypted_at_rest=True,
                    discovery_http_status=discovery_status,
                    jwks_http_status=keys_status, jwks_key_count=len(keys["keys"]))
+            passed("application_login_after_restore", **relying_party.login(user_session, restored=True))
         finally:
-            stop(service)
+            try:
+                if relying_party is not None:
+                    relying_party.close()
+            finally:
+                stop(service)
 
 
 def main():
@@ -277,19 +336,29 @@ def main():
     binary = args.binary.resolve(strict=True)
     require(args.evidence.parent.is_dir(), "evidence parent directory does not exist")
     require(not args.evidence.exists(), "evidence output already exists")
+    oidc = load_oidc()
     evidence = {"schema_version": "riauth.recovery-drill/v1",
                 "started_at": datetime.now(timezone.utc).isoformat(),
                 "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-                "scope": "disposable localhost redb, real CLI and HTTP service",
+                "script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                "oidc_helper_sha256": hashlib.sha256(Path(oidc.__file__).read_bytes()).hexdigest(),
+                "scope": "disposable localhost redb, real CLI/HTTP service and synthetic local OIDC RP",
                 "checks": [], "result": "failed",
                 "external_gates": ["lost backup key", "lost encrypted database key without archive",
                                    "missing configured secret files", "Vault Transit and other external services",
-                                   "PostgreSQL PITR and multi-node failover", "real OIDC or SAML relying party"]}
+                                   "PostgreSQL PITR and multi-node failover",
+                                   "deployed external OIDC or SAML relying party"]}
     try:
-        run(binary, evidence)
+        evidence["observed_source"] = source_provenance()
+        run(binary, evidence, oidc)
+        require(hashlib.sha256(binary.read_bytes()).hexdigest() == evidence["binary_sha256"],
+                "binary changed during drill")
         evidence["result"] = "passed"
     except Exception as error:
-        evidence["failure"] = {"type": type(error).__name__, "message": str(error)}
+        # Foreign exception strings can echo arguments, tokens or callback URLs.
+        message = (str(error) if isinstance(error, (DrillFailure, oidc.DrillFailure))
+                   else "drill operation failed; private exception details suppressed")
+        evidence["failure"] = {"type": type(error).__name__, "message": message}
     evidence["finished_at"] = datetime.now(timezone.utc).isoformat()
     write_evidence(args.evidence, evidence)
     print(json.dumps({"result": evidence["result"], "checks": len(evidence["checks"]),

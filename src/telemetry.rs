@@ -336,6 +336,91 @@ impl Reads {
     }
 }
 
+/// Why one remote signing attempt failed: one fixed label per failure site. A
+/// label never carries a signer, key or domain name, URL, path, status code,
+/// response body or error text; an HTTP status is reduced to its class.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteSigningFailure {
+    StoredKey,
+    ConfigurationBinding,
+    SignerConfiguration,
+    CredentialRead,
+    CredentialShape,
+    CaSetup,
+    ClientSetup,
+    Transport,
+    Http3xx,
+    Http4xx,
+    Http5xx,
+    HttpOther,
+    ResponseSize,
+    ResponseShape,
+    ResponseVersion,
+    SignatureVerification,
+    Encoding,
+    EditionUnsupported,
+}
+// A new variant must also extend `COUNT` and `ALL`, or this fails to compile.
+const _: () =
+    assert!(RemoteSigningFailure::EditionUnsupported as usize + 1 == RemoteSigningFailure::COUNT);
+impl RemoteSigningFailure {
+    pub const COUNT: usize = 18;
+    pub const ALL: [RemoteSigningFailure; Self::COUNT] = [
+        RemoteSigningFailure::StoredKey,
+        RemoteSigningFailure::ConfigurationBinding,
+        RemoteSigningFailure::SignerConfiguration,
+        RemoteSigningFailure::CredentialRead,
+        RemoteSigningFailure::CredentialShape,
+        RemoteSigningFailure::CaSetup,
+        RemoteSigningFailure::ClientSetup,
+        RemoteSigningFailure::Transport,
+        RemoteSigningFailure::Http3xx,
+        RemoteSigningFailure::Http4xx,
+        RemoteSigningFailure::Http5xx,
+        RemoteSigningFailure::HttpOther,
+        RemoteSigningFailure::ResponseSize,
+        RemoteSigningFailure::ResponseShape,
+        RemoteSigningFailure::ResponseVersion,
+        RemoteSigningFailure::SignatureVerification,
+        RemoteSigningFailure::Encoding,
+        RemoteSigningFailure::EditionUnsupported,
+    ];
+    pub fn label(self) -> &'static str {
+        match self {
+            RemoteSigningFailure::StoredKey => "stored_key",
+            RemoteSigningFailure::ConfigurationBinding => "configuration_binding",
+            RemoteSigningFailure::SignerConfiguration => "signer_configuration",
+            RemoteSigningFailure::CredentialRead => "credential_read",
+            RemoteSigningFailure::CredentialShape => "credential_shape",
+            RemoteSigningFailure::CaSetup => "ca_setup",
+            RemoteSigningFailure::ClientSetup => "client_setup",
+            RemoteSigningFailure::Transport => "transport",
+            RemoteSigningFailure::Http3xx => "http_3xx",
+            RemoteSigningFailure::Http4xx => "http_4xx",
+            RemoteSigningFailure::Http5xx => "http_5xx",
+            RemoteSigningFailure::HttpOther => "http_other",
+            RemoteSigningFailure::ResponseSize => "response_size",
+            RemoteSigningFailure::ResponseShape => "response_shape",
+            RemoteSigningFailure::ResponseVersion => "response_version",
+            RemoteSigningFailure::SignatureVerification => "signature_verification",
+            RemoteSigningFailure::Encoding => "encoding",
+            RemoteSigningFailure::EditionUnsupported => "edition_unsupported",
+        }
+    }
+    /// The class of a non-success HTTP status, never the status itself.
+    pub fn status(status: reqwest::StatusCode) -> Self {
+        if status.is_redirection() {
+            RemoteSigningFailure::Http3xx
+        } else if status.is_client_error() {
+            RemoteSigningFailure::Http4xx
+        } else if status.is_server_error() {
+            RemoteSigningFailure::Http5xx
+        } else {
+            RemoteSigningFailure::HttpOther
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Telemetry {
     pub(crate) background: crate::background::Stats,
@@ -348,6 +433,8 @@ pub struct Telemetry {
     pub password: Histogram,
     pub cleanup: Histogram,
     pub signing_errors: AtomicU64,
+    /// Remote signing failures by [`RemoteSigningFailure`]; each is also in `signing_errors`.
+    pub remote_signing_failures: [AtomicU64; RemoteSigningFailure::COUNT],
     pub cleanup_errors: AtomicU64,
     pub alert_delivery_errors: AtomicU64,
     pub scanned_records: AtomicU64,
@@ -400,13 +487,32 @@ impl Telemetry {
             Some(&self.pool_waiters),
         )
     }
+    /// Counts one remote signing failure and logs only its fixed label. The event
+    /// has no parent span, so request fields are not attached to it.
+    pub(crate) fn remote_signing_failed(&self, reason: RemoteSigningFailure) {
+        self.remote_signing_failures[reason as usize].fetch_add(1, Relaxed);
+        tracing::warn!(parent: None, reason = reason.label(), "remote signing failed");
+    }
+    fn remote_signing_snapshot(&self) -> Value {
+        Value::Object(
+            RemoteSigningFailure::ALL
+                .iter()
+                .map(|reason| {
+                    (
+                        reason.label().to_owned(),
+                        json!(self.remote_signing_failures[*reason as usize].load(Relaxed)),
+                    )
+                })
+                .collect(),
+        )
+    }
     pub(crate) fn pool_returned(&self, activity: Activity, held: Duration) {
         self.pool_hold.observe(held);
         self.activity_pool_hold.get(activity).observe(held);
         self.pool_in_use.leave();
     }
     pub fn snapshot(&self) -> Value {
-        json!({"write_wait":self.write_wait.snapshot(),"write_hold":self.write_hold.snapshot(),"pool_wait":self.pool_wait.snapshot(),"signing":self.signing.snapshot(),"password":self.password.snapshot(),"cleanup":self.cleanup.snapshot(),"signing_errors":self.signing_errors.load(Relaxed),"cleanup_errors":self.cleanup_errors.load(Relaxed),"alert_delivery_errors":self.alert_delivery_errors.load(Relaxed),"scanned_records":self.scanned_records.load(Relaxed),"optimistic_conflicts":self.optimistic_conflicts.load(Relaxed),
+        json!({"write_wait":self.write_wait.snapshot(),"write_hold":self.write_hold.snapshot(),"pool_wait":self.pool_wait.snapshot(),"signing":self.signing.snapshot(),"password":self.password.snapshot(),"cleanup":self.cleanup.snapshot(),"signing_errors":self.signing_errors.load(Relaxed),"remote_signing_failures":self.remote_signing_snapshot(),"cleanup_errors":self.cleanup_errors.load(Relaxed),"alert_delivery_errors":self.alert_delivery_errors.load(Relaxed),"scanned_records":self.scanned_records.load(Relaxed),"optimistic_conflicts":self.optimistic_conflicts.load(Relaxed),
             "background":self.background.snapshot(),
             "writer":{"waiters":self.write_waiters.snapshot(),"commit":self.commit.snapshot(),"wait_by_activity":self.activity_write_wait.snapshot(),"hold_by_activity":self.activity_write_hold.snapshot()},
             "pool":{"capacity":self.pool_capacity.load(Relaxed),"waiters":self.pool_waiters.snapshot(),"in_use":self.pool_in_use.snapshot(),"hold":self.pool_hold.snapshot(),"wait_by_activity":self.activity_pool_wait.snapshot(),"hold_by_activity":self.activity_pool_hold.snapshot(),"connect":self.pool_connect.snapshot(),"connect_errors":self.pool_connect_errors.load(Relaxed),"timeouts":self.pool_timeouts.load(Relaxed),"discarded":self.pool_discarded.load(Relaxed)},
@@ -499,6 +605,23 @@ impl Telemetry {
                 counter.load(Relaxed)
             )
             .unwrap();
+        }
+        writeln!(
+            output,
+            "# TYPE riauth_remote_signing_failures_total counter"
+        )
+        .unwrap();
+        // Like activity labels, a reason's series appears once it has been observed.
+        for reason in RemoteSigningFailure::ALL {
+            let count = self.remote_signing_failures[reason as usize].load(Relaxed);
+            if count > 0 {
+                writeln!(
+                    output,
+                    "riauth_remote_signing_failures_total{{reason=\"{}\"}} {count}",
+                    reason.label()
+                )
+                .unwrap();
+            }
         }
         for (name, occupancy) in [
             ("storage_write_waiters", &self.write_waiters),
