@@ -1460,7 +1460,8 @@ longer matches makes a later verifier seal the open run as `policy_changed`. Omi
 leaves the stored approval as the selection, including after `Core::open`.
 
 The author records a desired-state plan with exactly one workflow and empty
-users, groups, clients, sources, source links, and delegated grants. A second
+users, groups, clients, sources, source links, delegated grants, SSF streams,
+and connector definitions or retirements. A second
 enabled administrator approves or refuses that stored plan. A third enabled
 administrator activates an approval. The three parties are distinct, non-agent,
 and non-delegated. Each authority digest is the live review binding of that
@@ -1472,6 +1473,55 @@ are `POST /api/admin/workflows/review` (`plan_id`, `decision`),
 `POST /api/admin/workflows/revoke` (`workflow_id`), under the same same-origin
 writer guard as plan and apply. Configured execution stays
 `POST /api/workflows/configured/{workflow}`.
+
+A bearer session reaches the same three services through
+`POST /api/workflow-approvals/review` (`plan_id`, `decision`),
+`POST /api/workflow-approvals/activate` (`plan_id`), and
+`POST /api/workflow-approvals/revoke` (`workflow_id`). Each needs a full human
+administrator: an agent, a delegated human, or a non-administrator is refused
+with 403. Each also needs an `Idempotency-Key` and an `If-Match` naming the
+management revision (current for review, revocation and first activation), or it
+returns 428 `precondition_required`; a stale revision on those first operations is
+`409 Configuration revision changed`. The services are the portal's
+own, unchanged, so the three distinct administrators, the plan content check,
+and the authority digests are identical, and a plan still binds the revision it
+was planned at: review and activation need that revision to be current. A
+review or revocation retry by the same administrator with the same key and
+request returns the recorded outcome before the revision is compared, and the
+same key with another request is `409 Idempotency key was used for a different
+request`. Their receipt replay, revision comparison, operation, and receipt share
+one store transaction, like other management writes: a command that fails stores
+no receipt and its key stays usable, and a revocation retry is answered from its
+receipt rather than by repeating.
+
+An activation retry is never answered from a receipt. A human administrator is
+required first (403 before any receipt work, so a receipt held for the key never
+turns it into a key conflict). A receipt for the key is checked for expiry,
+request, and permissions, but its stored result is not returned: the retry is
+revalidated against the live selection, in the one writer that holds the receipt.
+A valid retry, with the same key or a new one, returns the current approval view
+with no new audit entry, revision, approval, or receipt. A valid legacy replay
+may repair a missing retained review pin in this writer; this is not a blanket
+write-free guarantee. A stale selection (for
+example a disabled reviewer, or a changed issuer) seals its open pinned runs,
+commits that sealing, and returns `409 Workflow approval is not active`. A revoked
+or superseded approval answers `409 Workflow approval already exists`, with
+nothing written. `If-Match` is compared only before a first activation and before
+any write, so a retry with an outdated revision is judged on the selection, not
+on the revision. A key still names one request: reusing it with a refreshed
+`If-Match` (or another plan) is a different request and returns `409 Idempotency
+key was used for a different request` before the selection is looked at and
+without sealing anything, so retry after the revision moved with a new key. A
+first activation stores its receipt in the same transaction; a first activation
+that fails stores none.
+The server CLI runs them as `riauth --if-revision REVISION --idempotency-key KEY
+workflow review PLAN_ID --decision approve|refuse`, `workflow activate PLAN_ID`,
+and `workflow revoke WORKFLOW_ID`, each from a different administrator's
+session. The plan itself is made with the existing desired-state `plan` command.
+The standalone client sends the same requests as `riauthctl workflow review
+PLAN_ID --decision approve|refuse`, `workflow activate PLAN_ID` and `workflow
+revoke WORKFLOW_ID`, always with `If-Match` and an `Idempotency-Key`, and
+accepts a response only if it names the requested plan or workflow id.
 
 Review and activation require the plan hash to match its content digest. A
 mutated plan returns `Plan was modified; create a new plan` and writes no

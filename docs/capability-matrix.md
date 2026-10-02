@@ -232,7 +232,7 @@ this page. CI steps are written for the default Platform build.
 `whoami`, `logout`, `revision`, `inventory`, `user`, `group`, `client`,
 `grants`, `agent`, `registration`, `key`, `invitation`, `windows-device`,
 `certificate`, `radius`, `source`, `access`, `offboard`, `directory`,
-`provision`, `ssf` (Platform: `stream create|list|delete`), `backup`, `session`,
+`provision`, `workflow` (Platform: `review`, `activate`, `revoke`), `ssf` (Platform: `stream create|list|delete`), `backup`, `session`,
 `request`, `device`, `authorize`, `plan`, and `apply`
 (`apply --confirm-removals PLAN_ID` for a plan that removes access). `grants`, `group review`, `client review`, `client endpoint-review`,
 `client status-review` and `client creation-review` drive the reviewed
@@ -246,7 +246,8 @@ In-tree coverage is a local TCP fixture in
 [`crates/riauthctl/tests/m03_agent.rs`](../crates/riauthctl/tests/m03_agent.rs),
 [`crates/riauthctl/tests/m03_parity.rs`](../crates/riauthctl/tests/m03_parity.rs)
 [`crates/riauthctl/tests/m03_parity_platform.rs`](../crates/riauthctl/tests/m03_parity_platform.rs),
-[`crates/riauthctl/tests/m03_parity_ops.rs`](../crates/riauthctl/tests/m03_parity_ops.rs)
+[`crates/riauthctl/tests/m03_parity_ops.rs`](../crates/riauthctl/tests/m03_parity_ops.rs),
+[`crates/riauthctl/tests/m03_parity_workflow.rs`](../crates/riauthctl/tests/m03_parity_workflow.rs)
 and [`crates/riauthctl/tests/m03_parity_ssf_backup.rs`](../crates/riauthctl/tests/m03_parity_ssf_backup.rs),
 plus the ignored [`tests/m03_reviewed_grants_e2e.rs`](../tests/m03_reviewed_grants_e2e.rs),
 [`tests/m03_agent_e2e.rs`](../tests/m03_agent_e2e.rs),
@@ -262,8 +263,10 @@ local TCP fixture only. The ignored
 [`tests/m03_riauthctl_backends_postgres.rs`](../tests/m03_riauthctl_backends_postgres.rs)
 compares one selected sequence on redb, encrypted redb, plain and encrypted
 PostgreSQL through source-built binaries and a disposable loopback cluster.
-These local fixtures do not establish official-artifact or external-tenant
-acceptance. The operations port adds their definitions without running them.
+The ignored [`tests/m03_workflow_approval_e2e.rs`](../tests/m03_workflow_approval_e2e.rs)
+also defines a three-administrator approval/revocation journey through these
+source-built binaries. These local fixtures do not establish official-artifact
+or external-tenant acceptance. The operations port adds their definitions without running them.
 The check job is written to run that suite without default features. The
 client cannot activate a capability the server build omitted.
 
