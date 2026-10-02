@@ -360,6 +360,9 @@ pub enum RemoteSigningFailure {
     Encoding,
     EditionUnsupported,
 }
+// A new variant must also extend `COUNT` and `ALL`, or this fails to compile.
+const _: () =
+    assert!(RemoteSigningFailure::EditionUnsupported as usize + 1 == RemoteSigningFailure::COUNT);
 impl RemoteSigningFailure {
     pub const COUNT: usize = 18;
     pub const ALL: [RemoteSigningFailure; Self::COUNT] = [

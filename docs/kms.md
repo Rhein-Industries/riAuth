@@ -50,8 +50,9 @@ process-local signing failures; see [operations](operations.md).
 Each failed remote signing attempt also counts under exactly one fixed reason, in
 `riauth_remote_signing_failures_total{reason="..."}` and in
 `runtime.remote_signing_failures` of `riauth metrics`. It also writes one
-`remote signing failed` warning that carries only the reason. A failed key bind
-counts the same way, because binding signs a test token. Neither the reason nor
+`remote signing failed` warning that carries only the reason. A key bind whose
+test signature fails counts the same way; a bind refused before that signature,
+for example for an unknown signer, is not counted. Neither the reason nor
 the warning contains a signer, key or domain name, URL, path, token, claims,
 response body, status code or error text. The public error is unchanged: the API
 still returns the status, code and message described in
@@ -66,7 +67,7 @@ The checks below are things to look at; a reason does not prove a cause.
 | `stored_key` | The stored remote key's metadata is inconsistent. Nothing was sent. | Do not edit the store by hand. Restore from a verified backup, or bind a new key with `riauth keys bind` after review. |
 | `configuration_binding` | No configured signer has the stored signer name, `key_version` and `public_jwk`. Nothing was sent. | Restore that `[signers]` entry on this node exactly as it was bound. A different version or pin needs a reviewed new bind, not a pin edit. |
 | `signer_configuration` | The configured signer fails validation when it is used. Nothing was sent. | The signer's address, mount, key name, `key_version` and namespace. |
-| `credential_read` | The token file is missing, is not an owner-only regular file, or is larger than 4096 bytes. Nothing was sent. | The token file's path, owner, mode and size. |
+| `credential_read` | The token file is missing, is not an owner-only regular file, is larger than 4096 bytes, or cannot be read as text. Nothing was sent. | The token file's path, owner, mode and size. |
 | `credential_shape` | The token is empty after trimming, too long, or not ASCII graphic. Nothing was sent. | That the token file holds only the Vault token. |
 | `ca_setup` | The configured `ca_file` could not be read. Nothing was sent. | The CA file's path and permissions. |
 | `client_setup` | The HTTP client could not be built, for example because `ca_file` holds a malformed PEM block. Nothing was sent. | The CA file's contents. A file with no PEM block adds no certificate. |
