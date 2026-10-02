@@ -9106,3 +9106,32 @@ A static fence assertion exited1 after mistakenly removing that required
 Markdown separator; restoring only the separator corrected the archive, without
 changing the command/source hashes or executing anything. This static formatting
 failure remains distinct from all historical fixture failures.
+
+
+### Root review of the observer-aware controller design
+
+Root read the complete immutable 2e29c30 controller, 463-line browser cell,
+collector bodies, preparation boundary, prose and declared diffs. Reversing the
+complete zero-context cell diff reproduced all 18,091 original bytes and SHA256
+0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e.
+The complete previously published report, archive encoding and root appendices
+are retained, followed by the exact 116,987-byte author append. An initial root
+prefix check omitted the already documented inserted encoding note and refused
+before writing; including that note restored the intended preservation check.
+A root-note append first used the orchestrator directory and failed before any
+write. The author-only append was committed separately; this note follows it.
+
+One source-derived lifecycle blocker remains: successful entry does not change
+stored `own.phase` from `prepared_entry` to `browser_decision`, while populating
+helper/readiness fields that the prepared-entry gate refuses on the next call.
+Root reserved a report-only proposal for the successful-entry phase transition
+and an independent review. This is not an observed fixture failure or a claim
+about the earlier unknown sender or unexpected exception.
+
+The distinct [descriptor memory receipt](evidence/wave30-d01-descriptor-memory-0ec651d.json)
+now records one actual 128/128 memory pass. That result does not validate this
+changed controller or prove a browser journey. Exact preparation/private-input
+adapters, partial-ownership cleanup, changed-cell verification and a separately
+released fixture remain prerequisites. No proposed controller, collector,
+marker, Driver call or helper was executed by this root review. Runtime remains
+held and original D01/D05 disposition remains open.
