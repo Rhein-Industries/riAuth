@@ -245,3 +245,28 @@ last-member helper cursor was1 instead of2, and uncertain-PATCH completion
 wasfalse. This publication contained20dd holders, preceding f89's two passes.
 Later USB/client/docs/release steps were not reached. The local repeat's
 different failure set and this Linux result are both retained.
+
+## Guarded scheduling-helper source proposal
+
+Root fully read10b0e9e055af1644ceff08f8577f11caeae1bf1d and independently
+read connector_due selection, claim/step, durable error and finish bodies.
+A selected claim unconditionally parks a cursor before dispatch; neither finish
+nor error deletes that cursor. In these sequential isolated fixtures, a prior
+cursor becoming absent after a successful first call therefore identifies
+exhaustion without selection. At most one additional public scheduling pass
+can then occur without dispatching a second resource after a selected first pass.
+The proof requires no concurrent cursor writer and makes no universal progress claim.
+
+Only the existing private step helper is reserved for the exact proposed change;
+all26 caller sites, assertions,20dd holders and f89 direct calls remain protected.
+Read errors and the first Core error propagate. The proposal is not write-free:
+ordinary scheduling/admission bookkeeping and one fenced resource outcome remain.
+No changed helper is compiled/run at this review. Current native22/2 and
+published Linux21/3 failures stay intact; latest d5b60bc CI37027444516 is running,
+with no green conclusion.
+
+Independent I02 source review identified one uncompiled fixture mismatch:
+the new nonroot /identity case reuses an upstream token helper asserting the
+root callback URL. Production source_callback_url includes the issuer base path.
+The exact protected helper correction needs its own reservation; no production
+defect or runtime result is inferred from this static finding.

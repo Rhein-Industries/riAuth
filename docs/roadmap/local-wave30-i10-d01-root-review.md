@@ -221,3 +221,28 @@ Existing failure tag, replies, flow/crypto/provider/limits remain unchanged.
 The first failed fixed predicate can be observed only in a separately released
 fresh fixture after publication; old evidence is not augmented retrospectively.
 D01/D05 remain open. O06/I10/R05 remain closed.
+
+## New diagnostic fixture: observed authorization predicate only
+
+Root fully read cfacf75ada2472244f828d6158dc2ab18ceda173 and independently
+read/hash-checked its4046-byte private0600 result
+aefdc34827486859e08a1e28de0a09505af65b4afdf9f1ba5f952fa0208595fa.
+All prior76829 report bytes and reviewed helper7461ab5 remain unchanged.
+The one newly released fixture exited1 before any Driver/browser action.
+Its first fixed reason authorization establishes only that get_all(Authorization)
+was non-null after the preceding Host check. No header value, sender, target or
+method was retained. The older request failure remains unclassified.
+
+Init/login/client-create/discovery/whoami exited0, readiness was200 and both
+owned listener identities were checked. Helper credential/provider/discovery
+checks passed; all browser/protocol/crypto/protected checks remainedfalse and
+all six helper HTTP statuses remainednull. Numeric owned child exits and all
+eight absent-PID readbacks were retained; both ports and private lab were absent.
+The server's numeric cleanup exit0 is observed for this attempt only.
+Minimum outer14558846976 bytes and helper14558842880 bytes exceeded8.5GiB;
+no deletion occurred. Desktop/operator released before the append, Cargo untouched.
+
+Root reserved read-only review of the exact controller/request construction.
+The reason alone does not justify a source correction, a sender attribution or
+a relaxed no-Authorization guard. No new fixture or browser success is credited.
+D01/D05 remain open; O06/I10/R05 remain closed.

@@ -111,3 +111,30 @@ identity and disk preflight, private capped captures,9GiB stop/8floor and owned
 process-group cleanup are required. Compile failure stops without correction
 or retry. The ignored Rust filter stays held pending actual compile success
 and fresh capacity; this source decision adds no interoperability result.
+
+## Actual compiler output and first ignored filter
+
+Root fully read compiler receipt f481938a999cf3c95e953f0c1ddd402be9706364
+and independently hashed the selected C source, library, four private captures
+and output executable. One pkg-config metadata child and one cc-O2 child exited0;
+the wrapper completed in0.356856 seconds. The39472-byte arm64 Mach-O helper
+has SHA-25618f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c.
+This establishes compile/link output and load names, not native lifecycle success.
+Preparation released before its report; root then separately released one filter.
+
+That exact ignored filter compiled in56.22 seconds and exited101:0passed1failed
+1filtered, test2.58 seconds, wrapper59.686627 seconds. Root read all1304 raw log
+bytes and hashed private0600 log a253f09fb45a4641d8373eb9318ca66bf11ff237e7570b490b24d02d6c2b4f03
+and supervisor metadata22104b9b038bf784a28d51e5d05b360715be17a11a2f60544296225ad9eed2d6.
+The owned group63914 was empty after joined exit; no cleanup signals or deadline/
+disk stop occurred. Thirty disk samples had minimum13705166848 bytes.
+
+The assertion at tests/saml_sp_peer.rs897 combines native exit1 with stderr
+containing(-111), but prints neither actual native status nor finite Lasso code.
+Which conjunct failed is unknown. Earlier SSO persistence/reload, local revocation
+before peer delivery, unrelated identity and exact issued NameID/index checks
+completed. Negative no-output/unchanged-input assertions and all positive logout
+processing, session retirement, response confirmation and consumed-replay checks
+were not reached. No signature bypass or expected-code correction is established.
+Cargo released immediately before reporting. No repeat is authorized by this
+review; a finite status/stage/code observation must precede any concrete correction.
