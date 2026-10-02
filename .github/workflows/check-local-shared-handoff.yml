@@ -236,7 +236,7 @@ jobs:
             "imports": {
               "check-exact-edition-matrix.py": "f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887",
               "check-installed-release-gate.py": "cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5",
-              "check-local-edition-transition-postgres.py": "d86d9a99c9e09e29eb43af52f409332e11a70caaed90b5545bf132df1f2a1982",
+              "check-local-edition-transition-postgres.py": "4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa",
               "check-local-encrypted-edition-transition.py": "09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e",
               "spdx_sbom.py": "ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c"
             },
@@ -312,6 +312,73 @@ jobs:
           def read_json(path, maximum=2 * 1024 ** 2):
               require(regular(path).st_size <= maximum, "json_size_limit")
               return json.loads(path.read_text())
+
+
+          def snapshot_counts(value):
+              labels = ("http_rates", "http_rate_expiry", "http_rate_count",
+                        "maintenance_cursors", "maintenance_bounds", "protected_or_other")
+              fields = ("before", "after", "added", "changed", "removed")
+              if (type(value) is not dict or len(value) != len(labels)
+                      or any(type(key) is not str for key in value) or set(value) != set(labels)):
+                  return None
+              result = {}
+              for label in labels:
+                  counts = value[label]
+                  if (type(counts) is not dict or len(counts) != len(fields)
+                          or any(type(key) is not str for key in counts) or set(counts) != set(fields)
+                          or any(type(counts[field]) is not int or not 0 <= counts[field] <= 1_000_000
+                                 for field in fields)):
+                      return None
+                  result[label] = {field: counts[field] for field in fields}
+              return result
+
+
+          def failure_packet(raw):
+              if type(raw) is not bytes or len(raw) > 2048:
+                  return None
+              duplicate = False
+
+              def pairs(items):
+                  nonlocal duplicate
+                  result = {}
+                  for key, value in items:
+                      if key in result:
+                          duplicate = True
+                      result[key] = value
+                  return result
+
+              try:
+                  value = json.loads(raw.decode("utf-8"), object_pairs_hook=pairs)
+              except (UnicodeError, ValueError, RecursionError):
+                  return None
+              classes = {"AssertionError", "RuntimeError", "ValueError", "TypeError", "KeyError",
+                         "IndexError", "NameError", "ImportError", "ModuleNotFoundError", "OSError",
+                         "FileNotFoundError", "PermissionError", "SyntaxError", "SystemExit",
+                         "KeyboardInterrupt", "Other"}
+              base_keys = {"exception_class", "frames"}
+              if (type(value) is not dict or not base_keys <= set(value)
+                      or type(value["exception_class"]) is not str or value["exception_class"] not in classes
+                      or type(value["frames"]) is not list or len(value["frames"]) > 8
+                      or not all(type(frame) is dict and set(frame) == {"file", "line"}
+                                 and type(frame["file"]) is str
+                                 and frame["file"] in set(FIXED["imports"]) | {"bootstrap.py"}
+                                 and type(frame["line"]) is int and 1 <= frame["line"] <= 4096
+                                 for frame in value["frames"])):
+                  return None
+              result = {"exception_class": value["exception_class"],
+                        "frames": [{"file": frame["file"], "line": frame["line"]} for frame in value["frames"]]}
+              if duplicate or set(value) != base_keys | {"store_snapshot_counts"} or value["exception_class"] != "AssertionError":
+                  return result
+              try:
+                  counts = snapshot_counts(value["store_snapshot_counts"])
+                  if counts is not None:
+                      projected = dict(result, store_snapshot_counts=counts)
+                      payload = (json.dumps(projected, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+                      if len(payload) <= 2048:
+                          result = projected
+              except BaseException:
+                  pass  # Retain only the original fixed class/frames if projection fails.
+              return result
 
 
           def native():
@@ -536,6 +603,24 @@ jobs:
           tempfile.TemporaryDirectory = RetainedFixture
           sys.argv = [str(helper), "--artifacts", str(artifacts), "--evidence", str(private / "helper.json"),
                       "--source-revision", sys.argv[4]]
+          def snapshot_counts(value):
+              labels = ("http_rates", "http_rate_expiry", "http_rate_count",
+                        "maintenance_cursors", "maintenance_bounds", "protected_or_other")
+              fields = ("before", "after", "added", "changed", "removed")
+              if (type(value) is not dict or len(value) != len(labels)
+                      or any(type(key) is not str for key in value) or set(value) != set(labels)):
+                  return None
+              result = {}
+              for label in labels:
+                  counts = value[label]
+                  if (type(counts) is not dict or len(counts) != len(fields)
+                          or any(type(key) is not str for key in counts) or set(counts) != set(fields)
+                          or any(type(counts[field]) is not int or not 0 <= counts[field] <= 1_000_000
+                                 for field in fields)):
+                      return None
+                  result[label] = {field: counts[field] for field in fields}
+              return result
+
           def failure_source(error):
               names = ("check-local-edition-transition-postgres.py", "check-exact-edition-matrix.py",
                        "check-installed-release-gate.py", "check-local-encrypted-edition-transition.py",
@@ -560,6 +645,16 @@ jobs:
                   tb, examined = tb.tb_next, examined + 1
               value = {"exception_class": classes.get(type(error), "Other"), "frames": frames}
               payload = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+              if type(error) is AssertionError:
+                  try:
+                      counts = snapshot_counts(getattr(error, "store_snapshot_counts", None))
+                      if counts is not None:
+                          projected = dict(value, store_snapshot_counts=counts)
+                          optional = (json.dumps(projected, sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+                          if len(optional) <= 2048:
+                              payload = optional
+                  except BaseException:
+                      pass  # Keep the original fixed class/frames and original failure.
               if len(payload) <= 2048:
                   fd = os.open(private / "helper-failure-source.json",
                                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -968,18 +1063,11 @@ jobs:
                                     FIXED["imports"][HELPER], FIXED["product_sha"]], 600, env)
                   except Refusal:
                       try:
-                          value = read_json(PRIVATE / "helper-failure-source.json", 2048)
-                          classes = {"AssertionError", "RuntimeError", "ValueError", "TypeError", "KeyError",
-                                     "IndexError", "NameError", "ImportError", "ModuleNotFoundError", "OSError",
-                                     "FileNotFoundError", "PermissionError", "SyntaxError", "SystemExit",
-                                     "KeyboardInterrupt", "Other"}
-                          require(type(value) is dict and set(value) == {"exception_class", "frames"} and
-                                  type(value["exception_class"]) is str and value["exception_class"] in classes and
-                                  type(value["frames"]) is list and len(value["frames"]) <= 8 and
-                                  all(type(frame) is dict and set(frame) == {"file", "line"} and
-                                      type(frame["file"]) is str and frame["file"] in set(FIXED["imports"]) | {"bootstrap.py"} and
-                                      type(frame["line"]) is int and 1 <= frame["line"] <= 4096
-                                      for frame in value["frames"]), "helper_failure_source_shape")
+                          observer = PRIVATE / "helper-failure-source.json"
+                          require(regular(observer).st_size <= 2048, "json_size_limit")
+                          with observer.open("rb") as source:
+                              value = failure_packet(source.read(2049))
+                          require(value is not None, "helper_failure_source_shape")
                           self.data["helper_failure_source"] = value
                           self.save()
                       except Exception:

@@ -1087,6 +1087,11 @@ class Cohort:
                     and ["blobs/sha256/" + x["digest"].split(":")[1] for x in oci["layers"]] == layers,
                     "oci_image_manifest_binding")
             allowed.add(name)
+        if (self.receipt.get("daemon", {}).get("ServerVersion") == "28.0.4"
+                and all(type(x) is str and re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", x)
+                        for x in layers)):
+            allowed |= self.expected_v28_legacy_members(
+                settings, layers, members, hashes, payloads, edition, allowed)
         for layer in layers:
             parent = str(pathlib.PurePosixPath(layer).parent)
             if parent != "." and not layer.startswith("blobs/sha256/"):
@@ -1095,6 +1100,118 @@ class Cohort:
         for name, actual in hashes.items():
             if name.startswith("blobs/sha256/"):
                 require(name == "blobs/sha256/" + actual, "image_blob_digest")
+
+    def expected_v28_legacy_members(self, settings, layers, members, hashes, payloads,
+                                   edition, ordinary_allowed):
+        """Derive only the fixed recipe's v28.0.4 legacy blobs, never classify extras."""
+        self.check_budget()
+        require(type(settings) is dict and set(settings) == {
+                    "architecture", "config", "created", "history", "os", "rootfs"}
+                and settings["architecture"] == self.selected["oci_arch"]
+                and settings["os"] == "linux" and type(settings["history"]) is list
+                and edition in {"essentials", "platform"}
+                and re.fullmatch(r"a09-[0-9a-f]{32}", self.owner) is not None,
+                "image_legacy_profile")
+        rootfs = settings["rootfs"]
+        require(type(rootfs) is dict and set(rootfs) == {"type", "diff_ids"}
+                and rootfs["type"] == "layers" and type(rootfs["diff_ids"]) is list
+                and 1 <= len(rootfs["diff_ids"]) <= 128
+                and all(type(x) is str and re.fullmatch(r"sha256:[0-9a-f]{64}", x)
+                        for x in rootfs["diff_ids"]), "image_legacy_rootfs")
+        diff_ids = rootfs["diff_ids"]
+        require(len(set(diff_ids)) == len(diff_ids)
+                and layers == ["blobs/sha256/" + x[7:] for x in diff_ids]
+                and all(name in members and members[name].isfile()
+                        and hashes.get(name) == diff_id[7:]
+                        for name, diff_id in zip(layers, diff_ids)), "image_legacy_layers")
+        expected_config = {
+            "User": "10001:10001", "Cmd": ["serve"],
+            "Entrypoint": ["riauth", "--config", "/data/riauth.toml"],
+            "WorkingDir": "/data", "Volumes": {"/data": {}},
+            "ExposedPorts": {"9000/tcp": {}},
+            "Env": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
+            "ArgsEscaped": True,
+            "Labels": {OWNER_LABEL: self.owner, "org.riauth.edition": edition,
+                "org.opencontainers.image.revision": self.selected["source"],
+                "org.opencontainers.image.source": "https://github.com/" + REPOSITORY},
+        }
+
+        def exact(value, expected):
+            if type(value) is not type(expected):
+                return False
+            if type(expected) is dict:
+                return value.keys() == expected.keys() and all(
+                    exact(value[key], item) for key, item in expected.items())
+            if type(expected) is list:
+                return len(value) == len(expected) and all(
+                    exact(item, wanted) for item, wanted in zip(value, expected))
+            return value == expected
+
+        require(exact(settings["config"], expected_config), "image_legacy_config")
+        created = settings["created"]
+        require(type(created) is str and re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+            r"(?:\.[0-9]{0,8}[1-9])?Z", created) is not None, "image_legacy_created")
+        try:
+            datetime.datetime.strptime(created[:19], "%Y-%m-%dT%H:%M:%S")
+        except ValueError:
+            raise Refusal("image_legacy_created") from None
+        # Pinned Go container.Config declaration order, including mandatory zero fields.
+        zero_config = {
+            "Hostname": "", "Domainname": "", "User": "",
+            "AttachStdin": False, "AttachStdout": False, "AttachStderr": False,
+            "Tty": False, "OpenStdin": False, "StdinOnce": False,
+            "Env": None, "Cmd": None, "Image": "", "Volumes": None,
+            "WorkingDir": "", "Entrypoint": None, "OnBuild": None, "Labels": None,
+        }
+        runtime_config = {}
+        for key, value in zero_config.items():
+            runtime_config[key] = expected_config.get(key, value)
+            if key == "AttachStderr":
+                runtime_config["ExposedPorts"] = expected_config["ExposedPorts"]
+            if key == "Cmd":
+                runtime_config["ArgsEscaped"] = expected_config["ArgsEscaped"]
+        runtime_config["Labels"] = dict(sorted(expected_config["Labels"].items()))
+
+        def encode(value):
+            # Only constructed ASCII strings/bools/nulls/maps/lists reach this encoder.
+            # Preserve struct order; sorted map fields were constructed explicitly above.
+            return json.dumps(value, separators=(",", ":"), allow_nan=False).encode("ascii")
+
+        chain, previous = None, None
+        expected_members = set()
+        for ordinal, diff_id in enumerate(diff_ids):
+            self.check_budget()
+            chain = diff_id if chain is None else "sha256:" + digest(
+                (chain + " " + diff_id).encode("ascii"))
+            top = ordinal + 1 == len(diff_ids)
+            pre_id = {"created": created if top else "1970-01-01T00:00:00Z",
+                      "container_config": zero_config}
+            if top:
+                pre_id.update(config=runtime_config, architecture=self.selected["oci_arch"], os="linux")
+            id_map = {**pre_id, "layer_id": chain}
+            if previous is not None:
+                id_map["parent"] = "sha256:" + previous
+            # CreateID sorts only its top-level RawMessage map, retaining nested struct order.
+            legacy_id = digest(encode(dict(sorted(id_map.items()))))
+            saved = {"id": legacy_id}
+            if previous is not None:
+                saved["parent"] = previous
+            saved.update(pre_id)
+            # Intermediate OS is added after CreateID; the top already contained it.
+            saved["os"] = "linux"
+            expected = encode(saved)
+            expected_hash = digest(expected)
+            name = "blobs/sha256/" + expected_hash
+            require(name not in expected_members and name not in ordinary_allowed
+                    and name in members and members[name].isfile()
+                    and type(members[name].size) is int
+                    and members[name].size == len(expected) <= LOG_CAP
+                    and hashes.get(name) == expected_hash and payloads.get(name) == expected,
+                    "image_legacy_metadata_binding")
+            expected_members.add(name)
+            previous = legacy_id
+        return expected_members
 
     def inspect_product(self, edition, image):
         # Copy public product bytes from a never-started, controlled container.

@@ -1455,3 +1455,122 @@ this is a static source witness, not sandbox enforcement or dynamic privacy
 validation. `python3 scripts/check-docs.py` and `git diff --check` both exited
 0. Own helper/workflow remain the full immutable baseline; this report is
 the only changed file. No prospective function or synthetic case was run.
+
+## Exact source materialization and static evidence, 2026-10-02
+
+Reservation: `wave30_A09_snapshot_counts_source_materialization`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09 support in existing
+worktree `a1303b57-4a34-487e-9c63-a841f05b51a0`. Root approved only the two
+exact design diffs above and a separate evidence append. No design adjustment,
+alignment, merge/reset, whole-file import or other source change was made.
+The complete 89,229-byte `eae9415980bc5826ae8dc74b07af0e1ca8e62122` report
+prefix remains preserved, SHA-256
+`210bd44af62b2ceaac3d162cb10b1852e58473071487dd300625b826563835ad`.
+The earlier statements are evidence of their dated phases, including the
+unexecuted synthetic-validation proposal; they are not rewritten as results.
+
+Actual source commit:
+`d00c9680004be856c387e4faf03c14c1e62d6b0c`, parent
+`eae9415980bc5826ae8dc74b07af0e1ca8e62122`. It contains only these two
+files, 172 insertions / 15 deletions; both retain `100644` mode:
+
+| Committed source | Bytes | SHA-256 | Actual Git blob |
+| --- | --- | --- | --- |
+| scripts/check-local-edition-transition-postgres.py | 26,547 | `4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa` | `af764b71b95f8ad4d5e1d9b26d094dfa2eaafe49` |
+| .github/workflows/check-local-shared-handoff.yml | 82,149 | `226483dd9edcd5e566b6c5de9f7ab2a36ebdf0c0f204f8ec992645542a3f395f` | `f63110098c13d717446a198c487c00678cfeb60a` |
+
+Before editing, own clean HEAD/report and both complete source files were
+verified against immutable `f7af6cc85b938738e6152b4b0e5109e36a3abdec`:
+helper 23,518 bytes / `d86d9a99...`; workflow 77,543 bytes / `5290d7a5...`.
+Both exact zero-context patches were extracted from the immutable `eae9415`
+report fences, including their final newlines. `git apply --unidiff-zero
+--check -` then `git apply --unidiff-zero -` each exited 0. Complete resulting
+file lengths/hashes equal the reviewed candidates, with no substitution or
+context variation. No contrary source fact or new dependency was found.
+
+The exact materialized source keeps complete raw snapshot equality and the
+original fixed refusal assertion/message. Only an exact `AssertionError`
+from that comparison gets an attempted optional counts attachment; projection
+failure re-raises the original error. The source retains public CLI 4 /
+HTTP 403 / `access_denied`, fresh revision/key, all capture SQL/timeout/
+connection guards and all later actions/return data. The 8 MiB per-capture
+bound limits optional diagnostic parsing; it does not truncate the existing
+captures or filter the complete comparator. The six categories / thirty
+exact integer fields, duplicate/unknown-key fallback and finite observer
+2,048-byte cap match the reviewed source design without adjustment.
+
+Static checks actually run in this materialization phase all passed:
+
+* `git apply --unidiff-zero --reverse --check -` exited 0. Independent
+  in-memory reversal of both complete edited files restored every baseline
+  byte. Fresh actual zero-context diffs equal both archived patches exactly.
+* `ast.parse` of the complete helper, extracted complete inline controller
+  and complete bootstrap succeeded. All six changed/new function segments
+  equal their full archived bodies. Controller/bootstrap validator bodies
+  are byte-equal. No candidate code object/function or module was executed.
+* Full helper AST restoration permits only the new parser and changed
+  `shared_probe`; full controller restoration permits only the two pure
+  functions, `FIXED`/bootstrap literals and `Controller.helper`; full
+  bootstrap restoration permits only its validator and `failure_source`.
+  All restored ASTs equal the complete baseline ASTs. Fresh byte witnesses
+  preserve the original capture/authority section, public refusal assertions,
+  probe suffix and complete successful helper-report validation/output suffix.
+* Only the helper digest differs in the complete decoded `FIXED` map. Every
+  other value/role and all four other import hashes/source bytes are unchanged:
+  matrix `f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887`;
+  gate `cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5`;
+  encrypted fixture `09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e`;
+  SPDX `ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c`.
+* The complete actual inline controller is 66,841 bytes / SHA-256
+  `bda0a0fa30db096d92404de22dd5193c91d111c3890e30fe43034405abdd2369`;
+  its bootstrap source string is 5,111 bytes / SHA-256
+  `a8f7df1a172e1dc89672d2be54fa147eabf6a61864935e82fd86e2cf64839d33`.
+  These are source identities, not runtime artifact receipts.
+* Installed Ruby `Psych.safe_load` parsed the full workflow with no permitted
+  classes/symbols or aliases. Its three extracted run blocks each passed
+  `bash -n` (exit 0): owned preflight/supervisor, transport/sample and
+  cleanup/finalization. No shell run block/controller/bootstrap was executed.
+* The complete sequence of GitHub context expressions is byte-equal to the
+  baseline. Workflow bytes before/after the embedded controller are unchanged;
+  the new function/digest hunks remain in the same existing run-block context.
+  Product/artifact/build/validator boundaries, actions/permissions, resource
+  limits, sampling/deadlines, owned PID/cluster cleanup and fixed uploads
+  remain protected. No new context reference required an external query.
+* Static AST hygiene of the three isolated pure functions found no imports
+  or I/O/runtime names. This is a source witness, not executed privacy/schema
+  enforcement, memory measurement or a sandbox claim.
+* `python3 scripts/check-docs.py`, `git diff --check`, and source-stage
+  `git diff --cached --check` exited 0. Staged scope was exactly the two
+  reserved files. After commit, immutable file bytes matched disk and the
+  reviewed identities, commit scope was exactly those paths, branch was
+  clean, and the complete prior report was unchanged before this append.
+
+No new static check failed in this source phase. All earlier remote failures,
+source/design assembly observations and historical measurements remain intact.
+Hosted run `37060776569` still supplies only successful strict public refusal
+followed by full Store byte inequality; its changed rows and writer origin
+remain UNKNOWN. Materializing optional counts does not establish that rate
+bookkeeping was the actual cause or that the shared gate has passed.
+
+This source phase stops at immutable source/static evidence. No memory
+validation design adjustment, candidate function/harness/helper import,
+bootstrap/controller/module main, native product, PG/HTTP/provider/Cargo,
+container/dispatch/query/download/test, service/browser, secret row/private
+log inspection, cleanup/deletion, other-worker contact, new task/worktree/
+shell or main/push/status action occurred. Static Psych/bash parsing above
+was syntax/data inspection only. No runtime slot was taken or released.
+Next memory-validation design and any execution/hosted repeat require their
+own root reservations. Root alone owns review/integration/publication and
+distinct validator-source selection. Original A09 shared full gate remains
+open; I02/I10/R05/W02/W05 stay DONE, with no status mutation here.
+
+
+## Root implementation and independent source review, 2026-10-02
+
+Root read95965eb108-line source receipt and verified both actuald00c968 file
+identities equal the full reviewed eae candidates. Root read2c9e5ea entire254-line
+independent review: no concrete source blocker. Counts-only diagnostics are
+accepted as source; full raw Store comparison/public403/re-raised original
+error remain authoritative. The separately reserved complete memory design
+is pending; no counts or writer cause is inferred from37060776569 and no new
+hosted shared-gate invocation is released.

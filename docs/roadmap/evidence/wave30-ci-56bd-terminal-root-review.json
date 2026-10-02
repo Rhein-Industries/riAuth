@@ -1,0 +1,69 @@
+{
+  "schema": "riauth.wave30.ci-terminal-root-review/v1",
+  "reviewed_at": "2026-10-02T21:35:01.838018+00:00",
+  "repository": "Rhein-Industries/riAuth",
+  "run_id": 37061329345,
+  "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37061329345",
+  "product_source": "56bd0829514ed8014cc9563fc7b0e727dba46d1d",
+  "status": "completed",
+  "conclusion": "failure",
+  "terminal_metadata": {
+    "bytes": 8663,
+    "sha256": "ddd4112246de344872383abff0dcae3d9c3b492d2674a96bf64e804c422f55c9"
+  },
+  "jobs": {
+    "check": {
+      "id": 111020195345,
+      "conclusion": "failure",
+      "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37061329345/job/111020195345"
+    },
+    "integration": {
+      "id": 111020195467,
+      "conclusion": "success",
+      "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37061329345/job/111020195467"
+    },
+    "audit": {
+      "id": 111020195553,
+      "conclusion": "success",
+      "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37061329345/job/111020195553"
+    }
+  },
+  "check_log": {
+    "bytes": 320779,
+    "sha256": "bad1860b1454adc7db80f5fcb35c621e46fc70214855deb2bfe63d4f5dd1dc45",
+    "retained_mode": "0600",
+    "checkout_verified": true
+  },
+  "failed_target": "cli",
+  "failed_function": "cli_certificate_bind_and_revoke_require_retry_binding",
+  "panic_location": "tests/cli.rs:954:9",
+  "panic_fixed_label": "server exited early",
+  "target_result": {
+    "passed": 21,
+    "failed": 1,
+    "ignored": 0,
+    "measured": 0,
+    "filtered": 0,
+    "seconds": 23.47
+  },
+  "command": "cargo test --all-targets --features test-support,fuzzing --locked",
+  "failure_scope": "serve_with_admin_configured startup before certificate retry assertions",
+  "missing_evidence": [
+    "server numeric exit",
+    "server stderr",
+    "startup port ownership/collision state"
+  ],
+  "cause": "unknown",
+  "root_new_test_run": false,
+  "source_correction": "not_started",
+  "prior_940_run": {
+    "id": 37053472817,
+    "source": "94054b3c9b674e445893b52c1d7de29703fca73c",
+    "conclusion": "success"
+  },
+  "limits": [
+    "named test failure does not establish certificate, product, or startup root cause",
+    "earlier whole CI success remains dated to940 source",
+    "no green claim for later main"
+  ]
+}

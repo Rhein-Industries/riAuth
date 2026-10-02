@@ -6486,3 +6486,25 @@ case or controller was constructed/executed by these checks. No slot was
 acquired/released. Root full and independent design review, then separate exact
 ONE bounded-memory release, remain required; real browser remains HELD.
 Original cause/sender/first cleanup remain UNKNOWN. No completion credit.
+
+
+## Root actual descriptor-aware memory verification, 2026-10-02
+
+Root read the complete0178404 independent review: no new source blocker.
+After both full source reviews, root released and ran exactly one archived
+b10cf837 payload through exact0e93e11f controller. All128cases PASSED:
+78legacy/50observer,44baseline/80candidate Handler calls, three genuine native
+Python frame captures, str/repr/traceback-getter counters all0. One injected
+write failure and one timeout completed. Child exit0/reaped, stderr0; full1398B
+stdout SHA006d33cc7314d7c483f99dcb8ed59d3b6b537571b5908ee4178d14c21094024f
+and numeric exit were retained/fsynced before comparisons. Child elapsed0.101654s;
+final post-save controller0.202287s, root function0.202353875s, within30/35bounds.
+No cleanup failure or signal stop was needed; no independent PID/group audit
+is claimed because that controller does not retain a child PID. Exclusive0600
+captures/retained/review/final-return files remain private. [Root actual receipt](evidence/wave30-d01-descriptor-memory-0ec651d.json)
+contains the complete fixed child JSON and source/hash/timing/mode evidence.
+No helper main/server construction, native provider/CLI/network/listener/Driver/
+browser/Cargo ran. Memory source/guard/privacy acceptance only; no journey or
+whole D01/D05 completion. Historical failures/unknowns are preserved unchanged.
+The next real fixture remains held for complete controller/cleanup source review
+and a fresh separately released bounded attempt. No slot was acquired/released.
