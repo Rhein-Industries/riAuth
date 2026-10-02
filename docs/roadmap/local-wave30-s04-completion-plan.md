@@ -227,3 +227,243 @@ bounded implementation and exact run, truthful measured evidence and security
 outcomes, then root's independent acceptance/closure decision. The proposal
 does not itself finish S04. O03 stays DONE; no status/board/main/accepted/push
 or new task/worktree/worker mutation occurred.
+
+
+## Approved execution and final local evidence — 2026-10-02
+
+The preceding proposal records the initial audit and its then-pending approval.
+Root subsequently approved the exact three-file scope, method and sole Cargo
+slot in `planning/local-wave29-ownership-approvals.json`, entry
+`wave30_S04_bounded_measurement`. This section supersedes the proposal's pending
+implementation/runtime statements. O03 remains DONE. S04 status remains
+in_progress for root's independent review and decision; this worker made no
+board/status mutation.
+
+### Source, history and exact implementation
+
+History-preserving alignment commit:
+`760aeedf63a7fc6075d663049566c230bb127a55`, merging fixed reviewed main
+`da5ff7dcfc3442c302955344229168872911b0ec` without conflicts. The two owned source
+blobs still match the initial `2dea9f5` audit pin at that fixed base. No old
+stack, held source or stale shared-file replacement was imported.
+
+Implementation commit: `5120a0ddb51d015fbf89fbca19da127444e26f8b`.
+Only these files changed in that commit:
+
+- `src/state.rs`: 24 additions/1 deletion. Default production wrapper selects
+  false; the test-support-only hidden control selects true. Both use one
+  otherwise identical private controller body. The extra base-revision reuse
+  predicate follows the same successful dependency/review/authority checks.
+- `tests/state_reconciliation.rs`: 504 appended lines, exactly one ignored
+  test, with nested helpers. Every previously accepted fixture is byte-for-byte
+  preserved. No shared helper was changed.
+
+A source reconstruction check reversed the single extra reuse guard and proved
+that the common body matches the fixed-base original body exactly; both state
+code outside that region also match. The comparison does not change apply,
+persistence, digests, removals, credentials, receipts or any global exclusion.
+No route/configuration can select the control. It represents conservative
+**global reuse eligibility on this same build**, not an older binary's timing
+or a globally fenced apply implementation. It retains the same narrow digests
+and no-revision security fences in both lanes.
+
+### Runtime actually performed
+
+One invocation, first attempt, exit 0, with the exact approved Cargo arguments:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo test --locked --features test-support,fuzzing --test state_reconciliation \
+  s04_scoped_reuse_equivalent_authority_workload \
+  -- --exact --ignored --test-threads=1 --nocapture
+```
+
+Output was captured using `tee` with pipefail to
+`/tmp/riauth-wave30-s04-equivalent-authority.log`.
+Log SHA-256: `6287eb35f69017af138304ca7ca96624765d7a7b60ba49efab936ae2781e0e6d`.
+
+Build: 1m 08s, `test` profile `[unoptimized]`, default Platform feature plus
+`test-support,fuzzing`; host `Darwin 25.2.0 arm64`, local redb. There was one
+native linker warning: `__eh_frame` exceeds the compact-unwind table size;
+no Rust compilation error. Test result: **1 passed, 0 failed, 0 ignored,
+0 measured, 17 filtered out; 20.47s**. The custom counters below are emitted
+by the ignored test, not Cargo's benchmark harness. No failed invocation,
+correction, rerun or other Rust test target occurred. The slot was released to
+root immediately after exit; no Cargo command remains planned.
+
+Private target only, jobs 1, incremental 0, dev/test debug 0. Free disk before
+runtime was 20,645,640 KiB; after completion 20,398,028 KiB (about 19.45 GiB),
+well above the 8 GiB floor. No live PostgreSQL/cloud/service/desktop work ran.
+The disposable stores had no PostgreSQL configuration or HTTP executor.
+
+### Equivalence and measurement windows
+
+One seed was fully closed before its redb file was copied. Each pair's reopened
+full durable snapshots equal that seed exactly. Configuration equality excludes
+only data directory; administrator token, planner record/token/permissions,
+manifest, initial review authority digest, changes and removal impact agree.
+Snapshots and credential values are never printed. Initial plan creation, seed
+copies, unrelated writes, counter reads, assertions, final apply/replay and
+security cases are outside the timed controller calls. Manifest cloning also
+precedes the measurement window.
+
+Each of four families executes eight real nonreferenced/nonmember stranger
+`update_user` display writes and eight controller calls in each lane. Three
+fresh pairs run in AB/BA/AB order. Each scoped lane preserves its initial plan;
+each control lane creates eight additional plans through the same native
+preview/persistence path, retaining nine. The control's growing pending-plan
+scan is included as actual work of this bounded conservative policy; it is not
+an estimate of historical scan behavior. Native Telemetry deltas are captured
+around each call, not inferred from IDs or predicted transaction counts.
+
+### Every paired cost observation
+
+All values below are microseconds for eight controller calls. Scoped writer
+hold, writer acquisitions, commits and commit time are zero in every row.
+Global rows each measured 16 holds and 8 commits; commit time is **part of**
+writer hold time and is not added to it.
+
+| Pair | Family | Order | Scoped elapsed | Global elapsed | Global writer hold | Global commit | Global writer wait |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | group | AB | 5,048 | 64,424 | 50,300 | 40,250 | 71 |
+| 1 | client | AB | 21,742 | 116,205 | 73,066 | 43,010 | 111 |
+| 1 | user | AB | 4,307 | 59,679 | 48,293 | 39,160 | 63 |
+| 1 | description | AB | 17,934 | 97,095 | 64,986 | 40,628 | 96 |
+| 2 | group | BA | 5,444 | 86,942 | 63,907 | 43,670 | 125 |
+| 2 | client | BA | 9,518 | 113,755 | 74,343 | 42,655 | 118 |
+| 2 | user | BA | 8,318 | 85,734 | 59,312 | 40,370 | 144 |
+| 2 | description | BA | 7,963 | 133,674 | 88,713 | 48,204 | 139 |
+| 3 | group | AB | 4,902 | 64,416 | 50,232 | 39,187 | 67 |
+| 3 | client | AB | 6,700 | 83,443 | 58,097 | 37,419 | 70 |
+| 3 | user | AB | 5,758 | 74,073 | 55,062 | 40,245 | 90 |
+| 3 | description | AB | 10,041 | 90,180 | 63,384 | 40,398 | 97 |
+
+| Family | Scoped median elapsed | Global median elapsed | Median paired elapsed difference (global minus scoped) |
+| --- | ---: | ---: | ---: |
+| group | 5,048 | 64,424 | 59,514 |
+| client | 9,518 | 113,755 | 94,463 |
+| user | 5,758 | 74,073 | 68,315 |
+| description | 10,041 | 97,095 | 80,139 |
+
+Actual totals, **96 measured controller calls per lane**:
+
+| Quantity | Scoped reuse | Global reuse control |
+| --- | ---: | ---: |
+| Native writer holds / waits | 0 / 0 | 192 / 192 |
+| Native writer hold microseconds | 0 | 749,695 |
+| Native writer wait microseconds | 0 | 1,191 |
+| Native committed transactions | 0 | 96 |
+| Native commit microseconds (included in hold) | 0 | 495,196 |
+| Additional persisted plans | 0 | 96 |
+| Controller elapsed microseconds | 107,675 | 1,069,620 |
+| Pooled median eight-call elapsed microseconds | 7,331 | 86,338 |
+
+The measured improvement is **749,695 microseconds of native writer occupancy
+avoided for this bounded equivalent-authority workload**. Zero scoped holds is
+verified by actual native acquisitions and timers; global elapsed hold is
+measured, not assigned a synthetic cost per commit. Counts corroborate work
+avoided; they are not throughput proof. The elapsed observations show lower
+local cost in all twelve pairs, but do not establish general latency, confidence
+intervals, statistical significance or deployment throughput. There is no
+wall-time assertion or host-noise adjustment. Pooled medians mix four families;
+the per-family and paired figures above are the more specific observations.
+
+### Native materialization counters
+
+Each row totals three pairs, 24 measured calls for that family/lane. Scan
+columns are `calls / rows`; bytes are native materialized-byte counters. Every
+read-context bounded scan and every prepared-context counter was zero.
+Writer-context bounded scans below materialized zero rows; these are actual
+empty scan calls. All scoped writer-context values were zero.
+
+| Family | Lane | Read points | Read bytes | Read unbounded scans/rows | Writer points | Writer bytes | Writer bounded scans/rows | Writer unbounded scans/rows |
+| --- | --- | ---: | ---: | --- | ---: | ---: | --- | --- |
+| group | scoped | 576 | 135,087 | 48 / 120 | 0 | 0 | 0 / 0 | 0 / 0 |
+| group | global | 2,256 | 381,405 | 48 / 204 | 1,344 | 319,494 | 24 / 0 | 72 / 288 |
+| client | scoped | 216 | 308,439 | 48 / 120 | 0 | 0 | 0 / 0 | 0 / 0 |
+| client | global | 636 | 1,061,697 | 48 / 204 | 528 | 545,382 | 0 / 0 | 72 / 288 |
+| user | scoped | 384 | 149,007 | 72 / 120 | 0 | 0 | 0 / 0 | 0 / 0 |
+| user | global | 1,308 | 395,157 | 156 / 204 | 1,008 | 344,904 | 24 / 0 | 120 / 288 |
+| description | scoped | 216 | 314,823 | 48 / 120 | 0 | 0 | 0 / 0 | 0 / 0 |
+| description | global | 636 | 1,090,425 | 48 / 204 | 528 | 545,382 | 0 / 0 | 72 / 288 |
+
+Aggregate scoped read context: 1,392 points, 907,356 bytes, 216 unbounded scans
+materializing 480 rows. Aggregate global read context: 4,836 points,
+2,928,684 bytes, 300 unbounded scans / 816 rows. Aggregate global writer
+context: 3,408 points, 1,755,162 bytes, 48 bounded empty scans, 336 unbounded
+scans / 1,152 rows. No source metric instrumentation was added.
+
+### Security and genuinely ordered concurrent cases
+
+Both lanes passed the same outside-window security matrix for all four families:
+
+- **16 pending apply refusals:** eight relevant policy/account/member changes
+  and eight no-revision authority changes. The policy writers are real group
+  membership, user enable/disable and reviewed client MFA changes. Client
+  changes use the existing distinct author/reviewer/executor helper; its shared
+  code remains untouched. Apply uses current revision and an idempotency context,
+  so refusal is from dependencies/authority, not an artificially stale header.
+  Every refusal preserves the complete post-intentional-drift snapshot: plans,
+  preview effects, audits, receipts, credentials and all indexes.
+- Reuse never returns the old invalid plan in either lane. A permitted replacement
+  remains awaiting review; a rejected replan preserves the complete snapshot.
+  No negative case silently applies, records a state.apply event or issues a
+  receipt. Raw permission clearing is explicitly a no-revision stale/restored
+  state model, not a claim normal writers skip revisions.
+- **24 real two-thread persistence cases:** eight unrelated writes survive;
+  eight relevant policy writes and eight no-revision authority writes refuse.
+  Channels order the writer after preview abort and before persistence; there
+  are no sleeps or scheduling assumptions. The pre-writer snapshot proves
+  preview left no durable effects. Positive persistence changes only the exact
+  plan record relative to the writer's snapshot. Negative persistence preserves
+  the entire writer snapshot and leaves no plan. Both comparison labels use the
+  same existing persistence path; the test control changes reuse only.
+- **24 final applies, exact receipt replays and revoked-authority replay
+  refusals:** each measured lane/batch applies under current If-Match and its
+  explicit idempotency/fingerprint context, produces exactly one state.apply
+  audit and one receipt, and replays with full snapshot equality. Current
+  permission drift then refuses replay without a durable leak. Complete user
+  and client records are preserved except the exact intended display/catalogue
+  field; other catalogue fields, password/factor state, selected signing keys,
+  credential versions, passkeys, exposures and agent records remain unchanged.
+
+These are assertions executed inside this one passing workload, not separate
+Cargo tests or historical results counted as fresh. Previously accepted HTTP,
+issuer ownership, global exclusion and persistence fixtures remain the historical
+and inspected evidence mapped above; they were not rerun for this slice.
+
+### Checks, failures, residuals and closure recommendation
+
+Actually performed: the exact Cargo command once; explicit-file
+`rustfmt --edition 2024 --check src/state.rs tests/state_reconciliation.rs`;
+Git whitespace/changed-path checks; fixed-base common-body reconstruction and
+unchanged-existing-fixture checks; log JSON/count/total consistency checks;
+`python3 scripts/check-docs.py`. Documentation/source evidence checks passed.
+No compile/test failure or corrective rerun occurred; initial implementation
+used the current reviewed client policy contract before the first build. The
+native linker warning is recorded above and did not prevent execution.
+
+**Recommend DONE for the original S04 row, subject to root's review/integration
+and status decision.** Its outcome is implemented by the accepted four narrow
+families, with scoped reuse and persistence surviving actual unrelated writes,
+while relevant policy/authorization drift refuses atomically. The remaining
+quantitative gate now has measured native writer-cost reduction under identical
+security settings and the executed ordered concurrency/security invariants.
+The pinned audit found no actual correctness defect requiring an additional
+family or security change. M03 is now reported DONE by root; root reconciles
+prerequisite and board state. This recommendation does not change task status.
+
+Intentional residual boundaries: mixed/connector/delegated/target-bound and
+other unapproved families retain the global fence; held S02 Group representation
+is unchanged. This result covers small local redb fixtures and this same-build
+conservative reuse control. Historical-binary timing, large-Group/general
+population scaling, broad benchmarks, PostgreSQL/distributed/live-cloud,
+deployed HA and remote/paused-IO claims remain unmeasured. Those broader results
+are not substituted for the original bounded S04 correctness and equivalent
+security cost evidence. The 60-second nonrenewed admission limitation, SCIM
+stamps, explicit rate agreement, accepted optional/required headers, PAM fallback
+and reviewed client-creation receipt-secret behavior remain intact. No API,
+workflow, management writer, config, node-security, schema, main/accepted or
+other fixture was edited in this slice. No worker/task/worktree/service was
+launched; root alone integrates, pushes and closes.
