@@ -245,3 +245,123 @@ last-member helper cursor was1 instead of2, and uncertain-PATCH completion
 wasfalse. This publication contained20dd holders, preceding f89's two passes.
 Later USB/client/docs/release steps were not reached. The local repeat's
 different failure set and this Linux result are both retained.
+
+## Guarded scheduling-helper source proposal
+
+Root fully read10b0e9e055af1644ceff08f8577f11caeae1bf1d and independently
+read connector_due selection, claim/step, durable error and finish bodies.
+A selected claim unconditionally parks a cursor before dispatch; neither finish
+nor error deletes that cursor. In these sequential isolated fixtures, a prior
+cursor becoming absent after a successful first call therefore identifies
+exhaustion without selection. At most one additional public scheduling pass
+can then occur without dispatching a second resource after a selected first pass.
+The proof requires no concurrent cursor writer and makes no universal progress claim.
+
+Only the existing private step helper is reserved for the exact proposed change;
+all26 caller sites, assertions,20dd holders and f89 direct calls remain protected.
+Read errors and the first Core error propagate. The proposal is not write-free:
+ordinary scheduling/admission bookkeeping and one fenced resource outcome remain.
+No changed helper is compiled/run at this review. Current native22/2 and
+published Linux21/3 failures stay intact; latest d5b60bc CI37027444516 is running,
+with no green conclusion.
+
+Independent I02 source review identified one uncompiled fixture mismatch:
+the new nonroot /identity case reuses an upstream token helper asserting the
+root callback URL. Production source_callback_url includes the issuer base path.
+The exact protected helper correction needs its own reservation; no production
+defect or runtime result is inferred from this static finding.
+
+## Guarded helper: fresh native pass and separate published Linux failure
+
+Root fully read source199980044994d74adcb429bed70ff386399445d8 and its static
+receipt7d63aca0d81c6c3fd965f831a92f6253e53059e7. Replacing only the private
+step helper with its original body reconstructs the entire f89 fixture.
+The guarded second pass requires an existing cursor before and no cursor after
+one successful first call; errors propagate. This isolated sequential-fixture
+proof does not establish concurrent scheduler behavior or change production.
+
+Root fully read actual2414b5d83bc1ebbe31ffc99684ef7e4896e9d1d1 and all2401
+private0600 raw log bytes, SHA-256
+aba681faef060b4a920b684a2e12475a7da8b1f378e9d714577aa1fcccf3589f,
+plus the9366-byte0600 supervisor record
+b76f6df3dc549ba30e92a550a42d27c79e48ac0d5d073c4c0f0ac7555178953a.
+The one whole-target Darwin run exited0:24passed0failed0ignored0filtered,
+compile4.22 seconds/test29.23 seconds/wrapper35.137593 seconds. All24 named
+raw pass lines were read. Owned group84412 was reaped and empty; observed
+children were absent. Minimum13683351552 bytes exceeded9GiB stop/8GiB floor;
+no stop, deletion or repeat occurred. Slot released before the separate report.
+The executed211639968-byte test had private mode0700, not the older755 mode.
+A supplemental test-name extraction retained a trailing delimiter; corrected
+supplementv2 and original are both retained without changing log or invocation.
+
+Separately, published d5b60bc12aaafa258daddd64b40879afacb87bc1 CI37027444516
+completed failure. Audit110905570995 and integration110905571524 succeeded;
+fmt/clippy passed. Check110905571536 stopped at SCIM23passed1failed25.51
+seconds: reviewed_last_group_member_removal_requires_complete_remote_membership
+at tests/scim_oauth.rs2404, unchanged initial seed incomplete. Root downloaded
+and read the exact test/failure block in585959 private0600 bytes, SHA-256
+234a6c4d8f955265c6f83bb1e0ed84af839908deadfeb31e543df3a2e0f04ecf.
+That published fixture contains f89's explicit passes, not1999800's guarded
+helper. Later USB/client/docs/release steps were not reached. Earlier running
+observations and all prior failures remain historical; local24pass is not a
+Linux-fixed or whole-CI-green claim.
+
+## I02 corrected fixture and focused private-cache release
+
+Root fully read independent7df439a1a258eaaddba7dde5fad67e0e07aea53e:
+its concrete F1 is the configured nonroot callback compared to a root-only
+mock assertion, with no other identified production/security defect by inspection.
+Source196ac2096f79e5cc3c7d53ffa990ccdeba11a439 captures and clones the configured
+callback and retains exact equality. Root reversed all three substitutions and
+reconstructed the entire36ccc64 test; the complete appended browser test is
+unchanged. The callback correction is not an HTTP/form_post pass.
+
+Root fully read cd17c3bcffeba750d7827a54fdcf8d6a7470edba resource appendix.
+Existing own target-wave27/cargo has matching native1.98.1/default+test-support
+profiles/dependencies, while changed production and the new test still require
+rebuild. Estimated additional2–3GiB is not measured peak. Root released only
+one offline named source_stage filter to that existing cache after a fresh
+at-least12GiB preflight, jobs1/inc0/dev+testdebug0,2s samples/owned9GiB stop/
+8GiB floor/private capped0600 captures and bounded owned-group cleanup.
+I02 owns the serialized Cargo lane. No runtime result is available at this
+release; no browser, provider, extra target, retry or cache deletion is authorized.
+
+## I02 first focused execution: compilation succeeded, snapshot failed
+
+The single released corrected196ac209 filter ran at clean cd17c3bc.
+Root read all1322 private0600 log bytes and the2147-byte supervisor result.
+Log SHA-256 is9ed4e8a9a01a40f929ba51b343a0ee96cd26fe83972c475271319c0c4047e567.
+Compilation completed59.03 seconds; raw selected test failed0passed1failed
+23filtered in3.25 seconds. Supervisor total64.104 seconds and its4.891-second
+fixture-phase interval are separate measurements. No compiler diagnostic failure
+is established by Cargo's final test-failed summary. Only riauth rebuilt;
+no third-party rebuild, deadline/disk stop or supervisor exception occurred.
+
+The panic in tests/common/mod.rs71 says one source_logins record changed,
+without dumping values. No caller backtrace identifies the HTTP/test step, and
+neither response-mode completion is credited. Owned group99685 was waited and
+empty before/after cleanup; minimum13210279936 bytes exceeded9GiB stop/8floor.
+Peak target growth236486656 bytes is an observed allocation delta, not a whole
+compiler-memory peak. Cargo released immediately; no automatic repeat occurred.
+
+Root's source-derived candidate is the new bad-factor expected snapshot:
+source_runtime assigns the original stage transaction to pending.authentication,
+and unchanged source_finish persists that pending plus attempts on wrong OTP.
+The new test currently expects only the attempt increment. This source trace
+does not retrospectively identify the actual caller or stored value. Existing
+independent reviewer is reserved for read-only diagnosis and a smallest exact
+expected-record proposal; no snapshot exclusions, writer changes or source/
+runtime correction are approved yet. Accepted staging remains unpublished while
+this concrete new fixture failure is unresolved. I02 remains open.
+
+## I02 charged-factor expectation: independent source review and one release
+
+Root read the complete four-line `90b6e8d832174df676d12395452e525de827f9e8` diff, its `b729b661aaa85fd11338365e2f9573f8133fdae7` appendix and the full independent `2356a312b6ee2cba30f207ec63f7532662af834d` trace. The unchanged writer binds the stage transaction before the invalid-factor branch persists the whole pending login and charges attempts. The expected-memory clone modeled the charge but omitted that binding. The correction derives the exact value from the previously captured stage record and retains the complete snapshot, operations, refusals and assertions. No stored record or production behavior is changed.
+
+The first failed run did not record its caller or response-mode iteration. This source proof does not retrospectively identify them. The independent review accounted for all twenty earlier snapshot call sites and found no competing concrete omission. Root released exactly one same offline focused filter on clean corrected source, warm existing target, fresh at least 12 GiB launch, two-second samples, owned-group 9 GiB stop and 8 GiB floor. Actual outcome remains pending at this entry; publication stays held until this new fixture is verified. No broader test, browser or provider gate is credited.
+
+## I02 corrected focused filter: retained actual pass
+
+Root independently read and hashed the complete 757-byte mode-0600 Cargo log `62a6a3d17d5ef8aaa630e9bde8c2a62a2ed968669a6a798816ddc4736e4426be`, the 2,080-byte result `a51eda5e0b779b6ab731b22dfe2e7f7c7639aa16a6d4253387d7898eaec9c121` and ten-sample resource file `adcc45c4c2ae14c85605b527e68329610a6305de2b7250a0d104179546ef78d8`. Root fully read the separate `8dbbc74d8c325309b42c5011fb5d36a512fd6719` 112-line actual appendix and checked its byte-prefix preservation. On clean b729/source90b6, the one authorized offline filter exited 0: compilation 5.44 seconds, one passed, zero failed, twenty-three filtered, harness 12.00 seconds, supervisor 19.288 seconds. Only riauth compiled; the existing compact-unwind warning remains recorded.
+
+The passing table-driven fixture includes query/root and form_post/non-root transport, the exact configured callback, guarded headers and binding, charged bad-factor full snapshot, one-use continuation, native handoff, cancellation and replay assertions. This is local HTTP/rendering evidence, not executed frontend JavaScript, a Driver browser, external tenant or release test. The old failed caller remains unknown. Minimum free space was 13,375,266,816 bytes; owned group 27192 was reaped and empty before immediate Cargo release. Root may publish the reviewed implementation and exact fixture corrections; original-row disposition remains under independent review.

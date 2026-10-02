@@ -1253,3 +1253,1399 @@ The first report whitespace check flagged six blank unified-diff context lines c
 One local reconstruction/refinement snippet initially asserted on an insertion hunk because it treated zero-count unified-diff line positions as ordinary context positions. It failed before writing; the static parser was corrected to handle zero-count insertions, reconstructed the exact proposal, and then added strict refusal of extra non-transition rows. This was a local authoring/check correction, not native helper execution.
 
 Final appendix checks passed with exit 0: repository docs checker, whitespace, hygiene (963 files), exact report-only scope and prior 961-line/63,148-byte prefix, reconstruction of the embedded zero-context diff against pinned product source, unchanged helper entry point, Python AST and the three proposed/recorded shell blocks with `bash -n`. The helper proposal was never imported, materialized or executed. These static report checks add no native/runtime acceptance.
+
+## Append: approved format-3 PostgreSQL helper materialized, runtime held
+
+2026-10-02, original A09 task / existing WTf2. Root approved source-only reservation `wave30_A09_postgres_shared_gate_helper`: exactly the helper delta reviewed in `f0796af` and an append to this report. The preceding **1,255 lines / 93,763 bytes** remain an exact prefix, SHA-256 `1b0f9a68168c3a53f3438dc316ab75b2b23635373e7b010a3611aa39be162744`. Earlier missing-metadata observations, actual HTTP 422/invalid-push failures, local authoring/static corrections and historical artifact limitations remain dated phases, not rewritten.
+
+### Newly supplied artifact metadata, with unchanged integrity limits
+
+Root supplied exact GitHub API-reported artifact identity: ID **11232871527**, name **`riauth-local-arm64-37016520583-1`**, digest **`sha256:fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30`**. Root expressly did **not** retain/re-hash the outer ZIP. This new metadata resolves the earlier lack of a full API-reported digest; it does not retroactively turn the prior prefix-only observation into full-digest knowledge or establish independent outer-ZIP verification. This worker did not download or re-hash an outer ZIP.
+
+The complete accepted root receipt `docs/roadmap/evidence/wave30-a09-native-arm64-37016520583.json` was read as an immutable Git object at `a74d3225dd8c845d0c7dff43ab922749c3a957b5`, SHA-256 `2cbf8ee46dbdd8b2ab43ad933913dd0a16c20b3183497c2d3b9cf3d1287da227`, blob `ceee1550df02541ee64fa16eb126b819d59fa2d6`. It agrees on the real run/job/workflow/product pins, all five local product hashes, resource/log/input hashes, `outer_zip_rehashed_by_root: false`, `shared_full_gate: not_run` and `official_release: false`. Root also names `planning/evidence/wave30-a09-remote-result-review.json`; it was not found as a tracked Git object or at the shared Git-root planning path accessible here, so no independent read of that planning file is claimed. The complete accepted receipt and root's explicit message supply the metadata above without requiring contact or external API access. No accepted root docs or planning files were edited/copied/merged.
+
+### Actual source pins and approved byte proof
+
+Before editing, the protected helper matched product `9a819317efb3a13fa27cd86f884be2be00898fc0` byte for byte: 13,127 bytes / 236 lines, SHA-256 `d6b0d023164756b2fcabe1a89794400d5ee70b43b6b4874abed3fd2f6a2cce7d`. The zero-context diff embedded in committed `f0796af897425b43a258b0d30214741beb238a32` was reconstructed against that exact protected body. Only the approved helper was written, its prior mode 0644 retained, and the result matched the proposed complete text hash exactly. The helper was never imported or executed.
+
+| Materialized source | Exact value |
+| --- | --- |
+| Source-only commit | `d36e13ad17541d21c88ed90d842e0a3e6db2280d` |
+| Parent proposal/report commit | `f0796af897425b43a258b0d30214741beb238a32` |
+| Sole source path | `scripts/check-local-edition-transition-postgres.py` |
+| Git blob | `d55d51aad16f508b3cb993a15f44e23aeb912729` |
+| Complete source | 21,716 bytes / 370 lines, SHA-256 `575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1` |
+| Exact delta | 139 insertions / 5 deletions; approved proposal bytes, no extra correction |
+
+The implemented source requires strict current format 3 and all 16 valid effective rates, compares the complete effective-rate map through supported E→P→E, rejects added as well as changed/removed non-transition rows, creates one disposable ordinary password/auditor/group fixture and compares its ID/user/groups/grants and authorization outcomes across editions. It checks audit allow/user administration deny, previously logged-out session refusal, one-session fixed expiry and authentication/general-rate plan/start refusals with unchanged rows/agreement and no ready listener. The owned connected-client cleanup has TERM/5 seconds/KILL/5 seconds bounds. These are **authored checks**, not observed native test results.
+
+| Source hunk mapping | Actual helper start line |
+| --- | ---: |
+| `transition_metadata` | 66 |
+| `require_target_metadata` | 88 |
+| `require_preserved` | 102 |
+| `authenticated_status` | 108 |
+| `ordinary_fixture` | 120 |
+| `shared_probe` | 135 |
+| `shared_config_refusals` | 170 |
+| `main` | 211 |
+
+### Stable supporting API equality and protected inputs
+
+Supporting API bodies were reread at product `9a81931`: `Core::me` returns a stable `UserView` and durable group membership beside transient session ID/expiry/MFA fields; `UserView` contains stored user identity/account fields, not session ID/expiry. `Core::human_grants` returns username plus stored grants; `Core::get_resource("group", ...)` returns the stored group object. The AST-checked `shared_probe` equality snapshot contains exactly **user, groups, group, grants, audit_status, users_status**. It excludes session IDs, expiry and tokens. The returned token is kept separately in memory for refusal checks, and the expiry comparison is only within the same session. No equality adjustment or broader source edit was necessary.
+
+The encrypted helper remains byte-exact at product source, SHA-256 `09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e`; its unchanged `live_identity_and_grant` function source segment has SHA-256 `893ebad3662b67c835a35826ae202022b478f4184cd69a42e2c6b9a38220cf44`. Static call inspection finds only this function through `encrypted_fixture`. Its historical format-2 metadata/run/compiled-probe path is not called. Installed-gate, exact-matrix and SPDX helper bytes remain equal to the pinned product hashes already recorded above; the workflow remains exact `036a392` bytes/SHA-256 `0a98865e5ee25d2f94b745b32602949553bf4f4e3b83d8bd302fade98eafd948`. No product/edition/node-security/CLI writer, encrypted helper or workflow was edited.
+
+### Actual static checks and still-held runtime
+
+Source validation passed with exit 0: approved-diff reconstruction/exact complete SHA/length/line/mode proof, Python AST, stable snapshot-field/token separation and encrypted-function-call inspection, protected byte comparisons, docs checker, staged whitespace and repository hygiene (963 files). The report was unchanged at the source-only commit. No helper import, native process, PostgreSQL tool/service/fixture, Cargo/build, transport/download/launcher/workflow execution or contact occurred. No current artifact or shared-gate result is credited by this source change.
+
+A future fresh native build-free launcher still requires separate immutable source review/reservation: exact artifact transport/full-digest comparison, safe hash-bound extraction, real new run provenance, actual PostgreSQL/native/resource preflight, 30 GiB start/10 GiB stop/8 GiB floor, finite timeout and owned cleanup, private capture/allowlisted failure evidence. Root's API-reported digest does not substitute for verifying transport bytes. Neither this helper nor this report implements/owns that launcher. The previous native executor ended and its slot was released; no runtime slot is consumed here.
+
+Original A09 remains open. Linux x86-64/container/TLS/passkey/device/full-client/encrypted-redb/full shared/physical/tenant/escrow/paused-IO limits and accepted receipt-secret, route-header, PAM, permission/review/removal/audit/credential/Group/input/non-renewed-60-second protections persist. Root alone reviews/integrates and decides later native acceptance/release/status. No other file, main, push, status, worker/task/worktree/shell or desktop was changed/created. RiWork Cua.ai Driver preference persists.
+
+## Phase I — build-free native launcher design only (2026-10-02)
+
+Reservation `wave30_A09_build_free_native_launcher_design` owns **only this report append**, on existing task `506e3979-a590-4af3-8fa8-ee90d3a517f2` / WT `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. Parent `0a2bd3951a3c29726a9be4b285cf7b72ef56a661` contains the already reviewed helper/source report. Its complete prior report is preserved byte for byte: 101,377 bytes / 1,305 lines, SHA-256 `c6abe294c6c9ba4f06633ebef90d334ea14459d7ea3d349edef901aa2d0ec495`, Git blob `ff4cf44508862fa4b53fd1267da96040bb62e35f`. No prior missing-metadata phase, HTTP 422 / invalid-push failure, proposal, observed build result or qualification is rewritten.
+
+The sole future source seam proposed for immutable root review is a **new** mode-100644 `.github/workflows/check-local-shared-handoff.yml` (one add hunk, lines 1–1279). It is not materialized here. No existing workflow/helper/product/guide is changed. Complete proposed file bytes appear below, including the inline controller and its retention adapter; no omitted external driver or setup script is required.
+
+| Complete proposed text | Bytes | SHA-256 |
+| --- | ---: | --- |
+| New workflow, including terminal newline | 73,279 | `0bad3f22ac0c1534e64f12b5454efd686bac8bb260919f7d16753f968bb518b4` |
+| Shell-created controller, including terminal newline | 59,371 | `8018cd2119e9763aa1832664d03ca28732739f2c4749d2b2a2cfcdb266e5a6b4` |
+| Private bootstrap string parsed from controller AST | 1,506 | `1adc47c2b81f78c75f1f2122aabff7f08f48786fafd840880f3106418326e4de` |
+
+### Fixed receipt and separate source roles
+
+The proposal consumes only the accepted LOCAL ARM64 cohort: product `9a819317efb3a13fa27cd86f884be2be00898fc0`, tree `1528b61ba463d9262d6252d54174748a176f313b`, build workflow `036a392656b4b5070cc86a11d5ca3258b7b868d2`, run `37016520583`, job `110868629053`, attempt 1. Artifact API identity remains ID `11232871527`, name `riauth-local-arm64-37016520583-1`, reported outer digest `sha256:fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30`. Root did not retain or re-hash that outer ZIP; this proposal requires the **future actual download** to match it before consuming any ZIP member. No current transport verification is claimed.
+
+Receipt `docs/roadmap/evidence/wave30-a09-native-arm64-37016520583.json` was reread at immutable `a74d3225dd8c845d0c7dff43ab922749c3a957b5`, complete SHA-256 `2cbf8ee46dbdd8b2ab43ad933913dd0a16c20b3183497c2d3b9cf3d1287da227`. All 18 already-downloaded files were read/re-hashed without opening an archive or executing a binary/script: 11 logs, evidence JSON, resources JSONL and five archives. The fixed controller constants contain each exact member size/SHA, all five archive/binary sizes/SHAs, both license/notice identities, build inputs, source/run/workflow identities and the prior resource aggregates. No outer ZIP was present or manufactured. The earlier dated metadata limitation remains part of this report.
+
+The root-selected `validator_source_sha` must be a full lowercase 40-character published commit containing helper SHA-256 `575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1` and all four unchanged import hashes. It must differ from the fixed product source and the actual new workflow source; no invented validator publication SHA is supplied. Checkout uses that exact input, then checks real Git HEAD and every protected helper before transport. The controller records actual workflow SHA, GitHub SHA, new run/attempt and its own measured text SHA separately from product/build/validator pins. Archive provenance is the old real build receipt; validator provenance is the newly selected reviewed source; validation provenance would be the fresh actual run.
+
+### Operator decision, resource and transport boundaries
+
+One manually dispatched, 20-minute, native `ubuntu-24.04-arm` job has only `contents: read` and `actions: read`, a fixed concurrency group and `cancel-in-progress: false`. It has five steps: private preflight/supervisor; pinned checkout; one controlled sample; always cleanup/finalization; always fixed sanitized upload. Native Linux/aarch64, actual GitHub-hosted runner context, unprivileged UID and **at least 30 GiB free in every sampled scope** must pass before checkout. Existing `RUNNER_TEMP` is read only inside the shell step; `A09_ROOT` is exported there and persisted by literal `printf` to `GITHUB_ENV`. Job env uses only the valid inputs context. Checkout/upload use the same reviewed action pins as the accepted build workflow. The previous job-env `runner.temp` defect is not repeated.
+
+A dedicated monitor starts before checkout and continues through owned cleanup: intended interval 2 seconds, actual UTC/monotonic gap, free-byte minima and device ID for host root/workspace/private root. Scopes sharing a device are not added as separate reserves. Sample failure, unavailable sampling or a gap/heartbeat over 6 seconds refuses/terminates owned work; the first sample requires 30 GiB, subsequent samples stop at 10 GiB, and an observed value below 8 GiB is a distinct floor failure. This is an actual-sampling policy, not a guarantee against unobserved instantaneous consumption. The resource log is capped at 2 MiB. The supervisor has an 18-minute absolute lifetime with a 60-second cleanup reserve inside the 20-minute job; a helper cannot start without its full 600-second allowance plus that reserve. No build, Cargo, cache eviction, threshold reduction, larger-runner/provider substitution or implicit setup is present. The old run's minimum 104.4496 GiB/maximum 5.40448-second gap does not establish capacity/availability of a future runner.
+
+Transport is exactly one metadata GET for the fixed same-repository artifact and one logical ZIP download, each supervised for at most 120 seconds, without retries. Metadata is bounded to 2 MiB; ZIP to 256 MiB, with finite private output and 15-second socket operations under the external wall bound. The ZIP endpoint may make one signed HTTPS storage redirect; authorization is stripped at the origin change, and a second redirect/unlisted storage host fails. The signed URL/response body/token never appears in public evidence. Fixed identity, run/head SHA, expiration, size and digest must match. The entire ZIP must reach EOF, satisfy advertised/API size and SHA before atomic consumption; partial/overlarge/hash-wrong bytes are never extracted. Sanitized HTTP status/fixed failure code is retained without raw errors or URLs.
+
+ZIP extraction manually permits exactly the 18 known regular paths (five under `archives/`), exact names/sizes/hashes, no duplicate, extra, encrypted, directory, link, NUL-truncated, traversal or unsupported-compression entry. No automatic extraction API is used. The two JSON/log identities and prior resource sample/minimum/gap aggregates are verified. Each fixed tar must then expose exactly three regular non-sparse members—its binary, LICENSE and THIRD_PARTY_NOTICES.md—with exact known size/hash and no PAX/link/extra member. All five installed binaries must be ELF64/little-endian/AArch64 before any native execution. The compressed archives total 48,748,203 bytes; binaries total 125,824,744 bytes; five checked document pairs total 3,768,635 bytes. These are measured accepted-file sizes, not a new host free-space measurement or a PostgreSQL maximum-write promise.
+
+### Installed PostgreSQL and owned retention/cleanup prerequisite
+
+Only already-installed regular native tools at `/usr/lib/postgresql/16/bin` are accepted: initdb, pg_ctl, createdb, psql and postgres. The controller verifies root ownership/non-writable permission, ELF/hash, then five finite version commands (10 seconds each), matching sanitized PostgreSQL 16 versions. It prepends exactly that directory to the helper PATH. Missing tools/version/native evidence fails; there is no apt/setup/download/container or alternate PostgreSQL fallback. The fresh runner's tool availability remains unobserved.
+
+Concrete source issue found in the pinned helper: its `TemporaryDirectory` removes the fixture when leaving the context, including if the helper's finally-block PostgreSQL stop raises. Simply timing out that process would not make fixture deletion safe. This was reported before designing a cleanup adaptation. The proposed **inline private bootstrap**, which root must review as part of this new workflow seam, replaces only that exact `TemporaryDirectory(prefix="local-a08-postgres-", dir=evidence.parent)` context with one fresh marked retained directory. It refuses any other call shape, leaves the helper/assertions/SQL/API/import files byte-exact, and never deletes from the adapter. This intentionally changes temporary-fixture retention; it is not represented as identical cleanup behavior. No existing helper modification is proposed.
+
+The persistent owned supervisor enables and reads back Linux `PR_SET_CHILD_SUBREAPER` via Python standard-library ctypes/libc `prctl`, before any helper child exists. **That native OS capability is an explicit unexercised runtime prerequisite**, needed to own and reap daemonized PostgreSQL descendants across shell steps; it is not a new package/dependency or a substitute provider. Missing/failed capability, process identity or safe directory-removal support fails. No ctypes/library/native execution occurred in this design turn.
+
+Only one `python3 -I -B` bootstrap executes the pinned current-format-3 helper, at most 600 seconds. Its imports are checked before and after; it uses the original ordinary password/user-ID/group/auditor audit-allow/users-deny/logged-out-session refusal sample, complete format-3/16-rate E→P→E preservation, authentication/general-rate plan/start refusals and existing connected-client refusal. The encrypted module is imported unchanged solely for `live_identity_and_grant`; its historical format-2 runner/probe is not called. Shared equality excludes transient session IDs/expiry, exactly as the accepted helper. No client/TLS/device/encrypted-storage/full-shared campaign is added.
+
+Owned stdout/stderr are drained separately to mode-600 private finite captures (8 MiB per channel; smaller version/Git captures), never printed/uploaded; pipe loss/overflow fails. PostgreSQL database/WAL files do **not** inherit a capture file-size rlimit. Native child env excludes retrieval tokens, proxy/Python-path/optimization and PostgreSQL credential variables. Fixture/config/database/password/session/raw JSON/raw helper error text remain private.
+
+After any success/failure/timeout, cleanup first verifies fresh root/fixture nonce, UID, marker, exact cluster path, and—if present—the bounded postmaster PID file/cluster/fresh timestamp plus live owned PID/start fingerprint/native postgres hash/cmdline. Daemon ancestry is owned by the verified subreaper; PID identity is rechecked before signaling. Only owned descendants receive TERM (5 seconds), then KILL (5 seconds), followed by actual reaping and a fresh remaining-process scan. A missing live PostgreSQL PID-file proof, unavailable ownership identity, signal/reap/capture-reader problem or surviving process fails cleanup and retains the fixture privately. Proven-owned process-free scratch is deleted only after shutdown/reap; only this job's fresh private captures/download/installed/fixture paths are removed, never source or unrelated cluster/cache/process. First phase failure stays first; cleanup failures are added separately. The remaining capture readers have one shared 3-second bound. A forced VM loss/job kill can prevent finalization/upload; the design does not claim cleanup evidence in that case.
+
+### Fixed sanitized evidence and held future action
+
+Only four explicit files may be uploaded using pinned upload-artifact: `public/controller.json`, `public/resources.jsonl`, `public/cleanup.json`, `public/helper-redacted.json`. They contain fixed phases/codes/actual exits, expected/observed hashes and source/run identities, actual resource samples, cleanup counts/states/failures, and either a fixed not-run placeholder or a strictly key/type/value/hash-validated redacted helper report. The helper report exposes only the allowlisted non-secret assertions/counts/hash/edition fields and sanitized matching PostgreSQL version; raw report hash is retained. Raw stdout/stderr, signed URLs, token/session/user/config/database material, archives/ZIP/temp files and private fixture paths are excluded. Failure retains fixed phase/exit/capture hashes, transport status/codes and cleanup evidence; there is no blind retry.
+
+The future source reservation requested for root decision is **only the new workflow path**, exactly the complete text below, plus an append-only report evidence phase after materialization/static validation. Existing helpers/workflows remain protected. After immutable source review/integration/publication, root alone may reserve one fresh hosted download/PG/helper slot and select a full published validator SHA. The prospective dispatch command is `gh workflow run check-local-shared-handoff.yml --repo Rhein-Industries/riAuth --ref main -f validator_source_sha=ROOT_REVIEWED_FULL_SHA`; it is documentation only and was not issued. Any metadata expiration/digest/path/tool/resource/proof mismatch is a terminal failure of this one attempt, requiring a new explicit root decision.
+
+### Complete proposed new workflow (not created or executed)
+
+```yaml
+name: Check local native shared handoff
+
+on:
+  workflow_dispatch:
+    inputs:
+      validator_source_sha:
+        description: Root-reviewed full source SHA containing the exact pinned validator and imports
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: riauth-local-shared-handoff-arm64
+  cancel-in-progress: false
+
+jobs:
+  native-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      A09_VALIDATOR_SOURCE_SHA: ${{ inputs.validator_source_sha }}
+    steps:
+      - name: Start owned native preflight and continuous resource supervisor
+        timeout-minutes: 1
+        env:
+          A09_RETRIEVAL_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          export A09_ROOT="$RUNNER_TEMP/riauth-a09-shared-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          printf 'A09_ROOT=%s\n' "$A09_ROOT" >> "$GITHUB_ENV"
+          mkdir -m 700 "$A09_ROOT"
+          cat > "$A09_ROOT/controller.py" <<'PY'
+          # Proposal only: run on the explicitly authorized fresh native GitHub job.
+          import ctypes
+          import datetime
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import platform
+          import re
+          import resource
+          import runpy
+          import shutil
+          import signal
+          import stat
+          import struct
+          import subprocess
+          import sys
+          import tarfile
+          import tempfile
+          import threading
+          import time
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          import zipfile
+
+          FIXED = json.loads(r'''{
+            "repository": "Rhein-Industries/riAuth",
+            "product_sha": "9a819317efb3a13fa27cd86f884be2be00898fc0",
+            "product_tree": "1528b61ba463d9262d6252d54174748a176f313b",
+            "build_workflow_sha": "036a392656b4b5070cc86a11d5ca3258b7b868d2",
+            "build_run": 37016520583,
+            "build_job": 110868629053,
+            "artifact_id": 11232871527,
+            "artifact_name": "riauth-local-arm64-37016520583-1",
+            "zip_sha256": "fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30",
+            "files": {
+              "apt-install.log": {
+                "bytes": 5262,
+                "sha256": "f6a65260955ad1d97b665b697b960013880647bcd84e7d15bdcf004875df8074"
+              },
+              "apt-update.log": {
+                "bytes": 2350,
+                "sha256": "19f808a68f6d524d9f9935feddf906fb1ae08319070432aaafa24242c9f52af6"
+              },
+              "archives/local-riauth-essentials-aarch64.tar.gz": {
+                "bytes": 13996440,
+                "sha256": "848758095ccab44919ddc643dd91ced3f77d4acc083be0edf63925fdb2b51981"
+              },
+              "archives/local-riauth-maintenance-essentials-aarch64.tar.gz": {
+                "bytes": 5946216,
+                "sha256": "e43ed01029baeb7cae4821e125d168d687a7e60ab701afc8f46c9fea442adc3a"
+              },
+              "archives/local-riauth-maintenance-platform-aarch64.tar.gz": {
+                "bytes": 6788229,
+                "sha256": "510c55acf014273a53acb5b87d55b40381b9d00f51ef8b654493a307250f92df"
+              },
+              "archives/local-riauth-platform-aarch64.tar.gz": {
+                "bytes": 18375977,
+                "sha256": "9f615ca8fbe3cb1dfd400dea6c6d03a1f2677d7510b0ad6f1541c974a72723e8"
+              },
+              "archives/local-riauthctl-aarch64.tar.gz": {
+                "bytes": 3641341,
+                "sha256": "d826f26176ababda4fe3930e00a051c0416e2b10c9ec22a1f31ca4f4ef8118da"
+              },
+              "build-client.log": {
+                "bytes": 5282,
+                "sha256": "4c2345f5d1f2c58cb6606bc672a960ae9dc233e80569158d05c210966f6fce49"
+              },
+              "build-essentials.log": {
+                "bytes": 28384,
+                "sha256": "281169d70624e7b7ebc4605de2650b2c4a9db100bea9a60d3b54bc07d9bbeec3"
+              },
+              "build-platform.log": {
+                "bytes": 17533,
+                "sha256": "46294d77993c0ea5d00fe8650c92522599fb47f380742866da68a4096abf34a4"
+              },
+              "capabilities-essentials.log": {
+                "bytes": 13183,
+                "sha256": "4bdc14319c2d0d6c70997f688837533919379906efef266d9b4648d3ea710c86"
+              },
+              "capabilities-platform.log": {
+                "bytes": 14616,
+                "sha256": "beb2ae858a9d081910939d488ba04249f728fcbbbc85daa778698478643c3e02"
+              },
+              "evidence.json": {
+                "bytes": 60299,
+                "sha256": "fd8280125b38e6afbe13970be4617df8fdbe72e7280a4e6dedb2f2a84e4c9ab1"
+              },
+              "focused-native-archive-smoke.log": {
+                "bytes": 76,
+                "sha256": "d0b3f6ce4435ad1d80cdbdaff55477e24ce2942ac26d512761a27b598d49ef48"
+              },
+              "linux-baseline.log": {
+                "bytes": 400,
+                "sha256": "87458b3b1f1ca0e5c693ade771de7007c3783bdc692fa6b39eb6414bf2af2763"
+              },
+              "native-dependency-versions.log": {
+                "bytes": 142,
+                "sha256": "0eeacaea693f7b9759023b1e40d5e8a6628e8542bb927792da179ba1d125db65"
+              },
+              "resources.jsonl": {
+                "bytes": 278604,
+                "sha256": "f81d488c07a2616e4541926c7d98bf5a87bfb38d97923a5c200cc03bf2a321ad"
+              },
+              "rustc-version.log": {
+                "bytes": 36,
+                "sha256": "2073de5abf149185c2f4d7473dc833bc921b99135560d24ae7b2293f33a9c376"
+              }
+            },
+            "products": [
+              {
+                "archive": "local-riauth-essentials-aarch64.tar.gz",
+                "archive_bytes": 13996440,
+                "archive_sha256": "848758095ccab44919ddc643dd91ced3f77d4acc083be0edf63925fdb2b51981",
+                "binary": "riauth",
+                "binary_bytes": 37242432,
+                "binary_sha256": "0e07481de56505904864e42d63be743b235001e95c44af772654d1185a4f40e8",
+                "declared_build_features": [
+                  "essentials"
+                ],
+                "edition": "essentials",
+                "target": "aarch64-unknown-linux-gnu"
+              },
+              {
+                "archive": "local-riauth-platform-aarch64.tar.gz",
+                "archive_bytes": 18375977,
+                "archive_sha256": "9f615ca8fbe3cb1dfd400dea6c6d03a1f2677d7510b0ad6f1541c974a72723e8",
+                "binary": "riauth",
+                "binary_bytes": 49565208,
+                "binary_sha256": "c8c93c0605c83271049dd15794a8960cb3021245f0b439b7de3bbb9d37aec0ef",
+                "declared_build_features": [
+                  "essentials",
+                  "platform"
+                ],
+                "edition": "platform",
+                "target": "aarch64-unknown-linux-gnu"
+              },
+              {
+                "archive": "local-riauth-maintenance-essentials-aarch64.tar.gz",
+                "archive_bytes": 5946216,
+                "archive_sha256": "e43ed01029baeb7cae4821e125d168d687a7e60ab701afc8f46c9fea442adc3a",
+                "binary": "riauth-maintenance",
+                "binary_bytes": 13768992,
+                "binary_sha256": "8c6b1d9a8df61aa5c7d16105b609a0e5dc67e9609d35de85fc822c78033a30ac",
+                "declared_build_features": [
+                  "essentials"
+                ],
+                "edition": "essentials",
+                "target": "aarch64-unknown-linux-gnu"
+              },
+              {
+                "archive": "local-riauth-maintenance-platform-aarch64.tar.gz",
+                "archive_bytes": 6788229,
+                "archive_sha256": "510c55acf014273a53acb5b87d55b40381b9d00f51ef8b654493a307250f92df",
+                "binary": "riauth-maintenance",
+                "binary_bytes": 16062840,
+                "binary_sha256": "2b2461adae8101f4e38c2842963bd273403c4c1ad06c6528a45ab1fd12f7bff1",
+                "declared_build_features": [
+                  "essentials",
+                  "platform"
+                ],
+                "edition": "platform",
+                "target": "aarch64-unknown-linux-gnu"
+              },
+              {
+                "archive": "local-riauthctl-aarch64.tar.gz",
+                "archive_bytes": 3641341,
+                "archive_sha256": "d826f26176ababda4fe3930e00a051c0416e2b10c9ec22a1f31ca4f4ef8118da",
+                "binary": "riauthctl",
+                "binary_bytes": 9185272,
+                "binary_sha256": "7c8831ed42d89a31f3ab2042cd03ab460ef19b991a41b7667b1bfe9c91c04291",
+                "declared_build_features": [],
+                "edition": "client",
+                "target": "aarch64-unknown-linux-gnu"
+              }
+            ],
+            "inputs": {
+              "Cargo.lock": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426",
+              "Cargo.toml": "58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8",
+              "LICENSE": "ef79ab7079893da02af81ebb8a57bec27dc7a601d505b228b1d5356a3aa5b1a9",
+              "THIRD_PARTY_NOTICES.md": "142c0e5150de9436513d9f6f215c5422b8a3af84d4eb7d0708f155e3e18fce05",
+              "crates/riauthctl/Cargo.lock": "2998555ddb2d00e8130a970fcacfed19dfee7a0b2e3305011ebd40746f67b4db",
+              "crates/riauthctl/Cargo.toml": "af385d4d989c53987396edfdfa684cd3902a603d1cf65dd31ac72da7f08de9ea",
+              "scripts/check-edition-artifacts.py": "2f477665ed584bc148fb230c0658f6d0cc66aceaa5af631c4dc467872fa9ecce"
+            },
+            "documents": {
+              "LICENSE": {
+                "bytes": 1076,
+                "sha256": "ef79ab7079893da02af81ebb8a57bec27dc7a601d505b228b1d5356a3aa5b1a9"
+              },
+              "THIRD_PARTY_NOTICES.md": {
+                "bytes": 752651,
+                "sha256": "142c0e5150de9436513d9f6f215c5422b8a3af84d4eb7d0708f155e3e18fce05"
+              }
+            },
+            "imports": {
+              "check-exact-edition-matrix.py": "f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887",
+              "check-installed-release-gate.py": "cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5",
+              "check-local-edition-transition-postgres.py": "575dfb049324ede3cb0ddf4bd71e0b42ef46704a015f6a576a38c4052a1ff2c1",
+              "check-local-encrypted-edition-transition.py": "09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e",
+              "spdx_sbom.py": "ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c"
+            },
+            "original_resource_samples": 1308,
+            "original_resource_minimum": {
+              "host_root": 112151941120,
+              "private": 112151941120,
+              "workspace": 112151941120
+            },
+            "original_maximum_gap": 5.40448
+          }''')
+          GIB = 1024 ** 3
+          START = 30 * GIB
+          STOP = 10 * GIB
+          FLOOR = 8 * GIB
+          INTERVAL = 2.0
+          MAX_GAP = 6.0
+          ZIP_LIMIT = 256 * 1024 ** 2
+          CAPTURE_LIMIT = 8 * 1024 ** 2
+          ROOT = pathlib.Path(os.environ["A09_ROOT"])
+          PRIVATE = ROOT / "private"
+          PUBLIC = ROOT / "public"
+          OWNER = ROOT / "owner.json"
+          HELPER = "check-local-edition-transition-postgres.py"
+          PG_NAMES = ("initdb", "pg_ctl", "createdb", "psql", "postgres")
+          PUBLIC_NAMES = ("controller.json", "resources.jsonl", "cleanup.json", "helper-redacted.json")
+
+
+          class Refusal(Exception):
+              def __init__(self, code):
+                  self.code = code
+                  super().__init__(code)
+
+
+          def require(condition, code):
+              if not condition:
+                  raise Refusal(code)
+
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as source:
+                  for block in iter(lambda: source.read(1024 ** 2), b""):
+                      h.update(block)
+              return h.hexdigest()
+
+
+          def regular(path):
+              info = path.lstat()
+              require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "regular_file_required")
+              return info
+
+
+          def write_new(path, value):
+              require(not path.exists(), "owned_file_already_exists")
+              temporary = path.with_name(path.name + ".new")
+              with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "w") as out:
+                  json.dump(value, out, sort_keys=True)
+                  out.write("\n")
+              # Each name has one designated writer inside the fresh mode-0700 directory.
+              temporary.replace(path)
+
+
+          def atomic(path, value):
+              temporary = path.with_name(path.name + ".next")
+              with temporary.open("w") as out:
+                  json.dump(value, out, indent=2, sort_keys=True)
+                  out.write("\n")
+              temporary.chmod(0o600)
+              temporary.replace(path)
+
+
+          def read_json(path, maximum=2 * 1024 ** 2):
+              require(regular(path).st_size <= maximum, "json_size_limit")
+              return json.loads(path.read_text())
+
+
+          def native():
+              require(platform.system() == "Linux" and platform.machine() == "aarch64", "native_arm64_required")
+              require(os.environ.get("RUNNER_OS") == "Linux" and os.environ.get("RUNNER_ARCH") == "ARM64",
+                      "runner_native_context_required")
+              require(os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted", "hosted_runner_required")
+              require(os.getuid() != 0, "unprivileged_user_required")
+
+
+          def environment():
+              # No token, proxy, Python search/optimization or PostgreSQL credentials reach native children.
+              allowed = ("HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TZ", "RUNNER_TRACKING_ID")
+              result = {name: os.environ[name] for name in allowed if name in os.environ}
+              result.update(PATH=os.environ.get("PATH", ""), TMPDIR=str(PRIVATE), PYTHONDONTWRITEBYTECODE="1")
+              return result
+
+
+          def elf(path):
+              regular(path)
+              with path.open("rb") as source:
+                  header = source.read(64)
+              require(len(header) == 64 and header[:6] == b"\x7fELF\x02\x01" and
+                      header[6] == 1 and struct.unpack("<H", header[16:18])[0] in (2, 3) and
+                      struct.unpack("<H", header[18:20])[0] == 183 and
+                      struct.unpack("<H", header[52:54])[0] == 64, "native_elf_required")
+
+
+          def identity(pid):
+              # PID fingerprint is UID + kernel start ticks, not an untrusted command string.
+              try:
+                  directory = pathlib.Path("/proc") / str(pid)
+                  text = (directory / "stat").read_text()
+                  tail = text[text.rfind(")") + 2:].split()
+                  return {"pid": pid, "ppid": int(tail[1]), "start": int(tail[19]),
+                          "uid": directory.stat().st_uid, "state": tail[0]}
+              except (FileNotFoundError, ProcessLookupError):
+                  return None
+              except (OSError, ValueError, IndexError):
+                  raise Refusal("process_identity_unavailable")
+
+
+          def owned_descendants():
+              entries = {}
+              for entry in pathlib.Path("/proc").iterdir():
+                  if entry.name.isdigit():
+                      item = identity(int(entry.name))
+                      if item is not None:
+                          entries[item["pid"]] = item
+              owned = {os.getpid()}
+              while True:
+                  more = {pid for pid, item in entries.items() if item["ppid"] in owned}
+                  if more <= owned:
+                      break
+                  owned |= more
+              return [entries[pid] for pid in owned - {os.getpid()} if pid in entries]
+
+
+          def same_process(item):
+              current = identity(item["pid"])
+              return current is not None and current["uid"] == os.getuid() and current["start"] == item["start"]
+
+
+          def signal_owned(item, sig):
+              if same_process(item):
+                  os.kill(item["pid"], sig)
+
+
+          def reap_owned():
+              count = 0
+              while True:
+                  try:
+                      pid, unused = os.waitpid(-1, os.WNOHANG)
+                      if not pid:
+                          return count
+                      count += 1
+                  except ChildProcessError:
+                      return count
+
+
+          def owner():
+              value = read_json(OWNER, 4096)
+              require(value["uid"] == os.getuid() and value["root"] == str(ROOT) and
+                      value["run"] == int(os.environ["GITHUB_RUN_ID"]) and
+                      value["attempt"] == int(os.environ["GITHUB_RUN_ATTEMPT"]), "owner_marker_mismatch")
+              require(ROOT.resolve() == ROOT and ROOT.parent == pathlib.Path(os.environ["RUNNER_TEMP"]).resolve(),
+                      "owned_root_path_mismatch")
+              require(stat.S_ISDIR(ROOT.lstat().st_mode) and ROOT.stat().st_uid == os.getuid() and
+                      stat.S_IMODE(ROOT.stat().st_mode) == 0o700, "owned_root_permissions")
+              return value
+
+
+          def request(name):
+              value = owner()
+              write_new(PRIVATE / (name + ".request"), {"nonce": value["nonce"]})
+
+
+          def wait_result(name, maximum):
+              started = time.monotonic()
+              value = owner()
+              while time.monotonic() - started < maximum:
+                  path = PRIVATE / (name + ".result")
+                  if path.exists():
+                      result = read_json(path, 4096)
+                      require(result.get("nonce") == value["nonce"], "result_marker_mismatch")
+                      return result
+                  supervisor = identity(value["supervisor_pid"])
+                  require(supervisor is not None and supervisor["start"] == value["supervisor_start"],
+                          "supervisor_lost")
+                  time.sleep(0.2)
+              raise Refusal("supervisor_reply_timeout")
+
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+
+          def transfer(kind):
+              # Only supervisor invokes this subprocess, once per kind; wall clock is bounded externally.
+              value = owner()
+              require(read_json(PRIVATE / "transport-owner.json", 4096) == {"nonce": value["nonce"]},
+                      "transport_not_authorized")
+              require(kind in ("metadata", "zip"), "transport_kind_invalid")
+              write_new(PRIVATE / (kind + "-attempt.json"), {"nonce": value["nonce"]})
+              token = os.environ["A09_RETRIEVAL_TOKEN"]
+              require(bool(token), "retrieval_token_missing")
+              api = "https://api.github.com/repos/" + FIXED["repository"] + "/actions/artifacts/" + str(FIXED["artifact_id"])
+              url = api if kind == "metadata" else api + "/zip"
+              maximum = 2 * 1024 ** 2 if kind == "metadata" else ZIP_LIMIT
+              name = "metadata.json" if kind == "metadata" else "artifact.zip"
+              part = PRIVATE / (name + ".part")
+              target = PRIVATE / name
+              require(not target.exists() and not part.exists(), "transport_already_attempted")
+              resource.setrlimit(resource.RLIMIT_FSIZE, (maximum, maximum))
+              opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+              headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+                         "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "riauth-local-a09-build-free"}
+              started = time.monotonic()
+              try:
+                  response = opener.open(urllib.request.Request(url, headers=headers), timeout=15)
+              except urllib.error.HTTPError as error:
+                  atomic(PRIVATE / (kind + "-http.json"), {"status": error.code})
+                  require(kind == "zip" and error.code == 302, "transport_http_refusal")
+                  location = error.headers.get("Location", "")
+                  error.close()
+                  parsed = urllib.parse.urlsplit(location)
+                  host = parsed.hostname or ""
+                  require(parsed.scheme == "https" and parsed.username is None and parsed.password is None and
+                          parsed.port in (None, 443) and not parsed.fragment and
+                          (host.endswith(".blob.core.windows.net") or host.endswith(".actions.githubusercontent.com")),
+                          "transport_redirect_refused")
+                  # The signed artifact URL is private. Never forward GitHub Authorization across origins.
+                  response = opener.open(urllib.request.Request(location, headers={"User-Agent": "riauth-local-a09-build-free"}),
+                                         timeout=15)
+              with response:
+                  atomic(PRIVATE / (kind + "-http.json"), {"status": response.status})
+                  require(response.status == 200, "transport_status")
+                  advertised = response.headers.get("Content-Length")
+                  if advertised is not None:
+                      require(advertised.isdigit() and int(advertised) <= maximum, "transport_advertised_bound")
+                  size = 0
+                  h = hashlib.sha256()
+                  with os.fdopen(os.open(part, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as out:
+                      while True:
+                          require(time.monotonic() - started < 120, "transport_wall_bound")
+                          block = response.read(1024 ** 2)
+                          if not block:
+                              break
+                          size += len(block)
+                          require(size <= maximum, "transport_size_bound")
+                          h.update(block)
+                          out.write(block)
+                  require(size > 0 and (advertised is None or size == int(advertised)), "transport_incomplete")
+              if kind == "zip":
+                  require(h.hexdigest() == FIXED["zip_sha256"], "zip_digest_mismatch")
+              else:
+                  metadata = read_json(part)
+                  run = metadata.get("workflow_run", {})
+                  require(metadata.get("id") == FIXED["artifact_id"] and
+                          metadata.get("name") == FIXED["artifact_name"] and
+                          metadata.get("digest") == "sha256:" + FIXED["zip_sha256"] and
+                          metadata.get("expired") is False and
+                          type(metadata.get("size_in_bytes")) is int and
+                          0 < metadata["size_in_bytes"] <= ZIP_LIMIT and
+                          run.get("id") == FIXED["build_run"] and
+                          run.get("head_sha") == FIXED["product_sha"], "artifact_metadata_mismatch")
+              # Incomplete, overlarge or hash-wrong streams stay .part and are never consumed.
+              require(time.monotonic() - started < 120, "transport_wall_bound")
+              part.replace(target)
+              write_new(PRIVATE / (kind + "-transport.json"), {"bytes": size, "sha256": h.hexdigest(),
+                                                              "elapsed_seconds": time.monotonic() - started,
+                                                              "owner_nonce": value["nonce"]})
+
+
+          BOOTSTRAP = r'''
+          import hashlib, json, os, pathlib, runpy, sys, tempfile
+          sys.dont_write_bytecode = True
+          root = pathlib.Path(os.environ["A09_ROOT"])
+          private = root / "private"
+          marker = json.loads((root / "owner.json").read_text())
+          helper = pathlib.Path(sys.argv[1])
+          artifacts = pathlib.Path(sys.argv[2])
+          expected = sys.argv[3]
+          if hashlib.sha256(helper.read_bytes()).hexdigest() != expected:
+              raise RuntimeError("helper_changed")
+          class RetainedFixture:
+              def __init__(self, suffix=None, prefix=None, dir=None, **kwargs):
+                  if suffix is not None or prefix != "local-a08-postgres-" or pathlib.Path(dir).resolve() != private or kwargs:
+                      raise RuntimeError("unexpected_temporary_directory")
+                  self.path = private / "local-a08-postgres-owned"
+                  self.path.mkdir(mode=0o700)
+                  data = {"nonce": marker["nonce"], "root": str(root), "uid": os.getuid()}
+                  fd = os.open(self.path / ".a09-owner.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                  with os.fdopen(fd, "w") as out:
+                      json.dump(data, out, sort_keys=True)
+              def __enter__(self):
+                  return str(self.path)
+              def __exit__(self, *exc):
+                  return False
+          # Retain exactly this fixture; do not alter helper assertions, subprocesses, SQL or output.
+          tempfile.TemporaryDirectory = RetainedFixture
+          sys.argv = [str(helper), "--artifacts", str(artifacts), "--evidence", str(private / "helper.json"),
+                      "--source-revision", sys.argv[4]]
+          runpy.run_path(str(helper), run_name="__main__")
+          '''
+
+
+          class Controller:
+              def __init__(self):
+                  self.owner = owner()
+                  self.deadline = self.owner["started_monotonic"] + 1080
+                  self.lock = threading.RLock()
+                  self.last_sample = None
+                  self.resource_failure = None
+                  self.end_monitor = threading.Event()
+                  self.minima = {}
+                  self.samples = 0
+                  self.max_gap = 0.0
+                  self.tools = {}
+                  self.capture_readers = []
+                  self.capture_records = []
+                  self.interrupted = None
+                  self.first_failure = None
+                  self.phases = []
+                  self.cleanup_failures = []
+                  self.reaped = 0
+                  self.data = {"schema": "riauth.local-build-free-shared-controller/v1",
+                               "official_release": False, "full_shared_gate": "not_certified",
+                               "sample_result": "not_run", "controller_exit_code": None,
+                               "product_sha": FIXED["product_sha"],
+                               "build_workflow_sha": FIXED["build_workflow_sha"],
+                               "build_run": FIXED["build_run"], "build_job": FIXED["build_job"],
+                               "artifact_id": FIXED["artifact_id"], "artifact_name": FIXED["artifact_name"],
+                               "expected_zip_sha256": FIXED["zip_sha256"],
+                               "validator_source_sha": os.environ["A09_VALIDATOR_SOURCE_SHA"],
+                               "expected_validator_sha256": FIXED["imports"][HELPER],
+                               "controller_sha256": digest(ROOT / "controller.py"),
+                               "workflow_sha": os.environ["GITHUB_WORKFLOW_SHA"],
+                               "github_sha": os.environ["GITHUB_SHA"],
+                               "repository": os.environ["GITHUB_REPOSITORY"],
+                               "run_id": int(os.environ["GITHUB_RUN_ID"]),
+                               "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                               "event": os.environ["GITHUB_EVENT_NAME"],
+                               "action_pins": {
+                                   "checkout": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+                                   "upload": "ea165f8d65b6e75b540449e92b4886f43607fa02"},
+                               "resource_policy": {"start_bytes": START, "stop_bytes": STOP, "floor_bytes": FLOOR,
+                                                   "intended_interval_seconds": INTERVAL, "maximum_gap_seconds": MAX_GAP},
+                               "helper_timeout_seconds": 600, "global_timeout_seconds": 1080}
+
+              def fail(self, phase, code, exit_code=None):
+                  if self.first_failure is None:
+                      self.first_failure = {"phase": phase, "code": code, "exit_code": exit_code}
+
+              def save(self):
+                  with self.lock:
+                      self.data.update(first_failure=self.first_failure, phases=self.phases,
+                                       cleanup_failures=self.cleanup_failures,
+                                       resource_samples=self.samples, minimum_free_bytes=self.minima,
+                                       maximum_actual_gap_seconds=self.max_gap)
+                      atomic(PUBLIC / "controller.json", self.data)
+
+              def sample(self, initial=False):
+                  paths = {"host_root": pathlib.Path("/"),
+                           "workspace": pathlib.Path(os.environ["GITHUB_WORKSPACE"]),
+                           "private": ROOT}
+                  now = time.monotonic()
+                  gap = 0.0 if self.last_sample is None else now - self.last_sample
+                  free = {name: shutil.disk_usage(path).free for name, path in paths.items()}
+                  devices = {name: os.stat(path).st_dev for name, path in paths.items()}
+                  item = {"at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                          "monotonic_seconds": now - self.owner["started_monotonic"],
+                          "actual_gap_seconds": gap, "free_bytes": free, "device_ids": devices}
+                  with self.lock:
+                      output = PUBLIC / "resources.jsonl"
+                      require(output.stat().st_size < 2 * 1024 ** 2, "resource_log_bound")
+                      with output.open("a") as out:
+                          out.write(json.dumps(item, sort_keys=True) + "\n")
+                      self.last_sample = now
+                      self.samples += 1
+                      self.max_gap = max(self.max_gap, gap)
+                      for name, amount in free.items():
+                          self.minima[name] = min(self.minima.get(name, amount), amount)
+                      require(gap <= MAX_GAP, "resource_sample_gap")
+                      require(all(amount >= FLOOR for amount in free.values()), "resource_floor_observed")
+                      require(all(amount >= (START if initial else STOP) for amount in free.values()),
+                              "resource_start_capacity" if initial else "resource_stop_capacity")
+
+              def monitor(self):
+                  due = time.monotonic() + INTERVAL
+                  while not self.end_monitor.wait(max(0, due - time.monotonic())):
+                      try:
+                          self.sample()
+                      except Exception as error:
+                          with self.lock:
+                              self.resource_failure = error.code if isinstance(error, Refusal) else "resource_sample_unavailable"
+                          return
+                      due = time.monotonic() + INTERVAL
+
+              def guard(self):
+                  with self.lock:
+                      require(self.resource_failure is None, self.resource_failure or "resource_sample_unavailable")
+                      require(self.last_sample is not None and time.monotonic() - self.last_sample <= MAX_GAP,
+                              "resource_sample_lost")
+                  require(self.interrupted is None, "controller_signal")
+                  require(time.monotonic() < self.deadline - 60, "global_cleanup_reserve")
+                  if (PRIVATE / "finalize.request").exists():
+                      require(read_json(PRIVATE / "finalize.request", 4096).get("nonce") == self.owner["nonce"],
+                              "finalize_marker_mismatch")
+                      raise Refusal("finalize_requested")
+
+              def terminate(self, child):
+                  if child.poll() is None:
+                      fingerprint = identity(child.pid)
+                      if fingerprint is not None:
+                          signal_owned(fingerprint, signal.SIGTERM)
+                      try:
+                          child.wait(timeout=5)
+                      except subprocess.TimeoutExpired:
+                          if fingerprint is not None:
+                              signal_owned(fingerprint, signal.SIGKILL)
+                          child.wait(timeout=5)
+
+              def command(self, name, argv, timeout, env=None, capture=CAPTURE_LIMIT):
+                  self.guard()
+                  started = time.monotonic()
+                  if name == "focused-shared-helper":
+                      require(self.deadline - started >= timeout + 60, "full_helper_budget_unavailable")
+                  paths = [PRIVATE / (name + ".stdout"), PRIVATE / (name + ".stderr")]
+                  row = {"phase": name, "exit_code": None, "elapsed_seconds": None, "status": "started"}
+                  self.phases.append(row)
+                  self.capture_records.append((row, paths))
+                  self.save()
+                  child = None
+                  readers = []
+                  capture_failure = threading.Event()
+
+                  def drain(pipe, path):
+                      try:
+                          count = 0
+                          with path.open("xb") as output:
+                              while True:
+                                  block = pipe.read(65536)
+                                  if not block:
+                                      break
+                                  count += len(block)
+                                  if count >= capture:
+                                      capture_failure.set()
+                                      break
+                                  output.write(block)
+                      except Exception:
+                          capture_failure.set()
+                      finally:
+                          pipe.close()
+
+                  try:
+                      child = subprocess.Popen(argv, env=environment() if env is None else env,
+                                               cwd=os.environ["GITHUB_WORKSPACE"], stdin=subprocess.DEVNULL,
+                                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+                      for pipe, path in zip((child.stdout, child.stderr), paths):
+                          reader = threading.Thread(target=drain, args=(pipe, path), daemon=True)
+                          reader.start()
+                          readers.append(reader)
+                          self.capture_readers.append(reader)
+                      while child.poll() is None:
+                          self.guard()
+                          require(time.monotonic() - started < timeout, "phase_timeout")
+                          require(not capture_failure.is_set(), "private_capture_bound")
+                          time.sleep(0.2)
+                      row["exit_code"] = child.wait()
+                      require(time.monotonic() - started < timeout, "phase_timeout")
+                      for reader in readers:
+                          reader.join(timeout=2)
+                      require(not capture_failure.is_set() and not any(reader.is_alive() for reader in readers),
+                              "private_capture_incomplete_or_bound")
+                      require(row["exit_code"] == 0, "phase_exit")
+                      row["status"] = "passed"
+                      return paths[0]
+                  except Exception as error:
+                      code = error.code if isinstance(error, Refusal) else "phase_unavailable"
+                      if child is not None:
+                          try:
+                              self.terminate(child)
+                          except Exception:
+                              self.cleanup_failures.append("phase_child_reap_failed")
+                          row["exit_code"] = child.returncode
+                      row["status"] = "failed"
+                      self.fail(name, code, row["exit_code"])
+                      raise Refusal(code)
+                  finally:
+                      # Descendants retaining a pipe are terminated in the final owned-process sweep.
+                      row["elapsed_seconds"] = round(time.monotonic() - started, 6)
+                      self.save()
+
+              def source(self):
+                  sha = os.environ["A09_VALIDATOR_SOURCE_SHA"]
+                  require(re.fullmatch("[0-9a-f]{40}", sha) is not None, "validator_full_sha_required")
+                  require(sha != FIXED["product_sha"] and sha != os.environ["GITHUB_WORKFLOW_SHA"], "source_roles_must_be_distinct")
+                  root = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+                  git = shutil.which("git")
+                  require(git is not None, "git_missing")
+                  output = self.command("validator-head", [git, "rev-parse", "HEAD"], 10, capture=4096)
+                  require(output.read_text().strip() == sha, "validator_checkout_mismatch")
+                  actual = {}
+                  for name, expected in FIXED["imports"].items():
+                      path = root / "scripts" / name
+                      regular(path)
+                      actual[name] = digest(path)
+                      self.data["validator_import_sha256"] = dict(actual)
+                      self.save()
+                      require(actual[name] == expected, "validator_import_mismatch")
+                  self.data["validator_import_sha256"] = actual
+                  self.save()
+
+              def download(self):
+                  write_new(PRIVATE / "transport-owner.json", {"nonce": self.owner["nonce"]})
+                  env = environment()
+                  env.update({name: os.environ[name] for name in
+                              ("A09_ROOT", "RUNNER_TEMP", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "A09_RETRIEVAL_TOKEN")})
+                  for kind in ("metadata", "zip"):
+                      try:
+                          self.command("artifact-" + kind, [sys.executable, "-I", "-B", str(ROOT / "controller.py"), "transfer", kind],
+                                       120, env)
+                      except Refusal:
+                          failure_path = PRIVATE / (kind + "-failure.json")
+                          if failure_path.exists():
+                              failure = read_json(failure_path, 4096)
+                              require(set(failure) == {"code", "http_status"} and
+                                      re.fullmatch("[a-z_]{1,80}", failure["code"]) is not None and
+                                      (failure["http_status"] is None or
+                                       type(failure["http_status"]) is int and 100 <= failure["http_status"] <= 599),
+                                      "transfer_failure_shape")
+                              self.data[kind + "_transport_failure"] = failure
+                              if self.first_failure is not None and self.first_failure["phase"] == "artifact-" + kind:
+                                  self.first_failure["code"] = failure["code"]
+                              self.save()
+                          raise
+                      summary = read_json(PRIVATE / (kind + "-transport.json"), 4096)
+                      require(summary.pop("owner_nonce") == self.owner["nonce"], "transport_owner_mismatch")
+                      self.data[kind + "_transport"] = summary
+                      self.save()
+                  require(digest(PRIVATE / "artifact.zip") == FIXED["zip_sha256"], "zip_post_transfer_mismatch")
+                  metadata = read_json(PRIVATE / "metadata.json")
+                  require(regular(PRIVATE / "artifact.zip").st_size == metadata["size_in_bytes"], "zip_metadata_size_mismatch")
+
+              def extract_zip(self):
+                  extracted = PRIVATE / "download"
+                  extracted.mkdir(mode=0o700)
+                  (extracted / "archives").mkdir(mode=0o700)
+                  expected = FIXED["files"]
+                  with zipfile.ZipFile(PRIVATE / "artifact.zip") as archive:
+                      entries = archive.infolist()
+                      require(len(entries) == 18 and len({entry.filename for entry in entries}) == 18 and
+                              {entry.filename for entry in entries} == set(expected), "zip_exact_allowlist")
+                      for entry in entries:
+                          self.guard()
+                          parts = pathlib.PurePosixPath(entry.filename).parts
+                          mode = entry.external_attr >> 16
+                          require(not entry.is_dir() and not (entry.flag_bits & 1) and "\\" not in entry.filename and
+                                  not entry.filename.startswith("/") and all(part not in ("", ".", "..") for part in parts) and
+                                  stat.S_IFMT(mode) in (0, stat.S_IFREG) and
+                                  entry.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED) and
+                                  entry.orig_filename == entry.filename and not (entry.external_attr & 0x10),
+                                  "zip_regular_member_required")
+                          spec = expected[entry.filename]
+                          require(entry.file_size == spec["bytes"] and entry.compress_size <= ZIP_LIMIT, "zip_member_bound")
+                          target = extracted / entry.filename
+                          count = 0
+                          h = hashlib.sha256()
+                          with archive.open(entry) as source, os.fdopen(
+                                  os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as out:
+                              while True:
+                                  self.guard()
+                                  block = source.read(1024 ** 2)
+                                  if not block:
+                                      break
+                                  count += len(block)
+                                  require(count <= spec["bytes"], "zip_member_expansion_bound")
+                                  h.update(block)
+                                  out.write(block)
+                          require(count == spec["bytes"] and h.hexdigest() == spec["sha256"], "zip_member_hash_mismatch")
+                  self.data["validated_input_files"] = expected
+                  self.save()
+                  evidence = read_json(extracted / "evidence.json")
+                  require(evidence["source_sha"] == FIXED["product_sha"] and evidence["source_tree"] == FIXED["product_tree"] and
+                          evidence["github"]["GITHUB_WORKFLOW_SHA"] == FIXED["build_workflow_sha"] and
+                          int(evidence["github"]["GITHUB_RUN_ID"]) == FIXED["build_run"] and
+                          int(evidence["github"]["GITHUB_RUN_ATTEMPT"]) == 1 and
+                          evidence["github"]["GITHUB_REPOSITORY"] == FIXED["repository"] and
+                          evidence["official_release"] is False and evidence["shared_full_gate"] == "not_run" and
+                          evidence["inputs"] == FIXED["inputs"] and evidence["source_verified"] is True and
+                          evidence["native_archive_slice"] == "passed" and evidence["cleanup_errors"] == [], "build_evidence_identity")
+                  products = [{k: v for k, v in product.items() if k != "observed_server_capabilities"}
+                              for product in evidence["products"]]
+                  require(products == FIXED["products"], "build_product_identity")
+                  records = [json.loads(line) for line in (extracted / "resources.jsonl").read_text().splitlines()]
+                  require(len(records) == FIXED["original_resource_samples"], "build_resource_sample_count")
+                  minimum = {scope: min(item["free_bytes"][scope] for item in records)
+                             for scope in ("host_root", "workspace", "private")}
+                  times = [datetime.datetime.fromisoformat(item["at_utc"]).timestamp() for item in records]
+                  gaps = [after - before for before, after in zip(times, times[1:])]
+                  require(minimum == FIXED["original_resource_minimum"] and all(gap > 0 for gap in gaps) and
+                          abs(max(gaps) - FIXED["original_maximum_gap"]) < 0.00001,
+                          "build_resource_identity")
+
+              def extract_binaries(self):
+                  installed = PRIVATE / "installed"
+                  installed.mkdir(mode=0o700)
+                  for product in FIXED["products"]:
+                      self.guard()
+                      destination = installed / product["edition"]
+                      destination.mkdir(mode=0o700, exist_ok=True)
+                      expected = {product["binary"]: {"bytes": product["binary_bytes"], "sha256": product["binary_sha256"]},
+                                  **FIXED["documents"]}
+                      seen = set()
+                      archive = PRIVATE / "download" / "archives" / product["archive"]
+                      require(digest(archive) == product["archive_sha256"], "tar_archive_hash_mismatch")
+                      with tarfile.open(archive, mode="r|gz") as source:
+                          for member in source:
+                              self.guard()
+                              require(member.name in expected and member.name not in seen and member.isfile() and
+                                      member.type in (tarfile.REGTYPE, tarfile.AREGTYPE) and
+                                      not member.issparse() and not member.linkname and not member.pax_headers,
+                                      "tar_exact_regular_members")
+                              seen.add(member.name)
+                              spec = expected[member.name]
+                              require(member.size == spec["bytes"], "tar_member_bound")
+                              # Documents are checked in each archive and never overwritten.
+                              target = destination / (product["binary"] + "-" + member.name if member.name != product["binary"]
+                                                       else product["binary"])
+                              h = hashlib.sha256()
+                              size = 0
+                              with source.extractfile(member) as stream, os.fdopen(
+                                      os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb") as out:
+                                  while True:
+                                      self.guard()
+                                      block = stream.read(1024 ** 2)
+                                      if not block:
+                                          break
+                                      size += len(block)
+                                      require(size <= spec["bytes"], "tar_member_expansion_bound")
+                                      h.update(block)
+                                      out.write(block)
+                              require(size == spec["bytes"] and h.hexdigest() == spec["sha256"], "tar_member_hash_mismatch")
+                      require(seen == set(expected), "tar_three_member_required")
+                      executable = destination / product["binary"]
+                      elf(executable)
+                      executable.chmod(0o700)
+                  self.data["validated_products"] = FIXED["products"]
+                  self.data["validated_license_hashes"] = FIXED["documents"]
+                  self.save()
+                  return installed
+
+              def postgres_tools(self):
+                  directory = pathlib.Path("/usr/lib/postgresql/16/bin")
+                  require(directory.is_dir() and not directory.is_symlink(), "installed_postgres16_missing")
+                  selected = {}
+                  hashes = {}
+                  versions = {}
+                  for name in PG_NAMES:
+                      path = directory / name
+                      elf(path)
+                      require(path.stat().st_uid == 0 and not (path.stat().st_mode & 0o022) and os.access(path, os.X_OK),
+                              "postgres_tool_permissions")
+                      selected[name] = str(path)
+                      hashes[name] = digest(path)
+                  env = environment()
+                  env["PATH"] = str(directory) + ":" + env["PATH"]
+                  for name in PG_NAMES:
+                      output = self.command("postgres-version-" + name, [selected[name], "--version"], 10, env, capture=4096)
+                      raw = output.read_text().strip()
+                      match = re.fullmatch(r"(?:initdb|pg_ctl|createdb|psql|postgres) \(PostgreSQL\) (16(?:\.[0-9]+)+)(?: \(Ubuntu [A-Za-z0-9.+~:-]+\))?", raw)
+                      require(match is not None, "postgres_version_refused")
+                      versions[name] = {"version": match.group(1), "output_sha256": digest(output)}
+                  require(len({item["version"] for item in versions.values()}) == 1, "postgres_versions_disagree")
+                  self.tools = selected
+                  self.data["postgres_tool_sha256"] = hashes
+                  self.data["postgres_versions"] = versions
+                  self.save()
+                  return env
+
+              def helper(self, installed, env):
+                  self.guard()
+                  require(self.deadline - time.monotonic() >= 660, "full_helper_budget_unavailable")
+                  bootstrap = ROOT / "bootstrap.py"
+                  with bootstrap.open("x") as out:
+                      out.write(BOOTSTRAP)
+                  bootstrap.chmod(0o600)
+                  env["A09_ROOT"] = str(ROOT)
+                  helper = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "scripts" / HELPER
+                  self.command("focused-shared-helper",
+                               [sys.executable, "-I", "-B", str(bootstrap), str(helper), str(installed),
+                                FIXED["imports"][HELPER], FIXED["product_sha"]], 600, env)
+                  report = read_json(PRIVATE / "helper.json", 64 * 1024)
+                  booleans = ("other_client_refused", "issuer_and_authentication_preserved", "all_effective_rates_preserved",
+                              "active_capabilities_switched", "edition_and_version_metadata_coordinated")
+                  literals = {"schema": "riauth.local-native-postgres-transition/v1", "release_gate_result": False,
+                              "architecture": "linux/aarch64", "backend": "postgresql", "agreement_format": 3,
+                              "source_revision": FIXED["product_sha"], "validator_sha256": FIXED["imports"][HELPER],
+                              "shared_configuration_refusals": ["authentication", "general_rate"],
+                              "shared_identity_authorization_sample": "passed", "full_shared_gate": "not_certified",
+                              "editions": ["essentials", "platform", "essentials"]}
+                  counts = ("baseline_rows", "upgrade_preserved_rows", "downgrade_preserved_rows")
+                  expected_keys = set(literals) | set(booleans) | set(counts) | {"postgres_version", "binary_sha256", "shared_sample_sha256"}
+                  require(set(report) == expected_keys and all(report.get(key) == value and type(report[key]) is type(value)
+                                                             for key, value in literals.items()), "helper_report_literals")
+                  require(all(report[key] is True for key in booleans) and
+                          all(type(report[key]) is int and report[key] > 0 for key in counts) and
+                          report["baseline_rows"] == report["upgrade_preserved_rows"] and
+                          report["downgrade_preserved_rows"] >= report["baseline_rows"] and
+                          isinstance(report["shared_sample_sha256"], str) and
+                          re.fullmatch("[0-9a-f]{64}", report["shared_sample_sha256"]) is not None, "helper_report_assertions")
+                  binary_hashes = {edition: {product["binary"]: product["binary_sha256"] for product in FIXED["products"]
+                                            if product["edition"] == edition}
+                                   for edition in ("essentials", "platform")}
+                  require(report["binary_sha256"] == binary_hashes, "helper_binary_hashes")
+                  require(type(report["postgres_version"]) is str and
+                          report["postgres_version"] == (PRIVATE / "postgres-version-psql.stdout").read_text().strip(),
+                          "helper_postgres_version")
+                  sanitized = {key: report[key] for key in sorted(expected_keys - {"postgres_version"})}
+                  sanitized["postgres_version"] = self.data["postgres_versions"]["psql"]["version"]
+                  sanitized["raw_postgres_version_output_sha256"] = self.data["postgres_versions"]["psql"]["output_sha256"]
+                  sanitized["helper_evidence_sha256"] = digest(PRIVATE / "helper.json")
+                  atomic(PUBLIC / "helper-redacted.json", sanitized)
+                  for name, expected in FIXED["imports"].items():
+                      self.guard()
+                      path = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "scripts" / name
+                      regular(path)
+                      require(digest(path) == expected, "validator_import_changed_during_helper")
+                  self.data["sample_result"] = "passed"
+                  self.save()
+
+              def fixture_proof(self):
+                  fixture = PRIVATE / "local-a08-postgres-owned"
+                  if not fixture.exists():
+                      return None
+                  require(not fixture.is_symlink() and fixture.resolve().parent == PRIVATE and
+                          fixture.stat().st_uid == os.getuid() and stat.S_IMODE(fixture.stat().st_mode) == 0o700,
+                          "fixture_ownership_path")
+                  marker = read_json(fixture / ".a09-owner.json", 4096)
+                  require(marker == {"nonce": self.owner["nonce"], "root": str(ROOT), "uid": os.getuid()},
+                          "fixture_marker_mismatch")
+                  cluster = fixture / "postgres-cluster"
+                  if cluster.exists():
+                      require(not cluster.is_symlink() and cluster.resolve().parent == fixture and
+                              cluster.stat().st_uid == os.getuid(), "cluster_ownership_path")
+                  return fixture
+
+              def cleanup(self):
+                  cleanup = {"schema": "riauth.local-build-free-cleanup/v1", "owned_fixture_removed": False,
+                             "owned_processes_reaped": 0, "remaining_owned_processes": 0,
+                             "postgres_pidfile_verified": False, "postgres_state": "not_observed",
+                             "failures": self.cleanup_failures}
+                  fixture = None
+                  try:
+                      fixture = self.fixture_proof()
+                      descendants = owned_descendants()
+                      cluster = None if fixture is None else fixture / "postgres-cluster"
+                      pidfile = None if cluster is None else cluster / "postmaster.pid"
+                      if pidfile is not None and pidfile.exists():
+                          require(regular(pidfile).st_size <= 4096, "postgres_pidfile_bound")
+                          lines = pidfile.read_text().splitlines()
+                          require(len(lines) >= 3 and lines[0].isdigit() and lines[1] == str(cluster) and lines[2].isdigit(),
+                                  "postgres_pidfile_invalid")
+                          require(int(lines[2]) >= self.owner["started_utc_seconds"] - 2, "postgres_pidfile_not_fresh")
+                          master = identity(int(lines[0]))
+                          if master is not None:
+                              matching = next((item for item in descendants if item["pid"] == master["pid"] and
+                                               item["start"] == master["start"]), None)
+                              require(matching is not None and same_process(matching), "postgres_not_owned_descendant")
+                              executable = pathlib.Path("/proc") / str(master["pid"]) / "exe"
+                              require("postgres" in self.tools and str(executable.resolve()) == self.tools["postgres"] and
+                                      digest(executable) == self.data["postgres_tool_sha256"]["postgres"],
+                                      "postgres_owned_executable_mismatch")
+                              arguments = (pathlib.Path("/proc") / str(master["pid"]) / "cmdline").read_bytes().split(b"\0")
+                              require(b"-D" in arguments and
+                                      arguments[arguments.index(b"-D") + 1] == str(cluster).encode(),
+                                      "postgres_owned_cluster_mismatch")
+                              cleanup["postgres_state"] = "live_owned_master_verified"
+                          else:
+                              cleanup["postgres_state"] = "owned_pidfile_no_live_master"
+                          cleanup["postgres_pidfile_verified"] = True
+                      elif any(item for item in descendants if self.is_postgres(item)):
+                          cleanup["postgres_state"] = "live_owned_process_without_pidfile"
+                          self.cleanup_failures.append("live_owned_postgres_pidfile_unavailable")
+                      else:
+                          cleanup["postgres_state"] = "no_live_owned_postgres"
+                  except Exception as error:
+                      self.cleanup_failures.append(error.code if isinstance(error, Refusal) else "fixture_cleanup_proof_unavailable")
+                  # Subreaper ancestry proves these are this controller's descendants, even after daemonization.
+                  # PID fingerprints are rechecked per signal; never use a generic pg_ctl/killall or unrelated PID.
+                  for sig, seconds in ((signal.SIGTERM, 5), (signal.SIGKILL, 5)):
+                      end = time.monotonic() + seconds
+                      while time.monotonic() < end:
+                          descendants = owned_descendants()
+                          if not descendants:
+                              break
+                          for item in descendants:
+                              try:
+                                  signal_owned(item, sig)
+                              except ProcessLookupError:
+                                  pass
+                              except Exception:
+                                  self.cleanup_failures.append("owned_process_signal_failed")
+                          self.reaped += reap_owned()
+                          time.sleep(0.1)
+                  self.reaped += reap_owned()
+                  remaining = owned_descendants()
+                  reader_deadline = time.monotonic() + 3
+                  for reader in self.capture_readers:
+                      reader.join(timeout=max(0, reader_deadline - time.monotonic()))
+                  if any(reader.is_alive() for reader in self.capture_readers):
+                      self.cleanup_failures.append("private_capture_reader_remains")
+                  else:
+                      for row, paths in self.capture_records:
+                          row["private_capture"] = {
+                              channel: {"bytes": regular(path).st_size, "sha256": digest(path)}
+                              for channel, path in zip(("stdout", "stderr"), paths) if path.exists()}
+                  cleanup["owned_processes_reaped"] = self.reaped
+                  cleanup["remaining_owned_processes"] = len(remaining)
+                  if remaining:
+                      self.cleanup_failures.append("owned_processes_remain")
+                  # Failure retains the fixture privately. Only proven-owned, process-free scratch may be deleted.
+                  if not self.cleanup_failures and fixture is not None:
+                      shutil.rmtree(fixture)
+                      cleanup["owned_fixture_removed"] = True
+                  if not self.cleanup_failures and not remaining:
+                      # Download, captures and installed binaries are owned scratch, never caches or source.
+                      for path in PRIVATE.iterdir():
+                          if path.name.endswith(".request") or path.name.endswith(".result"):
+                              continue
+                          if path.is_dir() and not path.is_symlink():
+                              shutil.rmtree(path)
+                          else:
+                              path.unlink()
+                      cleanup["owned_private_scratch_removed"] = True
+                  else:
+                      cleanup["owned_private_scratch_removed"] = False
+                  atomic(PUBLIC / "cleanup.json", cleanup)
+                  if self.cleanup_failures:
+                      self.fail("cleanup", "owned_cleanup_failed")
+                  self.save()
+
+              def is_postgres(self, item):
+                  try:
+                      return same_process(item) and pathlib.Path("/proc", str(item["pid"]), "exe").resolve().name == "postgres"
+                  except OSError:
+                      return False
+
+              def run(self):
+                  phase = "preflight"
+                  monitor = None
+                  def interrupted(signum, frame):
+                      self.interrupted = signum
+                  for sig in (signal.SIGTERM, signal.SIGINT):
+                      signal.signal(sig, interrupted)
+                  try:
+                      native()
+                      require(re.fullmatch("[0-9a-f]{40}", os.environ["GITHUB_WORKFLOW_SHA"]) is not None and
+                              re.fullmatch("[0-9a-f]{40}", os.environ["GITHUB_SHA"]) is not None, "github_source_context_invalid")
+                      require(os.environ["GITHUB_REPOSITORY"] == FIXED["repository"] and
+                              os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch", "manual_same_repository_required")
+                      require(re.fullmatch("[0-9a-f]{40}", os.environ["A09_VALIDATOR_SOURCE_SHA"]) is not None,
+                              "validator_full_sha_required")
+                      # Linux libc is a runtime prerequisite. Adopt only our descendants so daemonized PG can be reaped.
+                      libc = ctypes.CDLL(None, use_errno=True)
+                      require(libc.prctl(36, 1, 0, 0, 0) == 0, "subreaper_unavailable")
+                      actual = ctypes.c_int()
+                      require(libc.prctl(37, ctypes.byref(actual), 0, 0, 0) == 0 and actual.value == 1,
+                              "subreaper_not_verified")
+                      require(shutil.rmtree.avoids_symlink_attacks, "owned_cleanup_filesystem_unsupported")
+                      self.sample(initial=True)
+                      monitor = threading.Thread(target=self.monitor, name="owned-resource-monitor", daemon=True)
+                      monitor.start()
+                      self.save()
+                      write_new(PRIVATE / "init.result", {"nonce": self.owner["nonce"], "exit_code": 0})
+                      phase = "wait_for_checkout"
+                      while not (PRIVATE / "run.request").exists():
+                          self.guard()
+                          time.sleep(0.2)
+                      require(read_json(PRIVATE / "run.request", 4096).get("nonce") == self.owner["nonce"], "run_marker_mismatch")
+                      phase = "validator_source"
+                      self.source()
+                      phase = "artifact_transport"
+                      self.download()
+                      phase = "zip_validation"
+                      self.extract_zip()
+                      phase = "tar_validation"
+                      installed = self.extract_binaries()
+                      phase = "installed_postgres"
+                      env = self.postgres_tools()
+                      phase = "focused_shared_sample"
+                      self.helper(installed, env)
+                  except Exception as error:
+                      code = error.code if isinstance(error, Refusal) else "controller_phase_unavailable"
+                      self.fail(phase, code)
+                  finally:
+                      try:
+                          self.cleanup()
+                      except Exception as error:
+                          self.cleanup_failures.append(error.code if isinstance(error, Refusal) else "cleanup_unavailable")
+                          self.fail("cleanup", "cleanup_unavailable")
+                          atomic(PUBLIC / "cleanup.json", {"schema": "riauth.local-build-free-cleanup/v1",
+                                                         "failures": self.cleanup_failures, "completed": False})
+                      try:
+                          if self.last_sample is not None:
+                              self.sample()
+                              require(self.resource_failure is None, self.resource_failure or "resource_sample_unavailable")
+                          require(self.interrupted is None, "controller_signal")
+                      except Exception as error:
+                          self.fail("resources", error.code if isinstance(error, Refusal) else "resource_final_sample_unavailable")
+                      self.end_monitor.set()
+                      if monitor is not None:
+                          monitor.join(timeout=3)
+                          if monitor.is_alive():
+                              self.cleanup_failures.append("resource_monitor_not_stopped")
+                              self.fail("cleanup", "resource_monitor_not_stopped")
+                      self.data["controller_exit_code"] = 0 if self.first_failure is None else 1
+                      self.save()
+                      result = {"nonce": self.owner["nonce"], "exit_code": self.data["controller_exit_code"]}
+                      for name in ("init", "run", "finalize"):
+                          path = PRIVATE / (name + ".result")
+                          if not path.exists():
+                              write_new(path, result)
+                      return result["exit_code"]
+
+
+          def initialize():
+              require(ROOT.name == "riauth-a09-shared-" + os.environ["GITHUB_RUN_ID"] + "-" +
+                      os.environ["GITHUB_RUN_ATTEMPT"] and
+                      ROOT.parent == pathlib.Path(os.environ["RUNNER_TEMP"]).resolve(), "initial_root_name")
+              require(set(path.name for path in ROOT.iterdir()) == {"controller.py"}, "initial_root_not_fresh")
+              PRIVATE.mkdir(mode=0o700)
+              PUBLIC.mkdir(mode=0o700)
+              for name in PUBLIC_NAMES:
+                  if name.endswith(".jsonl"):
+                      (PUBLIC / name).touch(mode=0o600)
+                  else:
+                      write_new(PUBLIC / name, {"schema": "riauth.local-build-free-pending/v1", "result": "not_run"})
+              value = {"root": str(ROOT), "nonce": os.urandom(32).hex(), "uid": os.getuid(),
+                       "run": int(os.environ["GITHUB_RUN_ID"]), "attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                       "started_monotonic": time.monotonic(), "started_utc_seconds": int(time.time())}
+              # Private daemon descriptors are redirected; no token or failure text enters GHA console.
+              with (PRIVATE / "supervisor.stdout").open("xb") as out, (PRIVATE / "supervisor.stderr").open("xb") as err:
+                  child = subprocess.Popen([sys.executable, "-I", "-B", str(ROOT / "controller.py"), "supervise"],
+                                           stdin=subprocess.DEVNULL, stdout=out, stderr=err, start_new_session=True)
+              fingerprint = identity(child.pid)
+              require(fingerprint is not None, "supervisor_start_lost")
+              value.update(supervisor_pid=child.pid, supervisor_start=fingerprint["start"])
+              write_new(OWNER, value)
+              result = wait_result("init", 20)
+              return result["exit_code"]
+
+
+          def main():
+              os.umask(0o077)
+              mode = sys.argv[1]
+              if mode == "init":
+                  return initialize()
+              if mode == "supervise":
+                  # Parent creates marker immediately after Popen; bounded wait resolves that startup race.
+                  end = time.monotonic() + 5
+                  while not OWNER.exists() and time.monotonic() < end:
+                      time.sleep(0.05)
+                  return Controller().run()
+              if mode == "transfer":
+                  kind = sys.argv[2]
+                  require(kind in ("metadata", "zip"), "transport_kind_invalid")
+                  try:
+                      transfer(kind)
+                      return 0
+                  except Exception as error:
+                      code = error.code if isinstance(error, Refusal) else "transport_unavailable"
+                      status = error.code if isinstance(error, urllib.error.HTTPError) else None
+                      if status is None and (PRIVATE / (kind + "-http.json")).exists():
+                          status = read_json(PRIVATE / (kind + "-http.json"), 4096)["status"]
+                      write_new(PRIVATE / (kind + "-failure.json"), {"code": code, "http_status": status})
+                      return 1
+              if mode == "run":
+                  request("run")
+                  return wait_result("run", 1020)["exit_code"]
+              if mode == "finalize":
+                  if not (PRIVATE / "finalize.result").exists():
+                      request("finalize")
+                  result = wait_result("finalize", 40)
+                  value = owner()
+                  for name in PUBLIC_NAMES:
+                      path = PUBLIC / name
+                      require(regular(path).st_size <= 2 * 1024 ** 2 and path.stat().st_uid == os.getuid(),
+                              "public_upload_file_invalid")
+                  supervisor = identity(value["supervisor_pid"])
+                  if supervisor is not None and supervisor["state"] != "Z":
+                      end = time.monotonic() + 5
+                      while identity(value["supervisor_pid"]) is not None and time.monotonic() < end:
+                          time.sleep(0.1)
+                      require(identity(value["supervisor_pid"]) is None or
+                              identity(value["supervisor_pid"])["state"] == "Z", "supervisor_not_exited")
+                  return result["exit_code"]
+              raise Refusal("unknown_controller_mode")
+
+
+          if __name__ == "__main__":
+              try:
+                  sys.exit(main())
+              except Exception:
+                  # Raw exceptions, arguments, paths and credentials never reach public upload or console.
+                  sys.exit(1)
+          PY
+          python3 -I -B "$A09_ROOT/controller.py" init
+      - name: Check out only the root-reviewed validator source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 2
+        with:
+          ref: ${{ inputs.validator_source_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify immutable transport and run one focused native shared sample
+        timeout-minutes: 18
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 -I -B "$A09_ROOT/controller.py" run
+      - name: Finish owned cleanup and retain sanitized failure evidence
+        if: ${{ always() }}
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 -I -B "$A09_ROOT/controller.py" finalize
+      - name: Upload only the four fixed sanitized evidence documents
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        timeout-minutes: 1
+        with:
+          name: riauth-local-shared-arm64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.A09_ROOT }}/public/controller.json
+            ${{ env.A09_ROOT }}/public/resources.jsonl
+            ${{ env.A09_ROOT }}/public/cleanup.json
+            ${{ env.A09_ROOT }}/public/helper-redacted.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+          include-hidden-files: false
+```
+
+### Actual source-only checks and limitations
+
+Installed Psych parsed the complete YAML; Bash `-n` passed all three run blocks; Python AST parsed the controller and bootstrap without importing/executing either. Static policy/source checks passed: manual-only/read permissions, one native job/fixed concurrency/20-minute cap, action pins, actual context locations, exact four upload paths, transport/helper bounds, native/resource guards, retention-only adapter, verified subreaper source, no Cargo/apt/Docker executable literal, exact receipt and all 18 compressed/log/JSON bytes, all five protected helper/import hashes, unchanged old build workflow and byte-exact parent report. The new workflow path remains absent.
+
+Authoring failures are preserved: one orchestration draft call failed JavaScript parsing (`SyntaxError: Unexpected token '}'`) before any nested tool/filesystem call; one later policy assertion exited 1 because a whole-text search for “cargo” also matched fixed **Cargo.lock/Cargo.toml input identities**. That assertion was narrowed to executable-literal AST inspection and passed; no repository checker was changed, and neither event was a workflow/helper/runtime result. Final source-only validation exit 0 replaces no historical result.
+
+No actual GitHub query/dispatch/download, controller/adapter/helper import or execution, proposed ctypes/native-artifact/PostgreSQL execution or service, Cargo/build, archive opening/extraction, desktop, new worker/task/worktree/shell, other lane/main/push/status or contact occurred. Only this report is appended. The root-accepted build result remains five LOCAL ARM64 archives with native smoke exit 0; this design adds **no** new run/artifact/host/tool/cleanup/E→P→E credit.
+
+A09 original supported-platform/artifact/shared-distribution gate remains open. `official_release: false`, prior `shared_full_gate: not_run`, proposed helper/controller `full_shared_gate: not_certified`, Linux x86-64/container/TLS/passkey/device/full-client/encrypted/full-shared/physical/tenant/escrow/paused-IO limits remain explicit. The accepted receipt-secret, route-specific header, PAM, permission/review/removal/audit/credential/Group/input/non-renewed-60-second protections remain unchanged. Root alone decides later source ownership, actual runtime/resources, review/integration/publication/status. RiWork Cua.ai Driver preference persists; no desktop operation is needed.
+
+Final repository static evidence (2026-10-02): docs checker exit 0; staged whitespace/scope checks exit 0 with only this report and no deletions; tracked-file hygiene exit 0 (963 files). The complete embedded workflow/controller/adapter hashes above and all protected source bytes remain unchanged. These checks grant no runtime or artifact acceptance.

@@ -568,3 +568,733 @@ descriptions/current state; this design used no desktop tool or provider.
 No proposed hunk/test function was compiled or executed; the one future Cargo
 command remains HELD. This is a transport design for root's review, not evidence
 that the original browser gap has been implemented or that I02 can close.
+
+## Approved source-only implementation: wave30_I02_browser_transport_implementation
+
+The subsequent root instruction released exactly the six source/test paths from
+the design, plus this append-only evidence. It did not release compilation,
+execution or integration. The original live I02 row was reread: `in_progress`,
+primary `a2dff16a-c4b0-47fc-96de-ac85b1fb6d9e`, with the original five-part outcome
+and working setup/lifecycle/failure-handling gate quoted above. This supporting
+worktree does not change that assignment or status. A03 and W02 remain DONE;
+D01's isolated active runtime was neither contacted nor duplicated.
+
+### History alignment and exact commits
+
+* History-preserving merge `a59809f47e0a1928271a9d6ecec4e207e17ef8c7` has parents
+  `0569450afc67d1de01223bf42f39742193347722` and exact published
+  `9b8956f7b2a9961b14e313fa57c0f5214a136772`. No reset or replacement from a stale
+  tree. Three conflicts were resolved narrowly: each guide's old blanket
+  format-3 sentence was replaced only by the published formats1/2 qualifier;
+  the report's empty published conflict side was removed while retaining the
+  whole own design appendix. Both guides byte-match the published pin. Before
+  implementation, the entire merged tree differs from that pin only in this
+  report, which byte-matches `0569450`; the published report is its exact prefix.
+  All published root notes and accepted equivalents were retained.
+* Source/test commit `36ccc64e4c4044491f55b68cf7fdcaeff992391c`, parent that merge:
+  exactly `src/api.rs`, `src/portal.rs`, `src/portal/source_stage.rs`,
+  `src/portal/source-stage.html`, `src/portal/source-stage.js`,
+  `tests/source_stage.rs`. Six files,1524 insertions/5 deletions. The one appended
+  test function is
+  `browser_source_stage_transport_binds_factor_and_renders_both_response_modes`.
+  This report appendix is committed separately after static checks.
+
+### Implemented transport, with execution still held
+
+The implementation follows the reviewed cookie-bound design. The old GET retains
+its exact StageReference extraction and Core call on the JSON/non-browser branch;
+only positive HTML with browser_ui and a stored matching browser binding receives
+the read-only local handoff. GET responses vary on Accept. Legacy JSON POST,
+cancel, factor-in-query refusals, records and callback bodies remain byte-intact.
+
+The new page GET authenticates the original return cookie through authorize_state,
+loads the exact stored pair, checks binding/expiry and renders an empty prompt.
+It invokes no resume/cancel/write. An already-ready callback hands off locally;
+it does not infer a successful grant from the state name. Resume/cancel POSTs use
+the unchanged browser_write_guard and explicit positive JSON, reject query and
+extra JSON fields, and preflight the same browser/pair/undecided state. Each calls
+its existing Core wrapper exactly once. Bad-code errors are translated only after
+that wrapper returns, preserving its inner committed charge; there is no new
+store.write to change outer rollback. Closed status/code_issued/redirect-presence
+classification strips the RP URL and returns only a waiting status or the exact
+original local continuation, retaining rejected/cancelled outcomes.
+
+Private route responses add no-store/no-referrer; the global guard/CSP and callback
+renderer stay unchanged. Shared-middleware refusals retain their existing policy.
+Identifiers are encoded for path segments (spaces use%20) and then escaped in HTML
+attributes. RiAuth.post receives issuer-base-relative paths, while native continue
+uses the original base-prefixed path: no duplicate non-root issuer prefix. The
+page has an unnamed empty factor input, guarded type-button actions and external
+scripts. One page-level busy flag covers initial check, factor, recheck and cancel.
+Network/5xx ambiguity clears the input and requires reload; factor/cancel are never
+automatically retried. No RP fetch, returned HTML insertion, new credential,
+account/request factory, standalone finish, private Pending projection or visibility
+widening. The original browser-resume GET still owns query302/form_post rendering,
+one-use delivery and browser SSO establishment. No Core/source/factor/workflow/
+storage/authority/admission implementation was edited; only the approved API route
+classification joins the existing source_callback bucket.
+
+The single table-driven HTTP/rendering definition covers root query and non-root
+form_post, disabled browser_ui, explicit media negotiation and malformed quality,
+empty/escaped HTML and base-relative script paths, foreign/missing/duplicate
+cookies and mixed pairs, the unchanged Origin/header/Fetch Metadata refusals,
+query-factor and malformed shared-header/extra-body refusals, pending/local factor,
+one committed bad-code attempt, fixture-only broken bindings/expiry/deleted browser,
+one recovery-code consumption and exact Alice/source/link/fingerprint/PKCE/code,
+native delivery and signed subject/one-use redemption, replay/reload, cancel and
+an upstream Bob proof rejected by an actual Alice-bound browser request. Separate
+legacy GET/POST/cancel cases retain their original query/form_post outcomes.
+Setup uses existing admitted source-link writers and synchronous test-clock factor
+setup; no standalone finish or shared helper/test edit. Fresh routers give the
+independent transport cases fresh rate tables without changing a budget. Assertions
+use the existing snapshot oracle, exempting only its operational http_rates keys;
+they do not dump private snapshots, cookies, factors, codes or tokens.
+
+These are definitions inspected statically, not passing runtime assertions. The
+broken-proof cases exercise early Core/transport refusals; no post-factor fault
+injector or concurrency test was added. Late outer rollback remains supported by
+the unchanged Core/Tx bodies described in the design, not a new executed claim.
+
+### Exact source hashes and actual static checks
+
+Full-file SHA256 at source commit `36ccc64`:
+
+| File | SHA256 |
+| --- | --- |
+| `src/api.rs` | `1bbb387dd627f1fd56b7dfe408ea17eef48131f927597da1b81b21ed5f64b8ca` |
+| `src/portal.rs` | `ec3dd0321fe996caf8c8b4d8747c6c8f5c1b332bcd13f02c9bef7681f0897344` |
+| `src/portal/source_stage.rs` | `a4fed0542f3393f3d09aa518d2c0cf74f7f90fcb992288cdb9dd9640a52239c2` |
+| `src/portal/source-stage.html` | `1c8fe8280cd0fca1cc90084e772c366e7f75d82b0115faa21115f0b5b76255c0` |
+| `src/portal/source-stage.js` | `e540a4910ee39dfaf9810a28259d32b41ee29787ab1e008692bb3d85d8e2ba1b` |
+| `tests/source_stage.rs` | `d3d44e96f461bb88626d73caf0a30ff1610187ca6f6338a9e8e1e5a1b28fb9a6` |
+
+Checks actually performed, without Cargo/type checking:
+
+* Local guidance/clean state, fixed Git object and live exact-task read; merge and
+  the conflict-resolution/equivalence assertions above.
+* Python full API reconstruction: replace only the new GET span with its original
+  span, remove the route merge and added rate condition, then match the entire
+  published API byte-for-byte (original SHA256
+  `ffcb8590457eda37a4fe0434c40d328eecdb1718953b8b3607405007a13451b3`).
+  Thus all other handlers/records/helpers, including native browser/callback and
+  old stage POST/cancel/result, are protected. Removing just the additive portal
+  declaration similarly reconstructs the entire published portal module.
+* Original `tests/source_stage.rs`124619 bytes remain an exact prefix, SHA256
+  `a65e2dd309b1260c3249f45dec14205b95eec142c6db72bb2dc743c2a9626e9c`;
+  the append contains exactly one tokio test/async function, with local closures.
+  The prior52789 report bytes remain an exact prefix of this appendix.
+* Sixteen held files byte-match the published pin: portal/http.rs, portal/auth.js,
+  response.rs, assembly/browser_runtime.rs, assembly/source_stage.rs,
+  assembly/source_runtime.rs, assembly/source_finish.rs, source.rs, core.rs,
+  store.rs, workflow.rs, workflow/executor.rs, workflow/approval.rs,
+  api/interaction.rs, config.rs and assembly/oidc.rs (all under src/).
+* Static negative guards: new GET body has no resume/cancel/store.write/native
+  resume; module has exactly one Core resume and one cancel call, no standalone
+  finish, new store.write, bearer response or global CSP/CORS change.
+* Installed1.98.1 formatter `rustfmt 1.9.0-stable (48a229ceae 2026-09-01)` parsed
+  and formatted only the appended test via stdin, preserving all old bytes.
+  Direct `rustfmt --edition 2024 --config skip_children=true --check` on api.rs,
+  portal.rs and the new module exited0; children were not reformatted.
+  `node --check src/portal/source-stage.js` exited0 (syntax only, no script run).
+  Python HTMLParser/DOM-id/static-JS assertions passed: empty unnamed input,
+  type-button guards, external scripts, relative POST/exact local continuation,
+  no credential logging/storage, RP fetch/HTML insertion or automatic retry.
+* `git diff --check` and staged whitespace/exact six-file source scope passed.
+  `python3 scripts/check-docs.py` still reports only the five pre-existing
+  target-wave directories listed above, zero missing Markdown links; no checker
+  or directory change. Final append/scope/Markdown/whitespace checks are repeated
+  for the separate report commit.
+
+### One concrete held compile/runtime command and resource plan
+
+The same focused command from the design would compile the matching Platform
+library and source_stage test target, then run only the named function:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/i02-browser-transport-wave30" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test source_stage browser_source_stage_transport_binds_factor_and_renders_both_response_modes -- --exact --test-threads=1
+```
+
+**Not run; requires a separate root release of the sole Cargo slot and this
+fixture runtime.** Default Platform plus test-support, installed pinned1.98.1;
+no fuzzing, USB, standalone-client target or other test invocation. Source commit
+and manifests must be re-pinned before that release. Current immutable manifest
+SHA256: Cargo.toml `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8`,
+Cargo.lock `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426`,
+rust-toolchain.toml `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167`.
+
+Read-only `df -k .` during static review reported14219380KiB available
+(about13.56GiB). That is a historical capacity measurement, not a reserved budget.
+Immediately remeasure before any released build; require at least12GiB, monitor
+every2 seconds, stop only this Cargo process at9GiB to preserve the8GiB floor.
+Private target in this worktree only; no accepted/cache deletion. Use private0600
+logs and preserve redacted exit/elapsed/disk/source/feature evidence. Only this
+selected function's disposable in-process HTTP/signed-peer fixtures may run;
+bound its post-build runtime to20 minutes, stop its own process on failure/timeout
+and release the slot immediately. No desktop, provider tenant or production service.
+
+### Residual original acceptance and ownership limits
+
+The proposed local transport is now implemented in an uncompiled source slice.
+Concrete remaining verification is the held type/HTTP-rendering check and root's
+independent review. No fresh browser/provider execution, released artifact or
+original-I02 completion is claimed. The previously identified existing
+oidc-profiles limitation paragraph is untouched and remains reserved for a separate
+docs decision after reviewed implementation, not silently rewritten in this lane.
+All historical passes/failures/log-provenance limits above remain historical.
+Any wiring failure that needs a held writer/private browser contract change must
+be reported to root before broadening. Receipt-secret, optional/required headers,
+PAM, Group/source materialization, live authority/one-use/audit/credential and
+remote-I/O/60s boundaries remain intact. Root alone integrates/pushes/statuses;
+primary a2dff16a is unchanged. Driver-only desktop preference remains, and no
+desktop/provider inspection or delegated work was performed.
+
+Final report preparation passed: exact prior52789-byte prefix, sole report file,
+LF/fence/whitespace checks,38 referenced Git objects and28 source/report paths,
+and all six source-commit SHA256 values recomputed exactly. Repeated rustfmt
+checks and Node syntax check exited0. The docs checker's actual captured exit
+was1, with exactly the same five directory-layout errors and zero missing links.
+These checks execute no product, test, provider or browser flow.
+
+## Approved non-root upstream fixture correction — source only
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original I02
+`cbe1e83d-b58c-4be7-ba6c-5fb8a73c9839`, supporting WT
+`42bb51c6-c198-4adb-bd92-0a5222853231`; primary a2dff16a is unchanged.
+Root reserved `wave30_I02_nonroot_upstream_fixture_correction` after identifying
+an **unrun fixture blocker**, not an observed test failure. Reviewed source is
+`36ccc64e4c4044491f55b68cf7fdcaeff992391c`; preceding static appendix is
+`130e1111d24a46b8d8fee97979b4f788b84d2410`. History is retained without another
+merge/reset. This correction does not authorize Cargo, type checking or runtime.
+
+### Concrete mismatch and exact bounded change
+
+The appended browser test selects `/identity` for its form_post issuer. Existing
+`Upstream::new` nevertheless asserted the root callback at its token endpoint.
+Unchanged `src/assembly/source_runtime.rs:433–438` derives the callback from
+`self.config.issuer.trim_end_matches('/')`; authorization at416 and token
+exchange at511–515 both use that same `source_callback_url` value. Source-runtime
+Git blob is `51a46db7a7ad3e46914146461c79c6ae42ab124a`. Thus the non-root fixture
+must expect `http://localhost:9000/identity/oauth/sources/upstream/callback`,
+while the root-issuer fixture still expects its original root callback.
+
+Correction commit `196ac2096f79e5cc3c7d53ffa990ccdeba11a439` changes only
+`tests/source_stage.rs`, three insertions/four deletions in `Upstream::new`:
+
+* Capture `f.core.source_callback_url("upstream")` before the token-route closure.
+* Clone that captured String beside the existing per-request records clone.
+* Compare `form["redirect_uri"]` to it with exact `assert_eq!`, replacing only the
+  hardcoded root value. No prefix matching or assertion removal.
+
+The fixture reads its configured issuer through the existing Core getter; no
+new global state, rate/clock/guard change or production edit. Authentication,
+grant-type, code-record removal, PKCE-verifier and token-response assertions and
+all other helper code remain byte-equivalent. The complete appended browser
+test remains unchanged; there is no new test body or runtime result.
+
+### Fresh immutable scope and reconstruction evidence
+
+Python byte assertions passed before the correction commit: each of the three
+reverse substitutions occurs exactly once, and their reversal reconstructs the
+**entire** reviewed166018-byte test file, SHA256
+`d3d44e96f461bb88626d73caf0a30ff1610187ca6f6338a9e8e1e5a1b28fb9a6`.
+Corrected test is166005 bytes, SHA256
+`0c5efa341f72922b3ef16cd92a6157200ab439b1860ad339c42d7b5ee83250b8`,
+Git blob `34ba37484ba3f9e4be13e27764eb77da45ffd1a3`. Its41399-byte appended test
+suffix exactly matches36ccc64 after accounting for the13-byte helper reduction.
+
+The earlier124619-byte original-prefix protection describes the **preceding
+source phase**. This expressly authorized correction changes that prefix's
+Upstream helper; it is no longer literally unchanged in the corrected file.
+Reversal restores both that full original prefix and the entire appended test.
+All five production implementation files, the sixteen held files listed above
+and Cargo.toml/Cargo.lock/rust-toolchain.toml still byte-match36ccc64. The sole
+pre-commit working-tree diff and the correction commit contain only the fixture
+file. No global checker, other helper, existing guide or source-profile doc edit.
+
+Direct installed1.98.1 `rustfmt --check --edition 2024 --config skip_children=true
+tests/source_stage.rs` exited0: parser/format check only. `git diff --check` and
+staged whitespace check exited0. The Python proof also verified single-file
+scope, exact appended-body bytes and all protected files/manifests. No compiler,
+test, JavaScript, browser, binary, provider or service was executed this phase.
+
+### Residual verification and original-row disposition
+
+No form_post pass is inferred from correcting the source mismatch. The named
+HTTP/rendering test and any type check remain unrun; independent full security
+review continues under root, with no reviewer/other-worker contact here. The
+previous exact held command/resource plan remains a proposal requiring root's
+separate release after immutable source review, even though the Cargo slot is
+reported free. All prior failures, historical execution pins and gate limitations
+remain intact. There is no original-I02 closure recommendation from this static
+correction, no release certification and no task-status change. Root alone
+integrates/publishes/statuses; Driver-only desktop preference is retained.
+
+Report preparation verified the correction commit's exact parent/single-file
+scope and immutable corrected-test hash, five referenced Git objects, and the
+entire65356-byte130e111 report prefix unchanged, with LF/fence/whitespace checks
+passing. `python3 scripts/check-docs.py` actually exited1, reporting only the
+same five pre-existing target-wave directories: target-wave29-source,
+target-wave28-scim, target-wave28-portal, target-wave28 and target-wave27.
+It reported zero missing Markdown links. No directory or checker was changed.
+
+## Focused resource preparation — read-only, execution still held
+
+Root authorized `wave30_I02_focused_resource_preparation` for this same project,
+I02 and supporting WT, allowing only this report append. Preparation starts from
+clean HEAD `b906c7b76fe20291e148abfb6ceca4ff6bb7f6ef`; product/test source remains
+`196ac2096f79e5cc3c7d53ffa990ccdeba11a439`. Fresh read-only hashing reproduces all
+five36ccc64 production SHA256 values above and the corrected test SHA256
+`0c5efa341f72922b3ef16cd92a6157200ab439b1860ad339c42d7b5ee83250b8`.
+No merge, configuration change, artifact invocation, Cargo or type check occurred.
+Original primary a2dff16a and root's ownership of review/status remain unchanged.
+
+### Matching cache and profile evidence
+
+Inspected only this worktree's existing `target-wave27/cargo` cache. Both that
+directory and its target-wave27 parent are nonsymlinks; its resolved path stays
+inside this worktree, and the debug tree has no symlinks. `du -k -d 2` measured
+2377044KiB allocated (2.267GiB): deps1978980KiB, build70520KiB,
+fingerprints12272KiB, incremental0KiB. This is an existing private cache, not the
+accepted target and not the previously proposed new cold directory.
+
+Metadata `.rustc_info.json` records1.98.1, commit
+`48a229ceaefd4985c50990b14116b6d856af0985`, host aarch64-apple-darwin and the
+installed1.98.1 toolchain path. Rustc/Cargo files exist there by stat; neither was
+executed, so this records cache provenance rather than a fresh version result.
+The current rust-toolchain.toml still selects1.98.1. Fresh manifest hashes match
+the source-phase values: Cargo.toml
+`58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8`, Cargo.lock
+`b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426`, toolchain
+`887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167`.
+
+Relevant fingerprint records:
+
+| Existing record | Features | Profile hash / artifact metadata |
+| --- | --- | --- |
+| riauth-0d65ce4b80b71950 lib | default, essentials, platform, test-support | 12672335563272108896; rlib400029936 bytes, rmeta44874859 |
+| riauth-25aded663d5712f5 server and riauth-9fc8fea30bfac30b maintenance | Same four | Same profile; executables255814720 and67010608 bytes |
+| riauth-2cea114daae82d64 cloud_directory integration test | Same four | 11094973624911973823; executable198904944 bytes |
+| riauth-aeaedbe66486b343 / riauth-87bb46aa584f94f0 check libs | default, essentials, platform / essentials | 10509049656720700007; rmeta-only, not linkable product substitutes |
+| source_stage integration test | Absent | No existing fingerprint or executable; it must compile/link |
+
+The lib/server/maintenance records share rustc hash17329007180185699724,
+config9396254390672932401, empty rustflags and native compile_kind0. Historical
+wave27 report `7e87428567475d2a6e8589d58c4419c16c768a55` records actual cloud
+tests using this exact target, locked/offline/default+test-support, jobs1,
+incremental0, DEV_DEBUG=0 and TEST_DEBUG=0. The subsequent source-check report
+`af4fd9e253b82c3094b21114f623952d968cf377` records the same profile settings.
+These historical commands support the profile interpretation; the hash alone
+does not decode debug settings or demonstrate current-source correctness.
+
+Python read-only metadata traversal matched all59 cloud-test dependency hashes
+to unique cached fingerprint records, including all53 direct lib dependencies,
+riauth and the five additional dev crates. All59 have linkable rlib/dylib files.
+The reachable graph contains439 records with no absent/ambiguous dependency
+hashes, and697 linkable/metadata files totaling1253844890 bytes. Its360 registry
+package/version paths match the current lockfile and have source directories
+and package manifests. An initial version-splitting heuristic misclassified
+`toml-1.1.6+spec-1.1.0`; exact whole name/version lookup resolved that inspection
+false positive, with zero actual lock mismatches. No dependency code was run.
+
+Compiled records match the rustc/config/flags/native-kind settings. The38
+run-build-script records instead have Cargo's zero profile/config metadata,
+with the same rustc/empty flags/native kind; these are not an alternate compile
+profile. Existing recorded build-output paths checked were present. Comparison
+of2518 allowlisted tracked compiler/SDK/OpenSSL/native-build setting records
+against the current environment found no mismatch;64 other variable names were
+not inspected. No applicable ancestor/home `.cargo/config[.toml]` exists.
+CARGO_TARGET_DIR, jobs/incremental/debug overrides, RUSTFLAGS/encoded flags,
+wrappers and RUSTUP_TOOLCHAIN are currently unset. The proposal reproduces the
+historical overrides explicitly, without introducing flags or changing config.
+
+Metadata SHA256: lib-riauth.json
+`ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10`,
+cloud_directory test JSON
+`f74546fdaa6a5ab161af5eaf5ea1e798a0108eccbc51db0ff5b68ae5f963ed28`,
+and .rustc_info.json
+`27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4`.
+No binary content hash/version/execution was substituted for source evidence.
+
+### One proposed command, not executed
+
+This supersedes only the earlier cold-target location proposal:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target-wave27/cargo" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --offline --features test-support --test source_stage browser_source_stage_transport_binds_factor_and_renders_both_response_modes -- --exact --test-threads=1
+```
+
+The current1.98.1 toolchain pin applies. Default selects Platform (which includes
+Essentials), plus test-support, exactly matching the linkable dependency graph.
+No explicit cross-target argument: the cache is native aarch64-apple-darwin;
+adding a target triple would create a separate artifact layout. No USB, fuzzing,
+standalone-client build or additional filter. Offline mode matches the recorded
+cache-creation commands and fails instead of downloading a missing dependency.
+Cargo still decides freshness and must rebuild all changed product sources and
+the new source_stage test. The old lib dep-info omits all three new portal stage
+assets, and old products date to2026-10-01; none is evidence of this I02 flow
+passing. No old executable will be invoked directly.
+
+### Actual capacity and prospective owned-group budget
+
+`df -k .` initially reported13367980KiB free. Final measurement at
+2026-10-02 16:11:08 UTC reported13360168KiB, about12.74GiB, leaving3.74GiB above
+the unchanged9GiB own-stop threshold. This is a snapshot during the held queue,
+not a reservation or permission to start before root releases the slot.
+
+Estimate an additional peak of **2–3GiB**, reserving3GiB for this one Cargo group:
+the old rlib+rmeta together are about0.414GiB; allow their full regenerated set
+and compile objects, server/maintenance rebuilds and temporary copies (existing
+two copies total about0.601GiB), a new source_stage executable (budget0.35GiB,
+versus the existing cloud test's0.185GiB), linker scratch and limited dependency
+revalidation/rebuild headroom. These are size-based estimates, not measured
+peak guarantees. Existing reachable non-riauth link/metadata artifacts account
+for about0.753GiB plus native build output; metadata supports reusing those
+rather than cold-duplicating them. No claimed saving equals the whole2.267GiB
+cache, which also contains old products and check-profile artifacts.
+
+Retain the prior **at least12GiB immediately before start**, after current SCIM
+exits and root grants this sole group the slot. At the observed12.74GiB, a3GiB
+additional peak leaves about9.74GiB; at the12GiB minimum it reaches the9GiB
+margin, so the monitor may stop a larger-than-estimated build. Recheck source,
+toolchain/settings and disk then; do not alter profiles to chase reuse. Sample
+free disk every2 seconds throughout Cargo/link/test, stop only the owned process
+group at9GiB, preserve the8GiB floor and never kill another lane. No other cache
+or evidence deletion/move. Any unexpected substantial dependency rebuild or
+shared-disk drain invalidates the estimate; stop/report rather than force flags
+or lower the threshold. Root owns aggregate budget and release scheduling.
+
+Retain private0600 logs and redacted argv/source/features/exit/elapsed/disk
+evidence. Bound only the selected disposable fixture runtime to20 minutes,
+perform PID/group-scoped finally cleanup and immediate exit/slot-release handoff.
+This preparation creates no log/target/helper, allocates no execution slot and
+does not launch any artifact, service, provider, CLI product or browser.
+Independent review and focused compile/test remain held; no form_post pass,
+original-I02 closure, real tenant or release evidence is inferred. All historical
+failures and receipt/header/PAM/Group/authority/one-use/60s limitations remain.
+
+Preparation checks actually performed: Git state/object reads, manifest/settings
+and fingerprint/dep-info metadata reads, stat/du/symlink inspection, df snapshots
+and Python metadata/hash/scope assertions. Final static checks preserved the
+entire70445-byte b906c7b report prefix, confirmed this is the sole changed file,
+and matched all six source files/three manifests to196ac209 plus both cited
+historical report objects. LF/fence and `git diff --check` passed. The docs
+checker exited1 only for the same five pre-existing target-wave directory-layout
+violations, with zero missing Markdown links. No formatter/compiler/test or
+artifact was executed, and no cache/config/evidence was modified or removed.
+
+## Released focused compile/test — compilation passed, selected test failed
+
+After SCIM exited and released its slot, root separately authorized exactly the
+one locked/offline/default+test-support source_stage filter printed above, on
+clean committed `cd17c3bcffeba750d7827a54fdcf8d6a7470edba`. Production and test
+bytes remained `196ac2096f79e5cc3c7d53ffa990ccdeba11a439`; the five production
+hashes, corrected test and all three manifests were rechecked against that pin.
+This is the first executed check of this transport slice. Earlier uncompiled
+statements remain historical; this run is **not a passing transport result**.
+
+### Preflight and exact execution
+
+Preflight passed: correct worktree/clean HEAD, own nonsymlink warm cache and
+matching features/profile/settings, no new applicable Cargo config/flag/wrapper
+override, no competing Cargo/rustc process, and at least12GiB free. `rustc -vV`
+actually reported1.98.1, commit48a229ceaefd4985c50990b14116b6d856af0985,
+host aarch64-apple-darwin and LLVM22.1.8. Cargo resolved through the installed
+`/Users/dominik/.cargo/bin/cargo` shim under the unchanged1.98.1 toolchain pin.
+No extra Cargo command, target, profile or feature was introduced.
+
+The exact released command ran once with jobs1/incremental0/dev+testdebug0 and
+`CARGO_TARGET_DIR="$PWD/target-wave27/cargo"`. Supervisor launched it in a new
+owned session/process group99685, with an1800s outer cap and1200s selected-fixture
+cap starting at Cargo's Running marker. It sampled disk/process metadata on a
+nominal2-second cadence, retained the9GiB own-stop/8GiB floor and3GiB transient
+budget, and capped the exclusive private Cargo log at32MiB. No retry followed.
+
+| Actual result | Evidence |
+| --- | --- |
+| Compilation completed | Cargo: `Finished test profile [unoptimized] target(s) in 59.03s`; only riauth compiled, no third-party rebuild |
+| Selected named test ran | source_stage-51034130e831fdee; 0 passed, 1 failed, 0 ignored, 0 measured, 23 filtered out; harness3.25s |
+| Cargo exit | 101; total supervised64.104s; Running-to-finally interval4.891s, distinct from harness timing |
+| Failure location | tests/common/mod.rs:71:9, mutation snapshot assertion |
+| Stop/exception flags | None: no timeout, disk/budget/shared-drain stop or supervisor exception |
+
+The failure message identifies **one changed source_logins record**. The shared
+oracle at tests/common/mod.rs:48–74 ignores only operational http_rates indexes
+and never dumps record values. Safe review extracted only the collection name
+and count; record IDs and values are withheld. The log has no caller backtrace
+or row/step marker, so it does not establish which snapshot call, HTTP step or
+response-mode row reached that assertion. Source review of the named test's
+snapshot calls cannot substitute for that missing executed trace. No inference
+of query/form_post completion, factor charge/consumption, one-use handoff,
+cancel/replay/expiry or non-root callback execution is made from this failed run.
+The earlier exact callback correction remains source-proved and now compiles;
+this failure neither proves its runtime path passed nor identifies a production
+security defect. Do not weaken the mutation oracle or silently correct source.
+
+### Immutable private evidence and cleanup
+
+All evidence is under this worktree's private0700 directory
+`target-wave27/evidence/i02-focused-20261002T162348Z-2e255445/`. Each file was
+created exclusively with mode0600; no raw credential/body values were printed
+in progress or handoff output. Files are retained, not deleted or moved:
+
+| File | Bytes | SHA256 |
+| --- | --- | --- |
+| cargo.log | 1322, not truncated | 9ed4e8a9a01a40f929ba51b343a0ee96cd26fe83972c475271319c0c4047e567 |
+| disk-process-samples.jsonl | 7156 | 10f40aeadc811c5becd2fa49be96a481dae3cb98a1cb8478000dc1af08100db5 |
+| result.json | 2147 | 78663035596a32f73d22eabc920378eda00ad986bfb8ca4d2e1315e753a3d82c |
+
+Start/end UTC: 2026-10-02 16:23:48.247254 /16:24:52.351686. Free bytes were
+13704462336 initially (12.763275GiB),13210279936 minimum (12.303032GiB), and
+13470035968 finally (12.544949GiB).31 disk/process samples were recorded; maximum
+observed sample interval was2.112s including metadata-inspection overhead.
+Target allocation started2434093056 bytes and peaked2670579712, growth236486656
+bytes (0.220245GiB), below the prospective3GiB budget. Neither stop margin nor
+floor was approached.
+
+The generated selected-test executable is207422528 bytes, SHA256
+`74db7ec761b6860a52784215a9a4d949bf6e49bfd2464ecb350eccb547d7bba1`.
+Its test fingerprint JSON SHA256 is
+`e4d87ed9b2b6d2c151e8f9ba46bf23ed3206327cc140480f5172c7ed4beff63f`;
+features are default/essentials/platform/test-support, profile11094973624911973823,
+rustc17329007180185699724, config9396254390672932401, empty flags/native kind0.
+The rebuilt lib retains profile12672335563272108896 and matching settings. These
+are generated build/source provenance, not evidence that the failed test passed.
+
+Finally cleanup waited/reaped Cargo. Group99685 had no members before cleanup
+and none afterward; a separate post-run process-table check also found zero
+members. No signal to another process/group was sent. The test's in-process
+local HTTP fixtures ended with its process; no separate service/browser/provider
+was launched. HEAD remained cd17c3bc and the tracked tree stayed clean after exit.
+Explicit-project RiWork handoff exited0 and **released the sole Cargo slot before
+this appendix was written**, reporting exit/count/location/log hash/disk/cleanup.
+No automatic retry, source/helper/config correction or additional test occurred.
+
+### Remaining verification and original I02 gate
+
+This concrete local assertion failure is the next verification blocker. Root
+must reserve any further diagnosis or correction separately; this lane makes no
+new implementation claim or retry request by action. The entire chosen function
+must eventually pass before its later assertions can be credited. The original
+source setup/verified linking/assurance/browser completion/rotation outcome is
+not certified by a successful compile and a failing execution. Historical passes,
+mixed failures and source-only evidence above remain precisely scoped. Original
+primary a2dff16a/status and root-only review/integration/publication ownership
+remain unchanged; receipt/header/PAM/Group/live-authority/one-use/60s boundaries
+and Driver-only preference are preserved.
+
+Report-only static validation preserved the entire80009-byte cd17c3bc prefix,
+matched all six source files/shared snapshot helper/three manifests to196ac209,
+and independently checked the failed result, evidence hashes/modes and finally
+cleanup. LF/fence/scope and whitespace checks passed. The docs checker again
+exited1 solely for the same five pre-existing target-wave directory-layout
+violations, zero missing Markdown links. These report checks performed no
+second compile, test, service or artifact execution.
+
+## Bad-factor expected binding — approved source-only fixture correction
+
+Root reserved `wave30_I02_bad_factor_expected_binding` for this same project,
+original I02 and supporting WT. Starting HEAD was
+`4b9aa13b0d62942c795956866dcb45f3abb2faa8`; the actual failed run and its full
+appendix remain unchanged. Only the appended named test's expected-memory field
+and this report are owned. I04 owns the Cargo slot; no execution is authorized.
+
+### Independent source trace verified before editing
+
+At immutable production pin `196ac2096f79e5cc3c7d53ffa990ccdeba11a439`, inspected
+complete relevant construction/branch/writer bodies and found no contrary source:
+
+* `src/assembly/source_runtime.rs:595–675` begins the stage using
+  Start.authentication_transaction=None at622, then creates the stage's separate
+  transaction at631 and records it in SourceStage.transaction at656. SourceStage
+  derives Serialize/Deserialize and has the transaction String field at278–292.
+* `source_start_for` at326 onward constructs Login.authentication from that input
+  at371, initially None, with attempts0 at375. The fixture's existing3958–3959
+  reads that serialized stage record and its login key without any new writer.
+* `resume_stage` at729–735 returns local_factor_required before binding when no
+  factor was supplied. When attempting the local factor,754 sets
+  pending.authentication=Some(stage.transaction.clone()) before calling
+  complete_source_login at755–762.
+* `src/assembly/source_finish.rs:175–197` checks the local factor; its invalid
+  branch increments attempts at195 and persists **the whole pending Login** at196,
+  then returns outerOk(innerErr unauthorized). Resume propagates that inner error
+  through outerOk at source_runtime765.
+* `src/assembly/source_stage.rs:201–210` calls Store.write and returns its inner
+  result afterward. `src/store.rs:1058–1070` commits when the closure's outer
+  Result is Ok;1125–1135 has the equivalent non-preview PostgreSQL commit order.
+  An outerErr still bypasses commit. No transaction or error handling is changed.
+
+Trace Git blobs: source_runtime
+`51a46db7a7ad3e46914146461c79c6ae42ab124a`, source_finish
+`339e57f895b7203452f4ad6f384ac04e348fda19`, source_stage
+`d12ffffc0ea60de399decf3f089c66d9f42a6837`, store
+`8e78d889220c9e956fe00a4f7a69b603063d3ebf`. All still match196ac209 exactly.
+
+This proves a source-derived omission in the charged expectation: it modeled
+attempts1 but omitted the committed authentication binding. It does **not**
+recover the failed run's caller, row, actual authentication value or exact HTTP
+step. Those were unrecorded and remain unrecorded; the changed-record collection
+alone cannot retrospectively establish them. No new runtime pass is inferred.
+
+### Exact expected-memory-only delta and protected reconstruction
+
+Source correction `90b6e8d832174df676d12395452e525de827f9e8` changes only
+tests/source_stage.rs: four added lines, immediately after the existing attempts1
+expectation and before the unchanged full snapshot assertion. A brief comment
+describes bad-factor charging; the single assignment is:
+
+```rust
+charged
+    .get_mut(&format!("source_logins/{login_key}"))
+    .unwrap()["authentication"] = stage_record["transaction"].clone();
+```
+
+It changes only the expected BTreeMap/JSON clone in memory. No stored record,
+Core/Tx/store call, snapshot exclusion, collection allowance, assertion removal
+or changed status/request/cookie/factor/writer/helper. The expected exact
+transaction comes from the existing stage record, not a wildcard or any stored
+post-failure observation. All other fields and collections remain covered by
+the same full snapshot assertion and existing HTTP-rate-only exemption.
+
+Python byte checks passed: the235-byte assignment/comment addition occurs once
+at the approved anchor; removing just that addition reconstructs the **entire**
+196ac209 test,166005 bytes, SHA256
+`0c5efa341f72922b3ef16cd92a6157200ab439b1860ad339c42d7b5ee83250b8`.
+Corrected test is166240 bytes, SHA256
+`5c1e1fe5975e91ac284f6b7637f7b4024f83c9b43eff59a857c7c32c48af1236`,
+Git blob `e19ec1f55eae34555e445b333d066a4c2e0a3f2c`. The entire124606-byte
+pre-regression prefix at196ac209 is unchanged, including its already reviewed
+configured-callback helper correction. Every other byte of the appended test is
+unchanged, including all operations, refusals, status/cookie checks and complete
+mutation/attempt/code/audit assertions. The previous36ccc64 reconstruction is
+still available by additionally reversing that separate callback correction.
+
+Actual static checks: installed1.98.1 rustfmt check parsed the test and accepted
+its formatting without changing bytes; Python anchor/reversal/prefix/single-file and
+protected source/helper/manifest assertions passed; git diff and staged whitespace
+checks exited0. Actual failed1322-byte Cargo log still hashes to
+`9ed4e8a9a01a40f929ba51b343a0ee96cd26fe83972c475271319c0c4047e567`.
+No artifact, Cargo, compiler/typecheck, HTTP/CLI product, provider, browser or
+retry was executed during this source-only correction. No independent reviewer
+or other worker was contacted. Root must complete immutable/independent review
+and separately release any one same-filter rerun; this fixture delta is unrun.
+Original primary/status and all accepted receipt/header/PAM/Group/authority/
+credential/one-use/60s contracts remain unchanged. Driver-only preference persists.
+
+Report preparation verified immutable90b6e8d parent/single-file scope and whole
+test reversal, the five cited source/test blobs, the entire86947-byte4b9aa13
+report prefix and all three prior failed-run evidence hashes unchanged. LF/fence,
+sole-report append and whitespace checks passed. Docs checker exited1 only for
+the same five pre-existing target-wave directory-layout violations, with zero
+missing Markdown links. No directory/checker/evidence change or runtime replay.
+
+## Separately released corrected same-filter run — PASS
+
+Root reviewed immutable90b6e8d/b729 and reported its independent source review
+of the earlier snapshots, then separately released exactly one same-filter run.
+Executed on clean `b729b661aaa85fd11338365e2f9573f8133fdae7`, with exact test
+`90b6e8d832174df676d12395452e525de827f9e8` and production/manifests unchanged
+from `196ac2096f79e5cc3c7d53ffa990ccdeba11a439`. This is a new authorized run,
+not an automatic retry or a reinterpretation of the prior failed execution.
+
+### Source, command and actual outcome
+
+Preflight rechecked the clean pin, all five production file hashes, corrected
+test/shared snapshot helper and three manifest hashes. Test SHA256 remains
+`5c1e1fe5975e91ac284f6b7637f7b4024f83c9b43eff59a857c7c32c48af1236`.
+The nonsymlink own cache retained the matching four features/profiles/native
+settings, with no new Cargo config/flags/wrappers or competing Cargo/rustc.
+`rustc -vV` again reported1.98.1, commit
+`48a229ceaefd4985c50990b14116b6d856af0985`, host aarch64-apple-darwin. Free disk
+exceeded12GiB both at preflight and immediately before launch.
+
+The exact previously printed locked/offline command ran once: same existing
+target-wave27/cargo, jobs1/incremental0/dev+testdebug0, same named source_stage
+filter with --exact and --test-threads=1. No new target, profile, flag or filter.
+
+| Actual result | Recorded outcome |
+| --- | --- |
+| Compilation | Finished test profile [unoptimized] in5.44s; only riauth compiled, no third-party rebuild |
+| Named selected test | browser_source_stage_transport_binds_factor_and_renders_both_response_modes: ok |
+| Harness summary | 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out;12.00s |
+| Cargo exit | 0; total supervised19.288s; Running-to-finally interval13.664s |
+| Failure/stop flags | No compiler error, failure location/collection, timeout, disk/budget/shared-drain stop or supervisor exception |
+
+A linker compact-unwind warning and Cargo's generated-one-warning summary
+were recorded; they did not prevent compilation or the test pass. No additional
+test, compiler command, source correction or runtime retry followed this run.
+
+The complete selected function passed with both query/root and
+form_post/non-root `/identity` rows. Its existing assertions exercise deliberate
+HTML/JSON negotiation, protected headers/origin/query-factor refusals, bound
+stage/authorization/cookie and exact subject, invalid-factor charging plus exact
+authentication binding, factor consumption, one-use code/continuation, cancellation,
+expiry/replay and unchanged native query/form_post delivery. The configured
+non-root callback assertion is part of that executed fixture. This credits the
+named **local HTTP/rendering regression**, with signed in-process/local HTTP
+upstream fixtures; it is not a real tenant, frontend-JavaScript/browser-driver,
+hardware or released-artifact execution.23 filtered tests were not run.
+
+The previous failed1322-byte run, its0-pass/1-fail result and unrecorded caller/
+row/actual-value limit remain intact. This pass checks the corrected expectation
+in this new execution; it cannot retroactively locate the old failure. Neither
+the full snapshot oracle nor any collection exemption was weakened.
+
+### Private evidence, disk and owned-group cleanup
+
+Evidence directory, created privately with mode0700:
+`target-wave27/evidence/i02-focused-binding-20261002T165044Z-261d3ada/`.
+Each file was created exclusively at0600; capped raw output stayed below32MiB,
+with no opaque record IDs/values emitted in progress or handoff summaries:
+
+| File | Bytes | SHA256 |
+| --- | --- | --- |
+| cargo.log | 757, not truncated | 62a6a3d17d5ef8aaa630e9bde8c2a62a2ed968669a6a798816ddc4736e4426be |
+| disk-process-samples.jsonl | 2483 | adcc45c4c2ae14c85605b527e68329610a6305de2b7250a0d104179546ef78d8 |
+| result.json | 2080 | a51eda5e0b779b6ab731b22dfe2e7f7c7639aa16a6d4253387d7898eaec9c121 |
+
+Start/end UTC:2026-10-02 16:50:44.557334 /16:51:03.846178. Free bytes were
+13381668864 initially (12.462650GiB),13375266816 minimum (12.456688GiB), and
+13380366336 finally (12.461437GiB).10 nominal2-second samples were recorded,
+maximum observed interval2.001s. Target allocation started2670510080 bytes and
+peaked2676895744, growth6385664 bytes (0.005947GiB). The3GiB prospective budget,
+9GiB own-stop margin and8GiB floor were retained; neither threshold was approached.
+Outer1800s/selected-fixture1200s bounds were active and not reached.
+
+Executed generated source_stage-51034130e831fdee is207422528 bytes, SHA256
+`0113f53c6c31cc012df622167735e327f59f8b287829e1fcd3f8805bc78c1616`.
+Its fingerprint JSON retains SHA256
+`e4d87ed9b2b6d2c151e8f9ba46bf23ed3206327cc140480f5172c7ed4beff63f`,
+features default/essentials/platform/test-support, profile11094973624911973823,
+rustc17329007180185699724, config9396254390672932401, empty rustflags/native
+kind0. The JSON describes settings; source/binary hashes plus actual Cargo log
+bind this new execution, rather than treating an unchanged settings hash as a
+current-source pass by itself.
+
+Owned PID/PGID27192 was waited/reaped. Finally group members were empty before
+cleanup and afterward; a separate post-run process-table check also found zero
+members. No other group was signaled. The selected test's in-process listeners
+ended with its process; no separate service or browser was launched. Explicit
+project RiWork handoff exited0 and **released the sole Cargo slot immediately,
+before this appendix**, reporting actual exit/count/hash/disk/cleanup. The
+tracked tree remained clean on b729 until this sole report append.
+
+### Updated verification disposition
+
+The concrete selected regression now passes, resolving its prior local
+verification blocker with the reviewed expected-memory correction. Only this
+new selected check changes from unrun/failed to passed; all historical pins,
+other source-only definitions, failures and evidence limitations retain their
+original scope. Original I02 setup/linking/assurance/browser/rotation acceptance
+and any final completion interpretation remain root's decision; no status,
+main integration/publication or whole-row closure was performed here. No new
+browser/tenant/hardware/release gate or extra execution is introduced by this
+report. Primary WT and receipt/header/PAM/Group/live-authority/credential/one-use/
+60s protections and Driver-only preference remain unchanged.
+
+Report preparation verified the entire92842-byte b729 prefix unchanged, sole
+report append, exact source/helper/manifest identity and the passing result,
+private modes/evidence hashes/cleanup plus executed binary hash. All three prior
+failed-run files also retain their recorded hashes. LF/fence/scope/whitespace
+checks passed. Docs checker exited1 only for the same five pre-existing
+target-wave directory-layout violations, with zero missing Markdown links.
+These static report checks performed no additional compile/test/runtime.

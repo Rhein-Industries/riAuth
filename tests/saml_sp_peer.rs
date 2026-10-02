@@ -526,7 +526,7 @@ fn lasso_signed_redirect_request_post_response_signature_and_metadata_key() {
 fn lasso_idp_initiated_redirect_logout_revokes_only_bound_session_and_consumes_response_once() {
     use std::{
         io::Read,
-        os::unix::fs::OpenOptionsExt,
+        os::unix::{fs::OpenOptionsExt, process::ExitStatusExt},
         process::{Child, ExitStatus, Stdio},
         time::{Duration, Instant},
     };
@@ -894,9 +894,53 @@ fn lasso_idp_initiated_redirect_logout_revokes_only_bound_session_and_consumes_r
         &refused_reply,
         &refused_state,
     ));
+    fn refusal_projection(stderr: &str) -> Option<(&'static str, i32)> {
+        const STAGES: &[&str] = &[
+            "lasso_init",
+            "lasso_server_new",
+            "lasso_server_add_provider",
+            "lasso_server_get_provider",
+            "lasso_logout_new",
+            "lasso_profile_set_identity_from_dump",
+            "lasso_profile_set_session_from_dump",
+            "lasso_logout_process_request_msg",
+            "lasso_profile_get_signature_status",
+            "lasso_logout_validate_request",
+            "lasso_logout_build_response_msg",
+        ];
+        if stderr.len() as u64 > CAP {
+            return None;
+        }
+        let mut projected = None;
+        for raw in stderr.split_inclusive('\n') {
+            if !raw.starts_with("lasso ") {
+                continue;
+            }
+            if projected.is_some() {
+                return None;
+            }
+            let line = raw.strip_suffix('\n')?.strip_prefix("lasso ")?;
+            let (name, detail) = line.split_once(": ")?;
+            let stage = STAGES.iter().copied().find(|stage| *stage == name)?;
+            let (text, decimal) = detail.strip_suffix(')')?.rsplit_once(" (")?;
+            let code = decimal.parse::<i32>().ok()?;
+            if text.is_empty()
+                || text.bytes().any(|byte| byte.is_ascii_control())
+                || code.to_string() != decimal
+            {
+                return None;
+            }
+            projected = Some((stage, code));
+        }
+        projected
+    }
     assert!(
-        status.code() == Some(1) && stderr.contains("(-111)"),
-        "pinned signature refusal"
+        status.code() == Some(1)
+            && refusal_projection(&stderr) == Some(("lasso_logout_process_request_msg", 102)),
+        "pinned signature refusal: exit={:?} signal={:?} projection={:?}",
+        status.code(),
+        status.signal(),
+        refusal_projection(&stderr)
     );
     assert!(!refused_reply.exists() && !refused_state.exists());
     assert!(private_text(&identity_path) == identity_before);

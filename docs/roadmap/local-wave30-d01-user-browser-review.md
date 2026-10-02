@@ -1200,3 +1200,802 @@ prefix; committed diagnostic source and all three private historical metadata
 files retain their bytes/hash/mode. Only this report differs, Markdown fences
 and final newline pass, and `git diff --check` passed. No source import,
 provider call or runtime execution was used for these document checks.
+
+## Separately released diagnostic fixture: Authorization rejection — 2026-10-02
+
+**The one new fixture exited 1 before browser launch.** Root fully reviewed and
+published diagnostic source `7461ab5` and evidence `6e4739d` at main
+`d5b60bc12aaafa258daddd64b40879afacb87bc1`, accepted review `cebdcd1`, then
+released one fresh fixture. It used the exact diagnostic helper without edits.
+The helper retained first reason **`authorization`**, original failure tag
+**`request_invalid`**, stage **`request`**. The outer guard stopped with
+`rp_nonzero`, cleaned its resources and exited 1. No browser authentication,
+consent or application checkpoint is credited. No retry or correction ran.
+
+### Source/artifact inputs and unchanged controller behavior
+
+Own entry HEAD was `6e4739d473569d95ef3468012b0a020b3e05d9e7`; no main merge
+occurred. Fresh helper hash matched
+`ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd`,
+blob `62460c2f4515a325bb65fc430649b904e8bb2c10`. All three matching c01 binary
+hashes were recomputed before use and equal the complete pins recorded above.
+The fixed verifier was read from its `9cefe7a` Git object, matched SHA-256
+`f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d`,
+and was materialized only inside the fresh private lab. Published guide and
+OIDC-profile blob/hash identities remain `e48371d...` / `9df3c286...` and
+`d9f222a...` / `ed1ae74c...` respectively. These identity readbacks do not
+claim a new whole-body review or historical observation refresh.
+
+The transient controller retained the prior setup/commands/readiness behavior:
+fresh `0700` own lab/XDG/RP directories, hidden synthetic password prompts,
+same normal confidential public-CLI registration, exact issuer 9000 and callback
+3000, five-second readiness request and `lsof` listener ownership reads.
+Changes were only the required diagnostic source pin, fresh exclusive metadata/
+lab names, finite reason retention and numeric owned-child exit recording.
+No new HTTP probe/request, Host tolerance, guard relaxation, authorization
+substitution or source correction was introduced to avoid the prior refusal.
+No private password, client secret or CLI-session value was printed or passed
+through argv/environment; captured CLI output was discarded.
+
+### Native observation and actual operator setup
+
+The resolved native provider again matched
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+Its preflight `version` invocation used only inherited `HOME`, `LANG`, `LC_ALL`,
+`PATH`, `TMPDIR`, with a five-second timeout. It returned **0**, no timeout,
+**63 ASCII stdout bytes** containing
+`OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)` plus newline,
+and **0 stderr bytes**. That complete exit/text/length/hash observation was
+flushed/fsynced into a new exclusive `0600` file before exact equality assertion:
+`deployment-private/d01-confidential-browser-diagnostic-provider-20261002.json`,
+359 bytes, SHA-256
+`6fad035f1897b5287b2ebd812405fcabf6a33b72d2d4f498f3bca7081eb719ab`.
+Its bytes happen to equal the earlier provider metadata, but it is a distinct
+new file; the old file was never overwritten. The helper's own unchanged native
+version check also passed. No RS256 signature-verification result is claimed.
+
+| Owned command/process | PID | Actual numeric exit / observation |
+| --- | --- | --- |
+| Maintenance init | 56111 | 0; two hidden password prompts |
+| Essentials server | 56161 | 0 after owned cleanup; only owner of listener 9000 while running |
+| Operator CLI login | 56167 | 0; one hidden password prompt |
+| Confidential Local demo creation | 56168 | 0; exact callback/scopes; new secret-file mode 0600 |
+| CLI discovery | 56169 | 0 |
+| CLI whoami | 56170 | 0 |
+| Diagnostic helper, one invocation | 56171 | 1; only owner of listener 3000 while running |
+| Outer guard | 55984 | 1 |
+
+The existing `GET http://127.0.0.1:9000/readyz` returned **200**. CLI login and
+registration were operator setup only, never passed to the RP as a user session.
+No service-session/API sign-in/approval stood in for browser behavior.
+
+### Observed reason, checks and limits of attribution
+
+The helper failed after **3.013 seconds**. Both its private result and the outer
+result retain `request_invalid_reason: "authorization"`. Under the reviewed
+first-only recorder and guard order, this identifies only failure of:
+
+```python
+self.headers.get_all("Authorization") is None
+```
+
+Thus the parsed request's Authorization header list was non-null; no header
+value or sender information was retained. Parsing and the preceding Host guard
+completed before this first rejection. Later request guards were not reached
+and are not credited. No raw request line, Host, method, path, query, cookie,
+Origin, error contents or header value is disclosed. The reason does not name
+an actor, prove product fault or retroactively assign a reason to the prior
+unclassified fixture. That prior failure remains independently unknown.
+
+Actual helper checks: credential/private-file, provider identity and discovery
+are true. All seven subsequent protected/authorization/state/exchange/native
+RS256/JWKS/issuer/audience/nonce/time/access-hash/userinfo/fresh-cookie checks are
+false. All six helper HTTP status fields remain null. The original failure tag,
+stage, booleans and statuses are retained without converting the result to pass.
+No protected-before 403, password/empty-factor sign-in, Local demo consent,
+callback, userinfo or protected-after 200 was performed.
+
+A bounded read-only inspection of this transient controller's source found
+listener readbacks through `lsof`, its single explicit readiness URL on 9000,
+and the unchanged CLI issuer/registration schedule. It establishes no concrete
+controller defect or request origin. No new controller request, source edit,
+diagnostic rerun or sender inference followed the refusal. Root owns the next
+cause adjudication/reservation; this phase grants no further runtime.
+
+### Resource budget, cleanup and release
+
+First clock read: `2026-10-02 15:32:15 UTC`, with the inclusive timer started
+immediately before it. Final cleanup completed at
+`2026-10-02T15:34:48.232499+00:00`, **153.252 seconds** inclusive, under the
+900-second cap. Active/cleanup were capped at 840/60 seconds, helper 600,
+pending 180, native/HTTP five and CLI 60. No conservative historical allowance
+was added to this new timer.
+
+Fresh capacity passed the 8.5 GiB entry gate. Outer one-second monitoring began
+at guard preflight: **5 samples**, minimum **14558846976 bytes / 13.558983 GiB**.
+The helper's scheduled and phase-entry checks recorded **22 samples**, minimum
+**14558842880 bytes / 13.558979 GiB**. Both minima exceed the 8.5 stop margin and
+8 GiB floor. No continuous minimum is claimed before guard preflight, and no
+disk deletion was performed.
+
+Owned children were stopped/joined and their numeric exits retained as above.
+The helper's listener/connection closure, private-reference clearing and
+verifier-temporary cleanup booleans are all true. Fresh readbacks found all
+eight listed PIDs absent, both 9000/3000 `lsof` checks exit 1/no listeners, and
+the entire fresh lab/XDG/store/password/credential/session/verifier input absent.
+No unrelated process was killed, and no Python memory erasure is claimed.
+
+The helper refused before the browser branch. This phase made **zero Driver
+calls** and no session/profile/binding/navigation/input/screenshot/recording/
+logout actions. No Driver-owned browser/session existed to kill or end, and no
+cleanup of a personal/shared Driver resource is claimed. RiWork Cua.ai Driver
+MCP remains the sole allowed desktop provider for any separately released run.
+
+Actual new retained result:
+`deployment-private/d01-confidential-browser-diagnostic.redacted.json`, exclusive
+`0600`, **4046 bytes**, SHA-256
+`aefdc34827486859e08a1e28de0a09505af65b4afdf9f1ba5f952fa0208595fa`.
+Both new metadata files are private/ignored. All old metadata/lost-value and
+reporting-error evidence remain intact.
+
+The explicit-project orchestrator release send exited 0 immediately after
+cleanup/readbacks and before this append: **DESKTOP/OPERATOR RUNTIME RELEASED**.
+No Cargo slot was acquired/released; I04 preparation's independent lane is
+unaffected. Source and original guards remain unchanged, and no retry/fallback
+ran. Only this report is appended; no product/guide/D05/source/test/config/state
+edit, Cargo/build/test, main/push/status/merge/reset, new worker/task/worktree/
+shell or other-worker contact occurred. Root owns D01/D05 gate adjudication;
+O06/I10/R05 remain DONE and every prior accepted protection remains unchanged.
+
+Evidence-append checks passed: all 76829 preceding `6e4739d` report bytes remain
+an exact prefix; helper bytes/hash and every old/new private metadata hash,
+length and mode 0600 match their pins. The actual reason is the finite literal
+`authorization`, and all recorded owned-child exits are numeric. Only this
+report differs, Markdown fences/final newline pass, and `git diff --check`
+passed. These checks repeated no provider or fixture execution.
+
+## Controller Authorization source audit, read only — 2026-10-02
+
+Reservation: `wave30_D01_controller_authorization_source_audit`. Only this
+existing report is appended. **No configured own source call site was found
+that constructs Authorization to port 3000. The actual sender remains unknown.**
+The observed `authorization` refusal is preserved; this is no product pass,
+sender attribution or retry. Fixture/runtime remains held.
+
+### Exact retained controller and match to the actual attempt
+
+The just-executed controller is available as the exact retained
+`d01_diag_controller_text` session-store value. The preceding tool call stored
+that value, passed the same value as `exec_command.cmd`, and retained returned
+exec session **34263**. The command payload is **13380 UTF-8 bytes**, SHA-256
+`ab0a9c5d8f8fb1c4f5fb5db8b3c396e4dfbdf56bb5a7f0f7e7178b485d77040e`.
+Its Python body is **13357 bytes / 177 lines**, SHA-256
+`a3748aaa8aee61fa302050daa78867b1a251fca6cd1294047c43808db71486da`.
+The full public source payload is archived below so this source input is not
+lost at a later session compaction. It contains code/constant inputs, no actual
+password/session/header/token values.
+
+Static AST/readback matched `START = 1790955134.981` to the actual redacted
+metadata, the exact `ac3c350d...` helper pin, new exclusive evidence/provider
+paths and the observed command schedule. Retained stdout/metadata identify
+guard 55984, server 56161 and helper 56171. These are the same attempt recorded
+above. Payload hashes were computed **in this audit**, not captured before
+execution or attested from process memory. The actual private JSON does not
+contain a controller-source hash; metadata alone would not independently prove
+the entire payload. The source match uses the retained tool-call input/value
+chain plus these concrete readbacks.
+
+No controller payload is missing. Source for the implementation behind
+`tools.exec_command` (including any implicit process/listener integration, if
+one exists), and Python interpreter/startup customizations, is not a supplied
+or pinned source input here. No implicit hook is asserted to exist. This audit
+did not inspect broader process arguments, environment values, private files
+or unrelated processes to fill that gap, and cannot identify network origin
+through those unreviewed implementations.
+
+### Every configured initial request/readiness construction
+
+| Source construction | Destination / Authorization behavior |
+| --- | --- |
+| Controller `listeners()` / `wait_listener()` | `lsof` readbacks; no HTTP request builder in that source |
+| Controller's sole explicit `urlopen()` | Fixed `http://127.0.0.1:9000/readyz`, no explicit headers; synchronous block completes before CLI setup and RP startup |
+| Operator CLI login | Selected issuer 9000; `/api/login` has no bearer argument |
+| Operator client creation / revision / whoami | Authenticated API requests bound to the selected issuer 9000; creation callback 3000 is registration data, not a contacted URL |
+| Operator CLI discovery | Selected issuer 9000, no bearer |
+| Adapter setup / delegated discovery | Fixed issuer 9000; no bearer argument and no RP self-request |
+| Adapter sign-in action | Constructs the future browser authorization redirect at validated issuer 9000; no HTTP client call or Authorization header construction |
+| Adapter confidential token exchange | Validated 9000 token endpoint; client secret in form, no bearer argument |
+| Delegated JWKS verification request | Validated 9000 JWKS URI; no bearer argument |
+| Adapter userinfo | Validated 9000 userinfo endpoint, bearer argument only after callback/exchange/verification; never reached in this failed fixture |
+| Parent recovery `__init__` / `login` RP requests | Not invoked by this adapter; source possibility in the unused library, not an executed initial RP builder |
+
+The retained controller has one AST `urlopen` call and no Authorization literal.
+It uses the same readyz/default-opener construction as the failed attempt; no
+proxy/redirect/opener correction was made. The default opener's transitive or
+ambient behavior is not attested by the absence of an explicit header in this
+source. That synchronous request and every CLI child nevertheless complete in
+the controller's source order before the helper/RP is launched.
+
+Fixed c01 CLI source reads were bounded to the selected login/discovery/whoami/
+client-create dispatch and transport/base/header construction. Whole-file hashes
+below identify the sources, not whole-body reviews or a new binary/source-build
+attestation. The previously accepted c01 binary pins remain the runtime inputs.
+
+| c01 source at `c01c39ab4e092423d5522bedc50fff87656d8c0a` | Blob / SHA-256 |
+| --- | --- |
+| `crates/riauthctl/src/transport.rs` | `dea115cb8e23bd54911cdb66d50b6efa7e9c940b` / `d0f64e747b667c9f3a7eea18ce84e0dd16b7c0b6d695f2fbc8ed70c553fe7240` |
+| `crates/riauthctl/src/main.rs` | `d91107cf667e9a2ff60b261e7edc41270367eb52` / `e75f26eedb1b740d6cbeacf32663f01fb5b802330be6a612eecfca35f29a7da6` |
+| `crates/riauthctl/src/admin.rs` | `58b316890bb6bd04d331088164a94ae39d2d6a9c` / `d67ceb258bd3e2b66b8aebce4cc8af65630bb4b7c22ca2379e4b2b4122811cfd` |
+
+`Remote::new` disables redirects/proxies. Discovery carries no bearer,
+`verify_issuer` refuses a management-base mismatch and retains the selected
+issuer, and `request_at` builds base plus a validated API path, adding bearer
+only when supplied. There is no followed redirect forwarding that bearer to
+the registered callback. The actual CLI children all exited before RP startup.
+
+Pinned verifier source remains blob `3be747d03146f1bcaa3ec012ee8d173b61fa737d`,
+SHA-256 `f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d`.
+Its top level contains definitions/imports/constants, no HTTP invocation.
+Adapter AST references to `LocalRelyingParty` are only `discovery`,
+`callback_fields` and `verify_id_token`; its constructor/login are not called.
+The adapter is a separate Demo object and binds its own fixed 3000 server.
+
+The verifier's generic `request(url, bearer=...)` **can** construct Authorization
+for any caller-supplied URL if given a bearer. That is a source capability, not
+an observed call to 3000. Its explicit header starts with Accept JSON, optionally
+adds form Content-Type, and only adds Authorization after a string-length bound
+of 1..32768 and the existing token-character regex. Default request opener has
+proxies disabled and redirects refused. Every configured adapter use omits
+`agent`; the sole bearer use is the validated 9000 userinfo request. Discovery
+requires issuer equality and each authorization/token/userinfo/JWKS endpoint to
+equal fixed issuer plus the exact suffix. The unused recovery `login` code also
+creates a new opener/request without the IdP bearer for its RP callback and
+protected reads; its existence does not mean that branch executed here.
+
+### First-request timing: unavailable in actual evidence
+
+The current JSON has `request_invalid_reason` but no initial request timestamp,
+connection/request count or request index. The rejection happened after the
+RP listener existed and before any worker Driver/browser action, within the
+helper's **3.013-second total lifetime**. That lifetime includes private setup,
+provider/discovery work and cleanup; it is **not** the first request time.
+Source allows empty EOF and root/404 requests without recording a first-request
+counter, so null protocol statuses do not prove the rejection was the first
+connection or request. Those are source possibilities, not observed earlier
+traffic. No first-request timing, header value or sender can be recovered from
+the retained metadata, and none was fetched here.
+
+### ONE proposed bounded observation, not an implementation
+
+Propose only one new private field,
+`request_first_line_ms_since_listen`: null or an integer bounded to 0..600000.
+Capture it once after the existing first **nonempty request-line read** returns,
+using a monotonic origin immediately after listener construction. This defines
+line-read completion, not TCP acceptance time, request contents or sender.
+The observation would add no request/probe, header inspection, tolerant Host/
+Authorization/cookie behavior or new caller attribution. It closes only the
+missing initial-line timing observation; it does not solve sender identity or
+make the application journey pass. Root decides whether that observation is
+useful, and must separately reserve source/runtime before any implementation.
+
+Exact prospective helper-only insertions (current source still unchanged):
+
+```diff
+@@ Demo.__init__ (after existing reason initialization)
+         self.request_invalid_reason = None
++        self.request_first_line_ms_since_listen = None
++        self.listener_started_at = None
+@@ DemoServer.__init__ (after existing bind/listen construction)
+         super().__init__(("127.0.0.1", 3000), Handler)
++        demo.listener_started_at = time.monotonic()
+@@ Handler.handle_one_request (after existing empty-line return)
+                 if not self.raw_requestline:
+                     return
++                if demo.request_first_line_ms_since_listen is None:
++                    demo.request_first_line_ms_since_listen = min(600000, max(0, int(
++                        (time.monotonic() - demo.listener_started_at) * 1000)))
+                 require(len(self.raw_requestline) <= MAX_REQUEST_LINE, "request_limit")
+@@ main private record
+               "request_invalid_reason": None,
++              "request_first_line_ms_since_listen": None,
+@@ main finally (before existing reference clearing)
+             record["request_invalid_reason"] = demo.request_invalid_reason
++            record["request_first_line_ms_since_listen"] = demo.request_first_line_ms_since_listen
+```
+
+For review only, those five insertions were constructed **in memory**, parsed
+and compiled to an unexecuted code object. Candidate SHA-256:
+`66254e52e2d7f0421586348d03d42b08eefbacd97758a873b9d04e81aecb6b68`.
+Removing exactly the three new clock/state assignments, one first-only observer
+block, one private JSON key and one final copy restores the **entire original
+`ac3c350d...` AST exactly** without source-position attributes. Existing guard
+predicates/order, first reason, failure tag, deadline/flow/native crypto,
+public responses/protected behavior and cleanup logic all remain in that
+restored AST. No proposed source was written, imported or executed. This is the
+preservation proof before any possible change, not an approved source commit.
+
+### Scope and held outcome
+
+This audit used retained source reads, bounded fixed Git-object body reads,
+static AST/payload matching and the unexecuted in-memory candidate. No raw
+credential/token/header value, broader process argument or environment value
+was inspected. No additional HTTP/native/provider/helper/CLI/server/listener/
+Driver/browser/Cargo/version invocation, rerun, deletion, helper/controller/
+product/guide/D05/test edit, main/push/status/merge/reset, new worker/task/WT/
+shell or other-worker contact occurred. All old failures, lost-value correction,
+metadata and accepted gate limits remain preserved. RiWork Cua.ai Driver MCP
+remains the sole desktop provider. Runtime remains held; root owns D01/D05
+interpretation and any next reservation; O06/I10/R05 stay DONE.
+
+
+### Retained executed command payload — source archive
+
+The fenced block preserves the historical command input, not execution
+permission. Its final block newline is Markdown formatting: remove that one
+newline to reconstruct the 13380-byte command ending in `PY`. Its Python body
+is the 177-line body between the shell wrapper and final `PY`; no actual
+private credential/header/environment value is included.
+
+```bash
+python3 -u - <<'PY'
+import datetime,fcntl,hashlib,json,os,pathlib,pty,secrets,select,shutil,signal,stat,subprocess,sys,tempfile,termios,time,urllib.request
+ROOT=pathlib.Path.cwd()
+START=1790955134.981
+ACTIVE=START+840
+BIN=pathlib.Path('/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/target/d01-essentials-c01c39a/aarch64-apple-darwin/debug')
+PRIVATE=ROOT/'deployment-private'
+OUT=PRIVATE/'d01-confidential-browser-diagnostic.redacted.json'
+PROVIDER_META=PRIVATE/'d01-confidential-browser-diagnostic-provider-20261002.json'
+record={'schema':'riauth.d01-confidential-browser-outer/v1','result':'failed','failure_stage':None,'failure_tag':None,'request_invalid_reason':None,'commands':[],'artifacts':{},'cleanup':{},'owned_child_exits':[],'started_epoch':START,'active_seconds':840,'cleanup_seconds':60,'minimum_free_bytes':None,'disk_samples':0}
+lab=None;children=[];names={};server=None;helper=None;password=None;stage='preflight';resultfd=None;lastsample=0
+def require(ok,tag):
+    if not ok:raise RuntimeError(tag)
+def tick():
+    global lastsample
+    now=time.monotonic()
+    if now-lastsample>=1:
+        free=shutil.disk_usage(ROOT).free
+        record['disk_samples']+=1
+        record['minimum_free_bytes']=free if record['minimum_free_bytes'] is None else min(record['minimum_free_bytes'],free)
+        lastsample=now
+        require(free>=8.5*1024**3,'disk_margin')
+    require(time.time()<ACTIVE,'active_deadline')
+def write_exclusive(path,value):
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    raw=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode('ascii')
+    with os.fdopen(fd,'wb') as f:
+        f.write(raw);f.flush();os.fsync(f.fileno())
+    return hashlib.sha256(raw).hexdigest()
+def listeners(port):
+    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)
+    require(p.returncode in (0,1),'socket_observation_failed')
+    return set(int(v) for v in p.stdout.split())
+def own(p,name):
+    children.append(p);names[p.pid]=name;return p
+def stop_child(p):
+    if p.poll() is None:
+        for sig,wait in [(signal.SIGINT,8),(signal.SIGTERM,5),(signal.SIGKILL,2)]:
+            if p.poll() is not None:break
+            p.send_signal(sig)
+            try:p.wait(timeout=wait)
+            except subprocess.TimeoutExpired:pass
+    require(p.poll() is not None,'owned_child_reap_failed')
+def controlling_tty():
+    os.setsid();fcntl.ioctl(0,termios.TIOCSCTTY,0)
+def cli(name,args,prompts=0):
+    tick()
+    master,slave=pty.openpty()
+    p=own(subprocess.Popen(args,cwd=lab,env=environment,stdin=slave,stdout=slave,stderr=slave,preexec_fn=controlling_tty),name)
+    os.close(slave);seen=0;raw=b'';started=time.monotonic()
+    try:
+        while p.poll() is None:
+            tick();require(time.monotonic()-started<60,'cli_deadline')
+            if select.select([master],[],[],0.2)[0]:
+                try:chunk=os.read(master,4096)
+                except OSError:chunk=b''
+                raw+=chunk;require(len(raw)<=131072,'cli_output_limit')
+                for prompt in ([b'Password: ',b'Confirm password: '] if prompts==2 else [b'Password: ']):
+                    if seen<prompts and prompt in raw:
+                        require(prompt==([b'Password: ',b'Confirm password: '][seen] if prompts==2 else b'Password: '),'cli_prompt_order')
+                        os.write(master,password.encode()+b'\n');seen+=1;raw=b''
+        while select.select([master],[],[],0)[0]:
+            try:
+                chunk=os.read(master,4096)
+                if not chunk:break
+                raw+=chunk
+            except OSError:break
+        code=p.wait()
+        record['commands'].append({'name':name,'exit':code,'password_prompts':seen})
+        require(code==0,'cli_nonzero');require(seen==prompts,'cli_prompt_missing')
+    finally:
+        raw=b'';os.close(master)
+        if p.poll() is None:stop_child(p)
+def wait_listener(p,port):
+    deadline=time.monotonic()+30
+    while time.monotonic()<deadline:
+        tick();require(p.poll() is None,'owned_service_early_exit')
+        owners=listeners(port)
+        if owners:
+            require(owners=={p.pid},'listener_owner_mismatch');return
+        time.sleep(0.2)
+    raise RuntimeError('listener_deadline')
+try:
+    tick()
+    require(PRIVATE.is_dir() and not PRIVATE.is_symlink() and stat.S_IMODE(PRIVATE.stat().st_mode)==0o700,'private_directory_invalid')
+    require(not OUT.exists() and not PROVIDER_META.exists(),'evidence_already_exists')
+    require(not listeners(9000) and not listeners(3000),'port_occupied');record['ports_preflight_empty']=True
+    pins={'riauth':'7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606','riauth-maintenance':'86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95','riauthctl':'bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf'}
+    for name,pin in pins.items():
+        tick()
+        with (BIN/name).open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
+        record['artifacts'][name]=digest;require(digest==pin,'artifact_hash_mismatch')
+    helper_path=ROOT/'scripts/d01-confidential-browser-demo.py'
+    require(hashlib.sha256(helper_path.read_bytes()).hexdigest()=='ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd','helper_hash_mismatch')
+    verifier=subprocess.check_output(['git','show','9cefe7a56425bb73c17753e8766d92320b77da3b:scripts/recovery-drill-oidc.py'],timeout=5)
+    require(hashlib.sha256(verifier).hexdigest()=='f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d','verifier_hash_mismatch')
+    provider=pathlib.Path('/opt/homebrew/bin/openssl').resolve(strict=True)
+    with provider.open('rb') as f:provider_hash=hashlib.file_digest(f,'sha256').hexdigest()
+    require(provider_hash=='67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72','provider_hash_mismatch')
+    provider_env={k:v for k,v in os.environ.items() if k in {'PATH','HOME','TMPDIR','LANG','LC_ALL'}}
+    p=subprocess.Popen([str(provider),'version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=provider_env)
+    try:stdout,stderr=p.communicate(timeout=5);timeout=False
+    except subprocess.TimeoutExpired:
+        p.kill();stdout,stderr=p.communicate(timeout=2);timeout=True
+    provider_record={'sha256':provider_hash,'exit':p.returncode,'timeout':timeout,'stdout_ascii':stdout[:4096].decode('ascii',errors='backslashreplace'),'stderr_ascii':stderr[:4096].decode('ascii',errors='backslashreplace'),'stdout_bytes':len(stdout),'stderr_bytes':len(stderr),'environment_keys':sorted(provider_env)}
+    record['provider_metadata_sha256']=write_exclusive(PROVIDER_META,provider_record)
+    require(not timeout and p.returncode==0 and len(stdout)<=256 and len(stderr)<=4096 and stdout.decode('ascii').strip()=='OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)','provider_version_failed')
+    tick()
+    resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    lab=pathlib.Path(tempfile.mkdtemp(prefix='d01-confidential-browser-diagnostic.',dir=PRIVATE));os.chmod(lab,0o700)
+    for name in ('xdg','deployment-private','rp'):(lab/name).mkdir(mode=0o700)
+    (lab/'recovery-drill-oidc.py').write_bytes(verifier);os.chmod(lab/'recovery-drill-oidc.py',0o600);verifier=None
+    password=secrets.token_urlsafe(30)
+    fd=os.open(lab/'browser-password',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,'w') as f:f.write(password)
+    environment=dict(provider_env);environment['XDG_CONFIG_HOME']=str(lab/'xdg')
+    stage='init';cli('maintenance_init',[str(BIN/'riauth-maintenance'),'--config',str(lab/'riauth.toml'),'init','--issuer','http://localhost:9000','--listen','127.0.0.1:9000','--data-dir','data','--admin','admin'],2)
+    stage='serve'
+    server=own(subprocess.Popen([str(BIN/'riauth'),'--config',str(lab/'riauth.toml'),'serve'],cwd=lab,env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL),'server')
+    record['server_pid']=server.pid;wait_listener(server,9000);record['server_listener_owned']=True
+    stage='readyz'
+    with urllib.request.urlopen('http://127.0.0.1:9000/readyz',timeout=5) as response:
+        record['readyz_status']=response.status;response.read(4096)
+    require(record['readyz_status']==200,'readyz_failed')
+    stage='cli_login'
+    base=[str(BIN/'riauthctl'),'--server','http://localhost:9000']
+    cli('operator_login',base+['login','admin'],1)
+    stage='client_create';secretpath=lab/'deployment-private/local-demo-secret.json'
+    cli('confidential_client_create',base+['client','create','local-demo','--name','Local demo','--confidential','--redirect-uri','http://localhost:3000/callback','--scope','openid,profile','--secret-file',str(secretpath)])
+    require(stat.S_IMODE(secretpath.stat().st_mode)==0o600,'cli_secret_mode_invalid')
+    stage='discovery';cli('discovery',base+['discovery'])
+    stage='whoami';cli('whoami',base+['whoami'])
+    stage='rp_start'
+    helper=own(subprocess.Popen([sys.executable,'-B',str(helper_path),'--workspace',str(lab/'rp'),'--secret-file',str(secretpath),'--verifier-helper',str(lab/'recovery-drill-oidc.py'),'--openssl','/opt/homebrew/bin/openssl','--deadline-seconds','600','--evidence',str(lab/'rp-result.json')],cwd=ROOT,env=environment,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True),'helper')
+    record['helper_pid']=helper.pid;record['helper_invocations']=1
+    wait_listener(helper,3000);record['helper_listener_owned']=True
+    print(json.dumps({'fixture_ready':True,'guard_pid':os.getpid(),'server_pid':server.pid,'helper_pid':helper.pid,'lab':str(lab),'commands':record['commands'],'provider_metadata_sha256':record['provider_metadata_sha256'],'minimum_free_bytes':record['minimum_free_bytes']}),flush=True)
+    stage='browser_checkpoint';announced=False
+    while not (lab/'stop').exists():
+        tick();require(server.poll() is None,'idp_early_exit')
+        if helper.poll() is not None:
+            code=helper.wait()
+            if not announced:
+                record['helper_exit']=code;record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())
+                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']
+                print(json.dumps({'helper_completed':True,'exit':code,'result':record['helper_result']['result'],'failure_tag':record['helper_result']['failure_tag'],'request_invalid_reason':record['request_invalid_reason']}),flush=True);announced=True
+            require(code==0,'rp_nonzero')
+        time.sleep(0.2)
+    if (lab/'ui-failure').exists():raise RuntimeError('browser_checkpoint_failed')
+    require(helper.poll()==0,'rp_checkpoint_incomplete');record['result']='passed'
+except Exception as error:
+    record['failure_stage']=stage
+    tags={'disk_margin','active_deadline','private_directory_invalid','evidence_already_exists','port_occupied','socket_observation_failed','artifact_hash_mismatch','helper_hash_mismatch','verifier_hash_mismatch','provider_hash_mismatch','provider_version_failed','cli_deadline','cli_output_limit','cli_prompt_order','cli_prompt_missing','cli_nonzero','owned_service_early_exit','listener_owner_mismatch','listener_deadline','readyz_failed','cli_secret_mode_invalid','idp_early_exit','rp_nonzero','browser_checkpoint_failed','rp_checkpoint_incomplete'}
+    record['failure_tag']=str(error) if str(error) in tags else 'outer_unexpected_failure'
+finally:
+    for p in reversed(children):
+        try:stop_child(p)
+        except Exception:record['cleanup']['child_reap_failure']=True
+        record['owned_child_exits'].append({'name':names[p.pid],'pid':p.pid,'exit':p.poll()})
+    record['cleanup']['owned_children_reaped']=all(p.poll() is not None for p in children)
+    if lab is not None:
+        if helper is not None:
+            record['helper_exit']=helper.poll()
+            if (lab/'rp-result.json').exists():
+                record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())
+                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']
+        password=None;shutil.rmtree(lab);record['cleanup']['lab_removed']=not lab.exists()
+    else:record['cleanup']['lab_removed']=True
+    try:
+        record['cleanup']['port9000_absent']=not listeners(9000);record['cleanup']['port3000_absent']=not listeners(3000)
+    except Exception:record['cleanup']['socket_observation_failure']=True
+    record['completed_utc']=datetime.datetime.now(datetime.timezone.utc).isoformat();record['elapsed_seconds']=round(time.time()-START,3)
+    if resultfd is None and not OUT.exists():resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    if resultfd is not None:
+        with os.fdopen(resultfd,'wb') as f:
+            f.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode('ascii'));f.flush();os.fsync(f.fileno())
+    print(json.dumps({'fixture_finished':True,'result':record['result'],'failure_stage':record['failure_stage'],'failure_tag':record['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'cleanup':record['cleanup'],'owned_child_exits':record['owned_child_exits'],'minimum_free_bytes':record['minimum_free_bytes'],'disk_samples':record['disk_samples'],'elapsed_seconds':record['elapsed_seconds']}),flush=True)
+sys.exit(0 if record['result']=='passed' else 1)
+PY
+```
+
+Audit-append verification passed: all 85920 preceding `cfacf75` bytes remain an
+exact prefix; extracting the archived command/body reproduces both full hashes
+and the 177-line body parses without execution. Committed helper and all five
+historical metadata files retain their bytes/hash/mode. Scope is this report
+only; Markdown fences/final newline and `git diff --check` pass. No source or
+proposed observer was written/executed and no runtime was acquired/released.
+
+## 2026-10-02: source-only preflow Authorization rejection design
+
+Reservation: wave30_D01_preflow_authorization_rejection_design. This phase owns
+only an append to this report. The candidate below exists only in memory and
+as a reviewable diff in this report. Disk helper/controller are unchanged; no
+helper import/execution, request, provider invocation, CLI fixture, listener,
+Driver/browser action, Cargo or runtime acquisition/release occurred. The
+timestamp-only candidate in the prior phase is not implemented or proposed for
+release. Root must review this immutable report before separately reserving
+source ownership or runtime.
+
+Recommendation: this narrow candidate is suitable for source review. A bounded,
+otherwise structurally valid Authorization-bearing request during strict
+preflow is still refused with fixed 403; only termination of the listening demo
+is deferred for the first three such refusals. The fourth 403 is terminal with
+the existing fixed request_invalid failure tag. This deliberately interprets
+**at most four refusals across the entire fixture** as three nonterminal
+refusals plus a fourth terminal refusal; it does not permit four continuations
+and a fifth refusal. This policy is explicit for root's review.
+
+There is no new accepted Authorization-bearing request. A rejected request
+cannot dispatch to login, callback or protected access, read an application
+credential/cookie value, create a redirect/cookie/form, or satisfy a journey
+check. Reject any implementation allowing those paths or treating a 403 as
+journey success.
+
+### Immutable inputs and prior failures
+
+The complete helper was read from disk and matched source commit
+7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238, helper blob
+62460c2f4515a325bb65fc430649b904e8bb2c10, SHA-256
+ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd,
+31162 bytes / 671 lines. This is the source published at fixed main
+d5b60bc12aaafa258daddd64b40879afacb87bc1; no main update/merge occurred.
+Report parent is 3221600b1f1f89194118d07c30d25c24dc6e81fc, blob
+851a98844b720ee8a666aa22be2ef4731920d4a6, SHA-256
+f75ff6c5b851d66c4599675aae35418316d9459b0bf2fb4528fcb29486554236,
+111511 bytes / 1726 lines.
+
+The prior report's retained executed controller payload remains unchanged:
+SHA-256 ab0a9c5d8f8fb1c4f5fb5db8b3c396e4dfbdf56bb5a7f0f7e7178b485d77040e;
+177-line Python body SHA-256
+a3748aaa8aee61fa302050daa78867b1a251fca6cd1294047c43808db71486da.
+This phase does not execute/change that controller. Previously reviewed source
+possibilities are not proof of the actual request origin.
+
+The actual diagnostic fixture remains failed before browser activity:
+request_invalid, stage request, first fixed reason authorization, helper exit 1,
+all later journey checks false and their HTTP-status entries null. Sender,
+Authorization value and exact first-request timing remain UNKNOWN. There is
+no auto-probe/external-origin assertion or product failure/pass inference.
+The first fixture's unclassified request refusal, lost first provider-version
+output, initial incorrect reporting and later correction remain preserved.
+This design creates no actual fixture observation and closes no D01/D05 gate.
+
+### Exact proposed helper diff
+
+In-memory candidate SHA-256 7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0,
+32723 bytes / 695 lines.
+No candidate helper file was written. The only prospective source file is
+scripts/d01-confidential-browser-demo.py; no controller/product/guide/D05/config
+or existing test file is proposed for change. The six hunks add the private
+integer's initialization/record/final-copy, a local control-flow exception,
+and the one rejection branch/catch.
+
+```diff
+--- a/scripts/d01-confidential-browser-demo.py
++++ b/scripts/d01-confidential-browser-demo.py
+@@ -234,0 +235 @@
++        self.preflow_authorization_refusals = 0
+@@ -381,0 +383,4 @@
++class PreflowAuthorizationRefusal(Exception):
++    pass
++
++
+@@ -422,0 +428,14 @@
++                if (self.headers.get_all("Authorization") is not None
++                        and demo.attempted is False and demo.pending is None
++                        and demo.cookie is None and demo.subject is None
++                        and demo.preflow_authorization_refusals < 4):
++                    self.record_request_reason("authorization")
++                    self.require_request(self.headers.get_all("Transfer-Encoding") is None, "transfer_encoding")
++                    self.require_request(self.headers.get_all("Expect") is None, "expect")
++                    self.require_request(self.headers.get_all("Content-Length") in (None, ["0"]), "content_length")
++                    target = urllib.parse.urlsplit(self.path)
++                    self.require_request(not target.scheme, "target_scheme")
++                    self.require_request(not target.netloc, "target_netloc")
++                    self.require_request(not target.fragment, "target_fragment")
++                    demo.preflow_authorization_refusals += 1
++                    raise PreflowAuthorizationRefusal
+@@ -444,0 +464,4 @@
++        except PreflowAuthorizationRefusal:
++            if demo.preflow_authorization_refusals == 4:
++                demo.failure, demo.done = "request_invalid", True
++            self.reply(403, "Local demo could not complete this request.")
+@@ -536 +559 @@
+-              "request_invalid_reason": None,
++              "request_invalid_reason": None, "preflow_authorization_refusals": 0,
+@@ -623,0 +647 @@
++            record["preflow_authorization_refusals"] = demo.preflow_authorization_refusals
+```
+
+### Request and lifecycle invariants
+
+1. Existing request-line/header byte, line and count limits, parser error
+   handling, request deadline, connection close and exact Host check execute
+   before the new branch. Authorization presence uses the old get_all(...)
+   is None distinction: empty and duplicate Authorization headers are present
+   and cannot pass the old header-free guard. No Authorization value is
+   examined, formatted, logged or retained.
+2. Strict eligibility requires attempted is False, pending is None, cookie
+   is None, subject is None, and count below four. No state is reset to
+   manufacture eligibility. The counter is initialized once per Demo and
+   never reset by flow/response/cleanup.
+3. Before a nonterminal refusal, the exact old Transfer-Encoding, Expect,
+   Content-Length and target scheme/netloc/fragment guards are copied into
+   this branch. Bodies remain unread; only absent Content-Length or exactly
+   one 0 remains structurally valid. A failed parser/Host/body/target bound
+   is terminal through existing handlers and receives no continuation/count.
+   Parser/Host and malformed-input responses retain their failure handling
+   rather than being advertised as valid 403 continuation cases. The first
+   authorization reason is recorded before the additional bounds and cannot
+   be overwritten by their rejection. No method/path/Origin/cookie can gain
+   accepted routing from this branch.
+4. For a bounded eligible request count increases once in range 1..4, then
+   the private exception leaves the request budget and bypasses all dispatch.
+   Its handler sends only reply(403, "Local demo could not complete this
+   request."). No kwargs enable a start form, Location, Set-Cookie or flow-cookie
+   clearing. The old fixed response header/body writer is byte-exact. Neither
+   cookies(), Cookie-header lookup, credential/subject lookup, begin(),
+   callback, token, userinfo or protected check is called by branch/catch.
+   Testing required demo.cookie is None is not reading a submitted cookie.
+5. Counts 1..3 leave failure, done, attempted, pending, cookie, subject, every
+   journey check and every recorded HTTP status unchanged. Existing stage
+   assignment to request and first reason recording are diagnostic effects.
+   Count 4 sets only failure="request_invalid" and done=True before its same
+   403. The unchanged listening loop stops and raises that failure before
+   the all-checks success gate. No fifth eligible continuation is possible.
+6. Any Authorization-bearing request with one of the four required preflow
+   state conditions false falls through to the byte-exact old Authorization
+   guard. It remains terminal request_invalid with existing 400. An
+   artificially invoked request at count 4 fails that unchanged guard too.
+   Header-free requests retain exact old guard order, routing, cookie and
+   failure behavior; the extra presence/state test cannot enter this branch.
+7. First reason recording is byte-exact and first-only within the finite
+   whitelist. The only new retained datum is private integer
+   preflow_authorization_refusals (initial 0, maximum 4), copied before clear()
+   alongside the old first reason. No sender/raw header/Host/path/query/method/
+   Origin/cookie/error is retained. Response/cleanup cannot overwrite the
+   reason or reset count. Count records a refusal decision, not proof that
+   a peer read the response if a write/deadline failure occurred.
+8. The new catch is outside the five-second request budget, so it calls the
+   unchanged five-second response budget after unwinding, as the existing
+   failure reply does. Response failure or Halt remains failure; no exception
+   is suppressed/retried. The 600-second maximum, 180-second pending deadline,
+   one-second disk checks, 8.5 GiB stop margin, native/HTTP/CLI budgets, Host/
+   ports, confidential exchange, verifier/provider guards and outer 840+60
+   plan are unchanged.
+
+### Outcome versus authentication acceptance
+
+The private reason/count describe refused traffic. After 1..3 such 403s a
+later separate, header-free browser journey could pass only by satisfying
+every unchanged check: pre-cookie protected 403, actual password sign-in and
+consent, state/issuer/flow-cookie validation, confidential S256 exchange,
+native RS256/JWKS issuer/audience/nonce/time/access-hash verification, matching
+userinfo and fresh protected-cookie 200. A success record could therefore
+contain first reason authorization and count 1..3 alongside no failure tag;
+that describes historical refusal, not accepted Authorization traffic.
+Consumers must keep that distinction explicit. No refusal writes a journey
+check or recorded HTTP status, and require(all(record["checks"].values()), ...)
+remains necessary for success.
+
+There is no observation that the UNKNOWN sender will recur or that this
+design will enable the real checkpoint to complete. It defers automatic
+teardown for a bounded refused preflow request; it does not authenticate that
+request or prove a user task. Physical passkey, tenant, invitation, ordinary
+nonadmin and all-category gates remain outside this design; dated evidence
+stays dated.
+
+### Static proof actually performed
+
+Python-stdlib source analysis read the pinned helper/report, applied the six
+unique replacements to an in-memory string, parsed its AST, and compiled an
+in-memory code object with dont_inherit=True. It did not import/execute the
+helper/candidate/controller. Reversing all six unique replacements reproduced
+the **entire original 31162-byte helper**, with the entire location-free AST
+equal too, including every guard/constant/accepted-refused predicate/crypto/
+native/deadline/output/cleanup/main entry point outside the additions.
+
+Source-segment comparison of every original function found only Demo.__init__,
+Handler.handle_one_request and main changed. These other
+31 original functions were byte-exact:
+
+Failure.__init__, Halt.__init__, require, private_directory, private_bytes, load_verifier, client_secret, Budget.__init__, Budget.__enter__, Budget.interrupt, Budget.tick, Budget.limit, Budget.close, Demo.invoke, Demo.setup, Demo.begin, Demo.callback, Demo.clear, HeaderReader.__init__, HeaderReader.readline, DemoServer.__init__, DemoServer.process_request, DemoServer.handle_error, Handler.log_message, Handler.record_request_reason, Handler.require_request, Handler.send_error, Handler.cookies, Handler.get, Handler.reply, QuietParser.error.
+
+The original Authorization guard and entire original body/target block remain
+byte-exact. The copied branch block is exactly the old block with one extra
+indentation level. AST assertions verified the branch's final statement raises
+the private exception, the catch has only the fourth-count failure assignment
+and fixed 403 reply without keywords, and neither calls route/cookie/flow/
+credential methods. The branch's only assignments are bounded target parsing
+and integer increment; it has no check/status/flow assignment. This is source
+control-flow proof, not executed protocol validation.
+
+The static analysis exited 0. An initial report-orchestration string had a
+JavaScript syntax error before any nested tool/file operation; corrected
+quoting generated this append. The first append's static whitespace assertion
+then failed on three blank unified-diff context lines containing a single
+space; the diff was regenerated with zero context, keeping the exact candidate
+and prior report bytes unchanged. These are actual tooling/check failures,
+not helper/runtime observations.
+The full diff/hash above is reproducible from the six unique replacements.
+Complete report prefix and five historical private metadata files were
+hash/byte/mode checked without printing their bodies; identity checks are
+not added body reviews or runtime evidence.
+
+### Exact future validation and release conditions
+
+Source ownership is HELD. Root should review the strict four-total policy,
+new fixed 403 lifecycle and precise six-hunk diff/hash. If separately reserved,
+implementation should match this candidate byte-exact, repeat full reversal/
+AST/function/guard proofs, and commit source/evidence separately without
+changing controller/guide/product/limits.
+
+Before any real fixture, separately reserve ONE focused Python-stdlib
+lifecycle check (no dependency/native/provider/CLI/IdP/browser/network call).
+Use controlled request input and a stub reply sink; inspect only fixed
+statuses/labels/counts/boolean state, never print input values. Verify:
+
+- Bounded Authorization-bearing GET/POST under strict preflow produce fixed
+  403 without Location, Set-Cookie or form; no dispatch/cookie/credential/
+  protected spy fires. Cover absent versus empty/duplicate Authorization
+  presence without logging synthetic values.
+- From count 0, refusals 1, 2 and 3 keep all prior flow/check/status snapshots
+  identical and the fixture live. Refusal 4 ends with request_invalid, first
+  reason authorization and count 4, without journey credit. Counter survives
+  connections without reset.
+- Each of attempted True, non-None pending/cookie/subject and count already
+  4 retains old terminal Authorization rejection. Header-free GET/login/
+  callback/protected and invalid method/POST target/Origin/type/cookie cases
+  retain the original control-flow/guard outcomes.
+- Request-line/header/parser/Host limits and Transfer-Encoding/Expect/nonzero
+  or duplicate Content-Length/absolute or fragmented targets fail closed.
+  Invalid target parsing fails closed too; no malformed request continues.
+  First reason survives response/cleanup failure. Count stays bounded;
+  403 write failure/timeout is not success and is not ignored.
+- Unchanged reply construction supplies no form/Location/Set-Cookie for a
+  bare 403. All checks false remains failure; only the full unchanged journey
+  gate can pass. Four-refusal failure cannot pass. Any in-memory fake success
+  is check logic, not browser evidence.
+- Count survives final private record copying/cleanup. No raw request/error/
+  value fields, extra stdout or undocumented flow are introduced.
+
+None of those future cases ran here and no test-file reservation is inferred.
+After source review and separately released validation, root may consider
+exactly ONE freshly bounded real Driver-only confidential fixture: mandatory
+c01 artifacts/verifier/full provider identity and retained metadata, private
+lab/XDG, port/PID ownership; pre-cookie 403 then actual browser password/
+consent/callback/fresh protected 200; unchanged 900s/840+60/600s limits, disk
+floor and owned cleanup. Add no readiness HTTP probe or manufactured
+Authorization request to enable that fixture. Unexpected failure stops
+without rerun/fallback. Historical failures remain failed and root alone
+interprets D01/D05 gates. This design releases no runtime.
+
+
+Final design-phase readback: the 111511-byte parent report remains an exact
+prefix; extracted zero-context candidate diff matches its generated diff;
+disk helper remains ac3c350d0ea5f1c7448d533524e5db2f99ee37ad61be313c6f36e0c4025a2fcd;
+all five historical private metadata files retain their recorded byte counts,
+SHA-256 and 0600 modes. Final AST/in-memory compile/reconstruction/control-flow
+and report-only scope checks exited 0; Markdown fence/final-newline/whitespace
+and git diff --check passed. No source/helper/controller implementation or
+runtime occurred; source/fixture remain HELD pending root review/reservation.

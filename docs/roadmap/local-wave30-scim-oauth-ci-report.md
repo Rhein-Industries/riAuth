@@ -832,3 +832,394 @@ automatic retry, deletion, external provider, other-worker contact or task
 status mutation occurred. This is a failed native target run, not Linux or
 full-suite success. I10/R05/W02/W05 remain DONE; further diagnosis/correction
 and runtime require a separate root reservation and release.
+
+## Scheduler-helper review: read-only proposal, no implementation
+
+Reservation `wave30_CI_scim_oauth_scheduler_helper_review` permits only this
+report append. Project and existing worktree are unchanged. Source inspection
+used clean HEAD `bee4b5f7f53f192feb61727f0a106b1c79e8ff90`, fixture blob
+`ba09a980b248ce1be742d60a3f82a4f3f5fbea81` and the same fixed9b-equivalent
+production blobs recorded above. No fixture/product edit, Cargo, typecheck,
+test, service, provider invocation or worker contact occurred. The two actual
+native 22/2 receipts, historical Linux 16/8, f89 synchronous history calls,
+prior source proof and prune evidence remain unchanged.
+
+**Recommendation for a later reservation:** change only the existing private
+`step(core: &Core)` helper in `tests/scim_oauth.rs`. Preserve its first public
+Core call. Permit at most one additional scheduling pass when a cursor existed
+before that first call and is absent after it. This handles cohort exhaustion
+wherever the helper is used without adding calls to individual failure bodies.
+It does not poll, make jobs due, change time, swallow errors or retry a selected
+resource. No counterexample was found within the audited sequential fixture
+callers under their existing live-authority and ordinary-clock assumptions.
+
+### Why the guard cannot dispatch a second resource
+
+The claim selection in `src/store/maintenance.rs:642` first sets
+`last = Some(key)`. On a successful callback it sets `selected = Some(result)`
+and unconditionally sets `exhausted = false`. The wrap condition requires
+`selected.is_none()`, so it cannot restart after this selection. The final
+`last.filter(|_| !exhausted)` must therefore take the `put(CURSORS, bucket,
+&(last, cutoff))` branch at line 667. `Store::write` commits that cursor before
+`claim_provisioning` returns the selected job and permit. A failed cursor
+write/commit propagates an error before dispatch.
+
+`provisioning_step` subsequently reaches either the empty-resource finish,
+normal finish or its durable error path. None deletes the due cursor:
+
+- Finish at `src/provisioning.rs:1923` writes the link, job, possible downstream
+  intent and audit. Its queue-index updates remove/rewrite **due-index rows**,
+  rather than `connector_due_cursors/provisioning_jobs`.
+- The error writer at line 1784 clears the job lease, records uncertainty/error
+  and backoff, then writes that same job; it retains the parked cursor.
+- Missing/lost job-lease finish and other propagated errors likewise do not
+  delete the cursor. A propagated error prevents the helper's conditional
+  second call. A handled remote failure returns `Ok(())` with a parked cursor,
+  so it also prevents that second call and preserves attempt/HTTP counts.
+- `TargetPermit::drop` only clears the local slot and queues an exact
+  owner/generation admission release. `try_target_in` settles the admission
+  ledger; neither touches the due cursor. The retained 20dd routers preserve
+  this release state in all same-target repeated-step fixtures.
+
+The queue/index, identity-transition, inbound-SCIM-transition and audit paths
+were inspected as dependencies: none deletes this cursor as an indirect
+effect of finish/error. Searching production references to
+`connector_due_cursors` found the connector selector, recovery's allowed
+collection declaration and an internal assertion. Recovery is not invoked by
+any helper caller. The deactivation selector uses the separate
+`provisioning_deactivations` key.
+
+Consequently, with no competing cursor writer, a selected first claim always
+leaves `Some` after the public Core call. The `Some-before / None-after` guard
+can only follow a first pass that selected **no** resource. Its optional second
+pass uses the unmodified production selector and can select at most one job
+resource. This argument also bounds dispatch with multiple queued jobs: it
+does not promise which eligible target that selector chooses or full queue
+progress.
+
+| Before cursor | After successful first Core call | Additional pass |
+| --- | --- | --- |
+| `None` | Either state | None |
+| `Some` | `Some` (claim or nonexhausted scan) | None |
+| `Some` | `None` (exhaustion, no selected claim) | At most one |
+| Either | First Core call errors | None; propagate original error |
+| `Some` | Cursor read errors | None; fail closed through existing unwraps |
+
+### All helper callers and protected expectations
+
+Source enumeration found **26 `step(&...)` call sites**, five `deliver` call
+sites and two `staff_removal_at_group_step` callers, reaching 12 tests. The
+table uses line numbers in immutable fixture `ba09a980`. Every call is awaited
+sequentially. Each fixture has its own store; the loopback peers hold only
+`TokenState`/`ScimState`, not the source Core/store. Core open and the unserved
+router do not start provisioning workers. The overlapping-bearer tests do not
+call this helper.
+
+| Caller | Step/delivery sites | Preserved outcome and scheduling assumptions |
+| --- | --- | --- |
+| `controller_modes_bind_plans_and_stop_at_removal_review_floor` | 96, 97, 133, 134 | One active job with two resources per phase; each logical step advances at most one. Manual/guarded approval refusals occur before stepping. Preserve two remote users, later one active user and completion/removal gates. |
+| `ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link` | 414 | Fresh one-job store, no prior cursor; first call unchanged. Preserve one lookup, conflict, no remote create/link or identity/group changes. |
+| `client_credentials_provision_an_independent_scim_server` | 1032, 1093 | Sequential one-resource create then one-resource 204 PATCH job. A prior cutoff can be exhausted before the latter claim. Preserve OAuth/cache/redaction, completion, changed display name and read-back HTTP counts. |
+| `uncertain_patch_response_is_reconciled_without_a_second_patch` | deliver 1137; steps 1153, 1169, 1171 | Sole job; failed dispatched PATCH parks a cursor, so no extra retry then. Preserve the existing three-second wait and both f89 step calls; equal retry read-back completes with exactly one PATCH. A subsequent empty pass may cause only another empty scheduling pass. |
+| `wrong_secret_server_errors_and_rejected_tokens_do_not_call_scim` | 1287, inside cases | Fresh store/one job per case. Preserve attempts=1, token-endpoint counts, error and zero SCIM requests; selected remote errors keep a cursor and never trigger a second attempt. |
+| `token_endpoint_failure_retries_once_then_can_succeed` | 1349 | Fresh sole one-resource job; two token requests are the existing in-operation retry. No second selected resource from the helper. |
+| `secret_rotation_and_static_token_rotation_apply_on_next_acquisition` | deliver 1530, 1549 | OAuth acquisition-only rotation is untouched; sequential static-token jobs use a retained router. Preserve old/new token observations and terminal completion without rereading credentials after a selected dispatch. |
+| `jwt_scope_and_audience_claims_must_cover_configuration` | 1677, inside cases | Fresh one-job store for each mismatch. Selected token refusal parks the cursor; preserve diagnostic/redaction and zero SCIM requests. |
+| `scim_unauthorized_acquires_once_more_then_stops` | deliver 1740; step 1792 | Two configured targets, but the first job is terminal before the denied target is applied. The prior job has no due-index row; the new target may need cohort exhaustion. Preserve exactly two denied token/SCIM requests, one job attempt and incomplete outcome. Distinct target admission scopes remain unchanged. |
+| `reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch` | deliver 2278; steps 2315, 2345, 2356 | One active removal job. Preserve wrong/unconfirmed-plan refusal and unchanged snapshots, partial-read errors, zero PATCH until a complete source, then exactly one disable PATCH. Existing explicit due writes are untouched; errors park the cursor, so the guard cannot repeat a refused dispatch. |
+| `reviewed_last_group_member_removal_requires_complete_remote_membership` | setup 2467; steps 2479, 2504 | Seed/helper described below, then sole reviewed group-removal item. Preserve every incomplete/null/paged membership refusal, unchanged links and zero additional PATCH; final complete membership permits exactly one removal. Existing `make_due` calls are untouched. |
+| `reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback` | setup 2526; steps 2570, 2589, 2605 | Sole reviewed item; preserve one applied PATCH per deliberately reset case, cursor=2/lease cleared/stale=false and ambiguous error, no second PATCH on incomplete retry, then verified completion without another PATCH. Error/finish retains the cursor, so the guard adds no second resource or operation attempt. |
+| `deliver` | 2201; five callers above | Public plan/apply and authority gates remain before its single helper call. No assertion/order/body change. |
+| `staff_removal_at_group_step` | 2402 (existing three-iteration loop), 2427, 2428; two callers above | One job with user + two groups; each logical step selects at most one item, even across a clock second. Preserve seed completion, exact confirmed removal, and the subsequent two unchanged-item steps stopping at cursor=2 before staff removal. No resource can be skipped by a guarded second pass after a selection. |
+
+The synchronous history fixture at lines 961/963 calls Core directly and is
+outside this helper proposal; both f89 calls remain. The other tests do not
+reach this helper, including `reconcile_stales_incompatible_backoff_jobs_and_replans_without_dispatch`
+and the plan/apply authority/fingerprint tests. Their expected no-dispatch,
+stale/lease and snapshot behavior remains byte-identical.
+
+For unselected stale/quarantine or busy-admission outcomes, the guard could
+allow one new scheduling scan after an exhausted cohort. It cannot authorize
+a stale job, steal a lease, change a retry time or bypass review: those same
+production checks run again. It does not guarantee progress against a live
+busy target or beyond a nonexhausted 16-row page. No current caller expects
+an intentionally eligible job to remain unprocessed merely because the prior
+cutoff is exhausted, and no caller has competing active jobs or a concurrent
+Core dispatcher. Introducing a concurrent cursor writer would invalidate
+the observation premise: it could delete a cursor after a first dispatch.
+This private fixture proposal must not become a production hook or be used
+in such a fixture without a new audit.
+
+### Exact prospective diff, not applied
+
+```diff
+--- a/tests/scim_oauth.rs
++++ b/tests/scim_oauth.rs
+@@ -2206,4 +2206,20 @@
+-    tokio::task::spawn_blocking(move || core.provisioning_step())
+-        .await
+-        .unwrap()
+-        .unwrap();
++    tokio::task::spawn_blocking(move || {
++        let had_due_cursor = core
++            .store
++            .get::<(String, u64)>("connector_due_cursors", "provisioning_jobs")?
++            .is_some();
++        core.provisioning_step()?;
++        // A claim parks the cursor; only exhaustion can remove a prior one.
++        if had_due_cursor
++            && core
++                .store
++                .get::<(String, u64)>("connector_due_cursors", "provisioning_jobs")?
++                .is_none()
++        {
++            core.provisioning_step()?;
++        }
++        Ok::<(), Error>(())
++    })
++    .await
++    .unwrap()
++    .unwrap();
+```
+
+All work would stay in the existing blocking closure. The first Core call is
+preserved, its error propagates before any optional pass, and the existing
+JoinError/operation-result unwraps remain. New read failures also propagate;
+none is ignored. `Error` is already imported, so there is no import or global
+helper change. Added reads only observe scheduling metadata. The optional
+Core call uses its ordinary writer/cursor/admission effects, which may include
+no-op cursor deletion, queued admission settlement or one properly fenced
+resource outcome. This is not a store-write-free helper.
+
+### Protected byte and parser/AST witnesses
+
+The proposal was constructed only in memory by replacing the unique 178-byte
+helper body. The unchanged 73,163-byte prefix and 21,236-byte suffix cover
+every other item/import/helper/caller, all 244 assertion-macro sites
+(57 `assert!`, 181 `assert_eq!`, six `assert_ne!`), clock/sleep/due-write code,
+20dd holders and f89 additions. Replacing the proposed helper with the original
+reconstructs the entire 94,577-byte fixture and original Git blob `ba09a980`.
+No proposed test file or Git object was written.
+
+For the syntax/AST parser witness, the in-memory whole proposal was sent to
+`rustfmt --edition 2024 --emit stdout --config skip_children=true` through stdin.
+It exited 0 with output byte-identical to that proposal and no diagnostics;
+no child module/file was formatted or edited. This verifies Rust parsing and
+formatting, not type checking or runtime behavior. The prospective helper AST
+adds a boolean cursor read, preserves the first Core call as a `?` expression,
+adds one short-circuit conditional containing the second `?` call, and returns
+`Ok::<(), Error>(())`. Exact bytes outside that single parsed function ensure
+the other AST items are unchanged; no independent AST dump was produced.
+
+| Witness | Value |
+| --- | --- |
+| Existing helper SHA-256 | `d9d44680054331710ac34430d8a4400e48ed6610f7e7c23c3b4e8d939c6bcc51` |
+| Prospective helper SHA-256 | `16803ef0254984d00a0ffcdad0c0d836525dd3d93128e851e4a07d48dc09c272` |
+| Prospective whole-file Git blob ID, computed only | `55a59a6e87f5085a938fa3338c694241fe176f27` |
+| Prospective whole-file SHA-256 | `ee69d6311be8bcbe697a902586acb070dfc55a7769758c7ccdd3b41f8f30b218` |
+| Unchanged actual fixture SHA-256 | `0add72238e820a170d273f8a1f0330baef803a90f7314c01b3a79fb21e4281e9` |
+
+The cursor-observation guard is the smallest substantiated helper-only seam.
+An unconditional second call could advance the next resource after success;
+clock manipulation would add cross-thread timing requirements; per-failure
+extra calls would leave the same scheduling assumption in other callers.
+Those alternatives are not proposed. The bounded guard still has no fresh
+typecheck or runtime evidence, and does not promise arbitrary concurrent
+queue behavior or universal CI success.
+
+Static checks for this report append are docs/link validation, whitespace,
+exact prior-report prefix preservation, report-only changed-path checks and
+actual source/fixture blob equality. Root owns the subsequent exact helper
+implementation reservation and any one-target runtime release. Cargo remains
+FREE and unused; I10/R05/W02/W05 stay DONE.
+
+## Reviewed scheduler-helper implementation: source/static evidence only
+
+Root approved `wave30_CI_scim_oauth_scheduler_helper_implementation` after
+reading proposal `10b0e9e` and independently tracing cursor selection,
+claim, error and finish. This phase implements exactly that prospective
+private-helper delta, with runtime still HELD for this lane. No Cargo,
+typecheck, test, service or provider invocation, slot acquisition, deletion,
+other-worker contact, task status change or main/push action occurred.
+
+Source commit: `199980044994d74adcb429bed70ff386399445d8`, parent
+`10b0e9e055af1644ceff08f8577f11caeae1bf1d`. Its only path is
+`tests/scim_oauth.rs`, with 20 insertions and four replaced lines entirely
+inside the existing private `step(core: &Core)` helper. Actual whole-file
+blob and SHA-256 match root's expected proposal exactly:
+
+- Git blob: `55a59a6e87f5085a938fa3338c694241fe176f27`.
+- SHA-256: `ee69d6311be8bcbe697a902586acb070dfc55a7769758c7ccdd3b41f8f30b218`.
+
+The helper reads whether a due cursor existed, preserves the first public
+Core call and its error propagation, and allows at most one extra scheduling
+pass only after `Some-before / None-after`. A selected claim parks the cursor
+and finish/error leaves it in place, so the optional pass cannot advance a
+second selected resource in these isolated sequential fixtures. The existing
+blocking boundary, JoinError/result unwraps and already-imported `Error`
+remain. There is no polling, sleep, clock/due write, new helper, caller,
+assertion, authority, lease or product change.
+
+**Actual static checks.**
+
+- `rustfmt --edition 2024 --check --config skip_children=true tests/scim_oauth.rs`
+  exited 0, without editing child modules or running tests.
+- `git diff --check` exited 0.
+- Applying the exact prospective diff from the committed report in memory
+  reproduced the actual file; reversing it restored the **entire** immutable
+  `ba09a980b248ce1be742d60a3f82a4f3f5fbea81` fixture. Removing only the four
+  f89 additions from that restored file then reproduced the entire accepted
+  20dd fixture `02ce939a673c500296a3bf7feb1154180f39a20e`.
+- All protected imports, helper callers, assertion AST items, original event
+  sequences, 20dd router holders and f89 calls retain their bytes outside the
+  one approved helper delta. Production/crates/manifests/lockfile/toolchain
+  remain byte-equivalent to fixed published
+  `9b8956f7b2a9961b14e313fa57c0f5214a136772`.
+- Changed-path checks confirmed only the fixture changed before its source
+  commit, and the preceding report remained untouched. Docs validation,
+  whitespace and exact report-prefix/scope checks cover this separate append.
+
+**Dated Linux failure, predating these changes.** Root supplied run
+`37022804623`, check `110890070823`, at published `9b8956f7`. This lane
+independently read its SCIM section and verified the downloaded raw log
+`/tmp/riauth-wave30-ci-37022804623-110890070823.log`:
+588,141 bytes, SHA-256
+`f4a0dc82a546d23cbb849938a53349680599a1c21ff8bb8ded283f5fe494e077`.
+The log names the fixed source hash and records **21 passed, 3 failed,
+0 ignored/filtered, in 25.41 s**, from `2026-10-02T15:20:54Z` to
+`15:21:20Z`. These are historical Linux results, not a run of f89 or this
+new helper.
+
+| Historical failure | Actual logged assertion |
+| --- | --- |
+| `completed_job_history_is_compact_and_bounded`, line 960:48 | Public apply unwrap receives 409 unfinished-job conflict. |
+| `reviewed_last_group_member_removal_requires_complete_remote_membership`, line 2425:5 | Shared helper's subsequent item cursor is 1, expected 2. |
+| `uncertain_patch_response_is_reconciled_without_a_second_patch`, line 1175:5 | Final completion is false, expected true. |
+
+The first read-only log locator expected an uncolored `Running` marker and
+did not match the encoded color prefix; locating the test-file marker instead
+read the unchanged section successfully. This was a source-inspection locator
+correction, with no test execution or source correction.
+
+All earlier Linux 16/8, native 22/2 results, static review and prune evidence
+are retained. The native f89 repeat passed the history and lost-PATCH cases
+but remained 22/2 at different failure locations. **This new helper has no
+fresh typecheck or runtime result**, and neither the historical Linux failure
+nor the whole target is claimed fixed. Root owns immutable review and a
+separate whole-24 release. I10/R05/W02/W05 remain DONE.
+
+## Authorized scheduler-helper whole-target result: one native 24/0 run
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; existing worktree
+`a1303b57-4a34-487e-9c63-a841f05b51a0`. Root reviewed immutable source
+`199980044994d74adcb429bed70ff386399445d8` and report
+`7d63aca0d81c6c3fd965f831a92f6253e53059e7`, then explicitly released the
+sole Cargo/runtime slot for exactly one whole-24 command. This is that one
+invocation, with no baseline, repeat, alternative filter or source correction.
+
+**Fresh preflight and source.** HEAD was clean at `7d63aca`; the fixture
+remained blob `55a59a6e87f5085a938fa3338c694241fe176f27`, SHA-256
+`ee69d6311be8bcbe697a902586acb070dfc55a7769758c7ccdd3b41f8f30b218`.
+The entire tracked diff from fixed published
+`9b8956f7b2a9961b14e313fa57c0f5214a136772` contained only this fixture and
+this report. Production, crates, manifests, lockfile and toolchain stayed
+fixed-pin equivalent. No applicable ancestor/repository guidance file was
+present, no Cargo/rustc process was running, and the private nonsymlink
+`.target-wave27` cache contained the same-feature SCIM integration fingerprint.
+Its features were `default, essentials, fuzzing, platform, test-support`,
+profile `11094973624911973823`. Fresh free disk was 13,691,465,728 bytes
+(12.751 GiB), above root's 11 GiB start requirement and previously measured
+less-than-1.5-GiB transient allowance above the 9 GiB stop threshold.
+
+**Only actual Cargo command**, run from this worktree:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test scim_oauth -- --test-threads=1
+```
+
+The wrapper used a new owned process group, a 1,800-second outer deadline,
+two-second disk/process samples, an 8 MiB finite raw-log limit and exclusive
+0600 evidence files under the private target. It would stop only its own
+group at 9 GiB, before the mandatory 8 GiB floor, or on deadline/log limit.
+There was no cache/evidence deletion or competing target invocation.
+
+**Actual outcome:** Cargo exited **0**, build 4.22 s, tests **29.23 s**,
+wrapper **35.137593 s**. The run started
+`2026-10-02T16:04:36.702871Z` and ended `16:05:11.840530Z` on native
+Darwin 25.2.0 arm64. Result: **24 passed, 0 failed, 0 ignored, 0 measured,
+0 filtered out**. All named cases below passed; no failure boundary occurred:
+
+```text
+ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link
+cached_token_serves_overlapping_callers_until_forced_expiry
+client_credentials_provision_an_independent_scim_server
+completed_job_history_is_compact_and_bounded
+controller_modes_bind_plans_and_stop_at_removal_review_floor
+final_scim_plan_and_apply_read_only_reviewed_links
+jwt_scope_and_audience_claims_must_cover_configuration
+legacy_token_file_config_stays_exclusive_with_oauth
+missing_expires_in_is_cached_briefly
+paged_scim_snapshot_resumes_and_refuses_a_link_added_behind_its_cursor
+plans_supersede_pending_snapshots_and_bound_historical_links
+reconcile_stales_incompatible_backoff_jobs_and_replans_without_dispatch
+refresh_token_grant_is_reread_and_not_written_back
+reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback
+reviewed_last_group_member_removal_requires_complete_remote_membership
+reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch
+scim_apply_binds_reviewed_content_authority_and_previous_links
+scim_unauthorized_acquires_once_more_then_stops
+scim_user_cursor_ignores_login_but_restarts_on_projection_change
+secret_rotation_and_static_token_rotation_apply_on_next_acquisition
+shared_freshness_invalidates_local_cache_and_fences_late_publication
+token_endpoint_failure_retries_once_then_can_succeed
+uncertain_patch_response_is_reconciled_without_a_second_patch
+wrong_secret_server_errors_and_rejected_tokens_do_not_call_scim
+```
+
+The existing native linker compact-unwind-size warning remained nonfatal.
+There was no stop signal, timeout, log truncation or disk-floor violation.
+Eighteen samples had maximum spacing 2.001058 s. The first launch sample
+had 13,689,970,688 bytes free; minimum was 13,683,351,552 bytes (12.744 GiB),
+and final was 13,688,934,400 bytes (12.749 GiB). Owned Cargo PID/group
+`84412` was waited. Observed children `84414` (rustc), `84441`
+(rust-objcopy), and `84445` (SCIM test) exited; the group and all four
+observed PIDs were absent in final cleanup and a subsequent read-only check.
+No group-wide or unrelated process kill was needed. **CARGO SLOT RELEASED**
+was reported immediately at exit, before this append.
+
+**Private retained receipt**, prefix
+`.target-wave27/scim-oauth-wave30-helper-20261002T160436Z`:
+
+| Artifact | Actual SHA-256 |
+| --- | --- |
+| `.log`, 2,401 bytes, 0600 | `aba681faef060b4a920b684a2e12475a7da8b1f378e9d714577aa1fcccf3589f` |
+| `.observation.json`, 0600 | `b76f6df3dc549ba30e92a550a42d27c79e48ac0d5d073c4c0f0ac7555178953a` |
+| `.verification.json`, 0600 | `92f522eec41bc5434da21c8d1bd6b39eaca406697939937d4675fdda7355d688` |
+| `.verification-v2.json`, 0600 | `cac2ce57df87d9dcd9276a10506e76b1371e5e749875291bb8fa792605a3e7c8` |
+
+The first supplemental verification retained a trailing result delimiter in
+its extracted test-name strings. The v2 supplement removes the exact suffix,
+records that metadata correction and references the unchanged first
+supplement. Both remain; raw log, observation, counts and runtime were
+unchanged. No second test invocation occurred. The executed SCIM binary
+`debug/deps/scim_oauth-951d26c550be29f2` was 211,639,968 bytes, private mode
+0700, SHA-256
+`aa1051a51f6edc180fbdae110af07b811bbd34fb6eb3076cb7b0a8434b944eda`.
+The post-build fingerprint retained the same features/profile, SHA-256
+`864984b1826ad69c4bfb54a66c4b032eec81c5afdaaa9774be14cbdfcd9d0fb1`.
+
+The branch was clean after runtime, at the same reviewed HEAD and fixture
+blob. Read-only verification independently rehashed the two earlier native
+22/2 raw logs (`e2dc6ca...`, `948398...`) and Linux 21/3 raw log
+(`f4a0dc82...`) unchanged. Every earlier report phase, Linux 16/8 and 21/3
+failure, native 22/2 result, static proof and prune receipt remains retained;
+the entire prior 64,675-byte report prefix is preserved by this append.
+Docs validation, whitespace and report-only/source-pin checks accompany this
+separate evidence commit.
+
+This single fresh native result supports local compatibility of the reviewed
+private scheduling helper. It does not replace the historical Linux failure,
+prove current Linux CI, a full-suite gate, universal scheduler concurrency or
+external deployment. No product/test correction, status action, main edit or
+push was made. Root owns publication and any subsequent gate interpretation;
+I10/R05/W02/W05 remain DONE.

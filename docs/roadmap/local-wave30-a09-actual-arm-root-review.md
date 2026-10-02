@@ -67,3 +67,11 @@ exclude transient session IDs/expiry from cross-edition equality. No native
 execution follows this approval. Fresh ARM artifact transport/launcher/PG tool
 setup/resource/cleanup source and runtime remain separately held. A09 remains
 open; current x86/container/full release/shared-distribution limits are retained.
+
+## Build-free launcher proposal review: artifact run identity blocker
+
+Root fully read the `47c28516df7508d4839a0705d55cd284d5c6a30a` proposal prose and all 1,279 workflow lines, including the complete controller and retention bootstrap. The proposed workflow remains absent. Source review found a definite metadata mismatch: its artifact predicate compares `workflow_run.head_sha` with product `9a819317efb3a13fa27cd86f884be2be00898fc0`. The actual build run was dispatched at workflow revision `036a392656b4b5070cc86a11d5ca3258b7b868d2`; its evidence records both GitHub source fields at that workflow revision.
+
+A root read-only artifact API query confirmed ID 11232871527, name `riauth-local-arm64-37016520583-1`, 49,177,062 bytes, unexpired, digest `sha256:fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30`, run 37016520583 and run head SHA `036a392656b4b5070cc86a11d5ca3258b7b868d2`. The original predicate would refuse this correct artifact before ZIP consumption. Root reserved a report-only corrected proposal comparing this metadata field to the fixed build workflow SHA; the separate product SHA/tree/input/binary checks remain unchanged. No workflow materialization, download, native or PostgreSQL execution is authorized.
+
+The private metadata review receipt is SHA-256 `dda305f0460e589fe21b70853f26c638b65b48bfa756f91020ad70fdcd0f610f`. An initial root fence-selection search failed before mutation because the human workflow name differed from the file name; the exact final YAML fence was then selected, hashed and read in full. Independent read-only review of the original proposal remains pending. Static parsing and the historical five-archive smoke are not shared-gate runtime proof.

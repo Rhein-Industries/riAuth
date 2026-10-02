@@ -221,3 +221,57 @@ Existing failure tag, replies, flow/crypto/provider/limits remain unchanged.
 The first failed fixed predicate can be observed only in a separately released
 fresh fixture after publication; old evidence is not augmented retrospectively.
 D01/D05 remain open. O06/I10/R05 remain closed.
+
+## New diagnostic fixture: observed authorization predicate only
+
+Root fully read cfacf75ada2472244f828d6158dc2ab18ceda173 and independently
+read/hash-checked its4046-byte private0600 result
+aefdc34827486859e08a1e28de0a09505af65b4afdf9f1ba5f952fa0208595fa.
+All prior76829 report bytes and reviewed helper7461ab5 remain unchanged.
+The one newly released fixture exited1 before any Driver/browser action.
+Its first fixed reason authorization establishes only that get_all(Authorization)
+was non-null after the preceding Host check. No header value, sender, target or
+method was retained. The older request failure remains unclassified.
+
+Init/login/client-create/discovery/whoami exited0, readiness was200 and both
+owned listener identities were checked. Helper credential/provider/discovery
+checks passed; all browser/protocol/crypto/protected checks remainedfalse and
+all six helper HTTP statuses remainednull. Numeric owned child exits and all
+eight absent-PID readbacks were retained; both ports and private lab were absent.
+The server's numeric cleanup exit0 is observed for this attempt only.
+Minimum outer14558846976 bytes and helper14558842880 bytes exceeded8.5GiB;
+no deletion occurred. Desktop/operator released before the append, Cargo untouched.
+
+Root reserved read-only review of the exact controller/request construction.
+The reason alone does not justify a source correction, a sender attribution or
+a relaxed no-Authorization guard. No new fixture or browser success is credited.
+D01/D05 remain open; O06/I10/R05 remain closed.
+
+## Retained controller source and request-lifecycle design hold
+
+Root fully read3221600b1f1f89194118d07c30d25c24dc6e81fc including its177-line
+retained controller archive. Exact13380-byte command hash is
+ab0a9c5d8f8fb1c4f5fb5db8b3c396e4dfbdf56bb5a7f0f7e7178b485d77040e;
+Python13357-byte body hash is
+a3748aaa8aee61fa302050daa78867b1a251fca6cd1294047c43808db71486da.
+Both hashes were computed after execution, not contemporaneous process attestation.
+Configured own controller/CLI/verifier call sites do not construct Authorization
+to3000; generic request capability and unprovided runner/startup implementation
+do not identify a sender. Helper3.013 seconds is lifetime, not first request time.
+The rejected header's value, origin and request index remain unknown.
+
+Root verified archive/body hashes and AST without execution. One extraction
+assertion initially included the separator newline in the Python body; correcting
+that read-only extraction matched the pinned13357 bytes before any integration.
+No historical runtime metadata or helper bytes changed. Timestamp-only source
+proposal remains unapproved; it would not identify origin or establish login.
+
+Root reserved a report-only source-first lifecycle design: evaluate whether up
+to four Authorization-bearing pre-flow requests can receive fixed stateless403
+without accepting them or terminating the listener immediately. Require exact
+pre-flow state, existing Host/parser/bounds and unchanged header-free accepted
+predicates, no cookies/redirect/form/flow/check credit, finite count then closed
+failure, and unchanged post-flow/native/single-use/deadline/cleanup behavior.
+This is a design request, not approved helper source or runtime. Sender remains
+unknown; no external probe, guard bypass or actual browser outcome is inferred.
+All earlier failures remain. D01/D05 open; closed O06/I10/R05 unchanged.

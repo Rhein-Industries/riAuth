@@ -2203,10 +2203,26 @@ async fn deliver(f: &Fixture, agent: &str, target: &str) {
 
 async fn step(core: &Core) {
     let core = core.clone();
-    tokio::task::spawn_blocking(move || core.provisioning_step())
-        .await
-        .unwrap()
-        .unwrap();
+    tokio::task::spawn_blocking(move || {
+        let had_due_cursor = core
+            .store
+            .get::<(String, u64)>("connector_due_cursors", "provisioning_jobs")?
+            .is_some();
+        core.provisioning_step()?;
+        // A claim parks the cursor; only exhaustion can remove a prior one.
+        if had_due_cursor
+            && core
+                .store
+                .get::<(String, u64)>("connector_due_cursors", "provisioning_jobs")?
+                .is_none()
+        {
+            core.provisioning_step()?;
+        }
+        Ok::<(), Error>(())
+    })
+    .await
+    .unwrap()
+    .unwrap();
 }
 
 async fn acquire(
