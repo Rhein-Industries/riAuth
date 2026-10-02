@@ -121,3 +121,40 @@ confidential sign-in, consent, exact callback and fresh protected access are
 through RiWork Cua.ai Driver only, with matching c01 build artifacts and the
 published guide, finite owned listeners and no private-value evidence. D01/D05
 status remains in_progress at this phase.
+
+## Publication decision and concurrent CI boundary
+
+The complete actual Entra appendix `d9c5309a5f27eccc2425564b58ac4ce2ac17a369`
+is ported as `f53d41a`; root compared its entire previous report prefix before
+integration and read the actual appendix. D01 source-only evidence
+`6b3a1790ff80cb205bb403854725a779541adbac` is ported as `7b3dc9e`; all previous
+browser/plan bytes are preserved. Repository documentation and tracked-file
+hygiene checks pass on the combined accepted tree, and Git whitespace is clean.
+
+Root's exact live I10 read confirms the unchanged original seven facets,
+project/task/worktree, prerequisites and in_progress status. Following this
+publication, root accepts the original local I10 operational-interface outcome
+and will mark that row DONE. This decision credits inspected connected source,
+accepted historical setup/lifecycle/refusal evidence, the actual eight-case
+SCIM probe and actual certificate-mode diagnostic regression, rather than a
+report alone. Release/tenant and other original protocol-profile rows remain
+open where their inputs and gates remain unmeasured.
+
+Public CI `37013383299` at `9a819317efb3a13fa27cd86f884be2be00898fc0`
+finished with audit and integration successful, check failed. The corrected
+reports target passes and the next SCIM OAuth target records 16 passed,
+8 failed, 18.66 seconds. Root independently downloaded and read its exact
+failure block: private log 312,377 bytes, SHA-256
+`d71f45cbf65285336738a99a9d77e48201e09d0010757e638e47dbb205e84a64`.
+This is preserved in the separate
+[CI diagnosis](local-wave30-scim-oauth-ci-report.md), accepted port `3a214a0`.
+
+The inspected common path is direct Core stepping with no persistent App
+executor holder, causing queued target-admission releases to lose their
+executor. The proposed fixture holders retain the same executor, including
+across the private staff-removal helper return. Root approved only those
+fixture-lifetime hunks and one later target after source review; no admission,
+lease, production, assertion, retry/page/removal/rotation or receipt semantics
+may change. Those hunks are still unexecuted at this review. The historical
+Linux failure, local I10 passes and current ARM artifact run are separate
+observations; no current broad-green CI or Linux correction is asserted.
