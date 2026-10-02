@@ -951,3 +951,311 @@ or checker change. These static results do not release any runtime.
 Root fully read all1,516 helper lines and88 workflow lines, Dockerfile/.dockerignore, the201-line implementation appendix and the complete222-line independent8f29d25b4f632e3fa1c4eba31d53340a2abe7cf1 review. Whole source hashes, AST/in-memory syntax only, manual permissions/action/provenance controls, both shell blocks and exact resource-prefix reversal were checked. No concrete source/interface blocker was established. Source be22eebb8cc957037f5e5c1f153f87df81f3dc25 is accepted for publication, without importing supporting alignment history or changing existing product/recipes. Native daemon/private builder schema, image save/load layout, UID copy-up, mounted tool compatibility, actual fixture gates and cleanup remain unmeasured.
 
 The selected container snapshot deliberately excludes fresh session ID/expiry from cross-handoff equality; it verifies saved logged-out sessions stay refused. It does not measure same-session expiry nonrenewal. The separate PostgreSQL helper retains that assertion, currently unreached after its recorded Store-equality failure. No cross-gate success is borrowed. Root may later reserve one exact native x86 cohort after immutable publication and lane availability; no dispatch or Docker runtime is credited by this source review. Original A09/O07 remain open and both earlier Desktop failures remain failures.
+
+## ARM container extension: design only, 2026-10-02
+
+Reservation `wave30_A09_arm_container_source_plan`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing supporting WT42; primary f2
+unchanged. The original outcome explicitly includes tested container artifacts
+on **both Linux x86-64 and ARM64**, alongside server/client/maintenance and the
+quoted distribution-switch gate above. This is ONE architecture extension of
+the accepted container workflow/helper, not another fixture or production move.
+
+Fixed published source is `56bd0829514ed8014cc9563fc7b0e727dba46d1d`, inspected
+through immutable Git objects. Own clean HEAD was
+`005c6223117f0efe805e4651f4f31721ee6062c2`; its entire **65,198-byte** report,
+SHA256 `2714b5ab9ca6e3a0fdce224f1a26df892a60800d97b55749e1675d6c1101a4eb`,
+is preserved as this appendix's exact prefix. No alignment/merge/reset occurred.
+Both accepted source files at published56bd, be22 and own checkout compare
+byte-for-byte equal to the complete bodies and SHA256s recorded above.
+They remain unchanged. Only this report is reserved; no workflow/helper claim,
+materialized prospective source, dispatch or task/status mutation is made.
+
+Root's **37061329815** x86-container run is active and owns the sole preparation/
+Cargo slot. **No actual outcome was supplied or queried here.** This design
+does not duplicate it, diagnose it, assume success or release that slot.
+
+### Closed selection and distinct provenance
+
+Retain **x86_64 as default**. A no-input dispatch must retain the current native
+x86 cohort, pins and artifact name; selecting ARM is an explicit choice. Add
+one required `workflow_dispatch.inputs.architecture` choice with
+`default: x86_64`, `options: [x86_64, arm64]`. No free runner, product, tool,
+receipt, platform or artifact inputs. One job, no matrix or automatic trigger.
+Set job `ARCHITECTURE` from that choice; use
+`inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04'` for
+`runs-on`. Both the bootstrap and helper reject a missing/unknown selection
+before their data creation/capacity/host guards; the YAML expression's fallback
+must never make an invalid input executable. Normal manual defaults supply x86.
+
+| Closed field | x86_64, unchanged default | arm64, prospective |
+| --- | --- | --- |
+| Hosted label / host tuple | `ubuntu-24.04`; Linux / `x86_64` / `X64` / `github-hosted` | `ubuntu-24.04-arm`; Linux / `aarch64` / `ARM64` / `github-hosted` |
+| Daemon `OSType` / `Architecture` | `linux` / `x86_64` | `linux` / `aarch64` |
+| Image OS / architecture / build platform | `linux` / `amd64` / `linux/amd64` | `linux` / `arm64` / `linux/arm64` |
+| Capability target / ELF machine / triple | `x86_64` / 62 / `x86_64-unknown-linux-gnu` | `aarch64` / 183 / `aarch64-unknown-linux-gnu` |
+| Native filename suffix / upload token | `x86_64` / `x86_64` | `aarch64` / `arm64` |
+| Product SHA | `b619fe25269ccc150e473bbcde47cdb3623ef810` | `9a819317efb3a13fa27cd86f884be2be00898fc0` |
+| Product tree | `a627df2ce21a4d255b8c1914d4f543e32f40f4de` | `1528b61ba463d9262d6252d54174748a176f313b` |
+| Native build run / job / attempt | 37046857550 / 110970324302 / 1 | 37016520583 / 110868629053 / 1 |
+| Native build workflow SHA | `0d090169f20f61f7cb59b685dccb13203526539f` | `036a392656b4b5070cc86a11d5ca3258b7b868d2` |
+| Native workflow SHA256 | `62c378975021066d62d5b32d0eee2c87de8501d01ded1ae0fae8147e920e58d7` | `0a98865e5ee25d2f94b745b32602949553bf4f4e3b83d8bd302fade98eafd948` |
+| Native artifact ID / name | 11246575279 / `riauth-local-x86_64-37046857550-1` | 11232871527 / `riauth-local-arm64-37016520583-1` |
+| ZIP bytes / API-attributed SHA256 | 52428080 / `7c1bcad0f78d90eb611ab76d67943a32a0d691cd5bbd9e5588512bdde635e2a0` | 49177062 / `fc2a83dd286b70e455802af7713b60724d97b9e598240f6d9037c279601e4d30` |
+| Existing native root receipt pin | `66c814a339665e6b3f8e6c22bc59d4f6f0aa224c` | `56bd0829514ed8014cc9563fc7b0e727dba46d1d` |
+| Future review checkout | Keep exact66c | Root must supply an exact commit retaining the accepted ARM receipt and adding the missing ARM tool metadata; no SHA invented |
+
+Controller/workflow source is the future actual dispatch SHA, independently
+matched to both `GITHUB_SHA` and `GITHUB_WORKFLOW_SHA`; it is neither product
+pin nor native-build workflow pin. Keep those roles distinct in every receipt.
+Native artifact `workflow_run.head_sha`/run head must equal **its build workflow**,
+not9a/b619. The same exact repository/manual branch/clean checkouts/tree guards,
+API metadata predicates, expired refusal, bounded authenticated redirect and
+unauthenticated signed-storage GET remain. The future transport must rehash
+the actual ZIP and compare its exact size/full digest before extraction.
+Historical API attribution is not a new outer-ZIP rehash by this worker.
+
+### ARM receipt adapter and the one missing tool input
+
+The full accepted ARM root receipt was read at56bd:
+`docs/roadmap/evidence/wave30-a09-native-arm64-37016520583.json`, **10,559 bytes**,
+SHA256 `2cbf8ee46dbdd8b2ab43ad933913dd0a16c20b3183497c2d3b9cf3d1287da227`.
+It says native-archive passed, eleven commands exit0, official release false,
+shared full gate not run, root local artifact execution false. Its schema is
+`riauth.root-reviewed-artifact-receipt/v1`, **not** the x86 receipt's
+`riauth.wave30.native-x86-root-review/v1`.
+
+Use a small, closed ARM-only metadata adapter after raw receipt hash/schema/
+project validation. Retain raw schema and receipt hash in the new evidence;
+never rewrite or relabel the root record. Map `product_sha→product_source`,
+`run→run_id`, `job→job_id`, `workflow_sha→workflow_source`, and
+`conclusion→workflow_run_conclusion`; use the fixed attempt1/repository/triple/
+ELF/size from the closed table, validate the recorded runner tuple and all five
+product triples, and normalize only `artifact.github_reported_digest→digest`
+plus the exact published ZIP size. The API comparison's normalized artifact
+contains exactly `id`, `name`, `size_in_bytes`, `digest`; the raw attribution
+flag `outer_zip_rehashed_by_root` stays in the receipt record, never becomes an
+invented GitHub API field. Copy products, steps and inputs intact.
+Leave the x86 raw view and all its predicates unchanged.
+
+ARM lacks the x86 `files` size/hash map. Its exact metadata is already published,
+so no size inference or weaker hash predicate is needed:
+
+| Exact normalized member | Bytes | SHA256 |
+| --- | ---: | --- |
+| `evidence.json` | 60299 | `fd8280125b38e6afbe13970be4617df8fdbe72e7280a4e6dedb2f2a84e4c9ab1` |
+| `resources.jsonl` | 278604 | `f81d488c07a2616e4541926c7d98bf5a87bfb38d97923a5c200cc03bf2a321ad` |
+
+These sizes/hashes match the immutable primary report's actual-ARM table at56bd
+(`docs/roadmap/local-wave30-a09-artifact-plan.md`, whole-body SHA256
+`9fac74485d9a5d38c672bdd62af2d2cf7d5caa3b389e1fbd6cf6bd7509fbc684`), and
+`actual_public_documents/controller.json/validated_input_files` in
+`docs/roadmap/evidence/wave30-a09-shared-37043196924.json` (whole SHA256
+`f78ec4fd7e5bc843ea0d997a7fe9a222bf6b59d0f532638c00f8a59b986cd964`).
+Those are **historical metadata**, not a shared-helper pass or replay here.
+ZIP size attribution is also explicit in the root actual-ARM report at56bd,
+SHA256 `f9e36ac36db9ae47f715008c7f5dc5c02dabd50886e18e7052e5b2f14a8600ed`.
+Pin the two normalized member constants; retain all eleven exact log sizes/
+hashes from the ARM receipt, all five three-member archive/binary/license hashes,
+the strict inventory, regular-member rules and capability-log equality.
+Diff of the two producing native workflow bodies confirms their product
+records both retain `observed_server_capabilities`; no omission exemption.
+
+The ARM five filenames are exactly `local-riauth-essentials-aarch64.tar.gz`,
+`local-riauth-platform-aarch64.tar.gz`,
+`local-riauth-maintenance-essentials-aarch64.tar.gz`,
+`local-riauth-maintenance-platform-aarch64.tar.gz`, and
+`local-riauthctl-aarch64.tar.gz`. Keep the receipt's five product/member hashes
+unchanged. No native rebuild or USB feature. The five compressed archives total
+48,748,203 bytes; binaries total125,824,744 bytes. These recorded sizes fit the
+existing512MiB caps; that arithmetic does not measure future container peak.
+
+The full published BuildKit receipt remains8628 bytes / SHA256
+`4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0`.
+Its v0.33.1 index is
+`sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea`.
+The Linux/arm64 **image** descriptor, size2261, is
+`sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768`;
+the unknown-platform attestation descriptor is not a native tool image.
+Prospective ARM reference is exactly
+`docker.io/moby/buildkit@sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768`.
+**Its manifest/config metadata has not been fetched and its config ID is unknown.**
+Root's one remaining read-only input is the hash-linked ARM manifest and config
+metadata (Linux/arm64 identity), retained in an immutable root receipt with
+exact commit/path/hash. No query, layer download, tool execution or invented
+config ID occurred here. The prospective ARM map refuses missing metadata
+before Docker preparation; it must not reuse the amd64 config ID, substitute a
+mutable tag, accept only the index digest, or bypass actual image-ID equality.
+Root supplies this existing identity input before source approval/runtime;
+this is not a new product/release/compatibility gate.
+
+X86 retains its exact manifest reference `98cc6a3f…` above and actual config
+`sha256:27933730df224df80c41f4e5a9b33fa78831a79fd31903df3bb7deb49363422f`.
+For ARM, select the new root record's ARM manifest/config; retain the index
+descriptor link, no-layers/no-native-execution attribution, actual Linux/arm64
+inspect equality, dedicated builder driver/image/private-instance/node binding,
+and creation-identity checks. Tool provenance is not demonstrated compatibility.
+Root can add `linux_arm64_manifest`/its hash-linked config metadata to the tool
+receipt. Keep the existing `linux_amd64_manifest` and amd64 `source_reference`
+meaning intact; do not pretend that old field attests ARM. The ARM source check
+must bind its explicit reference to that exact ARM descriptor/manifest digest
+and the supplied config digest/OS/architecture, while preserving x86's original
+`source_reference` predicate. Record the new receipt's exact hash/commit before
+any source implementation is accepted.
+
+### Exact immutable product comparison and smallest prospective hunks
+
+Whole-byte comparison9a versusb619 passed for **35** named files, not just
+matching versions. Reproducible comparison manifest: ordered objects
+`{path, bytes, sha256}` for the following order, JSON with sorted keys and compact
+separators plus final newline; SHA256
+`109bd253038e9d522f38455bfd37a9d8a3792b0c98456d38a6f84a0287b5bc5f`:
+
+```text
+Dockerfile, .dockerignore, Cargo.toml, Cargo.lock, rust-toolchain.toml,
+crates/riauthctl/Cargo.toml, crates/riauthctl/Cargo.lock, LICENSE,
+THIRD_PARTY_NOTICES.md, scripts/check-edition-artifacts.py,
+scripts/package-release.sh, .github/workflows/release.yml,
+scripts/check-installed-release-gate.py, src/cli.rs, src/cli/local.rs,
+src/bin/riauth-maintenance.rs, src/main.rs, src/core.rs, src/config.rs,
+src/node_security.rs, src/edition.rs, src/edition/transition.rs,
+src/upgrade.rs, src/upgrade/activation.rs, src/model.rs, src/management.rs,
+src/management/grants.rs, src/management/memberships.rs,
+src/management/sessions.rs, src/management/client_creation.rs,
+crates/riauthctl/src/main.rs, crates/riauthctl/src/admin.rs,
+crates/riauthctl/src/review.rs, crates/riauthctl/src/transport.rs,
+crates/riauthctl/src/session.rs
+```
+
+Full Dockerfile/ignore bodies, relevant local CLI dispatch, agreement comparison/
+transition stamping, exact-token activation, accepted helper fixture/control
+spans and the complete source diffs were read. This is not a fresh full-body
+review of every unchanged file or dependency. Representative common SHA256s:
+Dockerfile `458ebb24…`, ignore `4fbd9472316442bdd8b72e268feb1140701e87ac28dd02295c687b6d379eb093`,
+local CLI `63e988df595df7b6d6e410574e46904064697b4a78b7e4617430607375dcd0d5`,
+configuration `4155154a…`, node security `979f1d22…`, transition `301548a2…`.
+Version/locked manifests are the same0.1.1/toolchain1.98.1 bodies, not proof of
+interchangeable binary hashes across architectures or product pins.
+
+Production differences in the complete `src`/client comparison are only
+`src/api.rs`, `src/portal.rs`, new `src/portal/source_stage.rs`,
+`src/portal/source-stage.html`, `src/portal/source-stage.js`, and
+`src/assembly/cloud_operations.rs`. Their diffs add source-stage HTML
+transport/rate routing and certificate-backed cloud credential diagnostics.
+They do not change the helper's local login/user/group/grant/session/audit/agent/
+maintenance/config/transition call paths. No source-stage/cloud fixture is
+claimed here; ARM images must still be built from9a and compared with9a native
+products. Never mix old9a tools withb619 images and call that a single cohort.
+
+These are precise proposed edit locations against **be22**, not applied hunks:
+
+| Path / current span | Minimal prospective substitution |
+| --- | --- |
+| Workflow1–4,18 | Architecture-neutral name; the one closed manual choice and selected native hosted label described above. |
+| Workflow24–46 bootstrap | Declare architecture env; validate closed map before existing guards, compare selected exact host tuple. Write only closed selected product/review pins to `GITHUB_ENV`; root/path/capacity/modes remain exact. |
+| Workflow58,66 | Select immutable product/review refs from validated map. X86 remainsb619/66c; ARM is9a/root's pending exact tool-review commit retaining the ARM receipt. Controller checkout remains actual workflow head. |
+| Workflow84 | Upload `riauth-local-container-${architecture}-${run_id}-${run_attempt}`; x86 resolves to its entire current name, ARM uses tokenarm64. No other action/command/context change. |
+| Helper37–47,102–175,1466–1480 | Closed two-entry metadata table, select/validate before `Cohort` creation, retain selection in controller state and public receipt. No user-supplied pin or child-env expansion; actual helper invocation stays byte-identical. |
+| Helper406–439 | Select host/source/tree/review/receipt/tool literals. Validate exact original schema, then ARM-only one-to-one view above; x86 original record is untouched. Validate five products/eleven exit0 steps/input hashes exactly. |
+| Helper440–459 | Preserve **entire** private Dockerfile prefix/reversal. Metadata-only selected receipt/tool provenance; record raw receipt schema/hash. |
+| Helper508–522,586–589 | Substitute exact selected run/artifact endpoint/build-workflow/source/tree values. Preserve all transport origin/time/hash/ZIP/TAR/log/product predicates and the complete normalized-record equality. |
+| Helper620,639–643,1010 | Pass closed ELF machine to the same20-byte ELF64 little-endian check; compare exact two-byte183/62. Use closed finite architecture refusal label; no truncated-prefix or architecture fallback. |
+| Helper645–651 | Select capability `target.arch`; same source-derived version/edition/feature/log/native-image equality. |
+| Helper661,676–688,724,732 | Select exact native daemon arch, tool reference and pinned manifest/config/image arch. Builder memory/CPU/deadlines/private node/recovery/mount/creation interval untouched. |
+| Helper858–897,968–971 | Select image architecture/build platform/revision and archive suffix. X86 image archive names stay exact; ARM becomes `local-{edition}-aarch64.docker.tar.gz`. All tags/labels/IDs/archive checks/load controls unchanged. |
+| Helper1417 | Only substitute selected product SHA in existing owned-image cleanup provenance equality. Entire ownership/recovery/removal/absence/reaping behavior remains exact. |
+
+The final two-file diff cannot yet be hashed as implementation: root's ARM tool
+config/receipt commit/hash are intentionally absent. No pending value is
+represented as runnable source. Before future source acceptance, inverse only
+these named metadata hunks/new adapter/table, normalize defaultx86 selection,
+and require reconstruction of both **entire be22 bodies**; reject any other
+delta. Complete base hashes are7a0b7fb1…/0f499284… above. The future workflow's
+x86 normalization must equal the old parsed workflow, including the complete
+shell/control/action bodies and every guard, aside from selected metadata/name.
+
+Current AST-extracted39 protected `Cohort` method spans have ordered compact-JSON
+`{name, sha256}` manifest SHA256
+`ef1daa6ffbec4f07caba3b91cf00c98abb81e30ee7e347a3996c36f7236b249f`.
+Ordered names are `save, capacity, sample_loop, check_budget, process_identity,
+kill_group, command, docker, inspect, absent, prove_absent, git, http,
+github_json, create_volume, confirm_volume, create_container, confirm_container,
+remove_container, tool, maintenance, shell, new_fixture, start_app, stop_app,
+client, login, mutate, token, revoked, snapshot, revoke_copy, offline_hashes,
+direct_refusal, plan, config_refusals, handoff, platform_refusal_fixture,
+fixture_gate`. Each span includes its decorators through AST end line, original
+newlines retained. These bodies must stay byte-exact under the future proposal.
+The cleanup/builder/archive methods permit only the table's named literal
+substitutions, with inverse reconstruction proof; no relaxed predicate.
+
+### Unchanged gate, resources and truthful limits
+
+Preserve the entire encrypted-redb format3 fixture and public calls: first-only
+keygen/init, exact issuer/config key,16 effective rates, original config, native
+maintenance/base client versions, ordinary same-ID complete12-field UserView,
+local group, low-risk auditor grant, audit200, forbidden user creation403/client4
+with unchanged users, revoked401/client3, E→P→E equality, exact offline one-field
+issuer/authentication/login-rate parse-specific refusals with unchanged private
+config/key/store, and separate Platform-agent downgrade refusal with its exact
+If-Match/idempotency headers. No Source Group materialization or permission/
+review/receipt/removal/audit/credential/PAM/header bypass, no new helper gate.
+
+The manual one-job150min/read-only permissions/legacy concurrency/no-auto-cancel
+contract remains. Preserve30GiB launch and large-phase guards, nominal2s sampler,
+own10GiB stop/8GiB floor, jobs1/incremental0/debug0 derived-recipe prefix,
+7200s controller/1200s fixture/240s cleanup, every bounded setup/pull/build/save/
+load timeout,512MiB native and2GiB each image compressed/expanded caps and8MiB
+logs. Same dedicated builder/config, exact process start ticks/session/groups,
+leader held until signaling then reaped/empty-group proof, daemon-child identity,
+owned container/volume/image ledger and fail-closed cleanup. No global/default
+builder/daemon/prune/cache change. UID/GID10001/mode0700 volume probes precede
+all secrets; no ownership repair or root application fallback. Public binaries
+0755, private inputs/evidence0600 and parents0700. Configuration read-only while
+serving, same random localhost issuer/host-network and one writer per store.
+
+ARM native history measured four CPUs/16,722,042,880 RAM bytes and minimum
+112,151,941,120 free bytes; none measures a future container runner, Docker peak,
+builder/library compatibility, UID mapping, fixture result or cleanup. Future
+actual daemon/machine/config mismatch refuses; no QEMU or same-host Desktop
+retry. The accepted O07 UID0:0 versus10001 failure and earlier classifier limits
+remain intact. Shared run37043196924 actually recorded focused-helper EXIT1,
+sample not run/full gate not certified with unknown inner failure; the earlier
+equal-SHA root invocation failure remains distinct. This design cannot turn
+either into a pass, identify that private caller, or override later root evidence.
+
+Current x86-container outcome remains **UNKNOWN HERE**, ARM has only its actual
+five LOCAL native archives, ARM-container execution remains **UNRUN** and this
+extension is **UNIMPLEMENTED**. No A09/shared-full-gate/release/registry/tenant/
+device closure follows. Root owns the missing read-only ARM tool input, exact
+source reservation/review/publication and any later serialized execution.
+Driver-only desktop preference remains; no desktop action was necessary.
+
+### This appendix's actual static work
+
+Read full ARM/BuildKit Git receipts; exact-be22/published/current source hashes,
+35 whole-file byte comparisons, two native workflow source diff and described
+recipe/CLI/agreement/activation/fixture bodies. Public historical metadata
+excerpts and validated member sizes were read, not replayed; no external ZIP,
+native executable or image was consumed here. AST parsing extracted source
+spans only; the helper was neither imported nor run. The initial comparison
+incorrectly named nonexistent `src/bin/riauth.rs` and exited1; Git tree inspection
+identified `src/main.rs`, then the35-file comparison passed. A documentation
+locator also named nonexistent shell/roadmap checker paths (rg exit2); the
+existing `scripts/check-docs.py` was located/read without changing anything.
+Those are static lookup failures, not native/container outcomes.
+
+Append-prefix/scope/docs/whitespace check results are recorded below after the
+append. Zero network/query/download/dispatch/Docker/buildx/pull/tool-version/
+compiler/Cargo/PG/native/helper/harness/service/browser/runtime, no slot use,
+other-worker contact, new task/worker/worktree/managed shell, source alignment,
+main/push/status or existing source write occurred.
+
+Post-append actual results: exact005c/85/3df/a7 prefix proofs **PASS**; only this
+report changed, no untracked file; both complete be22 source bodies also equal
+published56bd and own checkout **PASS**. Source AST parse/span extraction only,
+Markdown fence/no-new-relative-link/whitespace checks and `git diff --check`
+**PASS**. `python3 scripts/check-docs.py` **EXIT1**, only the same five existing
+root build directories: `target-wave29-source`, `target-wave28-scim`,
+`target-wave28-portal`, `target-wave28`, `target-wave27`; **no Markdown-link
+errors**. No directory deletion/checker change, no runtime retry or release.
