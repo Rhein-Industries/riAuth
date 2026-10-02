@@ -3,6 +3,12 @@
 Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, task D01
 `a96a1977-3210-4284-8f7d-645793369301`.
 
+Start with the shared local tasks in sections 1 through 8. Add directory
+import or outbound SCIM in sections 9 and 10 only when needed. Sections 11
+through 13 are optional configured-workflow, SAML and LDAP-listener tasks;
+section 14 needs invitation mail. None is required to start the small
+Platform instance or sign in to it.
+
 This is the Platform task guide through its third slice, plus the
 invitation-acceptance page in section 14. It walks the same tasks as the
 [Essentials guide](essentials-guide.md): one small loopback install, the
@@ -130,6 +136,18 @@ Stay on the Platform binaries for every later open of this instance.
 explicit handoff in [server editions](editions.md), after a reviewed backup.
 That handoff is not a step in this slice.
 
+This first-install path uses a new store and matching current binaries.
+Existing stores from older binaries need the separate [offline upgrade
+procedure](operations.md#rate-limits-and-admission). Startup refuses old or
+missing security agreements and never adopts them automatically. Stop every
+riAuth process and verify a pre-upgrade backup before running
+`security-agreement-record --confirm-authentication-policy --confirm-rate-limits`
+with the matching-edition maintenance binary. Add `--adopt-missing-agreement`
+only for a deliberately reviewed missing-row adoption; it cannot bypass a
+present incompatible row. A conflicting format 3 policy cannot be overwritten
+by this command. Older binaries refuse format 3; rollback requires the
+compatible pre-command backup. This is not a step for a fresh small install.
+
 The [product contracts](roadmap/product-contracts.md) describe the desired
 split. They are a target contract. They are not evidence that every Platform
 row is finished in this tree.
@@ -160,7 +178,7 @@ use that server-CLI session. A `riauthctl login` does not create it.
 Signing in through the browser creates a browser session and an HttpOnly
 cookie. It does not write either CLI session file.
 
-Sections 6 and 7 sign the riauthctl session in again if it has expired, then
+Sections 6 and 7 sign the riauthctl session in again if it is expired or revoked, then
 change groups and the `local-demo` client. `explain`, `audit`, `report`,
 `directory`, and `provision` use the server CLI session from section 2.
 Pass `--server http://localhost:9000` on those commands so the issuer is the
@@ -403,9 +421,13 @@ riauthctl --server http://localhost:9000 client create local-demo \
 session. Confidential creation requires a new `--secret-file` in a directory
 that already exists. The client reserves that file before the request and
 writes the one-time secret there. Standard output names `credential_file` and
-omits the secret. Repeating the command needs the same `--idempotency-key`
-and a new secret-file path; the details are in the
-[riauthctl README](../crates/riauthctl/README.md).
+omits the secret. Direct creation stores no secret in its retry receipt:
+an exact same-key, same-revision retry returns `409 credential_already_issued`.
+If creation committed but credential delivery failed, inspect `local-demo`
+and rotate its secret with a new key, the current revision and a new
+`--secret-file`; repeating creation does not recover it. Reviewed creation
+has a separate secret-recovery receipt contract. Both paths are described in
+the [riauthctl README](../crates/riauthctl/README.md).
 
 `riauth client create` is the server CLI, a separate command. Without both
 `--idempotency-key` and `--if-revision` it stops locally with the message in
@@ -494,7 +516,7 @@ sign in itself before it can change passkeys. Those rules are in
 
 The dialog text says to pick this device, another device, or a security key
 in the browser prompt. Synced passkeys, phones, and physical keys are part of
-the manual accessibility and authenticator gates below. This slice does not
+the recorded device and browser limits below. This slice does not
 record a result for them.
 
 ### Loopback observation
@@ -569,6 +591,13 @@ Use a backup key that is different from any database key. This slice's `init`
 does not set `database_key_file`, so the live store is plaintext and the
 backup key is still required. Keep `backup.key` outside the host you are
 willing to lose.
+
+Section 4’s passkey changes revoke this account’s CLI sessions too. Before
+backup, sign the server CLI in again as the password administrator from `init`:
+
+```sh
+riauth --server http://localhost:9000 login admin
+```
 
 ```sh
 riauth-maintenance keygen --out deployment-private/platform-lab/backup.key
@@ -698,8 +727,23 @@ This run does not call the result a recovery drill.
 
 ## 6. Create a group and add the administrator
 
-The operator does this with `riauthctl` while `riauth serve` is still running.
-Sign in again when the riauthctl session is missing:
+If you followed section 5, `serve` is stopped. Restart the **original** lab
+configuration and leave it running:
+
+```sh
+riauth --config deployment-private/platform-lab/riauth.toml serve
+```
+
+In another terminal, check readiness:
+
+```sh
+curl --fail http://127.0.0.1:9000/readyz
+```
+
+Do not start the restored configuration merely to continue this guide; it is
+a separate recovery exercise and stays closed while reconciliation is pending.
+The operator now uses `riauthctl` against the original running server. Sign in
+again when that session is missing, expired or revoked by a passkey change:
 
 ```sh
 riauthctl --server http://localhost:9000 login admin
@@ -2296,7 +2340,7 @@ Platform install above does not configure the extra surfaces they draw.
 | Release archives named by [deployment examples](deployment-examples.md) and [release notes](release-notes.md) | Linux native archives, maintenance archives, `riauthctl` archives, container archives, `SHA256SUMS`, and `build-provenance` files. | They were not downloaded, loaded, or started here. `deploy/compose-small.yml` and `deploy/compose-distributed.yml` remain documented image layouts for a later deployment. |
 | `riauth capabilities` | Artifact catalog for the binary on `PATH`. | The first loopback record's `edition` was `essentials`, with `usable` null on every entry. The Platform-catalog record's `edition` was `platform`, `build_features` was `["essentials", "platform"]`, and `usable` was null on every entry. A configured instance's runtime report is a different document. Compiled Platform features are not configured features. |
 
-## Manual accessibility gates
+## Recorded device and browser limits
 
 [accessibility-journeys.spec.js](../tools/browser/accessibility-journeys.spec.js)
 documents automated keyboard, axe WCAG 2.1 A/AA, 320/768/1440 reflow, and
@@ -2309,13 +2353,14 @@ spec itself says it does not claim:
 - iOS or Android
 - a spoken screen reader (VoiceOver, TalkBack, or NVDA)
 
-Those five are manual gates. This task did not run the Playwright spec or a
+These are limits of the recorded runs, not required steps for this local
+walkthrough. This task did not run the Playwright spec or a
 spoken screen reader. Section 4 records one isolated desktop browser on
 loopback. That browser signed in at `/apps` and cancelled the passkey prompt
 before a credential existed. Section 14 records a second isolated desktop
 browser that accepted an invitation password and did not start a passkey
 ceremony. Physical keys, synced passkeys, phones, and
-spoken screen readers remain manual gates. [Passkeys](passkeys.md) also says
+spoken screen readers were not exercised. [Passkeys](passkeys.md) also says
 physical hardware and platform compatibility still need testing on the
 intended devices. The cancelled prompt in section 4 is one loopback
 observation. A synced passkey and a security key used from Safari or a phone
