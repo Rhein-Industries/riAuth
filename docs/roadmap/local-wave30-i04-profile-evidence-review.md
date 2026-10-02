@@ -2991,3 +2991,94 @@ Actual final documentation checks: `python3 scripts/check-docs.py` exited0;
 `git diff --check` passed. Exact prior prefix, sole tracked report diff,
 unchanged source/native/default-cache/old evidence pins and new capture metadata
 were verified. Documentation checks do not execute the failed fixture.
+
+## Source-only certificate validity ownership correction after 9ec96bc8
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original I04 task
+`dae9c528-9e32-462c-947f-661a571f136b`; supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`, branch
+`roadmap/local-extension-isolation-wave27`. This is the root-reserved two-local
+source correction only. Original primary `a2dff16a` and task disposition remain
+root-owned. No runtime reservation was acquired or released in this slice;
+Cargo remains free/unused and the ignored filter remains held.
+
+### Independently read pinned public signatures
+
+Before editing, the cached OpenSSL public source was read at
+`/Users/dominik/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/openssl-0.10.81`.
+The locked version is `0.10.81`, with package checksum
+`77823a27f0babb03091cb9ed9ef80af3b39dbc82f97e8fa530374b7dafd87a45`.
+The cached 311187-byte `openssl-0.10.81.crate` archive was read and hashed to
+that exact checksum; its two source members equal the installed cached files
+byte for byte. No archive extraction, crate execution or network access occurred.
+An initial lookup for the cached `.cargo-checksum.json` found it absent; the
+locked archive comparison supplies the source provenance instead.
+
+| Public source | Signature / provenance |
+| --- | --- |
+| `src/asn1.rs:336` | `pub fn days_from_now(days: u32) -> Result<Asn1Time, ErrorStack>`; 32934 bytes, SHA-256 `8f0976fb4cd7eda7b600561b80345a78de91bac359ba72546c0d54e2f721f787` |
+| `src/x509/mod.rs:233` | `pub fn set_not_before(&mut self, not_before: &Asn1TimeRef) -> Result<(), ErrorStack>` |
+| `src/x509/mod.rs:227` | `pub fn set_not_after(&mut self, not_after: &Asn1TimeRef) -> Result<(), ErrorStack>`; both setters in the same 87174-byte file, SHA-256 `92ae710cf03f71fe190b7ccf12fd87898347fb5d06a414fdb886250f7d6ae27f` |
+
+This supports materializing each owned result before borrowing it. It does not
+constitute a Rust type-check or establish that the later lifecycle test passes.
+
+### Exact source change and reversal
+
+Source-only commit: `24c0dc921703432ff04a5cab7cc771c0c9d7df3e`.
+Only `certificate()` in `tests/saml_source_peer.rs` changed: `not_before` and
+`not_after` are owned locals, borrowed by their existing setters. The sequence
+remains `days_from_now(0)` / start setter, then `days_from_now(1)` / end setter.
+All four `must` labels remain exact: `not before`, `certificate validity start`,
+`not after`, `certificate validity end`. Rustfmt collapsed only the end setter
+call to one line. Certificate fields, signing/crypto, every other fixture
+assertion/operation/input and native runner/cap/deadline are unchanged.
+
+The source commit is one file, four inserted and five deleted lines. Its test
+Git blob is `bc127dbe6b6060f1e490cb59bea63fa9e7ee201d`; the whole test is
+39539 bytes, SHA-256
+`b196cba1eea40a67c7d70c6b463ae50ec6897d68c5d81052e33eb3bec2ae5894`.
+An exact literal replacement of this single certificate block reconstructs the
+entire test from `561022078b500466712a67a2e9a0e1144977858c`: 39498 bytes,
+SHA-256 `0a5991d7c17cc921b3a13fdc0e49a2df10d45568aebbafc86e93cf27a2a9f85b`.
+The forward replacement was also checked against the complete new file; both
+directions passed, so no other test bytes changed.
+
+Protected production, crates, manifests, toolchain and build configuration have
+zero diff from `9ec96bc8beaa45fd58bd1d15f5aaffb753658f48`. No alignment or merge
+was performed. The C source remains 34120 bytes / SHA-256
+`1b23f51314038ff15caa3aeb8c31acccb8bcd26d6fb702115767d0f68e4dc186`;
+the earlier `tests/saml_sp_peer.rs` remains 39541 bytes / SHA-256
+`897e778c2c53d6bc5ea943aefde46812a80cb73bafad82d1702a7529779ea20f`.
+The already compiled IdP helper remains 40880 bytes / SHA-256
+`951465d744c1bf99e7ed91fc414337d00e960c24a1715977cce0e14535794bff`;
+it was hashed by reading only and was neither rebuilt nor invoked.
+
+### Actual checks and preserved failed evidence
+
+Static checks only: direct `rustfmt --edition 2024 tests/saml_source_peer.rs`,
+then `rustfmt --edition 2024 --check tests/saml_source_peer.rs`, exact
+bidirectional whole-file reversal/scope proofs and `git diff --check` passed.
+`python3 scripts/check-docs.py` exited0; the exact full report-prefix and
+two-reserved-path scope checks passed. Rustfmt parses/formats the
+file; no Cargo, Rust type-check, compiler, native library/helper, protocol,
+version probe, service or alternate filter was executed.
+
+The prior Cargo exit101 remains failed compilation with two E0308 locations;
+no ignored test or native oracle ran in that invocation. The original failed
+raw evidence was rehashed without printing its content and remains unchanged:
+
+| Preserved own target file | Bytes / SHA-256 |
+| --- | --- |
+| `target/i04-lasso-idp-ac869-filter.log` | 1735 / `380ebe9e2f4ef43d173a8e1affa929a77235dd024b125fbe18c7b11e8d5bbe5f` |
+| `target/i04-lasso-idp-ac869-filter-evidence.json` | 10919 / `952f4d7ec8eaeb5f95fa9558f921f998546ab3a12d68fc4a9f13dd3bcda67a82` |
+| `target/i04-lasso-idp-ac869-filter-supervisor.py` | 15033 / `a63edfb5021666c8636579eaae49579a22d5037dbf95892966d32dfa7f0a3c1f` |
+
+The complete report at `9ec96bc8beaa45fd58bd1d15f5aaffb753658f48` remains the
+exact 209560-byte prefix, SHA-256
+`4084addbdddba1b8b81eeed8a8ddcf93aed9cfd2bc2ee21d554fad223b6366e7`.
+This preserves every earlier actual PASS, failed receipt, unknown historical
+native cause, source/preparation pin and disclosed scope exception. Source-ready
+does not authorize another invocation; root must independently review these
+immutable commits and separately release any later exact filter. There is no
+new I04 completion, profile/tenant/platform/release claim or status change.
