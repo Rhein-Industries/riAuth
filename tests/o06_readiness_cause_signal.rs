@@ -630,6 +630,7 @@ async fn readiness_causes_are_redacted_bounded_observations() {
         role: ProcessRole::Worker,
         accept_partial_duties: true,
     };
+    worker_core.config.browser_ui = false;
     worker_core.config.validate().unwrap();
     let worker = ReadinessProbeTest::new(App::new(worker_core));
     let worker_busy = worker.workers().acquire_many_owned(8).await.unwrap();
