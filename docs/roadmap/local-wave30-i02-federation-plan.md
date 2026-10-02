@@ -836,3 +836,148 @@ passing. `python3 scripts/check-docs.py` actually exited1, reporting only the
 same five pre-existing target-wave directories: target-wave29-source,
 target-wave28-scim, target-wave28-portal, target-wave28 and target-wave27.
 It reported zero missing Markdown links. No directory or checker was changed.
+
+## Focused resource preparation — read-only, execution still held
+
+Root authorized `wave30_I02_focused_resource_preparation` for this same project,
+I02 and supporting WT, allowing only this report append. Preparation starts from
+clean HEAD `b906c7b76fe20291e148abfb6ceca4ff6bb7f6ef`; product/test source remains
+`196ac2096f79e5cc3c7d53ffa990ccdeba11a439`. Fresh read-only hashing reproduces all
+five36ccc64 production SHA256 values above and the corrected test SHA256
+`0c5efa341f72922b3ef16cd92a6157200ab439b1860ad339c42d7b5ee83250b8`.
+No merge, configuration change, artifact invocation, Cargo or type check occurred.
+Original primary a2dff16a and root's ownership of review/status remain unchanged.
+
+### Matching cache and profile evidence
+
+Inspected only this worktree's existing `target-wave27/cargo` cache. Both that
+directory and its target-wave27 parent are nonsymlinks; its resolved path stays
+inside this worktree, and the debug tree has no symlinks. `du -k -d 2` measured
+2377044KiB allocated (2.267GiB): deps1978980KiB, build70520KiB,
+fingerprints12272KiB, incremental0KiB. This is an existing private cache, not the
+accepted target and not the previously proposed new cold directory.
+
+Metadata `.rustc_info.json` records1.98.1, commit
+`48a229ceaefd4985c50990b14116b6d856af0985`, host aarch64-apple-darwin and the
+installed1.98.1 toolchain path. Rustc/Cargo files exist there by stat; neither was
+executed, so this records cache provenance rather than a fresh version result.
+The current rust-toolchain.toml still selects1.98.1. Fresh manifest hashes match
+the source-phase values: Cargo.toml
+`58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8`, Cargo.lock
+`b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426`, toolchain
+`887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167`.
+
+Relevant fingerprint records:
+
+| Existing record | Features | Profile hash / artifact metadata |
+| --- | --- | --- |
+| riauth-0d65ce4b80b71950 lib | default, essentials, platform, test-support | 12672335563272108896; rlib400029936 bytes, rmeta44874859 |
+| riauth-25aded663d5712f5 server and riauth-9fc8fea30bfac30b maintenance | Same four | Same profile; executables255814720 and67010608 bytes |
+| riauth-2cea114daae82d64 cloud_directory integration test | Same four | 11094973624911973823; executable198904944 bytes |
+| riauth-aeaedbe66486b343 / riauth-87bb46aa584f94f0 check libs | default, essentials, platform / essentials | 10509049656720700007; rmeta-only, not linkable product substitutes |
+| source_stage integration test | Absent | No existing fingerprint or executable; it must compile/link |
+
+The lib/server/maintenance records share rustc hash17329007180185699724,
+config9396254390672932401, empty rustflags and native compile_kind0. Historical
+wave27 report `7e87428567475d2a6e8589d58c4419c16c768a55` records actual cloud
+tests using this exact target, locked/offline/default+test-support, jobs1,
+incremental0, DEV_DEBUG=0 and TEST_DEBUG=0. The subsequent source-check report
+`af4fd9e253b82c3094b21114f623952d968cf377` records the same profile settings.
+These historical commands support the profile interpretation; the hash alone
+does not decode debug settings or demonstrate current-source correctness.
+
+Python read-only metadata traversal matched all59 cloud-test dependency hashes
+to unique cached fingerprint records, including all53 direct lib dependencies,
+riauth and the five additional dev crates. All59 have linkable rlib/dylib files.
+The reachable graph contains439 records with no absent/ambiguous dependency
+hashes, and697 linkable/metadata files totaling1253844890 bytes. Its360 registry
+package/version paths match the current lockfile and have source directories
+and package manifests. An initial version-splitting heuristic misclassified
+`toml-1.1.6+spec-1.1.0`; exact whole name/version lookup resolved that inspection
+false positive, with zero actual lock mismatches. No dependency code was run.
+
+Compiled records match the rustc/config/flags/native-kind settings. The38
+run-build-script records instead have Cargo's zero profile/config metadata,
+with the same rustc/empty flags/native kind; these are not an alternate compile
+profile. Existing recorded build-output paths checked were present. Comparison
+of2518 allowlisted tracked compiler/SDK/OpenSSL/native-build setting records
+against the current environment found no mismatch;64 other variable names were
+not inspected. No applicable ancestor/home `.cargo/config[.toml]` exists.
+CARGO_TARGET_DIR, jobs/incremental/debug overrides, RUSTFLAGS/encoded flags,
+wrappers and RUSTUP_TOOLCHAIN are currently unset. The proposal reproduces the
+historical overrides explicitly, without introducing flags or changing config.
+
+Metadata SHA256: lib-riauth.json
+`ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10`,
+cloud_directory test JSON
+`f74546fdaa6a5ab161af5eaf5ea1e798a0108eccbc51db0ff5b68ae5f963ed28`,
+and .rustc_info.json
+`27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4`.
+No binary content hash/version/execution was substituted for source evidence.
+
+### One proposed command, not executed
+
+This supersedes only the earlier cold-target location proposal:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target-wave27/cargo" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --offline --features test-support --test source_stage browser_source_stage_transport_binds_factor_and_renders_both_response_modes -- --exact --test-threads=1
+```
+
+The current1.98.1 toolchain pin applies. Default selects Platform (which includes
+Essentials), plus test-support, exactly matching the linkable dependency graph.
+No explicit cross-target argument: the cache is native aarch64-apple-darwin;
+adding a target triple would create a separate artifact layout. No USB, fuzzing,
+standalone-client build or additional filter. Offline mode matches the recorded
+cache-creation commands and fails instead of downloading a missing dependency.
+Cargo still decides freshness and must rebuild all changed product sources and
+the new source_stage test. The old lib dep-info omits all three new portal stage
+assets, and old products date to2026-10-01; none is evidence of this I02 flow
+passing. No old executable will be invoked directly.
+
+### Actual capacity and prospective owned-group budget
+
+`df -k .` initially reported13367980KiB free. Final measurement at
+2026-10-02 16:11:08 UTC reported13360168KiB, about12.74GiB, leaving3.74GiB above
+the unchanged9GiB own-stop threshold. This is a snapshot during the held queue,
+not a reservation or permission to start before root releases the slot.
+
+Estimate an additional peak of **2–3GiB**, reserving3GiB for this one Cargo group:
+the old rlib+rmeta together are about0.414GiB; allow their full regenerated set
+and compile objects, server/maintenance rebuilds and temporary copies (existing
+two copies total about0.601GiB), a new source_stage executable (budget0.35GiB,
+versus the existing cloud test's0.185GiB), linker scratch and limited dependency
+revalidation/rebuild headroom. These are size-based estimates, not measured
+peak guarantees. Existing reachable non-riauth link/metadata artifacts account
+for about0.753GiB plus native build output; metadata supports reusing those
+rather than cold-duplicating them. No claimed saving equals the whole2.267GiB
+cache, which also contains old products and check-profile artifacts.
+
+Retain the prior **at least12GiB immediately before start**, after current SCIM
+exits and root grants this sole group the slot. At the observed12.74GiB, a3GiB
+additional peak leaves about9.74GiB; at the12GiB minimum it reaches the9GiB
+margin, so the monitor may stop a larger-than-estimated build. Recheck source,
+toolchain/settings and disk then; do not alter profiles to chase reuse. Sample
+free disk every2 seconds throughout Cargo/link/test, stop only the owned process
+group at9GiB, preserve the8GiB floor and never kill another lane. No other cache
+or evidence deletion/move. Any unexpected substantial dependency rebuild or
+shared-disk drain invalidates the estimate; stop/report rather than force flags
+or lower the threshold. Root owns aggregate budget and release scheduling.
+
+Retain private0600 logs and redacted argv/source/features/exit/elapsed/disk
+evidence. Bound only the selected disposable fixture runtime to20 minutes,
+perform PID/group-scoped finally cleanup and immediate exit/slot-release handoff.
+This preparation creates no log/target/helper, allocates no execution slot and
+does not launch any artifact, service, provider, CLI product or browser.
+Independent review and focused compile/test remain held; no form_post pass,
+original-I02 closure, real tenant or release evidence is inferred. All historical
+failures and receipt/header/PAM/Group/authority/one-use/60s limitations remain.
+
+Preparation checks actually performed: Git state/object reads, manifest/settings
+and fingerprint/dep-info metadata reads, stat/du/symlink inspection, df snapshots
+and Python metadata/hash/scope assertions. Final static checks preserved the
+entire70445-byte b906c7b report prefix, confirmed this is the sole changed file,
+and matched all six source files/three manifests to196ac209 plus both cited
+historical report objects. LF/fence and `git diff --check` passed. The docs
+checker exited1 only for the same five pre-existing target-wave directory-layout
+violations, with zero missing Markdown links. No formatter/compiler/test or
+artifact was executed, and no cache/config/evidence was modified or removed.
