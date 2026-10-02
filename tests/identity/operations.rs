@@ -483,6 +483,7 @@ async fn http_agent_mutations_are_atomic_retriable_conditional_and_attributed() 
         }
         builder.body(Body::from(body.to_string())).unwrap()
     };
+    let before = f.core.store.read(|tx| tx.snapshot()).unwrap();
     assert_eq!(
         app.clone()
             .oneshot(request("create-app", None, &body))
@@ -491,6 +492,7 @@ async fn http_agent_mutations_are_atomic_retriable_conditional_and_attributed() 
             .status(),
         StatusCode::PRECONDITION_REQUIRED
     );
+    assert!(f.core.store.read(|tx| tx.snapshot()).unwrap() == before);
     let first = app
         .clone()
         .oneshot(request("create-app", Some(revision), &body))
@@ -500,16 +502,26 @@ async fn http_agent_mutations_are_atomic_retriable_conditional_and_attributed() 
     assert!(first.headers().contains_key("x-request-id"));
     let first: Value =
         serde_json::from_slice(&first.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert!(first["client_secret"].is_string());
+    let committed = f.core.store.read(|tx| tx.snapshot()).unwrap();
     let repeat = app
         .clone()
         .oneshot(request("create-app", Some(revision), &body))
         .await
         .unwrap();
-    assert_eq!(repeat.status(), StatusCode::OK);
+    // Confidential-client credentials are disclosed only once. A retry confirms issuance
+    // without replaying the secret or changing the committed client, receipt or audit.
+    assert_eq!(repeat.status(), StatusCode::CONFLICT);
     let repeat: Value =
         serde_json::from_slice(&repeat.into_body().collect().await.unwrap().to_bytes()).unwrap();
-    assert_eq!(first, repeat);
-    assert!(first["client_secret"].is_string());
+    assert_eq!(repeat["error"], "credential_already_issued");
+    assert!(repeat.get("client_secret").is_none());
+    assert!(
+        !repeat
+            .to_string()
+            .contains(first["client_secret"].as_str().unwrap())
+    );
+    assert!(f.core.store.read(|tx| tx.snapshot()).unwrap() == committed);
     assert_eq!(
         app.clone()
             .oneshot(request("different", Some(revision), &body))
@@ -527,6 +539,7 @@ async fn http_agent_mutations_are_atomic_retriable_conditional_and_attributed() 
             .status(),
         StatusCode::CONFLICT
     );
+    assert!(f.core.store.read(|tx| tx.snapshot()).unwrap() == committed);
     let audit = f.core.audit_events(&f.admin, 100).unwrap();
     let changes: Vec<_> = audit
         .as_array()
@@ -594,6 +607,7 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
     let input = json!({"api_version":"riauth.authentik-import/v1","issuer":f.core.config.issuer,
         "users":[{"pk":42,"uid":"existing-authentik-subject","username":"alice","name":"Alice","email":"alice@example.test","groups":["child"],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
         "groups":[{"pk":"child","name":"engineering","parent":"parent"},{"pk":"parent","name":"employees","parent":null}],
+        "scope_mappings":[{"pk":"profile-mapping","name":"Profile","scope_name":"profile","expression":"return {\"name\": request.user.name, \"preferred_username\": request.user.username, \"groups\": [group.name for group in request.user.ak_groups.all()]}"}],
         "providers":[{"pk":1,"name":"app","client_id":"app","client_type":"public","grant_types":["authorization_code","refresh_token"],"redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],"property_mappings":["profile-mapping"],"sub_mode":"hashed_user_id","issuer_mode":"per_provider","include_claims_in_id_token":true,"access_code_validity":"minutes=1","access_token_validity":"minutes=5","refresh_token_validity":"days=30"}],
         "applications":[{"slug":"app","provider":1,"name":"Team workspace","meta_launch_url":"https://app.example.test/","meta_description":"The team’s applications","group":"Engineering"}],"policy_bindings":[{"pk":"binding-1"}],"sources":[],
         "passwords":{"alice":{"reference":"env:ALICE_PASSWORD","version":"import-v1"}},
@@ -614,6 +628,12 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
     assert_eq!(classified("group", "employees"), ["exact"]);
     assert_eq!(classified("group", "engineering"), ["convertible"]);
     assert_eq!(classified("subject", "app"), ["exact"]);
+    // The exported mapping is sub-free; its direct-group claim needs the reviewed
+    // translation above because riAuth includes ancestor groups.
+    assert_eq!(
+        classified("property_mapping", "app/profile-mapping"),
+        ["manual"]
+    );
     assert_eq!(classified("issuer", "app"), ["exact"]);
     assert_eq!(
         report["manifest"]["clients"][0]["settings"]["issuer"],
@@ -711,6 +731,18 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
     let report = riauth::migration::convert(serde_json::from_value(incomplete).unwrap()).unwrap();
     assert_eq!(report["ready_for_plan"], false);
     assert!(report["manifest"].is_null());
+    let mut missing_mapping = input.clone();
+    missing_mapping
+        .as_object_mut()
+        .unwrap()
+        .remove("scope_mappings");
+    let report =
+        riauth::migration::convert(serde_json::from_value(missing_mapping).unwrap()).unwrap();
+    assert_eq!(report["ready_for_plan"], false);
+    assert!(report["manifest"].is_null());
+    assert!(report["blockers"].as_array().unwrap().contains(&json!(
+        "app: property mapping profile-mapping is missing from scope_mappings; subject continuity cannot be proved"
+    )));
     let mut duplicate = input.clone();
     duplicate["users"]
         .as_array_mut()
@@ -832,6 +864,9 @@ fn authentik_preflight_classifies_every_exported_item() {
         "groups":[
             {"pk":"child","name":"engineering","parents":["parent"]},
             {"pk":"parent","name":"admins","parents":[],"is_superuser":true,"attributes":{"cost_center":"42"}}],
+        "scope_mappings":[
+            {"pk":"mapped","name":"Cost center","scope_name":"cost_center","expression":"return {'cost_center': request.user.attributes.get('cost_center')}"},
+            {"pk":"unmapped","name":"Department","scope_name":"department","expression":"return {'department': request.user.attributes.get('department')}"}],
         "providers":[
             {"pk":1,"name":"legacy","client_id":"legacy","client_type":"confidential","client_secret":secret,"signing_key":null,
              "redirect_uris":[{"matching_mode":"strict","url":"https://legacy.example.test/cb"},{"matching_mode":"regex","url":"https://.*\\.example\\.test/cb"},
@@ -1087,7 +1122,8 @@ fn authentik_preflight_fails_closed_on_missing_or_mismatched_resolutions() {
     for (kind, id, expected) in [
         (Provider, "orphan", vec![(Manual, true)]),
         (AuthenticationFlow, "orphan", vec![(Manual, true)]),
-        (PropertyMapping, "orphan/m1", vec![(Manual, true)]),
+        // This intentionally incomplete export cannot prove that m1 preserves subjects.
+        (PropertyMapping, "orphan/m1", vec![(Unsupported, true)]),
         (
             Federation,
             "orphan/jwt_federation_sources",
@@ -1149,6 +1185,7 @@ fn authentik_preflight_fails_closed_on_missing_or_mismatched_resolutions() {
     for blocker in [
         "orphan: provide reviewed issuer, scopes, mappings, policies and authentication requirements in clients",
         "orphan: duplicate subjects would merge identities",
+        "orphan: property mapping m1 is missing from scope_mappings; subject continuity cannot be proved",
         "ghost: clients entry does not match an exported provider",
         "Source plex-uuid: a source resolution cannot replace an unsupported plex source",
         "Source ldap-uuid: a source resolution cannot replace an unsupported ldap source",
