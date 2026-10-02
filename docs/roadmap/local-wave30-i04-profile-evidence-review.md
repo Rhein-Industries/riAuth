@@ -209,3 +209,177 @@ and scope checks below are the final checks.
 Final staged `git diff --cached --check` exited 0; the staged name list contains
 only this new report, and the tracked product/source diff is empty. The commit
 therefore preserves the supporting branch's existing history without a merge.
+
+
+## Approved source phase: bounded Lasso SLO receiver definition
+
+Reservation: `wave30_I04_lasso_slo_receiver`, explicit user/root approval.
+Source commit: `e028106c3d7c9a236056730ad500aad876616540`; only the two approved
+helper/test files changed. Original report `1e2fa64` is retained byte-exact as
+this file's first 23966 bytes / 211 lines, SHA-256
+`6d9b322ed9d54a99c50a5395b1f1934d201bb95d9eb9c0d56746ea3fbd13120c`.
+This section records **source/static work**, not new interoperability execution.
+Compiler, helper and Cargo runtime remain held pending root's independent source
+review and exact serialized release; no runtime slot was taken or released here.
+
+### Selected local primary API and implementation
+
+The selected installed prefix resolves to `/opt/homebrew/Cellar/lasso/2.9.0_4`.
+Its `lib/pkgconfig/lasso.pc` declares `Version: 2.9.0`, SHA-256
+`b33a6d16197865beda424287def683acd372026239b1725f08cbc06f3b6a452e`.
+The install receipt declares stable 2.9.0, built/poured bottle, SHA-256
+`36aa759a7677d6a571c99f979b89fce206f6e5fcf831c63af2f576e68d66d939`.
+These files were read, not executed through `pkg-config` or a version helper.
+The first attempted `include/lasso/version.h` read found no such file; version
+confirmation instead used the actual package metadata and receipt above.
+
+The already present primary archive
+`/tmp/riauth-i04-saml-sp/lasso-2.9.0.tar.gz` is 4053813 bytes, SHA-256
+`63816c8219df48cdefeccb1acb35e04014ca6395b5263c70aacd5470ea95c351`;
+its `.tarball-version` is `2.9.0`. Installed logout/session/profile and SAML2
+LogoutRequest headers are byte-identical to their archive counterparts. No
+archive extraction, download, install or mutation was performed. Relevant pins:
+
+| Local primary file | SHA-256 |
+| --- | --- |
+| Installed `lasso/id-ff/logout.h` | `f4f383a7278f32b3677915c077252db287a1a0771c297daed5164c43f95ecaa0` |
+| Installed `lasso/id-ff/session.h` | `f6a09505f6acd5ac427e763794169439e8074b65ceec8c77601351ef20b1b64a` |
+| Installed `lasso/id-ff/profile.h` | `18807d0d1a3dc8f83cd387d35080054a0ae90251f0ee5150913ac78a2087e5b5` |
+| Installed SAML2 LogoutRequest header | `7b578542521d68b4f5be496adbe9d26f822dff71a924692e5c8b2c9fb66b8f66` |
+| Archive `lasso/saml-2.0/logout.c` | `7f0a7d07c369563a5722d0672c27a64d17b9032ffd6678a3769cd1bc515c64a7` |
+| Archive `lasso/id-ff/session.c` | `48b97bee44b9437f338c85aaffa7cef608149a244c0bc0b169abe6121d955003` |
+| Archive `lasso/id-ff/profile.c` | `7a758a27705f54f968c3a2f4020aa0cc4f65e75e81eff80ddc598130620d0363` |
+| Installed arm64 `lib/liblasso.3.dylib` | `0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde` |
+
+A read-only Python Mach-O symbol-table inspection found defined external symbols
+for the new logout creation/process/validate/response/destruction calls, profile
+restore/signature-status calls, session assertion/name/index/emptiness calls,
+identity/session dumps and `lasso_node_dump`. This establishes symbol presence,
+not a compiled/linked/executed result or compatibility across other hosts.
+
+The primary 2.9.0 logout implementation checks signature status after request
+processing; its validation obtains the saved NameID's session indexes, checks
+an issued index, and removes the provider assertion/index records. The session
+implementation independently reports those records and emptiness. Its normal
+`lasso_session_dump` returns an empty string for an empty session; the generic
+`lasso_node_dump` serializes the actual emptied Session object, allowing a fresh
+process to restore it instead of fabricating an empty-state marker. The official
+[Lasso logout API documentation](https://lasso.entrouvert.org/documentation/api-reference/lasso-LassoLogout.html)
+confirms the process/validate/build-response sequence and binding behavior;
+exact semantics above were checked in the pinned 2.9.0 primary source.
+
+### Implemented bounded source interface
+
+| Path / committed blob | Additive definition |
+| --- | --- |
+| `scripts/lasso-saml-sp.c`, blob `ce0a928adb22a4d00a612cf3fb7a113125303e48`, SHA-256 `c3d3a8f7d1d2d472e8b877a89ea2807d534921d88638661e8b251e2365906563` | `accept-state` performs the existing forced signature, audience/lifetime/helper Recipient and `accept_sso` sequence, then saves actual accepted persistent identity/session. `session-state` restores and inspects the actual Lasso assertion, NameID/index count and emptiness. `logout` restores accepted state, forces signature verification, requires Redirect/current registered IdP/exact saved NameID/index, validates via Lasso, requires actual assertion/index absence and empty session, generates the signed response, then saves that response URL and real emptied object. |
+| `tests/saml_sp_peer.rs`, blob `917364806b5be106d9e102bd5d30ba93455a8f0f`, SHA-256 `b8596b050db87d921f83e6f0b03ebf76bb6fecd74a99e191adfef6b6c7b32c86` | Exactly one appended ignored function, `lasso_idp_initiated_redirect_logout_revokes_only_bound_session_and_consumes_response_once`, with its local bounded runner. Normal Core setup/approval/resume/logout/coordinator entry points; store snapshot/audit reads are observations only. No direct record writes or clock/pin/ledger repair. |
+
+For each mode the first five arguments are `SP_METADATA SP_KEY SP_CERT
+IDP_METADATA IDP_ENTITY`; subsequent inputs/outputs are:
+
+- `accept-state`: `LOGIN_DUMP RESPONSE_B64 RELAY IDENTITY_OUT SESSION_OUT`.
+- `session-state`: `IDENTITY_IN SESSION_IN`.
+- `logout`: `IDENTITY_IN SESSION_IN REQUEST_QUERY RESPONSE_URL_OUT SESSION_OUT`.
+
+New mode file inputs are capped at 128 KiB and must be nonempty, regular,
+owned by the effective UID, single-link, exactly mode0600, opened without symlink
+following; embedded NUL or length change refuses. Outputs are capped and created
+exclusively without symlink following, then checked/fixed mode0600. No overwrite
+or empty dump is accepted as a proof of retirement. New modes have a 15-second
+process alarm and 128-KiB file-size limit. Their stdout consists only of fixed
+status/count fields; signed URLs and identity/session dumps go to private files.
+The original `request` mode is unchanged; the new fixture bounds its generated
+inputs and captures through its runner.
+
+The fixture runner clears the child environment, closes stdin, uses the private
+fixture directory and exclusive0600 regular captures, caps read/capture sizes,
+checks a 20-second per-child deadline within a 60-second overall monotonic
+budget, and includes synchronous capture reads before acceptance. It has no IO
+reader threads or shared pipes; the owned-child guard kills/reaps on unexpected
+results. New modes also have their own alarm. No sleep, domain clock override,
+listener or browser is introduced. Panic diagnostics do not print private
+protocol fields/captures; UTF-8 failure handling discards byte details. Private
+files use the existing fixture TempDir cleanup; cleanup remains subject to normal
+process/OS termination limits, not an atomic/crash-safe publication claim.
+
+The new function **requires**, but has not executed, these checkpoints:
+
+1. Actual Lasso SSO acceptance and private identity/session persistence, followed
+   by a fresh helper's observed assertion present, one NameID/index, nonempty.
+2. Local logout refusal of the bound bearer before peer delivery while unrelated
+   identity remains live; identical pending request retry; exact issued NameID,
+   single SessionIndex, Redirect target, RSA-SHA256 and original relay.
+3. A substituted IdP metadata signing certificate refuses with signature error,
+   creates neither response nor state output, and leaves saved accepted inputs
+   unchanged. All older signature/lifetime/Recipient assertions remain intact.
+4. Lasso's real validation removes the assertion/index and empties its session;
+   reloading its own serialized empty object observes absence again. Exact
+   request retry using retired state refuses and creates no new outputs.
+5. Valid peer response passes riAuth's current pinned checks, confirms exactly
+   one participant with no failures/remaining target, and records one confirmation
+   audit. Consumed response retry refuses with unchanged complete snapshot and
+   audit count. Bound identity stays revoked; unrelated identity stays live.
+
+### Static checks actually run; execution still held
+
+- All 14 pre-existing C function bodies, including `request_mode` and
+  `accept_mode`, compare byte-exact to `1e2fa64`; no factoring was used. Removing
+  only the three new dispatch blocks makes `main` byte-identical too. Old output,
+  error strings, signature/lifetime/Recipient checks and dispatch remain intact.
+- The entire original Rust file remains the exact first 19341 bytes, SHA-256
+  `2a45eda55862c33d8784abbf17e8d4b376495f0a0f564b5b8cb3882141aa1aaa`.
+  The suffix contains exactly one `#[test]` and one `#[ignore]`; imports and
+  pre-existing function bodies were untouched.
+- Initial changed-file `rustfmt --check` reported formatting differences in the
+  appended function; formatting was applied, and the final `rustfmt --edition
+  2024 --check --config skip_children=true tests/saml_sp_peer.rs` exited0. This
+  parses/formats Rust, not type-checks or executes it.
+- `git diff --check`, staged whitespace, exact two-file source scope and
+  post-commit `git show --format= --check` passed; branch was clean after the
+  source commit. No compiler, helper execution, Cargo, service or protocol test
+  ran. C syntax/linking, Rust type compatibility, actual library state restoration
+  and every runtime oracle remain pending the released checks.
+
+### Precise future execution proposals — NOT RUN / NOT RELEASED
+
+Root should first confirm the code/installed-library pins above, >=8GiB free,
+the private owned target and fresh output directory absence. The proposed
+`target/i04-lasso-slo-e028106` directory was absent during this source review;
+create it under this existing worktree only after release. No existing helper or
+accepted target is overwritten. One native compiler invocation is proposed:
+
+```sh
+/usr/bin/cc -O2 -o "$PWD/target/i04-lasso-slo-e028106/lasso-saml-sp" \
+  scripts/lasso-saml-sp.c \
+  $(PKG_CONFIG_PATH=/opt/homebrew/Cellar/lasso/2.9.0_4/lib/pkgconfig \
+    pkg-config --cflags --libs lasso gobject-2.0)
+```
+
+The flags resolve the explicitly selected local Lasso package; `pkg-config` is a
+metadata read inside that proposed compile command, not a second compilation.
+One ignored filter, after successful compilation and root's exact release:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  RIAUTH_TEST_LASSO_SP="$PWD/target/i04-lasso-slo-e028106/lasso-saml-sp" \
+  cargo test --locked --test saml_sp_peer \
+  lasso_idp_initiated_redirect_logout_revokes_only_bound_session_and_consumes_response_once \
+  -- --exact --ignored --test-threads=1
+```
+
+No automatic compile/test retry, alternative peer, trust relaxation, pin repair,
+clock change or broad suite is proposed. A09 currently owns the serialized slot;
+root alone assigns the later execution. Record actual rc/elapsed/refusal/cleanup
+and any failure separately after exit. This source phase does not establish
+new Lasso interoperability, browser/remote tenant/profile completion, a release
+artifact, Windows/Linux execution or whole I04 closure. Original primary
+worktree, D04 DONE, O07 mapping blocker and all protected product contracts are
+unchanged. The only documentation edit is this append-only reserved report.
+
+Source-phase documentation check: `python3 scripts/check-docs.py` exited0.
+Append-only original-prefix comparison, report-only diff name list and
+`git diff --check` passed before the separate report commit. Final staged and
+post-commit whitespace/scope checks also passed; no execution directory was
+created.
