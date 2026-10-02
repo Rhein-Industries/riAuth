@@ -412,3 +412,97 @@ integration gate and final disposition. Full crawl/Groups/filter/write support,
 actual external SaaS/LDAP/cloud peers, deployment/controller credentials,
 multi-node operation and release evidence are outside this connection result.
 Historical catalog evidence above remains historical. W02/W05/R05 stay closed.
+
+## Explicitly released focused runtime — 2026-10-02
+
+Root reviewed the complete isolated source/API/helper/docs/test bodies and
+independently reconstructed the protected provisioning/API spans to fixed
+`88790deb`. Root then explicitly released the sole Cargo slot for the one
+previously proposed target. This section records that later execution; it
+preserves all preceding audit and source-only phases, including their then-held
+runtime status. Original I10 disposition remains root-owned.
+
+Actual committed HEAD was `aad044166aafd43efc31750368a2d5992ac1b90c`, whose
+parent is implementation `683e81a5e5423af651570551f90d094b6747cfa9`. Preflight
+confirmed a clean own branch, exact implementation bytes for all five reserved
+files, and no production/manifest/lockfile drift from that source. The existing
+private target occupied 6,156,128 KiB and contained 17 prior riauth integration
+test fingerprints. Free disk was 12,500,574,208 bytes (11.642 GiB), satisfying
+the requested eleven-GiB preflight headroom. No cache or evidence was deleted.
+
+The single actual command was the already reserved command, with `$PWD`
+resolved to this worktree by an argv-based monitor and no shell substitution:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test i10_scim_connection_probe -- --test-threads=1
+```
+
+Environment was native Darwin 25.2.0/arm64, `rustc 1.98.1 (48a229cea 2026-09-01)`
+and `cargo 1.98.1 (797e8a9bc 2026-08-05)`. Cargo compilation exited successfully;
+its test-profile build reported 1m 05s. The only selected integration target
+reported **8 passed, 0 failed, 0 ignored, 0 measured, 0 filtered out**, finishing
+in **5.17s**. The monitored invocation completed with **exit 0** after 74.127s.
+All eight exact function names in the preceding target-definition table were
+observed passing in the actual log. There was no test correction or rerun.
+
+Cargo emitted one native linker warning for its automatically built `riauth`
+binary: the `__eh_frame` section exceeded the compact-unwind encoding limit and
+exception-handling performance might be affected. This was a warning, not a
+compile or test failure; no additional bin/build/test command or production
+correction was invoked for it.
+
+### Private evidence, disk monitor and release
+
+Both evidence files were created exclusively with mode 0600 under the existing
+private target and their hashes/modes were independently checked after exit:
+
+| Evidence | SHA-256 |
+| --- | --- |
+| `.target-wave27/i10-wave30-scim-probe-20261002T131510Z.log` | `1c2c16a2652340685b3ec46abe0febf173f6622f64b4ac32b0a62678179d14eb` |
+| `.target-wave27/i10-wave30-scim-probe-20261002T131510Z.json` | `48a5e2483eeecedbf71298787ba8eab4b46d8910141979183ff13684f048caa5` |
+
+The observation records the exact command argv, committed HEAD/source pin,
+owned Cargo PID 93140, exit/counts/time, tool versions, log hash and 38 disk
+samples. Sampling was every two seconds; the maximum observed interval was
+2.007s. Minimum free disk was 12,297,330,688 bytes (11.453 GiB); completion free
+disk was 12,298,145,792 bytes (11.454 GiB). The nine-GiB stop threshold and
+eight-GiB floor were never approached, so no termination or deletion was
+needed. The exact owned Cargo process was reaped and its process group was
+subsequently confirmed absent. Private peer workers were test-local and used
+their existing fixture close/join/drop cleanup. No separate service was started.
+
+The actual result, hashes, timing, warning, disk and **CARGO SLOT RELEASED**
+were sent immediately to the explicit project orchestrator after completion,
+before this report append. Post-run checks confirmed the clean worktree,
+unchanged reviewed source/test/manifest bytes, eight unique passing names,
+0600 evidence, matching log hash and bounded disk samples. No Cargo slot is
+retained by this lane. This report is the only subsequent tracked change and
+is committed separately from source; all earlier report bytes remain intact.
+For this append, `python3 scripts/check-docs.py`, working/staged whitespace
+checks, report-prefix and unchanged implementation-byte assertions passed.
+
+### Evidence supported and remaining limits
+
+The focused run now supplies actual local evidence for exact scope before
+configuration/private-file/peer access; static and both supported OAuth grants
+with private material replacement; live refusal after in-flight revocation;
+bounded 401/token/transport/redirect/body/page failures; fixed redaction; only
+GET at the SCIM peer; unchanged delivery state with the explicit accepted
+OAuth metadata exceptions; and API header/admission release behavior. The
+snapshot assertions cover genuine pending delivery state, while the static
+API case retains its full durable snapshot after admission release. Missing
+delivery evidence still proves no remote completion.
+
+All upstream interactions used the new target's private loopback spy, including
+its legitimate OAuth token POST. This is no external provider/tenant, Linux,
+PG, deployment, full crawl/Groups/filter/write-profile or released-artifact
+evidence. No other target, broad suite, automatic retry, browser/desktop,
+provider call outside that private peer, new worker/task/worktree, source edit,
+main/accepted edit, push or board/status mutation occurred. The accepted
+authorization, OAuth metadata, admission, writer, review/receipt/removal,
+Optional/Required header and PAM contracts remain unchanged.
+
+The bounded connection-probe slice is ready for root runtime review and
+integration; these eight passes do not automatically close the original
+all-advertised I10 gate. Historical catalog evidence remains credited only at
+its recorded scope. W02/W05/R05 remain closed.
