@@ -299,9 +299,11 @@ def main():
             report["checks"]["storage"][f"{edition}/redb"] = serve(copies[edition]["riauth"], config, base)
             instances[edition] = (config, base)
         # Each valid Platform setting must be rejected by Essentials before a listener starts.
+        # Explicit SAML 30 equals the initialized default; the capability change
+        # below remains a genuine initialized-agreement mismatch.
         report["checks"]["config_rejection"] = {}
         for label, addition, message in (
-            ("saml_rate_limit", "\n[rate_limits]\nsaml = 10\n",
+            ("saml_rate_limit", "\n[rate_limits]\nsaml = 30\n",
              "rate_limits.saml requires the Platform build"),
             ("device_trust_activation", "\n[capabilities]\ndisabled = [\"identity.device_trust\"]\n",
              "Disabled capability identity.device_trust requires the Platform build"),
