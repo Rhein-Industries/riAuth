@@ -776,3 +776,70 @@ report-only staged-scope checks passed. No product command, workflow dispatch,
 remote runner probe, runtime, Cargo, image/service, desktop, main/push/status or
 new worker/task/worktree action was performed. No actual successful artifact,
 resource or cleanup receipt was fabricated by these static checks.
+
+## Append: reviewed manual ARM workflow materialized, runtime held
+
+Root's `wave30_A09_manual_arm_workflow_implementation` reservation authorized
+only the new workflow and this report append in existing WT f2e8500e. The actual
+[manual ARM64 workflow](../../.github/workflows/check-local-artifacts.yml) is now
+materialized byte-for-byte from the fully reviewed YAML fence above:
+
+| Actual source pin | Value |
+| --- | --- |
+| Source-only commit | `5962a63e363028f1994fb4f94a2608ea2dad55f8` |
+| Parent | `f886ae9e074b94883bc05619748025ce3e84b221` |
+| Sole source path | `.github/workflows/check-local-artifacts.yml` (new file) |
+| Git blob | `f3003eb4558f9f43ccc21be95283efb91fc70e91` |
+| File bytes/lines | 18,130 bytes / 325 lines, including terminal newline |
+| File SHA-256 | `883e428ce876154850889949d21760576229f82800f89d6acde28e2671ef34aa` |
+
+The source commit has exactly one added file. No existing workflow, helper,
+product, configuration, guide, notice, dependency lock or edition/security
+algorithm changed. No alignment/merge/reset was performed. This worker source
+commit identifies the new-file delta; it is not root's current published-main
+pin or a product artifact built from that pin. Root alone integrates and chooses
+the later reviewed full product `source_sha` for any dispatch.
+
+The original **entire f886 report**, 778 lines / 50,992 bytes, remains the exact
+prefix of this append, SHA-256
+`30bd8dc9a8b3f99dcd88edeed0d03b31b02da5f733c46419a015f2b641396eb5`.
+That also preserves the earlier d4b6967 316-line / 23,842-byte acceptance,
+historical evidence and original resource blocker without rewriting any prior
+observation that the then-proposed workflow was absent.
+
+Actual local validation performed on the materialized source:
+
+| Check | Actual outcome |
+| --- | --- |
+| Extraction and exact byte/SHA comparison against immutable f886 reviewed fence | Passed: 18,130 bytes, same approved SHA above; no reformatting |
+| Installed Ruby Psych `YAML.safe_load` | Exit 0; parsed the actual workflow text |
+| `bash -n` on each of the four workflow `run` blocks | Four syntax passes; none of the blocks executed |
+| Python AST parse of the actual inline driver | Passed; no inline driver phase executed |
+| Static trigger/job/source/permissions/concurrency checks | Sole required full `source_sha` input without default, `workflow_dispatch` only, one native ARM job, `contents: read`, fixed concurrency without automatic cancellation, 150-minute job bound retained |
+| Action/guard/private-build/provenance/upload assertions | Pinned actions match fixed release source; 30 GiB phase starts, 10 GiB stop margin over 8 GiB floor, jobs=1/incremental=0/debug=0, private targets/Cargo home, owned process groups, real workflow/run identities and `always()` upload retained exactly |
+| `python3 scripts/check-docs.py` before and after source materialization | Exit 0 twice; Markdown links and build-directory layout checked, with no layout error or checker change |
+| `git diff --no-index --check /dev/null .github/workflows/check-local-artifacts.yml` and staged whitespace/scope | Exit 0; only the new workflow staged in the source commit |
+| `python3 scripts/check-repo-hygiene.py` on the staged source | Exit 0; 963 tracked files checked, no private material printed |
+| Source-commit path/blob/content and report-prefix verification | Passed; source only, report unchanged at the source commit, clean worktree immediately after it |
+
+The contributor guidance was reread. Root's explicit no-Cargo/no-runtime
+reservation governs this bounded source materialization; broader contributor
+build/test commands were not invoked. The first claim and immutable source
+handoff were delivered through the explicit project orchestrator, both exit 0.
+Report-final docs/whitespace/scope/prefix checks and the separate evidence commit
+follow this append; their immutable hash is provided in the final orchestrator
+receipt rather than embedded as a self-referential commit hash here.
+
+**Dispatch, download, tool setup, build, remote runner provisioning/probing and
+all runtime remain held** until root reviews the actual immutable source,
+integrates it and explicitly owns dispatch. No GitHub workflow/run/artifact ID,
+capacity sample, binary/archive hash, successful smoke or cleanup receipt was
+produced by this local work. Existing action pins and Git SHA hashes are source
+evidence only. The advertised runner storage constraint remains unresolved:
+the job must measure and refuse below its unchanged threshold; no label-only
+success, threshold reduction, larger-runner substitution or cache deletion is
+authorized. Current Linux x86-64/containers, TLS/passkeys and the original shared
+identity/authorization/configuration full gate remain open; the format-2
+encrypted helper and separate later local-driver plan remain untouched. No new
+worker/task/worktree, Cargo, Docker/service, desktop, status, main or push action
+occurred. RiWork Cua.ai Driver preference persists.
