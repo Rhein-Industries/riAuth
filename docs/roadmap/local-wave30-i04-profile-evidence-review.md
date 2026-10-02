@@ -1398,3 +1398,139 @@ the original19341-byte Rust prefix. The complete previous
 `3282285` report remains the exact89459-byte prefix, SHA-256
 `289fe9c4a8bedc9074fe6a77532c7af339fe121d04e10092b4940f12350d1d39`.
 No product/source file was modified after the released invocation.
+
+
+## Source-only selected Lasso2.9 invalid-signature oracle correction
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original I04
+`dae9c528-9e32-462c-947f-661a571f136b`, same supporting worktree. Root reserved
+`wave30_I04_selected_invalid_signature_oracle` **source only**, following its
+primary-source verification that selected Lasso2.9 defines invalid signature
+as102 and propagates the Redirect signature result under FORCE. I independently
+reread that complete return chain and the unchanged C before editing; no contrary
+behavior was found. Cargo/native/helper/CC/version/protocol execution remains
+**HELD while I02 owns the slot**. No runtime was invoked during this reservation.
+
+**Source commit `61cfd347a6b6c81a29ee796bb26597e2fa31e542` changes only one
+refusal assertion in the appended ignored function.** Parent is the actual
+failed-run report `56c75be46a33c0485243dddaf5e64b40b740f2b7`; no merge/reset or
+production/helper change. This is a selected-library fixture oracle correction,
+not a trust-policy or signature-verification change.
+
+### Independently read primary identity and return chain
+
+The already present archive `/tmp/riauth-i04-saml-sp/lasso-2.9.0.tar.gz`
+was hash-verified again as
+`63816c8219df48cdefeccb1acb35e04014ca6395b5263c70aacd5470ea95c351`.
+Members were read directly in memory without extracting/writing new files;
+`.tarball-version` is2.9.0. Archive `lasso/errors.h` is byte-identical to the
+selected installed `/opt/homebrew/Cellar/lasso/2.9.0_4/include/lasso/errors.h`.
+
+| Exact primary file independently read | SHA-256 / relevant lines |
+| --- | --- |
+| Archive and installed `lasso/errors.h`,21986 bytes | `00d4659947b59cecaff5c63911811eb1b65440567a9ab974c2d25ff7bdfc6784`; line135 defines `LASSO_DS_ERROR_INVALID_SIGNATURE 102` |
+| Archive `lasso/id-ff/logout.c`,48133 bytes | `3cac65348b3c567e0eeea6de0012e40e35218d02a1c8d1b5ab5de2c664c65869`; lines656–670 dispatch SAML2 `lasso_logout_process_request_msg` to its SAML2 implementation |
+| Archive `lasso/saml-2.0/profile.c`,55198 bytes | `ede0876d5579253d94de6dc5197ea312b23a026d7377159822e56cf38da0e494`; lines655–719 process request,1695–1712 check signature status |
+| Archive `lasso/id-ff/provider.c` | `ae017f2fb94ec3bfca46b2397b6be254f2ff4b731889c53ddbc70103b0670ddc`; lines1612–1647 check query with selected provider signing keys and return signature result |
+| Archive `lasso/saml-2.0/logout.c`,13769 bytes | `7f0a7d07c369563a5722d0672c27a64d17b9032ffd6678a3769cd1bc515c64a7`; lines111–136 process request and propagate signature check |
+| Archive `lasso/utils.h` | `6d585045a04db39f38d14ac4d329471d347c814037a223c5d22db29bfe518538`; lines602–608 and634–638 propagate nonzero return code through cleanup |
+| Archive `lasso/xml/private.h` | `70a20e1360ec384c3ed96a758e0bc142d1c999340d9415e7644dbbf7e6e9ab80`; lines287–289 define SAML2 protocol dispatch condition |
+
+The selected chain is:
+
+1. The public logout processor dispatches the SAML2 profile to
+   `lasso_saml20_logout_process_request_msg`.
+2. `lasso_saml20_profile_process_any_request` resets signature status, recognizes
+   query/Redirect binding, resolves the request issuer's configured provider and
+   sets `profile->signature_status` to
+   `lasso_provider_verify_query_signature(remote_provider, request_msg)`.
+   The provider function chooses the SAML2 query verifier and returns its signing
+   key verification result.
+3. The SAML2 logout processor propagates parse/decryption errors, then calls
+   `lasso_saml20_profile_check_signature_status`. That checker returns nonzero
+   `profile->signature_status` for both MAYBE and FORCE; IGNORE is a separate
+   branch that the unchanged helper does not select. `lasso_check_good_rc`
+   propagates that exact nonzero integer to the processor return value.
+4. The unchanged C `slo_restore` sets
+   `LASSO_PROFILE_SIGNATURE_VERIFY_HINT_FORCE`. Its receiver calls
+   `check("lasso_logout_process_request_msg", ...)` before its explicit signature
+   status, signed-request/session binding, validation/removal and response steps.
+   `check` accepts only0; otherwise `fail` prints the fixed stage framing with
+   the exact integer result and exits1. The selected header identifies102 as
+   invalid signature, so the newly captured exit1/stage/code102 is the selected
+   invalid-signature refusal, not an arbitrary nonzero process failure.
+
+This primary-source interpretation concerns the **new `3282285` invocation's
+observed projection only**. The first `f481938` failure's native exit/signal/
+stage/code remain historically unknown; neither its missing conjunction evidence
+nor a receiver success is reconstructed from the later run.
+
+### Exact assertion, strict scope and reversal proof
+
+Before:
+
+```rust
+status.code() == Some(1) && stderr.contains("(-111)")
+```
+
+After:
+
+```rust
+status.code() == Some(1)
+    && refusal_projection(&stderr) == Some(("lasso_logout_process_request_msg", 102))
+```
+
+The existing tuple-bound variable is `stderr`; no new `refused` record, operation,
+input or helper was introduced. The exit1 conjunct remains mandatory. The
+projector must return **exactly one recognized request-processing stage with
+exactly102**. A different stage/code, arbitrary nonzero status, absent/ambiguous/
+malformed projection or unexpected exit cannot satisfy this assertion. The
+numeric exit/signal/stage diagnostic remains byte-identical. No signature hint,
+trusted metadata, signing key, input, positive outcome or lifetime changed.
+
+Whole-file reversal replaces only this new two-line expression with the former
+one-line expression, reconstructing **all39476 bytes** of immutable
+`bf7c394150141f8dda6b41c6c0644dd6a9a7d870:tests/saml_sp_peer.rs`, SHA
+`862564f9154cd1de98378bc853e47948a731b994d22a1cf8d5be94083a1f52da`.
+The original19341-byte Rust prefix stays exact, SHA
+`2a45eda55862c33d8784abbf17e8d4b376495f0a0f564b5b8cb3882141aa1aaa`.
+Therefore the projector/import/format and every negative no-output/unchanged
+identity+session input check, positive retirement/reload/response binding,
+one-confirmation/audit and consumed-response/snapshot replay assertion are
+unchanged. They have not newly run or passed.
+
+| Protected/source identity | Pin |
+| --- | --- |
+| New test source blob / bytes / SHA-256 | `f0f1a3b926ade9f9c6c99194d360aaad82745286` /39541 /`897e778c2c53d6bc5ea943aefde46812a80cb73bafad82d1702a7529779ea20f` |
+| Unchanged C source `e028106` / SHA-256 | `c3d3a8f7d1d2d472e8b877a89ea2807d534921d88638661e8b251e2365906563` |
+| Unchanged compiled helper,39472 bytes / SHA-256 | `18f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c` |
+| Unchanged selected Lasso dylib / SHA-256 | `0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde` |
+| Unchanged production/manifests/toolchain/build config | Exact reviewed `ae8937800254a1ad4296ea257de1eccc4780e45b` |
+
+### Actual static checks and remaining held scope
+
+`rustfmt --edition 2024 --check --config skip_children=true tests/saml_sp_peer.rs`
+exited0 (syntax/format parsing only). `git diff --check` and staged whitespace
+checks passed. Static whole-file reversal/old-prefix/protected-production/C/
+helper/dylib/source-scope assertions passed. Source commit contains only
+`tests/saml_sp_peer.rs`,2 added/1 removed lines; branch was clean after it.
+`python3 scripts/check-docs.py` exited0 (Markdown links/build-directory layout);
+append-only report/scope/evidence integrity checks passed. No Rust type checking,
+parser test, Cargo, native compiler/helper/library/version/protocol run or
+additional evidence file was created in this source-only phase.
+
+The prior report's2.66-second compile and exit1/stage/code102 observation apply
+to diagnostic source `bf7c394`, **not to a run of corrected source `61cfd34`**.
+The current test-cache executable remains the previously failed diagnostic
+artifact SHA
+`be135f3145e73cd7272c88123873e1a716b53467c3489c35def7dfee2a7797a7`.
+Both original failed-run private logs/metadata and all prior report prefixes
+remain intact. No later runtime command was invoked or automatically scheduled;
+root must reserve any one subsequent exact filter after immutable source review.
+Positive receiver removal/reload/confirmation/no-duplicate/replay proof remains
+pending, and original I04 role/profile/real-peer gate is not declared complete.
+
+The complete prior `56c75be` report remains the exact100910-byte prefix, SHA
+`1017fac5549a42216a031f0840a2acc5f0703c1d4eb8c170d81cc74060092d33`.
+Original primary ownership, root status/integration/publication, completed rows,
+O07 blocker and all protected contracts remain unchanged.
