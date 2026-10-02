@@ -107,9 +107,12 @@ until `now + 86400` seconds. A second request with the same key and a
 different fingerprint conflicts.
 
 `report_error` maps HTTP 400 and 422 to exit 2, 401 to exit 3, 403 to exit
-4, and 409, 412, and 428 to exit 5. Other HTTP statuses, including 404, use
-exit 1. A local `bail!` before the request has no HTTP status and uses exit
-1. This page did not execute those commands.
+4, and 409, 412, and 428 to exit 5. HTTP 429, 502, 503 and 504 map to exit 6,
+marked retryable in the JSON error envelope. Other HTTP statuses, including
+404, use exit 1. A local `bail!` before the request has no HTTP status and
+uses exit 1. A retryable transport/service result does not prove that a mutation
+was uncommitted: inspect durable state and retain the original receipt key.
+This page did not execute those commands.
 
 The session file holds `issuer`, `token`, and `expires_at`. Leave that file
 and every new credential file out of tickets and shell history. The commands
