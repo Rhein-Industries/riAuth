@@ -399,11 +399,81 @@ pub(crate) fn configured_source_first_passkey_enrollment(definition: &Definition
     supported_configured_passkey_change(definition, Proof::Source).then(|| source.clone())
 }
 
+/// Only this ordered source/current-TOTP chain has a configured bearer adapter.
+/// It cannot substitute upstream assurance or a recovery code for local TOTP.
+pub(crate) fn configured_source_totp_authentication(definition: &Definition) -> Option<Id> {
+    let [source, totp] = definition.steps.as_slice() else {
+        return None;
+    };
+    let Action::VerifySource { source: named } = &source.action else {
+        return None;
+    };
+    let id = |value: &str| Id(value.to_owned());
+    let routes = |verified, failed| {
+        vec![
+            Transition {
+                on: Label::fixed("verified"),
+                when: None,
+                to: verified,
+            },
+            Transition {
+                on: Label::fixed("failed"),
+                when: None,
+                to: failed,
+            },
+        ]
+    };
+    (definition.origin == Origin::Configured
+        && definition.category == Category::Authentication
+        && definition.revision > 0
+        && !definition.id.as_str().starts_with(BUILTIN_PREFIX)
+        && !matches!(
+            definition.id.as_str(),
+            "platform-source-reauthentication"
+                | "platform-source-totp-reauthentication"
+                | "platform-password-totp-reauthentication"
+                | "platform-invitation-password-enrollment"
+        )
+        && definition.entry == id("source")
+        && definition.limits.max_duration_seconds == 600
+        && definition.limits.max_executions == 4
+        && source.id == id("source")
+        && source.max_attempts == 1
+        && source.timeout_seconds == 600
+        && source.cancellable
+        && source.transitions == routes(id("totp"), id("denied"))
+        && totp.id == id("totp")
+        && matches!(totp.action, Action::VerifyTotp {})
+        && totp.max_attempts == 3
+        && totp.timeout_seconds == 120
+        && totp.cancellable
+        && totp.transitions == routes(id("success"), id("denied"))
+        && definition.terminals
+            == [
+                Terminal {
+                    id: id("success"),
+                    outcome: Outcome::Authenticated,
+                    requires: vec![vec![Proof::Source, Proof::Totp]],
+                    max_proof_age_seconds: Some(120),
+                },
+                Terminal {
+                    id: id("denied"),
+                    outcome: Outcome::Denied,
+                    requires: vec![],
+                    max_proof_age_seconds: None,
+                },
+            ])
+    .then(|| named.clone())
+}
+
 /// Static validation may recognize the source named by this one canonical
 /// shape. Runtime admission must resolve the source from the live registry.
 pub(crate) fn configured_environment(definition: &Definition) -> Environment {
     let mut environment = Environment::platform();
     if let Some(source) = configured_source_first_passkey_enrollment(definition) {
+        environment.sources.insert(source);
+    }
+    if let Some(source) = configured_source_totp_authentication(definition) {
         environment.sources.insert(source);
     }
     environment

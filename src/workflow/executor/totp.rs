@@ -410,6 +410,12 @@ fn primary(
     }
     let proof = match (checked.definition().id.as_str(), request.source.is_some()) {
         (source::TOTP_WORKFLOW, true) => Proof::Source,
+        (_, true)
+            if configured_source_totp_authentication(checked.definition()).is_some()
+                && source_totp_session_agrees(run, user, request) =>
+        {
+            Proof::Source
+        }
         (password::TOTP_WORKFLOW, false) => Proof::Password,
         (_, false)
             if configured_password_path(checked.definition())
@@ -514,6 +520,9 @@ impl Core {
                 let mut run = load_runtime(tx, id)?;
                 let checked = run.validated()?;
                 if commit_conditional_seal(self, tx, &mut run)?.is_some() {
+                    return Ok(None);
+                }
+                if commit_source_totp_seal(self, tx, &mut run)?.is_some() {
                     return Ok(None);
                 }
                 owned(self, tx, token, &run.record)?;
@@ -657,6 +666,9 @@ impl Core {
             let mut run = load_runtime(tx, id)?;
             let checked = run.validated()?;
             if let Some(error) = commit_conditional_seal(self, tx, &mut run)? {
+                return Ok(Err(error));
+            }
+            if let Some(error) = commit_source_totp_seal(self, tx, &mut run)? {
                 return Ok(Err(error));
             }
             owned(self, tx, token, &run.record)?;

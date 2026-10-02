@@ -543,3 +543,176 @@ changed. Official release/deployment/peer evidence and earlier W07 Linux runtime
 evidence remain separate pending work. Root owns integration, board status and
 push; no task was marked done and no new task, worktree, worker or managed shell,
 main edit, push, external message, cloud mutation or model change was performed.
+
+## Approved W02 slice: configured source and current TOTP reauthentication
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; W02 task
+`548d114f-9d0a-474a-a4c8-fa03af3ec3b1`; existing worktree
+`a1303b57-4a34-487e-9c63-a841f05b51a0`. W02 remains **in_progress**;
+W05 `ceaddee1-2c9a-48d2-9ff4-d1f71396e954` remains reviewed **done**.
+
+Fixed reviewed base: `44c0909c3e8f187085d45ae7eb40e7a1695cdb14`.
+Alignment merge `64b5fc0815673825cf17361657caca25f562db33` preserved own
+history without reset or conflict; its tree equals the fixed published base.
+Implementation: `f7a4d1e7c62fc4f5a31bc65712715b3bc9204077`.
+This appended evidence is committed separately from implementation.
+
+### Exact behavior and changed files
+
+The slice connects one configured counterpart of the already implemented
+server-owned revision-1 source/current-TOTP chain. The caller supplies a live
+bearer and a named configured ID; the active definition, positive revision and
+canonical content remain pinned. Reserved server IDs and the Essentials prefix
+are refused by the new recognizer. Admission is exactly:
+
+| Element | Required content |
+| --- | --- |
+| Definition | `riauth.workflow/v1`, configured origin, authentication category, entry `source`; 600-second run and four executions. |
+| First ordered step | `source`, `VerifySource` naming one source, one attempt, 600 seconds, cancellable; ordered unconditional verified→`totp`, failed→`denied`. |
+| Second ordered step | `totp`, `VerifyTotp`, three attempts, 120 seconds, cancellable; ordered unconditional verified→`success`, failed→`denied`. |
+| Ordered terminals | `success`: Authenticated, exactly `[[Source, Totp]]`, maximum proof age 120 seconds; `denied`: Denied, empty requirements, no age. |
+
+Conditions, changed order, extra steps/edges, recovery, enrollment, credential
+mutation and protocol requests are outside this adapter. Both proofs are required
+even when the trusted upstream receipt already asserts MFA.
+
+| Changed file | Focused change |
+| --- | --- |
+| `src/workflow.rs` | `configured_source_totp_authentication` strict recognizer; register only its single source in `configured_environment`. |
+| `src/config.rs` | Two-line addition to the existing executable-adapter admission predicate. Accepted issuer/rate configuration is preserved. |
+| `src/workflow/executor.rs` | Stored-run recognition; exact source/factor/request checks; scoped durable retirement helper using existing version/authority machinery. |
+| `src/workflow/executor/source.rs` | New configured Core factory; source-completion arm and writer guard. Client verification failures retire only the new path via a committed nested outcome. |
+| `src/workflow/executor/totp.rs` | Exact Source-primary selection; current binding guards in challenge and submission writers. Existing fresh primary receipt and opaque handle checks remain. |
+| `src/workflow/approval.rs` | Isolated import and new `source-totp` adapter-label arm; import formatting only otherwise. |
+| `tests/workflow_configured_source_totp.rs` | Six focused security regressions with a signed loopback OIDC peer, real local TOTP, restart and synthetic drift/deadline fixtures. |
+
+Factory interface, sent to root before the implementation and again with its
+reviewable commit:
+
+```rust
+Core::workflow_configured_source_totp_start(
+    &self, token: &str, workflow: &str,
+) -> Result<workflow::executor::SourceStart>
+// Existing SourceStart: pub workflow: View, pub authorization_url: String.
+```
+
+Continue through existing `workflow_source_finish(token, run_id)`,
+`workflow_totp_challenge(token, run_id)` and
+`workflow_totp(token, run_id, challenge, code)`. The generic configured start
+continues returning `View` and refusing this source path; the dedicated factory
+returns the upstream URL. No API/client/browser adapter was changed or delivered.
+Root coordinates the thin API adapter after review of this Core service.
+
+### Authority and preserved seams
+
+Start requires a currently enrolled local TOTP and no pending enrollment, pins
+`requires_mfa=true`, obtains an enabled OIDC/SAML source registration, adopts the
+existing reviewed pin, and reserves the login in one writer. Run/account epoch,
+bearer session, request, definition/revision/fingerprint, source registration,
+step, attempt and reservation use the existing binding. Ordinary source poll
+capability is removed by the unchanged upstream adapter. No session, grant or
+credential is issued by this Core path.
+
+Source completion and both factor writers repeat the current authority and exact
+path checks. The scoped guard commits retirement on observed account/factor,
+session or request drift; existing reviewed policy/history failures take
+precedence. Source/link/environment failures use existing reviewed checks. A
+non-server failure while consuming the new path's upstream reservation commits
+denial and retires that login. The fresh signed authentication time, nonce,
+expiry, source fingerprint and existing subject/account link checks remain in
+the unchanged upstream consumer. Local TOTP still uses the current enrolled
+secret, account-wide replay counter, lockout and audit. Normal credential
+replacement remains bound through the existing account epoch.
+
+The guard defers an elapsed run deadline to the unchanged expiry machinery.
+No proactive factor-change scan or generic resume/cancel change was added;
+new drift retirement occurs when these verifier writers observe it, in addition
+to accepted policy/user-disable retirement mechanisms.
+
+A03's accepted context is preserved: `assembly/source_runtime.rs` compiles the
+unchanged `source/workflow.rs` child with its existing relative path and private
+parent helpers; `assembly.rs` reexports `source_workflow_adapter`, and
+`source.rs` retains the executor compatibility alias. No source/assembly/cfg
+caller path was edited. No isolation/native guest/process-binding or SAML
+assembly file was edited.
+
+Static byte comparisons against the fixed base passed for generic
+`finish_step`/mutation completion, `fail_attempt`/`close`/cleanup/`settle_time`,
+public resume/cancel, extension currency/process-start code, source canonical
+factories/binding/discard, configured-source-first-passkey and existing
+server-owned start functions, and `recovery_fallback_allowed`. The shared
+`Activation`/`activate_or_replay_in`/Core wrapper and raw crate-visible
+`review_in`/`activate_in`/`revoke_in` spans are byte-equivalent. Legacy replay pin
+repair, retained history floors and all-party authority fences are preserved;
+this slice does not review M03 retry parity or modify those functions.
+
+### Checks actually run and corrections
+
+All Cargo commands used this existing worktree's private target:
+
+```sh
+CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+```
+
+| Command/check | Observed result |
+| --- | --- |
+| `cargo test --locked --test workflow_configured_source_totp -- --test-threads=1` | Initial **5 passed, 1 failed**. The policy fixture reused a bearer after disable/re-enable. |
+| Same target, exact filter `review_source_link_environment_and_history_fences_keep_precedence` | Diagnostic repeat **0 passed, 1 failed, 5 filtered**; isolated invalid owner bearer after drift case 4. |
+| Full new target after fixture correction | **6 passed**, no ignored/filtered. |
+| Full new target after adding the complete bearer-session-row preservation assertion | Final **6 passed**, no ignored/filtered. |
+| `cargo test --locked --test source_stage workflow_totp_consumes_bound_factor_and_source_proofs_atomically -- --exact --test-threads=1` | **1 passed, 22 filtered**. |
+| `cargo test --locked --test workflow_configured_source_first_passkey linked_source_proof_enrolls_first_passkey_once_after_restart -- --exact --test-threads=1` | **1 passed**, no ignored/filtered. |
+| Scoped `rustfmt`, `cargo fmt --all -- --check`, `git diff --check` and cached diff check | Passed. |
+| Static protected-span comparisons and changed-file reservation check | Passed against fixed published main. |
+| `python3 scripts/check-docs.py` | Passed: Markdown links and build-directory layout checked. |
+
+The two failures were test-fixture expectations, not compile failures or a
+production defect. Shared storage deliberately advances the epoch and revokes
+sessions when disabling and re-enabling an account. The fixture now asserts
+the old bearer remains unusable and obtains a fresh login for the subsequent
+history case; production behavior was preserved. Eight distinct test functions
+finally passed; repeated runs do not increase that count. The existing macOS
+linker compact-unwind warning printed; binaries and tests finished successfully.
+Free disk readings were 31 GiB before alignment and 27 GiB during/following
+focused builds, above the 8 GiB stop floor. No accepted target was used.
+
+New tests cover strict admission and revision-2 static recognition; signed
+callback and current factor, restart/resume, owner versus second/foreign session,
+no challenge before source proof, upstream MFA unable to skip TOTP, recovery and
+foreign handle refusal, one-use proofs/handle/callback, unchanged bearer rows,
+account epoch/secret preservation and absence of session/grant/mutation issuance.
+They cover an unlinked signed subject, failed upstream response, factor presence
+and pending/epoch drift at all three writer sites, public factor removal,
+request MFA/browser/session/registration drift, session revocation, restoration
+refusal, real three-party activation of the new label, source disable, link
+remapping, issuer/policy disable, user disable/re-enable and a synthetic retained
+higher pin winning over simultaneous factor drift. Factor retries and shared
+lockout/audit, timeout, global expiry, cancellation and stale source receipt
+refusal use the existing transition machinery.
+
+### Remaining gates and recommendation
+
+Recommend root review/integration of this one Core service slice and separate
+report. It extends the original bounded execution acceptance only to the exact
+configured upstream chain above. W02 remains **in_progress**, W05 stays **done**;
+no board status was changed.
+
+Actual new execution evidence is local plaintext redb on macOS with a signed
+loopback OIDC peer and local TOTP. There is no new live OIDC/SAML tenant, SAML
+configured-chain runtime, PostgreSQL, Linux, official release/deployment,
+multi-node, hardware or real restore evidence. Synthetic drift/deadline/higher
+floor fixtures are not a physical restore drill. No concurrent mutation was
+forced specifically inside the upstream callback's network interval; existing
+callback claim/record behavior and private source child remain unchanged.
+
+The API adapter and its transport tests are a separate root-coordinated
+dependency; the public Core method does not establish delivered API or browser
+support. No-session initial VerifySource authentication still needs a distinct
+account-resolution/session-issuance seam: current workflow binding and upstream
+consume require an existing account/session and explicit existing link.
+Source-to-TOTP enrollment/replacement, general conditional/verifier chains and
+arbitrary graphs remain unsupported. Broader W02 and earlier external acceptance
+gates remain open. No new task/worktree/worker/managed shell, main edit, push,
+external message, real cloud mutation, desktop interaction or model change was
+performed. Root owns integration, API coordination, board reconciliation and push.
