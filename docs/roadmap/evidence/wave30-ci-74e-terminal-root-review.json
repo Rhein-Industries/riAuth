@@ -1,0 +1,426 @@
+{
+  "schema": "riauth.wave30-ci-terminal-root/v1",
+  "run": {
+    "conclusion": "success",
+    "databaseId": 37067070690,
+    "headSha": "74e106b819e7186d0ac41964cedbe8217fa7e881",
+    "jobs": [
+      {
+        "completedAt": "2026-10-02T21:41:38Z",
+        "conclusion": "success",
+        "databaseId": 111040417731,
+        "name": "audit",
+        "startedAt": "2026-10-02T21:37:58Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-02T21:37:59Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-02T21:37:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:02Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-10-02T21:37:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:12Z",
+            "conclusion": "success",
+            "name": "Run dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de",
+            "number": 3,
+            "startedAt": "2026-10-02T21:38:02Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:39:03Z",
+            "conclusion": "success",
+            "name": "Install audit build dependencies",
+            "number": 4,
+            "startedAt": "2026-10-02T21:38:12Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:41:35Z",
+            "conclusion": "success",
+            "name": "Audit dependency advisories",
+            "number": 5,
+            "startedAt": "2026-10-02T21:39:03Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:41:35Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 10,
+            "startedAt": "2026-10-02T21:41:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:41:35Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-10-02T21:41:35Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37067070690/job/111040417731"
+      },
+      {
+        "completedAt": "2026-10-02T22:40:50Z",
+        "conclusion": "success",
+        "databaseId": 111040417878,
+        "name": "check",
+        "startedAt": "2026-10-02T21:37:59Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-02T21:38:01Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-02T21:38:00Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:04Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-10-02T21:38:01Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:04Z",
+            "conclusion": "success",
+            "name": "Check repository hygiene",
+            "number": 3,
+            "startedAt": "2026-10-02T21:38:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:14Z",
+            "conclusion": "success",
+            "name": "Run dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de",
+            "number": 4,
+            "startedAt": "2026-10-02T21:38:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:35Z",
+            "conclusion": "success",
+            "name": "Install native build dependencies",
+            "number": 5,
+            "startedAt": "2026-10-02T21:38:14Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:41Z",
+            "conclusion": "success",
+            "name": "Run cargo fmt --all -- --check",
+            "number": 6,
+            "startedAt": "2026-10-02T21:38:35Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:41:11Z",
+            "conclusion": "success",
+            "name": "Run cargo clippy --all-targets --features test-support,fuzzing --locked -- -D warnings",
+            "number": 7,
+            "startedAt": "2026-10-02T21:38:41Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:21:20Z",
+            "conclusion": "success",
+            "name": "Run cargo test --all-targets --features test-support,fuzzing --locked",
+            "number": 8,
+            "startedAt": "2026-10-02T21:41:11Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:23:43Z",
+            "conclusion": "success",
+            "name": "Check server USB boundary",
+            "number": 9,
+            "startedAt": "2026-10-02T22:21:20Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:26:40Z",
+            "conclusion": "success",
+            "name": "Check standalone riauthctl and its dependency closure",
+            "number": 10,
+            "startedAt": "2026-10-02T22:23:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:29:31Z",
+            "conclusion": "success",
+            "name": "Check standalone client against the real server binaries",
+            "number": 11,
+            "startedAt": "2026-10-02T22:26:40Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:29:37Z",
+            "conclusion": "success",
+            "name": "Check documentation, notices, and delivery scripts",
+            "number": 12,
+            "startedAt": "2026-10-02T22:29:31Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:40:47Z",
+            "conclusion": "success",
+            "name": "Run cargo build --release --locked",
+            "number": 13,
+            "startedAt": "2026-10-02T22:29:37Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:40:47Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 26,
+            "startedAt": "2026-10-02T22:40:47Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:40:47Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 27,
+            "startedAt": "2026-10-02T22:40:47Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37067070690/job/111040417878"
+      },
+      {
+        "completedAt": "2026-10-02T21:59:04Z",
+        "conclusion": "success",
+        "databaseId": 111040417946,
+        "name": "integration",
+        "startedAt": "2026-10-02T21:37:58Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-02T21:38:00Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-02T21:37:59Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:02Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-10-02T21:38:00Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:11Z",
+            "conclusion": "success",
+            "name": "Run dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de",
+            "number": 3,
+            "startedAt": "2026-10-02T21:38:02Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:33Z",
+            "conclusion": "success",
+            "name": "Install integration dependencies",
+            "number": 4,
+            "startedAt": "2026-10-02T21:38:11Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:38:33Z",
+            "conclusion": "success",
+            "name": "Prepare Chrome for browser tests",
+            "number": 5,
+            "startedAt": "2026-10-02T21:38:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:42:04Z",
+            "conclusion": "success",
+            "name": "Independent SAML XML signature and encryption",
+            "number": 6,
+            "startedAt": "2026-10-02T21:38:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:42:11Z",
+            "conclusion": "success",
+            "name": "Independent upstream SAML signatures",
+            "number": 7,
+            "startedAt": "2026-10-02T21:42:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:42:19Z",
+            "conclusion": "success",
+            "name": "Independent SAML logout",
+            "number": 8,
+            "startedAt": "2026-10-02T21:42:11Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:42:46Z",
+            "conclusion": "success",
+            "name": "PostgreSQL replication and service failover",
+            "number": 9,
+            "startedAt": "2026-10-02T21:42:19Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:47:48Z",
+            "conclusion": "success",
+            "name": "Shared contracts on isolated PostgreSQL databases",
+            "number": 10,
+            "startedAt": "2026-10-02T21:42:46Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:51:14Z",
+            "conclusion": "success",
+            "name": "Secure first administrator setup in real browsers",
+            "number": 11,
+            "startedAt": "2026-10-02T21:47:48Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:57:41Z",
+            "conclusion": "success",
+            "name": "Headless portal authenticator journeys",
+            "number": 12,
+            "startedAt": "2026-10-02T21:51:14Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:57:58Z",
+            "conclusion": "success",
+            "name": "PostgreSQL Q05 replay and lease schedules",
+            "number": 13,
+            "startedAt": "2026-10-02T21:57:41Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:58:09Z",
+            "conclusion": "success",
+            "name": "OpenLDAP synchronization and authentication",
+            "number": 14,
+            "startedAt": "2026-10-02T21:57:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:58:22Z",
+            "conclusion": "success",
+            "name": "Real browser and relying party",
+            "number": 15,
+            "startedAt": "2026-10-02T21:58:09Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:58:34Z",
+            "conclusion": "success",
+            "name": "Application portal browser checks",
+            "number": 16,
+            "startedAt": "2026-10-02T21:58:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:58:55Z",
+            "conclusion": "success",
+            "name": "nginx forward authentication and browser SSO",
+            "number": 17,
+            "startedAt": "2026-10-02T21:58:34Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:59:02Z",
+            "conclusion": "success",
+            "name": "Traefik forward authentication",
+            "number": 18,
+            "startedAt": "2026-10-02T21:58:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:59:03Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 36,
+            "startedAt": "2026-10-02T21:59:02Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T21:59:03Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 37,
+            "startedAt": "2026-10-02T21:59:03Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37067070690/job/111040417946"
+      }
+    ],
+    "status": "completed"
+  },
+  "raw_check": {
+    "bytes": 873544,
+    "sha256": "55879429bc2649c5918675caa2927a81b42932ce653344b6344cc82d98ab808c",
+    "private_mode": "0600",
+    "checkout": "74e106b819e7186d0ac41964cedbe8217fa7e881",
+    "checkout_lines": [
+      110,
+      122
+    ]
+  },
+  "successful_rust_test_summaries": 203,
+  "failed_rust_test_summaries": 0,
+  "selected_named_passes": [
+    {
+      "name": "cli_certificate_bind_and_revoke_require_retry_binding",
+      "line": 1964,
+      "log": "2026-10-02T21:51:39.6041589Z test cli_certificate_bind_and_revoke_require_retry_binding ... ok"
+    },
+    {
+      "name": "overload_and_deadlines_keep_foreground_and_maintenance_capacity",
+      "line": 1634,
+      "log": "2026-10-02T21:47:33.3839851Z test background::tests::overload_and_deadlines_keep_foreground_and_maintenance_capacity ... ok"
+    },
+    {
+      "name": "admin_can_filter_paginate_and_attribute_changes",
+      "line": 3388,
+      "log": "2026-10-02T22:06:25.5970161Z test admin_can_filter_paginate_and_attribute_changes ... ok"
+    },
+    {
+      "name": "cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted",
+      "line": 2012,
+      "log": "2026-10-02T21:51:58.1716251Z test cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted ... ok"
+    },
+    {
+      "name": "browser_source_stage_transport_binds_factor_and_renders_both_response_modes",
+      "line": 3705,
+      "log": "2026-10-02T22:12:32.3056291Z test browser_source_stage_transport_binds_factor_and_renders_both_response_modes ... ok"
+    }
+  ],
+  "scoped_source_only": true,
+  "later_source_runtime_borrowed": false,
+  "cli_f142_correction_present": false,
+  "prior_failures_preserved": true,
+  "body_read_limits": "Full terminal API jobs/steps; bounded raw checkout, all test summary strings, selected named passes, docs and release command/success lines. No newly downloaded/full integration log body or later-source runtime.",
+  "root_preparation_error": "Initial generation incorrectly selected API head_sha rather than actual headSha, failed assertion before writes; corrected using saved terminal API. Subsequent pathspec add failed because no file had been written; no commit or evidence mutation resulted.",
+  "observed_utc": "2026-10-02T22:53:22.815029+00:00"
+}

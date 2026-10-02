@@ -441,3 +441,12 @@ client/dependency/real-server checks, docs/notices and release build succeeded.
 job/step/source identities and bounded body-read limits. This dated success does not
 change the earlier56 startup failure or borrow runtime for later source. No board
 status changed; the separate readiness probe correction remains source-first.
+
+
+## Terminal CI at 74e106b (2026-10-03 root review)
+
+Run37067070690 at immutable 74e106b819e7186d0ac41964cedbe8217fa7e881 completed SUCCESS: audit111040417731, integration111040417946 and check111040417878 each succeeded. The [root terminal receipt](evidence/wave30-ci-74e-terminal-root-review.json) records the saved API jobs/steps and mode0600 raw check log:873544 bytes, SHA25655879429bc2649c5918675caa2927a81b42932ce653344b6344cc82d98ab808c. Checkout lines110/122 match; all203 Rust test summaries are successful, zero failed. Selected CLI certificate binding, background capacity, reports attribution, Entra credential-file diagnostic and I02 browser-transport names passed. Docs/notices and release-build steps succeeded.
+
+This whole-run result applies only to74e106b. It predates the f142ca4 passive CLI startup correction and supplies no runtime proof for that correction, a rare race campaign, confidential D01 journey, A09 shared/container gate or later source. Prior CI56 failure and unknown startup-child outcome remain failed/unknown. Root read the complete terminal API plus bounded raw checkout, test summaries, selected passes, docs/release lines; no fresh full integration-log body review is claimed.
+
+An initial receipt-generation assertion used a nonexistent head_sha API key instead of headSha and failed before any write. A subsequent add pathspec therefore failed; the working tree remained unchanged. The corrected generation uses the already retained terminal API/raw log, without a second download.
