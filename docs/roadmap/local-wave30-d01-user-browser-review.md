@@ -9822,3 +9822,8 @@ deadline reset or failure-path change. All published report bytes are retained,
 followed by the exact author append. This is accepted as design evidence only.
 Independent review of the whole candidate and the missing preparation/input
 adapters remain pending; no changed cell or browser fixture was executed.
+
+
+## Root independent controller-boundary disposition (2026-10-03)
+
+Root read the complete [independent report](local-wave30-d01-controller-boundary-independent-review.md) at author309ee22. It finds four source paths in the archived2e29 cell: stored entry phase, premature private-password clearing, successful helper completion before the protected-page snapshot, and unretained partial controller events across invocations. The separately reviewed c5d4 phase-only design addresses only the first. Root reserves review/correction of the remaining three plus the missing exact preparation/private-input/partial-ownership body before any real fixture release. These are source findings, not retrospective attribution for c88 or the earlier Authorization failures. Actual128-case helper memory evidence supplies no changed controller/cell/GUI journey proof. Runtime remains HELD; no status changes.
