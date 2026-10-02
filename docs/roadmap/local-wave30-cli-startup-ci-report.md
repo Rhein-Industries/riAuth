@@ -985,3 +985,789 @@ Actual report-aware checks passed: the full 40568-byte e4 and complete published
 ## Root complete supervisor source review (2026-10-03)
 
 Root fully read the01cc8e9 preparation/alignment evidence and complete638-line supervisor27303B/SHA1be75053e7960de6bb1568cffcd1c092a554dbeb0de2ca63e0231385cd61f695. Protected350-entry manifest and CLI4941d65 identity were already independently matched to fixed35. Runtime remains held pending a narrow final post-save deadline check before stdout/return; no command, source correction or runtime result is inferred. The proposed process group uses an unreaped leader through WNOWAIT cleanup, actual numeric exit retained before grading, bounded private logs/resources, fresh13GiB start and9GiB stop/8GiB floor. Existing checks are source facts, not execution proof or a guarantee against unseen disk values/kernel I/O. No old branch merge is imported by integrating only these exact report appendices.
+
+## 2026-10-03: final-clock source refinement, report only
+
+Reservation: `wave30_CI_cli_supervisor_final_clock`. Root reported full review of the earlier `01cc8e9cba74b9b72e54088fc16e66e13519d911` archive and approved only this post-persistence clock refinement. Entry was clean at that exact commit. Every prior `77850` report byte / `982` lines, SHA-256 `ba642b253bda3f7572ba32bd4ce7ca831043b1b00cc141eb80cc61dc567b425c`, remains preserved unchanged. The preceding 638-line proposal remains a dated, unexecuted source phase.
+
+After the last existing `self.save()` try/except and before stdout summary construction/serialization or return, the corrected proposal samples `time.monotonic_ns()` once. At or after its unchanged deadline, it forces `controller_exit` to `1`; it assigns the fixed `outer_deadline` failure only when first failure is null. Existing first failure is preserved. The two added closed stdout fields expose the sampled integer elapsed nanoseconds and boolean deadline status. No further receipt/evidence/cache filesystem write follows the final sample. The original existing `os.write(1, ...)` stdout emission and return remain unchanged.
+
+The saved receipt remains an earlier observation: if its final save returns late, its persisted exit/elapsed fields are not rewritten to pretend that they describe the later clock. The closed stdout summary and returned numeric status carry the final sampled refusal. A previously calculated/persisted successful grade therefore cannot alone produce a final controller PASS after this sampled deadline. This adds no claim of a hard kernel I/O, stdout serialization/output, scheduling, or return-time bound; these actions can occur after the sample. No controller or case was executed to establish actual timing.
+
+| Exact source document | Bytes / LF lines | SHA-256 |
+| --- | --- | --- |
+| Earlier full proposal | `27303` / `638` | `1be75053e7960de6bb1568cffcd1c092a554dbeb0de2ca63e0231385cd61f695` |
+| Corrected full proposal | `27731` / `646` | `6732765f7192d733cb6dd3adf48321e7ee96acf519fdfb22231f4e1f9b348847` |
+| Exact zero-context forward diff | `558` / `12` | `d9923a84c4f142f2cf4fa31135d8a5271165df151e76fe171ad161c2962c8c29` |
+| Exact zero-context inverse diff | `558` / `12` | `9a46ba41ce5eccebdfc581f6a0151875c582ef205368f895086e8d1f6908ce72` |
+
+Exact forward diff against the immutable earlier fenced proposal, not a materialized script:
+
+```diff
+--- a/archived-cli-startup-supervisor.py
++++ b/archived-cli-startup-supervisor.py
+@@ -595,0 +596,6 @@
++        final_now_ns = time.monotonic_ns()
++        final_deadline_reached = final_now_ns >= self.deadline_ns
++        if final_deadline_reached:
++            self.data["controller_exit"] = 1
++            if self.data["first_failure"] is None:
++                self.data["first_failure"] = "outer_deadline"
+@@ -603,0 +610,2 @@
++            "final_elapsed_ns": final_now_ns - self.started_ns,
++            "final_deadline_reached": final_deadline_reached,
+```
+
+Exact inverse diff; applying it restores all earlier 27303 bytes:
+
+```diff
+--- a/archived-cli-startup-supervisor.py
++++ b/archived-cli-startup-supervisor.py
+@@ -596,6 +595,0 @@
+-        final_now_ns = time.monotonic_ns()
+-        final_deadline_reached = final_now_ns >= self.deadline_ns
+-        if final_deadline_reached:
+-            self.data["controller_exit"] = 1
+-            if self.data["first_failure"] is None:
+-                self.data["first_failure"] = "outer_deadline"
+@@ -610,2 +603,0 @@
+-            "final_elapsed_ns": final_now_ns - self.started_ns,
+-            "final_deadline_reached": final_deadline_reached,
+```
+
+### Corrected complete supervisor source
+
+The following entire payload is the reviewed-source refinement proposal for root's separate review. No script file, controller, harness, evidence directory, or runtime resource was materialized. All existing imports, source/cache/toolchain validation, exact command, 13 GiB start/9 GiB stop/8 GiB floor, 1200-second deadline and cleanup reserve, resource/log caps, WNOWAIT ownership/cleanup, persistence and grading code remain byte-exact outside the two insertions shown above.
+
+```python
+#!/usr/bin/env python3
+"""Proposed single CLI-filter supervisor. ARCHIVED ONLY; runtime release required."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+REPO = Path("/Users/dominik/orca/projects/riAuth-public-preview-sol-diagnostics-wave30")
+TARGET = REPO / "target"
+EVIDENCE = TARGET / "wave30-cli-startup-filter-35c3"
+TOOLCHAIN = Path("/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin")
+PRODUCT = "35c3fd3007c52d8142c7bee1d69aee127cc42a95"
+ALIGNMENT = "22a0e4b7b41266d958c802ea8fdd1e41522df127"
+MANIFEST_SHA = "f1decf551c0ad8bf8f613b1c8d8ffba80477f1733bb6180c1011b018070adf47"
+CLI_SHA = "4941d65dd62abfb6614be55260a6d14077e5f17bb2126d366f3e54ca57968e59"
+GIB = 1024 ** 3
+START_FREE, STOP_FREE, FLOOR_FREE = 13 * GIB, 9 * GIB, 8 * GIB
+OUTER_NS, CLEANUP_RESERVE_NS = 1200 * 10**9, 20 * 10**9
+SAMPLE_NS, MAX_GAP_NS = 2 * 10**9, 5 * 10**9
+LOG_CAP, RESOURCE_CAP, SAMPLE_CAP = 8 * 1024**2, 1024**2, 610
+META_CAP, RECEIPT_CAP = 2 * 1024**2, 64 * 1024
+TEST = "cli_certificate_bind_and_revoke_require_retry_binding"
+COMMAND = [
+    "env", "CARGO_TARGET_DIR=" + str(TARGET), "CARGO_BUILD_JOBS=1",
+    "CARGO_INCREMENTAL=0", "CARGO_PROFILE_DEV_DEBUG=0",
+    "CARGO_PROFILE_TEST_DEBUG=0", "cargo", "test", "--locked",
+    "--features", "test-support,fuzzing", "--test", "cli", TEST,
+    "--", "--exact", "--test-threads=1",
+]
+BIN_HASHES = {
+    "cargo": "6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d",
+    "rustc": "766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941",
+}
+CACHE_HASHES = {
+    "debug/.fingerprint/riauth-0d65ce4b80b71950/lib-riauth.json":
+        "ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10",
+    "debug/.fingerprint/riauth-25aded663d5712f5/bin-riauth.json":
+        "375004fd606e5dd7d89a5b0304f6997376e0d1db7ac5e60fb751a811255c952d",
+    "debug/.fingerprint/openssl-sys-1830e900e62375b9/lib-openssl_sys.json":
+        "899b5b8698182ecf7326104d2cc08b2628783d0290a4b3a4a9c13556d5316ca3",
+    "debug/.fingerprint/aws-lc-sys-06c91758ec414101/lib-aws_lc_sys.json":
+        "eb05db7ea539f72226bb8b771ab8097a80417150c4c39399f0f33bb9be48d46b",
+}
+BLOCKED_ENV = (
+    "RUSTFLAGS", "CARGO_ENCODED_RUSTFLAGS", "RUSTC", "RUSTC_WRAPPER",
+    "RUSTC_WORKSPACE_WRAPPER", "RUSTUP_TOOLCHAIN", "RUSTUP_HOME", "CARGO_HOME",
+    "CARGO_BUILD_TARGET", "CARGO_BUILD_RUSTFLAGS", "CARGO_BUILD_RUSTC",
+    "CARGO_BUILD_RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
+    "OPENSSL_DIR", "OPENSSL_LIB_DIR", "OPENSSL_INCLUDE_DIR",
+)
+
+class Refusal(Exception):
+    """Only fixed, source-defined tags reach evidence."""
+    def __init__(self, tag):
+        self.tag = tag
+        super().__init__()
+
+def digest_file(path):
+    h = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+def write_all(fd, data):
+    view = memoryview(data)
+    while view:
+        amount = os.write(fd, view)
+        if amount <= 0:
+            raise Refusal("evidence_write")
+        view = view[amount:]
+
+def capture_metadata(argv):
+    """Bounded metadata child; never used for Cargo or any product."""
+    query = subprocess.Popen(
+        argv, cwd=REPO, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, close_fds=True,
+    )
+    selector = selectors.DefaultSelector()
+    result = bytearray()
+    deadline = time.monotonic_ns() + 2 * 10**9
+    try:
+        os.set_blocking(query.stdout.fileno(), False)
+        selector.register(query.stdout, selectors.EVENT_READ)
+        eof = False
+        while not eof:
+            remaining = deadline - time.monotonic_ns()
+            if remaining <= 0:
+                raise Refusal("metadata_deadline")
+            for key, _ in selector.select(min(0.05, remaining / 10**9)):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    eof = True
+                    break
+                if len(result) + len(chunk) > META_CAP:
+                    raise Refusal("metadata_cap")
+                result.extend(chunk)
+        remaining = max(0.001, (deadline - time.monotonic_ns()) / 10**9)
+        if query.wait(timeout=remaining) != 0:
+            raise Refusal("metadata_exit")
+        return bytes(result)
+    finally:
+        selector.close()
+        if query.stdout is not None:
+            query.stdout.close()
+        if query.returncode is None:
+            query.kill()
+            query.wait(timeout=1)
+
+def protected(path):
+    return path.startswith(("src/", "crates/", ".cargo/")) or path in (
+        "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "rust-toolchain",
+        "build.rs", "rustfmt.toml", ".rustfmt.toml",
+    )
+
+class Supervisor:
+    def __init__(self):
+        self.started_ns = time.monotonic_ns()
+        self.deadline_ns = self.started_ns + OUTER_NS
+        self.stop_signal = None
+        self.child = None
+        self.pgid = None
+        self.group_verified = False
+        self.exit_observed = False
+        self.log_fd = self.resource_fd = None
+        self.log_selector = None
+        self.log_eof = False
+        self.log_bytes = self.resource_bytes = 0
+        self.sample_count = 0
+        self.last_sample_ns = None
+        self.next_sample_ns = self.started_ns
+        self.target_identity = None
+        self.persist_broken = False
+        self.evidence_created = False
+        self.data = {
+            "schema": 1, "product_pin": PRODUCT, "alignment_pin": ALIGNMENT,
+            "protected_manifest_sha256": MANIFEST_SHA, "cli_sha256": CLI_SHA,
+            "command": COMMAND, "source_head": None, "cargo_started": False,
+            "owned_pid": None, "owned_pgid": None, "exit_observed": False,
+            "actual_exit": None, "direct_child_reaped": False,
+            "remaining_owned_members": None, "first_failure": None,
+            "cleanup_failures": [], "persist_failed": False, "grade": None,
+            "controller_exit": None, "release_required": False,
+            "sample_count": 0, "minimum_free_bytes": None,
+            "maximum_sample_gap_ns": 0, "floor_observed": False,
+            "log_bytes": 0, "log_eof": False, "log_sha256": None,
+            "resource_bytes": 0, "resources_sha256": None,
+            "elapsed_ns": None,
+        }
+
+    def on_signal(self, number, _frame):
+        if self.stop_signal is None:
+            self.stop_signal = number
+
+    def save(self):
+        if self.persist_broken or not self.evidence_created:
+            raise Refusal("evidence_write")
+        self.data["sample_count"] = self.sample_count
+        self.data["log_bytes"] = self.log_bytes
+        self.data["resource_bytes"] = self.resource_bytes
+        self.data["elapsed_ns"] = time.monotonic_ns() - self.started_ns
+        raw = json.dumps(self.data, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        if len(raw) > RECEIPT_CAP:
+            self.persist_broken = True
+            self.data["persist_failed"] = True
+            raise Refusal("evidence_write")
+        fd = None
+        try:
+            fd = os.open(EVIDENCE / "receipt.pending",
+                         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            write_all(fd, raw)
+            os.fsync(fd)
+            os.close(fd)
+            fd = None
+            os.replace(EVIDENCE / "receipt.pending", EVIDENCE / "receipt.json")
+            directory = os.open(EVIDENCE, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        except BaseException:
+            self.persist_broken = True
+            self.data["persist_failed"] = True
+            raise Refusal("evidence_write") from None
+        finally:
+            if fd is not None:
+                os.close(fd)
+
+    def fail(self, tag):
+        if self.data["first_failure"] is None:
+            self.data["first_failure"] = tag
+        self.save()
+
+    def cleanup_error(self, tag):
+        if tag not in self.data["cleanup_failures"]:
+            self.data["cleanup_failures"].append(tag)
+        if self.data["first_failure"] is None:
+            self.data["first_failure"] = "cleanup_failure"
+
+    def setup_evidence(self):
+        if Path.cwd().resolve() != REPO or REPO.is_symlink():
+            raise Refusal("repository_identity")
+        if TARGET.is_symlink() or not TARGET.is_dir() or TARGET.resolve() != TARGET:
+            raise Refusal("target_identity")
+        target_stat = TARGET.stat()
+        self.target_identity = (target_stat.st_dev, target_stat.st_ino)
+        try:
+            os.mkdir(EVIDENCE, 0o700)  # Existing evidence is never overwritten.
+        except FileExistsError:
+            raise Refusal("evidence_exists") from None
+        self.evidence_created = True
+        self.log_fd = os.open(EVIDENCE / "console.log",
+                              os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        self.resource_fd = os.open(EVIDENCE / "resources.jsonl",
+                                   os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        self.save()
+
+    def sample(self, initial=False, force=False):
+        now = time.monotonic_ns()
+        if not initial and not force and now < self.next_sample_ns:
+            return
+        current = TARGET.stat()
+        if TARGET.is_symlink() or (current.st_dev, current.st_ino) != self.target_identity:
+            raise Refusal("resource_scope")
+        free = shutil.disk_usage(TARGET).free
+        gap = 0 if self.last_sample_ns is None else now - self.last_sample_ns
+        row = json.dumps({
+            "elapsed_ns": now - self.started_ns, "gap_ns": gap,
+            "free_bytes": free, "device": current.st_dev,
+        }, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        if self.sample_count >= SAMPLE_CAP or self.resource_bytes + len(row) > RESOURCE_CAP:
+            raise Refusal("resource_cap")
+        write_all(self.resource_fd, row)
+        os.fsync(self.resource_fd)
+        self.resource_bytes += len(row)
+        self.sample_count += 1
+        self.last_sample_ns = now
+        self.next_sample_ns = now + SAMPLE_NS
+        old_minimum = self.data["minimum_free_bytes"]
+        self.data["minimum_free_bytes"] = free if old_minimum is None else min(old_minimum, free)
+        self.data["maximum_sample_gap_ns"] = max(self.data["maximum_sample_gap_ns"], gap)
+        if free <= FLOOR_FREE:
+            self.data["floor_observed"] = True
+            raise Refusal("resource_floor")
+        if free <= STOP_FREE:
+            raise Refusal("resource_stop")
+        if gap > MAX_GAP_NS:
+            raise Refusal("resource_gap")
+        if initial and free < START_FREE:
+            raise Refusal("start_capacity")
+
+    def preflight(self):
+        if len(sys.argv) != 1:
+            raise Refusal("controller_arguments")
+        if os.name != "posix" or not all(hasattr(os, name) for name in (
+            "waitid", "WNOWAIT", "WEXITED", "WNOHANG", "P_PID", "O_NOFOLLOW",
+        )):
+            raise Refusal("required_interface")
+        if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+            raise Refusal("child_reaping_policy")
+        if any(os.environ.get(key) for key in BLOCKED_ENV):
+            raise Refusal("configuration_override")
+        for path in (
+            REPO / ".cargo/config", REPO / ".cargo/config.toml",
+            Path.home() / ".cargo/config", Path.home() / ".cargo/config.toml",
+        ):
+            if path.exists():
+                raise Refusal("implicit_cargo_configuration")
+        head = capture_metadata(["git", "rev-parse", "HEAD"]).strip()
+        if re.fullmatch(rb"[0-9a-f]{40}", head) is None:
+            raise Refusal("source_identity")
+        self.data["source_head"] = head.decode("ascii")
+        capture_metadata(["git", "merge-base", "--is-ancestor", ALIGNMENT, "HEAD"])
+        for args in (
+            ["git", "diff", "--name-only"],
+            ["git", "diff", "--cached", "--name-only"],
+            ["git", "ls-files", "--others", "--exclude-standard"],
+        ):
+            if capture_metadata(args):
+                raise Refusal("dirty_repository")
+        source = capture_metadata(["git", "ls-tree", "-r", "-z", "HEAD"])
+        manifest = []
+        for row in source.split(b"\0"):
+            if row:
+                _, path_bytes = row.split(b"\t", 1)
+                if protected(path_bytes.decode("utf-8")):
+                    manifest.append(row + b"\0")
+        if len(manifest) != 350 or hashlib.sha256(b"".join(manifest)).hexdigest() != MANIFEST_SHA:
+            raise Refusal("source_manifest")
+        # Only the already pinned allowlist is read from the working tree.
+        for terminated_row in manifest:
+            row = terminated_row[:-1]
+            if not row:
+                continue
+            meta, path_bytes = row.split(b"\t", 1)
+            path = path_bytes.decode("utf-8")
+            if not protected(path):
+                continue
+            mode, kind, blob = meta.decode("ascii").split()
+            if kind != "blob" or mode not in ("100644", "100755", "120000"):
+                raise Refusal("source_manifest")
+            local = REPO / path
+            local_stat = local.lstat()
+            if mode == "120000":
+                if not stat.S_ISLNK(local_stat.st_mode):
+                    raise Refusal("source_manifest")
+                content = os.readlink(local).encode()
+            else:
+                if not stat.S_ISREG(local_stat.st_mode):
+                    raise Refusal("source_manifest")
+                if bool(local_stat.st_mode & 0o111) != (mode == "100755"):
+                    raise Refusal("source_manifest")
+                content = local.read_bytes()
+            actual_blob = hashlib.sha1(b"blob " + str(len(content)).encode() + b"\0" + content).hexdigest()
+            if actual_blob != blob:
+                raise Refusal("source_manifest")
+        cli = (REPO / "tests/cli.rs").read_bytes()
+        if len(cli) != 118935 or hashlib.sha256(cli).hexdigest() != CLI_SHA:
+            raise Refusal("cli_identity")
+        for name, expected in BIN_HASHES.items():
+            path = TOOLCHAIN / "bin" / name
+            if path.is_symlink() or not path.is_file() or digest_file(path) != expected:
+                raise Refusal("toolchain_identity")
+        for name, expected in CACHE_HASHES.items():
+            path = TARGET / name
+            if not path.resolve().is_relative_to(TARGET) or digest_file(path) != expected:
+                raise Refusal("cache_identity")
+        self.sample(initial=True)
+        self.save()
+
+    def launch(self):
+        if self.stop_signal is not None:
+            raise Refusal("controller_signal")
+        if time.monotonic_ns() >= self.deadline_ns - CLEANUP_RESERVE_NS:
+            raise Refusal("outer_deadline")
+        environment = os.environ.copy()
+        # Resolve literal "cargo"/"rustc" to the pinned installed binaries, not rustup setup.
+        environment["PATH"] = str(TOOLCHAIN / "bin") + os.pathsep + environment.get("PATH", "")
+        self.child = subprocess.Popen(
+            COMMAND, cwd=REPO, env=environment, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            close_fds=True, start_new_session=True,
+        )
+        self.pgid = self.child.pid
+        self.data["cargo_started"] = True
+        self.data["owned_pid"] = self.child.pid
+        self.data["owned_pgid"] = self.pgid
+        self.group_verified = os.getpgid(self.child.pid) == self.pgid
+        if not self.group_verified:
+            raise Refusal("process_group_identity")
+        os.set_blocking(self.child.stdout.fileno(), False)
+        self.log_selector = selectors.DefaultSelector()
+        self.log_selector.register(self.child.stdout, selectors.EVENT_READ)
+        self.save()
+
+    def observe_exit(self):
+        # Never poll/reap the leader before group cleanup: WNOWAIT reserves its PID.
+        if self.child is None or self.exit_observed:
+            return self.exit_observed
+        observed = os.waitid(os.P_PID, self.child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        if observed is None:
+            return False
+        if observed.si_pid != self.child.pid:
+            raise Refusal("exit_identity")
+        if observed.si_code == os.CLD_EXITED:
+            code = observed.si_status
+        elif observed.si_code in (os.CLD_KILLED, os.CLD_DUMPED):
+            code = -observed.si_status
+        else:
+            raise Refusal("exit_identity")
+        self.exit_observed = True
+        self.data["exit_observed"] = True
+        self.data["actual_exit"] = code
+        self.save()  # Numeric exit is durable before any expectation comparison.
+        return True
+
+    def pump(self, delay=0.05):
+        if self.log_selector is None or self.log_eof:
+            time.sleep(delay)
+            return
+        for key, _ in self.log_selector.select(delay):
+            for _ in range(8):  # Bounded work per tick; do not starve resource sampling.
+                try:
+                    chunk = os.read(key.fd, 65536)
+                except BlockingIOError:
+                    break
+                if not chunk:
+                    self.log_eof = True
+                    self.log_selector.unregister(key.fileobj)
+                    return
+                room = LOG_CAP - self.log_bytes
+                kept = chunk[:room]
+                if kept:
+                    write_all(self.log_fd, kept)
+                    self.log_bytes += len(kept)
+                if len(chunk) > room and self.data["first_failure"] is None:
+                    self.fail("log_cap")
+
+    def tick(self):
+        self.pump()
+        self.sample()
+        self.observe_exit()
+
+    def run_filter(self):
+        while True:
+            if self.stop_signal is not None:
+                self.fail("controller_signal")
+                return
+            if time.monotonic_ns() >= self.deadline_ns - CLEANUP_RESERVE_NS:
+                self.fail("outer_deadline")
+                return
+            self.tick()
+            if self.exit_observed:
+                if self.data["actual_exit"] != 0:
+                    self.fail("cargo_exit")
+                return
+            if self.data["first_failure"] is not None:
+                return
+
+    def members(self):
+        # Integers/state only, never argv, environment, command text, paths or credentials.
+        raw = capture_metadata(["ps", "-axo", "pid=,pgid=,stat="])
+        result = []
+        for line in raw.splitlines():
+            fields = line.split()
+            if len(fields) != 3 or not fields[0].isdigit() or not fields[1].isdigit():
+                raise Refusal("group_snapshot")
+            pid, pgid = int(fields[0]), int(fields[1])
+            if pgid == self.pgid and pid != self.child.pid:
+                if not re.fullmatch(rb"[A-Za-z+<>-]+", fields[2]):
+                    raise Refusal("group_snapshot")
+                result.append(pid)
+        return result
+
+    def send_owned(self, number):
+        if not self.group_verified:
+            raise Refusal("process_group_identity")
+        try:
+            os.killpg(self.pgid, number)
+        except ProcessLookupError:
+            pass
+
+    def grace(self, seconds):
+        until = min(time.monotonic_ns() + int(seconds * 10**9), self.deadline_ns)
+        while time.monotonic_ns() < until:
+            try:
+                self.tick()
+            except Refusal as error:
+                if self.data["first_failure"] is None:
+                    self.data["first_failure"] = error.tag
+                self.cleanup_error("cleanup_observation")
+            except BaseException:
+                self.cleanup_error("cleanup_observation")
+            if self.exit_observed:
+                # Leader remains unreaped here; descendants are checked at phase boundaries.
+                time.sleep(0.02)
+
+    def cleanup(self):
+        if self.child is None:
+            self.data["remaining_owned_members"] = 0
+            self.data["release_required"] = True
+            return
+        try:
+            self.observe_exit()
+            remaining = self.members() if self.group_verified else None
+            if not self.exit_observed or remaining:
+                if self.data["first_failure"] is None:
+                    self.fail("owned_descendants")
+                if self.group_verified:
+                    self.send_owned(signal.SIGTERM)
+                    self.grace(5)
+                    remaining = self.members()
+                    if not self.exit_observed or remaining:
+                        self.send_owned(signal.SIGKILL)
+                        self.grace(3)
+                        remaining = self.members()
+                else:
+                    self.cleanup_error("process_group_identity")
+                    self.child.kill()
+            self.data["remaining_owned_members"] = None if remaining is None else len(remaining)
+            if remaining:
+                self.cleanup_error("owned_members_remain")
+        except BaseException:
+            self.cleanup_error("group_cleanup")
+            # The unreaped direct child still reserves the verified group identity.
+            try:
+                if self.group_verified:
+                    self.send_owned(signal.SIGKILL)
+                else:
+                    self.child.kill()
+            except BaseException:
+                self.cleanup_error("kill_failure")
+        try:
+            self.observe_exit()
+            actual = self.child.wait(timeout=2)
+            self.data["direct_child_reaped"] = True
+            if not self.exit_observed:
+                self.data["actual_exit"] = actual
+                self.data["exit_observed"] = True
+            elif actual != self.data["actual_exit"]:
+                self.cleanup_error("exit_disagreement")
+        except BaseException:
+            self.cleanup_error("direct_child_wait")
+        self.data["release_required"] = (
+            self.data["direct_child_reaped"] and self.data["remaining_owned_members"] == 0
+        )
+
+    def finalize_files(self):
+        if self.child is not None and self.log_selector is not None:
+            until = min(time.monotonic_ns() + 10**9, self.deadline_ns)
+            while not self.log_eof and time.monotonic_ns() < until:
+                self.pump()
+            if not self.log_eof:
+                self.cleanup_error("log_incomplete")
+        if self.log_selector is not None:
+            self.log_selector.close()
+        if self.child is not None and self.child.stdout is not None:
+            self.child.stdout.close()
+        for fd in (self.log_fd, self.resource_fd):
+            if fd is not None:
+                os.fsync(fd)
+                os.close(fd)
+        self.log_fd = self.resource_fd = None
+        self.data["log_eof"] = self.log_eof
+        if self.evidence_created:
+            self.data["log_sha256"] = digest_file(EVIDENCE / "console.log")
+            self.data["resources_sha256"] = digest_file(EVIDENCE / "resources.jsonl")
+
+    def grade(self):
+        if self.data["first_failure"] is not None or self.persist_broken:
+            return
+        if self.data["actual_exit"] != 0 or not self.data["direct_child_reaped"]:
+            self.fail("cargo_exit")
+            return
+        if self.data["remaining_owned_members"] != 0 or self.data["cleanup_failures"]:
+            self.fail("cleanup_failure")
+            return
+        raw = (EVIDENCE / "console.log").read_bytes()
+        checks = {
+            "running_one": len(re.findall(rb"(?m)^running 1 test\r?$", raw)) == 1,
+            "selected_ok": len(re.findall(
+                rb"(?m)^test " + TEST.encode() + rb" \.\.\. ok\r?$", raw)) == 1,
+            "summary_one": len(re.findall(
+                rb"(?m)^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; "
+                rb"[0-9]+ filtered out; finished in [0-9.]+s\r?$", raw)) == 1,
+        }
+        self.data["grade"] = checks
+        if not all(checks.values()):
+            self.fail("filter_result")
+
+    def finish(self):
+        if self.stop_signal is not None and self.data["first_failure"] is None:
+            self.data["first_failure"] = "controller_signal"
+        try:
+            self.cleanup()
+        except BaseException:
+            self.cleanup_error("cleanup_exception")
+        try:
+            self.sample(force=True)
+        except Refusal as error:
+            if self.data["first_failure"] is None:
+                self.data["first_failure"] = error.tag
+        except BaseException:
+            if self.data["first_failure"] is None:
+                self.data["first_failure"] = "resource_unavailable"
+        try:
+            self.finalize_files()
+        except BaseException:
+            self.cleanup_error("file_finalize")
+        if time.monotonic_ns() > self.deadline_ns and self.data["first_failure"] is None:
+            self.data["first_failure"] = "outer_deadline"
+        if self.stop_signal is not None and self.data["first_failure"] is None:
+            self.data["first_failure"] = "controller_signal"
+        try:
+            self.save()  # Actual exit + cleanup + hashes are retained before grading.
+            self.grade()
+        except BaseException:
+            if self.data["first_failure"] is None:
+                self.data["first_failure"] = "evidence_or_grade"
+        self.data["controller_exit"] = 0 if (
+            self.data["first_failure"] is None and not self.persist_broken
+            and self.data["grade"] is not None and all(self.data["grade"].values())
+        ) else 1
+        try:
+            self.save()
+        except BaseException:
+            self.data["controller_exit"] = 1
+        final_now_ns = time.monotonic_ns()
+        final_deadline_reached = final_now_ns >= self.deadline_ns
+        if final_deadline_reached:
+            self.data["controller_exit"] = 1
+            if self.data["first_failure"] is None:
+                self.data["first_failure"] = "outer_deadline"
+        summary = {
+            "controller_exit": self.data["controller_exit"],
+            "first_failure": self.data["first_failure"],
+            "actual_exit": self.data["actual_exit"],
+            "direct_child_reaped": self.data["direct_child_reaped"],
+            "cleanup_failed": bool(self.data["cleanup_failures"]),
+            "persist_failed": self.persist_broken,
+            "release_required": self.data["release_required"],
+            "final_elapsed_ns": final_now_ns - self.started_ns,
+            "final_deadline_reached": final_deadline_reached,
+        }
+        try:
+            os.write(1, json.dumps(summary, sort_keys=True).encode() + b"\n")
+        except BaseException:
+            pass
+        return self.data["controller_exit"]
+
+def main():
+    os.umask(0o077)
+    supervisor = Supervisor()
+    signal.signal(signal.SIGINT, supervisor.on_signal)
+    signal.signal(signal.SIGTERM, supervisor.on_signal)
+    try:
+        supervisor.setup_evidence()
+        supervisor.preflight()
+        supervisor.launch()
+        supervisor.run_filter()
+    except Refusal as error:
+        if supervisor.data["first_failure"] is None:
+            supervisor.data["first_failure"] = error.tag
+        try:
+            supervisor.save()
+        except BaseException:
+            pass
+    except BaseException:
+        if supervisor.data["first_failure"] is None:
+            supervisor.data["first_failure"] = "controller_exception"
+        try:
+            supervisor.save()
+        except BaseException:
+            pass
+    return supervisor.finish()
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+Static checks only: both full variants parsed successfully. Independent zero-context hunk application reconstructed the complete corrected proposal; independent inverse application reproduced the complete original byte for byte. Removing the three inserted top-level finish AST nodes and two summary key/value pairs made the full normalized AST identical to the earlier source. The last save immediately precedes the new clock, comparison is inclusive `>=`, and post-clock traversal found no evidence-filesystem operation and exactly the existing stdout descriptor-1 write. No comparison branch, case, function, import, main, signal, subprocess, cleanup, observer, library, native command, or supervisor path was executed.
+
+Actual static archive checks passed: full corrected-source/diff/inverse hashes and sizes, independent forward/inverse reconstruction, whole-byte reversal, normalized AST equality, final-clock ordering/inclusive comparison/stdout-only write, and complete prior report-prefix equality. Report-only working scope and `git diff --check` also passed. Final index equality/staged whitespace and clean post-commit scope checks accompany this separate append commit. No repository helper or runtime case was rerun in this narrow phase. No new source alignment or source/test/helper/workflow/configuration change occurred. No Cargo, compiler, test, process/space query, runtime, slot acquisition/release, cache deletion, provider/Driver interaction, status/main/push change, worker/resource creation, or other-worker contact occurred. Root must review this complete corrected source before separately authorizing materialization and ONE exact filter after a fresh at-least-13 GiB receipt. Prior CI56 failure/cause UNKNOWN, dated b71 success, earlier aborted merge, completed exact alignment, and original A09/D01/closed-row limits remain historical and unchanged.
+
+
+## Root corrected supervisor admission (2026-10-03)
+
+Root read the full907708e prose/diff and reversed both exact insertions in27731B/6732765f to the previously fully read27303B/1be75053 supervisor. The final inclusive deadline check occurs after the last receipt save and has no following regular-file write; first failure is preserved. A fresh independent350-entry mode/blob manifest matches fixed35 with exact CLI4941d65 and clean own907708e. Root separately reserves ONE same-filter run with this immutable supervisor, fresh13GiB launch,9stop/8floor and owned leader/group cleanup; no runtime result is supplied by these source checks.
+
+
+## 2026-10-03: one released local filter, actual result and slot release
+
+Reservation: `wave30_CI_cli_startup_single_filter_907708e`, project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing WT `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2` only. Root explicitly released the sole Cargo slot for the exact corrected archived supervisor and one filtered command. Entry was clean at `907708eb45c8d1ab778cec8ab403320ab5eed9e5`. This appendix preserves every preceding `111620` byte / `1688` lines, SHA-256 `394f3ee7e45d0085332cd24e106abf7cfc93c557643781b2f1da4873f5921a16`, including the complete earlier `77850`-byte source phase, final-clock correction, initial failed CI receipt, aborted alignment attempt, and dated prior CI success.
+
+The exact reviewed `27731`-byte / `646`-line supervisor was created exclusively, mode `0600`, at ignored own `target/wave30-cli-startup-supervisor-907708e.py`. Creation used `O_EXCL`/`O_NOFOLLOW`, write/fsync, and full readback. Its SHA-256 was and remains `6732765f7192d733cb6dd3adf48321e7ee96acf519fdfb22231f4e1f9b348847`; complete on-disk bytes equal the corrected report fence. There was one installed Python invocation, with no substitution, retry, baseline run, fixture/supervisor correction, or broader target:
+
+```sh
+/opt/homebrew/opt/python@3.14/bin/python3.14 target/wave30-cli-startup-supervisor-907708e.py
+```
+
+A `umask 077`/no-clobber wrapper retained its closed stdout and stderr in the exclusive ignored `.stdout.json`/`.stderr.log` siblings, then wrote the numeric wrapper status to the exclusive `.exit.json` sibling before exiting with that same status. The supervisor launched exactly:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test cli cli_certificate_bind_and_revoke_require_retry_binding -- --exact --test-threads=1
+```
+
+The recorded argv expanded the target to this WT's own absolute `target/`. The supervisor prepended the already installed, hash-pinned `1.98.1-aarch64-apple-darwin` toolchain bin directory to child PATH. It performed its reviewed source/cache/configuration preflight; it did not install a toolchain or alter a cache/configuration to obtain a pass. The normal selected test initialized, spawned its configured owned server, logged in, and completed its unchanged certificate binding/replay/refusal/revision/revocation/audit assertions. Production source and the selected test were not edited.
+
+### Actual numeric result, retained final clock, and cleanup
+
+Cargo exited `0`, controller exited `0`, and wrapper exited `0`; the invocation tool also returned numeric exit `0`. Console reported exactly `running 1 test`, the selected test `... ok`, and `1 passed; 0 failed; 0 ignored; 0 measured; 21 filtered out; finished in 4.67s`. Cargo's test-profile completion was `56.36s`. The full `3579`-byte / `37`-line console was read; the fixed one-test/selected-ok/one-pass grade predicates were all true.
+
+The final closed stdout was retained and read with its numeric wrapper status before outcome comparison. Its full public shape was:
+
+```json
+{"actual_exit": 0, "cleanup_failed": false, "controller_exit": 0, "direct_child_reaped": true, "final_deadline_reached": false, "final_elapsed_ns": 61955337500, "first_failure": null, "persist_failed": false, "release_required": true}
+```
+
+The wrapper status document was `{"wrapper_exit":0}` plus final LF. Final elapsed time was `61.955337500s`; the inclusive final-clock deadline was not reached. The saved receipt's earlier elapsed value was `61955154625ns`. The saved receipt precedes the final clock; its exit/grade alone was not used to establish the final outcome. No post-clock evidence-file write was added, and no hard kernel/output bound is claimed.
+
+The receipt records one owned Cargo leader PID/PGID `59319`, exit observed with the reviewed `WNOWAIT` ownership sequence, actual exit `0`, direct child reaped `true`, remaining owned members `0`, cleanup failures `[]`, first failure `null`, persistence failure `false`, log EOF `true`, and release criterion `true`. The group's remaining-member snapshot and direct reaping meet the reviewed release criterion; this is not a census of unrelated host services. After confirming those fields and the terminal invocation/final stdout, I immediately reported the actual outcome and **SOLE CARGO SLOT RELEASED** in commentary, before writing this appendix. No additional Cargo/native/runtime invocation followed. Root owns subsequent scheduling and integration.
+
+Cargo emitted three warnings that debug stripping with `rust-objcopy` failed by signal `6` (`SIGABRT`), associated with the CLI test, `riauth`, and `riauth-maintenance`. It also emitted a linker warning that `__eh_frame` exceeded `16MB` for compact unwind encoding and exception-handling performance might be affected. These observed subtool failures/warnings are retained; they did not make Cargo/controller/wrapper nonzero. No corrective invocation or retry was made, and no debug-stripping success is claimed.
+
+### Actual resources and private evidence identities
+
+The fresh first sample, at `114662333ns`, measured `25976090624` free bytes (`24.192119598GiB`), satisfying the authoritative `13GiB` start preflight. All `32` complete samples used target device `16777234`. Minimum sampled free space was `25116266496` bytes (`23.391345978GiB`); final sampled free space was `25117417472` bytes (`23.392417908GiB`) at `61954302791ns`. Maximum sampled gap was `2040334542ns` (`2.040334542s`), below the `5s` gap refusal threshold. The final forced sample's gap was `740782791ns`. No sampled `9GiB` stop or `8GiB` floor condition occurred; `floor_observed` is false. These are actual sampled filesystem-free-space observations for the private target's device, not an unsampled peak or future capacity guarantee. The earlier commentary's three-decimal minimum is superseded by the exact bytes and conversion here.
+
+The reviewed `1200s` outer deadline, `20s` cleanup reserve, `2s` sampling, `610` sample / `1MiB` resource cap, `8MiB` combined console cap, `TERM`/`5s` then `KILL`/reap cleanup controls, first-failure preservation, and actual-before-grade persistence were unchanged. Console occupied `3579` bytes and resources `2864` bytes, both below their caps. The evidence directory `target/wave30-cli-startup-filter-35c3` is mode `0700`; the supervisor and every evidence/wrapper file below are regular mode `0600` and Git-ignored. No raw private console, configuration, credential, token, protocol, database, or host environment value was copied into the repository.
+
+| Private own-target file | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `wave30-cli-startup-supervisor-907708e.py` | `27731` | `6732765f7192d733cb6dd3adf48321e7ee96acf519fdfb22231f4e1f9b348847` |
+| `wave30-cli-startup-supervisor-907708e.stdout.json` | `235` | `982e8a96f7282884c5fd56f598249d506602d204bcbbad26d24c7664daf09b47` |
+| `wave30-cli-startup-supervisor-907708e.stderr.log` | `0` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `wave30-cli-startup-supervisor-907708e.exit.json` | `19` | `e001763a44c7aac0e4e807c37103dfcc57ac25a26405f9018f6b2e37f59725bf` |
+| `wave30-cli-startup-filter-35c3/receipt.json` | `1427` | `7f2cdd401f25af302eb8fd7dd9d981bf50bef7d074e7a2c7bff42ab72bb69f62` |
+| `wave30-cli-startup-filter-35c3/console.log` | `3579` | `6b80ef1ca164b534c202cb411b60350bb35f91677266456c500d78383362afc3` |
+| `wave30-cli-startup-filter-35c3/resources.jsonl` | `2864` | `537b57564dd31c0f9d7e09c3477f88188f0d5a2b352075600505f32325271c26` |
+
+Complete receipt/resource JSON bodies were read, and their sample counts/extrema/gaps, command/source fields, cleanup/exit fields, file lengths, hashes, modes, and closed final stdout were independently compared. Resource/log hashes equal the receipt. These private files remain on disk for root inspection; they are not repository evidence assets or release artifacts.
+
+### Actual source, installed inputs, and generated binary pins
+
+The recorded runtime source head is `907708eb45c8d1ab778cec8ab403320ab5eed9e5`, product pin `35c3fd3007c52d8142c7bee1d69aee127cc42a95`, and history-preserving alignment pin `22a0e4b7b41266d958c802ea8fdd1e41522df127`. All `350` protected source/Cargo/toolchain/build-configuration mode/blob entries remained exactly fixed35, including working bytes; the canonical NUL-delimited manifest SHA-256 remains `f1decf551c0ad8bf8f613b1c8d8ffba80477f1733bb6180c1011b018070adf47`. `tests/cli.rs` remains `118935` bytes, mode `0644`, SHA-256 `4941d65dd62abfb6614be55260a6d14077e5f17bb2126d366f3e54ca57968e59`, equal to fixed35 and the accepted passive-readiness candidate. After runtime, before report writing, both tracked worktree and index diffs were empty.
+
+The installed Python invocation path is a symlink to its installed executable; following that link gives `34640` bytes, mode `0755`, SHA-256 `4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56`. No version probe was invoked. Installed Cargo was `31960040` bytes / mode `0755`, SHA-256 `6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d`; installed rustc was `412504` bytes / mode `0755`, SHA-256 `766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941`. Both regular toolchain inputs matched the preflight pins.
+
+The generated selected-test fingerprint `target/debug/.fingerprint/riauth-9dda9481bf0c5cca/test-integration-test-cli.json` was read only: `4022` bytes, mode `0600`, SHA-256 `bec1f03695a8203c70181269582f8ef13ea27088d84582604af3ca2382b2b8bb`; features were `default, essentials, fuzzing, platform, test-support`, profile `11094973624911973823`, config `9396254390672932401`, rustflags `[]`. No default/native feature was suppressed for this run. The warm private target was reused, without a cold duplicate or cache deletion.
+
+| Generated private target binary | Bytes | Mode | SHA-256 |
+| --- | ---: | --- | --- |
+| `debug/deps/cli-9dda9481bf0c5cca` | `68491144` | `0700` | `632a0e33024372460827e067376917335ab85a9ad9d2d24ad3e872ee4dd5010b` |
+| `debug/riauth` | `263438456` | `0700` | `8b8c3878f6f14e2ee2a0ffeb4bfe3b9ccc2906efc191c2f200d852db076e9743` |
+| `debug/riauth-maintenance` | `68907296` | `0700` | `12d5377e21fd5dae70cd9c227e263e5cd89a65bdab7a442c26903535f0e05d3a` |
+
+These are regular, non-symlink local files hashed after the single Cargo command. The fixture's compiled `CARGO_BIN_EXE_riauth` is `debug/riauth`; its header is little-endian 64-bit Mach-O with CPU type `16777228` (ARM64). There is no separate `debug/riauth-server` or `debug/riauth-cli` file. Cargo's integration-test preparation also generated `riauth-maintenance`; its hash does not establish a maintenance test or release-asset validation. No binary was executed separately for metadata, version, or additional validation.
+
+### Scope and remaining limits
+
+This actual pass covers one unchanged local Darwin ARM64 certificate-binding/revocation CLI test at the protected fixed35 source plus the accepted passive-readiness fixture edit. It does not determine the lost child exit/stderr or actual startup cause from failed Linux CI37061329345/job111020195345/source56, prove a port collision or rare-race elimination, validate a current full Linux CI run, or confer an A09/D01/artifact/shared/browser/closed-row status. The older b71 whole-CI SUCCESS remains dated evidence. All other held runtime/native/archive work remains held. No main/push/status/worker-contact or other source/test/helper/workflow/report change occurred. Root owns review, integration, later release, and row status.
+
+Actual post-run static checks passed: full 907/01cc historical-prefix equality; complete retained receipt/resource/final-stdout/wrapper-status comparison; evidence modes, regular-file and ignored-path checks; exact CLI and existing D01 source/report identities; report-only working scope; trailing-whitespace/final-LF; `git diff --check` exit `0`; and `python3 scripts/check-docs.py` exit `0` (`Markdown links and build-directory layout checked`). No pre-existing layout error or static-check failure was observed. Final staged file equality/scope/whitespace and clean post-commit checks accompany the separate report commit, whose immutable hash is returned in the handoff. Runtime and owned cleanup ended, and the sole slot was released before these report-only checks and this append.
