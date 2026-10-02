@@ -367,6 +367,11 @@ def main() -> None:
             or re.search(r"\bCore\b|\bTx\b|\.\s*(?:store|config)\b", masked_rust_source(path.read_text()))
         ):
             errors.append(f"{path.relative_to(ROOT)}: source runtime refers directly to Core or storage; it belongs in assembly")
+        if path == SRC / "registration.rs" and (
+            refs & (STORAGE | {"core"})
+            or re.search(r"\bCore\b|\bTx\b|\.\s*(?:store|config)\b", masked_rust_source(path.read_text()))
+        ):
+            errors.append("src/registration.rs: registration runtime refers directly to Core or storage; it belongs in assembly")
         if path == SRC / "directory.rs" and (
             refs & (STORAGE | {"core"})
             or re.search(r"\bCore\b|\bTx\b|\.\s*store\b", masked_rust_source(path.read_text()))

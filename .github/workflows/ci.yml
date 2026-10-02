@@ -97,6 +97,7 @@ jobs:
             --test m03_registration_e2e --test m03_windows_device_e2e \
             --test m03_pam_e2e --test m03_state_removal_e2e \
             --test m03_workflow_approval_e2e --test m03_backup_e2e \
+            --test m03_connector_ldap_e2e \
             -- --ignored --test-threads=1
           cargo test --features test-support --locked --test m03_riauthctl_backends_postgres redb_backends -- --ignored --test-threads=1
       - name: Check documentation, notices, and delivery scripts

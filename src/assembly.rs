@@ -93,6 +93,8 @@ mod radius;
 pub use radius::cleanup as radius_cleanup;
 #[cfg(feature = "platform")]
 pub use radius::radius_start;
+mod registration_runtime;
+pub(crate) use registration_runtime::RegistrationAuthority;
 mod response;
 #[cfg(feature = "platform")]
 mod saml;

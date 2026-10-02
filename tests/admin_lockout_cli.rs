@@ -5,6 +5,7 @@
 //! `tests/admin_lockout.rs`. This file does not send SMTP, call
 //! `account reset-request` or `recover-admin`, or open a deployment store.
 
+use riauth::{config::Config, core::Core, model::NewUser};
 use serde_json::Value;
 use std::{
     fs,
@@ -199,14 +200,6 @@ fn reset_mfa(cli: &Cli<'_>, username: &str, revision: Option<u64>, key: Option<&
     invoke(cli, &refs, None)
 }
 
-/// The default login category is 20 requests per minute per address. This
-/// disposable file raises it so the recorded 429 is the account lock.
-fn raise_login_limit(config: &Path) {
-    let text = fs::read_to_string(config).unwrap();
-    assert!(!text.contains("[rate_limits]"), "{text}");
-    fs::write(config, format!("{text}\n[rate_limits]\nlogin = 1000\n")).unwrap();
-}
-
 fn serve_with_admin(dir: &Path) -> (PathBuf, PathBuf, Server) {
     let config = dir.join("riauth.toml");
     let session = dir.join("session.json");
@@ -214,24 +207,37 @@ fn serve_with_admin(dir: &Path) -> (PathBuf, PathBuf, Server) {
     let addr = listener.local_addr().unwrap();
     drop(listener);
     let issuer = format!("http://127.0.0.1:{}", addr.port());
+    // Set the intended rate before initialization stamps the shared agreement.
+    // A high address limit keeps the later 429 specific to the account lock.
+    // CLI init has no rate override and refuses an already written config.
+    let mut initial = Config {
+        issuer,
+        listen: addr,
+        data_dir: "data".into(),
+        ..Default::default()
+    };
+    initial.rate_limits.insert("login".into(), 1000);
+    let mut runtime = initial.clone();
+    runtime.data_dir = dir.join(&initial.data_dir);
+    drop(
+        Core::initialize(
+            runtime,
+            NewUser {
+                username: "admin".into(),
+                password: "cli-integration-password".into(),
+                email: None,
+                display_name: "admin".into(),
+                admin: true,
+            },
+        )
+        .unwrap(),
+    );
+    fs::write(&config, toml::to_string_pretty(&initial).unwrap()).unwrap();
     let setup = Cli {
         dir,
         config: &config,
         session: &session,
     };
-    success(invoke(
-        &setup,
-        &[
-            "init",
-            "--issuer",
-            &issuer,
-            "--listen",
-            &addr.to_string(),
-            "--password-stdin",
-        ],
-        Some("cli-integration-password\n"),
-    ));
-    raise_login_limit(&config);
     let server_log = dir.join("serve.log");
     let mut server = Server(
         Command::new(env!("CARGO_BIN_EXE_riauth"))

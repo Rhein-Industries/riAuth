@@ -1802,3 +1802,386 @@ fn plan_bound_commands_refuse_a_revision_or_request_key_instead_of_ignoring_it()
         None,
     ));
 }
+
+/// A server whose export reports whatever connector status the test has set.
+fn export_server(connectors: Arc<Mutex<Option<Value>>>) -> MockServer {
+    MockServer::start(move |origin, request| match request.target.as_str() {
+        "/.well-known/openid-configuration" => discovery(origin),
+        "/api/login" => Reply::json(
+            json!({"session_token": SESSION_TOKEN, "expires_at": 4_102_444_800_u64,
+                   "user": {"username": "admin"}})
+            .to_string(),
+        ),
+        "/api/state/export" => {
+            let mut body = json!({"secrets_included": false, "revision": 7,
+                                  "manifest": {"api_version": "riauth/v1"}});
+            if let Some(connectors) = connectors.lock().unwrap().clone() {
+                body["connectors"] = connectors;
+            }
+            Reply::json(body.to_string())
+        }
+        _ => Reply::json("{}"),
+    })
+}
+
+/// The server's digest form: unpadded base64url of a SHA-256, 43 characters.
+fn digest(fill: char) -> String {
+    fill.to_string().repeat(43)
+}
+
+/// Values that must never reach the terminal or a file from a connector status.
+const STATUS_SECRETS: [&str; 6] = [
+    "SENTINEL-password-file",
+    "SENTINEL-bind-dn",
+    "SENTINEL-definition-url",
+    "SENTINEL-delivery-header",
+    "SENTINEL-token",
+    "SENTINEL-status-secret",
+];
+
+/// A row carrying fields the server never sends here, secrets among them.
+fn with_secrets(mut row: Value) -> Value {
+    row["password_file"] = json!(STATUS_SECRETS[0]);
+    row["bind_dn"] = json!(STATUS_SECRETS[1]);
+    row["definition"] = json!({"url": STATUS_SECRETS[2], "token": STATUS_SECRETS[4]});
+    row["delivery"] = json!({"authorization_header": STATUS_SECRETS[3]});
+    row
+}
+
+fn active_row() -> Value {
+    json!({"kind": "ldap", "id": "staff", "revision": 2, "digest": digest('A'),
+           "loaded_in_this_process": true, "loaded_revision": 2, "restart_required": false})
+}
+
+fn export_status(server: &MockServer, dir: &Path, name: &str) -> Output {
+    // A session belongs to one issuer, and every server here has its own.
+    let port = server.origin.rsplit(':').next().unwrap();
+    let session = dir.join(format!("session-{port}.json"));
+    if !session.exists() {
+        login(server, &session);
+    }
+    run(
+        &server.origin,
+        &session,
+        &[
+            "export",
+            "--out",
+            dir.join(format!("{name}.json")).to_str().unwrap(),
+        ],
+        None,
+    )
+}
+
+#[test]
+fn export_reports_active_and_retired_connector_rows_with_the_allowlisted_fields_only() {
+    let mixed = format!("{}-_a", "Zm9v".repeat(10));
+    assert_eq!(mixed.len(), 43);
+    let status = with_secrets_everywhere(json!({
+        "connector_secret_dir": true,
+        "definitions": [
+            // Stored, not yet loaded.
+            with_secrets(json!({"kind": "ldap", "id": "staff", "revision": 2,
+                "digest": digest('A'), "loaded_in_this_process": false,
+                "loaded_revision": null, "restart_required": true})),
+            // Stored and loaded; every kind and a boundary id.
+            with_secrets(json!({"kind": "workspace", "id": "a".repeat(64), "revision": 1,
+                "digest": mixed, "loaded_in_this_process": true, "loaded_revision": 1,
+                "restart_required": false})),
+            with_secrets(json!({"kind": "entra", "id": "x@y.z_1-2", "revision": 7,
+                "digest": digest('0'), "loaded_in_this_process": true,
+                "loaded_revision": 7, "restart_required": false})),
+            // Retired while this process still runs it, as the server sends it.
+            with_secrets(json!({"kind": "scim", "id": "gone", "revision": null,
+                "digest": null, "loaded_in_this_process": true, "loaded_revision": 3,
+                "loaded_digest": digest('_'), "retired": true, "restart_required": true})),
+        ],
+    }));
+    let shared = Arc::new(Mutex::new(Some(status)));
+    let server = export_server(shared);
+    let dir = tempfile::tempdir().unwrap();
+    let output = export_status(&server, dir.path(), "manifest");
+    let text = output_text(&output);
+    for secret in STATUS_SECRETS {
+        assert!(
+            !text.contains(secret),
+            "{secret} reached the terminal: {text}"
+        );
+    }
+    let result = data(&output);
+    assert_eq!(result["secrets_included"], false);
+    assert_eq!(
+        read_json(&dir.path().join("manifest.json")),
+        json!({"api_version": "riauth/v1"})
+    );
+    for secret in STATUS_SECRETS {
+        assert!(
+            !std::fs::read_to_string(dir.path().join("manifest.json"))
+                .unwrap()
+                .contains(secret)
+        );
+    }
+    assert_eq!(
+        result["connectors"],
+        json!({
+            "connector_secret_dir": true,
+            "definitions": [
+                {"kind": "ldap", "id": "staff", "revision": 2, "digest": digest('A'),
+                 "loaded_in_this_process": false, "loaded_revision": null,
+                 "restart_required": true},
+                {"kind": "workspace", "id": "a".repeat(64), "revision": 1, "digest": mixed,
+                 "loaded_in_this_process": true, "loaded_revision": 1,
+                 "restart_required": false},
+                {"kind": "entra", "id": "x@y.z_1-2", "revision": 7, "digest": digest('0'),
+                 "loaded_in_this_process": true, "loaded_revision": 7,
+                 "restart_required": false},
+                {"kind": "scim", "id": "gone", "revision": null, "digest": null,
+                 "loaded_in_this_process": true, "loaded_revision": 3,
+                 "loaded_digest": digest('_'), "restart_required": true, "retired": true},
+            ],
+        })
+    );
+}
+
+/// Secrets at the status level too, next to the allowlisted fields.
+fn with_secrets_everywhere(mut status: Value) -> Value {
+    status["token"] = json!(STATUS_SECRETS[4]);
+    status["status_secret"] = json!(STATUS_SECRETS[5]);
+    status["bind_dn"] = json!(STATUS_SECRETS[1]);
+    status
+}
+
+#[test]
+fn export_without_connector_status_prints_no_key_and_writes_the_manifest() {
+    let server = export_server(Arc::new(Mutex::new(None)));
+    let dir = tempfile::tempdir().unwrap();
+    let result = data(&export_status(&server, dir.path(), "plain"));
+    assert!(result.get("connectors").is_none(), "{result}");
+    assert!(dir.path().join("plain.json").exists());
+    // A status with no definitions is still a valid, empty status.
+    let server = export_server(Arc::new(Mutex::new(Some(
+        json!({"connector_secret_dir": false, "definitions": []}),
+    ))));
+    let result = data(&export_status(&server, dir.path(), "empty"));
+    assert_eq!(
+        result["connectors"],
+        json!({"connector_secret_dir": false, "definitions": []})
+    );
+}
+
+#[test]
+fn export_refuses_a_connector_status_outside_the_servers_shape_before_writing_the_manifest() {
+    // One server, one status at a time; every case adds secret-bearing extras
+    // that must never be echoed, and a distinctive needle for its bad value.
+    let shared = Arc::new(Mutex::new(None));
+    let server = export_server(Arc::clone(&shared));
+    let dir = tempfile::tempdir().unwrap();
+    let status = |row: Value| {
+        json!({"connector_secret_dir": true, "definitions": [with_secrets(row)],
+               "token": STATUS_SECRETS[4]})
+    };
+    let row = |change: &dyn Fn(&mut Value)| {
+        let mut row = active_row();
+        change(&mut row);
+        status(row)
+    };
+    let without = |field: &'static str| {
+        row(&move |row| {
+            row.as_object_mut().unwrap().remove(field);
+        })
+    };
+    let too_many: Vec<Value> = (0..1025)
+        .map(|n| {
+            let mut row = active_row();
+            row["id"] = json!(format!("d{n}"));
+            row
+        })
+        .collect();
+    let mut cases: Vec<(String, Value, &str)> = vec![
+        // The status itself.
+        ("connectors-null".into(), Value::Null, ""),
+        (
+            "connectors-string".into(),
+            json!("NEEDLE-loaded"),
+            "NEEDLE-loaded",
+        ),
+        ("connectors-array".into(), json!([1]), ""),
+        ("connectors-number".into(), json!(7), ""),
+        (
+            "dir-missing".into(),
+            json!({"definitions": [], "token": STATUS_SECRETS[4]}),
+            "",
+        ),
+        (
+            "dir-string".into(),
+            json!({"connector_secret_dir": "NEEDLE-true", "definitions": []}),
+            "NEEDLE-true",
+        ),
+        (
+            "dir-number".into(),
+            json!({"connector_secret_dir": 1, "definitions": []}),
+            "",
+        ),
+        (
+            "dir-null".into(),
+            json!({"connector_secret_dir": null, "definitions": []}),
+            "",
+        ),
+        (
+            "definitions-missing".into(),
+            json!({"connector_secret_dir": true, "token": STATUS_SECRETS[4]}),
+            "",
+        ),
+        (
+            "definitions-object".into(),
+            json!({"connector_secret_dir": true, "definitions": {"NEEDLE-object": 1}}),
+            "NEEDLE-object",
+        ),
+        (
+            "definitions-string".into(),
+            json!({"connector_secret_dir": true, "definitions": "NEEDLE-rows"}),
+            "NEEDLE-rows",
+        ),
+        (
+            "definitions-null".into(),
+            json!({"connector_secret_dir": true, "definitions": null}),
+            "",
+        ),
+        (
+            "too-many".into(),
+            json!({"connector_secret_dir": true, "definitions": too_many}),
+            "",
+        ),
+        (
+            "row-not-object".into(),
+            status_with_row(json!("NEEDLE-row")),
+            "NEEDLE-row",
+        ),
+    ];
+    for kind in ["ldaps", "LDAP", "", "NEEDLE-kind", "ldap ", "saml"] {
+        cases.push((
+            format!("kind-{kind}"),
+            row(&|row| row["kind"] = json!(kind)),
+            if kind == "NEEDLE-kind" { kind } else { "" },
+        ));
+    }
+    cases.push(("kind-number".into(), row(&|row| row["kind"] = json!(5)), ""));
+    let long_id = "a".repeat(65);
+    for id in [
+        "../x",
+        "",
+        ".",
+        "..",
+        "a b",
+        "a/b",
+        "a\\b",
+        "id\n",
+        "NEEDLE#id",
+        long_id.as_str(),
+    ] {
+        cases.push((
+            format!("id-{id:?}"),
+            row(&|row| row["id"] = json!(id)),
+            if id.len() >= 4 { id } else { "" },
+        ));
+    }
+    cases.push(("id-number".into(), row(&|row| row["id"] = json!(5)), ""));
+    for (name, bad) in [
+        ("plus", "+".repeat(43)),
+        ("padded", format!("{}=", "A".repeat(42))),
+        ("space", format!("{} ", "A".repeat(42))),
+        ("short", "A".repeat(42)),
+        ("long", "A".repeat(44)),
+        ("empty", String::new()),
+        ("hex-with-colon", format!("{}:", "a".repeat(42))),
+    ] {
+        cases.push((
+            format!("digest-{name}"),
+            row(&|row| row["digest"] = json!(bad)),
+            if name == "plus" { "++++" } else { "" },
+        ));
+    }
+    cases.push((
+        "digest-number".into(),
+        row(&|row| row["digest"] = json!(5)),
+        "",
+    ));
+    cases.push((
+        "loaded-digest-bad".into(),
+        row(&|row| row["loaded_digest"] = json!("NEEDLE-digest")),
+        "NEEDLE-digest",
+    ));
+    for (name, bad) in [
+        ("string", json!("NEEDLE-1")),
+        ("float", json!(1.5)),
+        ("negative", json!(-1)),
+        ("bool", json!(true)),
+        ("array", json!([1])),
+    ] {
+        cases.push((
+            format!("revision-{name}"),
+            row(&|row| row["revision"] = bad.clone()),
+            if name == "string" { "NEEDLE-1" } else { "" },
+        ));
+        cases.push((
+            format!("loaded-revision-{name}"),
+            row(&|row| row["loaded_revision"] = bad.clone()),
+            if name == "string" { "NEEDLE-1" } else { "" },
+        ));
+    }
+    for field in ["loaded_in_this_process", "restart_required", "retired"] {
+        for (name, bad) in [
+            ("string", json!("NEEDLE-yes")),
+            ("number", json!(1)),
+            ("null", Value::Null),
+        ] {
+            cases.push((
+                format!("{field}-{name}"),
+                row(&|row| row[field] = bad.clone()),
+                if name == "string" { "NEEDLE-yes" } else { "" },
+            ));
+        }
+    }
+    for field in [
+        "kind",
+        "id",
+        "revision",
+        "digest",
+        "loaded_in_this_process",
+        "loaded_revision",
+        "restart_required",
+    ] {
+        cases.push((format!("missing-{field}"), without(field), ""));
+    }
+
+    let mut checked = 0;
+    for (name, connectors, needle) in cases {
+        *shared.lock().unwrap() = Some(connectors);
+        let output = export_status(&server, dir.path(), &format!("case-{checked}"));
+        assert!(!output.status.success(), "{name} must be refused");
+        let text = output_text(&output);
+        assert!(
+            text.contains("Export connector status is malformed"),
+            "{name}: {text}"
+        );
+        for secret in STATUS_SECRETS {
+            assert!(!text.contains(secret), "{name} echoed {secret}: {text}");
+        }
+        if !needle.is_empty() {
+            assert!(
+                !text.contains(needle),
+                "{name} echoed its bad value: {text}"
+            );
+        }
+        assert!(
+            !dir.path().join(format!("case-{checked}.json")).exists(),
+            "{name} wrote the manifest before refusing"
+        );
+        checked += 1;
+    }
+    assert!(checked > 60, "{checked} cases");
+}
+
+fn status_with_row(row: Value) -> Value {
+    json!({"connector_secret_dir": true, "definitions": [row],
+           "token": STATUS_SECRETS[4]})
+}
