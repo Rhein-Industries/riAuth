@@ -56,7 +56,19 @@ impl Core {
                         "reconciliation_mode": self.config.entra_reconciliation_modes.get(id).copied().unwrap_or_default(),
                     }),
                     directory.validate(),
-                    credential_status(&directory.client_secret_file, 4096),
+                    match (
+                        directory.client_secret_file.as_os_str().is_empty(),
+                        directory.certificate_file.as_ref(),
+                        directory.private_key_file.as_ref(),
+                    ) {
+                        (true, Some(certificate), Some(key))
+                            if !certificate.as_os_str().is_empty()
+                                && !key.as_os_str().is_empty() =>
+                        {
+                            credential_status(key, 16_384)
+                        }
+                        _ => credential_status(&directory.client_secret_file, 4096),
+                    },
                 )
             }
             _ => unreachable!(),
