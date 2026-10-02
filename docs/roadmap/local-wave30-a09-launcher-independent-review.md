@@ -175,3 +175,132 @@ passkey/device/full client, encrypted/redb, universal shared gate,
 physical/tenant/escrow/paused-IO and release acceptance remain separate.
 Root owns A09 integration/status and later dispatch. I10/R05/W02/W05 remain
 DONE.
+
+## Independent F1/F2 resolution review: virtual proposal only
+
+2026-10-02. Reservation
+`wave30_A09_corrected_launcher_independent_review`, same project/task/WT and
+branch. Starting clean at independent review
+`dde5bf5cb120e4000b0b43a3250c1a5297d1f61a`. Its entire 177-line /
+15,135-byte report, SHA-256
+`542178e1ec2e6485ccc9ec79ad40524f4766d250f78aa26f134c490f813f530b`,
+is preserved as the exact prefix. The original two findings and their
+source-only limitations remain dated observations of the original 47c fence.
+
+**Resolution:** both findings are resolved in the precisely reconstructed
+virtual proposal. No additional blocker is introduced by these two changes
+within the previously reviewed bounded source scope. This recommendation
+permits root to consider a separately reserved materialization of these exact
+bytes; it does not authorize materialization, publication, dispatch or
+runtime, and does not close the original A09 gate.
+
+Read complete immutable correction appends:
+`82e40339571d2ea6406d64590ccebd0616f48993` Phase J/F1 and
+`ab993268b7d4ffefb42957228107d30f0ef9070d` Phase K/F2. Both are report-only,
+append-only deltas. Constructed the virtual workflow **in memory** from the
+entire original 47c fence by applying exactly their two one-line diffs,
+checking a unique match at each step:
+
+1. Proposed workflow line 501 / controller line 462: artifact
+   `run.get("head_sha")` RHS changes from `FIXED["product_sha"]` to
+   `FIXED["build_workflow_sha"]`.
+2. Proposed workflow line 570 / controller line 531: the one public
+   `validator_source_sha` initializer becomes the approved regex-guarded
+   conditional, retaining the original environment string only after
+   `re.fullmatch("[0-9a-f]{40}", ...) is not None`; otherwise its value is
+   `None`, serialized as `null`.
+
+| Complete virtual object | Actual bytes / lines | Recomputed SHA-256 |
+| --- | --- | --- |
+| F1-only workflow | 73,286 / 1,279 | `cf2365e64376a7a227a2d057995e81242f286d25a877a2bb0455b55c8c516f21` |
+| F1 + F2 workflow | 73,380 / 1,279 | `0de9c7be9b380bd32c748a19699739e8ed7dacb2313d1a366bb000f701e15037` |
+| F1 + F2 controller | 59,472 / 1,203 | `b84868ddce285e3c2979318b778bbb4d522ca0d212a1310c59d25c12bbd8f9e3` |
+| Unchanged bootstrap | 1,506 / 30 | `1adc47c2b81f78c75f1f2122aabff7f08f48786fafd840880f3106418326e4de` |
+
+F2 reversal restores every F1 workflow byte; F1 reversal then restores every
+original 73,279-byte workflow byte. The corrected full controller and
+unchanged bootstrap parsed without import or execution. Normalizing only
+the run-head subscript key and the public dictionary initializer in a copied
+corrected AST restores complete `ast.dump(..., include_attributes=False)`
+equality to the original controller. The new initializer's complete AST
+equals the approved `IfExp`, including its true/false branches and exact
+regex/test. No third changed body or fixed constant exists. The whole-file
+byte reversal also protects every shell/action/YAML key outside those two
+controller lines; no YAML/controller execution occurred.
+
+**F1 factual binding.** The unchanged fixed build-workflow RHS is
+`036a392656b4b5070cc86a11d5ca3258b7b868d2`, matching the real build event
+already recorded in the accepted evidence JSON and root's newly confirmed
+artifact `11232871527` metadata `workflow_run.head_sha`. Product
+`9a819317efb3a13fa27cd86f884be2be00898fc0` remains independently bound by
+the exact ZIP digest, extracted build-evidence/source-tree/input/product
+checks and all five archive/binary pins. Artifact repository/name/run/digest/
+expiration/size and all other predicates are unchanged. For this fixed run,
+workflow source equals its observed run head; this equality is not a generic
+claim about all future runs or independently checked-out sources.
+
+Root supplies private metadata receipt
+`planning/evidence/wave30-a09-artifact-metadata-review.json`, SHA-256
+`dda305f0460e589fe21b70853f26c638b65b48bfa756f91020ad70fdcd0f610f`,
+in the orchestrator cwd. It was not present at the Git-common-dir parent
+planning path inspected by this lane. No independent read/hash of that
+receipt is credited, and no new query/download occurred. The confirmed
+metadata field is explicitly root-supplied; the earlier independent
+accepted-JSON/event-source evidence remains retained above. Current remote
+availability or outer-ZIP transport verification is not inferred.
+
+**F2 typed expression evidence.** Executed only the permitted isolated
+initializer expression, with a fresh synthetic string-only `os.environ`
+mapping, standard-library regex and empty builtins. No actual validator
+environment value, controller class/function/main, bootstrap, helper or
+protected imported module body was executed. All eight cases passed assertions:
+
+| Synthetic case | Actual public output |
+| --- | --- |
+| Valid lowercase full SHA | Same supplied string, unchanged |
+| Uppercase full SHA | `null` |
+| Short SHA | `null` |
+| Leading whitespace | `null` |
+| Trailing whitespace | `null` |
+| Whitespace only | `null` |
+| Empty | `null` |
+| Harmless invalid marker | `null` |
+
+Every invalid case produced exactly `{"validator_source_sha": null}` with
+no value-derived public field. Only case names/output types were printed.
+The unchanged `run()` raw-input full-SHA refusal still precedes `init.result`
+and therefore checkout; `source()` retains exact checked-out HEAD, distinct
+source roles and protected-import checks before transport. Redaction does
+not coerce or admit invalid input. A syntactically valid public SHA still
+needs root-reviewed published-source selection and those existing checks.
+
+**Protected boundaries and remaining prerequisites.** Exact two-line byte
+reversal and complete normalized AST equality preserve product/source
+pins, authority/refusal order, transport caps/full-digest verification,
+18-file/three-member/native-binary checks, PG16/tool/version bounds,
+30 GiB start/10 GiB stop/8 GiB floor and sampling/budget, ownership/
+subreaper/retention/shutdown-before-delete/reaping, finalization and fixed
+four-file sanitized upload. The old helper/source/build-workflow trees are
+unchanged across 47c/F1/F2; their only tracked change is the primary report.
+The proposed workflow remains absent at all three immutable pins and in
+this worktree. The previous full-body review remains the unchanged-body
+assessment; matching hashes and ASTs alone do not establish runtime safety.
+
+Root must still select the published validator pin, review/materialize the
+exact corrected workflow in a new reservation, then explicitly release any
+future one-shot native slot. Fresh hosted ARM64/PG16/dynamic-library,
+verified subreaper/filesystem/process identity, capacity/sampling, valid
+artifact metadata/actual full ZIP transport, helper outcome and cleanup/
+upload evidence are unexecuted prerequisites. Historical five archives and
+smoke do not supply that shared-sample result or the original full gate.
+
+Actual checks here: immutable correction/body reads; unique exact patch
+reconstruction and complete hashes/reversals; complete AST normalization;
+unchanged bootstrap parse; eight isolated expression cases; report-only
+source-tree and absent-workflow checks. Docs, whitespace, exact dde5 prefix
+and append-only scope checks accompany the separate report commit. No
+launcher/materialization, native/PG/Cargo/service/subreaper runtime,
+controller/bootstrap/helper/import/main execution, dispatch/network/
+download/browser/contact, merge, worker/task/WT/shell, status/main/push or
+other file edit occurred. Original A09 remains root-owned/open;
+I10/R05/W02/W05 remain DONE.
