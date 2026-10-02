@@ -1065,3 +1065,164 @@ group outcome were rechecked. Fresh free capacity at
 2026-10-02T15:57:16.529866+00:00 was13685735424 bytes /12.7458GiB.
 Staged/post-commit scope and whitespace checks cover this one append-only report.
 None of those follow-up checks invokes another filter/helper or changes source.
+
+
+## Approved source-only finite refusal diagnostic
+
+Reservation `wave30_I04_native_refusal_finite_diagnostic`, explicit root/user
+approval; same project/task/supporting worktree. Source commit
+`bf7c394150141f8dda6b41c6c0644dd6a9a7d870`, parent
+`f7bade4f969c83c8332d887d56a9dcd4d6480981`, changes **only**
+`tests/saml_sp_peer.rs`:45 added lines /2 replaced lines, solely within the
+appended ignored function. No C/helper/dylib, production/shared helper,
+configuration, manifest, schema, deadline, cap or operation/input changed.
+Runtime, Cargo, native compile/version/probe/helper execution remain **held**;
+no runtime slot was taken or released during this source-only phase.
+
+The prior failure and its unknown conjunct/native cause are not retrospectively
+reclassified. The new diagnostic has **not been compiled or executed**. It is
+an observation change for a separately reserved future run, not a refusal-oracle
+correction or evidence that the SLO lifecycle now succeeds.
+
+### Exact finite output and unchanged oracle
+
+The assertion's boolean remains **byte-exact**:
+`status.code() == Some(1) && stderr.contains("(-111)")`.
+Only its failure message adds numeric `status.code()`, numeric Unix
+`status.signal()` and `refusal_projection(&stderr)`. These formatting arguments
+are evaluated by the assertion's failure branch; the passing path and every
+other assertion/operation/input remain unchanged. Unix `ExitStatusExt` is
+imported locally within this already Unix-specific appended function.
+
+The output format is fixed:
+`pinned signature refusal: exit={:?} signal={:?} projection={:?}`.
+Exit/signal are numeric `Option<i32>`; projection is
+`Option<(&'static str, i32)>`. Thus `None` means **null/unclassified**, never an
+invented code0. A classified tuple contains only a selected static literal stage
+and one integer. No raw stderr, strerror/message text, paths, URLs, private
+protocol data, NameID or SessionIndex is copied into the diagnostic. Its fields
+have a finite vocabulary and bounded numeric width, independent of the private
+error-message length.
+
+The local projector first refuses input beyond existing128KiB `CAP`. It borrows
+newline segments without copying the private body. A classified C failure must
+have exact framing `lasso <allowlisted function>: <nonempty text> (<i32>)\n`.
+The final parenthesized token must parse as i32 **and** round-trip to canonical
+decimal; plus signs, leading zeroes/negative zero, overflow, empty/invalid suffix
+or unframed/missing newline refuse. Message control bytes refuse. The message
+body is checked only for framing/nonemptiness/control bytes and never returned.
+
+More than one `lasso ` failure-family line is ambiguous and returns `None`,
+even if two lines name the same stage/code. An unknown or malformed `lasso `
+family line also returns `None`, including when another valid line is present.
+Nonmatching library-warning lines are ignored without display; absence of an
+exact classified line returns `None`. The return value uses the allowlist's
+static literal, rather than the raw input's borrowed stage string. The projector
+does not affect the original boolean even when its result is unclassified.
+
+Closed stage list, derived solely from unchanged selected C `open_server`,
+`slo_restore`, and `slo_receive_logout` check/fail literals:
+
+- `lasso_init`
+- `lasso_server_new`
+- `lasso_server_add_provider`
+- `lasso_server_get_provider`
+- `lasso_logout_new`
+- `lasso_profile_set_identity_from_dump`
+- `lasso_profile_set_session_from_dump`
+- `lasso_logout_process_request_msg`
+- `lasso_profile_get_signature_status`
+- `lasso_logout_validate_request`
+- `lasso_logout_build_response_msg`
+
+The first seven cover explicitly selected initialization/provider/restore
+failures; the last four cover the requested logout/signature/validation/response
+stages. No arbitrary suffix/function-name or `lasso slo:` message is accepted as
+an integer-code classifier. The unchanged C `fail` at lines34–37 is the source
+of the exact `lasso %s: %s (%d)\n` framing. This is a finite diagnostic projection,
+not a signature-verdict parser or authorization decision.
+
+### Source-equivalence and protected evidence proofs
+
+Committed test blob `5fddf7c1489faf4d4bb3f1744f2e5a57ca2c196e`,39476 bytes,
+SHA-256 `862564f9154cd1de98378bc853e47948a731b994d22a1cf8d5be94083a1f52da`.
+Removing precisely the local projector and reversing the local import/failure
+message reconstructs the **entire** `e028106` test file,37798 bytes, SHA-256
+`b8596b050db87d921f83e6f0b03ebf76bb6fecd74a99e191adfef6b6c7b32c86`.
+The original19341-byte Rust prefix remains exact, SHA-256
+`2a45eda55862c33d8784abbf17e8d4b376495f0a0f564b5b8cb3882141aa1aaa`.
+This whole-file reversal proves preservation of all old/other assertion bodies,
+runner/child limits, helper inputs/operations and pending retirement/replay cases.
+
+The C remains blob `ce0a928adb22a4d00a612cf3fb7a113125303e48`, SHA-256
+`c3d3a8f7d1d2d472e8b877a89ea2807d534921d88638661e8b251e2365906563`;
+the existing helper remains39472 bytes, SHA-256
+`18f148c0a3119d4a1268597c829c680a743c4978ccc96924dac337368d3a891c`;
+selected Lasso dylib remains
+`0af7c7ccfda4fe8d20c6ccdf5974a006b2b59a2d50244be95ea197c2d1f72cde`.
+Selected `.pc`, Cargo manifests/lock/toolchain hashes and all production/config
+tree objects still match their pinned reviewed versions. First failed log and
+evidence remain exact SHA
+`a253f09fb45a4641d8373eb9318ca66bf11ff237e7570b490b24d02d6c2b4f03` /
+`22104b9b038bf784a28d51e5d05b360715be17a11a2f60544296225ad9eed2d6`.
+No historical artifact/log/manifest was rewritten or deleted.
+
+### Static checks and conditional future warm-filter proposal
+
+`rustfmt --edition 2024 --check --config skip_children=true tests/saml_sp_peer.rs`
+passed, providing syntax/format parsing only. Whole-file reversal, exact old
+prefix, unchanged boolean, sole-owned-function diff and all11 allowed C literals
+were checked statically. Whitespace/staged/post-commit code scope checks passed;
+branch was clean after the source commit. One initial patch had a mismatched
+context and was rejected without changing any bytes; the corrected narrow patch
+then applied. No Rust type checking, parser runtime cases, Cargo, native version,
+helper, C rebuild or protocol test ran during this source-only reservation.
+
+Read-only cache metadata still has the prior default/essentials/platform test
+fingerprint and cached library `riauth-f685f1e2409027d4`,409471184-byte rlib,
+profile12672335563272108896 / rustc fingerprint17329007180185699724. The prior
+test artifact is68254672 bytes (about65.09MiB), preserved from the failed run.
+The actual first default-feature build took56.22 seconds and the complete-run
+minimum-free observation was about0.801GiB below its launch observation; that
+host delta is **not an independently attributed or guaranteed compile peak**.
+
+For root's later planning only, unchanged libraries/features/manifests/toolchain
+and this test-only diagnostic suggest a warm-cache additional allowance of
+**0.5–1GiB**, covering a new test compile/link and transients. This is an estimate,
+not a measured warm run; cache invalidation/rebuilds could require the previous
+2–4GiB allowance. Fresh read-only capacity at
+2026-10-02T16:14:55.207253+00:00 was13678907392 bytes /12.7395GiB. It does not
+satisfy the prior13GiB planning check. **No threshold or release condition changes
+here**: root must explicitly review/reserve any later capacity allowance and
+remeasure before starting.9GiB stop/8GiB floor and all original deadlines remain.
+
+The only proposed future command is the **same** previously released ignored
+filter, now on immutable diagnostic source after root review:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  RIAUTH_TEST_LASSO_SP="$PWD/target/i04-lasso-slo-e028106/lasso-saml-sp" \
+  cargo test --locked --test saml_sp_peer \
+  lasso_idp_initiated_redirect_logout_revokes_only_bound_session_and_consumes_response_once \
+  -- --exact --ignored --test-threads=1
+```
+
+It is **NOT RELEASED / NOT RUN** in this phase. No alternate peer, feature,
+unignored/broader filter, native helper probe, compiler step, source/oracle
+correction, automatic retry or cache deletion is proposed. The first failure's
+conjunct/native reason and all unreached positive lifecycle/consumption/audit
+outcomes remain unknown/unexecuted until a separately reserved observation.
+Original primary ownership, completed rows/O07 blocker and protected contracts
+remain unchanged; no whole-I04, browser/tenant/profile/release/other-OS claim.
+
+Source-phase report checks: documentation checker exited0 and
+`git diff --check` passed. The whole previous `f7bade4` report remains the exact
+80190-byte prefix, SHA-256
+`f5d139b67f5492ccad605b15f7f5ea88aa86dc645ec03aee67e9d5edc8d73843`.
+Post-source-commit diff contains only this append-only report. The selected C,
+helper, first-failure log/evidence and68254672-byte first-failure test executable
+hashes were rechecked unchanged. Fresh read-only free capacity at
+2026-10-02T16:19:19.524096+00:00 was13686870016 bytes /12.7469GiB.
+Final staged/post-commit checks cover the report-only commit and clean branch;
+no new runtime or retrospective diagnostic/native-cause claim was made.
