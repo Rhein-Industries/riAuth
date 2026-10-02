@@ -2175,3 +2175,232 @@ An initial root reversal used an absent extraction filename block1 rather than a
 ## Root independent archive-design disposition (2026-10-03)
 
 Root read the complete [independent design review](local-wave30-a09-archive-validation-independent-review.md) at4c4b061. It independently confirms the final post-journal elapsed gap and no additional concrete source blocker in the complete payload/supervisor and selected validator bodies. Root separately reviewed511b32a exact full inverse and final-clock fix. The ordered42-case and retained-positive oracles remain UNEXECUTED; no archive reopening, derived member or resource/cleanup result is claimed by either source review. Runtime stays held behind the one released CLI filter until its actual child/owned-group release. A later exact build-free archive release is a separate root scheduling action, with fresh10GiB capacity and no Docker/native/build or second child.
+
+## Actual single retained-archive build-free invocation
+
+Reservation `wave30_A09_retained_archive_single_build_free_511`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, supporting worktree
+`e1b4399a-8c0d-46b8-880c-a71a4ebf53e7`. This actual-evidence appendix
+preserves the entire137438-byte511b32a report prefix, SHA-256
+`19419051e6feab0d57a5d0e21a894e3f04b1914dc726b533855e14f972c281dc`.
+All earlier design listings, reviews, failures and scope limitations remain
+historical text. Their former "not executed" statements describe their own
+source/design phase; this appendix records the separately released execution.
+Root's independent4c4b061 body/source review is attributed to root and that
+reviewer, not to this invocation.
+
+### Preflight, exact staging and sole command
+
+The worktree was clean at511b32a2c254fa3183a4c190f246ba3139bd94fd before setup.
+Installed Python was3.14.6. Own target parent ownership and resolved path,
+required WNOWAIT/process-group support, absent fresh evidence directory,
+complete committed report bytes, source helper99566/SHA c5ede631…2837 and
+workflow4573/SHA9af6d1d4…007d4 were verified. No alignment or source edit occurred.
+The actual read-only preflight rehashed the retained outer ZIP49206215 bytes,
+SHA-256 `d150a5950cbe6ff2dc4399614eca2bf4dfa274ac0db755739ef328a29f9c76b6`,
+and streamed exactly the selected regular, unencrypted member
+`local-essentials-x86_64.docker.tar.gz`:48934031 bytes, SHA-256
+`e9e1291895a1cf6c894147acaa0b4efca4a885d4f07dc88f5aee2152c9604905`.
+The public root receipt16872/SHA ab7c5ce7…ab7d and public small-metadata
+17651/SHA430471f2…e5b4 matched. File identity checks included own UID,
+regular/nonsymlink, one link, exact bounded lengths and unchanged stat metadata
+across the reads. These preflight reads did not invoke the candidate or cases.
+
+Preflight free space was25088712704 bytes before staging and25088651264 after
+staging, both above the released10GiB start requirement. The fresh directory
+`target/a09-v28-legacy-build-free-59f5c6b-v1` was absent, then created0700 under
+this worktree only. Exact marker, payload and supervisor were created with
+O_EXCL/O_NOFOLLOW,0600, fsynced and read back; the directory was fsynced.
+Payload25305/SHA f6a57790…b9e3 and corrected supervisor16833/SHA4b6ca88c…b1bd
+were materialized from the immutable reviewed report, byte exact. No original
+artifact, source, prior evidence or other worker's files were modified.
+
+Exactly one reviewed supervisor invocation was executed, with no substitution,
+extra feature, case, source oracle correction or retry:
+
+```sh
+python3 -I -S -B "$PWD/target/a09-v28-legacy-build-free-59f5c6b-v1/supervisor.py"
+```
+
+The supervisor launched exactly one isolated Python child, using the reviewed
+payload, cleared child environment, owned session/group,120-second child limit,
+125-second outer controls,8GiB floor and2-second disk sampling interval. The
+candidate's complete pinned archive validator and new legacy binding helper
+were executed through the reviewed AST-selected class/support definitions;
+the controller module main, Cohort constructor, other controller methods,
+Docker, native/product code and opaque layer filesystem contents were not
+executed. Layer payloads were streamed as opaque bytes for content hashes;
+no inner layer filesystem was unpacked, loaded or mounted.
+
+### Actual joined result and final deadline admission
+
+The command completed with numeric parent exit0; the tool's measured command
+wall time was0.607238 seconds. Its complete finite stdout was:
+
+```json
+{"count": 42, "exit": 0, "final_elapsed_seconds": 0.5080366251058877, "first_failure": null, "first_outcome": null, "group_empty": true, "reaped": true, "result": "passed", "stop_reason": null}
+```
+
+The supervisor child PID/PGID was77484. Its child exit0, null signal,
+reaped=true, owned_group_empty=true and empty stdout/stderr captures were
+fsynced in the joined row before completion grading. The joined elapsed
+observation was0.508 seconds, and the post-save final clock measured
+0.5080366251058877 seconds, before OUTER_END. The pre-final decision row
+recorded passed/count42; the separate final stdout also recorded passed.
+There was no first failure, first outcome or stop reason. This execution did
+not exercise a stalled receipt, timeout, cancellation, disk-floor termination
+or late-clock refusal; those controls remain source-reviewed, not empirically
+proved by this fast successful path.
+
+Supervisor preflight free bytes were25089646592; the recorded sampled minimum
+was25089495040. Immediately after exit/parent receipt save, fresh free bytes
+were24975904768. A later evidence inventory observed25038843904. These are
+observed samples, not a continuous minimum or a measured peak-memory claim.
+No guard was reduced and no resource cleanup/prune was performed to achieve
+capacity. Child captures were empty; the supervisor's closed stdout
+above is the actual final envelope, not native or protocol output.
+
+The exact tool numeric return and complete stdout, plus staging observations,
+were saved in exclusive0600 `actual.invocation.json` and fsynced before the
+independent post-run result comparison. Its recorded UTC timestamp is
+`2026-10-02T23:25:10.966724+00:00`. This external controller receipt is separate from
+supervisor finalization: the unchanged joined/decision journals remain
+pre-final observations, and the supervisor itself wrote no files after its
+final clock. Post-run evidence/report writing does not change that ordering.
+After joined exit, an independent `killpg(77484, 0)` returned
+ProcessLookupError, agreeing with the supervisor's empty-group proof. No
+post-reap signal was sent. The child was reaped and the tool reported the
+supervisor process complete; no owned runtime child/group remained.
+
+The temporary validation slot was explicitly RELEASED in the immediate actual
+handoff before this report appendix. Cargo and desktop were never acquired or
+released. The only invocation has finished; no additional runtime is authorized.
+
+### All42 actual observations
+
+All42 recorded case names are in the exact reviewed CASE_ORDER, and the
+original payload accepted every recorded outcome against its literal oracle.
+Three positive observations passed; the remaining39 observed their required
+specific refusals. Each observation was journaled/fsynced before its original
+comparison. The retained archive itself is the decisive actual positive; the
+small synthetic baseline does not replace it.
+
+| Case | Observed outcome |
+| --- | --- |
+| `retained_archive` | `pass` |
+| `retained_derived_six` | `pass` |
+| `tiny_baseline` | `pass` |
+| `extra_correctly_hashed` | `image_tar_unreferenced_member` |
+| `wrong_metadata_digest_path` | `image_legacy_metadata_binding` |
+| `altered_under_old_path` | `image_legacy_metadata_binding` |
+| `rehash_id` | `image_legacy_metadata_binding` |
+| `rehash_parent` | `image_legacy_metadata_binding` |
+| `rehash_created` | `image_legacy_metadata_binding` |
+| `rehash_os` | `image_legacy_metadata_binding` |
+| `rehash_config` | `image_legacy_metadata_binding` |
+| `rehash_unknown` | `image_legacy_metadata_binding` |
+| `duplicate_json_keys` | `image_legacy_metadata_binding` |
+| `malformed_metadata` | `image_legacy_metadata_binding` |
+| `scalar_metadata` | `image_legacy_metadata_binding` |
+| `missing_metadata` | `image_legacy_metadata_binding` |
+| `duplicate_member` | `image_tar_member` |
+| `nonregular_member` | `image_tar_member` |
+| `path_member` | `image_tar_member` |
+| `manifest_layer_order` | `oci_image_manifest_binding` |
+| `streamed_layer_mismatch` | `image_legacy_layers` |
+| `rootfs_layer_order` | `image_legacy_layers` |
+| `rootfs_duplicate` | `image_legacy_layers` |
+| `rootfs_schema` | `image_legacy_rootfs` |
+| `bool_as_int` | `image_legacy_config` |
+| `top_unknown_schema` | `image_legacy_profile` |
+| `invalid_calendar` | `image_legacy_created` |
+| `noncanonical_time` | `image_legacy_created` |
+| `layer_count_129` | `image_legacy_rootfs` |
+| `compressed_stat_cap` | `image_archive_size` |
+| `expanded_header_cap` | `image_tar_expanded_cap` |
+| `small_payload_cap` | `docker_archive_manifest` |
+| `truncated_payload` | `tar_read_error` |
+| `wrong_tag` | `image_tar_exact_tag` |
+| `wrong_config_image` | `image_tar_config_layers` |
+| `wrong_oci_config` | `oci_image_manifest_binding` |
+| `wrong_oci_index` | `saved_oci_index` |
+| `wrong_oci_reference` | `oci_manifest_digest` |
+| `missing_oci_payload` | `oci_manifest_payload` |
+| `unsupported_daemon_with_legacy` | `image_tar_unreferenced_member` |
+| `original_blob_digest_loop` | `image_blob_digest` |
+| `original_resource_budget` | `resource_monitor_refused` |
+
+
+The real derived-members witness reported six entries, set SHA-256
+`ddf09fe5d1c8289056fc4e2282e09269a752f3a44fbef76f551db8d09a774603`, compared against the unchanged six externally
+pinned public metadata paths. Twelve public metadata identities were recorded;
+there were five input-pin rows,38 synthetic-input rows,42 case rows and one
+witness row, with no stop row. The final child envelope was:
+
+```json
+{"count":42,"first_failure":null,"requested_exit":0,"schema":"riauth.a09.build-free-child/v1"}
+```
+
+The exact positive covers the retained x86_64 Docker28.0.4 export profile,
+selected image `sha256:6c1248f6e88133330785d3df42b8e7129027b0e3010ab29fc30e2831408a7c5a`,
+Essentials/sourceb619, the original selected owner/tag/config and ordered layer
+chain plus six derived legacy metadata objects. It is not an ARM archive run,
+a generic daemon-version allowance or permission to accept extra JSON blobs.
+The unsupported-daemon and extra-correctly-hashed cases observed their
+original `image_tar_unreferenced_member` refusal.
+
+### Private retained evidence identities and limits
+
+All following literal files remain under this own private0700 directory,
+regular/nonsymlink, same UID, one link,0600. No raw private protocol, secret,
+layer filesystem content or arbitrary error string is published here. File
+hashes below identify evidence only; no file was deleted or overwritten after
+its captured final state (the reviewed synthetic case file was reused by the
+original payload during its one invocation).
+
+| Retained file within the private evidence directory | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `.marker` | 59 | `055b0e3e497ae240f6fc04c5a1dce0379a659637d45733efb51c7358812b4b17` |
+| `payload.py` | 25305 | `f6a57790e77e85153c0a2fa84f03c257fa80931621004a53d67946aa1c0db9e3` |
+| `supervisor.py` | 16833 | `4b6ca88c509feeb0b0331c6e1ac970ac1e07d81fde2650e3685c8a86af8cb1bd` |
+| `controller.txt` | 99566 | `c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837` |
+| `receipt.json` | 16872 | `ab7c5ce7b87e672db255edc4393ccb27348cb777b14f5f7880f87a68a986ab7d` |
+| `small.json` | 17651 | `430471f20c63eb533003415c19c3d19c8f83b542af7acb75621cfe150040e5b4` |
+| `inner.docker.tar.gz` | 48934031 | `e9e1291895a1cf6c894147acaa0b4efca4a885d4f07dc88f5aee2152c9604905` |
+| `case.tar.gz` | 1352 | `eb91c69710b272d40fa2678656cde689e7ff4dbe4f289a57ffdbec0b5d789b0f` |
+| `actual.child.jsonl` | 9884 | `2e821b62437d666d992cf0180b13d7b24baed684732cbf128010b637809fb4fc` |
+| `actual.child.json` | 94 | `2dbda9c3b1fde1f3c4c0be18634a27b6ec93153b7212a564bd55a628d4b3d4a6` |
+| `actual.outer.jsonl` | 902 | `c49a2d49376f331a7bebeade2491ce2ce57ef387395647a897421d34c529c35b` |
+| `actual.invocation.json` | 1492 | `7384f2e940e4d9976391e47f89cb4ba5b8b704db88cc43f03e0a1a13a6d0467f` |
+| `stdout.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| `stderr.log` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+
+Actual cohort37061329815 remains FAILED at its historical
+`image_tar_unreferenced_member` boundary. This build-free pass supplies a
+bounded regression result for the corrected strict archive validator; it does
+not rerun or relabel the container cohort. Container UID10001, private copy-up,
+mount permissions, nonroot maintenance, image-save/rm/load runtime lifecycle,
+shared full source agreement and E-P-E refusal/nonrenewal gates remain
+unreached in that failed cohort. No full A09, O07, Linux deployment/HA, release,
+ARM or product-execution closure is claimed. Both earlier Desktop UID/GID0:0
+failures and I04/other completed rows remain unchanged. Root alone selects
+later runtime, integration and original task disposition.
+
+Only this report is appended. Exact137438-byte prefix/source/workflow pins,
+report-only scope, documentation and working/staged whitespace checks are
+verified before commit; committed prefix and clean worktree are checked after
+commit. No production/helper/workflow edit, Cargo/build/native/Docker/GUI/HTTP/
+network/download/query, extra case/alternative profile/retry, deletion/prune,
+main/push/task-status change, new worker/task/worktree/managed shell or other
+worker contact occurred. Private runtime evidence is retained ignored under
+own target; it is not imported as product source or an official artifact.
+
+Actual final checks: `python3 scripts/check-docs.py` exited0, reporting
+"Markdown links and build-directory layout checked"; `git diff --check` exited0.
+The persisted137438-byte prefix was exact, helper/workflow identities unchanged,
+parent receipt exit0/count42/passed intact, and only this report differed.
+`git check-ignore` confirmed the private invocation receipt stays ignored.
+Staged report-only scope/whitespace are checked before this separate evidence
+commit, then committed prefix/source pins and clean worktree are verified.

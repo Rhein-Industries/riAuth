@@ -1,0 +1,1270 @@
+{
+  "schema": "riauth.wave30-ci-terminal-root/v1",
+  "run": {
+    "conclusion": "success",
+    "createdAt": "2026-10-02T22:28:42Z",
+    "headSha": "1496d8dc3ff676f3eb5c3bf230c36a31b572243f",
+    "jobs": [
+      {
+        "completedAt": "2026-10-02T22:53:58Z",
+        "conclusion": "success",
+        "databaseId": 111058962056,
+        "name": "integration",
+        "startedAt": "2026-10-02T22:40:53Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-02T22:40:55Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-02T22:40:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:40:57Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-10-02T22:40:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:41:04Z",
+            "conclusion": "success",
+            "name": "Run dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de",
+            "number": 3,
+            "startedAt": "2026-10-02T22:40:57Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:41:18Z",
+            "conclusion": "success",
+            "name": "Install integration dependencies",
+            "number": 4,
+            "startedAt": "2026-10-02T22:41:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:41:19Z",
+            "conclusion": "success",
+            "name": "Prepare Chrome for browser tests",
+            "number": 5,
+            "startedAt": "2026-10-02T22:41:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:43:36Z",
+            "conclusion": "success",
+            "name": "Independent SAML XML signature and encryption",
+            "number": 6,
+            "startedAt": "2026-10-02T22:41:19Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:43:39Z",
+            "conclusion": "success",
+            "name": "Independent upstream SAML signatures",
+            "number": 7,
+            "startedAt": "2026-10-02T22:43:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:43:43Z",
+            "conclusion": "success",
+            "name": "Independent SAML logout",
+            "number": 8,
+            "startedAt": "2026-10-02T22:43:39Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:43:57Z",
+            "conclusion": "success",
+            "name": "PostgreSQL replication and service failover",
+            "number": 9,
+            "startedAt": "2026-10-02T22:43:43Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:46:41Z",
+            "conclusion": "success",
+            "name": "Shared contracts on isolated PostgreSQL databases",
+            "number": 10,
+            "startedAt": "2026-10-02T22:43:57Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:48:55Z",
+            "conclusion": "success",
+            "name": "Secure first administrator setup in real browsers",
+            "number": 11,
+            "startedAt": "2026-10-02T22:46:41Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:52:47Z",
+            "conclusion": "success",
+            "name": "Headless portal authenticator journeys",
+            "number": 12,
+            "startedAt": "2026-10-02T22:48:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:52:58Z",
+            "conclusion": "success",
+            "name": "PostgreSQL Q05 replay and lease schedules",
+            "number": 13,
+            "startedAt": "2026-10-02T22:52:47Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:53:04Z",
+            "conclusion": "success",
+            "name": "OpenLDAP synchronization and authentication",
+            "number": 14,
+            "startedAt": "2026-10-02T22:52:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:53:22Z",
+            "conclusion": "success",
+            "name": "Real browser and relying party",
+            "number": 15,
+            "startedAt": "2026-10-02T22:53:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:53:33Z",
+            "conclusion": "success",
+            "name": "Application portal browser checks",
+            "number": 16,
+            "startedAt": "2026-10-02T22:53:22Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:53:51Z",
+            "conclusion": "success",
+            "name": "nginx forward authentication and browser SSO",
+            "number": 17,
+            "startedAt": "2026-10-02T22:53:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:53:56Z",
+            "conclusion": "success",
+            "name": "Traefik forward authentication",
+            "number": 18,
+            "startedAt": "2026-10-02T22:53:51Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:53:56Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 36,
+            "startedAt": "2026-10-02T22:53:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:53:56Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 37,
+            "startedAt": "2026-10-02T22:53:56Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37072693396/job/111058962056"
+      },
+      {
+        "completedAt": "2026-10-02T23:42:27Z",
+        "conclusion": "success",
+        "databaseId": 111058962351,
+        "name": "check",
+        "startedAt": "2026-10-02T22:40:54Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-02T22:40:56Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-02T22:40:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:40:58Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-10-02T22:40:56Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:40:58Z",
+            "conclusion": "success",
+            "name": "Check repository hygiene",
+            "number": 3,
+            "startedAt": "2026-10-02T22:40:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:41:06Z",
+            "conclusion": "success",
+            "name": "Run dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de",
+            "number": 4,
+            "startedAt": "2026-10-02T22:40:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:41:20Z",
+            "conclusion": "success",
+            "name": "Install native build dependencies",
+            "number": 5,
+            "startedAt": "2026-10-02T22:41:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:41:26Z",
+            "conclusion": "success",
+            "name": "Run cargo fmt --all -- --check",
+            "number": 6,
+            "startedAt": "2026-10-02T22:41:20Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:43:39Z",
+            "conclusion": "success",
+            "name": "Run cargo clippy --all-targets --features test-support,fuzzing --locked -- -D warnings",
+            "number": 7,
+            "startedAt": "2026-10-02T22:41:26Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:23:23Z",
+            "conclusion": "success",
+            "name": "Run cargo test --all-targets --features test-support,fuzzing --locked",
+            "number": 8,
+            "startedAt": "2026-10-02T22:43:39Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:25:44Z",
+            "conclusion": "success",
+            "name": "Check server USB boundary",
+            "number": 9,
+            "startedAt": "2026-10-02T23:23:23Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:28:34Z",
+            "conclusion": "success",
+            "name": "Check standalone riauthctl and its dependency closure",
+            "number": 10,
+            "startedAt": "2026-10-02T23:25:44Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:31:18Z",
+            "conclusion": "success",
+            "name": "Check standalone client against the real server binaries",
+            "number": 11,
+            "startedAt": "2026-10-02T23:28:34Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:31:24Z",
+            "conclusion": "success",
+            "name": "Check documentation, notices, and delivery scripts",
+            "number": 12,
+            "startedAt": "2026-10-02T23:31:18Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:42:24Z",
+            "conclusion": "success",
+            "name": "Run cargo build --release --locked",
+            "number": 13,
+            "startedAt": "2026-10-02T23:31:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:42:24Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 26,
+            "startedAt": "2026-10-02T23:42:24Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:42:24Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 27,
+            "startedAt": "2026-10-02T23:42:24Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37072693396/job/111058962351"
+      },
+      {
+        "completedAt": "2026-10-02T22:44:15Z",
+        "conclusion": "success",
+        "databaseId": 111058962365,
+        "name": "audit",
+        "startedAt": "2026-10-02T22:40:54Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-02T22:40:55Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-02T22:40:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:40:58Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 2,
+            "startedAt": "2026-10-02T22:40:55Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:41:06Z",
+            "conclusion": "success",
+            "name": "Run dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de",
+            "number": 3,
+            "startedAt": "2026-10-02T22:40:58Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:41:17Z",
+            "conclusion": "success",
+            "name": "Install audit build dependencies",
+            "number": 4,
+            "startedAt": "2026-10-02T22:41:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:44:13Z",
+            "conclusion": "success",
+            "name": "Audit dependency advisories",
+            "number": 5,
+            "startedAt": "2026-10-02T22:41:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:44:13Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 10,
+            "startedAt": "2026-10-02T22:44:13Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T22:44:13Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 11,
+            "startedAt": "2026-10-02T22:44:13Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37072693396/job/111058962365"
+      }
+    ],
+    "status": "completed",
+    "updatedAt": "2026-10-02T23:42:28Z",
+    "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37072693396",
+    "workflowName": "Public CI",
+    "databaseId": 37072693396
+  },
+  "check_log": {
+    "local_path": "/tmp/riauth-wave30-ci-37072693396/check.log",
+    "bytes": 873545,
+    "sha256": "6bd35c4f3092cdde9e8d9d7af7022a47516b6d97a96c2f210b8070931ac0fd48",
+    "mode": "0600",
+    "successful_summaries": 203,
+    "failed_summaries": 0,
+    "parsed_summaries": [
+      {
+        "line": 1737,
+        "summary": "ok. 124 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 48.09s"
+      },
+      {
+        "line": 1743,
+        "summary": "ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 1749,
+        "summary": "ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 1765,
+        "summary": "ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.38s"
+      },
+      {
+        "line": 1773,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.43s"
+      },
+      {
+        "line": 1780,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.42s"
+      },
+      {
+        "line": 1787,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.18s"
+      },
+      {
+        "line": 1811,
+        "summary": "ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.32s"
+      },
+      {
+        "line": 1821,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.33s"
+      },
+      {
+        "line": 1829,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.84s"
+      },
+      {
+        "line": 1836,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.26s"
+      },
+      {
+        "line": 1855,
+        "summary": "ok. 12 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 19.65s"
+      },
+      {
+        "line": 1873,
+        "summary": "ok. 11 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 16.15s"
+      },
+      {
+        "line": 1880,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.40s"
+      },
+      {
+        "line": 1887,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 1898,
+        "summary": "ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.18s"
+      },
+      {
+        "line": 1952,
+        "summary": "ok. 44 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 55.46s"
+      },
+      {
+        "line": 1980,
+        "summary": "ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.25s"
+      },
+      {
+        "line": 1991,
+        "summary": "ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.10s"
+      },
+      {
+        "line": 2045,
+        "summary": "ok. 48 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.62s"
+      },
+      {
+        "line": 2064,
+        "summary": "ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.58s"
+      },
+      {
+        "line": 2072,
+        "summary": "ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2079,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.58s"
+      },
+      {
+        "line": 2118,
+        "summary": "ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.38s"
+      },
+      {
+        "line": 2136,
+        "summary": "ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.80s"
+      },
+      {
+        "line": 2143,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.65s"
+      },
+      {
+        "line": 2160,
+        "summary": "ok. 9 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 13.49s"
+      },
+      {
+        "line": 2347,
+        "summary": "ok. 90 passed; 0 failed; 91 ignored; 0 measured; 0 filtered out; finished in 121.52s"
+      },
+      {
+        "line": 2360,
+        "summary": "ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.41s"
+      },
+      {
+        "line": 2369,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.24s"
+      },
+      {
+        "line": 2376,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.17s"
+      },
+      {
+        "line": 2392,
+        "summary": "ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.24s"
+      },
+      {
+        "line": 2400,
+        "summary": "ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.95s"
+      },
+      {
+        "line": 2409,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.15s"
+      },
+      {
+        "line": 2416,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2425,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.91s"
+      },
+      {
+        "line": 2432,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2445,
+        "summary": "ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.72s"
+      },
+      {
+        "line": 2452,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s"
+      },
+      {
+        "line": 2459,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.68s"
+      },
+      {
+        "line": 2469,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.64s"
+      },
+      {
+        "line": 2483,
+        "summary": "ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.78s"
+      },
+      {
+        "line": 2670,
+        "summary": "ok. 178 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 148.72s"
+      },
+      {
+        "line": 2682,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.73s"
+      },
+      {
+        "line": 2689,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.99s"
+      },
+      {
+        "line": 2703,
+        "summary": "ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.99s"
+      },
+      {
+        "line": 2710,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2719,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s"
+      },
+      {
+        "line": 2726,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2733,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2740,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.21s"
+      },
+      {
+        "line": 2747,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2754,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2768,
+        "summary": "ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.06s"
+      },
+      {
+        "line": 2775,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2783,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.92s"
+      },
+      {
+        "line": 2793,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.25s"
+      },
+      {
+        "line": 2800,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2807,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2814,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2822,
+        "summary": "ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2829,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2838,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.66s"
+      },
+      {
+        "line": 2845,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2852,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2859,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.57s"
+      },
+      {
+        "line": 2867,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.23s"
+      },
+      {
+        "line": 2875,
+        "summary": "ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2885,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.50s"
+      },
+      {
+        "line": 2895,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.92s"
+      },
+      {
+        "line": 2904,
+        "summary": "ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 2912,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.55s"
+      },
+      {
+        "line": 2921,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.58s"
+      },
+      {
+        "line": 2930,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.54s"
+      },
+      {
+        "line": 2939,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.10s"
+      },
+      {
+        "line": 2946,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.00s"
+      },
+      {
+        "line": 2955,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.67s"
+      },
+      {
+        "line": 2962,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.82s"
+      },
+      {
+        "line": 2969,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.94s"
+      },
+      {
+        "line": 2977,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.01s"
+      },
+      {
+        "line": 2984,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.37s"
+      },
+      {
+        "line": 3021,
+        "summary": "ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 35.06s"
+      },
+      {
+        "line": 3030,
+        "summary": "ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 7.96s"
+      },
+      {
+        "line": 3037,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.40s"
+      },
+      {
+        "line": 3045,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.07s"
+      },
+      {
+        "line": 3066,
+        "summary": "ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.22s"
+      },
+      {
+        "line": 3074,
+        "summary": "ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 32.89s"
+      },
+      {
+        "line": 3094,
+        "summary": "ok. 13 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 10.69s"
+      },
+      {
+        "line": 3105,
+        "summary": "ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.50s"
+      },
+      {
+        "line": 3117,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.63s"
+      },
+      {
+        "line": 3129,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.97s"
+      },
+      {
+        "line": 3137,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.46s"
+      },
+      {
+        "line": 3147,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.55s"
+      },
+      {
+        "line": 3165,
+        "summary": "ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 38.48s"
+      },
+      {
+        "line": 3173,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 16.76s"
+      },
+      {
+        "line": 3181,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.26s"
+      },
+      {
+        "line": 3212,
+        "summary": "ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 45.84s"
+      },
+      {
+        "line": 3219,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3227,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.67s"
+      },
+      {
+        "line": 3236,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.60s"
+      },
+      {
+        "line": 3244,
+        "summary": "ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3256,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.86s"
+      },
+      {
+        "line": 3263,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3272,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s"
+      },
+      {
+        "line": 3280,
+        "summary": "ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.72s"
+      },
+      {
+        "line": 3288,
+        "summary": "ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.22s"
+      },
+      {
+        "line": 3296,
+        "summary": "ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 13.45s"
+      },
+      {
+        "line": 3303,
+        "summary": "ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3322,
+        "summary": "ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.50s"
+      },
+      {
+        "line": 3329,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.21s"
+      },
+      {
+        "line": 3336,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.91s"
+      },
+      {
+        "line": 3344,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.54s"
+      },
+      {
+        "line": 3351,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.05s"
+      },
+      {
+        "line": 3365,
+        "summary": "ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.77s"
+      },
+      {
+        "line": 3377,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.26s"
+      },
+      {
+        "line": 3395,
+        "summary": "ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.11s"
+      },
+      {
+        "line": 3402,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.02s"
+      },
+      {
+        "line": 3416,
+        "summary": "ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.89s"
+      },
+      {
+        "line": 3424,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.91s"
+      },
+      {
+        "line": 3433,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.71s"
+      },
+      {
+        "line": 3440,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.73s"
+      },
+      {
+        "line": 3448,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.87s"
+      },
+      {
+        "line": 3457,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.31s"
+      },
+      {
+        "line": 3464,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.52s"
+      },
+      {
+        "line": 3481,
+        "summary": "ok. 0 passed; 0 failed; 11 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3487,
+        "summary": "ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3495,
+        "summary": "ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3504,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.68s"
+      },
+      {
+        "line": 3511,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.57s"
+      },
+      {
+        "line": 3541,
+        "summary": "ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.03s"
+      },
+      {
+        "line": 3570,
+        "summary": "ok. 7 passed; 0 failed; 12 ignored; 0 measured; 0 filtered out; finished in 115.93s"
+      },
+      {
+        "line": 3579,
+        "summary": "ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.30s"
+      },
+      {
+        "line": 3586,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.98s"
+      },
+      {
+        "line": 3593,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.84s"
+      },
+      {
+        "line": 3608,
+        "summary": "ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.60s"
+      },
+      {
+        "line": 3618,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.77s"
+      },
+      {
+        "line": 3652,
+        "summary": "ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 39.31s"
+      },
+      {
+        "line": 3661,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.17s"
+      },
+      {
+        "line": 3678,
+        "summary": "ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.65s"
+      },
+      {
+        "line": 3708,
+        "summary": "ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 40.88s"
+      },
+      {
+        "line": 3715,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.04s"
+      },
+      {
+        "line": 3741,
+        "summary": "ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 40.69s"
+      },
+      {
+        "line": 3750,
+        "summary": "ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.81s"
+      },
+      {
+        "line": 3758,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.51s"
+      },
+      {
+        "line": 3766,
+        "summary": "ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3773,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.32s"
+      },
+      {
+        "line": 3786,
+        "summary": "ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.67s"
+      },
+      {
+        "line": 3795,
+        "summary": "ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 3819,
+        "summary": "ok. 17 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 67.16s"
+      },
+      {
+        "line": 3834,
+        "summary": "ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.85s"
+      },
+      {
+        "line": 3855,
+        "summary": "ok. 11 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 8.49s"
+      },
+      {
+        "line": 3867,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s"
+      },
+      {
+        "line": 3881,
+        "summary": "ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.50s"
+      },
+      {
+        "line": 3898,
+        "summary": "ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.22s"
+      },
+      {
+        "line": 3909,
+        "summary": "ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.66s"
+      },
+      {
+        "line": 3931,
+        "summary": "ok. 10 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 31.90s"
+      },
+      {
+        "line": 3975,
+        "summary": "ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 120.12s"
+      },
+      {
+        "line": 3985,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.37s"
+      },
+      {
+        "line": 3997,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.78s"
+      },
+      {
+        "line": 4009,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.80s"
+      },
+      {
+        "line": 4023,
+        "summary": "ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.46s"
+      },
+      {
+        "line": 4030,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.08s"
+      },
+      {
+        "line": 4037,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.91s"
+      },
+      {
+        "line": 4044,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.00s"
+      },
+      {
+        "line": 4051,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.91s"
+      },
+      {
+        "line": 4061,
+        "summary": "ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.44s"
+      },
+      {
+        "line": 4068,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.46s"
+      },
+      {
+        "line": 4075,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.45s"
+      },
+      {
+        "line": 4087,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.60s"
+      },
+      {
+        "line": 4100,
+        "summary": "ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.13s"
+      },
+      {
+        "line": 4107,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.07s"
+      },
+      {
+        "line": 4114,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.30s"
+      },
+      {
+        "line": 4121,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.94s"
+      },
+      {
+        "line": 4128,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.57s"
+      },
+      {
+        "line": 4142,
+        "summary": "ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.21s"
+      },
+      {
+        "line": 4149,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.85s"
+      },
+      {
+        "line": 4181,
+        "summary": "ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s"
+      },
+      {
+        "line": 4188,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.20s"
+      },
+      {
+        "line": 4195,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.13s"
+      },
+      {
+        "line": 4201,
+        "summary": "ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 4207,
+        "summary": "ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 4361,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 20 filtered out; finished in 0.05s"
+      },
+      {
+        "line": 4529,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+      },
+      {
+        "line": 4540,
+        "summary": "ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.36s"
+      },
+      {
+        "line": 4553,
+        "summary": "ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.79s"
+      },
+      {
+        "line": 4572,
+        "summary": "ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.15s"
+      },
+      {
+        "line": 4589,
+        "summary": "ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.65s"
+      },
+      {
+        "line": 4616,
+        "summary": "ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 28.97s"
+      },
+      {
+        "line": 4628,
+        "summary": "ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.80s"
+      },
+      {
+        "line": 4643,
+        "summary": "ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.47s"
+      },
+      {
+        "line": 4651,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s"
+      },
+      {
+        "line": 4659,
+        "summary": "ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.36s"
+      },
+      {
+        "line": 4684,
+        "summary": "ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.22s"
+      },
+      {
+        "line": 4973,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.14s"
+      },
+      {
+        "line": 4980,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.16s"
+      },
+      {
+        "line": 4987,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.20s"
+      },
+      {
+        "line": 4994,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.87s"
+      },
+      {
+        "line": 5001,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.27s"
+      },
+      {
+        "line": 5008,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.69s"
+      },
+      {
+        "line": 5015,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.66s"
+      },
+      {
+        "line": 5022,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.39s"
+      },
+      {
+        "line": 5029,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.56s"
+      },
+      {
+        "line": 5038,
+        "summary": "ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 16.85s"
+      }
+    ],
+    "selected_pass_lines": [
+      {
+        "line": 1633,
+        "name": "background::tests::overload_and_deadlines_keep_foreground_and_maintenance_capacity",
+        "text": "check\tRun cargo test --all-targets --features test-support,fuzzing --locked\t2026-10-02T22:49:41.3171949Z test background::tests::overload_and_deadlines_keep_foreground_and_maintenance_capacity ... ok"
+      },
+      {
+        "line": 1965,
+        "name": "cli_certificate_bind_and_revoke_require_retry_binding",
+        "text": "check\tRun cargo test --all-targets --features test-support,fuzzing --locked\t2026-10-02T22:53:48.7458887Z test cli_certificate_bind_and_revoke_require_retry_binding ... ok"
+      },
+      {
+        "line": 2012,
+        "name": "cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted",
+        "text": "check\tRun cargo test --all-targets --features test-support,fuzzing --locked\t2026-10-02T22:54:07.6808672Z test cloud_operations_entra_certificate_private_file_status_is_scoped_and_redacted ... ok"
+      },
+      {
+        "line": 3388,
+        "name": "admin_can_filter_paginate_and_attribute_changes",
+        "text": "check\tRun cargo test --all-targets --features test-support,fuzzing --locked\t2026-10-02T23:08:42.6019317Z test admin_can_filter_paginate_and_attribute_changes ... ok"
+      },
+      {
+        "line": 3705,
+        "name": "browser_source_stage_transport_binds_factor_and_renders_both_response_modes",
+        "text": "check\tRun cargo test --all-targets --features test-support,fuzzing --locked\t2026-10-02T23:14:46.0329408Z test browser_source_stage_transport_binds_factor_and_renders_both_response_modes ... ok"
+      }
+    ]
+  },
+  "read_scope": {
+    "complete_terminal_api": true,
+    "raw_log_read_ranges": [
+      [
+        104,
+        122
+      ],
+      [
+        1957,
+        1982
+      ],
+      [
+        5039,
+        5051
+      ],
+      [
+        5585,
+        5586
+      ]
+    ],
+    "all_summary_lines_parsed": true,
+    "full_integration_log_read": false,
+    "whole_check_test_bodies_reread": false
+  },
+  "cli_source": {
+    "path": "tests/cli.rs",
+    "blob": "aac85be6bd8bb395170b8fe26319a0a05ea31c2b",
+    "sha256": "4941d65dd62abfb6614be55260a6d14077e5f17bb2126d366f3e54ca57968e59",
+    "equals_passive_readiness_published_35c3": true
+  },
+  "limits": [
+    "Whole CI success applies only to immutable1496d8dc; newer7869 CI is still running at this observation.",
+    "Named CLI correction has actual Linux CI pass; no rare-race elimination or historical child-cause claim.",
+    "No A09 shared/container gate or D01 confidential browser journey is established.",
+    "No root Cargo, native build, test or desktop invocation occurred for this receipt.",
+    "An initial display was truncated; complete terminal API was reread compactly before recording full API review."
+  ]
+}
