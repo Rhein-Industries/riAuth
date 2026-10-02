@@ -244,3 +244,76 @@ byte-for-byte reversal, retaining CLI/JSON semantics; no guide bytes were writte
 Only this new report was untracked, with no tracked/staged changes.
 `python3 scripts/check-docs.py` exited0 with the report present; `git diff --check`
 exited0. Staged single-new-path and whitespace checks precede the report commit.
+
+## wave30_I02_embedded_source_guide_correction
+
+2026-10-02. Root approved the exact paragraph proposed in this report at
+`51fc964b6cb28f8945b69da9581a6f0017497b98`. This append records its application;
+the earlier prospective diff and all historical evidence remain unchanged.
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing worktree
+`ed9ac424-59f4-4520-905b-919aea3521eb`, own branch only. No alignment or source
+import was necessary.
+
+The [embedded-source-stage paragraph](../oidc-profiles.md#embedded-source-stages)
+was corrected in guide-only commit
+`e8424b55634fb7e98f8209eb94d9cbdf7bf41398`, parent
+`51fc964b6cb28f8945b69da9581a6f0017497b98`: exactly one insertion and one deletion
+at line179 of `docs/oidc-profiles.md`. The replacement equals the approved diff
+above byte for byte. It describes browser-enabled explicit HTML continuation,
+configured issuer base paths, guarded authenticator/recovery-code submission and
+native query/form-post delivery. It retains JSON `local_factor_required`, the
+same authorization and OTP request, original authorization approval, absence of
+a terminal session credential and the CLI cancel/dedicated-resume limitation.
+
+Before editing, the entire local guide equalled both reviewed blob
+`d9f222a7eec7b2998db800ec15d6b1bfc2b7cee5` and the guide at published
+`b5dcfa9dbb14e953d12edac6a6a1133ecb61033e`: 25,003 bytes, SHA256
+`ed1ae74c792e5e35da8d8a939cbe1b37a58392519f808d79066957451528d29b`.
+The committed guide is 25,350 bytes, blob
+`348bcd0f785323743e4ece982941e9a71475fba4`, SHA256
+`50e749a35ebed44e7430eb8400debbbce89d15444079913237a349b6fb21ca21`.
+Exact in-memory reversal of only the new paragraph restored the entire old blob;
+every other guide byte is unchanged. The old and new anchors were unique.
+
+Source verification before editing distinguished complete selected-body reads
+from whole-object comparisons. The following four full published files equal
+their accepted `5c12f0b641baccc24041c4aaada487b58a880a9a` counterparts:
+
+| Published source | Selected bodies actually reread |
+| --- | --- |
+| `src/api.rs` | 2007–2031: browser UI plus explicit HTML handoff; ordinary JSON/Core resume fallback. |
+| `src/portal/source_stage.rs` | 35–50, 147–164, 185–230, 278–325: routes, configured-base paths, original return-cookie binding and stage eligibility, browser/JSON guard, local continuation and existing Core resume wrapper. |
+| `src/portal/source-stage.html` | 18–31: labelled authenticator/recovery input, actions and noscript message. |
+| `src/portal/source-stage.js` | 13–28, 54–65: outcome rendering, local continuation navigation, guarded JSON factor submission, cancellation and initial check. |
+
+These bodies support the paragraph; their identity checks alone are not credited
+as executions. No product or test bytes changed. The previously recorded focused
+HTTP/rendering pass remains historical evidence, with no new browser/JS-runtime,
+provider, tenant, user-journey or release observation. The earlier failed snapshot
+still has no recorded exact caller; its source inference and corrected expected
+authentication binding are preserved separately.
+
+Actual guide checks: exact approved replacement and whole-file reversal passed;
+the existing report remained identical to51fc964 while the guide was committed;
+Git unstaged and staged scope were solely the guide, with numstat1/1. LF/trailing
+whitespace, `git diff --check` and `git diff --cached --check` passed.
+`python3 scripts/check-docs.py` exited0 before and after the paragraph edit with
+“Markdown links and build-directory layout checked”; no pre-existing flags or
+checker/cache changes. The branch was clean immediately after the guide commit.
+
+This append preserves the complete previous report prefix: 23,142 bytes,
+blob `9fe0ff6bbf51bedb571066940b92848c6a79dd68`, SHA256
+`9dc5387a7dfa17b13f9f2f2d3b0553a74ac6ce5a15dc72d212471f18db22d95e`.
+The following report commit is separate from the guide commit. No runtime,
+Cargo/typecheck, browser/provider/helper/service call, other-file edit, merge,
+main/push/status action, worker contact or new worker/task/worktree/managed shell
+was used. Original disposition, publication and task status remain root-owned;
+the primary assignment and all previously stated security contracts and limits
+are unchanged.
+
+Report preparation checks passed: complete prior-prefix equality, unchanged
+committed guide and its exact reversal, appendix-only scope with zero deletions,
+all22 distinct cited Git objects, the four published/accepted source identities,
+LF/fences/trailing whitespace, `python3 scripts/check-docs.py` (exit0) and
+`git diff --check` (exit0). Only the reserved report was dirty; staged report-only
+scope/whitespace and clean branch checks accompany its separate commit.
