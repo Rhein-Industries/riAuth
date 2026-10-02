@@ -318,8 +318,15 @@ else:
 SETUP_EMPTY = r'''
 import json,os,sys
 if os.listdir("/fixture"): raise RuntimeError("nonempty_fixture_refused")
-os.chown("/fixture",10001,10001);os.chmod("/fixture",0o700)
-s=os.stat("/fixture");print(json.dumps({"uid":s.st_uid,"gid":s.st_gid,"mode":s.st_mode&0o777}))
+operation="chown"
+try:
+    os.chown("/fixture",10001,10001)
+    operation="chmod";os.chmod("/fixture",0o700)
+    operation="stat";s=os.stat("/fixture")
+except OSError as error:
+    if type(error.errno) is not int or not 0 < error.errno < 2**31: sys.exit(1)
+    print(json.dumps({"operation":operation,"errno":error.errno}));sys.exit(0)
+print(json.dumps({"uid":s.st_uid,"gid":s.st_gid,"mode":s.st_mode&0o777}))
 '''
 
 FILE_MODES = 'test "$(stat -c "%u:%g:%a" /config/riauth.toml)" = 10001:10001:600 && test "$(stat -c "%u:%g:%a" /config/database.key)" = 10001:10001:600'
@@ -389,6 +396,7 @@ class Deployment:
         for key, value in labels(self.token).items():
             argv += ["--label", key + "=" + value]
         if empty_mount:
+            self.evidence["ownership_setup"] = {"stage": "empty_directory_ownership"}
             # The only helper mount is checked EMPTY, before any key/config exists.
             require(not list(self.config.iterdir()), "nonempty_helper_mount_refused")
             argv[argv.index("10001:10001")] = "0:0"
@@ -396,12 +404,13 @@ class Deployment:
                      "--mount", f"type=bind,source={self.config},target=/fixture"]
         argv += ["--entrypoint", "python3", PROBE_IMAGE, "-c", code]
         self.resources_possible = True  # also covers a timed-out/uncertain create
-        try:
-            return decode(self.runner.success(argv, input_bytes=canonical(data or {}), timeout=8))
-        except Refusal as error:
-            if empty_mount and str(error) == "child_command_failed":
-                raise Refusal("uid_mapping_unsupported") from None
-            raise
+        if empty_mount:
+            status, output = self.runner.call(argv, input_bytes=canonical(data or {}), timeout=8)
+            require(type(status) is int, "invalid_ownership_setup_return_code")
+            self.evidence["ownership_setup"]["child_rc"] = status
+            require(status == 0, "ownership_helper_command_failed")
+            return decode(output)
+        return decode(self.runner.success(argv, input_bytes=canonical(data or {}), timeout=8))
 
     def cli(self, args, *, password=None, name="init", timeout=20):
         argv = self.compose + ["run", "--rm", "--no-deps", "--pull", "never", "--name",
@@ -476,6 +485,18 @@ class Deployment:
     def run(self, template):
         self.engine()
         setup = self.helper(SETUP_EMPTY, empty_mount=True)
+        require(isinstance(setup, dict), "invalid_ownership_setup_diagnostic")
+        if set(setup) == {"operation", "errno"}:
+            require(setup["operation"] in ("chown", "chmod", "stat")
+                    and type(setup["errno"]) is int and 0 < setup["errno"] < 2**31,
+                    "invalid_ownership_setup_diagnostic")
+            self.evidence["ownership_setup"].update({"operation": setup["operation"], "errno": setup["errno"]})
+            raise Refusal("ownership_setup_syscall_failed")
+        require(set(setup) == {"uid", "gid", "mode"}
+                and all(type(setup[key]) is int and 0 <= setup[key] < 2**32 for key in ("uid", "gid"))
+                and type(setup["mode"]) is int and 0 <= setup["mode"] <= 0o777,
+                "invalid_ownership_setup_diagnostic")
+        self.evidence["ownership_setup"].update({key: setup[key] for key in ("uid", "gid", "mode")})
         require(setup == {"uid": 10001, "gid": 10001, "mode": 0o700}, "uid_mapping_unsupported")
         port_info = self.helper(PROBE, {"kind": "port"})
         require(port_info["free_bytes"] >= 8 * 1024**3, "engine_disk_floor")
