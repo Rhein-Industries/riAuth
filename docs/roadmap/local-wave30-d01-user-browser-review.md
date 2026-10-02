@@ -7439,3 +7439,1699 @@ Root fully read the original322-line logic and604-line design, the503-line corre
 Root released and executed exactly one reviewed37,738-byte payload SHAa06ab7b0783569f8f3778fffedda55dae0b0a824a8174533e77bb273ba702230 with node --input-type=module under a30-second child bound. Exit0, elapsed0.154203s, no timeout, child94785 reaped, stderr0. Complete5,621-byte stdout SHA91f8865ac7715c9a776c91b5a6645ac8bec7e58fc970067629a3f66d430a9776 and numeric outcome were saved/fsynced before JSON/expectation comparisons. The [fixed root receipt](evidence/wave30-d01-cleanup-memory-2bf9ebc.json) retains all18 completed cases,286 stub tool calls/78 Driver/33 controller/175 collector, no first failure or unreached case.
 
 Controlled assertions cover first latch before cleanup, stop/join/absence ordering and retained failure, metadata/Driver/refusal/late errors, each missing proof, partial JSON, failed join, malformed readback, ownership refusal and no journey credit from the application-only branch. Complete independent absence can prove resource release after Driver error or lateness while that error remains recorded and whole60 remains false. The VM used immediately settled stubs; no actual collector, Driver, browser, native helper, product, socket, signal, filesystem cleanup or Cargo operation occurred. No fixture runtime slot was acquired/released. Real first-event/whole60 timing and confidential journey remain unproven; the real fixture remains held pending the distinct observer-aware envelope. All historical failures/private evidence stay unchanged.
+
+## Dated source-only phase: observer-aware controller and decision boundary, 2026-10-03 (Europe/Vaduz)
+
+Reservation: wave30_D01_observer_controller_source_plan. Only this existing
+report is appended. No controller/helper/source was materialized or evaluated,
+no main alignment occurred, and no runtime/desktop/Cargo slot was acquired or
+released. Real confidential fixture remains HELD. Root owns all original gates.
+
+The finite propagation candidate below is complete source for the outer
+controller and for a prepared-handle entry/continuation cell. It is NOT a
+complete executable preparation pipeline: the exact original Driver-return
+adapter and cleanup branch for a prepare failure without an owned returned
+browser PID are absent from the retained controller/cell archives. That is one
+concrete integration prerequisite, not an invented product defect. The small
+preparation boundary is archived separately and names those missing bodies.
+Root should not release this proposal as an all-phase fixture until that source
+input is reserved and fully reviewed. No guessed Driver JSON mapping, unknown
+PID kill, callback or private credential reader is supplied as if verified.
+
+### Immutable inputs and actual versus proposed evidence
+
+Read the complete retained193-line prepared180 controller,14905B/SHA256
+6662bdbb168bf0ba6ec5ff24b6f3b88dc15b54b4dfc3b800fdaca1cbee403bbb,
+body14882B/SHA256
+271b4a00711a084e21792b0310839e69d4fb8779fa5e6d003bde04caf0c82c72;
+complete284-line composed cell,18091B/SHA256
+0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e;
+and all four literal collector sources embedded in that cell. These are public
+retained source, not raw private request or credential contents.
+
+Read the complete published cleanup-memory JSON from immutable
+b71b7b0041a549793233e8c7a81bbb61797e20f3:
+docs/roadmap/evidence/wave30-d01-cleanup-memory-2bf9ebc.json,
+10004B/SHA256 f2832e4397e69e59bb86680d975f46a06ca1dbdb7c830d4f949823be11bc989a.
+Root's actual ONE a06ab7 payload invocation exited0:18/18 cases,286 stub tool
+calls,0.15420270897448063s, owned Node child94785 reaped,5621 stdout bytes/SHA256
+91f8865ac7715c9a776c91b5a6645ac8bec7e58fc970067629a3f66d430a9776,
+zero stderr. I read that receipt; I did not independently execute its payload.
+Its78 Driver/33 controller/175 collector stub calls and corrected absence
+versus budget separation apply to the immutable old cell. They do not verify
+this changed candidate, a real collector/tool/GUI/native path or browser
+journey. Earlier strict predicted design remains dated and unexecuted; its
+three false release expectations were a root requirement correction.
+
+Read immutable main74e106b819e7186d0ac41964cedbe8217fa7e881 helper observer,
+capture sites and main evidence/cleanup excerpts, and Essentials section2/3.
+No complete-body review of the entire helper or large independent observer
+report is claimed. Source identity:
+f4ef05d8428b235511e81277ba6b4b72d5ec08ba, published helper blob
+a01b1f3f81f0978eb0a02ed339c7248cae485350,35749B/757lines/SHA256
+75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1.
+The descriptor-memory0ec128 design remains independent-review pending and
+UNEXECUTED; no descriptor/native observer pass is assumed.
+
+Two static-source preparation errors are disclosed separately from historical
+fixture failures: a mistyped long f4ef source token ending08ba3 caused git
+revision lookup exit128; immutable main74 resolved the correct40-character
+token ending08ba. First in-memory candidate assembly refused because the two
+identical helper-result read sites violated its single-occurrence assertion.
+Assembly then explicitly counted both sites; no source file or runtime was
+changed. Some broad read output was truncated, so only the complete retained
+sources and selected excerpts above are counted as body reads.
+
+The unchanged c01 artifacts are future mandatory fresh identity checks:
+riauth7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606;
+maintenance86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95;
+riauthctlbfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf.
+Verifier9cefe7a56425bb73c17753e8766d92320b77da3b/blob
+3be747d03146f1bcaa3ec012ee8d173b61fa737d/SHA256
+f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d.
+Resolved native provider67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72.
+Complete63ASCII version stdout plus numeric exit/stderr must be retained
+before the unchanged full app+Library equality. No artifact/provider was
+invoked or freshly rehashed in this design; helper source and receipt hashes
+are distinct from binary identity or body review.
+
+### Proposed finite propagation and decision ordering
+
+Controller changes are restricted to explicit non-executable START/output
+placeholders, the helper75 source pin, and diagnostic propagation. The two
+helper-result load sites project and sanitize the new nested field before
+retaining it or announcing completion. Existing result/failure/stage/request
+reason/counter/check/status/CLI/listener/guard/native decisions remain intact.
+All nine original controller function ASTs are identical. The180s assignment,
+START+840 active/inclusive900, cleanup60, helper600/pending180, native+HTTP5,
+CLI60/listener30, issuer9000/callback3000, private0700/0600 setup and1s8.5GiB
+stop remain exact; no reset, rebind, replay or extra RP readiness HTTP occurs.
+
+Whitelist shape is exactly:
+observed:boolean; diagnostic:null OR a dictionary with exactly
+site,exception_class,own_function,own_line. observed:false requires null.
+observed:true/diagnostic:null is valid when the helper's first-only projection
+failed. Sites are handler/server/main; classes are the eight exact builtin
+labels plus other; functions are the ten own-code labels from helper75.
+Function/line are either both null or a whitelisted function plus a true
+integer1..1024; Python bool is refused as an integer. No exception message,
+filename, traceback/frame/locals, request/header/value/URL/query/subject or
+sender is retained. First finite observation is preserved, including a null
+diagnostic; malformed input gets a fixed observer_projection_invalid error
+and no raw fallback. Diagnostic errors never replace first_failure, change
+authentication acceptance, give journey credit or withhold independently
+proven resource absence. This is transport/source validation, not cause proof.
+
+One prepared-handle cell starts while the existing180s gate still waits and
+helper3000 has NOT started. Exact returned Driver-owned PID/window/session/
+target/tab must already be cached under the reviewed preparation boundary.
+The new marker collector checks only owned guard/server PID liveness and the
+private own lab, then writes the existing zero0600 marker exclusively.
+In that same composed call: wait the owned controller fixture_ready event
+within30s; one immediate controller poll; navigate/snapshot protected-before;
+one poll; navigate/snapshot application entry; one poll. There is no text,
+notify, yield_control, instruction/model wait, description/skill load, reprepare
+or rebind between marker/listener/entry. Protected403 is ultimately the helper
+status/check, not merely a browser page text or transport success.
+
+Every tool action in the archived cell uses checked/pollController or the
+existing finite cleanup runners. A returned receipt clock is stored before
+predicate comparison. A failure latches synchronously once, then requests the
+original stop and completes essential owned cleanup before text is possible.
+The outer catch preserves that latch on projection/decision exceptions. Later
+browser actions must use this same cell's browser_decision mode, with a
+single-use latest-snapshot ref, exactly cached target/tab/session and a fixed
+public expected role/label. There is no accepted arbitrary URL, script, HTTP
+login, terminal approval, service session, cookie/header injection or physical
+passkey path. Synthetic DOM click dispatch is not treated as control effect;
+its fresh snapshot predicate is required and journey_credit stays false.
+No action may be appended as an unguarded tool call after this source.
+
+The continuation skeleton permits username/password/click/snapshot plus a
+read-only protected-after snapshot. It never navigates a private callback URL
+or sends an extra protected request after callback completion; helper source
+enforces the exact callback and records native/JWKS/issuer/RS256/nonce/audience/
+time/access-hash/userinfo/cookie checks. All candidate outputs retain
+journey_credit:false: label/ref presence alone is not proof of password
+insertion, empty optional factor, consent, callback or crypto completion.
+Root must review the exact future step predicates and private-password reader/
+transfer before actual journey use. d01_fresh_password_input is a required
+ephemeral input, never a literal credential or durable evidence value.
+Unknown/unmatched shape stops, without selector fallback or retry.
+
+The preparation boundary source below is deliberately not an executable
+receipt adapter. browser_prepare advertises a generic CallToolResult; retained
+prose proves exact owned identities and binding quality but does not provide
+the complete prepare/bind JSON-key adapter or the no-returned-PID cleanup body.
+The old public controller and284-line cell do not contain those bodies.
+The required future source input is the exact ONE prepare/list_windows/bind
+caller with its finite returned-identity projection and partial-ownership
+cleanup. On a preparation refusal/exception, latch first, join the original
+controller using own lab stop, end the exact known session, and kill only a
+proven returned driver-owned browser PID; unknown PID means no kill and no
+absence/release claim. Every preparation decision must use that boundary
+before any output. Root needs to reserve and review those exact bodies before
+executing even this prospective all-phase sequence. No guessed response keys
+or replacement provider is introduced here.
+
+### Cleanup contract and source placement
+
+Failure cleanup preserves STOP then one exact Driver kill_app, end_session,
+list_windows, original controller join, fresh owned PID/port/lab readback and
+exclusive metadata persistence. Unknown ownership suppresses kill/release.
+The adapted readback covers six fixed children if helper was never created,
+or the original seven if helper ran; it learns a helper PID only from the fresh
+canonical owned-controller record and matching named child exits, then checks
+its absence too. It reads only bounded262144B owned0600 canonical evidence,
+fixed PID ps output and9000/3000 listener ownership, never broader args/env.
+No separate peer, pressure or unrelated process observation occurs.
+
+STOP's sole extra branch writes stop without ui-failure on normal final-page
+cleanup; all failed paths still write both original markers. This is necessary
+to avoid converting observed success to browser_checkpoint_failed. It changes
+no public/authentication/helper behavior. CLOCK and PERSIST are byte-identical.
+READBACK's diagnostic projection and pre-helper resource proof are declared
+integration changes, not hidden observer/helper changes.
+
+The prior actual18-case memory pass permits resource release only after
+complete independent join/session/window/PID/port/lab proofs. Failed or late
+Driver operations and metadata errors remain separate cleanup errors even
+when those absence proofs pass. Missing any proof or any unjoined collector
+means resource_release_proven:false.30+15+5+remaining60 are observational
+allocations; MCP advertises no hard per-call timeout/cancel. Whole60 and true
+first-event proof remain false; no new latency guarantee or retrospective
+cleanup anchor is claimed. Essential cleanup still proceeds when late.
+
+WT7 currently contains unchanged helper470:
+32723B/SHA2567fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0.
+The new75 source pin would correctly refuse this tree. AFTER descriptor-memory
+PASS, independent/full root review and an explicit history/source reservation,
+propose this single history-preserving alignment, not a reset:
+git merge --no-ff --no-edit 74e106b819e7186d0ac41964cedbe8217fa7e881
+in WT7. Root decides/owns conflict resolution; pause on conflicts, preserve
+both histories and every report prefix, and rehash757-line helper75. No merge,
+cherry-pick, helper replacement or alignment was performed here.
+
+Fresh START is intentionally float('__ROOT_RELEASED_START_ONCE__'), which
+refuses as written. OUT/PROVIDER_META remain literal root-placeholder
+basenames. Root must separately declare one numeric START and distinct absent
+exclusive0600 output/event/cleanup paths, check >=8.5GiB/unused9000+3000 before
+any setup and archive/hash actual substituted payload before invoking it.
+No current resource reservation, capacity claim, permission check or future
+release is inferred from this report.
+
+### Complete archived candidate sources — NOT EXECUTED
+Static source receipt; node --check and Python parse/code-object compile only:
+
+```json
+{
+  "cell": {
+    "bytes": 31461,
+    "changed_occurrences": 22,
+    "edit_units": 22,
+    "lines": 463,
+    "node_syntax_exit": 0,
+    "sha256": "eff0cdad3981ce0ad57d355203b082e21371553408444bf46a3b4ecfcf5fea0a"
+  },
+  "collectors": {
+    "clock": {
+      "bytes": 114,
+      "lines": 2,
+      "sha256": "cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d"
+    },
+    "marker": {
+      "bytes": 626,
+      "lines": 10,
+      "sha256": "13c6549e0328ad695769938cbc0be7eb47d7a10ea9f00c4d897655603437a949"
+    },
+    "persist": {
+      "bytes": 805,
+      "lines": 18,
+      "sha256": "819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30"
+    },
+    "readback": {
+      "bytes": 4424,
+      "lines": 52,
+      "sha256": "b7d3504245ae94a584b455fa65826fbaa7759ec7a50a7b81c2cf8284c9f9051f"
+    },
+    "stop": {
+      "bytes": 1600,
+      "lines": 29,
+      "sha256": "5de5244440b134689bedfb1235e805c65a8b726e753cbdac1d0831ef1c83d071"
+    }
+  },
+  "controller": {
+    "body_bytes": 17303,
+    "body_lines": 223,
+    "body_sha256": "ce8d3f7b5cc08ce114e7f60a69a498305dadcc51956c8824d362213b58fc0efa",
+    "bytes": 17326,
+    "changed_occurrences": 10,
+    "edit_units": 9,
+    "lines": 225,
+    "nine_existing_function_asts_unchanged": true,
+    "sha256": "5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0"
+  },
+  "helper470_unchanged": true,
+  "not_executed": true,
+  "prefix_bytes": 518404,
+  "prefix_sha256": "2ae110bff13b1943ee8edf0e8b2fb72f38ce417052032cb653fc945d62c4a982",
+  "preparation_boundary": {
+    "bytes": 2217,
+    "lines": 37,
+    "node_syntax_exit": 0,
+    "sha256": "1fb412fbf551a3f76595fca551adb2828775cdd3dfa1801e798426557a6e1355"
+  },
+  "schema": "riauth.d01-observer-controller-design-static/v1",
+  "twelve_old_private_metadata_unchanged": true,
+  "whole_reversal_controller_and_cell": true
+}
+```
+
+Complete outer controller command:
+
+```sh
+python3 -u - <<'PY'
+import datetime,fcntl,hashlib,json,os,pathlib,pty,secrets,select,shutil,signal,stat,subprocess,sys,tempfile,termios,time,urllib.request
+ROOT=pathlib.Path.cwd()
+START=float('__ROOT_RELEASED_START_ONCE__')
+ACTIVE=START+840
+BIN=pathlib.Path('/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/target/d01-essentials-c01c39a/aarch64-apple-darwin/debug')
+PRIVATE=ROOT/'deployment-private'
+OUT=PRIVATE/'__ROOT_FRESH_OBSERVER_OUT_BASENAME__'
+PROVIDER_META=PRIVATE/'__ROOT_FRESH_OBSERVER_PROVIDER_BASENAME__'
+record={'schema':'riauth.d01-confidential-browser-outer/v1','result':'failed','failure_stage':None,'failure_tag':None,'request_invalid_reason':None,'preflow_authorization_refusals':None,'unexpected_failure_observation':None,'unexpected_observation_projection':'unavailable','commands':[],'artifacts':{},'cleanup':{},'owned_child_exits':[],'started_epoch':START,'active_seconds':840,'cleanup_seconds':60,'minimum_free_bytes':None,'disk_samples':0}
+lab=None;children=[];names={};server=None;helper=None;password=None;stage='preflight';resultfd=None;lastsample=0
+def require(ok,tag):
+    if not ok:raise RuntimeError(tag)
+def tick():
+    global lastsample
+    now=time.monotonic()
+    if now-lastsample>=1:
+        free=shutil.disk_usage(ROOT).free
+        record['disk_samples']+=1
+        record['minimum_free_bytes']=free if record['minimum_free_bytes'] is None else min(record['minimum_free_bytes'],free)
+        lastsample=now
+        require(free>=8.5*1024**3,'disk_margin')
+    require(time.time()<ACTIVE,'active_deadline')
+def write_exclusive(path,value):
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    raw=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode('ascii')
+    with os.fdopen(fd,'wb') as f:
+        f.write(raw);f.flush();os.fsync(f.fileno())
+    return hashlib.sha256(raw).hexdigest()
+def finite_observation(value):
+    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:
+        return None
+    diagnostic=value['diagnostic']
+    if diagnostic is None:
+        return {'observed':value['observed'],'diagnostic':None}
+    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:
+        return None
+    sites=('handler','server','main')
+    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')
+    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')
+    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))
+    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:
+        return None
+    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):
+        return None
+    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}
+def retain_observation():
+    # Sanitize even the nested helper_result field; never copy malformed details.
+    value=record['helper_result'].get('unexpected_failure_observation')
+    projected=finite_observation(value)
+    record['helper_result']['unexpected_failure_observation']=projected
+    if projected is None:
+        record['unexpected_observation_projection']='invalid'
+    elif record['unexpected_failure_observation'] is None:
+        record['unexpected_failure_observation']=projected
+        if record['unexpected_observation_projection']!='invalid':
+            record['unexpected_observation_projection']='valid'
+def listeners(port):
+    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)
+    require(p.returncode in (0,1),'socket_observation_failed')
+    return set(int(v) for v in p.stdout.split())
+def own(p,name):
+    children.append(p);names[p.pid]=name;return p
+def stop_child(p):
+    if p.poll() is None:
+        for sig,wait in [(signal.SIGINT,8),(signal.SIGTERM,5),(signal.SIGKILL,2)]:
+            if p.poll() is not None:break
+            p.send_signal(sig)
+            try:p.wait(timeout=wait)
+            except subprocess.TimeoutExpired:pass
+    require(p.poll() is not None,'owned_child_reap_failed')
+def controlling_tty():
+    os.setsid();fcntl.ioctl(0,termios.TIOCSCTTY,0)
+def cli(name,args,prompts=0):
+    tick()
+    master,slave=pty.openpty()
+    p=own(subprocess.Popen(args,cwd=lab,env=environment,stdin=slave,stdout=slave,stderr=slave,preexec_fn=controlling_tty),name)
+    os.close(slave);seen=0;raw=b'';started=time.monotonic()
+    try:
+        while p.poll() is None:
+            tick();require(time.monotonic()-started<60,'cli_deadline')
+            if select.select([master],[],[],0.2)[0]:
+                try:chunk=os.read(master,4096)
+                except OSError:chunk=b''
+                raw+=chunk;require(len(raw)<=131072,'cli_output_limit')
+                for prompt in ([b'Password: ',b'Confirm password: '] if prompts==2 else [b'Password: ']):
+                    if seen<prompts and prompt in raw:
+                        require(prompt==([b'Password: ',b'Confirm password: '][seen] if prompts==2 else b'Password: '),'cli_prompt_order')
+                        os.write(master,password.encode()+b'\n');seen+=1;raw=b''
+        while select.select([master],[],[],0)[0]:
+            try:
+                chunk=os.read(master,4096)
+                if not chunk:break
+                raw+=chunk
+            except OSError:break
+        code=p.wait()
+        record['commands'].append({'name':name,'exit':code,'password_prompts':seen})
+        require(code==0,'cli_nonzero');require(seen==prompts,'cli_prompt_missing')
+    finally:
+        raw=b'';os.close(master)
+        if p.poll() is None:stop_child(p)
+def wait_listener(p,port):
+    deadline=time.monotonic()+30
+    while time.monotonic()<deadline:
+        tick();require(p.poll() is None,'owned_service_early_exit')
+        owners=listeners(port)
+        if owners:
+            require(owners=={p.pid},'listener_owner_mismatch');return
+        time.sleep(0.2)
+    raise RuntimeError('listener_deadline')
+try:
+    tick()
+    require(PRIVATE.is_dir() and not PRIVATE.is_symlink() and stat.S_IMODE(PRIVATE.stat().st_mode)==0o700,'private_directory_invalid')
+    require(not OUT.exists() and not PROVIDER_META.exists(),'evidence_already_exists')
+    require(not listeners(9000) and not listeners(3000),'port_occupied');record['ports_preflight_empty']=True
+    pins={'riauth':'7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606','riauth-maintenance':'86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95','riauthctl':'bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf'}
+    for name,pin in pins.items():
+        tick()
+        with (BIN/name).open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
+        record['artifacts'][name]=digest;require(digest==pin,'artifact_hash_mismatch')
+    helper_path=ROOT/'scripts/d01-confidential-browser-demo.py'
+    require(hashlib.sha256(helper_path.read_bytes()).hexdigest()=='75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1','helper_hash_mismatch')
+    verifier=subprocess.check_output(['git','show','9cefe7a56425bb73c17753e8766d92320b77da3b:scripts/recovery-drill-oidc.py'],timeout=5)
+    require(hashlib.sha256(verifier).hexdigest()=='f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d','verifier_hash_mismatch')
+    provider=pathlib.Path('/opt/homebrew/bin/openssl').resolve(strict=True)
+    with provider.open('rb') as f:provider_hash=hashlib.file_digest(f,'sha256').hexdigest()
+    require(provider_hash=='67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72','provider_hash_mismatch')
+    provider_env={k:v for k,v in os.environ.items() if k in {'PATH','HOME','TMPDIR','LANG','LC_ALL'}}
+    p=subprocess.Popen([str(provider),'version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=provider_env)
+    try:stdout,stderr=p.communicate(timeout=5);timeout=False
+    except subprocess.TimeoutExpired:
+        p.kill();stdout,stderr=p.communicate(timeout=2);timeout=True
+    provider_record={'sha256':provider_hash,'exit':p.returncode,'timeout':timeout,'stdout_ascii':stdout[:4096].decode('ascii',errors='backslashreplace'),'stderr_ascii':stderr[:4096].decode('ascii',errors='backslashreplace'),'stdout_bytes':len(stdout),'stderr_bytes':len(stderr),'environment_keys':sorted(provider_env)}
+    record['provider_metadata_sha256']=write_exclusive(PROVIDER_META,provider_record)
+    require(not timeout and p.returncode==0 and len(stdout)<=256 and len(stderr)<=4096 and stdout.decode('ascii').strip()=='OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)','provider_version_failed')
+    tick()
+    resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    lab=pathlib.Path(tempfile.mkdtemp(prefix='d01-confidential-browser-diagnostic.',dir=PRIVATE));os.chmod(lab,0o700)
+    for name in ('xdg','deployment-private','rp'):(lab/name).mkdir(mode=0o700)
+    (lab/'recovery-drill-oidc.py').write_bytes(verifier);os.chmod(lab/'recovery-drill-oidc.py',0o600);verifier=None
+    password=secrets.token_urlsafe(30)
+    fd=os.open(lab/'browser-password',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,'w') as f:f.write(password)
+    environment=dict(provider_env);environment['XDG_CONFIG_HOME']=str(lab/'xdg')
+    stage='init';cli('maintenance_init',[str(BIN/'riauth-maintenance'),'--config',str(lab/'riauth.toml'),'init','--issuer','http://localhost:9000','--listen','127.0.0.1:9000','--data-dir','data','--admin','admin'],2)
+    stage='serve'
+    server=own(subprocess.Popen([str(BIN/'riauth'),'--config',str(lab/'riauth.toml'),'serve'],cwd=lab,env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL),'server')
+    record['server_pid']=server.pid;wait_listener(server,9000);record['server_listener_owned']=True
+    stage='readyz'
+    with urllib.request.urlopen('http://127.0.0.1:9000/readyz',timeout=5) as response:
+        record['readyz_status']=response.status;response.read(4096)
+    require(record['readyz_status']==200,'readyz_failed')
+    stage='cli_login'
+    base=[str(BIN/'riauthctl'),'--server','http://localhost:9000']
+    cli('operator_login',base+['login','admin'],1)
+    stage='client_create';secretpath=lab/'deployment-private/local-demo-secret.json'
+    cli('confidential_client_create',base+['client','create','local-demo','--name','Local demo','--confidential','--redirect-uri','http://localhost:3000/callback','--scope','openid,profile','--secret-file',str(secretpath)])
+    require(stat.S_IMODE(secretpath.stat().st_mode)==0o600,'cli_secret_mode_invalid')
+    stage='discovery';cli('discovery',base+['discovery'])
+    stage='whoami';cli('whoami',base+['whoami'])
+    stage='browser_prepare'
+    prepare_deadline=time.monotonic()+180
+    prepare_marker=lab/'browser-prepared'
+    print(json.dumps({'browser_prepare_required':True,'guard_pid':os.getpid(),'server_pid':server.pid,'lab':str(lab)}),flush=True)
+    while not prepare_marker.exists():
+        tick();require(server.poll() is None,'idp_early_exit')
+        require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')
+        require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')
+        time.sleep(0.2)
+    tick();require(server.poll() is None,'idp_early_exit')
+    require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')
+    require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')
+    prepare_info=prepare_marker.lstat()
+    require(stat.S_ISREG(prepare_info.st_mode) and stat.S_IMODE(prepare_info.st_mode)==0o600 and prepare_info.st_uid==os.getuid() and prepare_info.st_nlink==1 and prepare_info.st_size==0,'browser_prepare_marker_invalid')
+    stage='rp_start'
+    helper=own(subprocess.Popen([sys.executable,'-B',str(helper_path),'--workspace',str(lab/'rp'),'--secret-file',str(secretpath),'--verifier-helper',str(lab/'recovery-drill-oidc.py'),'--openssl','/opt/homebrew/bin/openssl','--deadline-seconds','600','--evidence',str(lab/'rp-result.json')],cwd=ROOT,env=environment,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True),'helper')
+    record['helper_pid']=helper.pid;record['helper_invocations']=1
+    wait_listener(helper,3000);record['helper_listener_owned']=True
+    print(json.dumps({'fixture_ready':True,'guard_pid':os.getpid(),'server_pid':server.pid,'helper_pid':helper.pid,'lab':str(lab),'commands':record['commands'],'provider_metadata_sha256':record['provider_metadata_sha256'],'minimum_free_bytes':record['minimum_free_bytes']}),flush=True)
+    stage='browser_checkpoint';announced=False
+    while not (lab/'stop').exists():
+        tick();require(server.poll() is None,'idp_early_exit')
+        if helper.poll() is not None:
+            code=helper.wait()
+            if not announced:
+                record['helper_exit']=code;record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())
+                retain_observation()
+                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']
+                record['preflow_authorization_refusals']=record['helper_result']['preflow_authorization_refusals']
+                print(json.dumps({'helper_completed':True,'exit':code,'result':record['helper_result']['result'],'failure_tag':record['helper_result']['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'unexpected_failure_observation':record['unexpected_failure_observation'],'unexpected_observation_projection':record['unexpected_observation_projection']}),flush=True);announced=True
+            require(code==0,'rp_nonzero')
+        time.sleep(0.2)
+    if (lab/'ui-failure').exists():raise RuntimeError('browser_checkpoint_failed')
+    require(helper.poll()==0,'rp_checkpoint_incomplete');record['result']='passed'
+except Exception as error:
+    record['failure_stage']=stage
+    tags={'disk_margin','active_deadline','private_directory_invalid','evidence_already_exists','port_occupied','socket_observation_failed','artifact_hash_mismatch','helper_hash_mismatch','verifier_hash_mismatch','provider_hash_mismatch','provider_version_failed','cli_deadline','cli_output_limit','cli_prompt_order','cli_prompt_missing','cli_nonzero','owned_service_early_exit','listener_owner_mismatch','listener_deadline','readyz_failed','cli_secret_mode_invalid','idp_early_exit','rp_nonzero','browser_checkpoint_failed','rp_checkpoint_incomplete','browser_prepare_deadline','browser_prepare_marker_invalid'}
+    record['failure_tag']=str(error) if str(error) in tags else 'outer_unexpected_failure'
+finally:
+    for p in reversed(children):
+        try:stop_child(p)
+        except Exception:record['cleanup']['child_reap_failure']=True
+        record['owned_child_exits'].append({'name':names[p.pid],'pid':p.pid,'exit':p.poll()})
+    record['cleanup']['owned_children_reaped']=all(p.poll() is not None for p in children)
+    if lab is not None:
+        if helper is not None:
+            record['helper_exit']=helper.poll()
+            if (lab/'rp-result.json').exists():
+                record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())
+                retain_observation()
+                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']
+                record['preflow_authorization_refusals']=record['helper_result']['preflow_authorization_refusals']
+        password=None;shutil.rmtree(lab);record['cleanup']['lab_removed']=not lab.exists()
+    else:record['cleanup']['lab_removed']=True
+    try:
+        record['cleanup']['port9000_absent']=not listeners(9000);record['cleanup']['port3000_absent']=not listeners(3000)
+    except Exception:record['cleanup']['socket_observation_failure']=True
+    record['completed_utc']=datetime.datetime.now(datetime.timezone.utc).isoformat();record['elapsed_seconds']=round(time.time()-START,3)
+    if resultfd is None and not OUT.exists():resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    if resultfd is not None:
+        with os.fdopen(resultfd,'wb') as f:
+            f.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode('ascii'));f.flush();os.fsync(f.fileno())
+    print(json.dumps({'fixture_finished':True,'result':record['result'],'failure_stage':record['failure_stage'],'failure_tag':record['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'unexpected_failure_observation':record['unexpected_failure_observation'],'unexpected_observation_projection':record['unexpected_observation_projection'],'cleanup':record['cleanup'],'owned_child_exits':record['owned_child_exits'],'minimum_free_bytes':record['minimum_free_bytes'],'disk_samples':record['disk_samples'],'elapsed_seconds':record['elapsed_seconds']}),flush=True)
+sys.exit(0 if record['result']=='passed' else 1)
+PY
+```
+
+Exact zero-context controller delta from6662:
+
+```diff
+--- retained-controller-6662
++++ DESIGN-only-observer-controller
+@@ -4 +4 @@
+-START=1790968887.308
++START=float('__ROOT_RELEASED_START_ONCE__')
+@@ -8,3 +8,3 @@
+-OUT=PRIVATE/'d01-confidential-browser-budget180.redacted.json'
+-PROVIDER_META=PRIVATE/'d01-confidential-browser-budget180-provider-20261002.json'
+-record={'schema':'riauth.d01-confidential-browser-outer/v1','result':'failed','failure_stage':None,'failure_tag':None,'request_invalid_reason':None,'preflow_authorization_refusals':None,'commands':[],'artifacts':{},'cleanup':{},'owned_child_exits':[],'started_epoch':START,'active_seconds':840,'cleanup_seconds':60,'minimum_free_bytes':None,'disk_samples':0}
++OUT=PRIVATE/'__ROOT_FRESH_OBSERVER_OUT_BASENAME__'
++PROVIDER_META=PRIVATE/'__ROOT_FRESH_OBSERVER_PROVIDER_BASENAME__'
++record={'schema':'riauth.d01-confidential-browser-outer/v1','result':'failed','failure_stage':None,'failure_tag':None,'request_invalid_reason':None,'preflow_authorization_refusals':None,'unexpected_failure_observation':None,'unexpected_observation_projection':'unavailable','commands':[],'artifacts':{},'cleanup':{},'owned_child_exits':[],'started_epoch':START,'active_seconds':840,'cleanup_seconds':60,'minimum_free_bytes':None,'disk_samples':0}
+@@ -29,0 +30,28 @@
++def finite_observation(value):
++    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:
++        return None
++    diagnostic=value['diagnostic']
++    if diagnostic is None:
++        return {'observed':value['observed'],'diagnostic':None}
++    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:
++        return None
++    sites=('handler','server','main')
++    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')
++    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')
++    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))
++    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:
++        return None
++    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):
++        return None
++    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}
++def retain_observation():
++    # Sanitize even the nested helper_result field; never copy malformed details.
++    value=record['helper_result'].get('unexpected_failure_observation')
++    projected=finite_observation(value)
++    record['helper_result']['unexpected_failure_observation']=projected
++    if projected is None:
++        record['unexpected_observation_projection']='invalid'
++    elif record['unexpected_failure_observation'] is None:
++        record['unexpected_failure_observation']=projected
++        if record['unexpected_observation_projection']!='invalid':
++            record['unexpected_observation_projection']='valid'
+@@ -94 +122 @@
+-    require(hashlib.sha256(helper_path.read_bytes()).hexdigest()=='7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0','helper_hash_mismatch')
++    require(hashlib.sha256(helper_path.read_bytes()).hexdigest()=='75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1','helper_hash_mismatch')
+@@ -158,0 +187 @@
++                retain_observation()
+@@ -161 +190 @@
+-                print(json.dumps({'helper_completed':True,'exit':code,'result':record['helper_result']['result'],'failure_tag':record['helper_result']['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals']}),flush=True);announced=True
++                print(json.dumps({'helper_completed':True,'exit':code,'result':record['helper_result']['result'],'failure_tag':record['helper_result']['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'unexpected_failure_observation':record['unexpected_failure_observation'],'unexpected_observation_projection':record['unexpected_observation_projection']}),flush=True);announced=True
+@@ -180,0 +210 @@
++                retain_observation()
+@@ -193 +223 @@
+-    print(json.dumps({'fixture_finished':True,'result':record['result'],'failure_stage':record['failure_stage'],'failure_tag':record['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'cleanup':record['cleanup'],'owned_child_exits':record['owned_child_exits'],'minimum_free_bytes':record['minimum_free_bytes'],'disk_samples':record['disk_samples'],'elapsed_seconds':record['elapsed_seconds']}),flush=True)
++    print(json.dumps({'fixture_finished':True,'result':record['result'],'failure_stage':record['failure_stage'],'failure_tag':record['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'unexpected_failure_observation':record['unexpected_failure_observation'],'unexpected_observation_projection':record['unexpected_observation_projection'],'cleanup':record['cleanup'],'owned_child_exits':record['owned_child_exits'],'minimum_free_bytes':record['minimum_free_bytes'],'disk_samples':record['disk_samples'],'elapsed_seconds':record['elapsed_seconds']}),flush=True)
+```
+
+Complete prepared-handle entry/continuation cell:
+
+```javascript
+// Prospective ONE functions.exec cell; NOT executed in this design phase.
+const CLOCK="import json,time\nprint(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))\n";
+const STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+const READBACK="import json,os,pathlib,stat,subprocess,sys,time\nc=json.loads(sys.argv[1])\nchildren=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        info=os.fstat(fd)\n        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):\n            raise ValueError('fixed_outer_evidence_invalid')\n        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)\n        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')\n        data=json.loads(raw_bytes)\n    finally:os.close(fd)\n    outer_observation=finite_observation(data.get('unexpected_failure_observation'))\n    projection=data.get('unexpected_observation_projection')\n    if projection not in ('unavailable','valid','invalid'):projection='invalid'\n    if projection=='valid' and outer_observation is None:projection='invalid'\n    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0\n    if started:allowed.add('helper')\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\n        helper_pid=data['helper_pid'] if started else None\npids=list(c['owned_pids'])\nif helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))\n";
+const MARKER="import os,pathlib,stat,sys\nlab=pathlib.Path(sys.argv[1]);guard=int(sys.argv[2]);server=int(sys.argv[3])\nif guard<=0 or server<=0 or guard==server:raise ValueError('owned_context_invalid')\ninfo=lab.lstat()\nif not (stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.getuid()):raise ValueError('owned_context_invalid')\nos.kill(guard,0);os.kill(server,0)\nif (lab/'stop').exists() or (lab/'ui-failure').exists():raise ValueError('owned_context_invalid')\nfd=os.open(lab/'browser-prepared',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nos.close(fd)\nprint('{\"prepared_marker_written\":true}')\n";
+const PERSIST="import json,os,pathlib,sys\npath=pathlib.Path(sys.argv[1])\nrecord=json.loads(sys.argv[2])\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\ndef clocks(value):\n    if isinstance(value,dict):\n        for k,v in list(value.items()):\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\n                value[k]=int(v)\n            else:clocks(v)\n    elif isinstance(value,list):\n        for v in value:clocks(v)\nclocks(record)\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'w',encoding='ascii') as f:\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\n');f.flush();os.fsync(f.fileno())\nprint(json.dumps({'written_exclusive':True}))\n";
+const own=load("d01_immediate_owned_handles");
+const OBSKEY="d01_immediate_observation_record";
+if (!own || own.runtime_release!==true || own.driver_owned!==true ||
+    own.exact_bound!==true || own.single_controller!==true ||
+    !["prepared_entry","browser_decision"].includes(own.phase) ||
+    (own.phase==="prepared_entry"&&(own.prepared_gate!==true||own.helper_pid!==null||
+      own.fixture_ready===true||own.listener_pid_proof===true)) ||
+    (own.phase==="browser_decision"&&(own.fixture_ready!==true||own.listener_pid_proof!==true)) ||
+    own.fresh_paths_preflight!==true ||
+    !Number.isSafeInteger(own.start_epoch_ms) || typeof own.workspace!=="string" ||
+    new Set([own.guard_pid,own.server_pid,own.browser_pid,
+       ...(own.helper_pid===null?[]:[own.helper_pid])]).size!==(own.helper_pid===null?3:4) ||
+    ![own.guard_pid,own.server_pid,own.browser_pid,own.exec_session,
+       ...(own.helper_pid===null?[]:[own.helper_pid])]
+       .every(v=>Number.isSafeInteger(v)&&v>0) ||
+    ![own.session,own.target_id,own.tab_id,own.lab,own.outer_out,
+       own.event_out,own.cleanup_out].every(v=>typeof v==="string"&&v.length>0)) {
+  text({proposal_refused:"fresh_owned_context_required"});exit();
+}
+const prior=load(OBSKEY);
+if(own.closed===true||prior?.cleanup_started===true){
+  text({proposal_refused:"fixture_already_stopped",resource_release_proven:false});exit();
+}
+const record=prior??{
+  schema:"riauth.d01-immediate-observation-cleanup/v1",
+  first_failure:null,first_observation_wall_ms:null,
+  first_event_proven:false,whole_cleanup_within60_proven:false,
+  unexpected_failure_observation:null,diagnostic_errors:[],cleanup_started:false,
+  first_clock:null,observation_receipts:[],controller_observations:[],local_tool_receipts:[],actions:[],cleanup_errors:[],
+  final_absence:null,owned_child_exits:null,controller_exit:null,
+  first_observation_to_final_wall_ms:null,latch_to_absence_ms:null
+};
+const sq=s=>"'"+String(s).replace(/'/g,"'\\''")+"'";
+const retain=()=>store(OBSKEY,record);
+const cleanupError=label=>{
+  if(!record.cleanup_errors.includes(label))record.cleanup_errors.push(label);
+  retain();
+};
+const local=async(source,arg)=>{
+  const cmd="python3 -c "+sq(source)+(arg===undefined?"":" "+sq(JSON.stringify(arg)));
+  const r=await tools.exec_command({cmd,workdir:own.workspace,
+    yield_time_ms:10000,max_output_tokens:2000});
+  record.local_tool_receipts.push({
+    label:source===CLOCK?"clock":source===STOP?"stop":source===READBACK?"readback":"unknown",
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    session_id:typeof r.session_id==="number"?r.session_id:null
+  });retain(); // Numeric collector receipt BEFORE comparisons.
+  if(r.session_id!==undefined) {
+    cleanupError("owned_local_command_unjoined");throw new Error("local_pending");
+  }
+  if(r.exit_code!==0)throw new Error("local_failed");
+  return JSON.parse(r.output);
+};
+function finiteObservation(value) {
+  const exact=(v,keys)=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&
+    Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
+  if(!exact(value,["observed","diagnostic"])||typeof value.observed!=="boolean")return null;
+  const d=value.diagnostic;
+  if(d===null)return {observed:value.observed,diagnostic:null};
+  if(!value.observed||!exact(d,["site","exception_class","own_function","own_line"])||
+     !["handler","server","main"].includes(d.site)||
+     !["AttributeError","TypeError","ValueError","KeyError","OSError","BrokenPipeError",
+       "ConnectionResetError","TimeoutError","other"].includes(d.exception_class))return null;
+  const functions=["HeaderReader.readline","DemoServer.process_request","Demo.begin","Demo.callback",
+    "Demo.invoke","Handler.handle_one_request","Handler.send_error","Handler.get","Handler.reply","main"];
+  if(!((d.own_function===null&&d.own_line===null)||
+       (functions.includes(d.own_function)&&Number.isSafeInteger(d.own_line)&&
+        d.own_line>=1&&d.own_line<=1024)))return null;
+  return {observed:true,diagnostic:{site:d.site,exception_class:d.exception_class,
+    own_function:d.own_function,own_line:d.own_line}};
+}
+function diagnostic(value,projection) {
+  const projected=finiteObservation(value);
+  if(projection==="invalid"||!["valid","unavailable"].includes(projection)||
+     (projection==="valid"&&projected===null)) {
+    if(!record.diagnostic_errors.includes("observer_projection_invalid"))
+      record.diagnostic_errors.push("observer_projection_invalid");
+  }
+  if(projected!==null&&record.unexpected_failure_observation===null)
+    record.unexpected_failure_observation=projected;
+  retain(); // No raw diagnostic fallback and no first-failure or outcome mutation.
+}
+const ns=c=>BigInt(c.monotonic_ns);
+const getClock=()=>local(CLOCK);
+let controllerJoined=false;
+let controllerPollAvailable=true;
+let controllerBuffer="";
+let cleanupStarted=false;
+let lastSnapshotFlags=null;
+function latch(label,receivedWall) {
+  if(record.first_failure===null) {
+    record.first_failure=label;
+    record.first_observation_wall_ms=receivedWall;
+    retain(); // Synchronous first-failure/wall latch BEFORE any new await/output.
+  }
+}
+function observeController(r,receivedWall) {
+  const observation={received_wall_ms:receivedWall,
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    helper_completed:false,helper_exit:null,fixture_finished:false};
+  // Complete numeric result projection is retained BEFORE comparisons.
+  record.controller_observations.push(observation);retain();
+  if(typeof r.exit_code==="number") {
+    controllerJoined=true;record.controller_exit=r.exit_code;retain();
+  }
+  controllerBuffer+=typeof r.output==="string"?r.output:"";
+  if(controllerBuffer.length>16384) {
+    latch("controller_observation_invalid",receivedWall);controllerBuffer="";return;
+  }
+  let cut;
+  while((cut=controllerBuffer.indexOf("\n"))>=0) {
+    const line=controllerBuffer.slice(0,cut);controllerBuffer=controllerBuffer.slice(cut+1);
+    if(!line.trim())continue;
+    let event;
+    try{event=JSON.parse(line);}catch{
+      latch("controller_observation_invalid",receivedWall);continue;
+    }
+    if(Object.hasOwn(event,"unexpected_failure_observation"))
+      diagnostic(event.unexpected_failure_observation,event.unexpected_observation_projection);
+    if(event.fixture_ready===true) {
+      if(event.guard_pid!==own.guard_pid||event.server_pid!==own.server_pid||
+         event.lab!==own.lab||!Number.isSafeInteger(event.helper_pid)||event.helper_pid<=0||
+         [own.guard_pid,own.server_pid,own.browser_pid].includes(event.helper_pid)||
+         (own.helper_pid!==null&&own.helper_pid!==event.helper_pid))
+        latch("fixture_ready_unconfirmed",receivedWall);
+      else {
+        own.helper_pid=event.helper_pid;own.fixture_ready=true;own.listener_pid_proof=true;
+        store("d01_immediate_owned_handles",own);
+      }
+    }
+    if(event.helper_completed===true) {
+      observation.helper_completed=true;
+      observation.helper_exit=typeof event.exit==="number"?event.exit:null;
+      retain();
+      if(event.exit!==0)latch("helper_failed",receivedWall);
+      else if(!cleanupStarted&&record.protected_after_page!==true)
+        latch("helper_completed_before_app_checkpoint",receivedWall);
+    }
+    if(event.fixture_finished===true) {
+      observation.fixture_finished=true;retain();
+      if(!cleanupStarted)latch("controller_completed_before_app_checkpoint",receivedWall);
+    }
+  }
+  if(controllerJoined&&!cleanupStarted)
+    latch("controller_completed_before_app_checkpoint",receivedWall);
+}
+async function pollController() {
+  if(controllerJoined||!controllerPollAvailable)return;
+  try {
+    const r=await tools.write_stdin({session_id:own.exec_session,
+      chars:"",yield_time_ms:5000,max_output_tokens:2000});
+    const receivedWall=Date.now();
+    observeController(r,receivedWall);
+  } catch {
+    controllerPollAvailable=false;
+    latch("controller_observation_unavailable",Date.now());
+    if(cleanupStarted)cleanupError("controller_join_unconfirmed");
+  }
+}
+async function timedDriver(label,allocation,operation,project) {
+  let start=null,end=null,result=null,state="unknown";
+  try{start=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label,start_clock:start,end_clock:null,allowed_ms:allocation,
+    result_state:"unknown",elapsed_ms:null,over_budget:null};
+  record.actions.push(action);retain(); // Start retained BEFORE entering Driver call.
+  try {
+    result=await operation();
+    state=result?.isError===true?"refused":"returned";
+  } catch {state="exception";}
+  try{end=await getClock();}catch{cleanupError("clock_unavailable");}
+  action.end_clock=end;action.result_state=state;
+  retain(); // End/result retained BEFORE budget comparison.
+  if(start&&end) {
+    const d=ns(end)-ns(start);
+    if(d>=0n) {
+      action.elapsed_ms=Number(d/1000000n);
+      action.over_budget=action.elapsed_ms>allocation;
+    } else cleanupError("clock_invalid");
+  }
+  if(action.over_budget)cleanupError("driver_operation_over_budget");
+  if(state!=="returned")cleanupError("driver_operation_unconfirmed");
+  if(project)project(result,state);
+  retain();
+}
+async function cleanup() {
+  if(cleanupStarted)return;
+  cleanupStarted=true;record.cleanup_started=true;retain();
+  try {
+    const r=await local(STOP,{
+      lab:own.lab,event_out:own.event_out,
+      first_failure:record.first_failure,
+      first_observation_wall_ms:record.first_observation_wall_ms
+    });
+    record.first_clock=r.clock;record.stop_state=r.marker_state;retain();
+    if(r.event_state!=="written")cleanupError("observation_metadata_write_unconfirmed");
+    if(r.marker_state==="stop_unconfirmed")cleanupError("stop_unconfirmed");
+    if(r.marker_state==="ownership_unknown")cleanupError("ownership_unknown");
+  } catch {cleanupError("stop_or_clock_record_unavailable");}
+  // No outstanding Driver call exists here: all page calls above were awaited.
+  // Original stop protocol already causes the controller's owned-child finally.
+  await timedDriver("kill_app",30000,
+    ()=>tools.mcp__cua_driver__kill_app({pid:own.browser_pid}));
+  await timedDriver("end_session",15000,
+    ()=>tools.mcp__cua_driver__end_session({session:own.session}),(r,state)=>{
+      record.session_ended=state==="returned"&&
+        r?.structuredContent?.active===false&&r.structuredContent.session===own.session;
+      retain();
+    });
+  await timedDriver("list_windows",5000,
+    ()=>tools.mcp__cua_driver__list_windows({pid:own.browser_pid}),(r,state)=>{
+      const windows=r?.structuredContent?.windows;
+      record.window_count=state==="returned"&&Array.isArray(windows)?windows.length:null;
+      retain();
+    });
+  let readStart=null;
+  try{readStart=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label:"owned_join_readback",start_clock:readStart,end_clock:null,
+    allowed_ms:null,elapsed_ms:null,over_budget:null,result_state:"unknown"};
+  record.actions.push(action);retain();
+  if(readStart&&record.first_clock) {
+    action.allowed_ms=Math.max(0,60000-Number((ns(readStart)-ns(record.first_clock))/1000000n));
+    retain();
+  }
+  // Continue essential join after60s if late; never claim that deadline enforced.
+  // Do not poll another exec session or send a manual process signal.
+  while(!controllerJoined&&controllerPollAvailable&&Date.now()<own.start_epoch_ms+900000) {
+    await pollController();
+    if(record.first_clock) {
+      try {
+        const c=await getClock();record.last_join_clock=c;retain();
+        if(ns(c)-ns(record.first_clock)>60000000000n)
+          cleanupError("cleanup_budget_exceeded");
+      } catch{cleanupError("clock_unavailable");}
+    }
+  }
+  if(!controllerJoined)cleanupError("child_reap_incomplete");
+  try {
+    const r=await local(READBACK,{
+      owned_pids:[own.guard_pid,own.server_pid,own.browser_pid,
+        ...(own.helper_pid===null?[]:[own.helper_pid])],
+      lab:own.lab,outer_out:own.outer_out,helper_pid:own.helper_pid,server_pid:own.server_pid
+    });
+    action.end_clock=r.clock;action.result_state="returned";
+    record.owned_child_exits=r.owned_child_exits;
+    diagnostic(r.unexpected_failure_observation,r.unexpected_observation_projection);
+    if(Number.isSafeInteger(r.helper_pid)&&r.helper_pid>0)own.helper_pid=r.helper_pid;
+    record.final_absence={owned_pids:r.owned_pids,ports:r.ports,
+      lab:r.lab_absent,window_count:record.window_count??null,
+      session_ended:record.session_ended===true};
+    record.first_observation_to_final_wall_ms=record.first_observation_wall_ms===null?null:
+      Date.now()-record.first_observation_wall_ms;
+    retain(); // Full fixed readback/exits/clock BEFORE comparisons.
+    if(readStart) {
+      action.elapsed_ms=Number((ns(r.clock)-ns(readStart))/1000000n);
+      action.over_budget=action.allowed_ms===null?null:action.elapsed_ms>action.allowed_ms;
+    }
+    if(record.first_clock)
+      record.latch_to_absence_ms=Number((ns(r.clock)-ns(record.first_clock))/1000000n);
+    if(action.over_budget)cleanupError("cleanup_budget_exceeded");
+    const a=record.final_absence;
+    if(!controllerJoined||!Array.isArray(record.owned_child_exits)||
+       record.owned_child_exits.length!==(own.helper_pid===null?6:7))
+      cleanupError("child_reap_incomplete");
+    if(!Object.values(a.owned_pids).every(v=>v===true)||
+       !Object.values(a.ports).every(v=>v===true)||a.lab!==true||
+       a.window_count!==0||a.session_ended!==true)
+      cleanupError("owned_resource_absence_unproven");
+  } catch {action.result_state="exception";cleanupError("owned_readback_unavailable");}
+  cleanupError("first_event_unproven");
+  record.whole_cleanup_within60_proven=false;retain();
+  // Exclusive new file only; existing outer/helper/provider evidence untouched.
+  try {
+    const cmd="python3 -c "+sq(PERSIST)+" "+sq(own.cleanup_out)+" "+sq(JSON.stringify(record));
+    const r=await tools.exec_command({cmd,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500});
+    record.local_tool_receipts.push({label:"persist",
+      exit:typeof r.exit_code==="number"?r.exit_code:null,
+      session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+    if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+    if(r.session_id!==undefined||r.exit_code!==0)
+      cleanupError("cleanup_metadata_write_unconfirmed");
+  } catch {cleanupError("cleanup_metadata_write_unconfirmed");}
+  controllerBuffer="";own.closed=true;store("d01_immediate_owned_handles",own);
+}
+async function checked(label,operation,predicate) {
+  if(record.first_failure!==null)return null;
+  if(Date.now()>=own.start_epoch_ms+840000) {
+    latch("browser_active_deadline",Date.now());await cleanup();return null;
+  }
+  let result,receivedWall;
+  try {
+    result=await operation();receivedWall=Date.now();
+    record.observation_receipts.push({kind:label,received_wall_ms:receivedWall});retain();
+    if(result?.isError===true)latch("browser_tool_refused",receivedWall);
+    else if(!predicate(result))latch("browser_decision_unconfirmed",receivedWall);
+  } catch {latch("browser_tool_or_decision_exception",Date.now());}
+  if(record.first_failure!==null)await cleanup();
+  return record.first_failure===null?result:null;
+}
+const snapshotArgs={session:own.session,target_id:own.target_id,tab_id:own.tab_id,
+  snapshot_format:"semantic_v2",include_screenshot:false};
+function page(result,kind) {
+  const s=result?.structuredContent,nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
+  const flags={
+    status_ok:result?.isError!==true&&s?.status==="ok",
+    complete:s?.snapshot?.complete===true,
+    heading_match:nodes.some(n=>n.role==="heading"&&n.name===
+      (kind==="protected_after"?"Protected application access":"Local demo")),
+    error_match:nodes.some(n=>n.name==="Local demo could not complete this request."),
+    required_text:nodes.some(n=>n.name===(kind==="protected_before"?"Sign in required.":
+      kind==="protected_after"?"Signed in. Protected application access is available.":
+      "Use Sign in to open this local application.")),
+    interactive_ref_present:Array.isArray(s?.refs)&&
+      s.refs.some(n=>Array.isArray(n.actions)&&n.actions.includes("click"))
+  };
+  record.last_page_flags={kind,...flags};retain();
+  // Only provider refs and fixed public-label matches survive this raw snapshot.
+  own.fresh_refs=Array.isArray(s?.refs)?s.refs.filter(n=>typeof n.ref==="string"&&
+    /^p[0-9]+:[0-9]+$/.test(n.ref)).map(n=>n.ref):[];
+  store("d01_immediate_owned_handles",own);
+  if(flags.error_match)return false;
+  if(!flags.status_ok||!flags.complete)return false;
+  if(kind==="generic_checked") {
+    if(nodes.some(n=>n.role==="heading"&&n.name==="Protected application access")&&
+       nodes.some(n=>n.name==="Signed in. Protected application access is available."))
+      record.protected_after_page=true;
+    return true;
+  }
+  const ok=flags.heading_match&&flags.required_text&&
+    (kind!=="application"||flags.interactive_ref_present);
+  if(ok&&kind==="protected_after")record.protected_after_page=true;
+  return ok;
+}
+async function navigateAndSnapshot(url,kind) {
+  if(await checked("browser_navigation",
+      ()=>tools.mcp__cua_driver__browser_navigate({session:own.session,
+        target_id:own.target_id,tab_id:own.tab_id,url}),
+      r=>r?.isError!==true)) {
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,kind));
+  }
+}
+async function entry() {
+  // The exact Driver-owned blank handles already exist while the180s gate waits.
+  // There is no model yield, tool-description load or rebind after this marker.
+  const markerCommand="python3 -c "+sq(MARKER)+" "+sq(own.lab)+" "+
+    sq(own.guard_pid)+" "+sq(own.server_pid);
+  await checked("prepared_marker",
+    ()=>tools.exec_command({cmd:markerCommand,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500}),r=>{
+      record.local_tool_receipts.push({label:"marker",
+        exit:typeof r.exit_code==="number"?r.exit_code:null,
+        session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+      if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+      return r.exit_code===0&&r.session_id===undefined&&
+        JSON.parse(r.output).prepared_marker_written===true;
+    });
+  const readyDeadline=Date.now()+30000;
+  while(record.first_failure===null&&own.fixture_ready!==true&&Date.now()<readyDeadline)
+    await pollController();
+  if(record.first_failure===null&&own.fixture_ready!==true)
+    latch("fixture_ready_unconfirmed",Date.now());
+  if(record.first_failure!==null){await cleanup();return;}
+  await pollController(); // ONE immediate pre-navigation poll, no RP HTTP probe.
+  if(record.first_failure!==null){await cleanup();return;}
+  await navigateAndSnapshot("http://localhost:3000/protected","protected_before");
+  if(record.first_failure===null)await pollController();
+  if(record.first_failure!==null){await cleanup();return;}
+  await navigateAndSnapshot("http://localhost:3000/","application");
+  if(record.first_failure===null)await pollController(); // ONE post-entry poll.
+  if(record.first_failure!==null)await cleanup();
+}
+async function continuation() {
+  const spec=own.next_decision;
+  const allowedKinds=["click","username","password","snapshot","protected_after"];
+  if(!spec||!allowedKinds.includes(spec.kind)) {
+    latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+  }
+  await pollController();
+  if(record.first_failure!==null){await cleanup();return;}
+  if(spec.kind==="protected_after") {
+    // Read the fresh callback-following protected page; do not send another RP request.
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,"protected_after"));
+  } else if(spec.kind==="snapshot") {
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+      r=>page(r,"generic_checked")&&publicPredicate(r,spec));
+  } else {
+    if(typeof spec.ref!=="string"||!Array.isArray(own.fresh_refs)||
+       !own.fresh_refs.includes(spec.ref)) {
+      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+    }
+    own.fresh_refs=[];store("d01_immediate_owned_handles",own); // Single-use snapshot ref.
+    const args={session:own.session,target_id:own.target_id,tab_id:own.tab_id,ref:spec.ref};
+    const operation=spec.kind==="click"?
+      ()=>tools.mcp__cua_driver__browser_click({...args,input_route:"dom_event"}):
+      ()=>tools.mcp__cua_driver__browser_type({...args,replace:true,
+        text:spec.kind==="username"?"admin":load("d01_fresh_password_input")});
+    if(spec.kind==="password"&&(typeof load("d01_fresh_password_input")!=="string"||
+       !/^[A-Za-z0-9_-]{30,128}$/.test(load("d01_fresh_password_input")))) {
+      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+    }
+    await checked("browser_input",operation,r=>{
+      const s=r?.structuredContent;
+      return r?.isError!==true&&["confirmed","unverifiable"].includes(s?.effect);
+    }); // Dispatch alone never earns an application outcome or journey credit.
+    store("d01_fresh_password_input",null);
+    if(record.first_failure===null)
+      await checked("browser_snapshot",
+        ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+        r=>page(r,"generic_checked")&&publicPredicate(r,spec));
+  }
+  if(record.first_failure===null)await pollController();
+  if(record.first_failure!==null)await cleanup();
+  else if(spec.kind==="protected_after") {
+    record.cleanup_requested_wall_ms=Date.now();retain();
+    await cleanup();
+  }
+}
+function publicPredicate(result,spec) {
+  const nodes=result?.structuredContent?.content_refs;
+  // Root must pin one printed public expected label/role before that action.
+  // No raw field value, URL, subject, query or arbitrary regex predicate is allowed.
+  const roles=["heading","button","statictext","textbox"];
+  const labels=["Username","Password","Authenticator or recovery code","Sign in",
+    "Local demo","Protected application access",
+    "Signed in. Protected application access is available."];
+  return Array.isArray(nodes)&&roles.includes(spec.expected_role)&&
+    labels.includes(spec.expected_label)&&
+    nodes.some(n=>n.role===spec.expected_role&&n.name===spec.expected_label);
+}
+try {
+  if(own.phase==="prepared_entry")await entry();else await continuation();
+} catch {
+  latch("composed_decision_exception",Date.now());
+  await cleanup();
+}
+if(record.first_failure!==null) {
+  text({result:"failed",first_failure:record.first_failure,
+    unexpected_failure_observation:record.unexpected_failure_observation,
+    diagnostic_errors:record.diagnostic_errors,cleanup_errors:record.cleanup_errors,
+    final_absence:record.final_absence,controller_exit:record.controller_exit,
+    whole_cleanup_within60_proven:false,
+    resource_release_proven:record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v))});
+} else {
+  text({result:"browser_decision_observed_only",page_flags:record.last_page_flags??null,
+    journey_credit:false,cleanup_errors:record.cleanup_errors,
+    resource_release_proven:record.cleanup_started===true&&record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v)),
+    whole_cleanup_within60_proven:false});
+}
+```
+
+Exact zero-context cell delta from0a7cea:
+
+```diff
+--- retained-composed-cell-0a7cea
++++ DESIGN-only-observer-entry-cell
+@@ -3,2 +3,3 @@
+-const STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in ('ui-failure','stop'):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+-const READBACK="import json,pathlib,subprocess,sys,time\nc=json.loads(sys.argv[1])\npids=c['owned_pids']\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nchildren=None\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    # This is the unchanged controller's fixed redacted evidence, not app data.\n    data=json.loads(outer.read_bytes())\n    allowed={'helper','whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==7 and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==7 and next(v['pid'] for v in raw if v['name']=='helper')==c['helper_pid'] and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid']:\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children}))\n";
++const STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
++const READBACK="import json,os,pathlib,stat,subprocess,sys,time\nc=json.loads(sys.argv[1])\nchildren=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        info=os.fstat(fd)\n        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):\n            raise ValueError('fixed_outer_evidence_invalid')\n        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)\n        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')\n        data=json.loads(raw_bytes)\n    finally:os.close(fd)\n    outer_observation=finite_observation(data.get('unexpected_failure_observation'))\n    projection=data.get('unexpected_observation_projection')\n    if projection not in ('unavailable','valid','invalid'):projection='invalid'\n    if projection=='valid' and outer_observation is None:projection='invalid'\n    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0\n    if started:allowed.add('helper')\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\n        helper_pid=data['helper_pid'] if started else None\npids=list(c['owned_pids'])\nif helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))\n";
++const MARKER="import os,pathlib,stat,sys\nlab=pathlib.Path(sys.argv[1]);guard=int(sys.argv[2]);server=int(sys.argv[3])\nif guard<=0 or server<=0 or guard==server:raise ValueError('owned_context_invalid')\ninfo=lab.lstat()\nif not (stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.getuid()):raise ValueError('owned_context_invalid')\nos.kill(guard,0);os.kill(server,0)\nif (lab/'stop').exists() or (lab/'ui-failure').exists():raise ValueError('owned_context_invalid')\nfd=os.open(lab/'browser-prepared',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nos.close(fd)\nprint('{\"prepared_marker_written\":true}')\n";
+@@ -10 +11,4 @@
+-    own.fixture_ready!==true || own.listener_pid_proof!==true ||
++    !["prepared_entry","browser_decision"].includes(own.phase) ||
++    (own.phase==="prepared_entry"&&(own.prepared_gate!==true||own.helper_pid!==null||
++      own.fixture_ready===true||own.listener_pid_proof===true)) ||
++    (own.phase==="browser_decision"&&(own.fixture_ready!==true||own.listener_pid_proof!==true)) ||
+@@ -13,2 +17,4 @@
+-    new Set([own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid]).size!==4 ||
+-    ![own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid,own.exec_session]
++    new Set([own.guard_pid,own.server_pid,own.browser_pid,
++       ...(own.helper_pid===null?[]:[own.helper_pid])]).size!==(own.helper_pid===null?3:4) ||
++    ![own.guard_pid,own.server_pid,own.browser_pid,own.exec_session,
++       ...(own.helper_pid===null?[]:[own.helper_pid])]
+@@ -20 +26,5 @@
+-const record={
++const prior=load(OBSKEY);
++if(own.closed===true||prior?.cleanup_started===true){
++  text({proposal_refused:"fixture_already_stopped",resource_release_proven:false});exit();
++}
++const record=prior??{
+@@ -23,0 +34 @@
++  unexpected_failure_observation:null,diagnostic_errors:[],cleanup_started:false,
+@@ -48,0 +60,29 @@
++function finiteObservation(value) {
++  const exact=(v,keys)=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&
++    Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
++  if(!exact(value,["observed","diagnostic"])||typeof value.observed!=="boolean")return null;
++  const d=value.diagnostic;
++  if(d===null)return {observed:value.observed,diagnostic:null};
++  if(!value.observed||!exact(d,["site","exception_class","own_function","own_line"])||
++     !["handler","server","main"].includes(d.site)||
++     !["AttributeError","TypeError","ValueError","KeyError","OSError","BrokenPipeError",
++       "ConnectionResetError","TimeoutError","other"].includes(d.exception_class))return null;
++  const functions=["HeaderReader.readline","DemoServer.process_request","Demo.begin","Demo.callback",
++    "Demo.invoke","Handler.handle_one_request","Handler.send_error","Handler.get","Handler.reply","main"];
++  if(!((d.own_function===null&&d.own_line===null)||
++       (functions.includes(d.own_function)&&Number.isSafeInteger(d.own_line)&&
++        d.own_line>=1&&d.own_line<=1024)))return null;
++  return {observed:true,diagnostic:{site:d.site,exception_class:d.exception_class,
++    own_function:d.own_function,own_line:d.own_line}};
++}
++function diagnostic(value,projection) {
++  const projected=finiteObservation(value);
++  if(projection==="invalid"||!["valid","unavailable"].includes(projection)||
++     (projection==="valid"&&projected===null)) {
++    if(!record.diagnostic_errors.includes("observer_projection_invalid"))
++      record.diagnostic_errors.push("observer_projection_invalid");
++  }
++  if(projected!==null&&record.unexpected_failure_observation===null)
++    record.unexpected_failure_observation=projected;
++  retain(); // No raw diagnostic fallback and no first-failure or outcome mutation.
++}
+@@ -83,0 +124,13 @@
++    if(Object.hasOwn(event,"unexpected_failure_observation"))
++      diagnostic(event.unexpected_failure_observation,event.unexpected_observation_projection);
++    if(event.fixture_ready===true) {
++      if(event.guard_pid!==own.guard_pid||event.server_pid!==own.server_pid||
++         event.lab!==own.lab||!Number.isSafeInteger(event.helper_pid)||event.helper_pid<=0||
++         [own.guard_pid,own.server_pid,own.browser_pid].includes(event.helper_pid)||
++         (own.helper_pid!==null&&own.helper_pid!==event.helper_pid))
++        latch("fixture_ready_unconfirmed",receivedWall);
++      else {
++        own.helper_pid=event.helper_pid;own.fixture_ready=true;own.listener_pid_proof=true;
++        store("d01_immediate_owned_handles",own);
++      }
++    }
+@@ -89 +142,2 @@
+-      else if(!cleanupStarted)latch("helper_completed_before_app_checkpoint",receivedWall);
++      else if(!cleanupStarted&&record.protected_after_page!==true)
++        latch("helper_completed_before_app_checkpoint",receivedWall);
+@@ -139 +193 @@
+-  cleanupStarted=true;
++  cleanupStarted=true;record.cleanup_started=true;retain();
+@@ -191 +245,2 @@
+-      owned_pids:[own.guard_pid,own.server_pid,own.helper_pid,own.browser_pid],
++      owned_pids:[own.guard_pid,own.server_pid,own.browser_pid,
++        ...(own.helper_pid===null?[]:[own.helper_pid])],
+@@ -195,0 +251,2 @@
++    diagnostic(r.unexpected_failure_observation,r.unexpected_observation_projection);
++    if(Number.isSafeInteger(r.helper_pid)&&r.helper_pid>0)own.helper_pid=r.helper_pid;
+@@ -199 +256,2 @@
+-    record.first_observation_to_final_wall_ms=Date.now()-record.first_observation_wall_ms;
++    record.first_observation_to_final_wall_ms=record.first_observation_wall_ms===null?null:
++      Date.now()-record.first_observation_wall_ms;
+@@ -210 +268,2 @@
+-       record.owned_child_exits.length!==7)cleanupError("child_reap_incomplete");
++       record.owned_child_exits.length!==(own.helper_pid===null?6:7))
++      cleanupError("child_reap_incomplete");
+@@ -230,42 +289,156 @@
+-  controllerBuffer="";
+-}
+-await pollController();
+-if(record.first_failure===null) {
+-  try {
+-    const r=await tools.mcp__cua_driver__browser_navigate({
+-      session:own.session,target_id:own.target_id,tab_id:own.tab_id,
+-      url:"http://localhost:3000/"});
+-    const receivedWall=Date.now();
+-    record.observation_receipts.push({kind:"browser_navigation",received_wall_ms:receivedWall});
+-    retain(); // Received clock BEFORE navigation outcome comparison.
+-    if(r?.isError===true)latch("driver_navigation_refused",receivedWall);
+-  } catch {latch("driver_navigation_exception",Date.now());}
+-}
+-if(record.first_failure===null) {
+-  try {
+-    const r=await tools.mcp__cua_driver__get_browser_state({
+-      session:own.session,target_id:own.target_id,tab_id:own.tab_id,
+-      snapshot_format:"semantic_v2",include_screenshot:false});
+-    const receivedWall=Date.now();
+-    record.observation_receipts.push({kind:"browser_snapshot",received_wall_ms:receivedWall});
+-    retain(); // Received clock BEFORE any page predicate comparison.
+-    const s=r?.structuredContent;
+-    const nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
+-    lastSnapshotFlags={
+-      received_wall_ms:receivedWall,
+-      status_ok:r?.isError!==true&&s?.status==="ok",
+-      complete:s?.snapshot?.complete===true,
+-      heading_match:nodes.some(n=>n.role==="heading"&&n.name==="Local demo"),
+-      error_match:nodes.some(n=>n.name==="Local demo could not complete this request."),
+-      interactive_ref_present:Array.isArray(s?.refs)&&
+-        s.refs.some(n=>Array.isArray(n.actions)&&n.actions.includes("click"))
+-    };
+-    store("d01_immediate_snapshot_flags",lastSnapshotFlags);
+-    // Finite booleans only; no outline/URL/name/value/subject/token is persisted.
+-    if(lastSnapshotFlags.error_match)latch("application_page_failed",receivedWall);
+-    else if(!lastSnapshotFlags.status_ok||!lastSnapshotFlags.complete||
+-            !lastSnapshotFlags.heading_match||!lastSnapshotFlags.interactive_ref_present)
+-      latch("application_snapshot_unconfirmed",receivedWall);
+-  } catch {latch("driver_snapshot_exception",Date.now());}
+-}
+-if(record.first_failure===null)await pollController();
++  controllerBuffer="";own.closed=true;store("d01_immediate_owned_handles",own);
++}
++async function checked(label,operation,predicate) {
++  if(record.first_failure!==null)return null;
++  if(Date.now()>=own.start_epoch_ms+840000) {
++    latch("browser_active_deadline",Date.now());await cleanup();return null;
++  }
++  let result,receivedWall;
++  try {
++    result=await operation();receivedWall=Date.now();
++    record.observation_receipts.push({kind:label,received_wall_ms:receivedWall});retain();
++    if(result?.isError===true)latch("browser_tool_refused",receivedWall);
++    else if(!predicate(result))latch("browser_decision_unconfirmed",receivedWall);
++  } catch {latch("browser_tool_or_decision_exception",Date.now());}
++  if(record.first_failure!==null)await cleanup();
++  return record.first_failure===null?result:null;
++}
++const snapshotArgs={session:own.session,target_id:own.target_id,tab_id:own.tab_id,
++  snapshot_format:"semantic_v2",include_screenshot:false};
++function page(result,kind) {
++  const s=result?.structuredContent,nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
++  const flags={
++    status_ok:result?.isError!==true&&s?.status==="ok",
++    complete:s?.snapshot?.complete===true,
++    heading_match:nodes.some(n=>n.role==="heading"&&n.name===
++      (kind==="protected_after"?"Protected application access":"Local demo")),
++    error_match:nodes.some(n=>n.name==="Local demo could not complete this request."),
++    required_text:nodes.some(n=>n.name===(kind==="protected_before"?"Sign in required.":
++      kind==="protected_after"?"Signed in. Protected application access is available.":
++      "Use Sign in to open this local application.")),
++    interactive_ref_present:Array.isArray(s?.refs)&&
++      s.refs.some(n=>Array.isArray(n.actions)&&n.actions.includes("click"))
++  };
++  record.last_page_flags={kind,...flags};retain();
++  // Only provider refs and fixed public-label matches survive this raw snapshot.
++  own.fresh_refs=Array.isArray(s?.refs)?s.refs.filter(n=>typeof n.ref==="string"&&
++    /^p[0-9]+:[0-9]+$/.test(n.ref)).map(n=>n.ref):[];
++  store("d01_immediate_owned_handles",own);
++  if(flags.error_match)return false;
++  if(!flags.status_ok||!flags.complete)return false;
++  if(kind==="generic_checked") {
++    if(nodes.some(n=>n.role==="heading"&&n.name==="Protected application access")&&
++       nodes.some(n=>n.name==="Signed in. Protected application access is available."))
++      record.protected_after_page=true;
++    return true;
++  }
++  const ok=flags.heading_match&&flags.required_text&&
++    (kind!=="application"||flags.interactive_ref_present);
++  if(ok&&kind==="protected_after")record.protected_after_page=true;
++  return ok;
++}
++async function navigateAndSnapshot(url,kind) {
++  if(await checked("browser_navigation",
++      ()=>tools.mcp__cua_driver__browser_navigate({session:own.session,
++        target_id:own.target_id,tab_id:own.tab_id,url}),
++      r=>r?.isError!==true)) {
++    await checked("browser_snapshot",
++      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,kind));
++  }
++}
++async function entry() {
++  // The exact Driver-owned blank handles already exist while the180s gate waits.
++  // There is no model yield, tool-description load or rebind after this marker.
++  const markerCommand="python3 -c "+sq(MARKER)+" "+sq(own.lab)+" "+
++    sq(own.guard_pid)+" "+sq(own.server_pid);
++  await checked("prepared_marker",
++    ()=>tools.exec_command({cmd:markerCommand,workdir:own.workspace,
++      yield_time_ms:10000,max_output_tokens:500}),r=>{
++      record.local_tool_receipts.push({label:"marker",
++        exit:typeof r.exit_code==="number"?r.exit_code:null,
++        session_id:typeof r.session_id==="number"?r.session_id:null});retain();
++      if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
++      return r.exit_code===0&&r.session_id===undefined&&
++        JSON.parse(r.output).prepared_marker_written===true;
++    });
++  const readyDeadline=Date.now()+30000;
++  while(record.first_failure===null&&own.fixture_ready!==true&&Date.now()<readyDeadline)
++    await pollController();
++  if(record.first_failure===null&&own.fixture_ready!==true)
++    latch("fixture_ready_unconfirmed",Date.now());
++  if(record.first_failure!==null){await cleanup();return;}
++  await pollController(); // ONE immediate pre-navigation poll, no RP HTTP probe.
++  if(record.first_failure!==null){await cleanup();return;}
++  await navigateAndSnapshot("http://localhost:3000/protected","protected_before");
++  if(record.first_failure===null)await pollController();
++  if(record.first_failure!==null){await cleanup();return;}
++  await navigateAndSnapshot("http://localhost:3000/","application");
++  if(record.first_failure===null)await pollController(); // ONE post-entry poll.
++  if(record.first_failure!==null)await cleanup();
++}
++async function continuation() {
++  const spec=own.next_decision;
++  const allowedKinds=["click","username","password","snapshot","protected_after"];
++  if(!spec||!allowedKinds.includes(spec.kind)) {
++    latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
++  }
++  await pollController();
++  if(record.first_failure!==null){await cleanup();return;}
++  if(spec.kind==="protected_after") {
++    // Read the fresh callback-following protected page; do not send another RP request.
++    await checked("browser_snapshot",
++      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,"protected_after"));
++  } else if(spec.kind==="snapshot") {
++    await checked("browser_snapshot",
++      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
++      r=>page(r,"generic_checked")&&publicPredicate(r,spec));
++  } else {
++    if(typeof spec.ref!=="string"||!Array.isArray(own.fresh_refs)||
++       !own.fresh_refs.includes(spec.ref)) {
++      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
++    }
++    own.fresh_refs=[];store("d01_immediate_owned_handles",own); // Single-use snapshot ref.
++    const args={session:own.session,target_id:own.target_id,tab_id:own.tab_id,ref:spec.ref};
++    const operation=spec.kind==="click"?
++      ()=>tools.mcp__cua_driver__browser_click({...args,input_route:"dom_event"}):
++      ()=>tools.mcp__cua_driver__browser_type({...args,replace:true,
++        text:spec.kind==="username"?"admin":load("d01_fresh_password_input")});
++    if(spec.kind==="password"&&(typeof load("d01_fresh_password_input")!=="string"||
++       !/^[A-Za-z0-9_-]{30,128}$/.test(load("d01_fresh_password_input")))) {
++      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
++    }
++    await checked("browser_input",operation,r=>{
++      const s=r?.structuredContent;
++      return r?.isError!==true&&["confirmed","unverifiable"].includes(s?.effect);
++    }); // Dispatch alone never earns an application outcome or journey credit.
++    store("d01_fresh_password_input",null);
++    if(record.first_failure===null)
++      await checked("browser_snapshot",
++        ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
++        r=>page(r,"generic_checked")&&publicPredicate(r,spec));
++  }
++  if(record.first_failure===null)await pollController();
++  if(record.first_failure!==null)await cleanup();
++  else if(spec.kind==="protected_after") {
++    record.cleanup_requested_wall_ms=Date.now();retain();
++    await cleanup();
++  }
++}
++function publicPredicate(result,spec) {
++  const nodes=result?.structuredContent?.content_refs;
++  // Root must pin one printed public expected label/role before that action.
++  // No raw field value, URL, subject, query or arbitrary regex predicate is allowed.
++  const roles=["heading","button","statictext","textbox"];
++  const labels=["Username","Password","Authenticator or recovery code","Sign in",
++    "Local demo","Protected application access",
++    "Signed in. Protected application access is available."];
++  return Array.isArray(nodes)&&roles.includes(spec.expected_role)&&
++    labels.includes(spec.expected_label)&&
++    nodes.some(n=>n.role===spec.expected_role&&n.name===spec.expected_label);
++}
++try {
++  if(own.phase==="prepared_entry")await entry();else await continuation();
++} catch {
++  latch("composed_decision_exception",Date.now());
++  await cleanup();
++}
+@@ -273 +445,0 @@
+-  await cleanup(); // NO text/notify/yield_control/model turn before essential cleanup.
+@@ -275,2 +447,4 @@
+-    cleanup_errors:record.cleanup_errors,final_absence:record.final_absence,
+-    controller_exit:record.controller_exit,whole_cleanup_within60_proven:false,
++    unexpected_failure_observation:record.unexpected_failure_observation,
++    diagnostic_errors:record.diagnostic_errors,cleanup_errors:record.cleanup_errors,
++    final_absence:record.final_absence,controller_exit:record.controller_exit,
++    whole_cleanup_within60_proven:false,
+@@ -282,3 +456,8 @@
+-  text({result:"application_checkpoint_observed_only",
+-    snapshot_flags:lastSnapshotFlags,journey_credit:false});
+-}
++  text({result:"browser_decision_observed_only",page_flags:record.last_page_flags??null,
++    journey_credit:false,cleanup_errors:record.cleanup_errors,
++    resource_release_proven:record.cleanup_started===true&&record.final_absence!==null&&
++      !record.cleanup_errors.some(v=>[
++        "child_reap_incomplete","owned_resource_absence_unproven",
++        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v)),
++    whole_cleanup_within60_proven:false});
++}
+```
+
+Complete preparation failure-order boundary with explicit unavailable source inputs:
+
+```javascript
+// Preparation boundary contract; source-only, never called in this phase.
+// Record/own/latch/cleanup are the same lexical objects as the composed cell.
+// The exact returned-identity projection MUST be supplied from a reviewed
+// retained Driver receipt adapter; this design does not guess its JSON keys.
+async function preparationDecision(label,operation,projectOwnedIdentity) {
+  let result,receivedWall;
+  try {
+    result=await operation();receivedWall=Date.now();
+    record.observation_receipts.push({kind:label,received_wall_ms:receivedWall});
+    retain();
+    // Cache an attested PID/session/window even on a refusal if the reviewed
+    // adapter proves ownership. Never derive ownership from a PID alone.
+    const outcome=projectOwnedIdentity(result,own);
+    if(result?.isError===true||outcome.confirmed!==true)
+      latch("driver_preparation_unconfirmed",receivedWall);
+  } catch {latch("driver_preparation_exception",Date.now());}
+  if(record.first_failure!==null) {
+    // If no exact owned browser PID was returned, do not call kill_app.
+    // Join original controller and preserve absence/session uncertainty.
+    await cleanupKnownPreparationResources();
+    return null;
+  }
+  return result;
+}
+// REQUIRED call order, once each, while the unchanged180s controller gate waits:
+// preparationDecision("prepare", ()=>tools.mcp__cua_driver__browser_prepare({
+//   session:own.session,allow_launch:true,profile:{mode:"isolated_new"}}), adapter.prepare);
+// preparationDecision("windows", ()=>tools.mcp__cua_driver__list_windows({
+//   pid:own.browser_pid}), adapter.windows);
+// preparationDecision("bind", ()=>tools.mcp__cua_driver__get_browser_state({
+//   session:own.session,pid:own.browser_pid,window_id:own.window_id,
+//   snapshot_format:"semantic_v2",include_screenshot:false}), adapter.bind);
+// Then run entry() in the SAME functions.exec cell without text/yield/model wait.
+// This boundary is a complete failure-order function, not an executable adapter:
+// adapter.* and cleanupKnownPreparationResources remain source inputs unavailable
+// in the retained public controller/284-line cell, so root must reserve/review
+// their exact bodies before any fixture release on this proposal.
+```
+
+Complete CLOCK source (also embedded literally in the candidate cell):
+
+```python
+import json,time
+print(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))
+```
+
+Complete STOP source (also embedded literally in the candidate cell):
+
+```python
+import json,os,pathlib,stat,sys,time
+c=json.loads(sys.argv[1])
+clock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}
+record={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}
+event_state='write_unconfirmed'
+try:
+    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    with os.fdopen(fd,'w',encoding='ascii') as f:
+        f.write(json.dumps(record,sort_keys=True)+'\n');f.flush();os.fsync(f.fileno())
+    event_state='written'
+except OSError:pass
+# Attempt clock persistence BEFORE marker/state/budget comparisons.
+# A metadata error does not prevent the original essential stop protocol.
+lab=pathlib.Path(c['lab']);marker_state='lab_absent'
+try:
+    if lab.exists():
+        info=lab.lstat()
+        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():
+            marker_state='ownership_unknown'
+        else:
+            marker_state='stop_requested'
+            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):
+                try:
+                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                    os.close(fd)
+                except FileNotFoundError:marker_state='lab_absent'
+                except FileExistsError:pass
+except OSError:marker_state='stop_unconfirmed'
+print(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))
+```
+
+Complete READBACK source (also embedded literally in the candidate cell):
+
+```python
+import json,os,pathlib,stat,subprocess,sys,time
+c=json.loads(sys.argv[1])
+children=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'
+def finite_observation(value):
+    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:
+        return None
+    diagnostic=value['diagnostic']
+    if diagnostic is None:
+        return {'observed':value['observed'],'diagnostic':None}
+    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:
+        return None
+    sites=('handler','server','main')
+    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')
+    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')
+    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))
+    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:
+        return None
+    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):
+        return None
+    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}
+outer=pathlib.Path(c['outer_out'])
+if outer.is_file():
+    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    try:
+        info=os.fstat(fd)
+        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):
+            raise ValueError('fixed_outer_evidence_invalid')
+        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)
+        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')
+        data=json.loads(raw_bytes)
+    finally:os.close(fd)
+    outer_observation=finite_observation(data.get('unexpected_failure_observation'))
+    projection=data.get('unexpected_observation_projection')
+    if projection not in ('unavailable','valid','invalid'):projection='invalid'
+    if projection=='valid' and outer_observation is None:projection='invalid'
+    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}
+    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0
+    if started:allowed.add('helper')
+    raw=data.get('owned_child_exits')
+    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):
+        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]
+        helper_pid=data['helper_pid'] if started else None
+pids=list(c['owned_pids'])
+if helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)
+p=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)
+ps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())
+present=set(int(v) for v in p.stdout.split()) if ps_known else set()
+ports={}
+for port in (9000,3000):
+    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)
+    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None
+print(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))
+```
+
+Complete PERSIST source (also embedded literally in the candidate cell):
+
+```python
+import json,os,pathlib,sys
+path=pathlib.Path(sys.argv[1])
+record=json.loads(sys.argv[2])
+# Convert decimal strings directly to Python integers, avoiding JS Number rounding.
+def clocks(value):
+    if isinstance(value,dict):
+        for k,v in list(value.items()):
+            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):
+                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63
+                value[k]=int(v)
+            else:clocks(v)
+    elif isinstance(value,list):
+        for v in value:clocks(v)
+clocks(record)
+fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+with os.fdopen(fd,'w',encoding='ascii') as f:
+    f.write(json.dumps(record,sort_keys=True,indent=2)+'\n');f.flush();os.fsync(f.fileno())
+print(json.dumps({'written_exclusive':True}))
+```
+
+Complete MARKER source (also embedded literally in the candidate cell):
+
+```python
+import os,pathlib,stat,sys
+lab=pathlib.Path(sys.argv[1]);guard=int(sys.argv[2]);server=int(sys.argv[3])
+if guard<=0 or server<=0 or guard==server:raise ValueError('owned_context_invalid')
+info=lab.lstat()
+if not (stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.getuid()):raise ValueError('owned_context_invalid')
+os.kill(guard,0);os.kill(server,0)
+if (lab/'stop').exists() or (lab/'ui-failure').exists():raise ValueError('owned_context_invalid')
+fd=os.open(lab/'browser-prepared',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+os.close(fd)
+print('{"prepared_marker_written":true}')
+```
+
+Exact STOP and READBACK deltas; MARKER is a new integration source only:
+
+```diff
+--- retained-stop
++++ DESIGN-only-stop
+@@ -22 +22 @@
+-            for name in ('ui-failure','stop'):
++            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):
+```
+
+```diff
+--- retained-readback
++++ DESIGN-only-readback
+@@ -1 +1 @@
+-import json,pathlib,subprocess,sys,time
++import json,os,pathlib,stat,subprocess,sys,time
+@@ -3 +3,42 @@
+-pids=c['owned_pids']
++children=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'
++def finite_observation(value):
++    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:
++        return None
++    diagnostic=value['diagnostic']
++    if diagnostic is None:
++        return {'observed':value['observed'],'diagnostic':None}
++    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:
++        return None
++    sites=('handler','server','main')
++    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')
++    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')
++    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))
++    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:
++        return None
++    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):
++        return None
++    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}
++outer=pathlib.Path(c['outer_out'])
++if outer.is_file():
++    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
++    try:
++        info=os.fstat(fd)
++        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):
++            raise ValueError('fixed_outer_evidence_invalid')
++        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)
++        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')
++        data=json.loads(raw_bytes)
++    finally:os.close(fd)
++    outer_observation=finite_observation(data.get('unexpected_failure_observation'))
++    projection=data.get('unexpected_observation_projection')
++    if projection not in ('unavailable','valid','invalid'):projection='invalid'
++    if projection=='valid' and outer_observation is None:projection='invalid'
++    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}
++    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0
++    if started:allowed.add('helper')
++    raw=data.get('owned_child_exits')
++    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):
++        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]
++        helper_pid=data['helper_pid'] if started else None
++pids=list(c['owned_pids'])
++if helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)
+@@ -11,10 +52 @@
+-children=None
+-outer=pathlib.Path(c['outer_out'])
+-if outer.is_file():
+-    # This is the unchanged controller's fixed redacted evidence, not app data.
+-    data=json.loads(outer.read_bytes())
+-    allowed={'helper','whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}
+-    raw=data.get('owned_child_exits')
+-    if isinstance(raw,list) and len(raw)==7 and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==7 and next(v['pid'] for v in raw if v['name']=='helper')==c['helper_pid'] and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid']:
+-        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]
+-print(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children}))
++print(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))
+```
+
+### Actual static proofs, limits and immutable preservation
+
+Actually performed: full controller/cell edit-unit reversal byte-for-byte to
+6662/0a7cea, Python AST equality after controller reversal, all nine original
+function ASTs identical, parse/in-memory code-object compile of proposed
+controller and all five collector/marker literals, node --check exit0 for
+the complete463-line cell and37-line preparation boundary. No code object,
+VM/stub/harness/controller/helper/collector/module main was evaluated.
+Exact JS byte reversal reconstructs identical parser input; no separate JS
+AST tree was generated or evaluated. New full-controller/cell and all literal
+sources/hashes/diffs above make reconstruction reviewable.
+
+Controller has nine declared edit units/ten source occurrences, including
+two helper-result projection sites. Cell has22 sequential edit units; reverse
+their recorded replacements or apply the full zero-context diff backwards to
+recover all284 original lines. Readback/stop integration deltas and marker are
+fully declared, so no claimed unchanged collector secretly changed. These
+are static source/diff counts, not tests or browser observations. New memory
+validation would need root's separately reviewed exact payload/release; the
+old18-case pass alone does not transfer to this source.
+
+Verified entire2bf report518404B/SHA256
+2ae110bff13b1943ee8edf0e8b2fb72f38ce417052032cb653fc945d62c4a982 as unchanged
+prefix; unchanged actual helper470; all12 older private metadata exact bytes/
+hashes/mode0600. No old metadata content was printed or reinterpreted.
+All historic capacity/prepare/Authorization/request failures,500b senderUNKNOWN,
+c88 genericunexpected/zeroAuth/protected403/no journey, lost provider values/
+wrong-report correction,61/76 failed memory and dated78-case pass remain.
+c88 first-event and whole60 stay UNKNOWN, including its119s final absence
+after controller end; no retrospective timing/sender/cause claim occurs.
+
+Proposed next action is root source review, not execution approval: obtain/
+reserve the missing exact preparation adapter/partial cleanup and private-input
+source; wait for actual descriptor-memory PASS plus independent review; review
+the changed diagnostic/partial-readback/decision/success-stop behavior in one
+bounded memory envelope before a separate ONE fixture release and fresh
+capacity. No broader browser/operator/category/full-D01/D05/tenant/passkey/
+install/HA/release/CI claim follows from this report. Original acceptance stays
+root-owned, D01/D05 remain open, and closed rows remain closed.
+
+This report alone is committed after prefix/archive/hash/scope/docs/whitespace
+checks. No helper/product/guide/D05/test/config/controllerfile/main/history/
+push/status edit, runtime/resource release, filesystem cleanup or worker
+contact occurs. RiWork Cua.ai Driver MCP remains the only future GUI provider;
+there was no Driver health/session/browser/tool invocation in this phase.
+
+Final actual documentation check: python3 scripts/check-docs.py exited1. Its
+sole missing-target message comes from protected prior-prefix line2813, where
+an archived indexing call is scanned as a Markdown link to
+SimpleNamespace(demo=d. This is a static documentation-check failure, not a
+helper/fixture execution or a new product failure. A separate read-only scan
+using the same link expression found exactly that one old-prefix match and
+zero missing targets in this new appendix. The entire2bf prefix is mandatory
+and was not edited to make the global check pass. Root's previously published
+archive encoding is distinct from this retained local prefix; a future report
+encoding/alignment change needs its own explicit reservation. git diff --check
+exited0. Final archive/fence/hash/prefix/scope checks and the report-only local
+commit follow; no source, runtime or gate inference is made from link checking.
+
+Final archive readback reconstructs all8 complete sources against their
+stated hashes,13 closed fence pairs, the exact518404-byte protected prefix,
+all12 metadata hashes/modes and only the reserved report diff. The retained
+shell command has NO final newline after PY. Its Markdown closing fence needs
+one structural newline; remove exactly that delimiter newline when reconstructing
+the17326-byte command. All other source fences are literal byte-exact content.
+A static fence assertion exited1 after mistakenly removing that required
+Markdown separator; restoring only the separator corrected the archive, without
+changing the command/source hashes or executing anything. This static formatting
+failure remains distinct from all historical fixture failures.
+
+
+### Root review of the observer-aware controller design
+
+Root read the complete immutable 2e29c30 controller, 463-line browser cell,
+collector bodies, preparation boundary, prose and declared diffs. Reversing the
+complete zero-context cell diff reproduced all 18,091 original bytes and SHA256
+0a7cea070bdab32b419a82eb26a7a991b71a2b14a55553f890b53788cda04a5e.
+The complete previously published report, archive encoding and root appendices
+are retained, followed by the exact 116,987-byte author append. An initial root
+prefix check omitted the already documented inserted encoding note and refused
+before writing; including that note restored the intended preservation check.
+A root-note append first used the orchestrator directory and failed before any
+write. The author-only append was committed separately; this note follows it.
+
+One source-derived lifecycle blocker remains: successful entry does not change
+stored `own.phase` from `prepared_entry` to `browser_decision`, while populating
+helper/readiness fields that the prepared-entry gate refuses on the next call.
+Root reserved a report-only proposal for the successful-entry phase transition
+and an independent review. This is not an observed fixture failure or a claim
+about the earlier unknown sender or unexpected exception.
+
+The distinct [descriptor memory receipt](evidence/wave30-d01-descriptor-memory-0ec651d.json)
+now records one actual 128/128 memory pass. That result does not validate this
+changed controller or prove a browser journey. Exact preparation/private-input
+adapters, partial-ownership cleanup, changed-cell verification and a separately
+released fixture remain prerequisites. No proposed controller, collector,
+marker, Driver call or helper was executed by this root review. Runtime remains
+held and original D01/D05 disposition remains open.
