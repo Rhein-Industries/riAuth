@@ -1107,3 +1107,119 @@ but remained 22/2 at different failure locations. **This new helper has no
 fresh typecheck or runtime result**, and neither the historical Linux failure
 nor the whole target is claimed fixed. Root owns immutable review and a
 separate whole-24 release. I10/R05/W02/W05 remain DONE.
+
+## Authorized scheduler-helper whole-target result: one native 24/0 run
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; existing worktree
+`a1303b57-4a34-487e-9c63-a841f05b51a0`. Root reviewed immutable source
+`199980044994d74adcb429bed70ff386399445d8` and report
+`7d63aca0d81c6c3fd965f831a92f6253e53059e7`, then explicitly released the
+sole Cargo/runtime slot for exactly one whole-24 command. This is that one
+invocation, with no baseline, repeat, alternative filter or source correction.
+
+**Fresh preflight and source.** HEAD was clean at `7d63aca`; the fixture
+remained blob `55a59a6e87f5085a938fa3338c694241fe176f27`, SHA-256
+`ee69d6311be8bcbe697a902586acb070dfc55a7769758c7ccdd3b41f8f30b218`.
+The entire tracked diff from fixed published
+`9b8956f7b2a9961b14e313fa57c0f5214a136772` contained only this fixture and
+this report. Production, crates, manifests, lockfile and toolchain stayed
+fixed-pin equivalent. No applicable ancestor/repository guidance file was
+present, no Cargo/rustc process was running, and the private nonsymlink
+`.target-wave27` cache contained the same-feature SCIM integration fingerprint.
+Its features were `default, essentials, fuzzing, platform, test-support`,
+profile `11094973624911973823`. Fresh free disk was 13,691,465,728 bytes
+(12.751 GiB), above root's 11 GiB start requirement and previously measured
+less-than-1.5-GiB transient allowance above the 9 GiB stop threshold.
+
+**Only actual Cargo command**, run from this worktree:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support,fuzzing --test scim_oauth -- --test-threads=1
+```
+
+The wrapper used a new owned process group, a 1,800-second outer deadline,
+two-second disk/process samples, an 8 MiB finite raw-log limit and exclusive
+0600 evidence files under the private target. It would stop only its own
+group at 9 GiB, before the mandatory 8 GiB floor, or on deadline/log limit.
+There was no cache/evidence deletion or competing target invocation.
+
+**Actual outcome:** Cargo exited **0**, build 4.22 s, tests **29.23 s**,
+wrapper **35.137593 s**. The run started
+`2026-10-02T16:04:36.702871Z` and ended `16:05:11.840530Z` on native
+Darwin 25.2.0 arm64. Result: **24 passed, 0 failed, 0 ignored, 0 measured,
+0 filtered out**. All named cases below passed; no failure boundary occurred:
+
+```text
+ambiguous_outbound_lookup_does_not_create_a_remote_user_or_local_link
+cached_token_serves_overlapping_callers_until_forced_expiry
+client_credentials_provision_an_independent_scim_server
+completed_job_history_is_compact_and_bounded
+controller_modes_bind_plans_and_stop_at_removal_review_floor
+final_scim_plan_and_apply_read_only_reviewed_links
+jwt_scope_and_audience_claims_must_cover_configuration
+legacy_token_file_config_stays_exclusive_with_oauth
+missing_expires_in_is_cached_briefly
+paged_scim_snapshot_resumes_and_refuses_a_link_added_behind_its_cursor
+plans_supersede_pending_snapshots_and_bound_historical_links
+reconcile_stales_incompatible_backoff_jobs_and_replans_without_dispatch
+refresh_token_grant_is_reread_and_not_written_back
+reviewed_last_group_member_removal_does_not_advance_on_incomplete_readback
+reviewed_last_group_member_removal_requires_complete_remote_membership
+reviewed_scim_offboarding_rejects_partial_remote_snapshots_without_patch
+scim_apply_binds_reviewed_content_authority_and_previous_links
+scim_unauthorized_acquires_once_more_then_stops
+scim_user_cursor_ignores_login_but_restarts_on_projection_change
+secret_rotation_and_static_token_rotation_apply_on_next_acquisition
+shared_freshness_invalidates_local_cache_and_fences_late_publication
+token_endpoint_failure_retries_once_then_can_succeed
+uncertain_patch_response_is_reconciled_without_a_second_patch
+wrong_secret_server_errors_and_rejected_tokens_do_not_call_scim
+```
+
+The existing native linker compact-unwind-size warning remained nonfatal.
+There was no stop signal, timeout, log truncation or disk-floor violation.
+Eighteen samples had maximum spacing 2.001058 s. The first launch sample
+had 13,689,970,688 bytes free; minimum was 13,683,351,552 bytes (12.744 GiB),
+and final was 13,688,934,400 bytes (12.749 GiB). Owned Cargo PID/group
+`84412` was waited. Observed children `84414` (rustc), `84441`
+(rust-objcopy), and `84445` (SCIM test) exited; the group and all four
+observed PIDs were absent in final cleanup and a subsequent read-only check.
+No group-wide or unrelated process kill was needed. **CARGO SLOT RELEASED**
+was reported immediately at exit, before this append.
+
+**Private retained receipt**, prefix
+`.target-wave27/scim-oauth-wave30-helper-20261002T160436Z`:
+
+| Artifact | Actual SHA-256 |
+| --- | --- |
+| `.log`, 2,401 bytes, 0600 | `aba681faef060b4a920b684a2e12475a7da8b1f378e9d714577aa1fcccf3589f` |
+| `.observation.json`, 0600 | `b76f6df3dc549ba30e92a550a42d27c79e48ac0d5d073c4c0f0ac7555178953a` |
+| `.verification.json`, 0600 | `92f522eec41bc5434da21c8d1bd6b39eaca406697939937d4675fdda7355d688` |
+| `.verification-v2.json`, 0600 | `cac2ce57df87d9dcd9276a10506e76b1371e5e749875291bb8fa792605a3e7c8` |
+
+The first supplemental verification retained a trailing result delimiter in
+its extracted test-name strings. The v2 supplement removes the exact suffix,
+records that metadata correction and references the unchanged first
+supplement. Both remain; raw log, observation, counts and runtime were
+unchanged. No second test invocation occurred. The executed SCIM binary
+`debug/deps/scim_oauth-951d26c550be29f2` was 211,639,968 bytes, private mode
+0700, SHA-256
+`aa1051a51f6edc180fbdae110af07b811bbd34fb6eb3076cb7b0a8434b944eda`.
+The post-build fingerprint retained the same features/profile, SHA-256
+`864984b1826ad69c4bfb54a66c4b032eec81c5afdaaa9774be14cbdfcd9d0fb1`.
+
+The branch was clean after runtime, at the same reviewed HEAD and fixture
+blob. Read-only verification independently rehashed the two earlier native
+22/2 raw logs (`e2dc6ca...`, `948398...`) and Linux 21/3 raw log
+(`f4a0dc82...`) unchanged. Every earlier report phase, Linux 16/8 and 21/3
+failure, native 22/2 result, static proof and prune receipt remains retained;
+the entire prior 64,675-byte report prefix is preserved by this append.
+Docs validation, whitespace and report-only/source-pin checks accompany this
+separate evidence commit.
+
+This single fresh native result supports local compatibility of the reviewed
+private scheduling helper. It does not replace the historical Linux failure,
+prove current Linux CI, a full-suite gate, universal scheduler concurrency or
+external deployment. No product/test correction, status action, main edit or
+push was made. Root owns publication and any subsequent gate interpretation;
+I10/R05/W02/W05 remain DONE.
