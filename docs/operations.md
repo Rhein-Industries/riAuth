@@ -211,6 +211,25 @@ JSON metrics and the existing `riauth metrics` command also return `key_health` 
 
 Group writes maintain an encrypted per-user membership index in the same transaction as the group record. Session, authorization and directory membership reads use ordered 128-row index pages for that user, rather than reading every group. Opening a store with an older index version rebuilds the index from durable groups under the writer; allow time for this one-time pass when the group directory is large. A user who belongs to many groups still has to materialize every membership in the response. Temporary access grants remain separate and are evaluated at their live expiry time.
 
+### Readiness cause observations
+
+`/readyz` keeps its generic refusal body. Process stderr emits a fixed
+`signal=readiness_probe` event with `scope=app_local_observation`, `state`,
+`cause`, `component`, `safe_state` and `remedy`. The same observation is
+available on worker roles without a metrics route. Causes distinguish worker
+saturation, exhausted probe permits, timeout or join failure, pool occupancy,
+unavailable storage, fixed compatibility/activation/recovery fences and an
+unknown storage failure. Follow the emitted remedy and the stopped-process
+procedures below for fenced storage; this observation performs no repair.
+
+Each App emits each of eleven failure categories at most once until a probe
+succeeds, then emits one observed recovery. Repeated failures can therefore
+be silent. A timed-out blocking check retains its permit until it completes;
+its late completion does not emit recovery. A successful probe establishes
+only that observation, not continuous, remote or distributed health. Unknown
+internal errors do not identify unwritable storage or a particular cause.
+Existing lower-level restricted error logs remain independent.
+
 ## Diagnostic next actions
 
 Each attention row of the reconciliation, offboarding and provisioning-job diagnostic reads carries a fixed `next_action` token. The token names the follow-up; the read performs none of it. The tables below give, for each emitted token: when it appears, the existing read that holds the stored error, what is already true, and the existing command or decision. Deactivation-row tokens are in [deactivation delivery](deactivation-delivery.md) and SSF tokens in [SSF delivery](ssf-delivery.md). A waiver or an attestation is an operator record, never verified delivery.
