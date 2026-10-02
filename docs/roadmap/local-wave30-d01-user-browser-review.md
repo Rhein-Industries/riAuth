@@ -3673,3 +3673,282 @@ Commit scope and clean tracked/staged handoff are read back without runtime.
 Report preparation first encountered an unavailable TextEncoder in the tool's
 JavaScript isolate before any file write. Serialization was corrected without
 changing the retained controller, helper, runtime or observations.
+
+## 2026-10-02: prepared-browser controller ordering — source-first design only
+
+Reservation wave30_D01_prepared_browser_controller_design, project
+891e7443-8dac-4c1b-897f-9e53cb59c7ee, existing WT
+7c85f5ef-3fac-4f72-aaed-08474d7fb454. Only this report is appended.
+This phase invokes no Driver/provider/helper/CLI/server/listener/browser/
+HTTP/native/Cargo runtime and acquires/releases no resource slot.
+DESKTOP remains FREE and HELD. Root owns source/runtime reservation and
+D01/D05 disposition; O06/I10/R05 stay closed.
+
+**Concrete prospective seam:** after the printed CLI prerequisites and
+immediately before the existing helper launch, pause at a bounded private
+browser-preparation gate. Prepare exactly one Driver-owned isolated browser
+and bind its exact returned blank window/target/tab before releasing that
+gate. Then launch the unchanged helper, prove the exact owned listener as
+before and dispatch the existing first protected-page navigation through
+that prepared target. This moves browser launch/window discovery/binding
+out of the helper's listening interval. It does not attribute unknown traffic,
+change HTTP acceptance, increase/reset the refusal counter or guarantee
+success against later unexpected requests.
+
+### Exact reviewed inputs and own chronology actually available
+
+Read the entire retained 13789-byte public controller from my own prior
+execution record and its byte-identical archive in immutable report 500b2b6.
+Command SHA-256:
+1194c3e111d877280d26c9b45235862854541f05d040711d2cc2905991a7dda1.
+The 179-line Python body SHA-256 is
+aa61d7408507b8d4ce29d9e7727058298c7e49e86be583ee5e4e258e76cb1da9.
+
+Read only the retained results of my own session d01-bounded-capacity:
+browser_prepare, list_windows, get_browser_state binding, the error-page
+semantic readback, cooperative close/readback, exact-owned kill_app,
+end_session and final window absence, plus fixture-ready and controller
+completion records. No other session history or process arguments/environment
+were inspected. No historical Driver tool was invoked in this design phase.
+
+| Observed own-source/result order | Available fixed evidence |
+| --- | --- |
+| Controller performs printed setup and operator login/client/discovery/whoami | Five commands exited 0; original source order unchanged |
+| Controller launches helper and proves exact owned port 3000 | Source command lines 133–137; helper PID 42146; listener-owned true; fixture_ready emitted |
+| Driver prepares isolated browser | launched_isolated_browser; exact owned PID 44123 |
+| Driver lists that PID's windows | about:blank window 103317 selected |
+| Driver binds exact PID/window/session | exact binding, driver_owned endpoint, target bt-4446edb7-e136-446d-9059-585c63beb1d3; tab tab-f2630790-5fe0-4dec-84c9-d48e46696b36 |
+| Sole first protected browser navigation | net::ERR_CONNECTION_REFUSED |
+| Fresh semantic readback | localhost connection-refused browser error page |
+| Next owned-controller poll/join | Helper exit 1, request_invalid/authorization/count 4; outer exit 1, rp_nonzero |
+| Owned cleanup readbacks | Children reaped, ports/lab/PIDs absent; browser killed only after cooperative close failed; session ended |
+
+No retained Driver action result has an action-start/completion/elapsed/
+monotonic timestamp field. No independently timed browser_prepare duration,
+listener-bind instant, navigation dispatch instant or refused-request instant
+was retained. The available numeric timing is the controller's start epoch
+1790964236.25, completion UTC 2026-10-02T18:04:48.572651+00:00 and elapsed
+52.323 seconds; helper elapsed 48.5 seconds; cleanup readback epoch
+1790964520.564815. Those totals cannot be converted into a measured GUI
+preparation delay or request ordering within the listening interval.
+
+The source and call sequence do support the limited conclusion that browser
+launch/discovery/binding happened after fixture_ready and therefore while
+the helper had already been launched and its listener proven. Moving those
+steps before helper creation removes that source-ordered preparation work
+from the listening interval. The actual duration removed is UNKNOWN.
+The failed navigation does not establish who sent the four refused requests.
+No new request, sender inference, external-probe assertion or retrospective
+timing attribution is made.
+
+### One exact prospective controller delta
+
+The candidate below is **in memory only**, not materialized as a controller/
+helper/source file, imported or executed. Reconstruct it from the exact 500b
+controller archive and this complete zero-context diff. It intentionally
+inherits the old historical START and already-used output names so only the
+ordering delta is reviewed here. It must not be executed: any future root
+reservation must separately pin a fresh start and unused exclusive result/
+provider paths, as the existing evidence-already-exists guard requires.
+
+Candidate complete command: 14899 UTF-8 bytes, SHA-256
+35d1ad33420b2fccbaab61001f34a300ad1002a4347d500776ccb621dfaceab8.
+Candidate body: 14876 bytes, 193 lines, SHA-256
+89a0987ea53451889e6e93bd369e4cdb7a838d8795e91b8e23798748554d1176.
+There are two hunks: a 14-line gate comprising 11 AST statements, and addition
+of two finite failure labels. No other old controller line changes.
+
+```diff
+--- retained-500b-controller
++++ PROSPECTIVE-prepared-browser-controller
+@@ -132,0 +133,14 @@
++    stage='browser_prepare'
++    prepare_deadline=time.monotonic()+30
++    prepare_marker=lab/'browser-prepared'
++    print(json.dumps({'browser_prepare_required':True,'guard_pid':os.getpid(),'server_pid':server.pid,'lab':str(lab)}),flush=True)
++    while not prepare_marker.exists():
++        tick();require(server.poll() is None,'idp_early_exit')
++        require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')
++        require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')
++        time.sleep(0.2)
++    tick();require(server.poll() is None,'idp_early_exit')
++    require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')
++    require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')
++    prepare_info=prepare_marker.lstat()
++    require(stat.S_ISREG(prepare_info.st_mode) and stat.S_IMODE(prepare_info.st_mode)==0o600 and prepare_info.st_uid==os.getuid() and prepare_info.st_nlink==1 and prepare_info.st_size==0,'browser_prepare_marker_invalid')
+@@ -154 +168 @@
+-    tags={'disk_margin','active_deadline','private_directory_invalid','evidence_already_exists','port_occupied','socket_observation_failed','artifact_hash_mismatch','helper_hash_mismatch','verifier_hash_mismatch','provider_hash_mismatch','provider_version_failed','cli_deadline','cli_output_limit','cli_prompt_order','cli_prompt_missing','cli_nonzero','owned_service_early_exit','listener_owner_mismatch','listener_deadline','readyz_failed','cli_secret_mode_invalid','idp_early_exit','rp_nonzero','browser_checkpoint_failed','rp_checkpoint_incomplete'}
++    tags={'disk_margin','active_deadline','private_directory_invalid','evidence_already_exists','port_occupied','socket_observation_failed','artifact_hash_mismatch','helper_hash_mismatch','verifier_hash_mismatch','provider_hash_mismatch','provider_version_failed','cli_deadline','cli_output_limit','cli_prompt_order','cli_prompt_missing','cli_nonzero','owned_service_early_exit','listener_owner_mismatch','listener_deadline','readyz_failed','cli_secret_mode_invalid','idp_early_exit','rp_nonzero','browser_checkpoint_failed','rp_checkpoint_incomplete','browser_prepare_deadline','browser_prepare_marker_invalid'}
+```
+
+The preparation deadline is 30 seconds total from entering this gate, including
+Driver preparation and exact blank-target binding. It does not restart the
+outer clock or extend any deadline. Existing tick() samples disk once per
+second, stops below 8.5 GiB, and retains the original active START+840 cutoff.
+The gate checks that the exact owned server is still live, stops on the
+existing private failure/stop signals, and sleeps only 0.2 seconds between
+checks. A missed 30-second preparation bound produces the fixed
+browser_prepare_deadline failure; no helper has been invoked in that branch.
+
+The marker is only a local readiness interlock in the already-owned 0700 lab.
+It must be a zero-byte regular file, owned by the current UID, mode 0600,
+single link; symlink/nonempty/wrong mode/owner/link-count is refused with the
+fixed browser_prepare_marker_invalid label. It carries no credentials,
+browser endpoint, cookie, target, URL or sender data. The driver binding is
+verified by the outer worker from the actual returned Driver result before
+creating this marker; the file itself is not evidence of a successful
+application journey or proof of a live browser.
+
+Exact prospective marker writer, invoked only after future root release,
+successful exact Driver binding and a fresh check that this own controller
+is still running/waiting:
+
+```python
+# Prospective outer-controller marker writer; NOT executed in this phase.
+# OWN_LAB is only the exact path returned by this same owned controller.
+import os
+from pathlib import Path
+marker=Path(OWN_LAB)/'browser-prepared'
+fd=os.open(marker,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+os.close(fd)
+```
+
+This writer uses exclusive creation and no-follow, contains no request,
+does not read credentials, and does not reset/rewrite an existing marker.
+Failure means stop/cleanup; it is not retried. OWN_LAB is a symbolic task input
+here, not a hardcoded prior lab or path copied from another fixture.
+
+### Exact prospective Driver ordering and stop/cleanup contract
+
+The one future outer workflow would retain the existing operator setup and
+append the following sequence at the new event, rather than at fixture_ready:
+
+1. Before any setup, fresh capacity at least 8.5 GiB and exclusive output/
+   provider-path absence remain mandatory. Establish the one inclusive
+   900-second fixture clock (840 active, 60 cleanup); the clock includes
+   preparation and is never restarted. Read Driver skills/descriptions/current
+   state/permissions only in a separately released future runtime.
+2. Start the reviewed controller once. Let it complete its existing pinned
+   artifact/provider/version retention, private lab/XDG/password and printed
+   CLI prerequisites. Receive browser_prepare_required from the exact own
+   controller. Port 3000/helper creation has not occurred at that event.
+3. With the one named future session, call Driver browser_prepare using
+   allow_launch true and profile mode isolated_new. Retain the exact
+   spawned_by_driver PID and ownership proof. Call list_windows for that PID,
+   then get_browser_state on its exact blank window with screenshots disabled.
+   Require exact binding, mutation_allowed true, driver_owned endpoint and
+   the exact returned selected target/tab. No localhost navigation, RP probe,
+   personal profile copying or profile/settings change occurs during this step.
+4. Read the owned controller's available output/liveness without sending HTTP.
+   On any failure/deadline, stop immediately. Only after successful binding
+   and a still-live waiting controller, write the single zero-byte private
+   marker with the exact prospective writer above.
+5. The same controller now runs its existing one helper Popen, same helper
+   arguments/deadline 600, same fixed localhost:3000 callback, and same exact
+   wait_listener(helper,3000) ownership proof with its existing 30-second
+   bound. It emits the existing fixture_ready record.
+6. Retrieve that readiness/output promptly and stop if the controller/helper
+   has already failed. Dispatch the existing first public protected-page
+   navigation through the stored exact returned Driver target/tab. Do not
+   repeat browser_prepare, window discovery or binding between listener
+   readiness and this first navigation. Any stale/closed/binding failure
+   ends the attempt; no rebind/retry or alternate target/provider is allowed.
+7. Only if the actual protected denial is observed, continue the unchanged
+   planned password/empty-factor sign-in, Local demo consent, exact callback,
+   native validation/userinfo and fresh protected access. Every semantic
+   outcome is verified from fresh state. No rejected traffic is journey credit;
+   no raw HTTP sign-in/session/terminal approval substitute is allowed.
+
+Readiness/liveness checks cannot make the last step atomic with a network
+request. The helper may still stop between the latest controller observation
+and browser navigation. Unexpected Authorization traffic can still exhaust
+the unchanged count 4 at any time. This proposal removes preparation work
+from the live interval, not those failure cases.
+
+On a Driver preparation/binding failure, the outer worker writes the existing
+private ui-failure/stop signals only to its exact owned lab if still present,
+joins the existing controller, and preserves the first fixed failure. The
+new gate checks those signals; no helper is started on that failure branch.
+If the preparation deadline expires first, the controller's unchanged finally
+reaps the existing own server/CLI children, removes only its own lab, checks
+ports and retains its fixed result. A subsequent late marker write fails
+rather than recreating the removed lab. No retry follows.
+
+The outer finally also ends its exact named Driver session and closes only a
+proven driver-owned PID: bounded cooperative close/readback first, then exact
+owned Driver kill_app if cooperative close fails. If a failed prepare call
+does not return sufficient browser ownership evidence, no guessed PID is
+killed; retain that actual cleanup prerequisite failure for root. Known owned
+server/helper children use the original bounded join/escalation sequence.
+Fresh exact owned PID, port 9000/3000, lab and browser/session absence readbacks
+precede immediate release, all within the retained cleanup budget. No unrelated
+process/profile/service is touched. This is a future cleanup contract, not
+an actual cleanup action in this design phase.
+
+### Timing choice and preservation proof
+
+No helper timestamps or new timing source are proposed in this smallest seam.
+Numeric listener/first-navigation gap measurement is not required to prove
+the preparation ordering: helper Popen is source-ordered after the validated
+marker, and that marker is created only after the exact Driver preparation/
+binding result. The retained original results lack the clock inputs needed
+to quantify the old gap; adding timing now would not recover them. Any future
+root request for relative listener/navigation timing requires its own exact
+controller observation reservation. This design does not fabricate old times
+or add an unrelated timestamp-only observation.
+
+Static-only review actually performed: AST parse and in-memory compile of the
+candidate code object, no execution/import/main; complete byte reversal after
+removing the 14-line gate and only the two new literal labels; complete AST
+reversal; all nine original controller function ASTs equal; original try-body
+prefix before the gate and suffix after it equal; original finally AST equal.
+The exact command/body hashes above were computed from those in-memory bytes.
+The future marker writer was parsed/compiled only, not run.
+
+All original controller request builders, provider environment/hash/full
+version retention-before-comparison, CLI printed registration, owned socket
+checks, helper Popen arguments, readiness request, helper-result handling and
+cleanup remain byte-for-byte after that reversible insertion. No RP readiness
+HTTP request, header construction, authorization request or new dispatch route
+is added. Existing helper470 SHA7fbc remains byte-exact, so all parser/Host/Auth/
+body-target/cookie/crypto/native/post-flow/accepted-route guards, first-three
+stateless403/fourth-terminal403 limit and post-flow terminal400 behavior remain
+unchanged. No counter reset, extra allowance or change to an accepted/refused
+HTTP set is proposed.
+
+Future validation, only after separate root source/runtime ownership: review
+the complete reconstructed candidate and marker writer; check old-source
+reversal and helper/artifact pins; confirm preparation failure/deadline never
+creates a helper; confirm marker false/malformed/duplicate handling fails
+closed; verify one prepared exact target precedes one helper invocation;
+confirm the inclusive/disk/deadline bounds and finally cleanup still hold;
+then, only if separately released, one fresh actual browser checkpoint under
+the existing acceptance protocol. This design supplies no lifecycle test,
+browser/crypto/journey pass or D01/D05 gate credit.
+
+### Immutable history and report-only handoff
+
+At phase entry, report HEAD was
+500b2b67ac5630a9feb10d21be6d97ab997ef6f0, blob
+a0e98d9fda347b76d52396a422397e39b3d706a5, 223611 bytes / 3668 lines,
+SHA-256 a092ed00d348952a960e3d8ec83b812c4ca8f6b00d37d29ba7ba0552f461c935.
+That complete content remains a byte-exact prefix. Rechecked all five old plus
+two new private metadata files for their pinned bytes/SHA/mode 0600; unchanged.
+The actual bounded result remains 4125 bytes / SHA
+be9831b0c125ab81a7af4854156fb90a468c065d8581088f5e127f2ddf663342 and its
+distinct provider result 359 bytes / SHA
+6fad035f1897b5287b2ebd812405fcabf6a33b72d2d4f498f3bca7081eb719ab.
+No raw private request/header/target/sender/credential data was read or logged.
+
+The original controller archive, helper470, provider refusal/lost-output and
+reporting correction, earlier failures, UNKNOWN sender, failed 61/76 and dated
+78-case memory pass, capacity refusal, actual fourth-refusal/browser error
+and all cleanup evidence are preserved. This is the same author's prospective
+source analysis of their own failed attempt, not independent verification of
+that action. Historical hashes are identities, not current runtime/body reviews.
+
+Only this report changes. Source/controller/helper files are not materialized
+or edited; no guide/product/D05/test/build/Cargo/service/desktop resource,
+worker/task/worktree, main/push/status/merge or contact with another worker.
+Root receives one immutable report-only commit with exact diff/hashes/static
+proofs and retains all implementation, future release and gate decisions.
