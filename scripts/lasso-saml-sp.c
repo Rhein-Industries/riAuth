@@ -15,6 +15,9 @@
 #include <lasso/id-ff/session.h>
 #include <lasso/saml-2.0/saml2_helper.h>
 #include <lasso/xml/saml-2.0/saml2_name_id.h>
+/* I04 IdP mode public native object headers. */
+#include <lasso/xml/saml-2.0/saml2_authn_statement.h>
+#include <lasso/xml/saml-2.0/saml2_subject.h>
 #include <lasso/xml/saml-2.0/saml2_strings.h>
 #include <lasso/xml/saml-2.0/samlp2_authn_request.h>
 #include <lasso/xml/saml-2.0/samlp2_logout_request.h>
@@ -610,6 +613,223 @@ static void slo_receive_logout(int argc, char **argv) {
     lasso_shutdown();
 }
 
+/* I04 IdP source mode: native construction/signing, exclusive private state.
+ * The application supplies authentication/consent for its synthetic principal;
+ * Lasso owns federation, assertion, response and signatures. */
+static void idp_check(const char *stage, int rc) {
+    if (rc != 0) {
+        fprintf(stderr, "lasso idp %s (%d)\n", stage, rc);
+        exit(1);
+    }
+}
+
+static void idp_line(const char *value, size_t cap) {
+    size_t i, length = value == NULL ? 0 : strnlen(value, cap + 1);
+    if (length == 0 || length > cap) {
+        slo_error("idp field length");
+    }
+    for (i = 0; i < length; i++) {
+        if ((unsigned char)value[i] < 0x20 || (unsigned char)value[i] == 0x7f) {
+            slo_error("idp field framing");
+        }
+    }
+}
+
+/* Validate a copy; verification receives the original signed query bytes. */
+static char *idp_query(const char *query) {
+    char **pairs;
+    char *relay = NULL;
+    unsigned int seen = 0;
+    size_t i;
+    idp_line(query, 65536);
+    if (strchr(query, ';') != NULL) {
+        slo_error("idp query framing");
+    }
+    pairs = g_strsplit(query, "&", -1);
+    for (i = 0; pairs != NULL && pairs[i] != NULL; i++) {
+        char *equal = strchr(pairs[i], '=');
+        char *decoded;
+        unsigned int bit;
+        if (i >= 4 || equal == NULL || equal[1] == '\0') {
+            slo_error("idp query fields");
+        }
+        *equal = '\0';
+        if (strcmp(pairs[i], "SAMLRequest") == 0) bit = 1;
+        else if (strcmp(pairs[i], "RelayState") == 0) bit = 2;
+        else if (strcmp(pairs[i], "SigAlg") == 0) bit = 4;
+        else if (strcmp(pairs[i], "Signature") == 0) bit = 8;
+        else slo_error("idp query fields");
+        if ((seen & bit) != 0) {
+            slo_error("idp duplicate field");
+        }
+        seen |= bit;
+        decoded = g_uri_unescape_string(equal + 1, NULL);
+        if (decoded == NULL) {
+            slo_error("idp query encoding");
+        }
+        idp_line(decoded, 65536);
+        if (bit == 4 && strcmp(decoded, "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256") != 0) {
+            slo_error("idp query algorithm");
+        }
+        if (bit == 2) {
+            if (strlen(decoded) != 43 || strspn(decoded, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") != 43) {
+                slo_error("idp relay framing");
+            }
+            relay = g_strdup(decoded);
+        }
+        g_free(decoded);
+    }
+    g_strfreev(pairs);
+    if (seen != 15 || relay == NULL) {
+        slo_error("idp query fields");
+    }
+    return relay;
+}
+
+static void idp_require_request(LassoLogin *login, LassoServer *server,
+                                const char *sp_entity, const char *relay) {
+    LassoProfile *profile = LASSO_PROFILE(login);
+    LassoSamlp2AuthnRequest *request;
+    char *destination;
+    if (!LASSO_IS_SAMLP2_AUTHN_REQUEST(profile->request)) {
+        slo_error("idp request type");
+    }
+    request = LASSO_SAMLP2_AUTHN_REQUEST(profile->request);
+    destination = lasso_provider_get_metadata_one_for_role(
+        LASSO_PROVIDER(server), LASSO_PROVIDER_ROLE_IDP, "SingleSignOnService HTTP-Redirect");
+    if (request->parent.Issuer == NULL || request->parent.Issuer->content == NULL ||
+        strcmp(request->parent.Issuer->content, sp_entity) != 0 ||
+        profile->remote_providerID == NULL || strcmp(profile->remote_providerID, sp_entity) != 0 ||
+        destination == NULL || request->parent.Destination == NULL ||
+        strcmp(destination, request->parent.Destination) != 0 ||
+        !request->ForceAuthn || request->IsPassive || request->NameIDPolicy == NULL ||
+        request->NameIDPolicy->Format == NULL ||
+        strcmp(request->NameIDPolicy->Format, LASSO_SAML2_NAME_IDENTIFIER_FORMAT_PERSISTENT) != 0 ||
+        !request->NameIDPolicy->AllowCreate || request->ProtocolBinding == NULL ||
+        strcmp(request->ProtocolBinding, LASSO_SAML2_METADATA_BINDING_POST) != 0 ||
+        request->AssertionConsumerServiceIndex != -1 ||
+        request->AssertionConsumerServiceURL == NULL ||
+        login->protocolProfile != LASSO_LOGIN_PROTOCOL_PROFILE_BRWS_POST ||
+        profile->msg_relayState == NULL || strcmp(profile->msg_relayState, relay) != 0) {
+        slo_error("idp request profile");
+    }
+    /* process_authn_request_msg already checked this ACS against SP metadata. */
+    idp_line(request->AssertionConsumerServiceURL, 1024);
+    g_free(destination);
+}
+
+static void idp_session_fields(LassoSaml2Assertion *assertion, const char *expiry) {
+    LassoSaml2AuthnStatement *auth;
+    if (!LASSO_IS_SAML2_ASSERTION(assertion) || assertion->Subject == NULL ||
+        !LASSO_IS_SAML2_NAME_ID(assertion->Subject->NameID) ||
+        assertion->Subject->NameID->Format == NULL ||
+        strcmp(assertion->Subject->NameID->Format, LASSO_SAML2_NAME_IDENTIFIER_FORMAT_PERSISTENT) != 0 ||
+        assertion->AuthnStatement == NULL || g_list_length(assertion->AuthnStatement) != 1 ||
+        !LASSO_IS_SAML2_AUTHN_STATEMENT(assertion->AuthnStatement->data)) {
+        slo_error("idp assertion profile");
+    }
+    idp_line(assertion->Subject->NameID->content, 1024);
+    idp_line(assertion->ID, 256);
+    auth = LASSO_SAML2_AUTHN_STATEMENT(assertion->AuthnStatement->data);
+    /* Lasso only adds this automatically with negotiated SLO. Set the public
+     * application fields before native serialization/signing; SLO stays absent. */
+    g_free(auth->SessionIndex);
+    auth->SessionIndex = g_strdup(assertion->ID);
+    g_free(auth->SessionNotOnOrAfter);
+    auth->SessionNotOnOrAfter = g_strdup(expiry);
+}
+
+static void idp_login_mode(int argc, char **argv) {
+    LassoServer *server;
+    LassoLogin *login;
+    LassoProfile *profile;
+    LassoNode *assertion;
+    GDateTime *at, *until;
+    char *inputs[4], *query, *relay, *identity = NULL;
+    char *instant, *expiry, *identity_dump, *session_dump, *post;
+    int i, j;
+    if (argc != 12) {
+        slo_error("idp arguments");
+    }
+    slo_limits();
+    idp_line(argv[6], 1024);
+    for (i = 9; i <= 11; i++) {
+        for (j = 2; j <= 11; j++) {
+            if (i != j && strcmp(argv[i], argv[j]) == 0) {
+                slo_error("idp distinct outputs");
+            }
+        }
+    }
+    for (i = 0; i < 4; i++) inputs[i] = slo_read(argv[i + 2]);
+    query = slo_read(argv[7]);
+    relay = idp_query(query);
+    if (strcmp(argv[8], "-") != 0) identity = slo_read(argv[8]);
+    idp_check("lasso_init", lasso_init());
+    server = lasso_server_new_from_buffers(inputs[0], inputs[1], NULL, inputs[2]);
+    if (server == NULL) slo_error("idp server constructor");
+    server->signature_method = LASSO_SIGNATURE_METHOD_RSA_SHA256;
+    idp_check("lasso_server_add_provider_from_buffer",
+              lasso_server_add_provider_from_buffer(server, LASSO_PROVIDER_ROLE_SP, inputs[3], NULL, NULL));
+    for (i = 0; i < 4; i++) free(inputs[i]);
+    if (lasso_server_get_provider(server, argv[6]) == NULL) slo_error("idp provider");
+    login = lasso_login_new(server);
+    if (login == NULL) slo_error("idp login constructor");
+    profile = LASSO_PROFILE(login);
+    lasso_profile_set_signature_hint(profile, LASSO_PROFILE_SIGNATURE_HINT_FORCE);
+    lasso_profile_set_signature_verify_hint(profile, LASSO_PROFILE_SIGNATURE_VERIFY_HINT_FORCE);
+    if (identity != NULL) {
+        idp_check("lasso_profile_set_identity_from_dump", lasso_profile_set_identity_from_dump(profile, identity));
+        free(identity);
+    }
+    idp_check("lasso_login_process_authn_request_msg", lasso_login_process_authn_request_msg(login, query));
+    free(query);
+    idp_check("lasso_profile_get_signature_status", lasso_profile_get_signature_status(profile));
+    idp_require_request(login, server, argv[6], relay);
+    idp_check("lasso_login_validate_request_msg", lasso_login_validate_request_msg(login, TRUE, TRUE));
+    at = g_date_time_new_now_utc();
+    until = at == NULL ? NULL : g_date_time_add_seconds(at, 300);
+    if (at == NULL || until == NULL) slo_error("idp system time");
+    instant = g_date_time_format(at, "%Y-%m-%dT%H:%M:%SZ");
+    expiry = g_date_time_format(until, "%Y-%m-%dT%H:%M:%SZ");
+    if (instant == NULL || expiry == NULL) slo_error("idp time formatting");
+    idp_check("lasso_login_build_assertion",
+              lasso_login_build_assertion(login,
+                  "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport",
+                  instant, NULL, instant, expiry));
+    assertion = lasso_login_get_assertion(login); /* new reference */
+    if (assertion == NULL) slo_error("idp assertion constructor");
+    idp_session_fields(LASSO_SAML2_ASSERTION(assertion), expiry);
+    idp_check("lasso_login_build_authn_response_msg", lasso_login_build_authn_response_msg(login));
+    idp_line(profile->msg_url, 1024);
+    idp_line(profile->msg_body, 65536);
+    idp_line(profile->msg_relayState, 43);
+    if (strcmp(profile->msg_relayState, relay) != 0 ||
+        strcmp(profile->msg_url, LASSO_SAMLP2_AUTHN_REQUEST(profile->request)->AssertionConsumerServiceURL) != 0 ||
+        lasso_profile_get_identity(profile) == NULL || lasso_profile_get_session(profile) == NULL) {
+        slo_error("idp response state");
+    }
+    identity_dump = lasso_identity_dump(lasso_profile_get_identity(profile));
+    session_dump = lasso_session_dump(lasso_profile_get_session(profile));
+    post = g_strdup_printf("target: %s\nrelay: %s\nresponse: %s\n",
+                           profile->msg_url, profile->msg_relayState, profile->msg_body);
+    slo_write(argv[9], identity_dump);
+    slo_write(argv[10], session_dump);
+    slo_write(argv[11], post);
+    printf("binding: post\nrequest_signature: lasso\nassertion_built: lasso\nresponse_built: lasso\npersisted: true\n");
+    g_free(post);
+    g_free(identity_dump);
+    g_free(session_dump);
+    g_free(relay);
+    g_free(instant);
+    g_free(expiry);
+    g_date_time_unref(at);
+    g_date_time_unref(until);
+    g_object_unref(assertion);
+    lasso_login_destroy(login);
+    lasso_server_destroy(server);
+    lasso_shutdown();
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "usage: lasso-saml-sp request|accept ...\n");
@@ -633,6 +853,10 @@ int main(int argc, char **argv) {
     }
     if (strcmp(argv[1], "logout") == 0) {
         slo_receive_logout(argc, argv);
+        return 0;
+    }
+    if (strcmp(argv[1], "idp-login") == 0) {
+        idp_login_mode(argc, argv);
         return 0;
     }
     fprintf(stderr, "usage: lasso-saml-sp request|accept ...\n");
