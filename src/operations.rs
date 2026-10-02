@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 
+pub(crate) mod key_diagnostics;
 pub(crate) mod storage_diagnostics;
 pub mod stream;
 

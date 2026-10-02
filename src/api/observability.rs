@@ -387,6 +387,7 @@ pub(super) async fn metrics(State(app): State<App>, headers: HeaderMap) -> Resul
         .await?;
     use std::sync::atomic::Ordering::Relaxed;
     let mut body = json!({"schema_version":"riauth.metrics/v1","reset":"process_start","requests_total":app.stats.requests.load(Relaxed),"responses_error_total":app.stats.errors.load(Relaxed),"client_errors_total":app.stats.client_errors.load(Relaxed),"server_errors_total":app.stats.server_errors.load(Relaxed),"authentication_rejections_total":app.stats.authentication_rejections.load(Relaxed),"worker_rejections_total":app.stats.worker_rejections.load(Relaxed),"rate_limited_total":app.stats.rate_limited.load(Relaxed),"request_duration_microseconds_total":app.stats.elapsed_micros.load(Relaxed),"worker_slots_available":app.workers.available_permits(),"admission":app.stats.admission_snapshot(&app),"runtime":app.core.store.telemetry().snapshot(),"queues":queues});
+    body["key_health"] = crate::operations::key_diagnostics::from_runtime(&body["runtime"]);
     if let Some(allocation) = storage_allocation {
         body["storage_allocation"] = allocation;
     }
