@@ -174,14 +174,13 @@ fn certificate(key: &PKey<Private>, name: &str) -> (String, String) {
     must(cert.set_subject_name(&subject), "certificate subject");
     must(cert.set_issuer_name(&subject), "certificate issuer");
     must(cert.set_pubkey(key), "certificate public key");
+    let not_before = must(Asn1Time::days_from_now(0), "not before");
     must(
-        cert.set_not_before(&must(Asn1Time::days_from_now(0), "not before")),
+        cert.set_not_before(&not_before),
         "certificate validity start",
     );
-    must(
-        cert.set_not_after(&must(Asn1Time::days_from_now(1), "not after")),
-        "certificate validity end",
-    );
+    let not_after = must(Asn1Time::days_from_now(1), "not after");
+    must(cert.set_not_after(&not_after), "certificate validity end");
     must(
         cert.sign(key, MessageDigest::sha256()),
         "certificate signature",
