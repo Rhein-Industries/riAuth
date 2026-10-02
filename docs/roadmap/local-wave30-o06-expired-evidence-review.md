@@ -154,3 +154,109 @@ and the broader O06 completion gate remain outside this bounded proposal.
 Report checks: `python3 scripts/check-docs.py` passed. A byte comparison verified
 all four pinned source files unchanged from fixed main; Git verified no product,
 test or Cargo changes. Staged report whitespace was checked before commit.
+
+## Approved implementation and actual focused evidence
+
+The preceding sections preserve the initial read-only proposal at report commit
+`ad28c6867e01918572d8e19ee7c9ae2c81be1cbf`. Root subsequently approved the exact
+slice under `wave30_O06_missing_delivery_evidence` in
+`planning/local-wave29-ownership-approvals.json`. The user communicated that
+reservation and later explicitly released the queued runtime slot. This appendix
+records the implemented slice and its actual local result; the planned checks
+above are no longer the only evidence.
+
+Code commit: `191b69e4db6d44a26e7eab2374acdbcdb95a94e7`.
+Own conflict-free alignment merge: `a9cc7bd48749b54f4016e3091fe1d916c3d103f6`,
+bringing only fixed reviewed main
+`da5ff7dcfc3442c302955344229168872911b0ec` into the existing branch. Prior source,
+proposal/report commits and private evidence were preserved without reset.
+
+The code commit changes exactly two files:
+
+| File | Change | Implemented Git blob |
+| --- | --- | --- |
+| `src/offboarding.rs` | 48 additive diagnostic lines | `2e0ad3e7f8cf2d5529bdab4e9332b4a6e7f49b4f` |
+| `tests/o06_offboarding_missing_evidence.rs` | One focused target, exactly three tests | `9f22c3b0a954e549f4bcca9b258f7f1b78d8e92e` |
+
+The implemented private tallies, fixed evidence status, subset count, rank 4 and
+`inspect_missing_delivery_evidence` token match the reservation above. The new
+action follows the existing hidden-target precedence. Evidence-only unknown jobs
+remain incomplete, unverified and counted in attention. Existing local-failure/
+overdue precedence, retained or mixed incomplete delivery, pending work, waiver,
+cancelled-delivery and local-retry priorities remain intact.
+
+A source comparison against fixed main verified `view`, `needs_attention`,
+`attention_target`, `target_next_action`, `deactivation_status_name` and
+`public_outcome` byte-equivalent. Removing only the added private tally setup,
+tally match and result fields reconstructs the entire original
+`downstream_rollup` byte-for-byte. Its existing state classification, raw target
+bodies and visibility filtering were preserved. Every other production file,
+shared helper, existing test and Cargo dependency file is unchanged by this
+slice. No schema, writer, cleanup, lease, authority, exact-resolution or waiver
+function changed.
+
+During pre-runtime fixture inspection, an identity-redaction check was corrected
+to avoid matching the legitimate `withheld` count key; it checks withheld IDs
+and item identity/resource visibility instead. An initial source-comparison
+script named the outcome helper incorrectly; using its actual `public_outcome`
+name completed the comparison. These were preparation corrections, not Cargo
+or runtime failures. No Rust implementation correction or test rerun was needed
+after the authorized command.
+
+### One actual Cargo command
+
+The proposed command was sent to the explicit project orchestrator before
+runtime. No Cargo command ran while the slot was held. Once root explicitly
+released it after the other queued lanes, this exact command ran once from the
+assigned worktree, on the clean code commit above:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/.target-wave27" \
+  CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo test --locked --features test-support,fuzzing \
+  --test o06_offboarding_missing_evidence -- --test-threads=1
+```
+
+Observed result: exit 0; **3 passed, 0 failed, 0 ignored, 0 filtered out**,
+3.89 seconds. The test profile finished in 1 minute 01 seconds. There was no
+compiler or runtime failure. The linker printed the existing macOS
+`__eh_frame` compact-unwind size warning. The lowest sampled free disk during
+this run was about 17.5 GiB, above the 8 GiB floor. Only the worktree's existing
+private `.target-wave27` cache was used.
+
+The exact result was sent immediately to project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee` with **CARGO SLOT RELEASED** before this
+evidence append. No other target or campaign was run, and no slot remains held
+by this lane.
+
+| Passed test | Concrete evidence |
+| --- | --- |
+| `retention_removes_success_failure_and_ambiguity_without_proving_completion` | A real public local offboard commit supplies the job. Public provisioning cleanup retains synthetic terminal records at exactly 90 days and removes ordinary succeeded, failed, ambiguous, stale, cancelled and resolved records one second later. Waiver, lease, recovery, unlinked Create, pending and saturating-time records remain byte-bound by revision. The retained job's original result is unchanged; its raw targets retain the legacy `expired` shape, and diagnostics remain incomplete/unverified with unavailable-only attention. |
+| `missing_only_history_cannot_crowd_retained_actionable_jobs_under_cap_fifty` | Public cleanup removes a synthetic old failed row. Fifty missing-history clones sort before retained actionable IDs but cannot displace local overdue/failure, retained failed/ambiguous/waived/cancelled/mixed failures, pending/mixed pending or local retry. Exact totals are 65 jobs, 63 attention, 58 incomplete, 2 pending, 1 delivered, 1 resolved and 53 unavailable-only. The list is exactly 50 with truncation, and its first 10 entries are retained actionable/local work. Missing plus retained success/resolution remains unknown; complete retained success/resolution retains its original raw verdict and is omitted from attention. |
+| `unknown_evidence_preserves_hidden_targets_withheld_counts_and_read_only_permissions` | Missing operations authority is refused with the full store unchanged. Operations-only readers see counts and no identity/resource items. Scoped readers retain withheld counts and hidden target counts; hidden names and the withheld delivery ID are absent, and the evidence-only hidden target list is empty. Hidden-target inspection takes precedence even for unavailable-only evidence and pending mixed evidence. Recursive secret-field/string checks and complete snapshots establish read-only, redacted diagnostics. |
+
+These downstream statuses and operator records are synthetic fixtures. They
+exercise local retention/classification and do not establish a delivered request,
+real remote inactivity, a real operator attestation or an external waiver.
+Missing evidence still cannot establish why a row disappeared. The new token
+grants no write or reconstruction capability for a missing row.
+
+### Scope and remaining integration
+
+Scoped Rust formatting and fixture/source whitespace checks passed before the
+code commit. The final evidence append was checked with
+`python3 scripts/check-docs.py` and staged whitespace checks; Git confirms that
+the tested code/test blobs remain unchanged. This report append is a separate
+commit from the implementation.
+
+No broader suite, existing target, clippy, PostgreSQL, external service, browser,
+desktop, accessibility, deployment or release check was run. This is local
+macOS/redb evidence; fresh Linux CI and integration remain root-owned. Root adds
+the operator-token table row during its documentation integration. No
+`docs/operations` file was edited here.
+
+W02/W05 remain done and O06 remains open. This bounded diagnostic result does
+not establish the broader O06 dashboard, remote lag, storage, key or distributed
+deployment gates. Root owns integration, push and status; no main/accepted edit,
+board mutation, new task, worktree, worker or managed shell occurred.
