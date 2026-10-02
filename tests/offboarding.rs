@@ -980,6 +980,8 @@ fn offboarding_commits_downstream_intent_and_reports_each_target_only_after_deli
             interval_seconds: 3600,
         },
     );
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     linked(&f, &payroll, "payroll", &payroll_url, &alice, "p-alice");
     linked(&f, &payroll, "payroll", &payroll_url, &bob, "p-bob");
     linked(&f, &wiki, "wiki", &wiki_url, &alice, "w-alice");
@@ -1176,6 +1178,8 @@ fn delivery_outcomes_separate_refused_ambiguous_retried_and_stopped_work() {
             interval_seconds: 3600,
         },
     );
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     // Five delivered active links keep two departures below the removal floor.
     for name in ["alice", "bob", "carol", "dave", "erin"] {
         let user = account(&f.core, name);
@@ -1469,6 +1473,8 @@ fn reenabled_account_keeps_an_unverified_deactivation_ambiguous_until_read() {
         .config
         .reconciliation_controllers
         .insert("scim/payroll".into(), controller.clone());
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     for name in ["alice", "bob", "carol"] {
         let user = account(&f.core, name);
         linked(&f, &payroll, "payroll", &url, &user, &format!("p-{name}"));
@@ -1560,6 +1566,8 @@ fn operator_resolution_needs_scoped_evidence_and_never_reports_delivery() {
             interval_seconds: 3600,
         },
     );
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     for name in ["alice", "bob", "carol"] {
         let user = account(&f.core, name);
         linked(&f, &payroll, "payroll", &url, &user, &format!("p-{name}"));
@@ -2613,6 +2621,8 @@ async fn p08_review_delayed_auth_retry_keeps_dispatch_fenced_until_acknowledged(
         ca_file: None,
     });
     f.core.config.scim_targets.insert("payroll".into(), target);
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     let plan = f.core.provisioning_plan(&f.admin, "payroll").unwrap();
     let body = plan["resources"][0]["body"].clone();
     let mut remote = body.clone();
@@ -4402,6 +4412,8 @@ fn retained_due_cursor_wraps_once_to_a_redue_earlier_deactivation() {
         })
         .unwrap();
     f = f.reopen_with(|_| {});
+    // Keep queued owner/generation releases alive between direct Core steps.
+    let _source_router = riauth::api::router(f.core.clone());
     assert_eq!(
         f.core
             .store
