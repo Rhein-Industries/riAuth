@@ -131,3 +131,22 @@ free space rose from 8.04 to 11.19 GiB; root subsequently observed 11.18 GiB.
 The private manifest and review receipt remain retained. This authorization is
 exhausted. No additional cache, accepted binary, log, evidence or archive
 removal is authorized. The SCIM target is still held after the remote A09 job.
+
+## Later Public CI observation
+
+Run `37014466702` at `3a57affd9023a48c32085d6bcfb1d17ca4feb901`
+finished with audit and integration successful and the check job failed.
+Fmt and clippy passed. The check job `110867414051` again reached SCIM OAuth:
+16 passed, 8 failed, no ignored/filtered tests, 23.92 seconds. Root inspected
+the eight failure locations and confirmed this fixture blob equals `9a81931`.
+The later publication did not contain the staged router holders.
+
+Root retained the 593,358-byte check log at mode0600, SHA-256
+`af1813deb8c35ba28d113c6af9d8c599d1555ff7d0fa23c36c960948b2bd0830`.
+Two extraction guards raised `StopIteration` because literal caret-rendered ANSI
+sequences interrupted the target header. Matching the independent target/header
+parts in the same retained bytes allowed exact extraction; this was a read-only
+wrapper correction, not another CI run or product failure. Two root JavaScript tool wrappers also failed parsing
+before any shell command ran; corrected quoting preserved the same inputs.
+Subsequent USB/client/docs/release steps were skipped. The distinct manual ARM
+run remains in progress. No full-green claim is made.

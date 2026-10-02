@@ -158,3 +158,34 @@ lease, production, assertion, retry/page/removal/rotation or receipt semantics
 may change. Those hunks are still unexecuted at this review. The historical
 Linux failure, local I10 passes and current ARM artifact run are separate
 observations; no current broad-green CI or Linux correction is asserted.
+# Dated D01 provider preflight follow-up
+
+The separately released fixture stopped during preflight, before creating a lab,
+credentials, store, server, helper or browser. Worker evidence
+`93643763a1fc3360491a0a4a32424fd353e92cc0` retains and withdraws its initial
+hash-mismatch/no-provider-execution report: the provider hash matched and one
+version subprocess ran, but its exit/output were lost after a combined assertion.
+Root read the full appendix. No application outcome follows from that attempt.
+
+Root separately authorized one five-second provider diagnostic, whose private
+1103-byte mode0600 metadata has SHA-256
+`8f47d8fbd384ccf9746de938ef5c6e9cbba8d0e072484b443e2c2cbc4fa7439d`.
+Root independently read and rehashed the metadata. That distinct invocation
+returned zero, 63 ASCII stdout bytes and empty stderr, with the matching artifact
+hash. Its complete text is `OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4
+25 Aug 2026)` plus newline. The first invocation's lost values remain unknown.
+
+Diagnostic report `5c7665c0e1cd9f23ad6c8d912cdc67ab27609a2c` and static report
+`fb9f474db779fb655b43026f1089be19661bb645` retain all previous report bytes.
+Source `16395f1be5a65b0d3cb0a1ad2d88daa0c17b7e1b` changes only the expected
+version constant to that exact full text. Root reversed the one constant and
+reconstructed the entire original helper, parsed the new source and compiled a
+code object in memory without executing it. Every other guard and flow byte
+remains unchanged. The new helper SHA-256 is
+`f94af72ab613bc332ea684e5c4244c38d53c6540e1ea3d883938aecd265ec6fc`.
+
+No prefix match, alternate provider, relaxed hash/path/ASCII/output/time guard or
+cryptography change is accepted. The metadata establishes the concrete expected
+text correction, not a browser pass. A new full fixture requires publication,
+separate root release and fresh capacity at or above 8.5 GiB. Desktop is free;
+A09 continues to own the independent serialized Cargo slot. D01/D05 remain open.
