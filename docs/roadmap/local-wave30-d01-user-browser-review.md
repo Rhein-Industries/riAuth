@@ -1999,3 +1999,211 @@ SHA-256 and 0600 modes. Final AST/in-memory compile/reconstruction/control-flow
 and report-only scope checks exited 0; Markdown fence/final-newline/whitespace
 and git diff --check passed. No source/helper/controller implementation or
 runtime occurred; source/fixture remain HELD pending root review/reservation.
+
+## 2026-10-02: exact bounded refusal source and one failed memory verification
+
+Reservation: wave30_D01_bounded_preflow_authorization_refusals. Root released
+the exact source candidate and ONE <=30-second stdlib-only in-memory lifecycle
+verification. The source was materialized/committed separately; verification
+failed, so it stopped immediately with no rerun or candidate correction.
+This append records partial observations and source diagnosis, not a complete
+verification pass. The real confidential browser fixture remains HELD.
+No desktop/operator/Cargo resource slot was acquired or released.
+
+### Source materialized exactly
+
+Source-only commit 470690cad0cd93c9f25c5bc40b982e1b91679b49, parent
+2d2baa58f9a56b6d0370a30597bb7981b61df46d. Its sole changed file is
+scripts/d01-confidential-browser-demo.py, blob
+3d3379399126423a6a5588a6bd55ea4ac1723ebd, SHA-256
+7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0,
+32723 bytes / 695 lines. It matches the entire root-reviewed six-hunk
+in-memory candidate byte-exact, including three stateless nonterminal 403
+refusals, fourth terminal 403, count 0..4 and old post-flow terminal 400.
+The prior report was unchanged in the source commit.
+
+Before writing, the entire original ac3c helper was matched to immutable
+7461ab50f5a5fdf0aa5d7bd6c4b309575e7a4238. Candidate reversal reconstructed all
+31162 original bytes and the whole location-free AST; 31 original functions
+were byte-exact. Only Demo.__init__, Handler.handle_one_request and main
+changed, plus the new two-line exception class. The exact diff extracted from
+the immutable design report matched the generated zero-context diff.
+Parser/Host/body/target guards, header-free dispatch/cookie/flow/protected
+methods, native/crypto/provider methods, first reason recorder, response writer,
+budgets, cleanup and success gate remain as proved in the prior phase.
+
+After the failed memory run, static parse/in-memory compile/reconstruction
+and function-segment assertions were repeated against the actual disk helper
+and exited 0. Disk bytes still match the reviewed candidate and source commit.
+These are static proofs, distinct from the failed execution below; no helper
+module, main function, verifier/native/provider routine or controller ran in
+those source checks.
+
+### Exactly one executed lifecycle verification
+
+Executed payload SHA-256
+81b659352cedd0cc7fce37e32e447d04b0e373ebd9fea5c33f993c8b35b50d96,
+89348 bytes / 431 physical lines, including embedded immutable baseline and
+candidate source strings. Both source strings were read using Git before
+the verification; their identities were asserted inside it. The verification
+itself invoked no subprocess/CLI, helper module main, network/socket/listener,
+native verifier/provider, product CLI, Driver/browser or Cargo.
+
+The harness used io.BytesIO request/body streams, selected constant/class/
+method ASTs and controlled synthetic headers, the actual stdlib request parser,
+the helper's unchanged HeaderReader/Handler methods, stub five-second budget/
+reply/write/dispatch/flow sinks and a credential-read counter. Only Demo's
+constructor and clear method were included; begin/callback were local stubs,
+so routing outcomes do not claim OIDC or cryptographic validation. It executed
+selected private record-initialization/final-copy and existing outcome-gate
+statements directly, never module main. SIGALRM enforced a 30-second cap.
+No controlled input/header/cookie/state/subject values were printed or retained
+in the result.
+
+Actual command exit: **1**. Harness elapsed 0.019471 seconds; tool wall time
+0.137263541 seconds. Result failed/assertion_failed at fixed case
+header_free_bound_netloc. It completed 61 of 76 planned cases; one case failed,
+14 subsequent cases were never attempted. It made 35 baseline and 60 candidate
+in-memory Handler calls (95 total). Expected injected response-write failures
+and response timeouts both remained 0 because those cases were later in the
+sequence and did not run.
+
+Complete sanitized result emitted by that single execution:
+
+```json
+{
+  "completed_cases": 61,
+  "deadline_seconds": 30,
+  "elapsed_seconds": 0.019471,
+  "expected_response_timeouts": 0,
+  "expected_write_failures": 0,
+  "failed_case": "header_free_bound_netloc",
+  "failure_tag": "assertion_failed",
+  "groups": {
+    "authorization_bounds": 9,
+    "authorization_presence": 6,
+    "bounded_sequence": 4,
+    "header_free_bounds": 9,
+    "header_free_routes_guards": 25,
+    "postflow": 7,
+    "record_copy": 1
+  },
+  "handler_calls": {
+    "baseline": 35,
+    "candidate": 60
+  },
+  "helper_sha256": "7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0",
+  "main_invoked": false,
+  "network_listener_native_provider_cli_driver_browser_cargo": false,
+  "result": "failed"
+}
+```
+
+| Verification group | Completed | Planned | Actual scope |
+| --- | ---: | ---: | --- |
+| Initial count/final-copy/outcome gate | 1 | 1 | Count 0 copied; incomplete checks cannot pass |
+| Cumulative first-three/fourth refusals | 4 | 4 | Counts 1..4, fixed 403, live/live/live/terminal, no dispatch or journey credit |
+| Authorization presence/route refusal | 6 | 6 | Empty, duplicate, POST, protected/cookie, callback and other method refused without dispatch |
+| Strict state/exhaustion | 7 | 7 | Four state disqualifiers, two non-False attempted values and existing count 4 retain terminal 400 |
+| Header-free routes/route guards | 25 | 25 | Baseline/candidate snapshots, replies and stub traces equal |
+| Header-free structural bounds | 9 | 12 | First nine matched; tenth case failed before candidate comparison |
+| Authorization structural bounds | 9 | 12 | First nine terminal; no continuation/count/flow/check/status changes |
+| Parser/request/header limits | 0 | 5 | Not run |
+| Counter across header-free flow/cleanup | 0 | 1 | Not run |
+| Preexisting first-reason preservation | 0 | 1 | Not run |
+| 403 write-failure/response-timeout propagation | 0 | 2 | Not run |
+
+Completed sequence cases copied reason/count at counts 1..4, verified no form/
+Location/Set-Cookie, checked all refused-request dispatch/credential counters
+remained zero, and invoked the unchanged incomplete-check outcome gate.
+The six presence cases also called actual clear(), observing that count 1 and
+first reason authorization survived. This is not full counter-through-flow
+or response/cleanup-failure coverage; those scheduled cases were not reached.
+
+The 25 header-free parity cases covered root/unavailable/query routing,
+protected before/after/mismatched-cookie and missing precondition, callback
+routing with stub pending state, login/repeated login, method, POST target/
+query, Origin/type missing/wrong/duplicate and cookie count/shape/duplicate/
+unrelated handling. Stub protected 200/callback/login outcomes are memory
+control-flow observations, never browser sign-in/consent/token success.
+
+The nine structural cases completed for both header-free parity and preflow
+Authorization covered missing/wrong/duplicate Host, Transfer-Encoding, Expect,
+nonzero/duplicate/noncanonical Content-Length and absolute target scheme.
+The failed next case was a network-path target. Its candidate comparison,
+Authorization counterpart, fragment and invalid target-parse cases, all raw
+parser/line/header limits, flow counter persistence, first-only preset reason,
+403 write failure and response timeout remain **unverified by execution**.
+
+### Source-only diagnosis of the stopped assertion
+
+The failed header-free structural case first invokes the baseline, appends
+its in-memory outcome, then requires:
+
+```python
+assert d.done and d.failure is not None and h.responses == [(400, ())]
+```
+
+That case did not complete or reach its candidate request/comparison. The
+sanitized result retains its fixed case/failure tag and counts, not the
+individual false predicate or the baseline response/status. No actual status
+is asserted from the lost in-memory sink.
+
+After stopping, read-only inspection of the installed stdlib source found
+BaseHTTPRequestHandler.parse_request normalizes a leading network-path prefix
+before returning to the helper. Python version 3.14.6, executable
+/opt/homebrew/opt/python@3.14/bin/python3.14; inspected source
+/opt/homebrew/opt/python@3.14/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py,
+53122 bytes, SHA-256
+b917e19d333ae8aa1995063c9bddf5a15391f8f7caf32e41a22067824d643429.
+The parse_request source segment SHA-256 is
+2e3a1f90b0ab739e3c2b191b01f0dbf52ab13d4f77e3695bae662db8b2277be4.
+Its normalization at line 396 is:
+
+```python
+if self.path.startswith('//'):
+    self.path = '/' + self.path.lstrip('/')
+```
+
+Source inference: the harness's expectation that this parsed network-path
+request must hit the helper's netloc rejection is incorrect. The helper
+checks the parser's normalized path, not the original raw target. Both old
+and new header-free paths still use exactly that same parser and guards.
+This is a concrete test-expectation defect identifiable in source, not an
+observed product failure or a complete parity pass for the stopped case.
+No helper/Host/Authorization/parser guard is relaxed and no sender/probe
+origin is inferred. The earlier actual fixture failures stay failed.
+
+### Next validation proposal, not executed or released
+
+Keep source SHA exactly unchanged. If root separately releases a corrected
+memory check, classify the normalized network-path example as header-free
+old/new routing parity instead of requiring terminal netloc rejection.
+Its Authorization-bearing counterpart should expect the bounded preflow
+403 refusal when all normalized bounds/state pass, with no dispatch/journey
+credit. Check the unchanged target.netloc guard independently against a
+controlled parser-result stub retaining a nonempty netloc. This distinguishes
+actual stdlib normalization from the helper predicate without changing either.
+Report all new observed cases and the preserved first failed verification;
+do not silently count this failed run as a pass.
+
+The other planned, unexecuted cases still require separately released
+validation: parser/line/header bounds, remaining target failures, counter/
+reason persistence across flow/cleanup, and actual propagation from a 403
+write sink/response timeout. No correction/rerun happened here, and no new
+test/helper file was created. No entire browser fixture is released.
+Application/password/consent/callback/protected and native crypto gates
+remain unproven by this memory check. Root alone decides source acceptance,
+further validation releases and D01/D05 outcome; O06/I10/R05 remain closed.
+
+### Evidence preservation and scope
+
+The entire 128522-byte / 2001-line 2d2baa report is a byte-exact prefix of this
+append. All five historical private metadata files retain byte counts,
+SHA-256 and 0600 modes; checks read only identities and did not print bodies.
+All prior provider refusal/lost values/reporting correction and both failed
+fixtures remain intact. The helper remains exactly committed after the failed
+check. Controller/product/guide/D05/config/test files and main/status/push were
+not changed. Evidence is a separate report-only commit. Final report scope,
+source identity, Markdown fences/final newline/whitespace and git diff --check
+are checked independently of the failed lifecycle verification.
