@@ -261,9 +261,24 @@ async fn send(
     body: Option<Value>,
     client: &str,
 ) -> (StatusCode, HeaderMap, Value) {
+    send_with(router, method, path, bearer, body, client, &[]).await
+}
+
+async fn send_with(
+    router: &Router,
+    method: &str,
+    path: &str,
+    bearer: Option<&str>,
+    body: Option<Value>,
+    client: &str,
+    extra: &[(&str, &str)],
+) -> (StatusCode, HeaderMap, Value) {
     let mut request = Request::builder().method(method).uri(path);
     if let Some(token) = bearer {
         request = request.header("authorization", format!("Bearer {token}"));
+    }
+    for (name, value) in extra {
+        request = request.header(*name, *value);
     }
     let request = match body {
         Some(body) => request
@@ -304,8 +319,10 @@ async fn call(
 }
 
 /// The per-address request counters are an operational ledger, not identity or
-/// workflow state. A refusal may touch it (on PostgreSQL it is stored) and must
-/// touch nothing else, so it is named here and excluded from the comparison.
+/// workflow state. On PostgreSQL the ledger is stored, so a snapshot taken there
+/// may show it changing while a refusal changes nothing else; it is named here
+/// and excluded from the comparison. On the redb fixture the counters live in
+/// memory and never reach a snapshot, so the filter is inert there.
 fn rate_ledger(key: &str) -> bool {
     key.starts_with("http_rates/")
         || key.starts_with("index_expiry_http_rates/")
@@ -362,7 +379,7 @@ fn step(view: &Value) -> Value {
 // ---- the route ----
 
 #[tokio::test]
-async fn refusals_write_nothing_but_the_rate_ledger() {
+async fn refusals_write_nothing() {
     let (mut f, upstream) = fixture().await;
     // A configured workflow that is not the source-and-TOTP chain.
     let other = json!({
@@ -391,10 +408,16 @@ async fn refusals_write_nothing_but_the_rate_ledger() {
     );
     f.core.config.validate().unwrap();
     let (alice, _, _) = linked_factor(&f, &upstream, "source-factor").await;
-    // A signed-in user with no TOTP, and one whose enrollment is still pending.
+    // A signed-in user with no TOTP, one whose first enrollment is still pending,
+    // and one with a current TOTP whose replacement is pending.
     let plain = f.user("plain");
     let pending = f.user("pending");
     f.core.mfa_begin(&pending).unwrap();
+    let (replacing, _, _) = linked_factor(&f, &upstream, "replacing-factor").await;
+    let begun = f.core.mfa_replace(&replacing).unwrap();
+    // `replace` is only accepted with a current secret, and it leaves a
+    // `totp_pending` behind: both halves of the refusal below are in place.
+    assert_eq!(begun["replace"], true, "{begun}");
     let before = f.snapshot().unwrap();
     assert_eq!(count(&f, "workflow_runs/"), 0);
 
@@ -405,6 +428,27 @@ async fn refusals_write_nothing_but_the_rate_ledger() {
             Some("not-a-session-token"),
             START,
             StatusCode::UNAUTHORIZED,
+        ),
+        // The handler reads the Authorization header before the service runs.
+        (
+            "no bearer, unknown workflow",
+            None,
+            "/api/workflows/configured/no-such-workflow/source-totp",
+            StatusCode::UNAUTHORIZED,
+        ),
+        // The service resolves the workflow before the session, so a well-formed
+        // but unknown token reaches the workflow answer first (as source-passkey).
+        (
+            "invalid bearer, unknown workflow",
+            Some("not-a-session-token"),
+            "/api/workflows/configured/no-such-workflow/source-totp",
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "invalid bearer, another configured workflow",
+            Some("not-a-session-token"),
+            "/api/workflows/configured/configured-password/source-totp",
+            StatusCode::CONFLICT,
         ),
         // Not configured at all: the service says "unavailable" as not_found (404).
         (
@@ -427,8 +471,15 @@ async fn refusals_write_nothing_but_the_rate_ledger() {
             StatusCode::FORBIDDEN,
         ),
         (
-            "pending TOTP enrollment",
+            "pending first enrollment, no current TOTP",
             Some(pending.as_str()),
+            START,
+            StatusCode::FORBIDDEN,
+        ),
+        // `totp_secret` is present, so only `totp_pending` can refuse this one.
+        (
+            "current TOTP with a pending replacement",
+            Some(replacing.as_str()),
             START,
             StatusCode::FORBIDDEN,
         ),
@@ -561,6 +612,91 @@ async fn only_post_is_routed() {
         assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{method}");
     }
     assert_eq!(count(&f, "workflow_runs/"), 0);
+}
+
+/// How many records each bucket gained or lost between two snapshots.
+fn profile(
+    before: &std::collections::BTreeMap<String, Value>,
+    after: &std::collections::BTreeMap<String, Value>,
+) -> std::collections::BTreeMap<String, i64> {
+    let mut delta = std::collections::BTreeMap::<String, i64>::new();
+    for (side, snapshot) in [(-1, before), (1, after)] {
+        for key in snapshot.keys().filter(|key| !rate_ledger(key)) {
+            let bucket = key.split('/').next().unwrap_or(key).to_owned();
+            *delta.entry(bucket).or_default() += side;
+        }
+    }
+    delta.retain(|_, change| *change != 0);
+    delta
+}
+
+#[tokio::test]
+async fn a_body_and_idempotency_headers_are_ignored_and_leave_no_receipt() {
+    // Two fixtures, so the second start is not an active-run conflict.
+    let (plain, plain_upstream) = fixture().await;
+    let (alice, _, _) = linked_factor(&plain, &plain_upstream, "source-factor").await;
+    let before = plain.snapshot().unwrap();
+    let (status, headers, expected) = call(&plain, "POST", START, Some(&alice), None).await;
+    assert_eq!(status, StatusCode::OK, "{expected}");
+    let plain_profile = profile(&before, &plain.snapshot().unwrap());
+
+    let (f, upstream) = fixture().await;
+    let (bob, _, _) = linked_factor(&f, &upstream, "source-factor").await;
+    let before = f.snapshot().unwrap();
+    let receipts = count(&f, "receipts/");
+    let router = riauth::api::router(f.core.clone());
+    // A body that names another workflow and a session, a key, and a precondition
+    // that could never match: none of them is read by this route. The shared
+    // request layer only checks that the headers are well formed (a quoted
+    // numeric revision), so the precondition is shaped to pass that check.
+    let extras = [
+        ("idempotency-key", "totp-start-1"),
+        ("if-match", "\"999999\""),
+    ];
+    let body = json!({"workflow": "configured-password", "session_token": "x"});
+    let (status, sent_headers, value) = send_with(
+        &router,
+        "POST",
+        START,
+        Some(&bob),
+        Some(body.clone()),
+        "198.51.100.7",
+        &extras,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{value}");
+    assert!(sent_headers.get("set-cookie").is_none());
+    assert!(headers.get("set-cookie").is_none());
+    let mut keys: Vec<_> = value.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    assert_eq!(keys, ["authorization_url", "workflow"]);
+    // The same two-key shape and the same run the plain start gets.
+    let mut plain_keys: Vec<_> = expected.as_object().unwrap().keys().cloned().collect();
+    plain_keys.sort();
+    assert_eq!(keys, plain_keys);
+    assert_eq!(value["workflow"]["binding"]["workflow"], WORKFLOW);
+    assert_eq!(step(&value["workflow"]), step(&expected["workflow"]));
+    // No receipt row and no session were added, and the write profile is the plain one.
+    let after = f.snapshot().unwrap();
+    for prefix in ["receipts/", "sessions/"] {
+        let was = before.keys().filter(|key| key.starts_with(prefix)).count();
+        let is = after.keys().filter(|key| key.starts_with(prefix)).count();
+        assert_eq!(was, is, "{prefix}");
+    }
+    assert_eq!(profile(&before, &after), plain_profile);
+    // Retrying with the same key is a second start, not a replay of the first.
+    let (status, _, retry) = send_with(
+        &router,
+        "POST",
+        START,
+        Some(&bob),
+        Some(body),
+        "198.51.100.7",
+        &extras,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{retry}");
+    assert_eq!(count(&f, "receipts/"), receipts);
 }
 
 #[tokio::test]

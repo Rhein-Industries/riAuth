@@ -973,13 +973,21 @@ returns a `workflow` view, an opaque `challenge` and its `expires_at`.
 session, request, run, definition, primary proof, current step and attempt.
 A configured source-then-current-TOTP workflow starts with
 `POST /api/workflows/configured/{workflow}/source-totp` and the bearer of a live
-session whose account has a current, non-pending TOTP factor. The response is
-exactly `workflow` and `authorization_url`: no cookie, session or token. A
-workflow that is not configured is `404`, a configured one that is not the exact
-chain is `409`, an account without a current TOTP is `403`, and a second start on
-an active session is `409`. The route shares the `source_start` rate bucket with
-`source-passkey`. The continuations are the unchanged
-`POST /api/workflows/{id}/source`, `/totp/start` and `/totp`.
+session whose account has a current, non-pending TOTP factor. It takes no body,
+`Idempotency-Key` or `If-Match` (well-formed ones are ignored and no receipt is
+written) and returns exactly `workflow` and `authorization_url`: no cookie,
+session or token. The workflow is resolved before the session, as for
+`source-passkey`: a request without a bearer header is `401`, but for a workflow
+that is not configured (`404`) or not the exact chain (`409`) a well-formed
+unknown token gets that answer instead, and `401` applies once the workflow is
+the configured chain. Then an account without a current TOTP, or with a pending
+enrollment or replacement, is `403`; so is a disabled user or an administrator
+the source bars. A disabled or missing source is `404`; an OAuth-profile source
+or a changed policy is `409`, as is a second start on an active session. The
+account link and the source session are checked at `/source`, not at start. The
+route shares the `source_start` rate bucket with `source-passkey`. The
+continuations are the unchanged `POST /api/workflows/{id}/source`,
+`/totp/start` and `/totp`.
 
 The executor uses the ordinary TOTP verifier, enrolled algorithm/digits/period,
 and account-wide `totp_last_step`. It rechecks the primary proof's freshness and
