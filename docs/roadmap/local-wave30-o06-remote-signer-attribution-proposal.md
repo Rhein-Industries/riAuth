@@ -392,3 +392,33 @@ The test target does not cover `edition_unsupported`, `http_other` or
 reading. Nothing here touches a real Vault.
 
 O06 stays open.
+
+### Essentials library check
+
+Root then released one Essentials library check for the build-specific hunk in
+`src/kms_essentials.rs` and the shared `RemoteSigningFailure` type, including
+its `reqwest::StatusCode` use.
+
+- **Product bytes:** identical to `552fb42`. HEAD was `8be3993`, which differs
+  only in this report.
+- **Environment:** clean tree, private `target/wave27`.
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave27" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo check --locked --no-default-features --features essentials,test-support --lib
+```
+
+| Item | Result |
+| --- | --- |
+| Exit | 0 |
+| Build | `Checking riauth v0.1.1`, `Finished dev profile in 19.55s`, from 2026-10-02T11:22:37Z to 11:22:57Z |
+| Warnings | Three dead-code warnings, all in files unchanged from main `755a776` and unrelated to this slice: `src/assembly/passkey.rs:101` (`discard_workflow_registration`), `src/assembly/passkey.rs:565` (`workflow_register_start_in`, `workflow_register_verify_in`), `src/session_protocol.rs:54` (`allowed_by`). No warning or error names `kms` or `telemetry`. |
+| Log | 64 lines, SHA-256 `0cf0533848fb1706d1fa0ef4baccb9b7044481baf067f1fbdad790baa9455edf`, kept in the session scratchpad |
+| Disk | Free space stayed at 14 GiB or more against the 8 GiB floor. No cache was deleted. |
+
+The Essentials build compiles both the recorder call in `src/kms_essentials.rs`
+and the shared telemetry type.
+
+**Still not run:** clippy, `alert_webhook`, `tests/contention.rs`, and any
+other target. A `cargo check` without `-D warnings` does not show whether
+those three existing Essentials warnings would fail a warnings-as-errors
+build. They are outside this slice either way.
