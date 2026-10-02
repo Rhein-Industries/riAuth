@@ -6,10 +6,12 @@ Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; existing D03 task
 `roadmap/local-revisions-coordination-wave27`. Audit date: 2026-10-02.
 
 Read-only source pin: **`88790deb62d32c84fa17dceb12cd93a727224e94`**.
-Own branch parent: `eb1412aa6799ab959b90bdf71f29c983e15b67aa`.
-All source and existing-document reads below use immutable Git objects at the
+Initial audit parent: `eb1412aa6799ab959b90bdf71f29c983e15b67aa`.
+Initial source and existing-document reads used immutable Git objects at the
 published pin, not a moving worktree. No merge or source change was needed.
-This commit reserves and adds only this report.
+Initial audit commit `0dc0a504cca3e5030495865b88c2dd93957a1cc0` reserved and
+added only this report. The separately approved paragraph correction and
+report follow-up are mapped below.
 
 ## Original outcome and disposition
 
@@ -266,14 +268,16 @@ whole-file equivalence to the old executed suite is claimed.
 Those two root documents were read with `git show` at the immutable pin;
 they are absent from this unmerged own branch and were not copied into it.
 
-## ONE proposed next slice: correct the forward-auth rate paragraph
+## Approved and applied slice: forward-auth rate paragraph
 
-Prospective claim, **not yet edited**: only
+Root approved ledger entry `wave30_D03_forward_auth_rate_paragraph`, scoped to
+this original task/worktree; its runtime release remains false. Applied only
 [docs/recipes/platform-forward-auth.md](../recipes/platform-forward-auth.md),
 the single paragraph at pinned line 164 immediately before `Closest API and
-CLI`. No index, other recipe, script, test or product hunk is requested.
+CLI`, in guide commit `dd896380ba5588cc0ff3fd45cdda5aea4a4d8e13`.
+No index, other recipe, script, test or product hunk changed.
 
-The existing text says `forward_auth` is “counted in memory on each node.”
+The original text said `forward_auth` is “counted in memory on each node.”
 That contradicts accepted [api.rs](../../src/api.rs), lines 1096–1131:
 PostgreSQL uses `store.shared_rate_limit`, with `app.run_forward` for the
 forward-auth category; redb uses `app.rates`. The
@@ -283,32 +287,53 @@ effective category map and supplies recorded-value/remedy diagnostics.
 [API](../api.md) line 397 and [operations](../operations.md) lines 453–488
 already describe the accepted backend boundary and explicit upgrade policy.
 
-Exact proposed replacement paragraph:
+Immutable proposal/applied-hunk mapping:
 
-> `forward_auth` defaults to 6000 requests per minute per client-address rate key and `outpost_start` to 30; configured `rate_limits` overrides change these effective values. PostgreSQL counts both through the shared ledger; redb counts in memory per node ([API limits](../api.md#proxy-authorization-and-limits)). Effective rates must match the stored node-security agreement; omission and an explicit default agree. A startup mismatch names the category and recorded value: align every node to that value and restart. Older or missing agreements require the explicit stopped-node, backup and adoption procedure in [operations](../operations.md); existing policy is not silently overwritten. An exceeded rate returns 429 `rate_limited`. A full admission queue returns 503 `temporarily_unavailable` after two seconds. The binary fixtures do not fill those buckets or prove deployed multi-node behavior.
+| Object | Exact reference |
+| --- | --- |
+| Original proposal | `0dc0a504cca3e5030495865b88c2dd93957a1cc0`, this report's original proposed-slice section |
+| Original recipe | `88790deb62d32c84fa17dceb12cd93a727224e94:docs/recipes/platform-forward-auth.md`, paragraph at line 164; blob `64cea490b0d222f7157bbf00e983a1f836a670e3` |
+| Applied recipe | `dd896380ba5588cc0ff3fd45cdda5aea4a4d8e13:docs/recipes/platform-forward-auth.md`, same line; blob `bc7eb471b051016c8b888b983cea448a7e39e68a` |
+| Exact diff | `git diff dd896380ba5588cc0ff3fd45cdda5aea4a4d8e13^ dd896380ba5588cc0ff3fd45cdda5aea4a4d8e13 -- docs/recipes/platform-forward-auth.md`: one line removed, one added |
 
-This restores a truthful reusable configuration/failure/remedy statement to
+The applied paragraph is in the recipe, rather than duplicated as Markdown
+or a diff in this report. It states both PostgreSQL categories use shared
+counters and redb counters stay in the owning process. Defaults remain
+6000/30; overrides resolve to effective agreed rates, and omitted/explicit
+defaults agree. Recorded-value diagnostics and restart remedy remain explicit.
+Root's approval clarification is included: existing old-format rows use the
+stopped-node, backup and explicit upgrade procedure with both
+`--confirm-authentication-policy` and `--confirm-rate-limits`; only a reviewed
+missing-row adoption adds `--adopt-missing-agreement`. Existing policy is not
+silently overwritten. The paragraph links the authoritative
+[rate limits and admission procedure](../operations.md#rate-limits-and-admission)
+and [API limits](../api.md#proxy-authorization-and-limits), with report-relative
+targets. It retains 429/503 distinctions, the two-second queue timeout and
+binary-fixture/deployed-peer limits.
+
+This restored a truthful reusable configuration/failure/remedy statement to
 an already tested recipe. It neither changes O03 nor adds a rate-exhaustion,
 remote-peer, HA or paused-before-IO claim. The old statement of defaults,
 binary-fixture limits and queue timeout remains represented.
 
-Prospective checks after root authorizes that hunk:
+Approved focused checks actually performed:
 
-1. A focused Python byte comparison restores just this paragraph and requires
-   the entire recipe to equal its claimed immutable baseline. Check numbers,
-   backend branches and startup diagnostic against the pinned source above.
+1. A focused Python byte comparison restored just this paragraph and required
+   the entire recipe to equal its claimed immutable baseline. Numbers,
+   backend branches and startup diagnostic were checked against pinned source.
 2. `python3 scripts/check-docs.py` for Markdown/link validation.
 3. `git diff --check` and exact changed-path/hunk inspection.
 
 No Cargo command, benchmark, service or new runtime evidence is necessary for
 this documentation-only correction. It cannot substitute for the independent
-journey gate. Submit the exact claim to root before any existing-doc edit.
+journey gate. The claim/proposal was reviewed before the existing-doc edit;
+root alone owns the original independent new-user/operator gate.
 
 ## Separate remaining inputs and acceptance limits
 
-Local correction: the backend/rate-agreement paragraph above. Existing cloud
-guides already contain reusable configuration, permission, result and failure
-instructions. Their lack of a dedicated recipe page, and the other profiles
+Completed local correction: the backend/rate-agreement paragraph above.
+Existing cloud guides already contain reusable configuration, permission,
+result and failure instructions. Their lack of a dedicated recipe page, and the other profiles
 listed in each recipe's inventory, merit owner review against original D03
 scope; they do not justify silently adding every missing profile or reopening
 accepted integration rows in this slice.
@@ -336,7 +361,7 @@ No Q03/Q09 campaign, held Group redesign, canceled accessibility work,
 receipt-secret/header/PAM contract change, task mutation or worker contact
 is proposed. Root owns review, integration/publication and status decisions.
 
-## Checks actually performed for this report
+## Checks actually performed for the initial audit
 
 Read-only Git status/parent checks, explicit-project live D03 row read,
 immutable recipe/index/source/fixture/CLI reads, historical raw-log filters
@@ -361,3 +386,38 @@ counts describe different explicit sets. The staged whitespace/scope check
 also passed before committing this single new report. No runtime,
 Cargo, tests, benchmark, service, browser, network peer or desktop action was
 performed; no existing evidence artifact or product file changed.
+
+## Approved paragraph implementation evidence
+
+The existing own branch was clean at initial proposal commit `0dc0a504`.
+The recipe equaled the entire fixed `88790de` blob before editing. Guide
+commit `dd896380ba5588cc0ff3fd45cdda5aea4a4d8e13` has that proposal as its
+parent, changes only the recipe, and contains exactly **+1/-1 line** at 164.
+Applied recipe SHA-256:
+`08429f7380a397220563a06754126c62dce084078e42e117df7fe0740733e6c5`.
+The report follow-up is a separate commit changing only this report.
+
+Actual focused checks passed:
+
+- `python3 scripts/check-docs.py`: Markdown links and build-directory layout.
+- Python immutable-source/byte checks: the only changed line is 164;
+  replacing it with the original paragraph reproduces the complete fixed
+  recipe byte-for-byte. Current own `HEAD` before the edit had the same
+  baseline bytes. Defaults, both backend branches, effective-rate lookup,
+  recorded-value diagnostic, both maintenance confirmations, missing-row-only
+  adoption, queue timeout and both new link anchors match the cited source.
+- The entire authoritative `Shared policy and offline upgrade` procedure in
+  own `docs/operations.md` equals fixed `88790de`, although that whole file
+  differs elsewhere. No whole shared document was imported or edited.
+- `git diff --check`, recipe-only staged scope/whitespace and guide commit
+  path/hunk checks. All 34 report-relative links, 11 typed immutable commit
+  references, both declared recipe blobs and final report-only
+  scope/whitespace were also checked.
+
+There was no new failed check or runtime correction in this implementation.
+The initial audit's failed guessed index read and missing-own-branch link
+correction remain recorded above; historical CI failures/passes and all
+execution/source/provenance limits remain unchanged. No Cargo/test command,
+service, peer, desktop action, worker/task/worktree creation, merge/reset,
+main/accepted edit, push or status mutation occurred. D03 stays **in_progress**:
+this paragraph does not establish the independent documented journey gate.
