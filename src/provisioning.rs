@@ -892,6 +892,82 @@ impl Core {
                 .collect::<Vec<_>>()))
         })
     }
+    /// Point-in-time authentication and one Users page, without delivery.
+    /// OAuth acquisition can update its existing non-secret cache metadata.
+    pub fn provisioning_test_connection(&self, token: &str, target_id: &str) -> Result<Value> {
+        let resource = format!("provisioner/{target_id}");
+        let authorize = || {
+            self.store.read(|tx| {
+                self.management(tx, token, "provisioner.sync", &resource)
+                    .map(|_| ())
+            })
+        };
+        // Authority precedes configuration lookup and every private-file read.
+        authorize()?;
+        let mut component = "configuration";
+        let outcome = (|| {
+            let target = self
+                .config
+                .scim_targets
+                .get(target_id)
+                .ok_or_else(|| Error::missing("SCIM target not configured"))?;
+            target.validate()?;
+            let http = target.http()?;
+            let url = format!("{}/Users", target.url.trim_end_matches('/'));
+            // The shared authenticated request may fail in token acquisition,
+            // transport or the Users request; do not invent a narrower cause.
+            component = "authentication_or_users";
+            let response = authorized_fenced(
+                self,
+                target_id,
+                target,
+                &http,
+                &authorize,
+                |http, bearer| {
+                    http.get(&url)
+                        .bearer_auth(bearer)
+                        .query(&[("startIndex", "1"), ("count", "1")])
+                        .header("accept", "application/scim+json")
+                },
+            )?;
+            component = "users_page";
+            if response.status() != axum::http::StatusCode::OK {
+                return Err(remote_error());
+            }
+            let (body, _) = scim_json(response)?;
+            scim_connection_first_page(&body)
+        })();
+        // This check also precedes returning any configuration/peer failure.
+        // A reply received after revocation cannot become a diagnostic success.
+        authorize()?;
+        let connected = outcome.is_ok();
+        if let Err(error) = outcome
+            && matches!(error.code, "access_denied" | "invalid_token")
+        {
+            return Err(error);
+        }
+        let mut result = json!({
+            "connected": connected,
+            "checked_at": now(),
+            "component": component,
+            "safety": "no_scim_writes",
+            "next_action": if connected {
+                "none"
+            } else if component == "configuration" {
+                "check_scim_configuration"
+            } else {
+                "check_scim_credential_and_users_access"
+            },
+        });
+        if !connected {
+            result["error"] = json!(if component == "configuration" {
+                "invalid_configuration"
+            } else {
+                "connection_failed"
+            });
+        }
+        Ok(result)
+    }
     pub fn provisioning_plan(&self, token: &str, target_id: &str) -> Result<Value> {
         let target = self
             .config
@@ -2713,6 +2789,36 @@ pub(crate) fn fuzz_scim_response(bytes: &[u8]) {
     if let Ok(found) = parse_scim_body(bytes) {
         let _ = validate_lookup(&found).and_then(|_| scim_lookup(&found, "fuzz-external"));
     }
+}
+
+/// A first page is a reachability check, not a complete delivery lookup.
+fn scim_connection_first_page(body: &Value) -> Result<()> {
+    const LIST: &str = "urn:ietf:params:scim:api:messages:2.0:ListResponse";
+    let schemas = body["schemas"].as_array().ok_or_else(remote_error)?;
+    let rows = body["Resources"].as_array().ok_or_else(remote_error)?;
+    let total = body["totalResults"].as_u64().ok_or_else(remote_error)?;
+    if body.get("error").is_some()
+        || !schemas.iter().all(Value::is_string)
+        || !schemas.iter().any(|schema| schema.as_str() == Some(LIST))
+        || rows.len() > 1
+        || total < rows.len() as u64
+        || (total == 0) != rows.is_empty()
+        || rows.iter().any(|row| {
+            !row.is_object()
+                || row["id"]
+                    .as_str()
+                    .is_none_or(|id| id.is_empty() || id.len() > 512)
+        })
+        || body
+            .get("startIndex")
+            .is_some_and(|value| value.as_u64() != Some(1))
+        || body
+            .get("itemsPerPage")
+            .is_some_and(|value| value.as_u64() != Some(rows.len() as u64))
+    {
+        return Err(remote_error());
+    }
+    Ok(())
 }
 
 fn scim_json(response: reqwest::blocking::Response) -> Result<(Value, Option<String>)> {

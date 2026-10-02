@@ -310,6 +310,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | DELETE | `/api/ssf/admin/streams/{id}` | Delete an authorized trust registration and cancel its pending deliveries |
 | PUT | `/api/ssf/admin/streams/{id}/subjects` | Replace exact approved local subject bindings for a stream. Desired-state `ssf_streams` uses this writer and the administrator create writer for the non-secret subset only; see [ENT-07](enterprise/ENT-07.md) |
 | GET | `/api/provisioning/targets` | Configured outbound SCIM targets |
+| POST | `/api/provisioning/targets/{id}/test-connection` | Point-in-time configured authentication and one bounded Users page; exact `provisioner.sync` on `provisioner/{id}`, rechecked before IO and after any outcome; fixed redacted status/time/component/safety/next action, no SCIM write or delivery job. No mutation headers or supplied credential/URL; existing OAuth cache/freshness metadata and connector admission bookkeeping may change |
 | POST | `/api/provisioning/targets/{id}/plan` | Create an immutable provisioning plan |
 | GET | `/api/provisioning/plans/{id}` | Inspect caller-bound plan |
 | POST | `/api/provisioning/plans/{id}/apply` | Apply reviewed plan to a durable delivery job |

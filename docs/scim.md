@@ -40,6 +40,8 @@ The [inbound SCIM recipe](recipes/platform-inbound-scim.md) names `scim_http_pro
 
 ## Outbound provisioning
 
+Before delivery, an operator with `provisioner.sync` on `provisioner/payroll` can send an authenticated, empty `POST /api/provisioning/targets/payroll/test-connection` to riAuth (use the saved operator bearer; no `If-Match` or `Idempotency-Key` is required). The server uses only that configured target's URL, CA and private static/OAuth credential and requests `Users?startIndex=1&count=1`; it accepts a valid partial first page without following it. HTTP 200 returns `connected`, `checked_at`, fixed `component`, `safety: "no_scim_writes"` and `next_action`, plus fixed `error` on a failed check; authorization refusal remains a refusal after an in-flight reply. A failure advises `check_scim_configuration` or `check_scim_credential_and_users_access`: inspect the server configuration/private credential and the peer's TLS, token grant and Users-read authority before trying again. This uses the existing shared connector/target budget and may update existing OAuth cache/freshness metadata and admission bookkeeping; it creates no connection receipt, plan, delivery job, link or identity change. A readable file or successful local plan does not prove connectivity, and a passing probe proves neither a full crawl, Groups/filter/write support, mapping correctness nor remote delivery. Replace private credential files on the server under their existing permissions to rotate them; the next probe rereads them. No credential, path, target URL or returned user data is accepted from or disclosed to the caller.
+
 Server-configured targets can receive selected users and optional groups through agent-reviewed, immutable plans:
 
 ```toml
