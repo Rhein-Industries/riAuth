@@ -2697,3 +2697,72 @@ This corrected proposal is ready for **root review first**. WTa130 is independen
 No remote query/dispatch/download, proposed library/native-artifact/helper/PostgreSQL/Cargo/build/service, archive extraction, desktop, new worker/task/worktree/shell, source/main/push/status or contact occurred. This append grants no new artifact, run, capacity, tool, cleanup, E→P→E or release credit. Previous HTTP 422/invalid-push/authoring failures and all original gates/limits remain intact. A09 stays open; `official_release: false`, prior `shared_full_gate: not_run` and proposed `full_shared_gate: not_certified` remain unchanged. Accepted security/permission/review/receipt/header/PAM/removal/audit/credential/Group/input/non-renewed-60-second protections and the RiWork Cua.ai Driver preference persist.
 
 Final repository static checks for this correction: docs checker exit 0; staged whitespace/scope checks exit 0; tracked-file hygiene exit 0 (963 files). The sole delta is this report append, with zero deletions; no other file is edited. These checks do not grant materialization, transport or runtime acceptance.
+
+## Phase K — invalid validator-input redaction correction, report only (2026-10-02)
+
+Reservation `wave30_A09_launcher_invalid_validator_redaction` owns only this report append for project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing A09 `506e3979-a590-4af3-8fa8-ee90d3a517f2` / WT `f2e8500e-2e56-47e3-b60e-9f81bbc8cff2`. The entire immutable `82e40339571d2ea6406d64590ccebd0616f48993` report is preserved as the historical prefix: **197,845 bytes / 2,699 lines**, SHA-256 `718bf8410065416ac8530162a4b14d75747a9c7632192caf333add5a01d5e4f5`. This includes the complete `47c28516df7508d4839a0705d55cd284d5c6a30a` dated proposal and Phase J/F1 patch/proofs. Neither historical prefix nor the F1 correction is rewritten.
+
+### F2 finding and exact proposed boundary
+
+I put the raw validator input into `Controller.__init__.self.data["validator_source_sha"]` before the existing `run()` syntax check. The constructor → refusal → finally cleanup/save → always upload chain could therefore serialize invalid input into the public controller JSON. Root identified this source defect; the pending independent review is not claimed as an endorsement. No workflow has been materialized or executed, and no actual invalid-input disclosure is reported.
+
+The sole new proposed change replaces that public initializer value with exactly:
+
+```python
+os.environ["A09_VALIDATOR_SOURCE_SHA"] if re.fullmatch("[0-9a-f]{40}", os.environ["A09_VALIDATOR_SOURCE_SHA"]) is not None else None
+```
+
+A valid full lowercase SHA remains the same string. An invalid string becomes Python `None` / public JSON `null`. The initializer does not emit an invalid value, prefix, digest or derived error text. The existing raw full-input validation/refusal is retained unchanged before `init.result` and thus checkout, source-role checks and transport. This is redaction of one public field, not acceptance/coercion of invalid input. No additional import, fallback, validation mode or source-role relaxation is introduced.
+
+### Exact zero-context diff against the 82e F1 variant
+
+The starting virtual file is constructed **in memory only** from the immutable 47c complete workflow fence plus the exact Phase J line-501 F1 patch retained in 82e. Its complete workflow/controller hashes were checked before this new replacement. The following one-line patch changes only the public-data initializer at proposed workflow line **570**; the line-501 artifact head predicate stays `FIXED["build_workflow_sha"]`.
+
+```diff
+--- a/.github/workflows/check-local-shared-handoff.yml
++++ b/.github/workflows/check-local-shared-handoff.yml
+@@ -570 +570 @@
+-                               "validator_source_sha": os.environ["A09_VALIDATOR_SOURCE_SHA"],
++                               "validator_source_sha": os.environ["A09_VALIDATOR_SOURCE_SHA"] if re.fullmatch("[0-9a-f]{40}", os.environ["A09_VALIDATOR_SOURCE_SHA"]) is not None else None,
+```
+
+| Complete proposed object | F1 variant at 82e: bytes / SHA-256 | F1 + F2 corrected: bytes / SHA-256 |
+| --- | --- | --- |
+| Workflow, all 1,279 lines and terminal newline | 73,286 / `cf2365e64376a7a227a2d057995e81242f286d25a877a2bb0455b55c8c516f21` | **73,380** / `0de9c7be9b380bd32c748a19699739e8ed7dacb2313d1a366bb000f701e15037` |
+| Shell-created controller, all 1,203 lines and terminal newline | 59,378 / `4acc7d31ea08ca1b5466b9bdc8c5f7b2d35699aea8488cb2703e3e2401c8c2b0` | **59,472** / `b84868ddce285e3c2979318b778bbb4d522ca0d212a1310c59d25c12bbd8f9e3` |
+| Private bootstrap string | 1,506 / `1adc47c2b81f78c75f1f2122aabff7f08f48786fafd840880f3106418326e4de` | **Unchanged**, same complete hash |
+
+The 94 additional bytes are solely the approved conditional expression on that existing line. All remaining workflow/controller/bootstrap bytes are identical to the F1 variant. The complete latest proposal is defined by the immutable 47c fence plus the retained exact F1 patch and this exact F2 patch; no real workflow/helper/source file is created or edited.
+
+### Typed isolated-expression truth table
+
+Only the approved initializer AST expression was compiled/evaluated in memory, with a fresh synthetic `os.environ` mapping and standard-library regex. No actual validator environment value was read, and no controller class/function/import/main/bootstrap/helper/native code was executed. Cases use the required string-input domain; invalid case values and their prefixes/hashes/error text are omitted from this report and check output.
+
+| Synthetic case | Input type | Actual output type | JSON public field |
+| --- | --- | --- | --- |
+| valid lowercase full sha | `str` | `str` | Unchanged full lowercase SHA string |
+| uppercase full sha | `str` | `NoneType` | `null` |
+| short sha | `str` | `NoneType` | `null` |
+| leading whitespace | `str` | `NoneType` | `null` |
+| trailing whitespace | `str` | `NoneType` | `null` |
+| whitespace only | `str` | `NoneType` | `null` |
+| empty | `str` | `NoneType` | `null` |
+| static invalid marker | `str` | `NoneType` | `null` |
+
+All eight isolated cases passed exit-0 assertions. The valid case is byte-identical to its supplied synthetic 40-character lowercase input. Each invalid case produces exactly the one-field serialized document `{"validator_source_sha": null}`; no invalid-value-derived field is generated. These are expression-only checks, not an observed GHA invalid-input run, checkout/source-role approval or native/runtime acceptance.
+
+### Actual whole-object proofs
+
+Actual source-only checks passed: Psych parsed both F1 and F1+F2 YAML documents; Bash `-n` passed all three run blocks in each; both complete controller and unchanged bootstrap ASTs parsed. Reversing only the new initializer line restores every original F1 workflow byte (73,286) and controller byte (59,378). The retained F1 head-SHA comparison remains unchanged.
+
+AST inspection located exactly one `Controller.__init__` assignment to `self.data`, containing exactly one `validator_source_sha` key. Its original value is the raw environment subscript. Its new value exactly matches the approved `IfExp`: original subscript for the true branch; regex `fullmatch` tested with `is not None`; literal `None` for the false branch. Replacing just that copied dictionary value with the original subscript yields complete normalized `ast.dump(..., include_attributes=False)` equality against the F1 controller. Reversing the initializer in the sole modified run block also restores equality of the entire parsed YAML document.
+
+The unchanged `run()` full-input check was inspected in the complete AST source segment and remains before `init.result`, `self.source()` and `self.download()`. Protected helper/import hashes and the existing build workflow remain byte-exact. Permission/manual/action/context/resource/transport/extraction/capture/cleanup controls, valid-source data, product pins and format-3/authorization/configuration assertions are unchanged. The new workflow path remains absent.
+
+### Root review and held execution
+
+The proposal containing both corrections is ready for **root review first**. The independent review draft is not a reviewed immutable receipt; no contact, agreement or endorsement is inferred. Root will review the F1/F2 corrected proposal and independent report before any later workflow ownership/materialization reservation.
+
+No actual workflow/helper/source edit, metadata query/download/dispatch, proposed library/native/PostgreSQL/helper/Cargo/service/runtime, archive execution/extraction, desktop, new worker/task/worktree/shell, main/push/status or worker contact occurred. This report adds no artifact/run/capacity/tool/cleanup/E→P→E/release credit. A09 remains open, with `official_release: false`, prior `shared_full_gate: not_run`, proposed `full_shared_gate: not_certified`, all accepted protection contracts and existing platform/shared-gate limits preserved. Materialization/transport/PostgreSQL/helper/runtime remain HELD. RiWork Cua.ai Driver preference persists.
+
+Final repository static evidence for F2: docs checker exit 0; staged whitespace/scope checks exit 0; tracked-file hygiene exit 0 (963 files). Only this report append is staged, with zero deletions; both historical prefixes, the F1 variant, protected source files and absent-workflow boundary remain intact. These checks grant no workflow materialization or runtime acceptance.
