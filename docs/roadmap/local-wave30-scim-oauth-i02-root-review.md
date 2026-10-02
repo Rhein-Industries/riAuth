@@ -325,3 +325,31 @@ at-least12GiB preflight, jobs1/inc0/dev+testdebug0,2s samples/owned9GiB stop/
 8GiB floor/private capped0600 captures and bounded owned-group cleanup.
 I02 owns the serialized Cargo lane. No runtime result is available at this
 release; no browser, provider, extra target, retry or cache deletion is authorized.
+
+## I02 first focused execution: compilation succeeded, snapshot failed
+
+The single released corrected196ac209 filter ran at clean cd17c3bc.
+Root read all1322 private0600 log bytes and the2147-byte supervisor result.
+Log SHA-256 is9ed4e8a9a01a40f929ba51b343a0ee96cd26fe83972c475271319c0c4047e567.
+Compilation completed59.03 seconds; raw selected test failed0passed1failed
+23filtered in3.25 seconds. Supervisor total64.104 seconds and its4.891-second
+fixture-phase interval are separate measurements. No compiler diagnostic failure
+is established by Cargo's final test-failed summary. Only riauth rebuilt;
+no third-party rebuild, deadline/disk stop or supervisor exception occurred.
+
+The panic in tests/common/mod.rs71 says one source_logins record changed,
+without dumping values. No caller backtrace identifies the HTTP/test step, and
+neither response-mode completion is credited. Owned group99685 was waited and
+empty before/after cleanup; minimum13210279936 bytes exceeded9GiB stop/8floor.
+Peak target growth236486656 bytes is an observed allocation delta, not a whole
+compiler-memory peak. Cargo released immediately; no automatic repeat occurred.
+
+Root's source-derived candidate is the new bad-factor expected snapshot:
+source_runtime assigns the original stage transaction to pending.authentication,
+and unchanged source_finish persists that pending plus attempts on wrong OTP.
+The new test currently expects only the attempt increment. This source trace
+does not retrospectively identify the actual caller or stored value. Existing
+independent reviewer is reserved for read-only diagnosis and a smallest exact
+expected-record proposal; no snapshot exclusions, writer changes or source/
+runtime correction are approved yet. Accepted staging remains unpublished while
+this concrete new fixture failure is unresolved. I02 remains open.
