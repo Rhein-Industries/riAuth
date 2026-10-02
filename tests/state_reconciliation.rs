@@ -3071,7 +3071,7 @@ fn s04_scoped_reuse_equivalent_authority_workload() {
                     fingerprint: "s04-refusal".into(),
                     ..Default::default()
                 }),
-                || f.core.apply_state(&token, request(&plan)),
+                || f.core.apply_state(token, request(&plan)),
             )
             .unwrap_err();
             assert_eq!(error.code, "conflict", "{lane}/{family}/{kind}: {error}");
