@@ -14,8 +14,17 @@ pkg-config --modversion lasso
 if command -v xmlsec1 >/dev/null 2>&1; then
   xmlsec1 --version
 fi
-riauth_out="${RIAUTH_LASSO_SP_BIN:-/tmp/riauth-i04-saml-sp/lasso-saml-sp}"
-mkdir -p "$(dirname "$riauth_out")"
+if [[ -n "${RIAUTH_LASSO_SP_BIN:-}" ]]; then
+  riauth_out="$RIAUTH_LASSO_SP_BIN"
+  mkdir -p "$(dirname "$riauth_out")"
+else
+  riauth_helper_dir="$(
+    umask 077
+    mktemp -d "${TMPDIR:-/tmp}/riauth-i04-saml-sp.XXXXXXXX"
+  )"
+  trap 'rm -rf -- "$riauth_helper_dir"' EXIT
+  riauth_out="$riauth_helper_dir/lasso-saml-sp"
+fi
 # Word splitting is the pkg-config argument list.
 # shellcheck disable=SC2046
 "$riauth_cc" -O2 -o "$riauth_out" "$riauth_root/scripts/lasso-saml-sp.c" $(pkg-config --cflags --libs lasso gobject-2.0)
