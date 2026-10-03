@@ -327,3 +327,43 @@ An initial root read used a nonexistent guessed continuation-review path and
 Git returned128; no file was changed. Git's tracked path list supplied this
 actual root review path. Archive reconstruction and both append-prefix checks
 had already passed; the corrected source read completed before this note.
+
+
+## 2026-10-03 — independent projection acceptance and controller source intake
+
+Root fully read all491 lines of the independent source-only review
+`41aefd04d37b5f638dadc93b0b21e5399e95dde6`, including the initially
+truncated middle section through an explicit bounded reread. The whole report
+SHA2561f25a92d07a3631dea64111a09cde814a281c1bc19a002543e05adb493c22313
+is imported exactly. Its no-concrete-blocker conclusion applies to the
+new36/51 projection harness source and DATA. No case, VM or Driver ran.
+The old25 controller is still FAILED, with no accepted child exit/reap.
+
+Root fully read all792 new appendix lines at
+`74a8fff613c0edd6b4f842f380bd7125b4582c85`: prose,126-line diff, all three
+changed functions and85-line reconstruction checker. An independent DATA
+hunk reader reproduced the complete213188-byte proposed controller SHA256
+98c270c461afccce0483b003cd41178d268a16e49ce33abfa48da031d75d1117.
+Replacing exactly its three changed function spans restores the whole
+e4431d4 controller by bytes and AST; nine other functions, original payload
+and all constants remain exact. No archived function or checker ran.
+
+The proposed cleanup conditions group signaling on the exact unreaped child
+and default SIGCHLD disposition, retains terminal wait information without
+reaping, and takes actual status from a subsequent exact-child wait. No
+nonzero signal occurs after reaping. Its source-derived assertion cap is
+11012655666 for the old25 data, preserving the true counter instead of
+clipping it; privacy and all other packet/call/clock bounds remain unchanged.
+These are source findings, with independent cleanup review still pending.
+No exact host-kernel or runtime cleanup guarantee is inferred. Python's
+[waitid documentation](https://docs.python.org/3/library/os.html#os.waitid)
+and Apple's [wait/reap implementation](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/kern/kern_exit.c)
+were read as primary-source context; they do not diagnose the historical failure.
+
+One root source-fence comparison initially disagreed only on terminal LF;
+normalizing that comparison then passed without changing candidate bytes.
+The five-hunk reconstruction and entire byte inverse independently retain
+the original LF. A complete new36 controller DATA binding is separately
+reserved, with all execution held behind the active A09 remote checkpoint.
+No new memory pass, real browser journey, D01/D05 completion or task status
+change follows from these source-only integrations.

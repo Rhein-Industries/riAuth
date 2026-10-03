@@ -6637,3 +6637,795 @@ already recorded in the prefix, with no link failure. The capture launcher
 itself exited 0 after retaining the controller's actual exit of 1; that
 capture success is not a controller pass. These evidence/source checks
 execute no additional controller, Node, candidate or case.
+
+## Cleanup and packet source correction design — all runtime held
+
+Reservation `wave30_D01_memory_cleanup_and_packet_source_design`,
+project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, supporting Sol6 worktree
+`42bb51c6-c198-4adb-bd92-0a5222853231`, original D01
+`a96a1977-3210-4284-8f7d-645793369301`. This is one proposed controller
+correction against the exact e443 archive, solely in this report.
+The entire 659409-byte `515bbbc76d595b820795329c16818212384e6715` report,
+SHA-256 `7e56a225b3d736cab46640a5f89301c30435baa7208b075b4f7b0fea555f655c`,
+remains its byte-exact prefix. No executable source is materialized and no
+archived controller, candidate, VM, case, Node child or Popen/syscall
+diagnostic probe is invoked. Git/source/static audit commands are separate.
+
+### Actual boundaries remain failed and unknown where unrecorded
+
+The one historical execution is still FAILED, numeric controller exit 1.
+The child reports 25 completed cases; they are not an accepted controller
+pass. Its 230223 assertion count exceeds the unchanged old 50000 packet
+bound. The controller's first `owned_cleanup_unconfirmed` did not retain
+an exception/stage/errno, numeric child exit or reap confirmation.
+Subsequent child-PID/group absence does not prove the numeric exit or who
+reaped the child. That failure's actual cause remains UNKNOWN. Neither
+the proposed correction nor source evidence reattributes the old failure.
+
+I reread the public immutable controller and unchanged payload/harness,
+case definitions, candidate command construction and actual report.
+In this phase the seven already named finite memory-capture files were
+read only to verify size/hash/mode/UID/nonsymlink metadata against the
+preserved table. All seven matched exactly, with mode 0600/UID 501 and
+no content parsing or modification. No other private input was read.
+
+### Independently read Python and primary OS source
+
+The locally installed POSIX `subprocess.py` is
+`/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/subprocess.py`,
+90732 bytes, SHA-256
+`6628ffdd65c093a6c08cae01ffe82877d3ced515aac9e7be0cff16512c30a7d9`.
+The source-audit interpreter identifies Python 3.14.6. I read local
+`Popen.wait` (1274–1295), POSIX `_handle_exitstatus` (1996–2003),
+`_internal_poll` (2005–2036), `_try_wait` (2039–2049), `_wait`
+(2052–2090), `__del__` (1132–1145) and the `_fork_exec` arguments
+(1920–1929). These are source reads, not invocations of those methods.
+They show that Popen's ChildProcessError/ECHILD fallback can manufacture
+a zero status, and that finalization can itself attempt a wait. A cached
+Popen returncode or later absence therefore is insufficient for the
+required actual numeric-exit proof.
+
+The [official CPython 3.14.6 wait wrappers](https://github.com/python/cpython/blob/v3.14.6/Modules/posixmodule.c)
+forward waitid/waitpid errors and expose actual returned status fields;
+waitid returns None for no matching waitable event. The
+[official child-launch source](https://github.com/python/cpython/blob/v3.14.6/Modules/_posixsubprocess.c)
+implements the requested new-session setup before exec. Those C files
+are primary tag source, not a claim of byte-identical installed extension
+or a separately pinned Python build.
+
+The [Apple waitid source](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exit.c)
+reports terminal child status and preserves the waitable child under
+WNOWAIT; [getpgid source](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_prot.c)
+uses proc_find and returns ESRCH when lookup fails. The
+[process lookup source](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c)
+separates referenceable process lookup from zombie lookup.
+Together these support an inference that an exited but unreaped child
+may produce getpgid ESRCH. The browsed Apple main-source views are
+general source evidence, **not the exact host-kernel pin** and not a
+measurement of the earlier exception.
+
+The [Apple process-group signal source](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c)
+does not deliver a signal for signum zero. The two attempted Open Group
+standards-page reads were unavailable (403/inaccessible); no claim is
+based on those failed fetches. No host process probe, provider request,
+kernel/version command, native binary or memory run was used for this
+audit.
+
+### Source-derived assertion-work ceiling
+
+The demonstrated count mismatch comes from the semantics of the
+unchanged counter, not 230223 distinct cases. Payload line 263 increments
+`assertions_completed` at every successful `ensure` call. In particular
+`quotedArgs` (388–402) calls `ensure` while scanning each shell-command
+character, including embedded collector source. This is work accounting.
+All case oracles, counter increments and command construction remain
+byte-exact; no assertions are removed, excluded or padded.
+
+The proposed bound is a conservative source envelope for this exact
+old25 payload, not an observed maximum or a success criterion:
+
+| Term | Immutable source basis |
+| --- | --- |
+| 2500 plus one terminal attempt | Global MAX_CALLS 2500 and the last attempt that can reach a guard before throwing |
+| 262144 bytes per variable argument | Fixed metadata cap in the PERSIST stub/collector; accepted old25 command arguments are fixed small controls or the bounded record |
+| 4424 bytes | Largest of the five bound collector source bodies, READBACK |
+| Factor 16 | At most two variable argument allowances, four characters per shell-quoted source character, and two scanner checks per command character; spare collector allowance covers fixed controls |
+| 128 checks per command | Prefix, separators, quoted-argument boundaries and fixed framing margin |
+| 75 cells and 25 case rows | Unchanged MAX_CELLS and exact PLAN |
+| 132725 source bytes | Whole immutable payload; a coarse allowance per call/cell/case/startup unit for non-scanner checks and the fixed binding/diff/fixture loops |
+
+Thus the assertion ceiling is
+`2501*(16*(262144+4424)+128)+(2501+75+len(PLAN)+1)*PAYLOAD_BYTES`,
+exactly **11012655666** at the fixed 25-row PLAN and 132725-byte payload.
+It is intentionally loose: source checks also bound the actual calls,
+cells, traces, output and time independently. It is not fitted to the
+observed assertion count. The fixed old25 inputs contain no unbounded
+external argument: state keys are closed to OWN/OBS/PW, literal browser
+pages have at most three nodes, partial-line fixtures are finite, and
+their raw padding never becomes a persisted record field. The fixed
+bind/diff loops and callback/case checks are covered by the non-scanner
+source-size allowance; this ceiling is not a general bound for a modified
+fixture. A changed payload would require a new source/hash review.
+
+Only `assertions_completed` receives this work ceiling.
+`privacy_checks_completed` retains 50000. Both still pass through the
+unchanged `true_int`: bool, float, non-integer, negative and above-bound
+values refuse. The 2500-call/75-cell limits, case prefix/completion/group
+checks, finite time, exact source identities, privacy checks and all
+closed packet keys remain unchanged. Raising this transport work ceiling
+does not establish any passing case or relax an oracle. The ceiling and
+its source-envelope derivation require independent review; no hypothetical
+case or changed packet validator has executed.
+
+### Owned cleanup, numeric exit and finite observation
+
+The one Popen call is unchanged: exact pinned Node command, private cwd,
+closed environment, stdin/stdout/stderr pipes and
+`start_new_session=True`. Main holds the original child object; its
+pre-cleanup waits remain non-reaping WNOWAIT observations. No other
+spawn, child poll, Popen wait, reaper thread or signal handler is added.
+
+The proposed helper permits its sole nonzero group signal only when
+the original handle has a positive true-int PID and no cached returncode,
+SIGCHLD disposition is default, and one of these proofs holds:
+
+1. A non-reaping wait finds no exited event and getpgid of that exact PID
+   equals the PID. Default SIGCHLD and the single-reaper source mean an
+   exit cannot recycle the leader PID before this helper reaps it.
+2. An exact WNOWAIT event has `si_pid == child.pid`, SIGCHLD,
+   CLD_EXITED/CLD_KILLED/CLD_DUMPED, and a true-int status accepted for
+   this Node process. If live getpgid races with exit and raises ESRCH,
+   one fresh WNOWAIT observation must prove this terminal event; ESRCH
+   alone never authorizes signaling.
+
+The new-session invariant plus retained, unreaped leader binds the group
+ID to that original child. No discovered, guessed, cached-reaped or
+unrelated group is used. Non-default SIGCHLD, wrong/missing terminal
+identity, unexpected getpgid result or other syscall error fails closed.
+This proof assumes the unchanged single-threaded, single-owner controller
+source and ordinary waitable-child semantics; Apple general source does
+not independently certify the exact host behavior. If a future host
+cannot establish that proof, the helper retains a finite refusal and
+does not signal a replacement group.
+
+After that one signal block, a separate bounded reap attempt runs even
+when identity/signaling refused, if the original handle was eligible.
+It requests WEXITED|WNOHANG for **that exact P_PID**, without WNOWAIT.
+An actual returned terminal event, exact PID/signo/allowed code and
+true-int status are required before setting a numeric exit and
+`reaped=True`. CLD_EXITED maps to its actual status; killed/dumped maps
+to the negative actual signal. Popen's cache is set only to that verified
+value, avoiding its ECHILD-to-zero fallback. None, ECHILD, errors,
+unsupported status or deadline expiration never become exit zero or
+reap confirmation. An invalid reaping result remains unconfirmed even
+if the OS may already have consumed an event. The loop uses the original
+35-second absolute deadline and sleeps at most the remaining time; it
+does not create another child or extend the budget.
+
+The source contains exactly one nonzero killpg call, before every
+reaping wait. Once the leader is reaped there is **no delivered signal**.
+The sole later killpg call has literal zero and is an existence query,
+conditioned on earlier ownership plus verified reap. ESRCH is the only
+accepted group-absence result. A present group, permission error or other
+failure refuses; there is no retrying SIGKILL after reap, even if a new
+group reused the number. That conservative zero-query cannot deliver
+a signal to a reused group. Group absence is independently required
+and never substitutes for the status-returning reap.
+
+A fixed diagnostic dictionary is added only to `retained.json`, saved
+before grading: nullable finite stage, nullable true-int errno 1–4095,
+identity enum 0/1/2, and nullable guarded waitid/reap code/status integers.
+Its seven keys are closed; no exception text/class/trace or private
+value is copied. The first diagnostic stage and the unchanged first
+failure latch are never overwritten. Success has no diagnostic failure
+stage. The allowed stages are child_identity, signal_disposition,
+waitid_identity, live_group_identity, exited_group_identity,
+signal_owned_group, reap_owned_child, reap_deadline and group_absence.
+The public return/review key sets remain exact. The main receipt receives
+the additional finite observation only; all existing fields remain.
+
+### Exact prospective reconstruction and diff
+
+Immutable e443 controller: 209970 bytes / 2124 lines,
+SHA-256 `4c62dfc156a6b6ad5e4528d48124c926210f0abffdd2f6d8538bded788be090e`.
+Replacing only the three complete function spans below yields the full
+prospective controller: **213188 bytes / 2183 lines**, SHA-256
+`98c270c461afccce0483b003cd41178d268a16e49ce33abfa48da031d75d1117`.
+No 209K unchanged payload archive is duplicated. This complete 6988-byte
+diff, SHA-256 `2b7107674313e9079b00909cb1dfe490cbdd7378587be08aeecf6fab0ec0e301`,
+encodes five precise edits: assertion-cap block; cleanup function;
+main diagnostic initialization, call and retained-receipt field.
+Reversing those edits reconstructs every original controller byte.
+
+```diff
+--- controller-e4431d4-4c62.py
++++ DESIGN-cleanup-and-packet.py
+@@ -1946,8 +1946,11 @@
+     if any(type(v) is not int for v in packet["completed_groups"].values()):
+         raise ValueError("packet_groups")
+     if not true_int(packet["cells"],0,75):raise ValueError("packet_cells")
++    assertion_cap=(2501*(16*(262144+4424)+128)+
++                   (2501+75+len(PLAN)+1)*PAYLOAD_BYTES)
+     for key in ("assertions_completed","privacy_checks_completed"):
+-        if not true_int(packet[key],0,50000):raise ValueError("packet_counts")
++        cap=assertion_cap if key=="assertions_completed" else 50000
++        if not true_int(packet[key],0,cap):raise ValueError("packet_counts")
+     allowed={"collector_clock","collector_stop","collector_readback","collector_marker","collector_persist",
+              "controller_poll","navigate","snapshot","click","type","kill","end_session","windows"}
+     counts=packet["stub_counts"]
+@@ -1973,27 +1976,82 @@
+             raise ValueError("packet_source")
+     return packet
+ def group_cleanup(child):
+-    # WNOWAIT keeps the owned leader unreaped until this exact group is signaled.
+-    reaped=False;empty=False;code=None
++    # Only the exact unreaped Popen child can authorize a nonzero group signal.
++    reaped=False;empty=False;code=None;owned=False;stage="child_identity"
++    diagnostic={"stage":None,"errno":None,"identity":0,
++                "waitid_code":None,"waitid_status":None,
++                "reap_code":None,"reap_status":None}
++    def failed(at,error=None,label="owned_cleanup_unconfirmed"):
++        if diagnostic["stage"] is None:
++            diagnostic["stage"]=at
++            number=getattr(error,"errno",None)
++            diagnostic["errno"]=number if true_int(number,1,4095) else None
++        latch(label)
++    def terminal(info):
++        return (info is not None and type(info.si_pid) is int and info.si_pid==child.pid and
++                type(info.si_signo) is int and info.si_signo==signal.SIGCHLD and
++                type(info.si_code) is int and
++                info.si_code in (os.CLD_EXITED,os.CLD_KILLED,os.CLD_DUMPED) and
++                true_int(info.si_status,0,255) and
++                (info.si_code==os.CLD_EXITED or info.si_status>0))
++    eligible=true_int(child.pid,1,2147483647) and child.returncode is None
+     try:
++        if not eligible:raise ValueError("child_identity")
++        stage="signal_disposition"
++        if signal.getsignal(signal.SIGCHLD)!=signal.SIG_DFL:
++            raise ValueError("signal_disposition")
++        stage="waitid_identity"
+         observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+-        if os.getpgid(child.pid)!=child.pid:raise ValueError("group_identity")
++        if observation is None:
++            stage="live_group_identity"
++            try:
++                owned=os.getpgid(child.pid)==child.pid
++                if owned:diagnostic["identity"]=1
++            except ProcessLookupError:
++                stage="exited_group_identity"
++                observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
++        if observation is not None:
++            if not terminal(observation):raise ValueError("waitid_identity")
++            owned=True;diagnostic["identity"]=2
++            diagnostic["waitid_code"]=observation.si_code
++            diagnostic["waitid_status"]=observation.si_status
++        if not owned or child.returncode is not None:raise ValueError("group_identity")
++        stage="signal_owned_group"
+         try:os.killpg(child.pid,signal.SIGKILL)
+         except ProcessLookupError:pass
+-        remaining=max(0.001,(OUTER_DEADLINE-time.monotonic_ns())/1e9)
+-        code=child.wait(timeout=remaining);reaped=True
++    except Exception as error:
++        failed(stage,error)
++    # Reap this exact child even after identity/signal refusal; never signal here.
++    if eligible:
++        stage="reap_owned_child"
++        try:
++            while time.monotonic_ns()<OUTER_DEADLINE:
++                observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG)
++                if observation is not None:
++                    if not terminal(observation):raise ValueError("reap_identity")
++                    code=(observation.si_status if observation.si_code==os.CLD_EXITED
++                          else -observation.si_status)
++                    child.returncode=code;reaped=True
++                    diagnostic["reap_code"]=observation.si_code
++                    diagnostic["reap_status"]=observation.si_status
++                    break
++                remaining=(OUTER_DEADLINE-time.monotonic_ns())/1e9
++                if remaining>0:time.sleep(min(.005,remaining))
++            if not reaped:failed("reap_deadline")
++        except Exception as error:
++            failed(stage,error)
++    if owned and reaped:
++        # Signal zero is only an existence query; no signal is delivered after reap.
+         try:os.killpg(child.pid,0)
+         except ProcessLookupError:empty=True
+-        if not empty:latch("owned_group_not_empty")
+-    except Exception:
+-        latch("owned_cleanup_unconfirmed")
+-        # Never signal any newly discovered PID or process group.
+-    return code,reaped,empty
++        except Exception as error:failed("group_absence",error)
++        if not empty:failed("group_absence",label="owned_group_not_empty")
++    return code,reaped,empty,diagnostic
+ def main():
+     evidence=None;child=None;selector=None;raw_out=bytearray();raw_err=bytearray()
+     code=None;reaped=False;empty=False;packet=None;grade=False;spawn_count=0
+     minimum_free=None;last_disk=0;sent=0;exit_seen=False;phase="preflight"
+-    stream_eof={"out":False,"err":False};output_capped=False
++    stream_eof={"out":False,"err":False};output_capped=False;cleanup_diagnostic=None
+     try:
+         if len(sys.argv)!=2 or re.fullmatch(r"[0-9a-f]{16}",sys.argv[1]) is None:
+             raise ValueError("input")
+@@ -2054,7 +2112,7 @@
+         latch("controller_"+phase+"_failed")
+     finally:
+         if child is not None:
+-            code,reaped,empty=group_cleanup(child)
++            code,reaped,empty,cleanup_diagnostic=group_cleanup(child)
+             if selector is not None:
+                 # Drain only already available bytes; no wait, no unbounded read.
+                 for key in list(selector.get_map().values()):
+@@ -2076,6 +2134,7 @@
+     receipt={"schema":"riauth.d01-continuation-memory-retained/v1","spawn_count":spawn_count,
+              "child_pid":None if child is None else child.pid,"child_exit":code,"child_reaped":reaped,
+              "owned_group_empty":empty,"first_failure_before_grade":first_failure,
++             "cleanup_diagnostic":cleanup_diagnostic,
+              "payload_bytes":PAYLOAD_BYTES,"payload_sha256":PAYLOAD_SHA,
+              "stdout_bytes":len(raw_out),"stdout_sha256":hashlib.sha256(raw_out).hexdigest(),
+              "stderr_bytes":len(raw_err),"stderr_sha256":hashlib.sha256(raw_err).hexdigest(),
+```
+
+| Complete changed function | Bytes, including final newline | SHA-256 |
+| --- | ---: | --- |
+| `closed_packet` | 3772 | `bcd1ae35c59bd0c48a4866a922aa21f98b8b0845134767428468e21abd5eef77` |
+| `group_cleanup` | 3773 | `de0d06fd97cf4a15bb4a0443bdce42e9e27c4ea7cdfc3ab6ee9d80b796201231` |
+| `main` | 8444 | `6a2b09bfd01a4082e649577d7c97a01f2cccd6658e941302cc017efa91a4e0f9` |
+
+#### Complete prospective `closed_packet`
+
+```python
+def closed_packet(raw):
+    if not raw.endswith(b"\n") or raw.count(b"\n")!=1:raise ValueError("packet_framing")
+    packet=json.loads(raw.decode("utf-8"),object_pairs_hook=duplicate_free,
+                      parse_constant=lambda value:(_ for _ in ()).throw(ValueError("json_constant")))
+    keys={"schema","source","planned","attempted","completed","completed_groups","cells",
+          "stub_counts","assertions_completed","privacy_checks_completed","first_failure",
+          "unreached","elapsed_ms","full_candidate_only","actual_tools_or_product"}
+    if type(packet) is not dict or set(packet)!=keys:raise ValueError("packet_schema")
+    if packet["schema"]!="riauth.d01-continuation-memory/v1" or packet["planned"]!=PLAN:
+        raise ValueError("packet_plan")
+    names=[row["name"] for row in PLAN]
+    for key in ("attempted","completed","unreached"):
+        values=packet[key]
+        if type(values) is not list or len(values)>len(names) or any(type(v) is not str for v in values):
+            raise ValueError("packet_cases")
+    attempted,completed=packet["attempted"],packet["completed"]
+    if attempted!=names[:len(attempted)] or completed!=names[:len(completed)]:
+        raise ValueError("packet_prefix")
+    if len(completed)>len(attempted) or len(attempted)-len(completed)>1:
+        raise ValueError("packet_progress")
+    if packet["unreached"]!=names[len(attempted):]:raise ValueError("packet_unreached")
+    groups={}
+    group_by_name={row["name"]:row["group"] for row in PLAN}
+    for name in completed:
+        group=group_by_name[name];groups[group]=groups.get(group,0)+1
+    if type(packet["completed_groups"]) is not dict or packet["completed_groups"]!=groups:
+        raise ValueError("packet_groups")
+    if any(type(v) is not int for v in packet["completed_groups"].values()):
+        raise ValueError("packet_groups")
+    if not true_int(packet["cells"],0,75):raise ValueError("packet_cells")
+    assertion_cap=(2501*(16*(262144+4424)+128)+
+                   (2501+75+len(PLAN)+1)*PAYLOAD_BYTES)
+    for key in ("assertions_completed","privacy_checks_completed"):
+        cap=assertion_cap if key=="assertions_completed" else 50000
+        if not true_int(packet[key],0,cap):raise ValueError("packet_counts")
+    allowed={"collector_clock","collector_stop","collector_readback","collector_marker","collector_persist",
+             "controller_poll","navigate","snapshot","click","type","kill","end_session","windows"}
+    counts=packet["stub_counts"]
+    if type(counts) is not dict or not set(counts)<=allowed or any(
+            not true_int(v,1,2500) for v in counts.values()) or sum(counts.values())>2500:
+        raise ValueError("packet_stub_counts")
+    if packet["full_candidate_only"] is not True or packet["actual_tools_or_product"] is not False:
+        raise ValueError("packet_scope")
+    elapsed=packet["elapsed_ms"]
+    if type(elapsed) not in (int,float) or not math.isfinite(elapsed) or not 0<=elapsed<=30000:
+        raise ValueError("packet_elapsed")
+    failure=packet["first_failure"]
+    if failure is not None:
+        if type(failure) is not dict or set(failure)!={"case","check"}:raise ValueError("packet_failure")
+        if failure["case"] is not None and failure["case"] not in names:raise ValueError("packet_failure")
+        if type(failure["check"]) is not str or failure["check"] not in CHECK_NAMES:
+            raise ValueError("packet_failure")
+    if packet["source"] is not None:
+        source=packet["source"]
+        if type(source) is not dict or set(source)!=set(EXPECTED_SOURCE):
+            raise ValueError("packet_source")
+        if any(type(source[k]) is not type(v) or source[k]!=v for k,v in EXPECTED_SOURCE.items()):
+            raise ValueError("packet_source")
+    return packet
+```
+
+#### Complete prospective `group_cleanup`
+
+```python
+def group_cleanup(child):
+    # Only the exact unreaped Popen child can authorize a nonzero group signal.
+    reaped=False;empty=False;code=None;owned=False;stage="child_identity"
+    diagnostic={"stage":None,"errno":None,"identity":0,
+                "waitid_code":None,"waitid_status":None,
+                "reap_code":None,"reap_status":None}
+    def failed(at,error=None,label="owned_cleanup_unconfirmed"):
+        if diagnostic["stage"] is None:
+            diagnostic["stage"]=at
+            number=getattr(error,"errno",None)
+            diagnostic["errno"]=number if true_int(number,1,4095) else None
+        latch(label)
+    def terminal(info):
+        return (info is not None and type(info.si_pid) is int and info.si_pid==child.pid and
+                type(info.si_signo) is int and info.si_signo==signal.SIGCHLD and
+                type(info.si_code) is int and
+                info.si_code in (os.CLD_EXITED,os.CLD_KILLED,os.CLD_DUMPED) and
+                true_int(info.si_status,0,255) and
+                (info.si_code==os.CLD_EXITED or info.si_status>0))
+    eligible=true_int(child.pid,1,2147483647) and child.returncode is None
+    try:
+        if not eligible:raise ValueError("child_identity")
+        stage="signal_disposition"
+        if signal.getsignal(signal.SIGCHLD)!=signal.SIG_DFL:
+            raise ValueError("signal_disposition")
+        stage="waitid_identity"
+        observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+        if observation is None:
+            stage="live_group_identity"
+            try:
+                owned=os.getpgid(child.pid)==child.pid
+                if owned:diagnostic["identity"]=1
+            except ProcessLookupError:
+                stage="exited_group_identity"
+                observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+        if observation is not None:
+            if not terminal(observation):raise ValueError("waitid_identity")
+            owned=True;diagnostic["identity"]=2
+            diagnostic["waitid_code"]=observation.si_code
+            diagnostic["waitid_status"]=observation.si_status
+        if not owned or child.returncode is not None:raise ValueError("group_identity")
+        stage="signal_owned_group"
+        try:os.killpg(child.pid,signal.SIGKILL)
+        except ProcessLookupError:pass
+    except Exception as error:
+        failed(stage,error)
+    # Reap this exact child even after identity/signal refusal; never signal here.
+    if eligible:
+        stage="reap_owned_child"
+        try:
+            while time.monotonic_ns()<OUTER_DEADLINE:
+                observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG)
+                if observation is not None:
+                    if not terminal(observation):raise ValueError("reap_identity")
+                    code=(observation.si_status if observation.si_code==os.CLD_EXITED
+                          else -observation.si_status)
+                    child.returncode=code;reaped=True
+                    diagnostic["reap_code"]=observation.si_code
+                    diagnostic["reap_status"]=observation.si_status
+                    break
+                remaining=(OUTER_DEADLINE-time.monotonic_ns())/1e9
+                if remaining>0:time.sleep(min(.005,remaining))
+            if not reaped:failed("reap_deadline")
+        except Exception as error:
+            failed(stage,error)
+    if owned and reaped:
+        # Signal zero is only an existence query; no signal is delivered after reap.
+        try:os.killpg(child.pid,0)
+        except ProcessLookupError:empty=True
+        except Exception as error:failed("group_absence",error)
+        if not empty:failed("group_absence",label="owned_group_not_empty")
+    return code,reaped,empty,diagnostic
+```
+
+#### Complete prospective `main`
+
+```python
+def main():
+    evidence=None;child=None;selector=None;raw_out=bytearray();raw_err=bytearray()
+    code=None;reaped=False;empty=False;packet=None;grade=False;spawn_count=0
+    minimum_free=None;last_disk=0;sent=0;exit_seen=False;phase="preflight"
+    stream_eof={"out":False,"err":False};output_capped=False;cleanup_diagnostic=None
+    try:
+        if len(sys.argv)!=2 or re.fullmatch(r"[0-9a-f]{16}",sys.argv[1]) is None:
+            raise ValueError("input")
+        if pathlib.Path.cwd()!=ROOT or ROOT.is_symlink():raise ValueError("workspace")
+        private=ROOT/"deployment-private"
+        info=private.lstat()
+        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():
+            raise ValueError("private_directory")
+        if not within(CHILD_DEADLINE):raise TimeoutError()
+        if not all(hasattr(os,name) for name in ("waitid","P_PID","WEXITED","WNOHANG","WNOWAIT")):
+            raise ValueError("owned_wait_unavailable")
+        payload=assemble_payload();regular_node()
+        free=shutil.disk_usage(ROOT).free;minimum_free=free
+        if free<FLOOR:raise ValueError("disk_floor")
+        evidence=private_directory(private,"d01-continuation-memory-"+sys.argv[1])
+        phase="spawn"
+        child=subprocess.Popen([str(NODE),"--input-type=module","-"],cwd=evidence,
+            env={"PATH":"/usr/bin:/bin","LANG":"C","LC_ALL":"C"},
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+            start_new_session=True,bufsize=0)
+        spawn_count=1
+        selector=selectors.DefaultSelector()
+        for stream,kind,events in ((child.stdin,"in",selectors.EVENT_WRITE),
+                                   (child.stdout,"out",selectors.EVENT_READ),
+                                   (child.stderr,"err",selectors.EVENT_READ)):
+            os.set_blocking(stream.fileno(),False);selector.register(stream,events,kind)
+        phase="child"
+        while selector.get_map() or not exit_seen:
+            now=time.monotonic_ns()
+            if now>=CHILD_DEADLINE:latch("child_deadline");break
+            if now-last_disk>=2_000_000_000:
+                free=shutil.disk_usage(ROOT).free;minimum_free=min(minimum_free,free);last_disk=now
+                if free<FLOOR:latch("disk_floor");break
+            observed=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+            if observed is not None:exit_seen=True
+            for key,events in selector.select(min(.02,max(0,(CHILD_DEADLINE-now)/1e9))):
+                stream,kind=key.fileobj,key.data
+                if kind=="in":
+                    try:written=os.write(stream.fileno(),payload[sent:sent+16384])
+                    except BrokenPipeError:
+                        latch("child_input_closed");selector.unregister(stream);stream.close();continue
+                    sent+=written
+                    if sent==len(payload):selector.unregister(stream);stream.close()
+                else:
+                    try:part=os.read(stream.fileno(),4096)
+                    except BlockingIOError:continue
+                    if not part:stream_eof[kind]=True;selector.unregister(stream);stream.close();continue
+                    target,cap=(raw_out,STDOUT_CAP) if kind=="out" else (raw_err,STDERR_CAP)
+                    if len(target)+len(part)>cap:
+                        target.extend(part[:cap-len(target)]);output_capped=True;latch("child_output_cap");break
+                    target.extend(part)
+            if first_failure is not None:break
+        if not exit_seen:
+            observed=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+            exit_seen=observed is not None
+        if not exit_seen and first_failure is None:latch("child_exit_unconfirmed")
+    except Exception:
+        latch("controller_"+phase+"_failed")
+    finally:
+        if child is not None:
+            code,reaped,empty,cleanup_diagnostic=group_cleanup(child)
+            if selector is not None:
+                # Drain only already available bytes; no wait, no unbounded read.
+                for key in list(selector.get_map().values()):
+                    stream,kind=key.fileobj,key.data
+                    if kind in ("out","err"):
+                        target,cap=(raw_out,STDOUT_CAP) if kind=="out" else (raw_err,STDERR_CAP)
+                        while len(target)<=cap:
+                            try:part=os.read(stream.fileno(),min(4096,cap-len(target)+1))
+                            except (BlockingIOError,OSError):break
+                            if not part:stream_eof[kind]=True;break
+                            if len(target)+len(part)>cap:
+                                target.extend(part[:cap-len(target)]);output_capped=True;latch("child_output_cap");break
+                            target.extend(part)
+                    try:selector.unregister(stream)
+                    except Exception:pass
+                    stream.close()
+                selector.close()
+    # Actual exit and full bounded output are fsynced/closed BEFORE parsing/grading.
+    receipt={"schema":"riauth.d01-continuation-memory-retained/v1","spawn_count":spawn_count,
+             "child_pid":None if child is None else child.pid,"child_exit":code,"child_reaped":reaped,
+             "owned_group_empty":empty,"first_failure_before_grade":first_failure,
+             "cleanup_diagnostic":cleanup_diagnostic,
+             "payload_bytes":PAYLOAD_BYTES,"payload_sha256":PAYLOAD_SHA,
+             "stdout_bytes":len(raw_out),"stdout_sha256":hashlib.sha256(raw_out).hexdigest(),
+             "stderr_bytes":len(raw_err),"stderr_sha256":hashlib.sha256(raw_err).hexdigest(),
+             "minimum_free_bytes":minimum_free,"stream_eof":stream_eof,"output_capped":output_capped}
+    retained=False;review_closed=False
+    try:
+        if evidence is None:raise ValueError("no_evidence_directory")
+        save(evidence,"child.stdout",bytes(raw_out));save(evidence,"child.stderr",bytes(raw_err))
+        save(evidence,"retained.json",encode(receipt))
+        retained=all(stream_eof.values()) and not output_capped
+        if not retained:latch("child_output_incomplete")
+        try:packet=closed_packet(bytes(raw_out))
+        except Exception:latch("child_packet_invalid")
+        if code!=0:latch("child_nonzero")
+        if raw_err:latch("child_stderr_nonempty")
+        if not reaped or not empty:latch("owned_cleanup_unconfirmed")
+        if packet is not None:
+            if packet["source"]!=EXPECTED_SOURCE:latch("child_source_missing")
+            if packet["first_failure"] is not None:latch("child_case_failed")
+            if packet["completed"]!=[row["name"] for row in PLAN]:latch("child_incomplete")
+            if not packet["cells"] or not packet["assertions_completed"] or not packet["privacy_checks_completed"]:
+                latch("child_counts_missing")
+        grade=first_failure is None
+        # This journal is explicitly provisional until the final clock below.
+        save(evidence,"review.json",encode({"schema":"riauth.d01-continuation-memory-review/v1",
+             "full_packet_retained_before_grade":retained,"grade_before_final_clock":grade,
+             "first_failure":first_failure,"closed_child_packet":packet,
+             "child_exit":code,"child_reaped":reaped,"owned_group_empty":empty}))
+        review_closed=True
+    except Exception:latch("evidence_unconfirmed")
+    final_ns=time.monotonic_ns()
+    # NO evidence file write/fsync/close, directory mutation or owned-child operation follows.
+    within35=final_ns<=OUTER_DEADLINE
+    if not within35:latch("final_deadline")
+    passed=grade and review_closed and retained and first_failure is None
+    returned={"schema":"riauth.d01-continuation-memory-return/v1",
+              "result":"passed" if passed else "failed","first_failure":first_failure,
+              "child_exit":code,"child_reaped":reaped,"owned_group_empty":empty,
+              "full_packet_retained_before_grade":retained,"review_closed":review_closed,
+              "within35":within35,"elapsed_seconds":(final_ns-START_NS)/1e9,
+              "completed_cases":None if packet is None else len(packet["completed"]),
+              "child_failure":None if packet is None else packet["first_failure"],
+              "actual_product_or_driver":False}
+    sys.stdout.write(json.dumps(returned,sort_keys=True,separators=(",",":"))+"\n");sys.stdout.flush()
+    return 0 if passed else 1
+```
+
+### Protected body, constants, payload and AST inverse
+
+Nine of twelve top-level controller functions remain byte-exact:
+
+| Protected function | SHA-256 |
+| --- | --- |
+| `latch` | `957eba18cdfb5d25bd5ee510141c74c9f942978d4540086d9db62b1f4f0fbec9` |
+| `within` | `0b2b1be269404c27b4b554272d3cf5aaf20c481563e6407467ff7dc736cebfd9` |
+| `assemble_payload` | `8978fe5175b1b6f74e8733b7dba8d0706e9d020fad959dc3cd88bed37a95e60b` |
+| `regular_node` | `d29f5a1303626b60e8e7c061a86ebdc56fef40d17ce87df77f3feb8c4d907aa9` |
+| `private_directory` | `12296c9587b151b2d998c6f174cb3579b4580ac210cae840e5a208c781a3eabc` |
+| `save` | `ae13bed122b92c6c27e1a63f828c87bc4ce4477b6079836513b36d547f631900` |
+| `encode` | `89ce1b76ca343fda5622acb07b3fce0d0ce63242704cf3b9c53b09c1ca0ac68e` |
+| `duplicate_free` | `3134f45bbdba498f6684c83430ebfe93793174940b606f45cd1d1c0f8844a64b` |
+| `true_int` | `646a375f4d50ebd66ab07b30ecf5c325b6027601ecc27d022ee50f2c5249bf04` |
+
+All sixteen original top-level assignment ASTs and their source bytes,
+imports and entrypoint remain exact. They include startup time, both
+30/35-second deadlines, ROOT/Node pin, 65536/16384 output caps, floor,
+payload length/hash/base64, PLAN, check catalog, expected source and
+first-failure initialization. The Node payload remains 132725 bytes,
+SHA-256 `46c19af829c546cf0f32f0a587db084dd00d304ea9d508c98ccda0b2a6028866`;
+its candidate, baseline, source bindings, all 25 case definitions/groups,
+assertion/check bodies, privacy sentinels and stub sandbox are unchanged.
+The corrected normal EOF assignment remains exact.
+
+Whole-byte reconstruction is checked both forward from the original
+function spans and backward from the three proposed spans. At AST level,
+replacing exactly those three proposed function nodes with their original
+nodes reconstructs the whole original module AST, excluding locations.
+Within main, the only changes are the three listed diagnostic plumbing
+sites; the Popen expression, input/EOF/output controls, disk samples,
+finally drain, retention order, grading and final-clock tail remain exact.
+Closed-packet body changes only the two counter-bound plumbing lines plus
+the new arithmetic ceiling; all other packet checks remain exact.
+
+Both child output files and the numeric-exit/finite diagnostic receipt
+are still fsynced and closed before packet parsing/grading. The provisional
+review journal and final post-save inclusive clock are unchanged. No
+evidence write, close, directory mutation or child operation is added
+after that final clock. The existing fsync blocking limitation remains:
+the final acceptance clock detects a late close; no hard fsync cancellation
+or successful cleanup is promised by source inspection.
+
+This complete verifier parses source/data and ASTs only. It reconstructs
+and hashes the prospective source in memory; it never imports, compiles,
+evaluates or invokes a future function, child or case.
+
+```python
+import ast, base64, difflib, hashlib, pathlib, re, subprocess
+
+PATH = "docs/roadmap/local-wave30-d01-continuation-correction-plan.md"
+BASE = "e4431d4f85eec7add72dec0183b9784917e451c3"
+PREFIX = "515bbbc76d595b820795329c16818212384e6715"
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+def fences(raw):
+    ticks = bytes([96]) * 3
+    return re.findall(b"^" + ticks + rb"([^\n]*)\n(.*?)^" + ticks + b"$", raw, re.M | re.S)
+baseline_report = subprocess.check_output(["git", "show", BASE + ":" + PATH])
+prefix = subprocess.check_output(["git", "show", PREFIX + ":" + PATH])
+current = pathlib.Path(PATH).read_bytes()
+assert len(prefix) == 659409
+assert sha(prefix) == "7e56a225b3d736cab46640a5f89301c30435baa7208b075b4f7b0fea555f655c"
+assert current[:len(prefix)] == prefix
+original = fences(baseline_report)[6][1]
+assert len(original) == 209970 and sha(original) == "4c62dfc156a6b6ad5e4528d48124c926210f0abffdd2f6d8538bded788be090e"
+append = current[len(prefix):]
+archived = fences(append)
+assert [lang for lang, _ in archived] == [b"diff", b"python", b"python", b"python", b"python"]
+diff = archived[0][1]
+bodies = dict(zip(("closed_packet", "group_cleanup", "main"), (v for _, v in archived[1:4])))
+before_ast = ast.parse(original)
+lines = original.splitlines(keepends=True)
+before = {n.name: b"".join(lines[n.lineno-1:n.end_lineno])
+          for n in before_ast.body if isinstance(n, ast.FunctionDef)}
+candidate = original
+for name, body in bodies.items():
+    assert candidate.count(before[name]) == 1
+    candidate = candidate.replace(before[name], body)
+assert len(candidate) == 213188
+assert sha(candidate) == "98c270c461afccce0483b003cd41178d268a16e49ce33abfa48da031d75d1117"
+actual_diff = "".join(difflib.unified_diff(
+    original.decode().splitlines(keepends=True), candidate.decode().splitlines(keepends=True),
+    fromfile="controller-e4431d4-4c62.py", tofile="DESIGN-cleanup-and-packet.py", n=3)).encode()
+assert diff == actual_diff and len(diff) == 6988
+assert sha(diff) == "2b7107674313e9079b00909cb1dfe490cbdd7378587be08aeecf6fab0ec0e301"
+inverse = candidate
+for name, body in reversed(list(bodies.items())):
+    assert inverse.count(body) == 1
+    inverse = inverse.replace(body, before[name])
+assert inverse == original
+after_ast = ast.parse(candidate)
+after_functions = {n.name: n for n in after_ast.body if isinstance(n, ast.FunctionDef)}
+before_functions = {n.name: n for n in before_ast.body if isinstance(n, ast.FunctionDef)}
+assert set(after_functions) == set(before_functions) and len(after_functions) == 12
+for i, node in enumerate(after_ast.body):
+    if isinstance(node, ast.FunctionDef) and node.name in bodies:
+        after_ast.body[i] = before_functions[node.name]
+assert ast.dump(after_ast, include_attributes=False) == ast.dump(before_ast, include_attributes=False)
+def constants(tree):
+    return {n.targets[0].id: n.value for n in tree.body
+            if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)}
+old_constants, new_constants = constants(before_ast), constants(ast.parse(candidate))
+assert len(old_constants) == 16 and old_constants.keys() == new_constants.keys()
+assert all(ast.dump(v, include_attributes=False) == ast.dump(new_constants[k], include_attributes=False)
+           for k, v in old_constants.items())
+payload = base64.b64decode(new_constants["PAYLOAD_B64"].value, validate=True)
+assert len(payload) == 132725
+assert sha(payload) == "46c19af829c546cf0f32f0a587db084dd00d304ea9d508c98ccda0b2a6028866"
+assert payload == fences(baseline_report)[3][1]
+# Source selectors, not syscall calls or hypothetical cases:
+cleanup = after_functions["group_cleanup"]
+calls = [n for n in ast.walk(cleanup) if isinstance(n, ast.Call)]
+group_calls = [n for n in calls if isinstance(n.func, ast.Attribute)
+               and isinstance(n.func.value, ast.Name) and n.func.value.id == "os"
+               and n.func.attr == "killpg"]
+group_calls.sort(key=lambda n: n.lineno)
+assert len(group_calls) == 2
+assert [ast.unparse(a) for a in group_calls[0].args] == ["child.pid", "signal.SIGKILL"]
+assert [ast.unparse(a) for a in group_calls[1].args] == ["child.pid", "0"]
+reap_queries = [n for n in calls if isinstance(n.func, ast.Attribute)
+                and isinstance(n.func.value, ast.Name) and n.func.value.id == "os"
+                and n.func.attr == "waitid"]
+reap_queries.sort(key=lambda n: n.lineno)
+assert len(reap_queries) == 3
+assert ["WNOWAIT" in ast.unparse(n.args[2]) for n in reap_queries] == [True, True, False]
+assert group_calls[0].lineno < reap_queries[2].lineno < group_calls[1].lineno
+assert not any(isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name)
+               and n.func.value.id == "child" and n.func.attr in ("poll", "wait")
+               for n in calls)
+assert 2501*(16*(262144+4424)+128)+(2501+75+25+1)*132725 == 11012655666
+assert all(not line.endswith((b" ", b"\t")) for line in current.splitlines())
+print("Static reconstruction/prefix/function+AST inverse/constants/payload/control selectors exact; no future function executed")
+```
+
+### Phase evidence and remaining holds
+
+Local source/immutable Git reads and the initial in-memory byte/AST
+reconstruction exited 0. The proposed changed functions parsed as Python
+ASTs; inverse reconstruction, nine protected body hashes, sixteen
+constant ASTs and literal payload identity matched. Static selectors
+check one pre-reap nonzero group signal, a later zero query, the three
+waitid option shapes, and absence of child.poll/child.wait in the proposed
+helper. This is syntax/control-source evidence, not a syscall, case,
+cleanup or packet pass.
+
+The report append's final static/docs/whitespace checks are recorded
+below after they run. The original seven memory captures are unchanged;
+there is no retry, deletion, new nonce, slot claim or source executable.
+The 515 failure, its 25 unaccepted child claims, all prior failed runs and
+unknown Authorization sender/cause remain intact. Later 33701 and Sol3's
+changed-projection harness are excluded and unvalidated here.
+No other worker was contacted. Root and independent source review must
+accept any prospective correction and separately release any later
+single execution; **all runtime remains held**.
+
+The completed static archive verifier exited 0 for the exact 515 prefix,
+full proposed-source reconstruction, diff identity, byte/AST inverse,
+protected function/constants/payload identity and syscall-source selectors.
+The first draft selector check exited 1 because it incorrectly expected
+`ast.unparse` on an argument list to produce a comma-separated expression;
+I changed only that audit checker to compare separately unparsed arguments.
+The proposed controller bytes/hash did not change. A separate data-only
+logical-suffix hash check initially exited 1 because extraction omitted
+its leading LF. Including that existing LF verified the exact 26197-byte
+logic suffix SHA-256
+`639df7f15a1f8135b57ecbacb15062cdc75da100530e4c062e856e7ed2a87054`.
+The five collector sizes/hashes, largest body 4424, 25 plan rows and bound
+literal checks also exited 0. These were audit-checker errors, not future
+function/case/controller failures; no program or payload was corrected.
+
+`git diff --check` exited 0. `python3 scripts/check-docs.py` exited 1 only
+for the same five existing target-directory naming violations, with no
+Markdown link failure. All seven old captures still match their recorded
+hashes and mode/UID metadata; none was parsed or modified in this phase.
+Static syntax/source arithmetic does not establish live process identity,
+successful reap/group absence, packet acceptance or a passing case.
