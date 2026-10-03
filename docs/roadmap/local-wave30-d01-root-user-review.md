@@ -176,3 +176,47 @@ the unique exact blank title under the proven PID, keeping finite unique IDs
 and all cleanup windows. No rank/geometry fallback or browser retry is released.
 Independent ff18 review remains separately pending. All original failed journeys
 and unknown senders/cause/first-event limits remain unchanged.
+
+
+## 2026-10-03 — independent source findings and memory-controller EOF hold
+
+Root fully read the 320-line public projection independent review at
+`e04cb470dab863ebd1b59d57db13771bad428e8b`. Its recommendation is source
+acceptance, with multiplicity preserved and root required to reject ambiguous
+matching refs before input. No candidate or real browser outcome is inferred.
+
+Root fully read the 229-line preparation review at
+`e906e75112ec7313a749cdc3f122e778cf6f2152`. It independently identifies the
+same unique blank-window blocker. Root fully checked the corrected
+`44d32c824218512d4bac6aca073dde6d260bdf37` candidate and parser-only inverse:
+111275 bytes/SHA256
+`dfd04b3d914cf332d5ceba13d0a587dc7db2ca26b82c71e453fe85b5f2a43d9d`.
+Exactly one matching about:blank window is selected only after all existing
+ownership, unique ID and bounded row checks; cleanup still keeps every
+validated owned window. All other 33 functions and source spans are exact.
+The changed independent review remains pending. The author appendix is appended
+after the entire current publication prefix; old publication encoding remains.
+
+Root fully read the 26197-byte harness logic and all executable controller
+guards from `36ac893435b3aa05556d43e8576851ced20c176e`, and independently
+matched the full embedded 132725-byte payload SHA256
+`46c19af829c546cf0f32f0a587db084dd00d304ea9d508c98ccda0b2a6028866`.
+Its 25 cases remain declared and unexecuted. It binds the old full 9f continuation,
+not the later projection or concrete preparation composition.
+
+Concrete source hold: normal pipe EOF at controller line2043 unregisters and
+closes the stream without setting stream_eof[kind]. That stream is no longer
+visited by finally; the two initial false flags cause full-packet retention to
+remain false on ordinary completed output. Root reserved only the missing
+normal-EOF assignment in the proposed controller, preserving final fail-closed
+receipt grading and the exact payload. Independent review is separately underway.
+No controller, VM, case, private input or runtime was executed to discover this
+source defect. All real browser runtime stays held.
+
+A first root combined prose/source read was truncated by large base64 data.
+Root extracted both canonical fences losslessly, checked full hashes and
+embedded-payload identity, then read all executable logic and controller guards
+separately. Encoded data were not evaluated. The five historical metadata files,
+old failures, unknown senders, and unpassed confidential browser journey remain
+unchanged. Root reserved a source-only composition with the exact reviewed
+projection; no new action, runtime or completion is authorized by this note.
