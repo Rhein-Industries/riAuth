@@ -2922,3 +2922,42 @@ for this fixed platform metadata key, preserving the caller/child closed
 three-key environment and refusing every other extra key. No correction or
 memory repeat is released here. Old25 failed cleanup/packet observations,
 all prior confidential-browser failures and current real-journey gap remain.
+
+## 2026-10-03 — corrected environment launch reached memory, envelope failed
+
+Root read the exact `ab8d7e7` one-expression proposal, independently reversed
+the complete21381-byte/8a4da launcher to21320/40302 and normalized only its
+DictComp AST node to the old Call. Every other byte and the d29c5 controller
+remained exact. Old launcher DATA was preserved; new private DATA readback
+matched. Caller/child ENV remains three keys; only the named platform metadata
+key is omitted from this one observation comparison. No value was read.
+
+ONE separately released invocation, nonce`fd49b9cead44f00b`, returned outer1
+and controller1. It completed bounded capture, retained actual output/status
+before expectations, and produced both private evidence directories. Actual
+controller exit1 was consumed/reaped; its group was empty. Node actual exit0
+was also consumed/reaped and its group empty. Both cleanup diagnostics record
+validated terminal WNOWAIT identity2 followed by `signal_owned_group` errno1:
+outer wait/reap code1,status1; inner code1,status0. The exact node output6862B
+was closed-parsed; all36 cases/51 cells/311714 assertions/2294 privacy checks
+completed, unreached empty and child first_failure null. Yet controller and
+outer first_failure are `owned_cleanup_unconfirmed`: WHOLE ENVELOPE FAILED.
+No passing memory envelope, browser, product or real journey is credited.
+
+Root reviewed the full actual retained/review packets and consuming-wait
+proofs, then freshly checked exact PIDs/PGs31721/31722 absent using read-only
+metadata/signal-zero. The validation lane was released on this actual cleanup
+proof before report writing; this is not an inferred zero, an automatic
+release from the failed outer grade, or any nonzero post-reap signal. No extra
+cleanup delivery or retry occurred. Source/native pins matched in the actual
+outer preflight; observed minima15262130176B outer/15261577216B inner exceed
+8GiB floor. Outer elapsed0.197602042s and controller0.141543084s retained.
+Full fixed diagnostics, counts and all nine600-capture identities are in
+[evidence](evidence/wave30-d01-new36-corrected-env-root-review.json).
+
+The next reservation is source design only for the shared cleanup function:
+a terminal-child errno1 may only be considered resolved by unchanged actual
+consuming-reap plus proven group absence. Live/unknown/other errors must still
+fail, and no fake wait or post-reap delivered signal is allowed. This report
+implements no such correction and releases no repeat. First old515 native
+cause remains UNKNOWN; all earlier failures stay failed and unchanged.

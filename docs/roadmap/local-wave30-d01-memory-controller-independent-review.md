@@ -1394,3 +1394,634 @@ proofs. The full ec88 prefix and sole-file append matched; 724 insertions and
 zero removals preceded this receipt. Documentation links/build layout and
 whitespace/scope checks exited 0, with no link or build-layout errors. This
 receipt adds no executable source, invocation, runtime outcome or slot credit.
+
+## 2026-10-03 pinned-platform startup environment correction — SOURCE DESIGN ONLY
+
+Reservation `wave30_D01_platform_startup_environment_diagnostic` owns only
+this append. The entire `ecb7552978ed50e1afcdee53c83b04c2bad921c2` prefix stays
+byte-exact: 82139 bytes, 1396 lines, SHA-256
+`28e32a5bd4149cd20cf404c7ce002a0ae1ea6209634229b9f3e14a11803e3169`.
+All older designs, static audit errors and failed outcomes remain historical
+evidence. Root's newly supplied outer preflight FAILURE is appended below;
+old515 remains FAILED with child exit and cause UNKNOWN. Nothing in this
+proposal credits old25/new36 memory or a browser journey.
+
+### Actual receipts and exact source read
+
+Both complete public receipts were read at the project orchestrator's
+`planning/evidence` under
+`/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee`.
+Their independently computed byte/hash identities are:
+
+```json
+{
+  "wave30-d01-new36-outer-preflight-f18ba1c-tool.json": {
+    "bytes": 808,
+    "sha256": "3d590e14a9bc654b8eee691f4951e9be71b6cfc5e5895ebc1c56c529ad963923"
+  },
+  "wave30-d01-pinned-startup-diagnostic.json": {
+    "bytes": 660,
+    "sha256": "d0ad0d2d88f2eea5a2cdfbe76e78bc10275616d4a1f857b00a55798c73f1b691"
+  }
+}
+```
+
+The first receipt retains actual tool exit **1**, nonce
+`f18ba1c0174eaf5a` as supplied by root, and a complete closed outer summary:
+`outer_preflight_failed`, elapsed 0.012147583, complete capture false,
+controller exit NULL, controller reaped false, controller group empty false,
+nested cleanup `not_spawned`, retention false and review closed false.
+Child stdout/stderr lengths are zero. Those lengths describe the nonexistent
+controller capture, not an absence of the retained outer summary. No
+per-predicate diagnostic was retained in this first invocation.
+Root supplied the separate ownership observations: no outer/inner evidence
+directory, no controller/Node child, and validation lane released unused.
+Those are root's actual observations, not a newly executed child/process
+inspection here.
+
+The separately authorized startup diagnostic retained actual exit **0**,
+elapsed 0.028264416847378016, empty stderr, no timeout and diagnostic process
+reaped. Its source SHA is
+`69ced507a0e09440e339317977ab96d91b581e7b029083c1485709d70334d9fc`.
+It is explicitly not a memory retry. Root specified the same pinned interpreter,
+imports, closed three-key caller environment and cwd, with no memory/controller/
+Node invocation. Its receipt reports cwd/executable/root resolution true,
+UID 501, isolated 1 and no_site 1; each PATH/LANG/LC_ALL value matches.
+Environment equality is **false**, key count **4**, the sole allowlisted extra
+name is exactly `__CF_USER_TEXT_ENCODING`, and other-extra-key count is zero.
+No value for the extra key was captured, read or inferred in this review.
+Root reports native hash match; the diagnostic receipt does not contain an
+independent loaded-image attestation or a digest of its complete dependency
+closure. The receipt pins its diagnostic source, but does not embed that
+source body; this review neither reconstructed nor executed the diagnostic.
+
+The complete original 380-line launcher was read from the immutable ecb report
+and from root's staged
+`/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-composed-memory-outer.py`.
+The staged file was a regular nonsymlink, UID 501, mode 0600, 21320 bytes;
+O_NOFOLLOW readback matched every archived byte and SHA
+`40302bd5b6f10b1c3f7f2c0cebf4b7e7dd8d77810a71180fd98af23835babacb`.
+This was a source DATA read, not import/execution or a private capture read.
+
+The original failure remains FAILURE with its exact cause **UNKNOWN**.
+Several predicates share `outer_preflight_failed`; a later diagnostic does
+not retroactively identify which failed in that process. The current source
+comparison does, however, necessarily reject the later diagnostic's reported
+four-key shape even when all three required values match. That source/observed
+startup incompatibility is the narrowly supported reason for this proposal.
+No broken loader, platform origin of the key, benign encoding value, native
+cause or memory-candidate defect is attested.
+
+### One exact launcher-only hunk
+
+Replace only `dict(os.environ)` at original launcher source line 223 with:
+
+```text
+{key:os.environ[key] for key in os.environ if key!="__CF_USER_TEXT_ENCODING"}
+```
+
+The observation compares the remaining dictionary to unchanged ENV.
+It permits only that exact case-sensitive key to be present or absent; the
+comprehension skips its value lookup entirely. It does not capture, check,
+normalize or copy the uncaptured value. It is not a prefix/regex filter,
+general platform exception, fallback or allowance for any other key name.
+Missing or changed PATH/LANG/LC_ALL still makes the dictionaries unequal,
+and every other extra key remains in the compared dictionary and refuses.
+DYLD/PYTHON names, similarly spelled keys and unexpected caller additions
+gain no exception. These are source-derived properties, not executed
+predicate cases.
+
+Both the root-selected caller environment and the literal child ENV remain
+**exactly three keys**. No new environment variable is supplied to the child,
+no parent value is inherited, and os.environ is not mutated. An observed
+platform-added key is tolerated only by this one comparison, without making
+a claim about its origin or actual value. Existing flags, executable, UID,
+cwd, root resolution, native/source pins and every subsequent refusal guard
+remain exact.
+
+Exact one-hunk unified diff: 717 bytes, SHA-256
+`f0606caf8202e8fc35cb40bc850b1ca7fa5a2cc481bffbf5542a84ad559fb175`.
+
+```diff
+--- ecb7552-outer-40302bd5.py
++++ DESIGN-platform-text-encoding-outer.py
+@@ -220,7 +220,7 @@
+         if os.getuid()!=501 or pathlib.Path.cwd()!=ROOT or ROOT.resolve(strict=True)!=ROOT:
+             raise ValueError("workspace")
+         if (pathlib.Path(sys.executable).resolve(strict=True)!=PY or
+-                sys.flags.isolated!=1 or sys.flags.no_site!=1 or dict(os.environ)!=ENV):
++                sys.flags.isolated!=1 or sys.flags.no_site!=1 or {key:os.environ[key] for key in os.environ if key!="__CF_USER_TEXT_ENCODING"}!=ENV):
+             raise ValueError("interpreter_environment")
+         info=ROOT.lstat()
+         if not stat.S_ISDIR(info.st_mode) or info.st_uid!=501:raise ValueError("workspace")
+```
+
+### Complete proposed candidate DATA
+
+Candidate: 21381 bytes, 380 lines, SHA-256
+`8a4da1306765f331f18b4fd56cb71dff03395f40fb2246475be5e47b035e1e1b`.
+The 61-byte increase is solely the expression substitution. The full source
+is archived for immutable review; it is not a script or private DATA-file edit.
+
+```python
+# DESIGN DATA ONLY: one future exact composed-controller launch; never run in this source phase.
+import time
+START_NS=time.monotonic_ns()
+import hashlib,json,math,os,pathlib,re,selectors,shutil,signal,stat,subprocess,sys
+ROOT=pathlib.Path("/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27")
+PRIVATE=ROOT/"deployment-private"
+F=pathlib.Path("/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14")
+PY=F/"bin/python3.14"
+NODE=pathlib.Path("/opt/homebrew/Cellar/node/26.7.0/bin/node")
+SOURCE_NAME="d01-composed-controller-d29c5c-source.py"
+SOURCE_SHA="d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a"
+SOURCE_BYTES=242290
+ENV={"PATH":"/usr/bin:/bin","LANG":"C","LC_ALL":"C"}
+# UID/mode/size/hash pins are source/metadata checks, not loaded-image observations.
+PINS=(
+    ("python_executable",PY,34640,0o755,"4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56"),
+    ("python_framework",F/"Python",5468672,0o755,"15436055aa2c02ed0218ac0e02b3a27a92102f88cd59ab5094896b9306317336"),
+    ("python_build_header",F/"include/python3.14/pyconfig.h",60669,0o644,"e875b545c5d65a9598f2b3f4a8c2c1a8dfb81fc7baace25acc22aafaf9e2b421"),
+    ("signal_stdlib",F/"lib/python3.14/signal.py",2495,0o644,"0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a"),
+    ("python_build_makefile",F/"lib/python3.14/config-3.14-darwin/Makefile",223264,0o644,"516889e804bfce1dd5c7e2c9d94c0a30c2ca6c0f3c758f56d30c123dceeec3d3"),
+    ("python_build_setup",F/"lib/python3.14/config-3.14-darwin/Setup",11083,0o644,"7db652648cd3f0f9afee585595fa80b52d53cf414514eb856803fc5dddf0f13b"),
+    ("subprocess_stdlib",F/"lib/python3.14/subprocess.py",90732,0o644,"6628ffdd65c093a6c08cae01ffe82877d3ced515aac9e7be0cff16512c30a7d9"),
+    ("posixsubprocess_native",F/"lib/python3.14/lib-dynload/_posixsubprocess.cpython-314-darwin.so",54784,0o755,"ededa2d9c463ba4d1fd39ac1cf36a7f4393c1179543dec22fb8b2389983abef8"),
+    ("node_executable",NODE,50320,0o555,"1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040"),
+)
+PRECHECK_DEADLINE=START_NS+5_000_000_000
+OUTER_DEADLINE=START_NS+50_000_000_000
+FINAL_DEADLINE=START_NS+55_000_000_000
+START_FREE=17*1024**3//2
+FLOOR=8*1024**3
+STDOUT_CAP=65536
+STDERR_CAP=16384
+SAMPLE_CAP=32
+first_failure=None
+
+def latch(tag):
+    global first_failure
+    if first_failure is None:first_failure=tag
+
+
+def private_directory(parent,name):
+    fd=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        info=os.fstat(fd)
+        if info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700:
+            raise ValueError("private_directory")
+        os.mkdir(name,0o700,dir_fd=fd)
+    finally:os.close(fd)
+    path=parent/name
+    info=path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():
+        raise ValueError("private_directory")
+    return path
+
+
+def save(parent,name,raw):
+    if len(raw)>262144:raise ValueError("evidence_cap")
+    fd=os.open(parent/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    try:
+        os.fchmod(fd,0o600)
+        with os.fdopen(fd,"wb",closefd=False) as out:
+            out.write(raw);out.flush();os.fsync(out.fileno())
+    finally:os.close(fd)
+
+
+def encode(value):
+    return (json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=True)+"\n").encode("ascii")
+
+
+def duplicate_free(pairs):
+    result={}
+    for key,value in pairs:
+        if key in result:raise ValueError("duplicate_json")
+        result[key]=value
+    return result
+
+
+def true_int(value,low,high):
+    return type(value) is int and low<=value<=high
+
+
+def group_cleanup(child):
+    # Only the exact unreaped Popen child can authorize a nonzero group signal.
+    reaped=False;empty=False;code=None;owned=False;stage="child_identity"
+    diagnostic={"stage":None,"errno":None,"identity":0,
+                "waitid_code":None,"waitid_status":None,
+                "reap_code":None,"reap_status":None}
+    def failed(at,error=None,label="owned_cleanup_unconfirmed"):
+        if diagnostic["stage"] is None:
+            diagnostic["stage"]=at
+            number=getattr(error,"errno",None)
+            diagnostic["errno"]=number if true_int(number,1,4095) else None
+        latch(label)
+    def terminal(info):
+        return (info is not None and type(info.si_pid) is int and info.si_pid==child.pid and
+                type(info.si_signo) is int and info.si_signo==signal.SIGCHLD and
+                type(info.si_code) is int and
+                info.si_code in (os.CLD_EXITED,os.CLD_KILLED,os.CLD_DUMPED) and
+                true_int(info.si_status,0,255) and
+                (info.si_code==os.CLD_EXITED or info.si_status>0))
+    eligible=true_int(child.pid,1,2147483647) and child.returncode is None
+    try:
+        if not eligible:raise ValueError("child_identity")
+        stage="signal_disposition"
+        if signal.getsignal(signal.SIGCHLD)!=signal.SIG_DFL:
+            raise ValueError("signal_disposition")
+        stage="waitid_identity"
+        observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+        if observation is None:
+            stage="live_group_identity"
+            try:
+                owned=os.getpgid(child.pid)==child.pid
+                if owned:diagnostic["identity"]=1
+            except ProcessLookupError:
+                stage="exited_group_identity"
+                observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+        if observation is not None:
+            if not terminal(observation):raise ValueError("waitid_identity")
+            owned=True;diagnostic["identity"]=2
+            diagnostic["waitid_code"]=observation.si_code
+            diagnostic["waitid_status"]=observation.si_status
+        if not owned or child.returncode is not None:raise ValueError("group_identity")
+        stage="signal_owned_group"
+        try:os.killpg(child.pid,signal.SIGKILL)
+        except ProcessLookupError:pass
+    except Exception as error:
+        failed(stage,error)
+    # Reap this exact child even after identity/signal refusal; never signal here.
+    if eligible:
+        stage="reap_owned_child"
+        try:
+            while time.monotonic_ns()<OUTER_DEADLINE:
+                observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG)
+                if observation is not None:
+                    if not terminal(observation):raise ValueError("reap_identity")
+                    code=(observation.si_status if observation.si_code==os.CLD_EXITED
+                          else -observation.si_status)
+                    child.returncode=code;reaped=True
+                    diagnostic["reap_code"]=observation.si_code
+                    diagnostic["reap_status"]=observation.si_status
+                    break
+                remaining=(OUTER_DEADLINE-time.monotonic_ns())/1e9
+                if remaining>0:time.sleep(min(.005,remaining))
+            if not reaped:failed("reap_deadline")
+        except Exception as error:
+            failed(stage,error)
+    if owned and reaped:
+        # Signal zero is only an existence query; no signal is delivered after reap.
+        try:os.killpg(child.pid,0)
+        except ProcessLookupError:empty=True
+        except Exception as error:failed("group_absence",error)
+        if not empty:failed("group_absence",label="owned_group_not_empty")
+    return code,reaped,empty,diagnostic
+
+
+def pinned_file(path,size,mode,digest,dir_fd=None,keep=False):
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=dir_fd)
+    raw=bytearray();count=0;hasher=hashlib.sha256()
+    try:
+        before=os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid!=501 or
+                stat.S_IMODE(before.st_mode)!=mode or before.st_size!=size):
+            raise ValueError("file_metadata")
+        while True:
+            if time.monotonic_ns()>=PRECHECK_DEADLINE:raise TimeoutError()
+            part=os.read(fd,131072)
+            if not part:break
+            count+=len(part)
+            if count>size:raise ValueError("file_size")
+            hasher.update(part)
+            if keep:raw.extend(part)
+        after=os.fstat(fd)
+        if ((before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns,before.st_ctime_ns,
+             before.st_uid,before.st_mode)!=(after.st_dev,after.st_ino,after.st_size,
+             after.st_mtime_ns,after.st_ctime_ns,after.st_uid,after.st_mode) or
+                count!=size or hasher.hexdigest()!=digest):
+            raise ValueError("file_identity")
+    finally:os.close(fd)
+    return bytes(raw),{"bytes":count,"mode":mode,"uid":501,"sha256":hasher.hexdigest()}
+
+def directory_sync(path):
+    fd=os.open(path,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        info=os.fstat(fd)
+        if info.st_uid!=501 or stat.S_IMODE(info.st_mode)!=0o700:
+            raise ValueError("directory_identity")
+        os.fsync(fd)
+    finally:os.close(fd)
+
+def accepted_return(raw):
+    packet=json.loads(raw.decode("ascii"),object_pairs_hook=duplicate_free)
+    keys={"schema","result","first_failure","child_exit","child_reaped","owned_group_empty",
+          "full_packet_retained_before_grade","review_closed","within35","elapsed_seconds",
+          "completed_cases","child_failure","actual_product_or_driver"}
+    if type(packet) is not dict or set(packet)!=keys or not raw.endswith(b"\n"):
+        return False
+    elapsed=packet["elapsed_seconds"]
+    return (packet["schema"]=="riauth.d01-continuation-memory-return/v1" and
+            packet["result"]=="passed" and packet["first_failure"] is None and
+            true_int(packet["child_exit"],0,0) and packet["child_reaped"] is True and
+            packet["owned_group_empty"] is True and
+            packet["full_packet_retained_before_grade"] is True and
+            packet["review_closed"] is True and packet["within35"] is True and
+            type(elapsed) in (int,float) and math.isfinite(elapsed) and 0<=elapsed<=35 and
+            true_int(packet["completed_cases"],36,36) and packet["child_failure"] is None and
+            packet["actual_product_or_driver"] is False)
+
+def main():
+    evidence=None;child=None;selector=None;source=b"";verified={}
+    raw={"out":bytearray(),"err":bytearray()};caps={"out":STDOUT_CAP,"err":STDERR_CAP}
+    eof={"out":False,"err":False};seen={"out":0,"err":0};output_capped=False
+    code=None;reaped=False;empty=False;diagnostic=None;spawn_attempts=0
+    sent=0;spawn_ns=None;capture_ns=None;capture_deadline=None;phase="preflight"
+    samples=[];minimum_free=None;last_disk=0;retained=False;review_closed=False;grade=False
+    nested="not_spawned"
+    try:
+        os.umask(0o077)
+        if len(sys.argv)!=2 or re.fullmatch(r"[0-9a-f]{16}",sys.argv[1]) is None:
+            raise ValueError("nonce")
+        if os.getuid()!=501 or pathlib.Path.cwd()!=ROOT or ROOT.resolve(strict=True)!=ROOT:
+            raise ValueError("workspace")
+        if (pathlib.Path(sys.executable).resolve(strict=True)!=PY or
+                sys.flags.isolated!=1 or sys.flags.no_site!=1 or {key:os.environ[key] for key in os.environ if key!="__CF_USER_TEXT_ENCODING"}!=ENV):
+            raise ValueError("interpreter_environment")
+        info=ROOT.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=501:raise ValueError("workspace")
+        private_fd=os.open(PRIVATE,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+        try:
+            info=os.fstat(private_fd)
+            if info.st_uid!=501 or stat.S_IMODE(info.st_mode)!=0o700:
+                raise ValueError("private_directory")
+            try:os.stat("d01-continuation-memory-"+sys.argv[1],dir_fd=private_fd,follow_symlinks=False)
+            except FileNotFoundError:pass
+            else:raise ValueError("nonce_reused")
+            evidence=private_directory(PRIVATE,"d01-composed-outer-"+sys.argv[1])
+            source,verified["controller_source"]=pinned_file(
+                SOURCE_NAME,SOURCE_BYTES,0o600,SOURCE_SHA,dir_fd=private_fd,keep=True)
+        finally:os.close(private_fd)
+        for label,path,size,mode,digest in PINS:
+            unused,verified[label]=pinned_file(path,size,mode,digest)
+        opt=pathlib.Path("/opt/homebrew/opt/python@3.14/Frameworks/Python.framework/Versions/3.14/Python")
+        if opt.resolve(strict=True)!=(F/"Python"):raise ValueError("framework_resolution")
+        if not all(hasattr(os,name) for name in
+                   ("waitid","P_PID","WEXITED","WNOHANG","WNOWAIT","CLD_EXITED","CLD_KILLED","CLD_DUMPED")):
+            raise ValueError("owned_wait_unavailable")
+        free=shutil.disk_usage(ROOT).free;minimum_free=free
+        samples.append({"elapsed_ns":time.monotonic_ns()-START_NS,"free_bytes":free})
+        if free<START_FREE:raise ValueError("start_free")
+        if time.monotonic_ns()>=PRECHECK_DEADLINE:raise TimeoutError()
+        phase="spawn"
+        signal.signal(signal.SIGCHLD,signal.SIG_DFL)
+        if time.monotonic_ns()>=PRECHECK_DEADLINE:raise TimeoutError()
+        spawn_ns=time.monotonic_ns();capture_deadline=spawn_ns+40_000_000_000
+        spawn_attempts=1;nested="unknown"
+        child=subprocess.Popen([str(PY),"-I","-S","-",sys.argv[1]],cwd=ROOT,env=ENV,
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+            start_new_session=True,bufsize=0)
+        selector=selectors.DefaultSelector()
+        for stream,kind,events in ((child.stdin,"in",selectors.EVENT_WRITE),
+                                   (child.stdout,"out",selectors.EVENT_READ),
+                                   (child.stderr,"err",selectors.EVENT_READ)):
+            os.set_blocking(stream.fileno(),False);selector.register(stream,events,kind)
+        phase="capture";exit_seen=False
+        while selector.get_map() or not exit_seen:
+            now=time.monotonic_ns()
+            if now>=capture_deadline:latch("capture_deadline");break
+            if now-last_disk>=2_000_000_000:
+                if len(samples)>=SAMPLE_CAP:latch("resource_sample_cap");break
+                free=shutil.disk_usage(ROOT).free;minimum_free=min(minimum_free,free);last_disk=now
+                samples.append({"elapsed_ns":now-START_NS,"free_bytes":free})
+                if free<FLOOR:latch("disk_floor");break
+            observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+            if observation is not None:exit_seen=True
+            for key,events in selector.select(min(.02,max(0,(capture_deadline-now)/1e9))):
+                stream,kind=key.fileobj,key.data
+                if kind=="in":
+                    try:written=os.write(stream.fileno(),source[sent:sent+16384])
+                    except BlockingIOError:continue
+                    except BrokenPipeError:latch("controller_input_closed");break
+                    sent+=written
+                    if sent==SOURCE_BYTES:selector.unregister(stream);stream.close()
+                else:
+                    try:part=os.read(stream.fileno(),4096)
+                    except BlockingIOError:continue
+                    if not part:eof[kind]=True;selector.unregister(stream);stream.close();continue
+                    seen[kind]+=len(part)
+                    raw[kind].extend(part[:max(0,caps[kind]-len(raw[kind]))])
+                    if seen[kind]>caps[kind]:
+                        output_capped=True;latch("controller_output_cap");break
+            if first_failure is not None:break
+    except BaseException:latch("outer_"+phase+"_failed")
+    finally:
+        if child is not None:
+            try:code,reaped,empty,diagnostic=group_cleanup(child)
+            except BaseException:latch("outer_cleanup_failed")
+            # Bounded nonblocking available-data drain, not a claim of total produced bytes.
+            for kind,stream in (("out",child.stdout),("err",child.stderr)):
+                try:
+                    if stream is not None and not stream.closed:
+                        os.set_blocking(stream.fileno(),False)
+                        for attempt in range(caps[kind]//4096+1):
+                            if time.monotonic_ns()>=OUTER_DEADLINE:
+                                latch("drain_deadline");break
+                            try:part=os.read(stream.fileno(),4096)
+                            except BlockingIOError:break
+                            if not part:eof[kind]=True;break
+                            seen[kind]+=len(part)
+                            raw[kind].extend(part[:max(0,caps[kind]-len(raw[kind]))])
+                            if seen[kind]>caps[kind]:
+                                output_capped=True;latch("controller_output_cap");break
+                except BaseException:latch("outer_drain_failed")
+            for stream in (child.stdin,child.stdout,child.stderr):
+                try:
+                    if stream is not None and not stream.closed:stream.close()
+                except BaseException:latch("outer_pipe_close_failed")
+        if selector is not None:
+            try:selector.close()
+            except BaseException:latch("outer_selector_close_failed")
+        capture_ns=time.monotonic_ns()
+    complete=sent==SOURCE_BYTES and all(eof.values()) and not output_capped
+    receipt={"schema":"riauth.d01-composed-outer-capture/v1","controller_source_sha256":SOURCE_SHA,
+        "controller_source_bytes":SOURCE_BYTES,"verified_files":verified,"spawn_attempts":spawn_attempts,
+        "controller_handle_acquired":child is not None,"controller_pid":None if child is None else child.pid,
+        "controller_exit":code,"controller_reaped":reaped,"controller_group_empty":empty,
+        "cleanup_diagnostic":diagnostic,"nested_node_cleanup":"unknown" if spawn_attempts else "not_spawned",
+        "input_sent":sent,"stdout_bytes":len(raw["out"]),"stderr_bytes":len(raw["err"]),
+        "stdout_sha256":hashlib.sha256(raw["out"]).hexdigest(),
+        "stderr_sha256":hashlib.sha256(raw["err"]).hexdigest(),"bytes_seen":seen,"stream_eof":eof,
+        "output_capped":output_capped,"complete_bounded_capture":complete,"first_failure":first_failure,
+        "spawn_elapsed_ns":None if spawn_ns is None else spawn_ns-START_NS,
+        "capture_end_elapsed_ns":capture_ns-START_NS,"minimum_free_bytes":minimum_free,
+        "actual_product_or_driver":False}
+    try:
+        if evidence is None:raise ValueError("evidence")
+        # These files and actual exit/status are fsynced/closed BEFORE parsing or grading.
+        save(evidence,"controller.stdout",bytes(raw["out"]))
+        save(evidence,"controller.stderr",bytes(raw["err"]))
+        save(evidence,"resources.json",encode({"schema":"riauth.d01-composed-outer-resources/v1",
+                                              "samples":samples,"minimum_free_bytes":minimum_free}))
+        save(evidence,"retained.json",encode(receipt));directory_sync(evidence);retained=True
+    except BaseException:latch("outer_evidence_unconfirmed")
+    # A nonzero/unknown actual status always precedes packet expectations.
+    if spawn_attempts!=1 or child is None:latch("controller_not_acquired")
+    if not reaped or not empty:latch("controller_cleanup_unconfirmed")
+    if code is None:latch("controller_exit_unknown")
+    elif code!=0:latch("controller_nonzero")
+    if not complete:latch("controller_capture_incomplete")
+    if raw["err"]:latch("controller_stderr_nonempty")
+    if retained and first_failure is None:
+        try:
+            if not accepted_return(bytes(raw["out"])):latch("controller_return_refused")
+        except BaseException:latch("controller_return_refused")
+        if first_failure is None:
+            nested="controller_reported_clean";grade=True
+    try:
+        if not retained:raise ValueError("retention")
+        save(evidence,"review.json",encode({"schema":"riauth.d01-composed-outer-review/v1",
+            "retained_before_grade":retained,"grade_before_final_clock":grade,
+            "first_failure":first_failure,"controller_exit":code,"controller_reaped":reaped,
+            "controller_group_empty":empty,"nested_node_cleanup":nested,
+            "independent_nested_ownership_proof":False}))
+        directory_sync(evidence);review_closed=True
+    except BaseException:latch("outer_review_unconfirmed")
+    final_ns=time.monotonic_ns()
+    # No explicit evidence write/close/mutation or child operation after this clock.
+    within55=final_ns<FINAL_DEADLINE
+    if not within55:latch("outer_final_deadline")
+    passed=grade and retained and review_closed and within55 and first_failure is None
+    summary={"schema":"riauth.d01-composed-outer-return/v1","result":"passed" if passed else "failed",
+        "first_failure":first_failure,"controller_exit":code,"controller_reaped":reaped,
+        "controller_group_empty":empty,"nested_node_cleanup":nested,
+        "independent_nested_ownership_proof":False,"retained_before_grade":retained,
+        "review_closed":review_closed,"complete_bounded_capture":complete,
+        "within55":within55,"elapsed_seconds":(final_ns-START_NS)/1e9,
+        "stdout_bytes":len(raw["out"]),"stderr_bytes":len(raw["err"]),
+        "stdout_sha256":hashlib.sha256(raw["out"]).hexdigest(),
+        "stderr_sha256":hashlib.sha256(raw["err"]).hexdigest(),"actual_product_or_driver":False}
+    sys.stdout.write(json.dumps(summary,sort_keys=True,separators=(",",":"))+"\n");sys.stdout.flush()
+    return 0 if passed else 1
+if __name__=="__main__":sys.exit(main())
+```
+
+### Whole-byte and AST inverse proof
+
+Static forward construction required exactly one `dict(os.environ)` occurrence
+in the pinned original. Substituting the exact dictionary-comprehension bytes
+once constructed the complete candidate. Replacing that sole expression with
+the original reproduces all 21320 original bytes and SHA 40302bd5 exactly.
+Both complete module ASTs parsed as DATA.
+
+The only new DictComp has key `key`, value `os.environ[key]`, one generator
+over `os.environ`, and one exact `key != "__CF_USER_TEXT_ENCODING"` condition.
+Replacing only that AST node with the original `dict(os.environ)` Call
+reproduces the complete original module AST excluding locations. The outer
+comparison to ENV and all enclosing OR predicates, handler branches,
+short-circuit order, imports and entrypoint remain unchanged.
+No reviewed function or class was called, and the proposed comprehension or
+predicate was not evaluated during the proof.
+
+The complete eleven-function set is unchanged. Main is changed only by that
+expression, with candidate main SHA-256 `e721fff658e5f3b2dfbc506806be597859a07dbe1c56f251052f7817b44f2485`;
+its byte inverse restores the whole original main. All ten other complete
+function spans and ASTs are byte-identical:
+
+```json
+{
+  "latch": {
+    "bytes": 88,
+    "sha256": "957eba18cdfb5d25bd5ee510141c74c9f942978d4540086d9db62b1f4f0fbec9"
+  },
+  "private_directory": {
+    "bytes": 532,
+    "sha256": "12296c9587b151b2d998c6f174cb3579b4580ac210cae840e5a208c781a3eabc"
+  },
+  "save": {
+    "bytes": 342,
+    "sha256": "ae13bed122b92c6c27e1a63f828c87bc4ce4477b6079836513b36d547f631900"
+  },
+  "encode": {
+    "bytes": 125,
+    "sha256": "89ce1b76ca343fda5622acb07b3fce0d0ce63242704cf3b9c53b09c1ca0ac68e"
+  },
+  "duplicate_free": {
+    "bytes": 173,
+    "sha256": "3134f45bbdba498f6684c83430ebfe93793174940b606f45cd1d1c0f8844a64b"
+  },
+  "true_int": {
+    "bytes": 81,
+    "sha256": "646a375f4d50ebd66ab07b30ecf5c325b6027601ecc27d022ee50f2c5249bf04"
+  },
+  "group_cleanup": {
+    "bytes": 3773,
+    "sha256": "de0d06fd97cf4a15bb4a0443bdce42e9e27c4ea7cdfc3ab6ee9d80b796201231"
+  },
+  "pinned_file": {
+    "bytes": 1228,
+    "sha256": "b9860dcbdd16a6ace5ccc082c7520a733947112b50484665ece4227240a7dfd0"
+  },
+  "directory_sync": {
+    "bytes": 286,
+    "sha256": "739e063a7283f01457ab73c8a4f0461a297a31e171fe5760eb30ce1d00c2d18c"
+  },
+  "accepted_return": {
+    "bytes": 1182,
+    "sha256": "c1ed36f6f66c9ee3e241c710717371ae329c8b4d033bc846ccd81effab34b6e6"
+  }
+}
+```
+
+All twenty top-level assignments preserve bytes and ASTs, including ENV,
+PINS, source SHA/size, ROOT, Node path, startup/capture/cleanup/final clocks,
+resource floor and start threshold, output/sample caps and first-failure
+initial state. Exact Popen, default SIGCHLD setter, waitid/killpg, save,
+directory-sync and accepted-return call ASTs match the original.
+The sole child call still passes ENV without inheritance and requests a
+fresh session. The unchanged controller input is 242290 bytes/SHA
+`d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a`.
+Neither it nor Node/harness/source DATA was edited or executed here.
+
+Thus the one-child limit, actual wait status rather than fallback zero,
+owned pre-reap signals, no broad discovery/post-reap delivery, unknown
+nested-Node cleanup on abnormal controller failure, complete/capped capture
+distinction, fsync-before-expectations, first-failure latch, provisional review
+and final-clock decision remain unchanged. Controller thirty/thirty-five-second
+limits and outer five/forty/fifty/fifty-five-second controls are not widened.
+No write-safety, hard I/O deadline, native loader or successful child launch
+claim follows from allowing this metadata name.
+
+### Actual static scope and future release boundary
+
+Complete receipt/source/hash reads and data-only candidate construction,
+Python AST syntax, whole-byte inverse, sole-node normalized AST inverse,
+ten protected full-function spans, restored main, twenty unchanged assignments
+and protected call AST comparisons exited 0. No new extraction/check error
+occurred in this source phase; older errors remain in the untouched prefix.
+Static Python/Git tools ran; the reviewed launcher/controller/diagnostic/helper/
+observer/memory candidate was not imported or executed. No native/version
+probe, invocation of proposed signal/wait/kill controls, provider/browser/Driver
+call, runtime retry, cache deletion or other worker contact occurred.
+
+Root's startup diagnostic exit 0 is limited to its recorded startup check.
+The earlier outer invocation remains exit 1, with no completed memory packet;
+old515 stays failed and its child exit/cause remain UNKNOWN. Historical sender
+and true cleanup-start remain UNKNOWN. This proposal does not infer a memory
+pass, new assertion count, exact prior preflight cause or fixture completion.
+
+Only after root's immutable full/independent review may root separately change
+its private launcher DATA to the exact candidate hash, verify readback and
+staging/source/native metadata, and release ONE fresh original command/nonce.
+Existing d29 controller DATA, closed caller/child ENV, pins and all ownership/
+resource/evidence rules remain the same. No source materialization or invocation
+is authorized here; no local validation slot was acquired, used or released.
+Runtime remains **HELD**. Root owns integration, any future private-file change,
+execution reservation, receipts, cleanup decision and status.
+
+Final actual appendix checks: canonical fence/diff extraction reproduced the
+21381-byte candidate, 717-byte exact diff and both hashes; whole-byte and sole
+AST-node inverses matched. Entire 82139-byte ecb prefix and report-only scope
+matched. Documentation links/build layout, whitespace and scope checks exited
+0, with no link or build-layout errors. No executable/private DATA file was
+changed and no reviewed runtime was invoked.

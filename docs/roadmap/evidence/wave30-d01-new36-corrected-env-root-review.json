@@ -1,0 +1,223 @@
+{
+  "nonce": "fd49b9cead44f00b",
+  "outer_retained": {
+    "actual_product_or_driver": false,
+    "bytes_seen": {
+      "err": 0,
+      "out": 359
+    },
+    "capture_end_elapsed_ns": 196813208,
+    "cleanup_diagnostic": {
+      "errno": 1,
+      "identity": 2,
+      "reap_code": 1,
+      "reap_status": 1,
+      "stage": "signal_owned_group",
+      "waitid_code": 1,
+      "waitid_status": 1
+    },
+    "complete_bounded_capture": true,
+    "controller_exit": 1,
+    "controller_group_empty": true,
+    "controller_handle_acquired": true,
+    "controller_pid": 31721,
+    "controller_reaped": true,
+    "controller_source_bytes": 242290,
+    "controller_source_sha256": "d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a",
+    "first_failure": "owned_cleanup_unconfirmed",
+    "input_sent": 242290,
+    "minimum_free_bytes": 15262130176,
+    "nested_node_cleanup": "unknown",
+    "output_capped": false,
+    "schema": "riauth.d01-composed-outer-capture/v1",
+    "spawn_attempts": 1,
+    "spawn_elapsed_ns": 16440583,
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 359,
+    "stdout_sha256": "27a9b954dedb3a0716704adef11b3c2aaedc9d9c727aad83bca1b686c8f505db",
+    "stream_eof": {
+      "err": true,
+      "out": true
+    },
+    "verified_files": {
+      "controller_source": {
+        "bytes": 242290,
+        "mode": 384,
+        "sha256": "d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a",
+        "uid": 501
+      },
+      "node_executable": {
+        "bytes": 50320,
+        "mode": 365,
+        "sha256": "1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040",
+        "uid": 501
+      },
+      "posixsubprocess_native": {
+        "bytes": 54784,
+        "mode": 493,
+        "sha256": "ededa2d9c463ba4d1fd39ac1cf36a7f4393c1179543dec22fb8b2389983abef8",
+        "uid": 501
+      },
+      "python_build_header": {
+        "bytes": 60669,
+        "mode": 420,
+        "sha256": "e875b545c5d65a9598f2b3f4a8c2c1a8dfb81fc7baace25acc22aafaf9e2b421",
+        "uid": 501
+      },
+      "python_build_makefile": {
+        "bytes": 223264,
+        "mode": 420,
+        "sha256": "516889e804bfce1dd5c7e2c9d94c0a30c2ca6c0f3c758f56d30c123dceeec3d3",
+        "uid": 501
+      },
+      "python_build_setup": {
+        "bytes": 11083,
+        "mode": 420,
+        "sha256": "7db652648cd3f0f9afee585595fa80b52d53cf414514eb856803fc5dddf0f13b",
+        "uid": 501
+      },
+      "python_executable": {
+        "bytes": 34640,
+        "mode": 493,
+        "sha256": "4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56",
+        "uid": 501
+      },
+      "python_framework": {
+        "bytes": 5468672,
+        "mode": 493,
+        "sha256": "15436055aa2c02ed0218ac0e02b3a27a92102f88cd59ab5094896b9306317336",
+        "uid": 501
+      },
+      "signal_stdlib": {
+        "bytes": 2495,
+        "mode": 420,
+        "sha256": "0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a",
+        "uid": 501
+      },
+      "subprocess_stdlib": {
+        "bytes": 90732,
+        "mode": 420,
+        "sha256": "6628ffdd65c093a6c08cae01ffe82877d3ced515aac9e7be0cff16512c30a7d9",
+        "uid": 501
+      }
+    }
+  },
+  "node_retained": {
+    "child_exit": 0,
+    "child_pid": 31722,
+    "child_reaped": true,
+    "cleanup_diagnostic": {
+      "errno": 1,
+      "identity": 2,
+      "reap_code": 1,
+      "reap_status": 0,
+      "stage": "signal_owned_group",
+      "waitid_code": 1,
+      "waitid_status": 0
+    },
+    "first_failure_before_grade": "owned_cleanup_unconfirmed",
+    "minimum_free_bytes": 15261577216,
+    "output_capped": false,
+    "owned_group_empty": true,
+    "payload_bytes": 151979,
+    "payload_sha256": "a5d564be3b8a27abaead1b85b7f87cf2e7a0fe755144e48429b4a505118f8697",
+    "schema": "riauth.d01-continuation-memory-retained/v1",
+    "spawn_count": 1,
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 6862,
+    "stdout_sha256": "7bd435978f008a4a904e3c2d00dc2b0e49a6a1323874d080dd56ba436d78bbe3",
+    "stream_eof": {
+      "err": true,
+      "out": true
+    }
+  },
+  "node_case_counts": {
+    "cells": 51,
+    "assertions_completed": 311714,
+    "privacy_checks_completed": 2294,
+    "first_failure": null,
+    "unreached": [],
+    "completed_groups": {
+      "cleanup_latch": 5,
+      "helper_handoff": 5,
+      "partial_framing": 7,
+      "phase_binding": 5,
+      "public_projection": 11,
+      "secret_lifetime": 3
+    }
+  },
+  "owned_absence": [
+    {
+      "pid_and_group": 31721,
+      "group_absent": true
+    },
+    {
+      "pid_and_group": 31722,
+      "group_absent": true
+    }
+  ],
+  "whole_envelope_pass": false,
+  "root_release_utc": "2026-10-03T03:24:45.281923+00:00",
+  "schema": "riauth.wave30-d01-new36-corrected-env-root-review/v1",
+  "actual_tool_completion": {
+    "chunk_id": "cfefd2",
+    "wall_time_seconds": 0.119647375,
+    "exit_code": 1,
+    "original_token_count": 156,
+    "output": "{\"actual_product_or_driver\":false,\"complete_bounded_capture\":true,\"controller_exit\":1,\"controller_group_empty\":true,\"controller_reaped\":true,\"elapsed_seconds\":0.197602042,\"first_failure\":\"owned_cleanup_unconfirmed\",\"independent_nested_ownership_proof\":false,\"nested_node_cleanup\":\"unknown\",\"result\":\"failed\",\"retained_before_grade\":true,\"review_closed\":true,\"schema\":\"riauth.d01-composed-outer-return/v1\",\"stderr_bytes\":0,\"stderr_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"stdout_bytes\":359,\"stdout_sha256\":\"27a9b954dedb3a0716704adef11b3c2aaedc9d9c727aad83bca1b686c8f505db\",\"within55\":true}\n"
+  },
+  "capture_file_identities": {
+    "d01-composed-outer-fd49b9cead44f00b/controller.stdout": {
+      "bytes": 359,
+      "sha256": "27a9b954dedb3a0716704adef11b3c2aaedc9d9c727aad83bca1b686c8f505db",
+      "mode": "0600"
+    },
+    "d01-composed-outer-fd49b9cead44f00b/controller.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0600"
+    },
+    "d01-composed-outer-fd49b9cead44f00b/retained.json": {
+      "bytes": 2375,
+      "sha256": "c9bd2a1e4e4a5924afc50b8aa5df211a24dcaa8380c1d0d0626d6ae7467e8037",
+      "mode": "0600"
+    },
+    "d01-composed-outer-fd49b9cead44f00b/resources.json": {
+      "bytes": 195,
+      "sha256": "04b83fd4dc25d55deff0e3abd6cc6c9c30511279be950b3e2c6943d259aaaf7b",
+      "mode": "0600"
+    },
+    "d01-composed-outer-fd49b9cead44f00b/review.json": {
+      "bytes": 305,
+      "sha256": "1d8ce26bd1b00fabd5ba178c6bb7409e06b0b6669b4e7667c0ebbc61177b8e67",
+      "mode": "0600"
+    },
+    "d01-continuation-memory-fd49b9cead44f00b/child.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0600"
+    },
+    "d01-continuation-memory-fd49b9cead44f00b/child.stdout": {
+      "bytes": 6862,
+      "sha256": "7bd435978f008a4a904e3c2d00dc2b0e49a6a1323874d080dd56ba436d78bbe3",
+      "mode": "0600"
+    },
+    "d01-continuation-memory-fd49b9cead44f00b/retained.json": {
+      "bytes": 748,
+      "sha256": "0030115fd975abc7e5771fb03a4b584aa056a278f515002e195546cd3cdfe8a5",
+      "mode": "0600"
+    },
+    "d01-continuation-memory-fd49b9cead44f00b/review.json": {
+      "bytes": 7116,
+      "sha256": "0a89e9fadafad045a9ea9632b056ef425eaa5f0f998cbc4baf205e680e8fcd79",
+      "mode": "0600"
+    }
+  },
+  "launcher_design": "ab8d7e7325bc961a0d538950456dc1b909f193b3",
+  "launcher_sha256": "8a4da1306765f331f18b4fd56cb71dff03395f40fb2246475be5e47b035e1e1b",
+  "controller_sha256": "d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a",
+  "all_prior_failed_captures_preserved": true,
+  "task_status_changed": false
+}
