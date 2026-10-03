@@ -1,0 +1,35 @@
+{
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "task": "506e3979-a590-4af3-8fa8-ee90d3a517f2",
+  "reviewed_at": "2026-10-03T07:24:27.809072+00:00",
+  "original_status_at_review": "in_progress",
+  "primary_worktree_preserved": "f2e8500e-2e56-47e3-b60e-9f81bbc8cff2",
+  "task_details_sha256": "6e78dadac79d4093bd9d0cab68e6421b7e2869a0bbe5d0dc515fd22bc40632d7",
+  "disposition": "accept_original_local_scope_done",
+  "status_mutation_performed_by_this_review": false,
+  "independent_review_author": "98b956552a9aa4a3fedb6ec3be0910335dfae5e6",
+  "independent_report_sha256": "f436963da68568b8979e1a5bc4d5c3618ee425af598882ebcd93026236b6acfc",
+  "root_actual_arm_receipt_sha256": "933bb1368d30ea9ba21e42728b1141420302ab581755fb968c1859f2c50d3e28",
+  "evidence": {
+    "native_x86_run": "37046857550",
+    "native_arm_run": "37016520583",
+    "arm_postgres_run": "37082572962",
+    "x86_container_run": "37099059596",
+    "arm_container_run": "37101183416",
+    "arm_container_job": "111140870511",
+    "arm_checks": 11,
+    "arm_reader_observations": 18,
+    "arm_preservation_packets": 10,
+    "arm_joined_steps": 2726,
+    "arm_cleanup_remaining_owned_resources": 0
+  },
+  "basis": "Produced and tested Linux x86-64/ARM64 server, client, container and maintenance assemblies with reached shared identity, authorization, revocation and configuration/refusal oracles at exact dated source pins. Root reviewed actual terminal evidence and full independent original-scope review; no further demonstrated local A09 facet remains.",
+  "limits": [
+    "LOCAL historical product9a/b619 cohorts, not a current a870 build",
+    "official_release:false and shared_full_gate:not_run remain exact",
+    "physical redb files differ on refused opens; complete logical rows/config/key preservation passed",
+    "Q08 selected shipped cohort, Q10 installed recovery and Q11 signatures/provenance remain separate",
+    "No universal protocol, tenant, physical-device, HTTPS/passkey, all-OS or minimum-libc certification",
+    "All prior failures and unknown causes retain their dated outcomes"
+  ]
+}
