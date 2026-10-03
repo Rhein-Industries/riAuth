@@ -417,6 +417,9 @@ pub(crate) fn configure_signing_key(
     input: KeyInput,
 ) -> Result<Value> {
     let actor = core.management(tx, token, "key.write", &format!("key/{}", input.id))?;
+    if input.private_key_pem.is_some() {
+        actor.require("key.write", "*")?;
+    }
     let replacement = if let Some(name) = &input.remote_signer {
         if input.private_key_pem.is_some() || input.kid.is_some() {
             return Err(Error::bad(
