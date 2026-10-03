@@ -1507,3 +1507,491 @@ async fn oidc_callback_presented_while_source_disabled_cannot_redeem_after_reena
     assert_eq!(source_links(&f).len(), 1);
     assert_eq!(source_links(&f)[0]["user_id"], user_id);
 }
+
+#[tokio::test]
+async fn source_link_plans_fence_scoped_credential_exposure() {
+    use riauth::delegation::{GrantInput, HumanRole};
+
+    let manifest = |username: &str, subject: &str, issuer: &str| -> riauth::state::Manifest {
+        serde_json::from_value(json!({
+            "api_version":"riauth/v1",
+            "source_links":[{
+                "source":"upstream", "username":username,
+                "subject":subject, "issuer":issuer
+            }]
+        }))
+        .unwrap()
+    };
+    let request = |plan: &riauth::state::Plan| riauth::state::ApplyRequest {
+        plan: plan.clone(),
+        secrets: Default::default(),
+        run_id: None,
+    };
+    let administrator = |f: &Fixture, username: &str| {
+        f.core
+            .create_user(
+                &f.admin,
+                NewUser {
+                    username: username.into(),
+                    password: PASSWORD.into(),
+                    email: None,
+                    display_name: username.into(),
+                    admin: true,
+                },
+            )
+            .unwrap();
+        text(
+            &f.core
+                .login(username.into(), PASSWORD.into(), None)
+                .unwrap(),
+            "session_token",
+        )
+    };
+    let auditor = || GrantInput {
+        role: HumanRole::Auditor,
+        scope: "audit/events".into(),
+    };
+    let exposure_events = |f: &Fixture, user_id: &str| {
+        f.core
+            .store
+            .list::<Value>("audit")
+            .unwrap()
+            .into_iter()
+            .filter(|(_, event)| {
+                event["action"] == "agent.credential_exposure" && event["target"] == user_id
+            })
+            .count()
+    };
+
+    for protection in [
+        "reviewed",
+        "historical",
+        "granted",
+        #[cfg(feature = "platform")]
+        "temporary",
+    ] {
+        let mut f = Fixture::new();
+        let target = f.user("target");
+        let user_id = text(&f.core.me(&target).unwrap()["user"], "id");
+        let upstream = Upstream::new(&f).await;
+        let agent = agent_token(
+            &f,
+            &[
+                ("source.write", "source/upstream"),
+                ("user.write", "user/target"),
+            ],
+        );
+        match protection {
+            "reviewed" => {
+                f.core.create_group(&f.admin, "protected").unwrap();
+                f.core
+                    .group_member(&f.admin, "protected", "target", true)
+                    .unwrap();
+                f.core
+                    .config
+                    .reviewed_membership_groups
+                    .insert("protected".into());
+            }
+            "historical" => {
+                let reviewer = administrator(&f, "reviewer");
+                let executor = administrator(&f, "executor");
+                f.core.create_group(&f.admin, "protected").unwrap();
+                f.core
+                    .config
+                    .reviewed_membership_groups
+                    .insert("protected".into());
+                let staged = f
+                    .core
+                    .stage_group_membership(
+                        &f.admin,
+                        "protected",
+                        GroupMembershipInput {
+                            members: vec!["target".into()],
+                        },
+                    )
+                    .unwrap();
+                let change_id = text(&staged["proposal"], "id");
+                let binding = || GroupChangeBinding {
+                    digest: text(&staged, "digest"),
+                };
+                f.core
+                    .approve_group_membership_change(&reviewer, &change_id, binding())
+                    .unwrap();
+                f.core
+                    .execute_group_membership_change(&executor, &change_id, binding())
+                    .unwrap();
+                f.core.config.reviewed_membership_groups.clear();
+                assert_eq!(
+                    f.core
+                        .store
+                        .get::<BTreeSet<String>>("reviewed_membership_holders", &user_id)
+                        .unwrap(),
+                    Some(["protected".into()].into())
+                );
+            }
+            "granted" => {
+                f.core
+                    .set_human_grants(&f.admin, "target", vec![auditor()])
+                    .unwrap();
+                assert!(
+                    !f.core.human_grants(&f.admin, "target").unwrap()["grants"]
+                        .as_array()
+                        .unwrap()
+                        .is_empty()
+                );
+            }
+            #[cfg(feature = "platform")]
+            "temporary" => {
+                f.core.create_group(&f.admin, "protected").unwrap();
+                f.core
+                    .config
+                    .pam_approvers
+                    .insert("protected".into(), ["admin".into()].into());
+                let access = f
+                    .core
+                    .request_access(
+                        &target,
+                        riauth::pam::NewAccessRequest {
+                            group: "protected".into(),
+                            reason: "Bounded maintenance".into(),
+                            ttl: 60,
+                        },
+                    )
+                    .unwrap();
+                f.core
+                    .decide_access(&f.admin, &text(&access, "id"), true)
+                    .unwrap();
+                assert!(
+                    f.core.me(&target).unwrap()["groups"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&json!("protected"))
+                );
+                assert!(
+                    !f.core
+                        .store
+                        .get::<Group>("groups", "protected")
+                        .unwrap()
+                        .unwrap()
+                        .members
+                        .contains(&user_id)
+                );
+            }
+            _ => unreachable!(),
+        }
+        f.core.config.validate().unwrap();
+        for repair in [false, true] {
+            let subject = if repair { "repair" } else { "new" };
+            let key = digest(&format!("upstream\0{}\0{subject}", upstream.source.issuer));
+            if repair {
+                f.core
+                    .store
+                    .write(|tx| {
+                        tx.put(
+                            "source_links",
+                            &key,
+                            &json!({
+                                "source":"upstream", "issuer":"https://previous.example.test",
+                                "subject":subject, "user_id":user_id
+                            }),
+                        )
+                    })
+                    .unwrap();
+                // Without an explicit issuer, the legacy row is still a no-op.
+                let legacy: Value = f.core.store.get("source_links", &key).unwrap().unwrap();
+                let mut unchanged = manifest("target", subject, &upstream.source.issuer);
+                unchanged.source_links[0].issuer = None;
+                let before = f.snapshot().unwrap();
+                let unchanged = f.core.plan_state(&agent, unchanged).unwrap();
+                assert!(unchanged.changes.is_empty());
+                f.assert_snapshot_except(&before, |key| {
+                    key == format!("plans/{}", unchanged.plan_id)
+                });
+                let applied = f
+                    .core
+                    .apply_state_confirmed(&agent, request(&unchanged), Some(&unchanged.plan_id))
+                    .unwrap();
+                assert_eq!(applied["changed"], false);
+                assert_eq!(
+                    f.core.store.get::<Value>("source_links", &key).unwrap(),
+                    Some(legacy)
+                );
+                assert_eq!(exposure_events(&f, &user_id), 0);
+            }
+            let spec = manifest("target", subject, &upstream.source.issuer);
+            let before = f.snapshot().unwrap();
+            let error = f.core.plan_state(&agent, spec.clone()).err().unwrap();
+            assert_eq!(error.status.as_u16(), 403, "{protection}/{repair}");
+            f.assert_snapshot(&before);
+
+            // A full human administrator retains the reviewed target's linking
+            // and issuer-repair paths without recording operator exposure.
+            let human = f.core.plan_state(&f.admin, spec.clone()).unwrap();
+            f.core
+                .apply_state_confirmed(&f.admin, request(&human), Some(&human.plan_id))
+                .unwrap();
+            let linked: Value = f.core.store.get("source_links", &key).unwrap().unwrap();
+            assert_eq!(linked["user_id"], user_id);
+            assert_eq!(linked["issuer"], upstream.source.issuer);
+            assert!(
+                f.core
+                    .store
+                    .get::<Value>("support_credential_exposure", &user_id)
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(exposure_events(&f, &user_id), 0);
+
+            // An exact existing link is a true no-op, even for a protected user.
+            let before = f.snapshot().unwrap();
+            let unchanged = f.core.plan_state(&agent, spec).unwrap();
+            assert!(unchanged.changes.is_empty());
+            f.assert_snapshot_except(&before, |key| key == format!("plans/{}", unchanged.plan_id));
+            let applied = f
+                .core
+                .apply_state_confirmed(&agent, request(&unchanged), Some(&unchanged.plan_id))
+                .unwrap();
+            assert_eq!(applied["changed"], false);
+            assert_eq!(exposure_events(&f, &user_id), 0);
+            assert_eq!(
+                f.core.store.get::<Value>("source_links", &key).unwrap(),
+                Some(linked)
+            );
+        }
+        // VerifiedLogin remains independent of the scoped plan writer's fence.
+        let start = upstream.start(&f, None);
+        upstream.callback(&f, &start, "new", json!({})).await;
+        assert_eq!(
+            upstream.finish(&f, &start, true).unwrap()["user"]["id"],
+            user_id
+        );
+        assert!(upstream.finish(&f, &start, true).is_err());
+        assert!(
+            f.core
+                .store
+                .get::<Value>("support_credential_exposure", &user_id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    for repair in [false, true] {
+        let mut f = Fixture::new();
+        let target = f.user("ordinary");
+        let user_id = text(&f.core.me(&target).unwrap()["user"], "id");
+        f.core
+            .update_user(
+                &f.admin,
+                "ordinary",
+                UserPatch {
+                    email_verified: Some(true),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let upstream = Upstream::new(&f).await;
+        let agent = agent_token(
+            &f,
+            &[
+                ("source.write", "source/upstream"),
+                ("user.write", "user/ordinary"),
+            ],
+        );
+        let key = digest(&format!("upstream\0{}\0ordinary", upstream.source.issuer));
+        if repair {
+            f.core
+                .store
+                .write(|tx| {
+                    tx.put(
+                        "source_links",
+                        &key,
+                        &json!({
+                            "source":"upstream", "issuer":"https://previous.example.test",
+                            "subject":"ordinary", "user_id":user_id
+                        }),
+                    )
+                })
+                .unwrap();
+        }
+        f.core.create_group(&f.admin, "protected").unwrap();
+        f.core
+            .config
+            .reviewed_membership_groups
+            .insert("protected".into());
+        let spec = manifest("ordinary", "ordinary", &upstream.source.issuer);
+        let before = f.snapshot().unwrap();
+        let plan = f.core.plan_state(&agent, spec.clone()).unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(
+            plan.changes[0].action,
+            if repair { "update" } else { "create" }
+        );
+        f.assert_snapshot_except(&before, |key| key == format!("plans/{}", plan.plan_id));
+        assert!(
+            f.core
+                .store
+                .get::<Value>("support_credential_exposure", &user_id)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(exposure_events(&f, &user_id), 0);
+        let applied = f
+            .core
+            .apply_state_confirmed(&agent, request(&plan), Some(&plan.plan_id))
+            .unwrap();
+        assert_eq!(applied["changed"], true);
+        let exposure: Value = f
+            .core
+            .store
+            .get("support_credential_exposure", &user_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(exposure["verified_email"], "ordinary@example.test");
+        let user: User = f.core.store.get("users", &user_id).unwrap().unwrap();
+        assert_eq!(
+            exposure["original_address_stamp"],
+            digest(&format!(
+                "{}\0{}\0{}\0ordinary@example.test",
+                user.id, user.created_at, user.pairwise_seed
+            ))
+        );
+        assert!(exposure["actor_id"].as_str().unwrap().starts_with("agent:"));
+        assert_eq!(exposure_events(&f, &user_id), 1);
+        let linked: Value = f.core.store.get("source_links", &key).unwrap().unwrap();
+        assert_eq!(linked["user_id"], user_id);
+        assert_eq!(linked["issuer"], upstream.source.issuer);
+        let before = f.snapshot().unwrap();
+        assert_eq!(f.core.apply_state(&agent, request(&plan)).unwrap(), applied);
+        f.assert_snapshot(&before);
+        let unchanged = f.core.plan_state(&agent, spec).unwrap();
+        assert!(unchanged.changes.is_empty());
+        f.core
+            .apply_state_confirmed(&agent, request(&unchanged), Some(&unchanged.plan_id))
+            .unwrap();
+        assert_eq!(exposure_events(&f, &user_id), 1);
+        assert_eq!(
+            f.core
+                .store
+                .get::<Value>("support_credential_exposure", &user_id)
+                .unwrap(),
+            Some(exposure)
+        );
+
+        // Linking remains allowed for ordinary users but cannot later elevate
+        // operator-known credentials into human grants or reviewed membership.
+        let before = f.snapshot().unwrap();
+        assert_eq!(
+            f.core
+                .set_human_grants(&f.admin, "ordinary", vec![auditor()])
+                .unwrap_err()
+                .status
+                .as_u16(),
+            409
+        );
+        f.assert_snapshot(&before);
+        assert_eq!(
+            f.core
+                .update_user(
+                    &f.admin,
+                    "ordinary",
+                    UserPatch {
+                        admin: Some(true),
+                        ..Default::default()
+                    }
+                )
+                .unwrap_err()
+                .status
+                .as_u16(),
+            409
+        );
+        f.assert_snapshot(&before);
+        assert_eq!(
+            f.core
+                .stage_group_membership(
+                    &f.admin,
+                    "protected",
+                    GroupMembershipInput {
+                        members: vec!["ordinary".into()]
+                    }
+                )
+                .unwrap_err()
+                .status
+                .as_u16(),
+            409
+        );
+        f.assert_snapshot(&before);
+    }
+
+    for repair in [false, true] {
+        let mut f = Fixture::new();
+        let target = f.user("target");
+        let user_id = text(&f.core.me(&target).unwrap()["user"], "id");
+        let upstream = Upstream::new(&f).await;
+        let agent = agent_token(
+            &f,
+            &[
+                ("source.write", "source/upstream"),
+                ("user.write", "user/target"),
+            ],
+        );
+        f.core.create_group(&f.admin, "protected").unwrap();
+        f.core
+            .group_member(&f.admin, "protected", "target", true)
+            .unwrap();
+        let key = digest(&format!("upstream\0{}\0activation", upstream.source.issuer));
+        if repair {
+            f.core
+                .store
+                .write(|tx| {
+                    tx.put(
+                        "source_links",
+                        &key,
+                        &json!({
+                            "source":"upstream", "issuer":"https://previous.example.test",
+                            "subject":"activation", "user_id":user_id
+                        }),
+                    )
+                })
+                .unwrap();
+        }
+        let before = f.snapshot().unwrap();
+        let plan = f
+            .core
+            .plan_state(
+                &agent,
+                manifest("target", "activation", &upstream.source.issuer),
+            )
+            .unwrap();
+        f.assert_snapshot_except(&before, |key| key == format!("plans/{}", plan.plan_id));
+        let before = f.snapshot().unwrap();
+        f.core
+            .config
+            .reviewed_membership_groups
+            .insert("protected".into());
+        f.core.config.validate().unwrap();
+        f.assert_snapshot(&before);
+        assert_eq!(
+            f.core
+                .store
+                .get::<u64>("meta", "revision")
+                .unwrap()
+                .unwrap_or(0),
+            plan.base_revision
+        );
+        // The plan is not stale: the writer must re-read the active config and
+        // reject the credential write, including rollback of its whole apply.
+        let error = f
+            .core
+            .apply_state_confirmed(&agent, request(&plan), Some(&plan.plan_id))
+            .unwrap_err();
+        assert_eq!(error.status.as_u16(), 403);
+        f.assert_snapshot(&before);
+        assert!(
+            f.core
+                .store
+                .get::<Value>("support_credential_exposure", &user_id)
+                .unwrap()
+                .is_none()
+        );
+    }
+}
