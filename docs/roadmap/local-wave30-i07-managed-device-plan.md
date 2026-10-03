@@ -223,3 +223,112 @@ Protected own D01 report remains1488800 bytes, SHA256 `ac7b088408854cf77303e10b0
 - Source line-location resample corrected the new report's approximate locations to the exact function starts before commit. No code or outcome changed.
 
 Final rerun after the report-only additions: docs exit0, hygiene exit0 (1085 files), whitespace exit0; staged scope exactly A for this report and no unstaged diff. The immutable handoff carries the commit/tree/report hash. No test, harness, provider, desktop, Cargo or validation slot was acquired or released. I07 remains the original unchanged task; root retains gate interpretation and future source/runtime ownership.
+
+
+## 2026-10-03: exact provider-transition negative regression materialized, runtime held
+
+Reservation `wave30_I07_provider_transition_negative_regression`, project891e7443-8dac-4c1b-897f-9e53cb59c7ee, existing WT7c85f5ef only. This is source/static evidence for original I07 task34688b10-fa4b-4b83-8070-adfb3e55dc41. Original assignment/primary/status remain unchanged. Root accepted the narrow contract after the prior dated source audit: a local-software proof is not Google verification; switching to valid configured Google requires fresh verification for protected authorization, while an unprotected client stays usable. That decision does not turn this unexecuted negative into a product pass or a production fix. The entire prior36339-byte report is preserved unchanged; its SHA256 is `975f7be87db7f6316d3e906ace72fc00d916b35cf12f92f2e01af09551f7a59b`.
+
+### Exact source identity and preservation
+
+Source commit `bc2019a2237bad9a894b25b10ec9a273716931b8`, parent `6bc8cf8a958e5875f07a298e6fbb8e66f9845292`, tree `c8395fcbc44c3cc866abce917ad6b043719c39ea`, changes ONLY `tests/device_trust.rs`:53 added lines, no removed lines. The complete1959-byte addition was decoded from the sole archived diff in immutable6bc8cf8; SHA256 `9a7bbe4f55dcb66c8175553f0005ae31791adac08943a64235da3082470aec63`. It was inserted immediately before the final closing brace of the existing `google` module, with no variation or automatic formatting.
+
+| Object | Complete bytes/lines | SHA256 |
+| --- | --- | --- |
+| Fixed544 test at `544d1340b80cd3e040dc13142cdcbc1d75fea4cb` | 62736/1777 | `2287bfff16bac53e096652ac9760342577f0a46aaf3f5e714d064a6947559e8f` |
+| Materialized test | 64695/1830 | `149795ac2fdcc3f0888ba2974089cfe47a48a92b165d9fe0cffefea110ca76c4` |
+
+Materialized Git blob: `488dd0c41b4bfe8dc201c4902595ada7a29f29f5`. Whole-file reversal removed only the exact1959 bytes and reconstructed all62736 fixed544 bytes, not selected function fragments. The pre-edit working test equaled fixed544. The materialized addition, staged index and committed object all matched the approved candidate hash. The strict assertion remains `assert_eq!(error.code, "unmet_authentication_requirements");`; no generic denial or weaker equality substituted. Existing test bodies, imports, features and fixtures are byte-exact outside the insertion. This turn reviewed the entire new function and its exact diff; whole-file identity/inverse checks do not claim a new independent full-body audit of every old test.
+
+`google::retained_local_proof_requires_reverification_after_provider_change` first establishes a local-software proof and protected authorization, preserves that store/session across a Core reopen with valid Google configuration, installs the existing failing in-process transport, then demands the exact protected-authorization refusal and unprotected-client success. This defines an intentionally negative regression. Current source lacks persisted provider identity, as the dated audit and root review already record. The actual test may fail under current product; no outcome is predicted as observed. If protected authorization unexpectedly succeeds, `.unwrap_err()` stops the test before the later unprotected-client assertion: that control would then remain unexecuted, not passed. This test supplies no physical enrollment, live Google/Chrome/ChromeOS/Windows/TPM provenance, HTTP or browser evidence.
+
+### Actual authorized static check and formatting failure
+
+Ran exactly `rustfmt --edition 2024 --check --config skip_children=true tests/device_trust.rs`: exit1. Rustfmt parsed the file and reported a formatting difference at line1782: it would replace the approved two-line device-trust assignment with `f.core.config.device_trust = Some(super::trust(f._dir.path(), &public_pem, "local-device"));`. No parse diagnostic appeared. Because root reserved exact candidate bytes, no formatter mutation/correction or second invocation occurred. The failure remains a formatting-check failure and must not be represented as an all-checks pass; any future formatting change needs root coordination.
+
+`git diff --check` and source-stage `git diff --cached --check`: exit0. Source index scope was exactly one modified test and no unstaged diff; byte/inverse checks passed again after rustfmt. This was Rust parsing/format checking only, without type checking, compiling, running a test or generating a key. No Cargo, existing/candidate case, provider/native/version command, helper/CLI product, server, network, browser/Driver or new target ran. A09 ARM37101183416 retains the validation/Cargo lane; this phase acquired/released no resource slot.
+
+### Existing private-cache inventory and exact later command
+
+Read ONLY own-WT cache JSON and artifact file metadata, without executing any artifact, Cargo or compiler. Own `target/` contains two non-symlink private directories, `wave30-o06-controller` and `wave30-o06-readiness`. Each contains441 fingerprint JSON files and zero `device_trust` test fingerprints. Their cached compiler record says `rustc 1.98.1 (48a229cea 2026-09-01)`, aarch64-apple-darwin; that is retained metadata, not a fresh native/version invocation. Current `rust-toolchain.toml` pins1.98.1. Manifest, lock and toolchain bytes equal the prior readiness source pin `b7bc6efe0f10419e419cdbc16e7d2792b72777cb`:
+
+| Current/prior identical input | Bytes | SHA256 |
+| --- | --- | --- |
+| `Cargo.toml` | 4020 | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| `Cargo.lock` | 109243 | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| `rust-toolchain.toml` | 86 | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+
+Both library fingerprints have features `["default", "essentials", "platform", "test-support"]`, empty rustflags, compile_kind0, rustc identity17329007180185699724, config9396254390672932401 and profile12672335563272108896. Both existing integration-test fingerprints have the same features/config/compiler, profile11094973624911973823 and59 dependency entries; canonical dependency-array SHA256 `93c41b91c846b1633d094745c99c3a30af81f7b349c75a7a55889f87902d46b8`. The default Platform plus test-support matches the proposed focused invocation, including the `google` module's two feature guards. The previous readiness report records jobs1/inc0/dev+testdebug0; current cache metadata does not independently prove a future build's environment.
+
+| Cache record read in full as JSON data | SHA256 |
+| --- | --- |
+| controller `.rustc_info.json` | `dc8d2a963ab369c5be3389ec5f05cee9d9287f8daa70c31c82dea748e73aa09c` |
+| readiness `.rustc_info.json` | `27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4` |
+| identical `riauth-0d65ce4b80b71950/lib-riauth.json` | `ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10` |
+| controller `riauth-b27819467adb3ed5/test-integration-test-o06_unscheduled_controller_diagnostics.json` | `cb7d02fae0baa52504d37605768d782d529167a9d3a4dacfa853821361e6e6cc` |
+| readiness `riauth-e8defbc0b9ac7734/test-integration-test-o06_readiness_cause_signal.json` | `55b3ff104dc15b5942747a65a438013207ceb7f2d1904cb8b84c9023339096af` |
+
+The existing regular, non-symlink metadata-only artifacts in both caches include `libopenssl-43b098cf0be13958.rlib`7629408 bytes and `libtempfile-3606bf3ae9042636.rlib`586488 bytes. `libriauth-0d65ce4b80b71950.rlib` is408115912 bytes in controller and408148624 bytes in readiness. No artifact contents or native code was executed/read as evidence of current correctness. Initial metadata output was clipped by the tool; a concise repeat read captured all relevant identities and fields above. Fingerprints are build metadata, not execution receipts.
+
+Recommend root reserve the existing own readiness cache for ONE later focused command, avoiding the cold `wave30-i07-provider-binding` directory proposed in the dated prior phase. It has matching toolchain/dependency/feature metadata and a previous targeted-test cache, but product-source changes require rebuild and there is no compiled new test. Actual future cache validity, disk capacity, compile success and result remain unproved. Exact proposed command, NOT executed:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust google::retained_local_proof_requires_reverification_after_provider_change -- --exact --test-threads=1
+```
+
+Root must separately review/reserve this target and runtime after the sole lane is available; fresh disk-floor monitoring and root resource coordination remain prerequisites. No new target was created, cache deleted, artifact/provider pin refreshed or process inspected/signalled. Expected negative failure would be retained with the exact assertion stage and unreached-control limitation before any root-owned production fix.
+
+### Protected scope and candid handoff
+
+The source commit changed no production/schema/config/helper/other test or D01 file. I07 evidence append is a separate report commit. Protected D01 report remains1488800 bytes SHA256 `ac7b088408854cf77303e10b01e114c9e4bc336ec2811b02217733a176fc47a3`; helper remains36884 bytes SHA256 `37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406`, compared byte-exact to6bc8cf8. No historical private capture was opened or rewritten. All historical failures, unknown sender/cause/lost values, prior memory limitations and unproved whole60 cleanup stay intact. Authority/review/receipt/header/PAM/held Group/nonrenewed60s/paused IO and closed rows remain unchanged. Root alone owns contract adjudication, integration/publication/runtime and original-row disposition. This source-only regression recommends no I07 closure and supplies no new D01/D05 outcome.
+
+
+### Actual report-phase checks
+
+After the main appendix was written: `python3 scripts/check-docs.py` exit0 (“Markdown links and build-directory layout checked”); `python3 scripts/check-repo-hygiene.py` exit0 (“Tracked-file hygiene checked (1085 files)”); `git diff --check` exit0. Actual source-tree delta was exactly one test; actual report-phase unstaged scope was exactly the existing I07 report. Complete prior report-prefix equality, committed-test equality/whole fixed544 inverse, and all protected D01/manifest/lock/toolchain bytes passed again. These passing document/scope checks coexist with the retained rustfmt exit1 above; no Cargo/test result is supplied. The final staged whitespace/prefix/scope check and immutable commit identifiers are returned in the handoff. No validation/Cargo/desktop slot was acquired or released.
+
+
+## 2026-10-03: reserved one-line rustfmt correction, source/static only
+
+Reservation `wave30_I07_regression_rustfmt_one_line`, same project891e7443-8dac-4c1b-897f-9e53cb59c7ee and existing WT7c only. Root authorized ONLY joining the newly added device-trust assignment to the installed rustfmt shape. Source commit `6ba2e95c42c271804d1715eb05380953b008130d`, parent `b05ee4c1f24061fdd22c6bebc42b3dc4e9b950cd`, tree `7357ad7e5a5d6b48c12c4e7abe242861fcd3627b`, changes ONLY `tests/device_trust.rs`:1 added line/2 removed lines. No other assignment, operation, assertion, test body or file changed. Exact test blob is `5c9d9401961033805745335ac353309237e9ba65`.
+
+The entire47036-byte b05 I07 report prefix remains byte-exact, SHA256 `9837c83cb379fc642d716c752f393ebbf59060fa1f4ab215d765903509e70c90`. Its original rustfmt exit1 remains the actual dated failure. This appendix records a separately authorized source correction and new static result; it does not revise that prior outcome.
+
+### Exact correction and qualified reversal
+
+Only this source text changed:
+
+```diff
+-        f.core.config.device_trust =
+-            Some(super::trust(f._dir.path(), &public_pem, "local-device"));
++        f.core.config.device_trust = Some(super::trust(f._dir.path(), &public_pem, "local-device"));
+```
+
+| Complete object | Bytes/lines | SHA256 |
+| --- | --- | --- |
+| Original materialized bc2019 test | 64695/1830 | `149795ac2fdcc3f0888ba2974089cfe47a48a92b165d9fe0cffefea110ca76c4` |
+| Approved formatted test | 64683/1829 | `ee9c1676e8fb3aa6f6d2092a343e70bb0beae703d563d3e410ad611093e340dd` |
+| Original proposal addition before formatting | 1959/53 | `9a7bbe4f55dcb66c8175553f0005ae31791adac08943a64235da3082470aec63` |
+| Current formatted addition | 1947/52 | `26ec44ca91328e1338d70e2be9394ac2ed153aec4da39725e7c66ad5a31542d2` |
+| Fixed544 original test | 62736/1777 | `2287bfff16bac53e096652ac9760342577f0a46aaf3f5e714d064a6947559e8f` |
+
+Both source strings occur exactly once in their respective complete files. Replacing the single joined assignment with its exact prior two-line text reconstructs the entire bc2019 object byte-for-byte. Replacing the same text inside the1947-byte addition reconstructs the original1959-byte proposal. Every other test byte is unchanged. Separately, removal of the complete current1947-byte addition reconstructs the entire fixed544 test directly; no protected old function is excluded from this proof.
+
+The original1959-byte proposal reversal is now explicitly qualified as a proof of the pre-format bc2019 object. It is not the byte length/hash of the current formatted addition. To reverse the original proposal from the current test, first undo only the reviewed formatting change, then remove the original1959 bytes. Either that path or direct removal of the current1947-byte addition restores all62736 fixed544 bytes. The strict `assert_eq!(error.code, "unmet_authentication_requirements");`, protected/unprotected authorization sequence, existing transport and all test operations remain exact.
+
+### Actual static checks and held result
+
+Ran `rustfmt --edition 2024 --check --config skip_children=true tests/device_trust.rs` once in this correction phase: actual exit0, empty stdout. Source `git diff --check` and staged `git diff --cached --check`: exit0. Source-index scope was exactly one modified test; staged hash matched the formatted candidate, and no unstaged diff remained before its commit. These are parsing/formatting/whitespace/source checks, with no Rust type-checking, compilation, test execution, key generation or provider observation. The earlier exit1 remains preserved above. The regression remains intentionally negative and unrun; no product fix/pass or successful unprotected control is claimed. If future protected authorization unexpectedly succeeds, the test still stops at `.unwrap_err()` before the unprotected assertion, preserving the earlier unreached-control limitation.
+
+The prospective focused command and own private cache remain exactly the prior proposal; no new cache/target was created, cache deleted or runtime probe made. The previous static inventory is dated evidence, not a new build/cache execution result. The existing `wave30-o06-readiness` cache had matching toolchain/manifest/lock/features and no compiled `device_trust` target. Root alone must release/reserve the runtime and fresh disk-floor monitoring after independent source review and sole-lane availability. Exact command, NOT executed:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust google::retained_local_proof_requires_reverification_after_provider_change -- --exact --test-threads=1
+```
+
+A09 ARM37101183416 still owns validation/Cargo. No Cargo/test/provider/native artifact/version/key generation/HTTP/browser/Driver/runtime ran; no slot was acquired/released. No production/schema/config/helper/other test/D01 file changed, no alignment/main/push/status action occurred, and no other worker was contacted. The protected D01 report/helper remain byte-exact to b05, with the prior recorded hashes. Historical private files were not opened or rewritten. Original I07 task/assignment/status, all historical failures/unknowns/lost-value corrections and unproved whole60 cleanup remain unchanged. Root alone owns source review, runtime, integration/publication and original acceptance; no closure or physical managed-device provenance is inferred.
+
+
+### Actual correction-report checks
+
+After this appendix was written: `python3 scripts/check-docs.py` exit0 (“Markdown links and build-directory layout checked”); `git diff --check` exit0. Exact source-commit scope and report-only current scope passed. Entire b05 report-prefix equality, committed formatted-test equality and protected D01/manifest/lock/toolchain byte equality passed. Final staged whitespace/scope/prefix and clean-tree proofs are returned with the separate report commit. These checks add no compiled/type/runtime result and do not erase the original fmt failure. Runtime remains held; no lane was acquired/released.
