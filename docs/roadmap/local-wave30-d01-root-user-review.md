@@ -243,3 +243,24 @@ Changed-delta independent review is separately assigned. No child/VM/case,
 private input or browser runtime has run; runtime release stays held pending
 that acceptance and fresh prerequisite checks. Later public projection and
 preparation composition are not validated by this old9f harness.
+
+
+## 2026-10-03 — corrected EOF independent acceptance and one memory release
+
+Root fully read all104 new lines of
+`f25f151d086d99f5d0f1619193c60b1a3540e5b9`. The exact22-byte normal-EOF
+assignment is independently source-accepted; all original controller/payload
+bytes, cases and fail-closed retention/cleanup/grading policies remain exact.
+Root separately released one unchanged corrected controller invocation with
+fresh capacity and a fixed fresh evidence basename. No actual memory result is
+known at this publication point. Later public projection/preparation and the
+real confidential browser journey remain outside this25-case scope.
+
+Root fully read the composition source/proof at
+`251a29c097fc8b9a1fc1dd083bab97060242bdf0`, then independently parsed the
+full113395-byte composition without evaluating it. The exact79694-byte
+preparation prefix and33701-byte public projection suffix compose with zero
+duplicate/unresolved lexical bindings. Two unchanged entry hash validators
+still expect the old31581-byte suffix, so a truthful new505b source receipt
+would be refused. Root reserved only those two literal pin replacements in
+the proposed source archive; composition runtime remains held.

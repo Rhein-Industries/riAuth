@@ -290,3 +290,107 @@ result, not this worktree's result. Report-aware docs, exact reference checks,
 LF/trailing-whitespace, Git scope/whitespace and clean post-commit checks
 accompany the handoff. The final commit adds only this report; every other
 tracked file and historical report remains equal to entry parent e04.
+
+## Dated independent delta review: corrected normal EOF, 2026-10-03
+
+Reservation `wave30_D01_memory_eof_independent_delta_review`, same project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee` and existing isolated WT ed9 only.
+Entry `88b57b1923db8bc84773f983b622fb93d5e3d976` was clean. The entire
+19508-byte report above, SHA-256
+`ab588e9078d0c7c079252c0c4711c49d80c3c3b08d0cbbca26fae30fe6c8c76a`,
+is preserved exactly. Its original hold recommendation remains a dated
+assessment of the defective 36ac controller, not of this corrected source.
+
+### Recommendation on the exact corrected source
+
+Accept the exact e443 controller delta for the bounded old-9f memory design.
+It resolves F1 by recording EOF only after the existing normal output read
+returns empty, before that stream is unregistered/closed. No additional
+concrete blocker was found in this delta. The previously source-reviewed
+132725-byte payload and 25-case harness remain byte-identical. This source
+acceptance is not an actual memory result or an automatic runtime release.
+Root alone may separately release one exact bounded invocation after its
+changed-source acceptance. The original browser journey remains HELD.
+
+### Immutable bodies and complete preservation proof
+
+The corrected appendix begins at document line 4129 in
+`e4431d4f85eec7add72dec0183b9784917e451c3:docs/roadmap/local-wave30-d01-continuation-correction-plan.md`.
+I fully read its new semantic prose, entire eleven-line diff and complete
+68-line static checker. I independently extracted/parsed the complete
+corrected controller and inspected its unique normal-output branch. The
+unchanged 209K data/body was checked by whole-byte and AST inverse, rather
+than reprinted or claimed as a new runtime exercise. The archived checker
+was read, not executed; the comparisons below used an independent parser.
+
+| Corrected archive | Bytes / LF lines | SHA-256 |
+| --- | --- | --- |
+| Complete e443 report | 649834 / 6470 | `afff04fedb1dc87eddab804df0147ab00415013414c6446e72da92b44d0bb98d` |
+| Corrected controller, document lines 4199–6322 | 209970 / 2124 | `4c62dfc156a6b6ad5e4528d48124c926210f0abffdd2f6d8538bded788be090e` |
+| Sole context diff | 674 / 11 | `ad6124f495b09230f96c031618d73e5901990b3e9e9fc1890fbb92dea934f09c` |
+| Read archived checker | 4139 / 68 | `af05f9735db99286bb26118ff7c998d3664ff74b12b43368ac08d51cfb716631` |
+
+All 427496 original 36ac report bytes remain the exact prefix. Its five
+original source fences are unchanged; the appended diff/controller/checker
+are the only three new fences. The complete corrected controller is exactly
+the original 209948-byte controller with the unique 22-byte
+`stream_eof[kind]=True;` insertion on controller line 2043. Removing it
+reconstructs every original byte and original SHA-256
+`e3bde0116783eccd01bc6c9c3183c06ade99af21d95800fa47327de9c1ca2207`.
+There is no line-count change, replacement of stale surrounding source,
+additional path or executable materialization.
+
+The normal branch now has the exact assignment followed by the original
+unregister, close and continue. I verified its parent is the output `else`
+arm of the separate `kind == "in"` branch. Registered output kinds are the
+existing out/err map keys. It does not mark input delivery, infer EOF from
+child exit, or accept a nonempty read. Initial false flags, finally-drain
+EOF handling and `retained=all(stream_eof.values()) and not output_capped`
+remain exact. A cap failure still refuses; EOF does not erase a prior latch.
+
+Removing only that assignment from the full corrected Python AST restores
+the entire old AST with locations excluded. All sixteen top-level assignment
+ASTs are identical. Eleven of twelve complete function bodies are byte-exact;
+only main contains the insertion. This covers the first clock/start, 30/35
+deadlines, caps/floor, launcher/payload identities, plan/catalog/source
+constants, first-failure state, strict packet validator, exclusive save and
+owned-group cleanup functions. Whole inverse equality also protects every
+remaining main statement, including retain-before-grade ordering, final
+journal close and final-clock acceptance.
+
+The controller's decoded payload equals the complete original Node archive:
+132725 bytes, SHA-256
+`46c19af829c546cf0f32f0a587db084dd00d304ea9d508c98ccda0b2a6028866`.
+Its readable harness remains 26197 bytes, SHA-256
+`639df7f15a1f8135b57ecbacb15062cdc75da100530e4c062e856e7ed2a87054`.
+The plan/catalog literals match that payload data; all 25 cases remain in
+the original order, with group totals 5/3/5/7/5. Full embedded bytes preserve
+c5/9f bindings, F2/F3/F4 oracles, sentinels, collectors, authority/ref guards
+and no-journey/whole60 rules. No case was invoked to establish these facts.
+
+### Checks, historical limits and handoff
+
+Independent source/data/AST checks exited 0: exact report/archive hashes,
+427496-byte prefix, sole forward/reverse replacement and context diff,
+single-assignment full AST inverse, all sixteen constants, eleven protected
+functions, normal out/err arm, unchanged complete payload/harness/plan and
+protected 19508-byte own report prefix. There was no failed static comparison
+in this delta audit. The author's draft fence-regex failure and my earlier
+EOF-selector failure remain dated in their original records; neither was a
+candidate or controller run.
+
+`python3 scripts/check-docs.py` passed at entry with no preexisting flags.
+Report-aware documentation, prefix/reference/LF/whitespace, staged sole-path
+append and clean post-commit checks accompany this handoff. No checker cache
+or file was deleted to alter a result. The only commit mutation is this
+append; every other tracked path remains equal to parent 88b57.
+
+The corrected controller, payload, VM, cases, stubs, functions under review,
+Node child, collector/helper/import/main, Driver/browser, native/product CLI,
+HTTP/network/PG/Cargo and private-input/artifact reads remain UNEXECUTED here.
+Only independent parser/data and documentation programs ran. No runtime slot
+was taken/released, author contacted, source aligned, task/status changed or
+main/push performed. The 25 prospective cases remain unrun; later Sol3 public
+projection and Sol4 preparation composition remain outside their coverage.
+All prior failures, historical memory scopes, unknown c88 sender/cause/lost
+values and unproved true first-cleanup/whole60 limits remain unchanged.
