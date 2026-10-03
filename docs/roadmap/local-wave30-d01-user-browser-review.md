@@ -17178,3 +17178,204 @@ this phase did not modify that prefix or repair the historical checker match.
 Only this report is modified, with no untracked files. The approved source-pin
 mismatch is resolved in the archive; runtime and original acceptance remain
 held for root-coordinated independent review and new meaningful validation.
+
+## 2026-10-03 — current published source alignment preparation; all runtime held
+
+Reservation `wave30_D01_current_source_alignment_preparation`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing Sol4 WT7
+`7c85f5ef-3fac-4f72-aaed-08474d7fb454`.
+This phase aligns the existing branch with the exact approved published pin.
+It authors only this report appendix after a history-preserving merge.
+No helper/controller implementation, executable controller file, artifact refresh
+or runtime authorization accompanies it.
+
+### Exact merge and complete published-tree equality
+
+Entry was clean at `d430d90a8ff0c28ac58d759e26e492041d986d2f`, tree
+`0dc3122b59cb7dc38acd91c6b3d0b505ba7b5abd`, on
+`roadmap/sol-management-wave30`. The supplied immutable published revision is
+`560525a07eea0a696ffeb36599308795348dab47`, tree
+`a3c55e5d4309741b2b40b1b31944f5c8bd34e61a`.
+Both revisions were read as Git commits. Their merge base is
+`da5ff7dcfc3442c302955344229168872911b0ec`.
+
+The completed merge is `d8e230236bc46d7bde673901a2d0c0ffa8935d50`.
+Its ordered parents are exactly:
+
+1. `d430d90a8ff0c28ac58d759e26e492041d986d2f` — own complete history.
+2. `560525a07eea0a696ffeb36599308795348dab47` — published complete history.
+
+Its tree is exactly `a3c55e5d4309741b2b40b1b31944f5c8bd34e61a`,
+equal to the published tree. This is full Git tree equality, including path,
+mode and object identity of every one of the 1084 tracked leaf entries;
+it is stronger than a selected helper hash check. All published production,
+tests, scripts, manifests, configuration, workflows and report bytes are
+therefore preserved. No manual product hunk was composed. Both old and
+published histories remain reachable through the two merge parents; no reset,
+rebase, history replacement, main checkout or push occurred.
+
+### Conflicts actually encountered and exact resolutions
+
+`git merge --no-ff --no-commit 560525a07eea0a696ffeb36599308795348dab47`
+exited1 with two add/add conflicts. They were:
+
+| Path | Own stage2 blob | Published stage3 blob | Resolution |
+| --- | --- | --- | --- |
+| scripts/d01-confidential-browser-demo.py | `3d3379399126423a6a5588a6bd55ea4ac1723ebd` | `a01b1f3f81f0978eb0a02ed339c7248cae485350` | Exact already-approved published blob; no synthesized code. |
+| docs/roadmap/local-wave30-d01-user-browser-review.md | `1bfc25c00326197056de0da643f82a3ffb2ae835` | `77df3163df98a433f2dd8243d4d1adfe47870b14` | Exact published report, after the complete own-history reconstruction proof below. |
+
+The helper conflict was precisely the old32723-byte 470 source versus the
+explicitly required, already published35749-byte descriptor-corrected helper.
+Selecting that exact approved blob is source alignment, not a new helper
+implementation or an invented conflict resolution. No other source conflict
+was present. Before resolving these two paths, all1082 non-conflicting index
+entries already matched the corresponding published path/mode/blob, with no
+extra entries. After exact published-blob selection, no unmerged, unstaged
+or untracked entries remained; the entire index tree matched published.
+No nontrivial unreviewed source resolution was made.
+
+The report resolution preserves the complete1249280-byte published prefix,
+SHA256 `54ff6519893808c62718706846fc01e5b097da1ae71437571a5b94b34254970e`.
+It does not falsely claim that published begins with a literal byte-for-byte
+copy of the own1240563-byte report. Root had previously inserted its dated
+review notes and documented one Markdown publication encoding.
+
+A complete line/data comparison found exactly five insertion blocks and
+one single-space rendering replacement, with no other substitution or deletion.
+The insertion blocks are the publication-encoding note, actual cleanup-memory
+receipt note, observer-controller review, successful-entry/controller-boundary
+reviews in one contiguous block, and preparation/blank-contract survey review.
+Removing only those complete inserted blocks and reversing only the documented
+call-space encoding reconstructed the ENTIRE own report byte-for-byte:
+1240563 bytes, SHA256
+`94ffa7a26c0937e6c3347a3edf95d9cd35d3783c8861be1e7d73a04d597521db`.
+This proof preserves the authored report through immutable history and exact
+inverse reconstruction; it does not remove any root note from the current file.
+
+Exact immutable published-to-own witness spans from that comparison:
+
+| Change | Own line span | Published line span | Added/changed bytes | Published span SHA256 |
+| --- | --- | --- | ---: | --- |
+| inserted encoding note | before2393 | 2393–2399 | 468 | `7cc5633cddc435a40a90ecc3144c18cb1f8eeafdb83f1091696b53f96fe6bf3a` |
+| documented call-space | 2813 | 2820 | 64 replacing63 | `1c96ef10078d09e0941a7de401a5165ae04bfbc2949da16cbff6d485a337dc19` |
+| inserted cleanup note | before7428 | 7435–7442 | 1932 | `e17ae9f14ceec096aba0aca156ae8a06c22485a78d6755aa54c0640247f8d4ed` |
+| inserted observer review | before9095 | 9110–9138 | 1827 | `a7e46e7c6e4e0ee5fb6c9882ddff6d2ba703cc98d938269edb22ae500bab75c9` |
+| inserted phase/boundary reviews | before9770 | 9814–9829 | 1493 | `70ee14337b2bd139522a11072e9e1fee8a8c43b7a83eafb9163a4943ed67efb6` |
+| inserted preparation/survey review | before11191 | 11251–11261 | 2996 | `576dac0ef7ff873acabf197c381b792dee34b7bd36abf07e6c246392c638f88e` |
+
+The other five own reports changed since the merge base were already byte-exact
+at both supplied heads and remain exact at the merge:
+
+| Own report | Bytes | SHA256 |
+| --- | ---: | --- |
+| local-wave30-a09-logical-reader-independent-review.md | 23258 | `57f262e62b302a3ff21c1dfaee66f8e39350f710547f6f4fd1ce309f721df238` |
+| local-wave30-d05-independent-review.md | 35547 | `e201fe484fefb0cf416a0416ccea9e6672bae4f4a436b1f988e642addbf7088d` |
+| local-wave30-o06-controller-diagnostics.md | 11125 | `c9a0f5fb41e8d329af23ee7a39706abc3864fd7361fc8e84829466361b449e8d` |
+| local-wave30-o06-original-scope-disposition.md | 22176 | `9ad7baef5de42d64e4450eabaeceac3609119e7be2457f915d3b15af00d4b123` |
+| local-wave30-o06-readiness-cause-proposal.md | 27506 | `a38f46808a4ac72513ae5d561af791311ee4ef81a41fef8aabd85c947d1e8479` |
+
+### Current source, held guards and preparation identities
+
+Current helper is exactly35749 bytes, Git blob
+`a01b1f3f81f0978eb0a02ed339c7248cae485350`, SHA256
+`75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1`.
+The old470 helper SHA7fbc is retained only in history and dated evidence.
+It was not copied over the current published helper.
+
+Data-only AST reading of current source retained the fixed public literals:
+issuer `http://localhost:9000`, client `local-demo`, verifier source
+`9cefe7a56425bb73c17753e8766d92320b77da3b` / blob
+`3be747d03146f1bcaa3ec012ee8d173b61fa737d` / SHA256
+`f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d`,
+provider SHA256
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`,
+and exact full version literal
+`OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)`.
+These are source identities; no binary/provider/verifier artifact was opened,
+rehash-refreshed, imported or invoked in this phase.
+
+Exact tree/blob equality retains all current helper guard behavior: pinned
+localhost3000 callback, confidential client-secret POST, state/nonce/S256,
+native verifier checks, strict Host/parser/Authorization/body/cookie bounds,
+first-reason diagnostics, three preflow stateless403 refusals and terminal
+fourth403, post-flow400 and descriptor-safe finite observer. No accepted set,
+counter, secret lifetime, crypto, policy or cleanup behavior is altered here.
+
+The accepted own b211 archive remains dated source design: complete113395-byte,
+1241-line preparation/launcher composition SHA256
+`a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`.
+Its declared entry-suffix identity is the complete33701-byte Sol3 cell SHA256
+`505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f`,
+not the whole-module hash. Its two literal source-pin corrections and all own
+static receipts remain preserved. This alignment does not execute, freshly
+revalidate or implement that archived launcher/private carrier/preparation.
+Exact isolated Driver binding, private-input proof, prepared-entry barrier,
+first-failure latch and ownership/absence requirements are not replaced by
+merge success.
+
+The current root source-only composed memory controller is separately archived
+in published `docs/roadmap/local-wave30-d01-root-user-review.md`:
+242290 bytes,2451 lines, SHA256
+`d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a`.
+I extracted it as data, verified that exact size/hash and AST-parsed it without
+import/evaluation. It remains UNRUN. Its36-case DATA payload and pre-spawn
+waitable-SIGCHLD source composition are source acceptance only; no memory
+counts, child cleanup or browser outcome is credited here. The root narrative
+at published lines396–435 expressly retains its exact future CPython launch
+pins,30s child/35s controller bounds, persistence-before-grade and separate
+release prerequisites. No Node child, signal setter or collector ran.
+
+Supporting published report objects were identity-checked, not full-body
+independently re-reviewed in this alignment:
+
+| Published source-design report | Git blob | Bytes | SHA256 |
+| --- | --- | ---: | --- |
+| local-wave30-d01-continuation-correction-plan.md | `890d8528b1b1f2e32ca142bba57215cd1081fe69` | 984612 | `245984d2892f6ab26db7298c96e2adf0da513016d8b50e63c1423686387f0a42` |
+| local-wave30-d01-browser-decision-projection-plan.md | `16314175874b325f5772a01b147272c9148b2b3e` | 318396 | `37727bd81a4f87d9be1a09dfe08746a41e8d88f6568773c09362c8ce3d1ce8a9` |
+| local-wave30-d01-preparation-independent-review.md | `b6af1c9554901199c463feb7e1e2e86152990c88` | 50294 | `137f0b852a4bb5097abc9b39759c52fb273aa3b6fc15974770a4470a24d10235` |
+| local-wave30-d01-projection-memory-independent-review.md | `6896775f95912ca36b6f85f64d1bb2ae0ce856dd` | 30509 | `1f25a92d07a3631dea64111a09cde814a281c1bc19a002543e05adb493c22313` |
+| local-wave30-d01-root-user-review.md | `3aa3ba546f115843fb36ff97ac535af766e4ff3c` | 276230 | `ceb787321c0ebfd55cc86cfba0cfae6dd87a24b8115bf5c11f31c36286b0f412` |
+
+### Actual checks and held limits
+
+Clean entry, exact commit/blob identities, both complete report hashes,
+whole published tree/index equality, documented complete own-report inverse,
+five other report equalities, current helper size/hash and data-only
+AST parsing of helper/controller source completed successfully. The first merge attempt's exit1
+and both expected conflicts are disclosed above; both were resolved solely
+by exact accepted published blobs. The merge commit's parent/tree checks and
+clean readback exited0. `python3 scripts/check-docs.py` and staged
+`git diff --cached --check` exited0 after alignment, before this appendix.
+
+The initial combined display of a source review and root tail was truncated;
+a subsequent broad Git source-identity search also exceeded the output cap.
+Neither is counted as complete body review. Targeted immutable root narrative,
+complete controller-data hash/AST and scalar source-literal reads supplied the
+specific identities above. No truncated output was used as proof of full
+source coverage. No helper/controller body function was imported or called;
+AST parsing does not compile or run those programs.
+
+This phase acquires/releases no resource. Per root's assignment,
+A09 run37087561409 owns the lane; I neither inspect nor operate that run.
+All D01/D05 runtime remains HELD: no helper/provider/native version, Cargo,
+compiler, HTTP, CLI product, server, listener, Driver/browser/desktop, controller,
+VM/memory case or artifact execution. No cache deletion or new task/worker/
+worktree/shell/controller was created and no other worker was contacted.
+RiWork Cua.ai Driver MCP is still the sole desktop provider preference for any
+future explicitly released fixture; none is prepared here.
+
+The entire merged/published report prefix remains unchanged before this
+appendix. All twelve historical private metadata records, actual failed
+fixtures, failed61/76 and78 memory-only history, capacity/preparation/cleanup
+failures, lost-value reporting correction, unknown senders/causes and null
+historic first-event/whole60 limits remain dated and unmodified. No private
+metadata file was opened or rehashed; preservation is through the report
+prefix and retained Git history, not a newly claimed private-file inspection.
+Actual independent absence and cleanup-error/budget distinctions remain
+separate. No old memory evidence is borrowed for d29c5 or a real journey.
+
+Root alone interprets the original D01/D05 gates and authorizes future runtime,
+integration/publication/status. Original closed rows remain closed. Source
+alignment and docs checks do not prove any new browser journey or completion.
+Only this appendix is authored after the merge, and its immutable report
+commit/scope/prefix/clean hashes are handed off separately.
