@@ -978,3 +978,713 @@ Fresh final read-only prerequisite sample (unreserved; no process arguments/envi
   "utc": "2026-10-03T09:02:22.736836+00:00"
 }
 ```
+
+## 2026-10-03: unreaped-leader whole-target supervisor correction, SOURCE ONLY / UNRUN
+
+Root's new source review found a concrete generation-ownership counterexample in the dated64e4 controller: `child.poll()` consumed the leader at old lines153–156 before nonzero group signals at162–170 and204–222. A numeric `killpg(..., 0)` absence check cannot retain generation identity after that reap. This is a source finding only: no reused PID, unrelated signal or new target execution is observed, and it is not an attribution for the earlier failed negative run. The complete129064-byte64e4 report prefix, original dated source/archive/canonical diff, formatting/whitespace failures, negative runtime/parser miss and prior captures remain unchanged.
+
+Full root ownership receipt was read as public DATA from `planning/evidence/wave30-i07-whole-target-controller-root-ownership-review.json` in the project orchestrator workspace. `CONTRIBUTING.md` and `SECURITY.md` were read fully; no local AGENTS file was listed by the scoped inventory. From immutable `9fdc157b7ef09d2998854cf92bea31ea26ce0bf5:docs/roadmap/local-wave30-i08-windows-lifecycle-plan.md`, only the relevant wait-observer preflight, ended/signal_group/finish_group and bounded cleanup caller/preservation commentary at lines963–977,1160–1310,1373–1411,1557–1574,1657–1665 were body-read. The complete I08 report was hashed as98172B/SHA256 `58d568b61f3589e0643d8d6d4f591b485b3f574e7f5b41ceac82d2434df83f42`; its broader observer/resource/toolchain scope was not borrowed. Revision `3ae` is not available in this worktree (Git lookup exit128), so no body or execution is credited from it. An initial optional-path inventory lookup also returned exit2 when searching absent `planning`; subsequent exact source reads above succeeded. Neither lookup is a runtime/product finding.
+
+### Exact source manifest
+
+```json
+{
+  "blank_context_lines_encoded": 1,
+  "candidate_bytes": 20011,
+  "candidate_lines": 354,
+  "candidate_sha256": "7f880d6ac9324d08b3a9022346d42836bdaf3258adeba34474a56daa8744d236",
+  "canonical_diff_bytes": 16589,
+  "canonical_diff_sha256": "592e2864966216b59a217f1138bb516bf8a833f06c90295f3cf14be1089cba8b",
+  "exact_text_transforms": 6,
+  "old_controller_bytes": 15555,
+  "old_controller_sha256": "e88102b020534c334d6452cd8b2a2edb45e4c54fd6a395d82ff5416cd4e275bc",
+  "prior_report_bytes": 129064,
+  "prior_report_commit": "64e4f9636aa60fa8f28fdb527d35f6c76e62bf26",
+  "prior_report_sha256": "ce8bd2c1ee9ef6d2c42d53f02003770ece5273921d4999075e799de55fcc1d55",
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "reservation": "wave30_I07_unreaped_leader_supervisor_correction",
+  "resource_acquired_or_released": false,
+  "root_review_receipt_bytes": 1025,
+  "root_review_receipt_sha256": "04f3dcc0c4d18ab4082b91decca8622e939b52af243508473506aa81bb5f810a",
+  "runtime_executed": false,
+  "runtime_leaf_created": false
+}
+```
+
+The correction has six exact text substitutions: waitability/default-handler capability preflight; unreaped-state/finite helper definitions; immediate pre-spawn default-handler recheck; nonconsuming active/terminal cleanup loop; bounded cleanup followed by direct consuming wait/readback; and finite retained status fields. All top-level imports/constants/paths/pins/command/cache/feature/source checks and five original top-level helper bodies are byte-exact. The original complete log-reader AST is unchanged except `sel.select(0.2)` becomes its bounded caller-supplied timeout. All remaining bytes after final disk sampling, including private fsync-before-grade ordering and whole14 grader, are exact except the declared four added finite status fields.
+
+At a future released invocation, SIGCHLD default is installed as the first main statement, verified with `getsignal`, and reverified immediately before the sole Cargo Popen. Native `waitid`, WNOWAIT/P_PID/WEXITED/WNOHANG, terminal CLD codes, direct waitpid and status conversion must exist; otherwise preflight refuses BEFORE Cargo spawn. Availability is a future conditional prerequisite, not an observed capability/result of this source-only phase. `observe_leader()` uses P_PID plus WEXITED/WNOHANG/WNOWAIT, accepts only no terminal result or the exact child's terminal CLD result, never consumes status, and poisons subsequent signal eligibility on any observation/guard exception. Both a live direct child and its reserved zombie remain waitable; a zombie is not labelled as a remaining live-child failure. No `child.poll`, `child.wait`, `child.kill`, `child.terminate` or `child.send_signal` call remains.
+
+Every nonzero group signal occurs at the sole `signal_group` sink, after the original `os.getpgid(child.pid)==child.pid` group proof plus a fresh successful nonconsuming waitability/default-handler guard with unreaped child and open signal phase. Observation failure refuses all subsequent nonzero signals; there is no numeric-identity fallback. Each bounded TERM/KILL intent is recorded before the guarded call, with fixed outcome `ownership_refused`, `attempting`, `sent`, `group_absent` or `unconfirmed` and finite unreaped-verification bool. `unconfirmed` does not assert delivery. The conservative normal-terminal path also requests TERM, drains within five-second grace, then requests KILL before consuming status; future observed signals must be disclosed even when Cargo had already terminated. Each signal type is attempted at most once, deadlines are not renewed, and observation failure cannot be repaired by a second observation or guessed kill.
+
+The original active1765s, loop/cleanup1790s and final1798s absolute clocks within declared1800s remain; initial12GiB, stop9GiB, floor8GiB, nominal2s observations,16MiB cap, download refusal and single fixed command/pins are unchanged. The same2s disk observation body is used during bounded cleanup/drain, never a reset of START. TERM grace is bounded by the earlier of term_at+5, first_stop+20 and START+1790; exceptions may remove remaining grace. `signal_phase_closed=True` occurs before the sole consuming `os.waitpid(child.pid, WNOHANG)` site; no later path can reopen it or call the signal sink. Reaping/draining uses one deadline bounded by START+1798 and five seconds from entry. The real matching waitpid PID/status alone sets child_reaped, retains raw numeric wait status and supplies `waitstatus_to_exitcode`; no ECHILD-to-zero synthesis or inferred numeric exit is used. A failed/missing wait leaves exit null and cannot pass. The Popen returncode cache is assigned only from that actual conversion. After consumption, only signal0 absence readbacks and bounded pipe draining occur; any remaining/reused/unknown numeric group is a failed cleanup observation, never a reason to signal again.
+
+Original first stop_reason and internal failure are never overwritten by cleanup exceptions. Cleanup retains separate fixed labels, numeric wait status and finite observer/signal-phase fields; no raw exception/request/response/key/private panic value is emitted. Passing remains the unchanged fourteen-result/actual-Cargo0/complete-output/no-error classifier. Actual child/group absence is separate from test success. If unreaped ownership cannot be confirmed, no guessed signal is authorized; a still-live or unjoinable child is an incomplete cleanup with release unproven, not a fabricated pass.
+
+### Complete corrected proposed supervisor (UNRUN)
+
+```python
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+ROOT = Path('/Users/dominik/orca/projects/riAuth-public-preview-sol-management-wave30')
+RUN = ROOT / 'deployment-private/i07-device-trust-whole-5c20ca-20261003-once'
+HEAD = '715f6e9c37cf3e6a92f13f284fa54e4cb6d8d0fd'
+REVIEW = '5c20ca13effb28501976aef69e50c6738ab560b6'
+FIXED = '5c20ca13effb28501976aef69e50c6738ab560b6'
+TEST_SHA = 'f5fc6b3d42f97bf7c4601d8228e713066af1e3a95eeee3aca60dfeeec4c7f5df'
+GIB = 1024 ** 3
+LOG_CAP = 16 * 1024 ** 2
+DISPLAY_COMMAND = 'env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust -- --test-threads=1'
+ARGV = ['env', 'CARGO_TARGET_DIR='+str(ROOT/'target/wave30-o06-readiness'), 'CARGO_BUILD_JOBS=1', 'CARGO_INCREMENTAL=0', 'CARGO_PROFILE_DEV_DEBUG=0', 'CARGO_PROFILE_TEST_DEBUG=0', 'cargo', 'test', '--locked', '--features', 'test-support', '--test', 'device_trust', '--', '--test-threads=1']
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def exclusive_json(name, obj):
+    data=(json.dumps(obj,sort_keys=True,indent=2)+'\n').encode('ascii')
+    assert len(data)<LOG_CAP
+    fd=os.open(RUN/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    try:
+        with os.fdopen(fd,'wb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        parent=os.open(RUN,os.O_RDONLY)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    except BaseException:
+        raise
+    return {'path':str((RUN/name).relative_to(ROOT)), 'bytes':len(data), 'sha256':digest(data), 'mode':'0600'}
+
+
+def read_git(args):
+    return subprocess.check_output(['git',*args],cwd=ROOT,timeout=5)
+
+
+def free_bytes():
+    v=os.statvfs(ROOT)
+    return v.f_bavail*v.f_frsize
+
+
+def group_absent(pgid):
+    try:
+        os.killpg(pgid,0)
+        return False
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+
+
+def main():
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
+    assert all(hasattr(os,name) for name in ('waitid','P_PID','WEXITED','WNOHANG','WNOWAIT','CLD_EXITED','CLD_KILLED','CLD_DUMPED','waitpid','waitstatus_to_exitcode'))
+    assert callable(os.waitid) and callable(os.waitpid) and callable(os.waitstatus_to_exitcode)
+    os.umask(0o077)
+    assert RUN.stat().st_uid==os.getuid() and stat.S_IMODE(RUN.stat().st_mode)==0o700
+    assert not RUN.is_symlink()
+    current_head=read_git(['rev-parse','HEAD']).decode().strip()
+    assert read_git(['merge-base',HEAD,current_head]).decode().strip()==HEAD
+    assert read_git(['rev-parse',HEAD+'^{tree}'])==read_git(['rev-parse',FIXED+'^{tree}'])
+    assert read_git(['status','--porcelain'])==b''
+    test=(ROOT/'tests/device_trust.rs').read_bytes()
+    fixed=read_git(['show',FIXED+':tests/device_trust.rs'])
+    assert digest(test)==TEST_SHA
+    assert read_git(['hash-object','tests/device_trust.rs']).decode().strip()=='54bc47d08b5562ed6d836df55144c93b5ac8dd2d'
+    assert test==read_git(['show',REVIEW+':tests/device_trust.rs'])
+    assert test==fixed
+    changed=set(read_git(['diff','--name-only',HEAD,current_head]).decode().splitlines())
+    assert changed<={'docs/roadmap/local-wave30-i07-managed-device-plan.md'}
+    report=(ROOT/'docs/roadmap/local-wave30-i07-managed-device-plan.md').read_bytes()
+    report_base=read_git(['show',FIXED+':docs/roadmap/local-wave30-i07-managed-device-plan.md'])
+    assert report[:len(report_base)]==report_base
+    inputs={}
+    for path in ['Cargo.toml','Cargo.lock','rust-toolchain.toml']:
+        data=(ROOT/path).read_bytes()
+        assert data==read_git(['show',REVIEW+':'+path])
+        inputs[path]={'bytes':len(data),'sha256':digest(data)}
+    target=ROOT/'target/wave30-o06-readiness'
+    assert target.is_dir() and not target.is_symlink() and target.stat().st_uid==os.getuid()
+    fingerprint_path=target/'debug/.fingerprint/riauth-0d65ce4b80b71950/lib-riauth.json'
+    fingerprint=fingerprint_path.read_bytes()
+    assert digest(fingerprint)=='ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10'
+    features=json.loads(fingerprint)['features']
+    assert features=='["default", "essentials", "platform", "test-support"]'
+    assert (target/'debug/deps/libriauth-0d65ce4b80b71950.rlib').is_file()
+    competitors={}
+    for name in ['cargo','rustc']:
+        observed=subprocess.run(['pgrep','-x',name],capture_output=True,timeout=3)
+        assert observed.returncode==1 and observed.stdout==b'' and observed.stderr==b''
+        competitors[name]={'returncode':observed.returncode,'count':0}
+    initial_free=free_bytes()
+    assert initial_free>=12*GIB
+    archive={'project':'891e7443-8dac-4c1b-897f-9e53cb59c7ee','reservation':'wave30_I07_whole_target_exact_preparation','source_head':current_head,'alignment_merge':HEAD,'accepted_source_pin':FIXED,'source_tree':read_git(['rev-parse','HEAD^{tree}']).decode().strip(),'reviewed_test_commit':REVIEW,'test_blob':'54bc47d08b5562ed6d836df55144c93b5ac8dd2d','test_sha256':TEST_SHA,'test_bytes':len(test),'accepted_test_sha256':digest(fixed),'accepted_test_equality':True,'report_baseline_sha256':digest(report_base),'current_report_sha256':digest(report),'expected_test_count':14,'tracked_production_manifests_toolchain_unchanged':True,'inputs':inputs,'command':DISPLAY_COMMAND,'argv':ARGV,'features':features,'warm_target_fingerprint_sha256':digest(fingerprint),'initial_free_bytes':initial_free,'minimum_launch_bytes':12*GIB,'owned_stop_bytes':9*GIB,'floor_bytes':8*GIB,'sample_interval_seconds':2,'inclusive_bound_seconds':1800,'active_stop_seconds':1765,'log_cap_bytes':LOG_CAP,'competitors':competitors,'supervisor_sha256':digest(Path(__file__).read_bytes()),'supervisor_pid':os.getpid(),'sigchld_default_before_spawn':signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL}
+    archive_id=exclusive_json('launch-source.redacted.json',archive)
+    launch_free=free_bytes()
+    assert launch_free>=12*GIB
+    log_path=RUN/'cargo-combined.private.log'
+    log_fd=os.open(log_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    started=time.monotonic()
+    samples=[{'elapsed_seconds':0.0,'free_bytes':launch_free}]
+    stop_reason=None
+    signals=[]
+    child=None
+    child_reaped=False
+    owned_group=False
+    group_gone=False
+    bytes_written=0
+    downloaded=False
+    log_capped=False
+    cleanup_errors=[]
+    carry=b''
+    sel=selectors.DefaultSelector()
+    stream_eof=False
+    first_stop=None
+    returncode=None
+    internal_failure=None
+    leader_exit_observed=False
+    leader_observation_failed=False
+    signal_phase_closed=False
+    child_wait_status=None
+    next_sample=started+2
+    term_at=None
+    kill_at=None
+
+    def sample_disk(now):
+        nonlocal next_sample,stop_reason
+        if now>=next_sample:
+            current_free=free_bytes()
+            samples.append({'elapsed_seconds':round(now-started,6),'free_bytes':current_free})
+            next_sample=now+2
+            if current_free<9*GIB and stop_reason is None:
+                stop_reason='disk_stop_threshold'
+
+    def observe_leader():
+        nonlocal leader_exit_observed,leader_observation_failed
+        try:
+            assert child is not None and owned_group and not child_reaped and not signal_phase_closed
+            assert not leader_observation_failed and child.returncode is None
+            assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
+            observed=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+            assert observed is None or (observed.si_pid==child.pid and observed.si_code in (os.CLD_EXITED,os.CLD_KILLED,os.CLD_DUMPED))
+        except BaseException:
+            leader_observation_failed=True
+            raise
+        if observed is not None:
+            leader_exit_observed=True
+        return observed is not None
+
+    def signal_group(sig):
+        nonlocal internal_failure
+        label='TERM' if sig==signal.SIGTERM else 'KILL'
+        event={'signal':label,'elapsed_seconds':round(time.monotonic()-started,6),'outcome':'ownership_refused','unreaped_leader_verified':False}
+        signals.append(event)
+        try:
+            assert sig in (signal.SIGTERM,signal.SIGKILL)
+            observe_leader()
+        except BaseException:
+            if internal_failure is None:
+                internal_failure='supervisor_internal_failure'
+            cleanup_errors.append('signal_ownership_unconfirmed')
+            return False
+        event['unreaped_leader_verified']=True
+        event['outcome']='attempting'
+        try:
+            os.killpg(child.pid,sig)
+            event['outcome']='sent'
+        except ProcessLookupError:
+            event['outcome']='group_absent'
+        except BaseException:
+            event['outcome']='unconfirmed'
+            if internal_failure is None:
+                internal_failure='supervisor_internal_failure'
+            cleanup_errors.append('term_failed' if sig==signal.SIGTERM else 'kill_failed')
+            return False
+        return True
+
+    def drain(timeout):
+        nonlocal stream_eof,bytes_written,log_capped,stop_reason,downloaded,carry
+        for key,_ in sel.select(timeout):
+            block=os.read(key.fileobj.fileno(),65536)
+            if not block:
+                sel.unregister(key.fileobj)
+                stream_eof=True
+                continue
+            remaining=LOG_CAP-bytes_written
+            saved=block[:max(0,remaining)]
+            log.write(saved)
+            bytes_written+=len(saved)
+            if len(saved)!=len(block):
+                log_capped=True
+                if stop_reason is None:
+                    stop_reason='log_cap'
+            scanned=(carry+block).lower()
+            if any(label in scanned for label in [b'downloading ',b'downloaded ',b'updating crates.io index',b'updating git repository',b'fetching ']):
+                downloaded=True
+                if stop_reason is None:
+                    stop_reason='unexpected_dependency_download'
+            carry=scanned[-128:]
+
+    with os.fdopen(log_fd,'wb') as log:
+        try:
+            assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
+            child=subprocess.Popen(ARGV,cwd=ROOT,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            pgid=child.pid
+            owned_group=os.getpgid(child.pid)==pgid
+            assert owned_group
+            exclusive_json('owned-child.redacted.json',{'pid':child.pid,'pgid':pgid,'owned_group_verified':True,'elapsed_seconds':time.monotonic()-started})
+            os.set_blocking(child.stdout.fileno(),False)
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                now=time.monotonic()
+                sample_disk(now)
+                if now-started>=1765 and stop_reason is None:
+                    stop_reason='active_deadline'
+                ended=observe_leader()
+                if (stop_reason is not None or ended) and first_stop is None:
+                    first_stop=now
+                if first_stop is not None:
+                    if term_at is None:
+                        term_at=now
+                        if not signal_group(signal.SIGTERM):
+                            break
+                    elif now-term_at>=5 and kill_at is None:
+                        kill_at=now
+                        if not signal_group(signal.SIGKILL):
+                            break
+                    if kill_at is not None:
+                        break
+                if first_stop is not None and now-first_stop>=20:
+                    cleanup_errors.append('owned_cleanup_deadline')
+                    break
+                if now-started>=1790:
+                    cleanup_errors.append('outer_cleanup_deadline')
+                    break
+                drain(0.2)
+        except BaseException:
+            if internal_failure is None:
+                internal_failure='supervisor_internal_failure'
+        finally:
+            if child is not None:
+                if first_stop is None:
+                    first_stop=time.monotonic()
+                if owned_group and not leader_observation_failed:
+                    if term_at is None:
+                        term_at=time.monotonic()
+                        signal_group(signal.SIGTERM)
+                    if kill_at is None and not leader_observation_failed:
+                        grace_deadline=min(term_at+5,first_stop+20,started+1790)
+                        try:
+                            while time.monotonic()<grace_deadline:
+                                sample_disk(time.monotonic())
+                                drain(min(0.2,max(0.0,grace_deadline-time.monotonic())))
+                        except BaseException:
+                            if internal_failure is None:
+                                internal_failure='supervisor_internal_failure'
+                            cleanup_errors.append('cleanup_drain_failed')
+                        if not leader_observation_failed:
+                            kill_at=time.monotonic()
+                            signal_group(signal.SIGKILL)
+                else:
+                    cleanup_errors.append('owned_leader_unconfirmed')
+                # Close the signal phase before any consuming wait; never reopen it.
+                signal_phase_closed=True
+                reap_deadline=min(started+1798,time.monotonic()+5)
+                try:
+                    while True:
+                        sample_disk(time.monotonic())
+                        waited_pid,waited_status=os.waitpid(child.pid,os.WNOHANG)
+                        if waited_pid==child.pid:
+                            child_wait_status=waited_status
+                            child_reaped=True
+                            returncode=os.waitstatus_to_exitcode(waited_status)
+                            child.returncode=returncode
+                            break
+                        assert waited_pid==0
+                        remaining=reap_deadline-time.monotonic()
+                        if remaining<=0:
+                            cleanup_errors.append('final_reap_failed')
+                            break
+                        drain(min(0.2,remaining))
+                except BaseException:
+                    if internal_failure is None:
+                        internal_failure='supervisor_internal_failure'
+                    cleanup_errors.append('final_reap_failed')
+                try:
+                    while child_reaped and owned_group:
+                        group_gone=group_absent(child.pid)
+                        if group_gone and stream_eof:
+                            break
+                        remaining=reap_deadline-time.monotonic()
+                        if remaining<=0:
+                            break
+                        sample_disk(time.monotonic())
+                        drain(min(0.2,remaining))
+                    if child_reaped and owned_group:
+                        group_gone=group_absent(child.pid)
+                    if not group_gone:
+                        cleanup_errors.append('owned_group_remaining_or_unconfirmed')
+                    if not stream_eof:
+                        cleanup_errors.append('output_drain_incomplete')
+                except BaseException:
+                    if internal_failure is None:
+                        internal_failure='supervisor_internal_failure'
+                    cleanup_errors.append('final_absence_or_drain_failed')
+                try:
+                    child.stdout.close()
+                except BaseException:
+                    if internal_failure is None:
+                        internal_failure='supervisor_internal_failure'
+                    cleanup_errors.append('stdout_close_failed')
+            else:
+                signal_phase_closed=True
+            sel.close()
+            log.flush()
+            os.fsync(log.fileno())
+    samples.append({'elapsed_seconds':round(time.monotonic()-started,6),'free_bytes':free_bytes()})
+    raw=log_path.read_bytes()
+    retained={'source_archive':archive_id,'source_head':current_head,'command':DISPLAY_COMMAND,'launch_free_bytes':launch_free,'disk_samples':samples,'disk_minimum_bytes':min(s['free_bytes'] for s in samples),'elapsed_seconds':round(time.monotonic()-started,6),'child_pid':None if child is None else child.pid,'child_pgid':None if child is None else child.pid,'owned_group_verified':owned_group,'child_returncode':returncode,'child_wait_status':child_wait_status,'child_reaped':child_reaped,'owned_group_absent':group_gone,'leader_exit_observed':leader_exit_observed,'leader_observation_failed':leader_observation_failed,'signal_phase_closed':signal_phase_closed,'signals':signals,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'unexpected_dependency_download_observed':downloaded,'log_capped':log_capped,'stream_eof':stream_eof,'log':{'path':str(log_path.relative_to(ROOT)),'bytes':len(raw),'sha256':digest(raw),'mode':'0600'},'output_retained_before_grade':True}
+    result_id=exclusive_json('actual-status.redacted.json',retained)
+    # Grading starts only after the complete bounded output and numeric status are fsynced.
+    counts_matches=re.findall(rb'test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out',raw)
+    counts_match=counts_matches[0] if len(counts_matches)==1 else None
+    counts=None if counts_match is None else {'passed':int(counts_match[1]),'failed':int(counts_match[2]),'ignored':int(counts_match[3]),'measured':int(counts_match[4]),'filtered_out':int(counts_match[5])}
+    panic_matches=re.findall(rb'panicked at (tests/device_trust\.rs):(\d{1,6}):(\d{1,6}):',raw)
+    panic_locations=[{'path':'tests/device_trust.rs','line':int(match[1]),'column':int(match[2])} for match in panic_matches[:14]]
+    unexpected_ok_panic_count=raw.count(b'called `Result::unwrap_err()` on an `Ok` value')
+    whole_target_complete=bool(counts and counts['passed']+counts['failed']==14 and counts['ignored']==0 and counts['measured']==0 and counts['filtered_out']==0 and child_reaped and group_gone and stream_eof and not log_capped and not downloaded and stop_reason is None and internal_failure is None and not cleanup_errors)
+    whole_target_pass=bool(whole_target_complete and returncode==0 and counts_match[0]==b'ok' and counts['passed']==14 and counts['failed']==0 and not panic_matches and unexpected_ok_panic_count==0)
+    classification='pass' if whole_target_pass else 'test_failure' if whole_target_complete and counts_match[0]==b'FAILED' and returncode==101 and counts['failed']>0 else 'incomplete'
+    grade={'actual_status':result_id,'test_counts':counts,'summary_count':len(counts_matches),'expected_test_count':14,'panic_locations':panic_locations,'panic_location_count':len(panic_matches),'panic_locations_capped':len(panic_matches)>14,'unexpected_ok_panic_count':unexpected_ok_panic_count,'whole_target_complete':whole_target_complete,'whole_target_pass':whole_target_pass,'whole_target_classification':classification,'resource_release_proven':bool(child_reaped and group_gone),'child_returncode':returncode,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'elapsed_seconds':retained['elapsed_seconds'],'disk_minimum_bytes':retained['disk_minimum_bytes'],'log_bytes':len(raw),'log_sha256':digest(raw),'source_archive':archive_id}
+    grade_id=exclusive_json('grade.redacted.json',grade)
+    print(json.dumps({'grade':grade,'grade_file':grade_id},sort_keys=True),flush=True)
+    return 0 if child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+```
+
+### Exact narrow forward diff (encoded blank-context lines)
+
+```diff
+--- 64e4-whole-target-supervisor.py
++++ unreaped-leader-whole-target-supervisor.py
+@@ -66,6 +66,9 @@
+␠
+ def main():
+     signal.signal(signal.SIGCHLD, signal.SIG_DFL)
++    assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
++    assert all(hasattr(os,name) for name in ('waitid','P_PID','WEXITED','WNOHANG','WNOWAIT','CLD_EXITED','CLD_KILLED','CLD_DUMPED','waitpid','waitstatus_to_exitcode'))
++    assert callable(os.waitid) and callable(os.waitpid) and callable(os.waitstatus_to_exitcode)
+     os.umask(0o077)
+     assert RUN.stat().st_uid==os.getuid() and stat.S_IMODE(RUN.stat().st_mode)==0o700
+     assert not RUN.is_symlink()
+@@ -128,8 +131,92 @@
+     first_stop=None
+     returncode=None
+     internal_failure=None
++    leader_exit_observed=False
++    leader_observation_failed=False
++    signal_phase_closed=False
++    child_wait_status=None
++    next_sample=started+2
++    term_at=None
++    kill_at=None
++
++    def sample_disk(now):
++        nonlocal next_sample,stop_reason
++        if now>=next_sample:
++            current_free=free_bytes()
++            samples.append({'elapsed_seconds':round(now-started,6),'free_bytes':current_free})
++            next_sample=now+2
++            if current_free<9*GIB and stop_reason is None:
++                stop_reason='disk_stop_threshold'
++
++    def observe_leader():
++        nonlocal leader_exit_observed,leader_observation_failed
++        try:
++            assert child is not None and owned_group and not child_reaped and not signal_phase_closed
++            assert not leader_observation_failed and child.returncode is None
++            assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
++            observed=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
++            assert observed is None or (observed.si_pid==child.pid and observed.si_code in (os.CLD_EXITED,os.CLD_KILLED,os.CLD_DUMPED))
++        except BaseException:
++            leader_observation_failed=True
++            raise
++        if observed is not None:
++            leader_exit_observed=True
++        return observed is not None
++
++    def signal_group(sig):
++        nonlocal internal_failure
++        label='TERM' if sig==signal.SIGTERM else 'KILL'
++        event={'signal':label,'elapsed_seconds':round(time.monotonic()-started,6),'outcome':'ownership_refused','unreaped_leader_verified':False}
++        signals.append(event)
++        try:
++            assert sig in (signal.SIGTERM,signal.SIGKILL)
++            observe_leader()
++        except BaseException:
++            if internal_failure is None:
++                internal_failure='supervisor_internal_failure'
++            cleanup_errors.append('signal_ownership_unconfirmed')
++            return False
++        event['unreaped_leader_verified']=True
++        event['outcome']='attempting'
++        try:
++            os.killpg(child.pid,sig)
++            event['outcome']='sent'
++        except ProcessLookupError:
++            event['outcome']='group_absent'
++        except BaseException:
++            event['outcome']='unconfirmed'
++            if internal_failure is None:
++                internal_failure='supervisor_internal_failure'
++            cleanup_errors.append('term_failed' if sig==signal.SIGTERM else 'kill_failed')
++            return False
++        return True
++
++    def drain(timeout):
++        nonlocal stream_eof,bytes_written,log_capped,stop_reason,downloaded,carry
++        for key,_ in sel.select(timeout):
++            block=os.read(key.fileobj.fileno(),65536)
++            if not block:
++                sel.unregister(key.fileobj)
++                stream_eof=True
++                continue
++            remaining=LOG_CAP-bytes_written
++            saved=block[:max(0,remaining)]
++            log.write(saved)
++            bytes_written+=len(saved)
++            if len(saved)!=len(block):
++                log_capped=True
++                if stop_reason is None:
++                    stop_reason='log_cap'
++            scanned=(carry+block).lower()
++            if any(label in scanned for label in [b'downloading ',b'downloaded ',b'updating crates.io index',b'updating git repository',b'fetching ']):
++                downloaded=True
++                if stop_reason is None:
++                    stop_reason='unexpected_dependency_download'
++            carry=scanned[-128:]
++
+     with os.fdopen(log_fd,'wb') as log:
+         try:
++            assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
+             child=subprocess.Popen(ARGV,cwd=ROOT,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+             pgid=child.pid
+             owned_group=os.getpgid(child.pid)==pgid
+@@ -137,106 +224,115 @@
+             exclusive_json('owned-child.redacted.json',{'pid':child.pid,'pgid':pgid,'owned_group_verified':True,'elapsed_seconds':time.monotonic()-started})
+             os.set_blocking(child.stdout.fileno(),False)
+             sel.register(child.stdout,selectors.EVENT_READ)
+-            next_sample=started+2
+-            term_at=None
+-            kill_at=None
+             while True:
+                 now=time.monotonic()
+-                if now>=next_sample:
+-                    current_free=free_bytes()
+-                    samples.append({'elapsed_seconds':round(now-started,6),'free_bytes':current_free})
+-                    next_sample=now+2
+-                    if current_free<9*GIB and stop_reason is None:
+-                        stop_reason='disk_stop_threshold'
++                sample_disk(now)
+                 if now-started>=1765 and stop_reason is None:
+                     stop_reason='active_deadline'
+-                observed=child.poll()
+-                if observed is not None:
+-                    returncode=observed
+-                    child_reaped=True
+-                if stop_reason is not None and first_stop is None:
++                ended=observe_leader()
++                if (stop_reason is not None or ended) and first_stop is None:
+                     first_stop=now
+-                if child_reaped and not group_absent(pgid) and stop_reason is None:
+-                    stop_reason='owned_group_remained_after_child_exit'
+-                    first_stop=now
+-                if stop_reason is not None and not group_absent(pgid):
++                if first_stop is not None:
+                     if term_at is None:
+-                        os.killpg(pgid,signal.SIGTERM)
+                         term_at=now
+-                        signals.append({'signal':'TERM','elapsed_seconds':round(now-started,6)})
++                        if not signal_group(signal.SIGTERM):
++                            break
+                     elif now-term_at>=5 and kill_at is None:
+-                        os.killpg(pgid,signal.SIGKILL)
+                         kill_at=now
+-                        signals.append({'signal':'KILL','elapsed_seconds':round(now-started,6)})
+-                if child_reaped and group_absent(pgid) and stream_eof:
+-                    group_gone=True
+-                    break
++                        if not signal_group(signal.SIGKILL):
++                            break
++                    if kill_at is not None:
++                        break
+                 if first_stop is not None and now-first_stop>=20:
+                     cleanup_errors.append('owned_cleanup_deadline')
+                     break
+                 if now-started>=1790:
+                     cleanup_errors.append('outer_cleanup_deadline')
+                     break
+-                for key,_ in sel.select(0.2):
+-                    block=os.read(key.fileobj.fileno(),65536)
+-                    if not block:
+-                        sel.unregister(key.fileobj)
+-                        stream_eof=True
+-                        continue
+-                    remaining=LOG_CAP-bytes_written
+-                    saved=block[:max(0,remaining)]
+-                    log.write(saved)
+-                    bytes_written+=len(saved)
+-                    if len(saved)!=len(block):
+-                        log_capped=True
+-                        if stop_reason is None:
+-                            stop_reason='log_cap'
+-                    scanned=(carry+block).lower()
+-                    if any(label in scanned for label in [b'downloading ',b'downloaded ',b'updating crates.io index',b'updating git repository',b'fetching ']):
+-                        downloaded=True
+-                        if stop_reason is None:
+-                            stop_reason='unexpected_dependency_download'
+-                    carry=scanned[-128:]
++                drain(0.2)
+         except BaseException:
+-            internal_failure='supervisor_internal_failure'
++            if internal_failure is None:
++                internal_failure='supervisor_internal_failure'
+         finally:
+-            if child is not None and owned_group:
+-                if not group_absent(child.pid):
+-                    try:
+-                        os.killpg(child.pid,signal.SIGTERM)
+-                        signals.append({'signal':'TERM','elapsed_seconds':round(time.monotonic()-started,6)})
+-                    except ProcessLookupError:
+-                        pass
+-                    except BaseException:
+-                        cleanup_errors.append('term_failed')
+-                    try:
+-                        child.wait(timeout=min(5,max(0.01,1798-(time.monotonic()-started))))
+-                        child_reaped=True
+-                    except subprocess.TimeoutExpired:
+-                        pass
+-                    except BaseException:
+-                        cleanup_errors.append('wait_failed')
+-                    if not group_absent(child.pid):
++            if child is not None:
++                if first_stop is None:
++                    first_stop=time.monotonic()
++                if owned_group and not leader_observation_failed:
++                    if term_at is None:
++                        term_at=time.monotonic()
++                        signal_group(signal.SIGTERM)
++                    if kill_at is None and not leader_observation_failed:
++                        grace_deadline=min(term_at+5,first_stop+20,started+1790)
+                         try:
+-                            os.killpg(child.pid,signal.SIGKILL)
+-                            signals.append({'signal':'KILL','elapsed_seconds':round(time.monotonic()-started,6)})
+-                        except ProcessLookupError:
+-                            pass
++                            while time.monotonic()<grace_deadline:
++                                sample_disk(time.monotonic())
++                                drain(min(0.2,max(0.0,grace_deadline-time.monotonic())))
+                         except BaseException:
+-                            cleanup_errors.append('kill_failed')
++                            if internal_failure is None:
++                                internal_failure='supervisor_internal_failure'
++                            cleanup_errors.append('cleanup_drain_failed')
++                        if not leader_observation_failed:
++                            kill_at=time.monotonic()
++                            signal_group(signal.SIGKILL)
++                else:
++                    cleanup_errors.append('owned_leader_unconfirmed')
++                # Close the signal phase before any consuming wait; never reopen it.
++                signal_phase_closed=True
++                reap_deadline=min(started+1798,time.monotonic()+5)
+                 try:
+-                    returncode=child.wait(timeout=min(5,max(0.01,1798-(time.monotonic()-started))))
+-                    child_reaped=True
++                    while True:
++                        sample_disk(time.monotonic())
++                        waited_pid,waited_status=os.waitpid(child.pid,os.WNOHANG)
++                        if waited_pid==child.pid:
++                            child_wait_status=waited_status
++                            child_reaped=True
++                            returncode=os.waitstatus_to_exitcode(waited_status)
++                            child.returncode=returncode
++                            break
++                        assert waited_pid==0
++                        remaining=reap_deadline-time.monotonic()
++                        if remaining<=0:
++                            cleanup_errors.append('final_reap_failed')
++                            break
++                        drain(min(0.2,remaining))
+                 except BaseException:
++                    if internal_failure is None:
++                        internal_failure='supervisor_internal_failure'
+                     cleanup_errors.append('final_reap_failed')
+-                group_gone=group_absent(child.pid)
+-                child.stdout.close()
++                try:
++                    while child_reaped and owned_group:
++                        group_gone=group_absent(child.pid)
++                        if group_gone and stream_eof:
++                            break
++                        remaining=reap_deadline-time.monotonic()
++                        if remaining<=0:
++                            break
++                        sample_disk(time.monotonic())
++                        drain(min(0.2,remaining))
++                    if child_reaped and owned_group:
++                        group_gone=group_absent(child.pid)
++                    if not group_gone:
++                        cleanup_errors.append('owned_group_remaining_or_unconfirmed')
++                    if not stream_eof:
++                        cleanup_errors.append('output_drain_incomplete')
++                except BaseException:
++                    if internal_failure is None:
++                        internal_failure='supervisor_internal_failure'
++                    cleanup_errors.append('final_absence_or_drain_failed')
++                try:
++                    child.stdout.close()
++                except BaseException:
++                    if internal_failure is None:
++                        internal_failure='supervisor_internal_failure'
++                    cleanup_errors.append('stdout_close_failed')
++            else:
++                signal_phase_closed=True
+             sel.close()
+             log.flush()
+             os.fsync(log.fileno())
+     samples.append({'elapsed_seconds':round(time.monotonic()-started,6),'free_bytes':free_bytes()})
+     raw=log_path.read_bytes()
+-    retained={'source_archive':archive_id,'source_head':current_head,'command':DISPLAY_COMMAND,'launch_free_bytes':launch_free,'disk_samples':samples,'disk_minimum_bytes':min(s['free_bytes'] for s in samples),'elapsed_seconds':round(time.monotonic()-started,6),'child_pid':None if child is None else child.pid,'child_pgid':None if child is None else child.pid,'owned_group_verified':owned_group,'child_returncode':returncode,'child_reaped':child_reaped,'owned_group_absent':group_gone,'signals':signals,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'unexpected_dependency_download_observed':downloaded,'log_capped':log_capped,'stream_eof':stream_eof,'log':{'path':str(log_path.relative_to(ROOT)),'bytes':len(raw),'sha256':digest(raw),'mode':'0600'},'output_retained_before_grade':True}
++    retained={'source_archive':archive_id,'source_head':current_head,'command':DISPLAY_COMMAND,'launch_free_bytes':launch_free,'disk_samples':samples,'disk_minimum_bytes':min(s['free_bytes'] for s in samples),'elapsed_seconds':round(time.monotonic()-started,6),'child_pid':None if child is None else child.pid,'child_pgid':None if child is None else child.pid,'owned_group_verified':owned_group,'child_returncode':returncode,'child_wait_status':child_wait_status,'child_reaped':child_reaped,'owned_group_absent':group_gone,'leader_exit_observed':leader_exit_observed,'leader_observation_failed':leader_observation_failed,'signal_phase_closed':signal_phase_closed,'signals':signals,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'unexpected_dependency_download_observed':downloaded,'log_capped':log_capped,'stream_eof':stream_eof,'log':{'path':str(log_path.relative_to(ROOT)),'bytes':len(raw),'sha256':digest(raw),'mode':'0600'},'output_retained_before_grade':True}
+     result_id=exclusive_json('actual-status.redacted.json',retained)
+     # Grading starts only after the complete bounded output and numeric status are fsynced.
+     counts_matches=re.findall(rb'test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out',raw)
+```
+
+Decode ONLY the1 complete standalone `␠` lines to exactly ONE ASCII space plus LF before applying the archived diff. Decoding reconstructs every canonical diff byte/hash in the manifest. Apply forward once to the complete hash-checked64e4 controller; reverse once to reconstruct all15555 old bytes, its full location-independent AST, and the original dated SHA256. No old controller file, private output leaf, source/test/guide/config/other report or historical capture was materialized or edited. The future leaf role/path remains `deployment-private/i07-device-trust-whole-5c20ca-20261003-once`; it is still absent and requires a distinct root runtime release and exclusive private-file authorization before use.
+
+Static checks during construction: complete six-substitution byte/AST reversal; all source outside main and all five original helper spans exact; parameterized complete old log-reader AST exact; entire whole14 grading suffix exact; one WNOWAIT observer site, one direct consuming waitpid site and only two killpg sites (signal0 helper and guarded nonzero sink); no forbidden Popen consuming/signaling calls; old child_reaped-based remaining-live-group error removed. Candidate code was AST-parsed only: no imports, function/body/case/controller evaluation, wait/signal/probe/native/Cargo/test/provider/browser/Driver/HTTP/library or output-leaf operation occurred. These are source proofs, not executed lifecycle/ownership/timeout tests.
+
+Root must read the full immutable candidate/diff and separately decide any exact future validation/release. Runtime remains HELD; no slot was acquired or released, and original I07/D01/D05 acceptance/status remains root-owned. All unknown historical sender/cause/lost-value and failed-run limits remain dated and unchanged.
+
+Final static checks returned actual exit0 individually: report whitespace (`git diff --check`), Markdown/layout (`python3 scripts/check-docs.py`), complete archived forward/inverse AST/byte and ownership-order/scope checker, and staged tracked-file hygiene (`python3 scripts/check-repo-hygiene.py`,1143 files). The canonical diff has three hunks; the single standalone blank-context marker decodes exactly. Static ownership-order proof checked WNOWAIT options/strict observer assertions and poison latch, pre-spawn default-handler recheck, guarded nonzero sink, all signal calls before the irrevocable phase closure, sole matching actual waitpid/status-to-exit conversion and no forbidden Popen status/signaling calls. All five original top-level helper bodies and the complete whole-target grader are byte-exact.
+
+Read-only hash/mode/owner checks verified all eight original I07 negative-run private captures against their retained SHA256 witnesses: regular, own UID,0600 and byte-hash exact, including the original supervisor, full private raw panic output and original parser-miss grade. Their contents were not emitted or rewritten. This correction performs no live capacity/process/ownership/waitability/protocol/tool probe; the prior capacity/cache observations remain dated in the preserved64e4 prefix. Current WNOWAIT behavior, bounded cleanup and real exit remain UNEXECUTED prerequisites. No claim is made that static proof establishes an actual cleanup, whole target pass, device/provider provenance, browser journey or original-row closure.
