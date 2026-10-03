@@ -129,3 +129,9 @@ writer/security/contracts remain the inspected originals. This source is
 UNCOMPILED/UNRUN; no Cargo or fixture/self-check was invoked by integration.
 Root still requires credible fresh capacity/cache and bounded owned outer
 supervision before ONE separately released named ignored command.
+
+## One-filter preparation review — 2026-10-03
+
+Root read the complete 837-line appendix at `820c4e397d69a718b609afee1b795e80bb235249`, including all 534 supervisor DATA lines. The report prefix and selected source/build objects match staged `cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57`. No Cargo or supervisor ran. The latest available-space sample does not meet the unchanged 13 GiB launch gate.
+
+Before any runtime, the supervisor must explicitly install SIGCHLD default disposition before its first metadata child, matching the reviewed D01 single-reaper premise. The pinned CPython 3.14.6 subprocess source at lines 2039–2049 can substitute status zero on ChildProcessError in its ordinary wait helper; no such event or current inherited disposition is claimed here. Cargo uses explicit consuming waitpid and fails if real status is unavailable. The proposed correction is a preflight setter only, with all source pins, command arguments, cleanup, output schemas and resource thresholds retained. Runtime remains held pending this concrete DATA correction and capacity.
