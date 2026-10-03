@@ -495,7 +495,7 @@ impl Seed {
             core.login("admin".into(), PASSWORD.into(), None),
             "seed login",
         );
-        let admin = Zeroizing::new(
+        let admin: Zeroizing<String> = Zeroizing::new(
             login["session_token"]
                 .as_str()
                 .expect("private login response")

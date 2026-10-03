@@ -1,0 +1,11 @@
+{
+  "old_sha256": "9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444",
+  "new_sha256": "5b714a5ea4006163a08e5e3c0d9d7fc065c621e906495018d42b3bbf0640498c",
+  "new_bytes": 60306,
+  "only_type_annotation": true,
+  "whole_byte_inverse": true,
+  "actual_local_compile_exit": 101,
+  "local_function_not_run": true,
+  "ci_check_compile_failure": true,
+  "corrected_source_uncompiled": true
+}

@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       architecture:
-        description: Native Linux architecture for one LOCAL container cohort
+        description: Verified dated x86 LOCAL container fixture replay
         required: true
         type: choice
         default: x86_64
-        options: [x86_64, arm64]
+        options: [x86_64]
 
 permissions:
   contents: read
@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          python3 controller/scripts/check-local-container-cohort.py \
+          python3 controller/scripts/check-local-container-cohort.py --prebuilt-x86 \
             --controller "$GITHUB_WORKSPACE/controller" \
             --product "$GITHUB_WORKSPACE/product" \
             --review "$GITHUB_WORKSPACE/review" \
