@@ -242,3 +242,116 @@ worker/task/WT/shell occurred. No runtime slot was taken/released. RiWork
 Cua.ai Driver MCP-only preference persists for any later separately authorized
 desktop work. Root alone reviews/integrates, releases runtime and changes
 original task dispositions; all closed rows/contracts are preserved.
+
+
+## 2026-10-03 — independent one-shot managed controller source review
+
+Reservation `wave30_I08_managed_controller_independent_review`, project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing f2 worktree only. Entry commit `74278ed9e182966dbe7743ce1e574420c15af943` was clean. This appendix is the only change. The complete 18,446-byte / 244-line `1f04` report above, SHA-256 `47bdcb746c597107253f148d1857a691926e95782ed504bbf0c971017f62cdde`, remains byte-exact. Original I08 assignment/status and the earlier source-only managed deadline assessment are unchanged. No runtime slot was acquired or released.
+
+**Disposition: hold the proposed controller.** The previously identified inherited-SIGCHLD proof gap is present. One additional certain source defect permits a terminal observation after the 120-second child deadline to reach PASS. The latter has a two-line prospective guard below. Neither finding is an observed runtime result or an explanation of an older failure. No managed code/controller/observer/library was run, and no separately reserved author correction or mutable worker text was read. A corrected whole immutable controller needs a separate review before root can release one run.
+
+### Immutable objects and exact inputs
+
+The entire new controller and surrounding author appendix were read from `9fdc157b7ef09d2998854cf92bea31ea26ce0bf5:docs/roadmap/local-wave30-i08-windows-lifecycle-plan.md`, not from an author working file. That commit has exact parent `a6fe92178f4a6a03874ba17f27b98e9bd764ca35`; its only change is the report append. The 51,619-byte / 772-line parent report is a complete prefix of the 98,172-byte / 1,715-line new report, SHA-256 `58d568b61f3589e0643d8d6d4f591b485b3f574e7f5b41ceac82d2434df83f42`. The new appendix starts at line 773. Its Python fence opens at line 797, contains controller lines 1–710 at report lines 798–1507, and closes at line 1508. The canonical body already ends in LF: **31,494 bytes / 710 lines**, SHA-256 **`3a3703e6fb7095f2cc3d152aa170c3b68c03acf688c9361f11517cac99078490`**. No LF was added during extraction.
+
+The fixed production pin is `e31fbee66f1038cfc2412e17497bbf07f83e1314`. Each of the six literal `SOURCE_HASHES` entries was independently compared with that Git object's complete bytes. All six mode/blob identities are also unchanged in `a6fe` and `9fdc`; the source bodies reviewed in the original `1f04` assessment are therefore reusable. The full 228-line `SelfTest.cs`, 19-line project, and relevant `Program.Main` dispatch were reread in this review. This does not align this worktree or establish the future launch ROOT's mutable checkout.
+
+| Fixed project input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `windows/RiAuth.DeviceHost/DeviceHost.cs` | 12,178 | `c87516ac0323e4d009e6d438cfdf2b74918db3d7c0ad9ab4b9b67fd2367c48ee` |
+| `windows/RiAuth.DeviceHost/Program.cs` | 11,078 | `a1fe254ebf65a2153fcf2a17728b4b1b2283ca3d6e991be92eff2bb26126a241` |
+| `windows/RiAuth.DeviceHost/SelfTest.cs` | 11,597 | `69bd5f5031bfdb9b974cb2e8201e6f2823a3f32e924eb53f5a38392807e1b38e` |
+| `windows/RiAuth.DeviceHost/RiAuth.DeviceHost.csproj` | 795 | `e5af8331053b1167d6af93ea9ad657a0983e694fa5bb71f8f003370fbed499ea` |
+| `windows/RiAuth.DeviceHost/WindowsLocalAccount.cs` | 7,223 | `85641bd7baef27b419899ec76d9665c8d5cfb90b59641bafe5908524763f0d0c` |
+| `windows/RiAuth.DeviceHost/WindowsStateStore.cs` | 12,772 | `9999747d0183650a109368feb0d11644ff90ad30c23b0d0be6b0ca3a930d9ce0` |
+
+`COMMAND` remains the exact **1,483-byte** no-final-LF literal, SHA-256 **`6217c5e88aa76979bb0f91fae2faabcea2e9ffcfff722983f8058947c827ab7d`**. Static `shlex` parsing produces 27 tokens: `env`, ten exact assignments, then 16 SDK argv tokens. The source removes `env` and the ten assignments from argv and passes them through the explicit environment dictionary. The one launch is `/usr/local/share/dotnet/dotnet run`, the fixed original ROOT project, `--configuration Debug`, the eight archived private-output/restore/build properties, and sole application arguments `-- selftest`. No alternate command or source substitution is proposed.
+
+The 139-byte offline NuGet configuration is SHA-256 `3c32733585fa65053b7fd9e6539bd8b799814470dd25c8520cca740868968747`. Its cleared package/fallback sources and the explicit local package source are retained. `NuGetAudit=false`, shared compilation/build parallelism off, processor count 1, and build-server reuse disabled are preserved. These source settings are not a network sandbox. Preflight intentionally starts from `os.environ.copy()`, rejects eleven specified conflicting .NET/MSBuild keys, then installs ten exact assignments; it does not promise a hermetic closed environment.
+
+The complete `a6fe` SDK-readiness appendix and `9fdc` post-controller limits were read as dated reports. Their five public SDK metadata hashes and thirteen file-size/mode checks are exactly the controller's declared manifest. No current SDK binary, version command, loader, compiler, or native module was executed or re-attested here. The design itself distinguishes metadata identity from executable/dylib content attestation.
+
+### Complete controller body coverage
+
+The 710-line body was read in full in bounded displays. Independent AST parsing finds **24 function definitions, one `subprocess.Popen` call at line 544, and zero `signal.signal` calls**. Parsing and literal extraction do not instantiate classes or call any proposed function.
+
+| Complete spans, controller line numbers | What was checked |
+| --- | --- |
+| 1–112 | Imports, fixed ROOT/LEAF/SDK/product roles, command/config/source/SDK manifests, numeric limits, fixed exception and two ctypes structure definitions. Neither structure nor observer was instantiated. |
+| 114–167: `canonical`, `digest`, `bounded_regular`, `free_bytes`, `check_directory`, `verify_sources` | ASCII canonical finite JSON, bounded regular-file reads, `O_NOFOLLOW`, UID and directory identity checks, exact six-file catalog/hash checks, and rejection of source `bin`/`obj`. |
+| 169–237: `preflight` | Fixed cwd/Darwin/ARM64, WNOWAIT API presence, absent fresh leaf, owned nonsymlink ancestors, 9-GiB start, conflicting keys/ancestor config/launch settings refusal, one SDK directory and declared metadata, exact command parse and returned inputs. |
+| 239–298: observer `__init__`, `members`, `info`, `sample` | ABI size guards, group-scoped bounded PID enumeration, UID/PGID/PID and start-generation validation, disappeared/zombie handling and numeric RSS aggregation. No process enumeration or libproc call was made. |
+| 300–319: `tree_bytes`, `walk_error` | Original leaf device/inode/UID, regular-owned entries only, no symlink following, depth 32 / 4,096 entries, and larger logical-versus-block allocation sum. |
+| 321–432: `run` setup, `latch`, `catch`, `cleanup_error`, `exclusive`, `write_all`, `ended`, `pump`, nested `sample`, `signal_group` | First fixed failure retained, closed class names and cleanup codes, exclusive 0600 output, bounded nonblocking capture, 144 samples, disk/RSS/tree refusal, non-consuming child observation, and signals limited to a verified not-yet-reaped group. |
+| 434–517: `finish_group` | One nonrenewed 10-second cleanup interval; TERM, five-second grace then KILL; immediate escalation for caps; WNOWAIT observation before the actual `Popen.wait` path; unknown/reap/signal errors retained; post-reap signal-zero and libproc absence required. |
+| 519–587 | Private 0700 fresh leaf/directories, fsynced fixed config, second start-capacity check, one `start_new_session=True` SDK child, PID=PGID=SID check, generation-bearing launch receipt, capture registration and finite observation loop. |
+| 588–633 | Cleanup in `finally`, bounded extra pipe drains, pipe/selector closure, log fsync/close, and failures retained before any grade. |
+| 635–710 | Numeric child exit, bounded readback/hash/EOF checks, source recheck and final resource check, capped result written/fsynced and directory fsynced before grading, closed public summary, and marker/exit/cleanup/durability conjunction. |
+
+The local public SDK headers were read only at the selected relevant spans, and complete files were hashed for identity. Their definitions match the design's group selector 2, BSD-info flavor 3, task-info flavor 4, `SZOMB=5`, 16-byte command-name extent, and declared 136-/96-byte field layouts under the stated Darwin types/alignment. This is source/ABI metadata, not a live ctypes, libproc or kernel compatibility result. The installed CPython stdlib was read only at the relevant POSIX wait/signal code; its complete file was hashed, not imported as the candidate.
+
+| Selected local source file | Complete-file SHA-256 |
+| --- | --- |
+| macOS SDK `sys/proc_info.h` | `e427fa96b348537b21552b9de71e01039410bcad2cedee5584c5e5fddafd70fc` |
+| macOS SDK `libproc.h` | `246d87709fc6b9157ce5cf3c475656ac48e0e1ae8bbdc46cf45acd34294448cd` |
+| macOS SDK `sys/wait.h` | `b77f7dd6f592eba8b0d51c15c7b975472fdad50c12ea296f74f062cbf98dcbf7` |
+| macOS SDK `sys/signal.h` | `319fbc4555c1d39c95d8a5e3034956bfe8e0e1bd9142df95ab71ad3ac8bb1f54` |
+| macOS SDK `sys/proc.h` | `04c812f91c7b608faf7b8710eb1da670fa9456cba9636b787cc5dfb829091dcb` |
+| CPython 3.14.6 public `pyconfig.h` | `e875b545c5d65a9598f2b3f4a8c2c1a8dfb81fc7baace25acc22aafaf9e2b421` |
+| CPython 3.14.6 stdlib `subprocess.py` | `6628ffdd65c093a6c08cae01ffe82877d3ced515aac9e7be0cff16512c30a7d9` |
+
+The first wide header display was truncated; the decisive structure, flavor, function-signature and signal-flag spans were reread in smaller complete displays. None of the controller's 710-line displays was truncated. `sys/wait.h:168–174` defines WEXITED/WNOWAIT; `sys/signal.h:299–305` includes `SA_NOCLDWAIT`. Public `pyconfig.h:1218/1230` declares `HAVE_SIGACTION`/`HAVE_SIGINTERRUPT`; these do not observe live signal flags. Stdlib `subprocess.py:2005–2036`, `2039–2078`, and `2217–2247` establish the conditional status-fallback/polling behavior discussed below. No official web or remote query was needed; all witnesses are the supplied immutable source or selected installed public source.
+
+### F1 — inherited waitability is not established before spawn
+
+`preflight` checks availability of `waitid`, `WNOWAIT`, `WEXITED` and `P_PID` at lines 172–174. `ended()` at lines 377–380 uses `WEXITED | WNOHANG | WNOWAIT`; its comment assumes that the original leader PID remains reserved until cleanup. However, lines 519–546 contain no native SIGCHLD disposition reset before the only Popen. The AST confirms no such setter anywhere in the complete source. Importing `signal`, checking constants, and `start_new_session=True` do not establish the missing parent waitability precondition.
+
+A permitted inherited ignored/no-zombie disposition would undermine that assumption. The installed public `subprocess.py` also shows why `Popen.wait()` is not an independent substitute for establishing waitability: `_try_wait` converts `ChildProcessError` into the child's PID with status 0 (lines 2039–2049), and `_internal_poll` can set returncode 0 after ECHILD (lines 2024–2033). This is a **conditional source counterexample**, not evidence that this controller or any historic run inherited those flags, used fallback status, lost a child, or signalled a reused PID. `ended()` can instead fail closed with a fixed observation failure; that still does not establish the promised ownership proof.
+
+Root already reserved the minimal pre-spawn SIGCHLD setter correction with the author. This review neither duplicates that ownership nor predicts its final bytes. A subsequent complete immutable correction must show the reset before the only spawn, its pinned fresh single-reaper interpreter assumptions and refusal before spawn if it fails. No setter, signal, wait, process observation, or launch was invoked here.
+
+### F2 — terminal acceptance can bypass the child deadline
+
+At line 576 the loop samples `now`; lines 577–579 reject an already-expired child interval. It then samples resources at 580–582 and pumps captures at 583. Either work or ordinary scheduling can cross the deadline. `pump` clamps a negative duration to zero; it does not latch timeout. The `ended()` branch at 584–585 can then break without checking a fresh clock. Lines 692–695 grade exit 0 plus marker/durable evidence/clean ownership; they have no deadline predicate. The recorded `elapsed_through_cleanup` is evidence, not a timeout guard.
+
+A source-only counterexample is: entry clock = start + 119.95 seconds, no failure; resource/read/wait observation returns at start + 120.05 seconds, all cap checks pass, `ended()` is true. The original branch breaks with `first_error is None`. A zero child exit, complete marker, durable result and successful later cleanup satisfy the existing PASS conjunction. No mock, controller function or syscall was executed to produce this example. It is sufficient to disprove deadline-enforced terminal acceptance even without asserting a slow syscall, exact exit time or hard kernel bound.
+
+The smallest prospective correction is **two added lines inside the existing terminal branch**. It checks the clock after the non-consuming terminal observation and latches the existing fixed `child_timeout` through the existing first-failure function before cleanup. A previous cap/failure stays first. A nonterminal observation still returns to the existing top-of-loop guard. Command/source/SDK/config/cleanup/caps/public schema and all case code remain unchanged.
+
+```diff
+--- 9fdc157/controller.py (DATA)
++++ prospective-terminal-deadline/controller.py (DATA)
+@@ -584,0 +585,2 @@
++                if time.monotonic() >= deadline:
++                    latch("child_timeout")
+```
+
+Reconstruct only from the exact 31,494-byte canonical fence above: replace the unique byte span `            if ended():\n                break\n` with `            if ended():\n                if time.monotonic() >= deadline:\n                    latch("child_timeout")\n                break\n`. This was performed **in memory as source bytes only**. The resulting **31,586-byte / 712-line** prospective DATA body has SHA-256 **`cb5bc2b1c5e9ba4a575e3cbde1004dc919e241f7e67ee4bb647f678cdc84c12d`**. Reversing that unique substitution reproduces the complete original fence, not just the hunk. Deleting only the new inner If from the parsed terminal If yields whole-AST equality excluding locations. The complete 24 original function definitions, constants/manifests and main guard otherwise match; no new function/class/import or callable payload is introduced.
+
+This prospective body deliberately still has F1: it is **not a composed corrected controller and not ready for runtime**. It is not a replacement for the author's separately reserved setter change. Root must review a complete composed immutable follow-up. The clock guard rejects late observed acceptance; it does not create a hard scheduling/IO/kernel/output bound or redefine the separate cleanup grace as a whole-controller 130-second deadline.
+
+### Other reviewed boundaries and conditional readiness
+
+The launch chain is source-backed and narrow: one explicit Popen, `start_new_session=True`, direct PID/PGID/SID equality, observer UID/group/generation record before a 2-KiB launch receipt, then no consuming poll during the live observation loop. With the missing waitability assumption supplied, holding the unreaped direct leader is the intended protection against group-number reuse before nonzero signals. `signal_group` refuses unverified/reaped state. An unverified launch records failure and addresses only the direct Popen child, using Popen's guarded signal path; it does not invent a group to kill. After actual `wait`, only signal zero and group enumeration are used. An observation, signal, unknown-reap, nonempty-group or failed final-probe outcome cannot satisfy PASS. Terminal EPERM remains failure in this source; no exception relaxation or imported interpretation of older D01 EPERM is proposed.
+
+Cleanup precedes numeric exit/marker grading and keeps earlier failures. It consumes the direct child's status with `Popen.wait`, then requires `reaped` and two group-absence observations. F1 means an arbitrary inherited launch cannot currently claim the status/leader proof; a later fresh-pinned/single-reaper correction must make that assumption explicit. The design observes one process group and generation-checks its sampled members. It does not prove cleanup of a descendant that escapes that group, offer a whole-OS process quarantine, or promise two final observations are a race-free universal discovery mechanism. No such broader campaign is required for this focused managed slice.
+
+Private output is bounded and retained: fresh UID-owned 0700 leaf, 0600 exclusive config/log/receipt files, no inherited stdin, separate 64-KiB stdout/stderr caps, observed/retained byte counts and EOF flags, 512-KiB capped canonical result, source recheck, log/config/result/directory fsync, and grading only after successful result persistence. The durable result records `grade_performed: false` and actual pre-grade observations; the later public packet is closed and does not print child output, exception text, environment values, private paths or protocol material. Nonzero child status stays a failure, including C# cancellation exit 3; the public controller failure exit is 2. Result write/fsync failure gives UNGRADABLE and no retry, rather than substituting success.
+
+Resource checks are source controls, **not measurements from this review**: start free bytes at least 9 GiB; stop at or below 8.5 GiB above the retained 8-GiB floor; sampled group RSS over 2 GiB refused; owned tree plus receipt allowance over 256 MiB refused; up to 256 PIDs, 144 samples, 4,096 entries and depth 32. Sampling/scan/write/fsync/library calls can take time, resource use can change between samples, and no kernel/quota/physical-pressure guarantee is asserted. Preflight, persistence and stdout serialization have no separate hard whole-process cap in this source. The 120-second child interval and nonrenewed 10-second cleanup interval are the declared cooperative limits; F2 specifically prevents the former from rejecting late observed success.
+
+The six fixed managed source scenarios remain denial, outage, mismatched assertion identity, stale epoch, approved identity/SID, and headers-success/partial-body stall. `Program.Main` lines 13–18 dispatch the sole `selftest` argument and print the marker only after awaited `SelfTest.RunAsync` returns. That branch is before ordinary HTTP client, WindowsStateStore or account functions. `Debug` has `net9.0`; the Windows self-contained/RID settings are conditional on Release. The sixth source case supplies a one-second HttpClient deadline, a five-second observation guard that supplies no operation cancellation token, and checks disposal/no redeem/offline/Save/Purge before fixture cleanup. No case outcome is claimed here. There is no live session store, DPAPI/SAM/ACL/COM/LSA/secure desktop, signed/install artifact, physical Windows device, real issuer/provider or credential proof from this proposed mock execution.
+
+### Actual static checks and handoff limits
+
+- Full canonical controller extraction, exact LF/byte/line/hash identity, AST parse, 24-definition / one-Popen / zero-setter count: passed.
+- Exact 1,483-byte command/hash, 27 parsed tokens, 139-byte config/hash and six fixed complete input hashes: passed. All six production mode/blob identities match `e31`, `a6fe`, and `9fdc`.
+- Original source/body reuse was based on immutable object equality; the 228-line selftest, project and relevant Main branch were additionally reread. Root SDK-readiness metadata was read as dated evidence, not rerun or substituted with this host's state.
+- The F2 prospective two-line DATA substitution, complete byte inverse and normalized whole-AST inverse: passed. No code object compilation, candidate import/eval, constructor, function or case was executed.
+- Guidance `CONTRIBUTING.md` / `SECURITY.md` and existing checker hashes match the previously read versions. The user-authorized static/report scope takes precedence over broad build instructions.
+- Repository docs/link checker, hygiene and whitespace/scope/prefix receipts are recorded in the final static receipt below after this append is checked.
+
+No controller/private executable was materialized, SDK/native version/library call/process probe was used, and no source/config/helper/other-report/workflow was changed. No raw child output, actual store, private credentials, mutable author correction, or remote receipt was read. Runtime remains HELD; no slot was taken or released. The original managed source remains UNCOMPILED/UNRUN. Root owns the whole-correction review, future launch reservation, integration/publication and status; all other lane and closed-row contracts are preserved.
+
+
+Static receipt for this appendix: `python3 scripts/check-docs.py` exited **0** (`Markdown links and build-directory layout checked`); `python3 scripts/check-repo-hygiene.py` exited **0** (`Tracked-file hygiene checked (1066 files)`); `git diff --check` exited **0**. Six complete `git ls-tree` mode/blob rows are identical across `e31` / `a6fe` / `9fdc`, all mode 100644. Before this final receipt, the review append was 20,923 bytes / 110 added lines, SHA-256 `70b58a50aa216a4073b2e7e97e49ffe7361410ea7f773f6e5646a9e6b3f1bfff`; its complete prefix was verified against immutable `1f04`. The only tracked diff is this report; index and untracked inventory were empty before committing. These are actual static results, not managed/runtime outcomes. The final receipt itself contains no new source or link. Report-only handoff remains **F1 + F2 held, runtime UNRUN**.
