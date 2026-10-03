@@ -236,7 +236,7 @@ jobs:
             "imports": {
               "check-exact-edition-matrix.py": "f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887",
               "check-installed-release-gate.py": "cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5",
-              "check-local-edition-transition-postgres.py": "4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa",
+              "check-local-edition-transition-postgres.py": "32a2952e3b4c3ff2ab73a747238862d3446c31bf4896c869bc9efacb1ba8fe49",
               "check-local-encrypted-edition-transition.py": "09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e",
               "spdx_sbom.py": "ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c"
             },

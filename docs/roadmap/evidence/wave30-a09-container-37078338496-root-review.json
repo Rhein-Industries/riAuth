@@ -1,0 +1,4650 @@
+{
+  "schema": "riauth.wave30.container-cohort-terminal-root-review/v1",
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "review_utc": "2026-10-03T00:08:00.206661+00:00",
+  "run": 37078338496,
+  "job": 111073123720,
+  "terminal_api": {
+    "conclusion": "failure",
+    "databaseId": 37078338496,
+    "headSha": "7869b96453c13fdec5af35fd5cf661849d417f36",
+    "jobs": [
+      {
+        "completedAt": "2026-10-03T00:03:38Z",
+        "conclusion": "failure",
+        "databaseId": 111073123720,
+        "name": "native-container",
+        "startedAt": "2026-10-02T23:35:59Z",
+        "status": "completed",
+        "steps": [
+          {
+            "completedAt": "2026-10-02T23:36:01Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-10-02T23:36:00Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:36:01Z",
+            "conclusion": "success",
+            "name": "Establish private evidence and initial capacity",
+            "number": 2,
+            "startedAt": "2026-10-02T23:36:01Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:36:04Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 3,
+            "startedAt": "2026-10-02T23:36:01Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:36:06Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 4,
+            "startedAt": "2026-10-02T23:36:04Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-02T23:36:09Z",
+            "conclusion": "success",
+            "name": "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 5,
+            "startedAt": "2026-10-02T23:36:06Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-03T00:03:33Z",
+            "conclusion": "failure",
+            "name": "One bounded LOCAL container cohort",
+            "number": 6,
+            "startedAt": "2026-10-02T23:36:09Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-03T00:03:36Z",
+            "conclusion": "success",
+            "name": "Upload LOCAL evidence, including refusals and cleanup limits",
+            "number": 7,
+            "startedAt": "2026-10-03T00:03:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-03T00:03:36Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 12,
+            "startedAt": "2026-10-03T00:03:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-03T00:03:36Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 13,
+            "startedAt": "2026-10-03T00:03:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-03T00:03:36Z",
+            "conclusion": "success",
+            "name": "Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+            "number": 14,
+            "startedAt": "2026-10-03T00:03:36Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-10-03T00:03:36Z",
+            "conclusion": "success",
+            "name": "Complete job",
+            "number": 15,
+            "startedAt": "2026-10-03T00:03:36Z",
+            "status": "completed"
+          }
+        ],
+        "url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37078338496/job/111073123720"
+      }
+    ],
+    "status": "completed",
+    "updatedAt": "2026-10-03T00:03:39Z"
+  },
+  "artifact": {
+    "id": 11258610583,
+    "node_id": "MDg6QXJ0aWZhY3QxMTI1ODYxMDU4Mw==",
+    "name": "riauth-local-container-x86_64-37078338496-1",
+    "size_in_bytes": 102853462,
+    "url": "https://api.github.com/repos/Rhein-Industries/riAuth/actions/artifacts/11258610583",
+    "archive_download_url": "https://api.github.com/repos/Rhein-Industries/riAuth/actions/artifacts/11258610583/zip",
+    "expired": false,
+    "digest": "sha256:c3c78b5e516f0625ed828e83648eb18ec77d23a943e45ff6c8cf713522c8ae6b",
+    "created_at": "2026-10-03T00:03:35Z",
+    "updated_at": "2026-10-03T00:03:35Z",
+    "expires_at": "2026-10-17T00:03:33Z",
+    "workflow_run": {
+      "id": 37078338496,
+      "repository_id": 1387816591,
+      "head_repository_id": 1387816591,
+      "head_branch": "main",
+      "head_sha": "7869b96453c13fdec5af35fd5cf661849d417f36"
+    }
+  },
+  "transport_verified": true,
+  "cohort": {
+    "architecture": "x86_64",
+    "builder": {
+      "container_id": "d226ac489935034b1d3c95f7789ed75b3ab1e3a9f5938760674cf2f0c1657cc2",
+      "created": "2026-10-02T23:36:25.804776167Z",
+      "instance_sha256": "d4544e6e16b5d3fcb8f6de9d8105729a8d5819d7cf980f7269e00374664f3359",
+      "name": "a09-5505a0b29d0d49d182ec5d42644eddf3-builder",
+      "privileged_tool_only": true,
+      "state_created": "2026-10-02T23:36:25Z",
+      "state_volume": "buildx_buildkit_a09-5505a0b29d0d49d182ec5d42644eddf3-builder0_state"
+    },
+    "builder_children_removed": true,
+    "checks": [],
+    "cleanup_errors": [],
+    "controller": "7869b96453c13fdec5af35fd5cf661849d417f36",
+    "creation_records": {
+      "containers": {
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-product-copy-025961cb8a26": {
+          "Created": "2026-10-03T00:03:17.898481336Z",
+          "Id": "207c97208119dd38a70687d24da5dc4089a52b5e3b0d6687ac51de04900f5e9c",
+          "Image": "sha256:d15f4d1ec35f3d1bf601e154c7411c0a96318c6d14c7e2be862816d604c375d9",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-product-copy-025961cb8a26"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-product-copy-238427d630ac": {
+          "Created": "2026-10-03T00:03:14.7187639Z",
+          "Id": "e06f3d8fa3cd05f5bed2257a3b37a55e12c1dcc76fc785f71863ebff6abf1529",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-product-copy-238427d630ac"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-server-efc6ba0ef175": {
+          "Created": "2026-10-03T00:03:20.777715566Z",
+          "Id": "1bfc238415a88ebc69b0c652becdd800d6d9dde5d9b4048611a529d1a0337965",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-server-efc6ba0ef175"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-09e564e3af92": {
+          "Created": "2026-10-03T00:03:22.216433653Z",
+          "Id": "6db57e21555f26cbcdfae6203a4cde08d32eb14ce640e4c9a929a6ab297fc924",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-09e564e3af92"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-1fb13744448a": {
+          "Created": "2026-10-03T00:03:21.465834697Z",
+          "Id": "e67da83881d443bf96a96b156641b74390390cc68a3a1da417df800acbe9bc1c",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-1fb13744448a"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-2b29804a109b": {
+          "Created": "2026-10-03T00:03:22.727442618Z",
+          "Id": "ecfcc086a2527d82388fdd4e12b49aca19511de280e2089ea693dab8b26d5b9d",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-2b29804a109b"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-2c29ac5c5fcf": {
+          "Created": "2026-10-03T00:03:20.277694995Z",
+          "Id": "8400304b6360949a0203758d9baf6d7f853121e1cd2ba07fef5411ad3ecb9b84",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-2c29ac5c5fcf"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-3cdb9431bc50": {
+          "Created": "2026-10-03T00:03:19.274904806Z",
+          "Id": "f75885883142a4740391c48061243ceb544ea6970ba49f3a19559803a7cae452",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-3cdb9431bc50"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-44266b6b737d": {
+          "Created": "2026-10-03T00:03:19.528034208Z",
+          "Id": "e9a4405ce5f57adcc7fbef3157df70eda9f467464c9680ca395f06774a566f1b",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-44266b6b737d"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-51e3a78fcfbe": {
+          "Created": "2026-10-03T00:03:22.463613263Z",
+          "Id": "55c3d55474229391e2bf6b164c918104f8af9e91a88db535e5b15601fef42aac",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-51e3a78fcfbe"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-585964a53543": {
+          "Created": "2026-10-03T00:03:18.37024819Z",
+          "Id": "b141815e126ff642fcf7825f479878e7a43fac010d835614d4d8fcb88de7eed6",
+          "Image": "sha256:d15f4d1ec35f3d1bf601e154c7411c0a96318c6d14c7e2be862816d604c375d9",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-585964a53543"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-6229ccd5f89d": {
+          "Created": "2026-10-03T00:03:19.785687596Z",
+          "Id": "b620d3de7e02af8ed1baeb19727076f7147aca26cfc8bb8f0fc2592ebefbd234",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-6229ccd5f89d"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-7f870a7bcd11": {
+          "Created": "2026-10-03T00:03:21.962396662Z",
+          "Id": "334fd3cd737933f7e0967fb425a8f0f94a427b85a4eef8766dee4891444b424b",
+          "Image": "sha256:d15f4d1ec35f3d1bf601e154c7411c0a96318c6d14c7e2be862816d604c375d9",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-7f870a7bcd11"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-83aa7e370e4c": {
+          "Created": "2026-10-03T00:03:18.631133988Z",
+          "Id": "b7150b366e603bef3228facfa2d3a5a8c89c2988a81377ffdbe640551b96e8e0",
+          "Image": "sha256:d15f4d1ec35f3d1bf601e154c7411c0a96318c6d14c7e2be862816d604c375d9",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-83aa7e370e4c"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-9125fc4decd9": {
+          "Created": "2026-10-03T00:03:21.719707073Z",
+          "Id": "c40a7250f0bc9ba2035020326bbc6894dc1f8b01a53efa5ee52f458a69801804",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-9125fc4decd9"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-950daf3ee7b0": {
+          "Created": "2026-10-03T00:03:19.025664867Z",
+          "Id": "a3ff5cd3671e039757b63fa53859a0beec43c38c7e1e70f702101f87de7c6dd0",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-950daf3ee7b0"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-9e373f2d745b": {
+          "Created": "2026-10-03T00:03:20.524284658Z",
+          "Id": "d25f0a3b80e3eb599fb2c88dbefabc6b78af1c4217f3b4b2aee175f16dd81198",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-9e373f2d745b"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-cd0b36517045": {
+          "Created": "2026-10-03T00:03:15.380193884Z",
+          "Id": "6bdb0e011bf918274a57abe5487da73543d11c69aeead685ed8d1ff2881c6f2a",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-cd0b36517045"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-tool-f5c6fe3af7ba": {
+          "Created": "2026-10-03T00:03:15.115528152Z",
+          "Id": "116a9edd5f2a86037046140dc90edbfcf25ffe601c3e619612acf1c2e60520fb",
+          "Image": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+          "Name": "/a09-5505a0b29d0d49d182ec5d42644eddf3-tool-f5c6fe3af7ba"
+        }
+      },
+      "volumes": {
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-clean-config": {
+          "CreatedAt": "2026-10-03T00:03:18Z",
+          "Driver": "local",
+          "Mountpoint": "/var/lib/docker/volumes/a09-5505a0b29d0d49d182ec5d42644eddf3-clean-config/_data",
+          "Name": "a09-5505a0b29d0d49d182ec5d42644eddf3-clean-config"
+        },
+        "a09-5505a0b29d0d49d182ec5d42644eddf3-clean-data": {
+          "CreatedAt": "2026-10-03T00:03:18Z",
+          "Driver": "local",
+          "Mountpoint": "/var/lib/docker/volumes/a09-5505a0b29d0d49d182ec5d42644eddf3-clean-data/_data",
+          "Name": "a09-5505a0b29d0d49d182ec5d42644eddf3-clean-data"
+        }
+      }
+    },
+    "daemon": {
+      "Architecture": "x86_64",
+      "DockerRootDir": "/var/lib/docker",
+      "OSType": "linux",
+      "OperatingSystem": "Ubuntu 24.04.5 LTS",
+      "ServerVersion": "28.0.4"
+    },
+    "expected_builder": {
+      "container": "buildx_buildkit_a09-5505a0b29d0d49d182ec5d42644eddf3-builder0",
+      "name": "a09-5505a0b29d0d49d182ec5d42644eddf3-builder",
+      "volume": "buildx_buildkit_a09-5505a0b29d0d49d182ec5d42644eddf3-builder0_state"
+    },
+    "failed_phase": "fixture",
+    "failure": "refused_open_changed_store_or_config",
+    "github": {
+      "GITHUB_EVENT_NAME": "workflow_dispatch",
+      "GITHUB_JOB": "native-container",
+      "GITHUB_REF": "refs/heads/main",
+      "GITHUB_REPOSITORY": "Rhein-Industries/riAuth",
+      "GITHUB_RUN_ATTEMPT": "1",
+      "GITHUB_RUN_ID": "37078338496",
+      "GITHUB_SHA": "7869b96453c13fdec5af35fd5cf661849d417f36",
+      "GITHUB_WORKFLOW_REF": "Rhein-Industries/riAuth/.github/workflows/check-local-container-cohort.yml@refs/heads/main",
+      "GITHUB_WORKFLOW_SHA": "7869b96453c13fdec5af35fd5cf661849d417f36"
+    },
+    "helper_sha256": "c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837",
+    "images": {
+      "essentials": {
+        "architecture": "amd64",
+        "archive": "local-essentials-x86_64.docker.tar.gz",
+        "archive_bytes": 48933284,
+        "archive_sha256": "26487fd77b0af69db3e7fb49eecbbe291f203d91cf72f9913a55edb46d348ec1",
+        "capabilities": {
+          "build_features": [
+            "essentials"
+          ],
+          "cli_result_schema": "riauth.cli/v1",
+          "compiled_features": [
+            "portal.user_applications",
+            "portal.terminal_sign_in",
+            "directory.ldap_sync",
+            "identity.ldap_authentication",
+            "identity.passkeys",
+            "identity.email_verification",
+            "identity.invitations",
+            "identity.email_password_reset",
+            "operations.postgresql",
+            "operations.shared_rate_limits",
+            "operations.native_tls",
+            "oidc.par",
+            "oidc.jar",
+            "oidc.jarm",
+            "oidc.claims_requests",
+            "oidc.dpop",
+            "oidc.bound_key",
+            "oidc.pairwise_subjects",
+            "oidc.resource_indicators",
+            "oidc.key_domains",
+            "oidc.jwe",
+            "oidc.provider_issuers",
+            "oidc.frontchannel_logout",
+            "oidc.session_management",
+            "identity.oidc_sources",
+            "identity.oauth_sources",
+            "identity.source_linking",
+            "identity.totp_import",
+            "agents.source_manifests",
+            "directory.scim_outbound",
+            "operations.prometheus",
+            "operations.schema_migrations",
+            "oidc.private_key_jwt",
+            "oidc.federated_machine_grants",
+            "oidc.token_exchange",
+            "oidc.dynamic_registration",
+            "oidc.code.pkce_s256",
+            "oidc.device",
+            "oidc.refresh_rotation",
+            "oidc.native_redirects",
+            "oidc.request_bound_reauthentication",
+            "agents.scoped_credentials",
+            "agents.plan_apply",
+            "agents.atomic_idempotency",
+            "agents.conditional_mutations",
+            "agents.audit_run_id",
+            "agents.schema",
+            "oidc.browser_terminal_handoff",
+            "oidc.rp_logout",
+            "oidc.backchannel_logout",
+            "oidc.claim_mappings",
+            "oidc.scope_policies",
+            "oidc.provider_settings",
+            "oidc.cors",
+            "operations.encrypted_backup_restore",
+            "operations.encrypted_storage",
+            "identity.recovery_codes",
+            "identity.self_password_change",
+            "operations.audit_review",
+            "operations.csv_export"
+          ],
+          "edition": "essentials",
+          "error_exit_codes": {
+            "authentication": 3,
+            "conflict": 5,
+            "operation_failed": 1,
+            "permission": 4,
+            "retryable": 6,
+            "usage": 2
+          },
+          "feature_states": {
+            "access.temporary_entitlements": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.atomic_idempotency": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.audit_run_id": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.certificate_bindings": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.conditional_mutations": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.parent_ownership": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.plan_apply": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.schema": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.scoped_credentials": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.source_manifests": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "audit.self_hosted_event_map": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.entra_sync": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.ldap_provider": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.ldap_sync": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.scim_inbound": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.scim_outbound": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.workspace_sync": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.device_trust": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.email_password_reset": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.email_verification": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.https_client_certificates": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.invitations": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.ldap_authentication": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.oauth_sources": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.oidc_sources": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.passkeys": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.recovery_codes": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.saml_sources": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.scheduled_offboarding": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.self_password_change": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.source_linking": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.totp_import": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.windows_device_login": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.backchannel_logout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.bound_key": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.browser_terminal_handoff": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.claim_mappings": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.claims_requests": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.code.pkce_s256": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.cors": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.device": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.dpop": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.dynamic_registration": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.federated_machine_grants": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.frontchannel_logout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.jar": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.jarm": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.jwe": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.key_domains": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.native_redirects": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.pairwise_subjects": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.par": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.private_key_jwt": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.provider_issuers": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.provider_settings": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.refresh_rotation": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.request_bound_reauthentication": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.resource_indicators": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.rp_logout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.scope_policies": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.session_management": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.token_exchange": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.audit_review": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.csv_export": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.encrypted_backup_restore": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.encrypted_storage": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.native_tls": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.postgresql": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.prometheus": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.schema_migrations": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.shared_rate_limits": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.vault_transit_signing": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "portal.terminal_sign_in": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "portal.user_applications": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "proxy.forward_auth_sso": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "proxy.reverse_proxy": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "proxy.shared_domain_sso": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "radius.eap_tls": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "radius.pap": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "radius.radsec": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.assertion_encryption": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.idp_signed_browser_sso": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.logout_fanout": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.sp_initiated_logout": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.upstream_logout": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "ssf.push": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "workflow.controlled_extensions": {
+              "compiled": false,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            }
+          },
+          "features": [],
+          "interface": "server",
+          "permissions": [
+            {
+              "action": "directory.read",
+              "resource_kind": "directory"
+            },
+            {
+              "action": "directory.sync",
+              "resource_kind": "directory"
+            },
+            {
+              "action": "provisioner.read",
+              "resource_kind": "provisioner"
+            },
+            {
+              "action": "provisioner.sync",
+              "resource_kind": "provisioner"
+            },
+            {
+              "action": "source.read",
+              "resource_kind": "source"
+            },
+            {
+              "action": "source.write",
+              "resource_kind": "source"
+            },
+            {
+              "action": "registration.read",
+              "resource_kind": "registration"
+            },
+            {
+              "action": "registration.write",
+              "resource_kind": "registration"
+            },
+            {
+              "action": "client.read",
+              "resource_kind": "client"
+            },
+            {
+              "action": "client.write",
+              "resource_kind": "client"
+            },
+            {
+              "action": "client.rotate",
+              "resource_kind": "client"
+            },
+            {
+              "action": "user.read",
+              "resource_kind": "user"
+            },
+            {
+              "action": "user.write",
+              "resource_kind": "user"
+            },
+            {
+              "action": "group.read",
+              "resource_kind": "group"
+            },
+            {
+              "action": "group.write",
+              "resource_kind": "group"
+            },
+            {
+              "action": "group.members",
+              "resource_kind": "group"
+            },
+            {
+              "action": "audit.read",
+              "resource_kind": "audit"
+            },
+            {
+              "action": "key.rotate",
+              "resource_kind": "key"
+            },
+            {
+              "action": "key.read",
+              "resource_kind": "key"
+            },
+            {
+              "action": "key.write",
+              "resource_kind": "key"
+            },
+            {
+              "action": "session.revoke",
+              "resource_kind": "session"
+            },
+            {
+              "action": "state.read",
+              "resource_kind": "state"
+            },
+            {
+              "action": "operations.read",
+              "resource_kind": "operations"
+            },
+            {
+              "action": "operations.backup",
+              "resource_kind": "operations"
+            }
+          ],
+          "schema_version": "riauth.capabilities/v2",
+          "schemas": [
+            "directory-plan",
+            "provisioning-plan",
+            "invitation",
+            "authentik-import",
+            "migration-finding",
+            "migration-inventory",
+            "manifest",
+            "plan",
+            "apply",
+            "agent",
+            "provider",
+            "source",
+            "source-input",
+            "totp-import",
+            "key-input",
+            "registration-template",
+            "registration",
+            "user-create",
+            "user-update",
+            "client-create",
+            "client-update",
+            "cli-result",
+            "workflow",
+            "policy-simulation"
+          ],
+          "scope": "artifact",
+          "target": {
+            "arch": "x86_64",
+            "os": "linux"
+          },
+          "version": "0.1.1"
+        },
+        "id": "sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0",
+        "labels": {
+          "org.opencontainers.image.revision": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+          "org.opencontainers.image.source": "https://github.com/Rhein-Industries/riAuth",
+          "org.riauth.edition": "essentials",
+          "org.riauth.local.owner": "a09-5505a0b29d0d49d182ec5d42644eddf3"
+        },
+        "os": "linux",
+        "recipe": {
+          "derived_sha256": "a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440",
+          "exact_reverse": true,
+          "original_sha256": "458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb",
+          "variant": "private-serial-resource-prefix"
+        },
+        "server_sha256": "62a933b0f94401e15699ced6b3ae1e18f9a06e42993d50f0f438902fcfdce78c",
+        "tag": "riauth-local/a09-5505a0b29d0d49d182ec5d42644eddf3:essentials"
+      },
+      "platform": {
+        "architecture": "amd64",
+        "archive": "local-platform-x86_64.docker.tar.gz",
+        "archive_bytes": 53552781,
+        "archive_sha256": "86b97616e6a8e10180281ce8f97e68427b2a65957487a5744fb571fe1fc8118c",
+        "capabilities": {
+          "build_features": [
+            "essentials",
+            "platform"
+          ],
+          "cli_result_schema": "riauth.cli/v1",
+          "compiled_features": [
+            "portal.user_applications",
+            "portal.terminal_sign_in",
+            "audit.self_hosted_event_map",
+            "saml.idp_signed_browser_sso",
+            "saml.sp_initiated_logout",
+            "saml.logout_fanout",
+            "saml.upstream_logout",
+            "saml.assertion_encryption",
+            "radius.pap",
+            "radius.radsec",
+            "radius.eap_tls",
+            "agents.certificate_bindings",
+            "directory.ldap_provider",
+            "proxy.forward_auth_sso",
+            "proxy.shared_domain_sso",
+            "proxy.reverse_proxy",
+            "directory.ldap_sync",
+            "identity.ldap_authentication",
+            "identity.passkeys",
+            "identity.email_verification",
+            "identity.invitations",
+            "identity.email_password_reset",
+            "operations.postgresql",
+            "operations.shared_rate_limits",
+            "operations.native_tls",
+            "operations.vault_transit_signing",
+            "oidc.par",
+            "oidc.jar",
+            "oidc.jarm",
+            "oidc.claims_requests",
+            "oidc.dpop",
+            "oidc.bound_key",
+            "oidc.pairwise_subjects",
+            "oidc.resource_indicators",
+            "oidc.key_domains",
+            "oidc.jwe",
+            "oidc.provider_issuers",
+            "oidc.frontchannel_logout",
+            "oidc.session_management",
+            "identity.oidc_sources",
+            "identity.saml_sources",
+            "identity.oauth_sources",
+            "identity.source_linking",
+            "identity.totp_import",
+            "agents.source_manifests",
+            "directory.scim_inbound",
+            "directory.scim_outbound",
+            "operations.prometheus",
+            "operations.schema_migrations",
+            "oidc.private_key_jwt",
+            "oidc.federated_machine_grants",
+            "oidc.token_exchange",
+            "oidc.dynamic_registration",
+            "oidc.code.pkce_s256",
+            "oidc.device",
+            "oidc.refresh_rotation",
+            "oidc.native_redirects",
+            "oidc.request_bound_reauthentication",
+            "agents.scoped_credentials",
+            "agents.plan_apply",
+            "agents.atomic_idempotency",
+            "agents.conditional_mutations",
+            "agents.audit_run_id",
+            "agents.schema",
+            "oidc.browser_terminal_handoff",
+            "oidc.rp_logout",
+            "oidc.backchannel_logout",
+            "oidc.claim_mappings",
+            "oidc.scope_policies",
+            "oidc.provider_settings",
+            "oidc.cors",
+            "operations.encrypted_backup_restore",
+            "operations.encrypted_storage",
+            "identity.recovery_codes",
+            "identity.self_password_change",
+            "access.temporary_entitlements",
+            "identity.scheduled_offboarding",
+            "operations.audit_review",
+            "operations.csv_export",
+            "identity.windows_device_login",
+            "agents.parent_ownership",
+            "directory.workspace_sync",
+            "directory.entra_sync",
+            "identity.https_client_certificates",
+            "identity.device_trust",
+            "ssf.push",
+            "workflow.controlled_extensions"
+          ],
+          "edition": "platform",
+          "error_exit_codes": {
+            "authentication": 3,
+            "conflict": 5,
+            "operation_failed": 1,
+            "permission": 4,
+            "retryable": 6,
+            "usage": 2
+          },
+          "feature_states": {
+            "access.temporary_entitlements": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.atomic_idempotency": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.audit_run_id": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.certificate_bindings": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.conditional_mutations": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.parent_ownership": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.plan_apply": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.schema": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.scoped_credentials": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "agents.source_manifests": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "audit.self_hosted_event_map": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.entra_sync": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.ldap_provider": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.ldap_sync": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.scim_inbound": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.scim_outbound": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "directory.workspace_sync": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.device_trust": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.email_password_reset": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.email_verification": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.https_client_certificates": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.invitations": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.ldap_authentication": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.oauth_sources": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.oidc_sources": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.passkeys": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.recovery_codes": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.saml_sources": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.scheduled_offboarding": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.self_password_change": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.source_linking": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.totp_import": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "identity.windows_device_login": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.backchannel_logout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.bound_key": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.browser_terminal_handoff": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.claim_mappings": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.claims_requests": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.code.pkce_s256": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.cors": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.device": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.dpop": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.dynamic_registration": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.federated_machine_grants": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.frontchannel_logout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.jar": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.jarm": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.jwe": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.key_domains": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.native_redirects": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.pairwise_subjects": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.par": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.private_key_jwt": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.provider_issuers": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.provider_settings": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.refresh_rotation": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.request_bound_reauthentication": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.resource_indicators": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.rp_logout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.scope_policies": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.session_management": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "oidc.token_exchange": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.audit_review": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.csv_export": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.encrypted_backup_restore": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.encrypted_storage": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.native_tls": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.postgresql": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.prometheus": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.schema_migrations": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.shared_rate_limits": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "operations.vault_transit_signing": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "portal.terminal_sign_in": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "portal.user_applications": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "proxy.forward_auth_sso": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "proxy.reverse_proxy": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "proxy.shared_domain_sso": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "radius.eap_tls": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "radius.pap": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "radius.radsec": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.assertion_encryption": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.idp_signed_browser_sso": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.logout_fanout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.sp_initiated_logout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "saml.upstream_logout": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "ssf.push": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            },
+            "workflow.controlled_extensions": {
+              "compiled": true,
+              "configured": null,
+              "enabled": null,
+              "runtime_ready": null,
+              "usable": null
+            }
+          },
+          "features": [],
+          "interface": "server",
+          "permissions": [
+            {
+              "action": "ldap.search",
+              "resource_kind": "client"
+            },
+            {
+              "action": "certificate.read",
+              "resource_kind": "user"
+            },
+            {
+              "action": "certificate.write",
+              "resource_kind": "user"
+            },
+            {
+              "action": "mtls.read",
+              "resource_kind": "user"
+            },
+            {
+              "action": "mtls.bind",
+              "resource_kind": "user"
+            },
+            {
+              "action": "radius.enroll",
+              "resource_kind": "radius"
+            },
+            {
+              "action": "directory.read",
+              "resource_kind": "directory"
+            },
+            {
+              "action": "directory.sync",
+              "resource_kind": "directory"
+            },
+            {
+              "action": "provisioner.read",
+              "resource_kind": "provisioner"
+            },
+            {
+              "action": "provisioner.sync",
+              "resource_kind": "provisioner"
+            },
+            {
+              "action": "source.read",
+              "resource_kind": "source"
+            },
+            {
+              "action": "source.write",
+              "resource_kind": "source"
+            },
+            {
+              "action": "registration.read",
+              "resource_kind": "registration"
+            },
+            {
+              "action": "registration.write",
+              "resource_kind": "registration"
+            },
+            {
+              "action": "client.read",
+              "resource_kind": "client"
+            },
+            {
+              "action": "client.write",
+              "resource_kind": "client"
+            },
+            {
+              "action": "client.rotate",
+              "resource_kind": "client"
+            },
+            {
+              "action": "user.read",
+              "resource_kind": "user"
+            },
+            {
+              "action": "user.write",
+              "resource_kind": "user"
+            },
+            {
+              "action": "user.offboard",
+              "resource_kind": "user"
+            },
+            {
+              "action": "group.read",
+              "resource_kind": "group"
+            },
+            {
+              "action": "group.write",
+              "resource_kind": "group"
+            },
+            {
+              "action": "group.members",
+              "resource_kind": "group"
+            },
+            {
+              "action": "access.read",
+              "resource_kind": "access"
+            },
+            {
+              "action": "audit.read",
+              "resource_kind": "audit"
+            },
+            {
+              "action": "key.rotate",
+              "resource_kind": "key"
+            },
+            {
+              "action": "key.read",
+              "resource_kind": "key"
+            },
+            {
+              "action": "key.write",
+              "resource_kind": "key"
+            },
+            {
+              "action": "session.revoke",
+              "resource_kind": "session"
+            },
+            {
+              "action": "device.enroll",
+              "resource_kind": "device"
+            },
+            {
+              "action": "state.read",
+              "resource_kind": "state"
+            },
+            {
+              "action": "workflow.read",
+              "resource_kind": "workflow"
+            },
+            {
+              "action": "workflow.write",
+              "resource_kind": "workflow"
+            },
+            {
+              "action": "operations.read",
+              "resource_kind": "operations"
+            },
+            {
+              "action": "operations.backup",
+              "resource_kind": "operations"
+            },
+            {
+              "action": "ssf.manage",
+              "resource_kind": "ssf"
+            },
+            {
+              "action": "ssf.configure",
+              "resource_kind": "ssf"
+            }
+          ],
+          "schema_version": "riauth.capabilities/v2",
+          "schemas": [
+            "radius-certificate",
+            "windows-device",
+            "windows-login",
+            "client-certificate",
+            "directory-plan",
+            "cloud-directory-plan",
+            "provisioning-plan",
+            "invitation",
+            "authentik-import",
+            "migration-finding",
+            "migration-inventory",
+            "manifest",
+            "plan",
+            "apply",
+            "agent",
+            "provider",
+            "source",
+            "source-input",
+            "totp-import",
+            "key-input",
+            "registration-template",
+            "registration",
+            "user-create",
+            "user-update",
+            "client-create",
+            "client-update",
+            "cli-result",
+            "workflow",
+            "policy-simulation"
+          ],
+          "scope": "artifact",
+          "target": {
+            "arch": "x86_64",
+            "os": "linux"
+          },
+          "version": "0.1.1"
+        },
+        "id": "sha256:d15f4d1ec35f3d1bf601e154c7411c0a96318c6d14c7e2be862816d604c375d9",
+        "labels": {
+          "org.opencontainers.image.revision": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+          "org.opencontainers.image.source": "https://github.com/Rhein-Industries/riAuth",
+          "org.riauth.edition": "platform",
+          "org.riauth.local.owner": "a09-5505a0b29d0d49d182ec5d42644eddf3"
+        },
+        "os": "linux",
+        "recipe": {
+          "derived_sha256": "a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440",
+          "exact_reverse": true,
+          "original_sha256": "458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb",
+          "variant": "private-serial-resource-prefix"
+        },
+        "server_sha256": "a28827dffe27a2a42ec3fd44411ae5c343402c1a461582b17d236cb5de6dd668",
+        "tag": "riauth-local/a09-5505a0b29d0d49d182ec5d42644eddf3:platform"
+      }
+    },
+    "limits": [
+      "native x86 LOCAL cohort only",
+      "resource-only Dockerfile variant",
+      "format3 enforcement through pinned public entrypoints",
+      "no raw agreement or credential-row probe",
+      "b619 native notices were later found stale; retained, not regenerated",
+      "sampling is not a hard quota",
+      "no registry/tag/release/tenant/device claim"
+    ],
+    "native_input": {
+      "artifact": {
+        "digest": "sha256:7c1bcad0f78d90eb611ab76d67943a32a0d691cd5bbd9e5588512bdde635e2a0",
+        "id": 11246575279,
+        "name": "riauth-local-x86_64-37046857550-1",
+        "size_in_bytes": 52428080
+      },
+      "outer_zip_rehashed": true,
+      "raw_schema": "riauth.wave30.native-x86-root-review/v1",
+      "receipt_sha256": "ccf7c3fb6c0bd85816097c32a24a1c1b0a67b9597346d571cd68975a4680b1af",
+      "run": 37046857550
+    },
+    "official_release": false,
+    "owned_image_inventory_empty": true,
+    "owner": "a09-5505a0b29d0d49d182ec5d42644eddf3",
+    "pending_owned_containers": {},
+    "pending_owned_volumes": {},
+    "planned_image_tags": {
+      "essentials": "riauth-local/a09-5505a0b29d0d49d182ec5d42644eddf3:essentials",
+      "platform": "riauth-local/a09-5505a0b29d0d49d182ec5d42644eddf3:platform"
+    },
+    "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+    "recipe": {
+      "derived_sha256": "a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440",
+      "exact_reverse": true,
+      "original_sha256": "458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb",
+      "variant": "private-serial-resource-prefix"
+    },
+    "remaining_owned_cli_groups": 0,
+    "remaining_owned_containers": 0,
+    "remaining_owned_volumes": 0,
+    "repository": "Rhein-Industries/riAuth",
+    "resources": {
+      "maximum_gap_seconds": 2.0232125980000006,
+      "minimum_free_bytes": {
+        "docker_storage": 85391880192,
+        "host": 85391912960,
+        "private": 85391880192,
+        "workspace": 85391880192
+      },
+      "samples": 822
+    },
+    "result": "failed_or_refused",
+    "retained_inputs": "content-addressed tool/base image layers; no shared deletion",
+    "root_review": "66c814a339665e6b3f8e6c22bc59d4f6f0aa224c",
+    "schema": "riauth.local-container-cohort/v1",
+    "shared_full_gate": "not_run",
+    "source": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+    "source_tree": "a627df2ce21a4d255b8c1914d4f543e32f40f4de",
+    "steps": [
+      {
+        "elapsed": 0.002,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.001,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.064,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.001,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.065,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.002,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.07,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.002,
+        "exit": 0,
+        "name": "git-source",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.005,
+        "exit": 0,
+        "name": "native-capabilities",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.004,
+        "exit": 0,
+        "name": "native-capabilities",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.183,
+        "exit": 0,
+        "name": "daemon-info",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.047,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.068,
+        "exit": 0,
+        "name": "builder-list",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 10.594,
+        "exit": 0,
+        "log_bytes": 1344,
+        "log_sha256": "99ca3a85a601a57c5ee9ee55b76614e098bd8755e6fb30d39c360afea6323a61",
+        "name": "pull-pinned-buildkit",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.041,
+        "exit": 0,
+        "log_bytes": 45,
+        "log_sha256": "8c3bacdfd5a94b9861c28c0b9ec07a5e3c4898588f6f624fcc6e33c0d447d98d",
+        "name": "builder-create",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.538,
+        "exit": 0,
+        "log_bytes": 2041,
+        "log_sha256": "fdf23cfe64b50b5e69a1365f7dc2c0a9d19be15f96539d93f038fd2c172409a4",
+        "name": "builder-bootstrap",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "recover-builder-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "inspect-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.031,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 691.482,
+        "exit": 0,
+        "log_bytes": 53633,
+        "log_sha256": "51323e5b11c84d741469cf6a27b7db6e9d48e68c7d497c22cf808b475fddae66",
+        "name": "build-essentials",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.039,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 874.222,
+        "exit": 0,
+        "log_bytes": 40244,
+        "log_sha256": "8e4f5e47287893d2f20178f773295d26471429ed21b6d42a642eb0342f2fefc6",
+        "name": "build-platform",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 18.099,
+        "exit": 0,
+        "name": "save-essentials",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 19.828,
+        "exit": 0,
+        "name": "save-platform",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.056,
+        "exit": 0,
+        "name": "remove-for-reload",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.415,
+        "exit": 0,
+        "name": "remove-for-reload",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 2.723,
+        "exit": 0,
+        "name": "load-essentials",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.034,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.018,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.201,
+        "exit": 0,
+        "name": "copy-product",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 0,
+        "name": "copy-product",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "copy-product",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.036,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.108,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.04,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.024,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.097,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.002,
+        "exit": 0,
+        "name": "native-tool-version",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.002,
+        "exit": 0,
+        "name": "native-tool-version",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 1.675,
+        "exit": 0,
+        "name": "load-platform",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "inspect-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.045,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.018,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.269,
+        "exit": 0,
+        "name": "copy-product",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 0,
+        "name": "copy-product",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "copy-product",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.013,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.035,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.112,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.023,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.102,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.038,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.002,
+        "exit": 0,
+        "name": "native-tool-version",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.002,
+        "exit": 0,
+        "name": "native-tool-version",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "volume-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 0,
+        "name": "volume-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "volume-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 0,
+        "name": "volume-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.017,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.1,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.013,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.099,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.034,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.035,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.023,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.105,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.342,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.035,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.097,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.034,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.022,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.099,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.034,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.068,
+        "exit": 0,
+        "name": "server-start",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.026,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.025,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.024,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.018,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 3,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.024,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.024,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 4,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 3,
+        "name": "base-client",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.046,
+        "exit": 0,
+        "name": "owned-container-stop",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.022,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.097,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.036,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.095,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.013,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.031,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.034,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.101,
+        "exit": 5,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.038,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.016,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.094,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.036,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.025,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.107,
+        "exit": 2,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.013,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.036,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.023,
+        "exit": 0,
+        "name": "container-create",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.093,
+        "exit": 0,
+        "name": "container-tool",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "container-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.014,
+        "exit": 0,
+        "name": "container-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.035,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.012,
+        "exit": 0,
+        "name": "recover-builder-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.009,
+        "exit": 0,
+        "name": "inspect-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.089,
+        "exit": 0,
+        "name": "builder-stop-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "inspect-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 9.554,
+        "exit": 0,
+        "name": "builder-volume-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.04,
+        "exit": 0,
+        "name": "builder-instance-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-container",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.034,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "volume-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "volume-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "volume-owner-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "volume-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-volume",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "cleanup-image-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.064,
+        "exit": 0,
+        "name": "owned-image-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.035,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.033,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 0,
+        "name": "cleanup-image-inspect",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.407,
+        "exit": 0,
+        "name": "owned-image-remove",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.037,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.01,
+        "exit": 1,
+        "name": "check-absent-image",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.032,
+        "exit": 0,
+        "name": "absence-daemon-check",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.011,
+        "exit": 0,
+        "name": "owned-image-inventory",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      }
+    ],
+    "tool_pin": {
+      "actual_config_id": "sha256:27933730df224df80c41f4e5a9b33fa78831a79fd31903df3bb7deb49363422f",
+      "receipt_sha256": "4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0",
+      "reference": "docker.io/moby/buildkit@sha256:98cc6a3fc46220d00f8224ae483f3274fc874e9be8d7dd1e2e2c5481209228b5"
+    },
+    "uid_probes": [
+      {
+        "before_credentials": true,
+        "gid": 10001,
+        "mode": "700",
+        "uid": 10001,
+        "volume": "a09-5505a0b29d0d49d182ec5d42644eddf3-clean-config"
+      },
+      {
+        "before_credentials": true,
+        "gid": 10001,
+        "mode": "700",
+        "uid": 10001,
+        "volume": "a09-5505a0b29d0d49d182ec5d42644eddf3-clean-data"
+      }
+    ],
+    "workflow_sha256": "9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4"
+  },
+  "sanitized_files": {
+    "container-cohort.json": {
+      "bytes": 121977,
+      "sha256": "8049e4bfd8f4e51a75f41eb804448a8caac19b1e51b2bb5e488e301ac1511a8d",
+      "mode": "0o600"
+    },
+    "launch.json": {
+      "bytes": 163,
+      "sha256": "fee571e4c072fb3c329e279576ebb82cc36b6d6727a6f64276ee47b0e7ea3526",
+      "mode": "0o600"
+    },
+    "resources.jsonl": {
+      "bytes": 146568,
+      "sha256": "8394a073581f40722a5650cdf12754c9db52012468c4964b64ba2f9220d287da",
+      "mode": "0o600"
+    }
+  },
+  "resource_readback": {
+    "count": 822,
+    "minimum_free_bytes": {
+      "host": 85391912960,
+      "private": 85391880192,
+      "workspace": 85391880192,
+      "docker_storage": 85391880192
+    },
+    "maximum_recorded_gap_seconds": 2.023,
+    "first": {
+      "elapsed": 0.001,
+      "free_bytes": {
+        "host": 92307587072,
+        "private": 92307587072,
+        "workspace": 92307587072,
+        "docker_storage": 92307587072
+      },
+      "phase": "source",
+      "gap_seconds": 0
+    },
+    "last": {
+      "elapsed": 1642.25,
+      "free_bytes": {
+        "host": 90032201728,
+        "private": 90032201728,
+        "workspace": 90032201728,
+        "docker_storage": 90032201728
+      },
+      "phase": "cleanup",
+      "gap_seconds": 2.0
+    }
+  },
+  "source_boundary": {
+    "helper": "7869b96453c13fdec5af35fd5cf661849d417f36",
+    "assertion": "direct_refusal: offline_hashes after code2/okfalse and required marker",
+    "first_candidate": "issuer",
+    "offline_hash_input": "riauth.toml/database.key/riauth.redb physical-file sha256 comparison",
+    "component_changed": "UNKNOWN",
+    "actual_hash_values": "NOT_RECORDED",
+    "product_defect_established": false,
+    "later_EPE_reached": false
+  },
+  "review_limits": [
+    "All 301 step identities/exits/durations and cleanup flags read after oversized output was reread in compact form.",
+    "Capabilities and feature-state fields inspected as source-bound artifact metadata, not configured readiness.",
+    "Archive and build-log bytes rehashed from verified ZIP; no inner archive extraction or native execution in root review.",
+    "Public source path identifies composite physical-file preservation assertion; changed file or logical mutation is unrecorded.",
+    "Whole container/shared gate remains failed/not_run; no ARM container or official release credit."
+  ],
+  "validation_lane_released": true
+}

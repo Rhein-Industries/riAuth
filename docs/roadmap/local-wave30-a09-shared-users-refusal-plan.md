@@ -4508,3 +4508,601 @@ files remained byte-equivalent. Change scope was only this report (136 appended
 lines before this final static receipt). No runtime invocation was repeated.
 Final docs/whitespace/source-scope checks cover this receipt before committing
 it; this is a report-only evidence commit with all further runtimes held.
+
+
+## wave30_A09_exact_http_admission_expectation_design — source-only proposal after 37077820186
+
+Project 891e7443-8dac-4c1b-897f-9e53cb59c7ee; original A09
+506e3979-a590-4af3-8fa8-ee90d3a517f2; existing WT
+a1303b57-4a34-487e-9c63-a841f05b51a0 only. This append preserves all
+262,952 prior bytes from 406efd21c18e33ac2b2ded79a6382269d80c7130,
+SHA256 c0983d37c00318e01b894b60fbf832e84d904e89db68a13b7039c1145ec4228f.
+That includes all older hosted failures, their unknown origins, the blocked
+harness designs and the actual 89-case pure-memory PASS. No historical result
+is recast. The helper/workflow and production files remain untouched. This is
+DESIGN ONLY: none of the following candidate definitions, traces, cases or
+native operations has run. No runtime/Cargo/desktop slot was claimed or released.
+
+### Actual new hosted failure and finite evidence boundary
+
+Root separately dispatched run 37077820186/job 111071534441 with workflow
+7869b96453c13fdec5af35fd5cf661849d417f36, validator
+8a2c4a192d04a43cd930141506a5215cca343542, and product
+9a819317efb3a13fa27cd86f884be2be00898fc0. The focused helper failed after
+3.204996 seconds with AssertionError frames helper 466/352/239, matrix 79
+(and bootstrap 88). Its public CLI exit 4, HTTP 403 and access_denied checks
+preceded and passed before the complete Store equality failed. Those successful
+refusal assertions are the only authenticated refusal outcome credited here.
+Session-expiry checks and subsequent E-P-E comparisons were not reached.
+
+The actual optional count projection was:
+
+| Fixed category | Before | After | Added | Changed | Removed |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| http_rates | 2 | 2 | 0 | 1 | 0 |
+| http_rate_expiry | 2 | 2 | 0 | 0 | 0 |
+| http_rate_count | 1 | 1 | 0 | 0 | 0 |
+| maintenance_cursors | 0 | 0 | 0 | 0 | 0 |
+| maintenance_bounds | 0 | 0 | 0 | 0 | 0 |
+| protected_or_other | 51 | 51 | 0 | 0 | 0 |
+
+The exact changed opaque key, value and field are still UNKNOWN. This receipt
+cannot prove that the changed record was the expected loopback general counter,
+or that its count incremented. It is consistent with that source path; it is
+not a measurement of the tuple. Older hosted unknown causes stay UNKNOWN.
+
+The complete four fixed sanitized documents were read, including controller
+phase/failure/frame/count/import/resource/cleanup fields and every resource
+sample. Their actual bytes/hashes were rechecked without database/private row
+inspection. helper-redacted.json is the not_run pending placeholder, not a
+completed helper report. Root's immutable receipt at 6c7d32424c3a8dcc8515ce2fe7eee6e184e4a011,
+docs/roadmap/evidence/wave30-a09-hosted-counts-37077820186.json, is 21,046 bytes with SHA256
+a8631bb8aeaa438955cbc9a6dd825386bdb3166192831e073bd699b2fadffe14;
+its full bytes were read and rehashed. Root independently verified transport
+artifact 11257332482, ZIP 17,555 bytes, SHA256
+596b7754c542722f2b976147a0b0f35ba6111f296d1abc0a17890c38e81648b8.
+No new remote query/download occurred in this review.
+
+| Sanitized document | Bytes | SHA256 |
+| --- | ---: | --- |
+| controller.json | 14921 | 0deea1590ed958db2ed393009040e3e0fe67148988ab258d379a78b1fef3ea73 |
+| cleanup.json | 294 | d3b6f9bc7107fa540408dbf195a74b00919943f8555481969ea6ccf4fdbe35e3 |
+| resources.jsonl | 1756 | f7d766e3c9f6799f8c8d2593838f78b6151736b3b42f7aa2683ca0878baf5cf3 |
+| helper-redacted.json | 70 | ea7793e91dfdf9fc5f1d08bacad8429368cd69cd2131927da2ccf74b330c8f08 |
+
+Cleanup failures were empty, remaining owned processes zero, fixture/private
+workspace gone; the fixture owner was reaped and no live owned PG remained.
+Six resource samples had minimum free 115,572,277,248 bytes and maximum gap
+2.000676759 seconds. These are hosted receipt measurements, not new local
+runtime measurements. No shared gate success, application/release/tenant pass
+or later E-P-E completion follows from them.
+
+### Source body trace and independently known admission semantics
+
+All referenced product bodies below are read from immutable
+9a819317efb3a13fa27cd86f884be2be00898fc0, not imported or executed:
+
+- api.rs protect 1007–1146 obtains the socket peer, applies only explicitly
+  trusted forwarding, assigns /api/users the general category, derives rate_key,
+  and commits shared_rate_limit before authorization. rate_key 2958–2966 maps
+  IPv4-mapped IPv6 to IPv4 and leaves this exact IPv4 loopback address unchanged.
+  The response/header tail 1147–1208 adds no durable writer. create_user
+  2467–2475 passes the bearer to Core. No rate/auth guard change is proposed.
+- store.rs shared_rate_limit_within 754–770 derives URL-safe-unpadded
+  SHA256 of the UTF-8 IP, NUL, category. The persisted schema is the tuple
+  (u64 window_start, u32 count), serialized as a compact JSON array; it is not
+  the in-memory RateWindow type. A previous row with saturating start+60 > now
+  retains start/count; otherwise it becomes (now,0). The writer always stores
+  (start, saturating count+1), returning limited iff the prior count >= limit.
+  Reclamation/eviction is conditional on previous.is_none(), so it does not run
+  for the required existing exact rate row in this proposal.
+- maintenance.rs update_indexes 203–219 deletes the exact previous expiry key
+  and puts the exact new key. index_key 112–114 is the saturating expiry time
+  padded to 20 digits, slash, digest of the rate id. The index value is the JSON
+  string containing that id. Existing-row counter_change keeps index_counts
+  byte-identical. A current window rewrites the same plain index bytes; an
+  expired window replaces exactly its old expiry key with the derived new one.
+  http_rates is outside QUEUES, so no maintenance cursor/bound write follows.
+- Tx::put/import_record 1477–1517 uses serde_json::to_vec compact plain bytes
+  when no database key is configured; encryption uses a randomized nonce.
+  Rate/index buckets are outside record_change's audit-bearing buckets
+  (1332–1353); identity prepare/transition and Platform SCIM transition switch
+  only their explicit identity/group/passkey cases. They do not add identity,
+  audit or queue effects for these rate/index records. Raw put uses the same
+  exact bytea primary key (1556–1570).
+- Core::create_user 524–538 requires both headers, then mutation_checked 69–109
+  validates principal/receipt/permissions and revision. management::create_user
+  1643–1678 first requires user.write on the exact user resource, before password
+  history, identity/provenance/audit writes. The actor's require returns forbidden
+  if its current grant cannot perform that action. Store::postgres_write
+  1094–1136 evaluates f(&tx)? before commit; errors roll back that Core writer.
+  This rollback is separate from the earlier committed HTTP admission writer.
+- The fixture invokes gate.remote with the embedded server executable. Embedded
+  src/cli.rs run_user 2593–2622 issues ONE direct POST /api/users; its private saved
+  session is read locally. cli/transport.rs call_with_review_and_match 195–241
+  applies the supplied revision/key and sends once, without discovery or retry.
+  The standalone riauthctl discovery behavior is not this fixture path. The
+  embedded client disables redirects; this expectation derives the IPv4 loopback
+  row and fails closed if a proxy/other peer or additional request changes any
+  other record. It does not silently change proxy environment or transport.
+- matrix.init_instance 166–178 fixes issuer/listen to IPv4 loopback and supplies
+  no encryption-key flag. CLI init/local.rs 386–399 defaults key=None;
+  Config defaults 481–489 have no key/trusted proxies and general limit defaults
+  to 600 (config.rs 204, effective_rate_limit 528–534). The proposed guard requires
+  this plain, exact loopback configuration and its validated finite general
+  limit. The already-existing revision request occurs before the full snapshot
+  and uses general too. The kernel requires the expected row/index/counter to
+  exist; it does not assume their values from the public two-row count.
+
+The complete selected source spans, serialization, index updates and transaction
+commit/rollback bodies were inspected. Two exploratory immutable path reads
+(src/transport.rs and src/assembly/mutation.rs) did not exist; the actual paths
+were located as src/cli/transport.rs and src/core.rs and fully read. A resource
+filename lookup was corrected from resources.json to the actual resources.jsonl.
+These were static lookup corrections, not executed product failures.
+
+| Product source at fixed 9a819317 | Bytes | SHA256 |
+| --- | ---: | --- |
+| src/api.rs | 146530 | ffcb8590457eda37a4fe0434c40d328eecdb1718953b8b3607405007a13451b3 |
+| src/store.rs | 82583 | dfb62f2e482e9e334e148a932c7900607f37297748f0c1f90a8ef65f77babc0f |
+| src/store/maintenance.rs | 32506 | 95c8f28cda073ffec4ea9f7ebe217be113222ec730ba2981b86aa39d1f5d7a70 |
+| src/crypto.rs | 17949 | ad220d296dd5aca6278ee9ab42d9efae42e541f1027a578774c6894862ac37e3 |
+| src/config.rs | 51307 | 4155154a81c70721c3e195733bf17ca1e416e99e2c2e11a69862632c275e8353 |
+| src/assembly.rs | 11136 | eedcee9a4c6197cebefd6badfd150d89ab292bfbfbe8bb1b4034cae2a2eb4f3a |
+| src/core.rs | 57266 | 13da3f54b28a130cd73e5380253248c650f110b4c4bfb563c88382f55cc74304 |
+| src/agent.rs | 13652 | 4e15ea4f292e294800c5f2aa7c05fef56bac5ded1cb4f865ad8fc35b7e289d9f |
+| src/management.rs | 120176 | c3e0fde68ae8bec0706ac306133997272d8602c0319ad54498bba462d25c3b70 |
+| src/cli.rs | 129441 | 09bf4315bf23a926819854801f3f96d6edf23a8841a31e96c572af16fcef3fc9 |
+| src/cli/transport.rs | 11769 | 51db7010fffd52ed386b62f13751503b60ca7dfaa0fab227790347d618f8958a |
+| src/cli/local.rs | 16437 | 63e988df595df7b6d6e410574e46904064697b4a78b7e4617430607375dcd0d5 |
+| src/identity.rs | 6212 | 9d9d33753ad62d69f8dc4a7242a141b0fb7467b7eba0fee6bdb7c142ced1db88 |
+| src/assembly/scim_runtime.rs | 97835 | 9cd66862c726c11db78a44a714a1b8ae0c9a1ef2012e82f1a802718170a43c55 |
+
+### ONE smallest reserved-source proposal: exact complete admission expectation
+
+Prospective ownership remains only the helper plus its single fixed import hash
+in the workflow. No implementation or hosted release is authorized by this
+append. The strict public refusal and every existing request/header/password
+input remain exact. There are still only the two existing full SQL captures,
+one create POST, no extra SQL/HTTP/CLI request, sleep, retry, polling or clock
+write. The earlier 0.2-second sleep and all later session/E-P-E checks are
+unchanged. No row or collection is removed from comparison.
+
+The new pure generator independently constructs COMPLETE expected after-capture
+bytes from BEFORE only. It never receives or decodes AFTER. It validates the
+existing strict 8 MiB hex/key/value/UTF-8/duplicate bounds using the unchanged
+counts parser, and requires the entire before capture to be in exact canonical
+bytea-key order. Every opaque other value stays in its original hex bytes.
+It derives one private rate id from the exact loopback/general source input,
+requires its canonical u64/u32 tuple, exact one expiry entry, consistent existing
+finite collection counter and no prospective expiry collision. Missing/new rows,
+stale duplicate expiry indexes, encryption, alternate routing/configuration or
+unexpected canonical shapes are refusal prerequisites, not generic permissions
+for additional changes. The known row already exists, so table-full reclamation
+and eviction are outside this narrowly admitted effect.
+
+A short wall/monotonic bracket surrounds only the unchanged create CLI call.
+It adds no sleep or clock override. The bracket is <=5 monotonic seconds,
+<=6 wall seconds, nondecreasing, with endpoint drift <=250 ms. It yields at most
+seven possible whole Unix seconds, independent of AFTER. A still-current window
+has ONE unique expected count+1 result, with the same start and expiry/count
+bytes. A naturally expired window must use one bracketed request second and
+count=1, replacing exactly the old/new expiry keys with independently derived
+compact JSON string bytes; all other bytes, including the count row, remain exact.
+Near a boundary the finite alternatives express one source-defined transaction
+rule, not permission to accept arbitrary changes to any http_rates record.
+Candidates whose prior count reaches the configured limit are excluded because
+they produce 429 rather than the required 403. Thus neither a missing increment,
+count+2, arbitrary window/field change, different bucket nor protected/index/count
+change can pass merely because the diagnostic says one record changed.
+
+Only a full byte equality with one independently constructed complete snapshot
+passes. AFTER's raw keys, values, tuples and digests never select the expected
+rate id, candidate times or rewrite set. The existing fixed six-category/count
+diagnostic remains unchanged and attaches only on the same exact AssertionError
+path, with the same fixed message and fallback. A parser/clock prerequisite
+ValueError or OverflowError makes that full-snapshot assertion fail; interruption
+and memory failures are not treated as admission successes.
+
+This is a feasibility envelope, not new host-clock evidence. Wall and monotonic
+clocks are used on the same isolated native host as product SystemTime; source
+cannot certify an unobserved clock excursion or distinguish which feasible
+bracketed second actually ran. An outcome outside this finite envelope remains
+refused and requires a separate measured prerequisite/diagnostic reservation.
+No claim is made about encrypted records, missing rate rows, general concurrent
+traffic, timestamp manipulation, other categories, eviction or arbitrary stores.
+Actual 37077820186's tuple is still UNKNOWN. Source-level validity of this rule
+must be independently reviewed and later measured separately; the old memory
+89 PASS validates only the unchanged diagnostic transport, not this new rule.
+
+### Exact prospective source identities (not materialized)
+
+| Candidate | Bytes | SHA256 |
+| --- | ---: | --- |
+| helper | 31339 | 32a2952e3b4c3ff2ab73a747238862d3446c31bf4896c869bc9efacb1ba8fe49 |
+| workflow | 82149 | cddca77a2f75bf02c8ceff0a1a16e792636bc5a09bd68b5ead8494e6ca1bb9fc |
+| inline controller (only fixed import digest differs) | 66841 | f094ba6bd03bfaabad7a2e9516ab16c67fd08af0e6f0fa6413e754534cc3e588 |
+| bootstrap (unchanged) | 5111 | a8f7df1a172e1dc89672d2be54fa147eabf6a61864935e82fd86e2cf64839d33 |
+
+The baseline helper/workflow equal d00c968, validator 8a2c4a1 and workflow
+7869b964 whole bytes. No stale full-file import/alignment is needed. The only
+workflow change is the helper's digest in FIXED imports; all four other import
+values, action/source/run/artifact identifiers, resource/cleanup/upload/sanitizer
+bodies and bootstrap bytes remain exactly unchanged. A later validator source
+must contain this candidate helper AND those four exact imports; an updated
+workflow digest alone cannot authorize an old helper source.
+
+| Baseline source at d00c968 | Bytes | SHA256 |
+| --- | ---: | --- |
+| scripts/check-local-edition-transition-postgres.py | 26547 | 4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa |
+| .github/workflows/check-local-shared-handoff.yml | 82149 | 226483dd9edcd5e566b6c5de9f7ab2a36ebdf0c0f204f8ec992645542a3f395f |
+| scripts/check-exact-edition-matrix.py | 18394 | f07d934f9cfd7af20eb086f5838863c28f840ee848e62bea1d865b330643d887 |
+| scripts/check-installed-release-gate.py | 22321 | cbe8dcb42b4b1c36dc8df00204103b9c955feb8057275a441f60f3072d2bf8b5 |
+| scripts/check-local-encrypted-edition-transition.py | 22045 | 09e137d88eb8e873a488448b7bdfdbe80d2327fbca716a93f445eaaae1ea9e8e |
+| scripts/spdx_sbom.py | 36727 | ca063ab3d4abb6ec815151bcf762447e96682076a7f72d2dbfa9d7e6d3a1032c |
+
+### Complete new pure function body — UNEXECUTED
+
+```python
+def refusal_admission_snapshots(before, lower_ns, upper_ns, elapsed_ns, limit):
+    # Derive complete expected records from BEFORE only; never interpret AFTER.
+    if (any(type(value) is not int for value in (lower_ns, upper_ns, elapsed_ns, limit))
+            or not 0 <= lower_ns <= upper_ns <= (2 ** 64 - 1) * 1_000_000_000
+            or not 0 <= elapsed_ns <= 5_000_000_000
+            or upper_ns - lower_ns > 6_000_000_000
+            or abs(upper_ns - lower_ns - elapsed_ns) > 250_000_000
+            or not 1 <= limit <= 100_000):
+        raise ValueError("refusal_admission_prerequisite")
+    refusal_snapshot_counts(before, before)  # Existing bounded, strict hex/duplicate parser.
+    rows = {}
+    for line in before.split(b"\n")[:-1]:
+        key_hex, value_hex = line.split(b"|", 1)
+        rows[bytes.fromhex(key_hex.decode("ascii"))] = value_hex
+
+    def pack(records):
+        raw = b"".join(key.hex().encode("ascii") + b"|" + records[key] + b"\n"
+                       for key in sorted(records))
+        if len(raw) > 8 * 1024 ** 2:
+            raise ValueError("refusal_admission_prerequisite")
+        return raw
+
+    if pack(rows) != before:
+        raise ValueError("refusal_admission_prerequisite")
+    rate_id = base64.urlsafe_b64encode(hashlib.sha256(b"127.0.0.1\x00general").digest()).rstrip(b"=")
+    rate_key = b"http_rates/" + rate_id
+    rate_hex = rows.get(rate_key)
+    if rate_hex is None:
+        raise ValueError("refusal_admission_prerequisite")
+    rate = re.fullmatch(rb"\[(0|[1-9][0-9]{0,19}),(0|[1-9][0-9]{0,9})\]",
+                        bytes.fromhex(rate_hex.decode("ascii")))
+    if rate is None:
+        raise ValueError("refusal_admission_prerequisite")
+    start, count = int(rate[1]), int(rate[2])
+    lower, upper = lower_ns // 1_000_000_000, upper_ns // 1_000_000_000
+    if not 0 <= start <= lower or not 1 <= count <= 2 ** 32 - 1:
+        raise ValueError("refusal_admission_prerequisite")
+    total = sum(key.startswith(b"http_rates/") for key in rows)
+    if (not 1 <= total <= 100_000
+            or rows.get(b"index_counts/http_rates") != str(total).encode("ascii").hex().encode("ascii")):
+        raise ValueError("refusal_admission_prerequisite")
+    index_id = base64.urlsafe_b64encode(hashlib.sha256(rate_id).digest()).rstrip(b"=")
+    id_hex = (b'"' + rate_id + b'"').hex().encode("ascii")
+
+    def expiry_key(at):
+        return (b"index_expiry_http_rates/"
+                + f"{min(at + 60, 2 ** 64 - 1):020}/".encode("ascii") + index_id)
+
+    old_expiry = expiry_key(start)
+    if (rows.get(old_expiry) != id_hex
+            or sum(key.startswith(b"index_expiry_http_rates/") and value == id_hex
+                   for key, value in rows.items()) != 1):
+        raise ValueError("refusal_admission_prerequisite")
+    seen = set()
+    for at in range(lower, upper + 1):  # At most seven independently bracketed Unix seconds.
+        next_start, prior_count = (start, count) if min(start + 60, 2 ** 64 - 1) > at else (at, 0)
+        if prior_count >= limit:  # Such a transaction returns 429, never the required 403.
+            continue
+        next_count = min(prior_count + 1, 2 ** 32 - 1)
+        if (next_start, next_count) in seen:
+            continue
+        seen.add((next_start, next_count))
+        new_expiry = expiry_key(next_start)
+        if new_expiry != old_expiry and new_expiry in rows:
+            raise ValueError("refusal_admission_prerequisite")
+        expected = rows.copy()
+        expected[rate_key] = f"[{next_start},{next_count}]".encode("ascii").hex().encode("ascii")
+        del expected[old_expiry]
+        expected[new_expiry] = id_hex
+        yield pack(expected)
+```
+
+### Complete prospective shared_probe body — UNEXECUTED
+
+Only the admission guard, two clock readings and exact expectation comparison
+are new in this body. The SQL, call arguments, strict public refusal, original
+counts attachment, all later requests/assertions and return remain unchanged.
+
+```python
+def shared_probe(server, config, base, scratch, revoked_token=None):
+    session = scratch / f"delegate-{time.monotonic_ns()}.json"
+    admin = scratch / f"admin-{time.monotonic_ns()}.json"
+    with gate.serving(server, config, base, scratch / f"shared-{time.monotonic_ns()}.log"):
+        if revoked_token is not None:
+            matrix.require(authenticated_status(base, "/api/me", revoked_token) == 401,
+                           "previously logged-out session became valid")
+        gate.remote(server, base, session, "login", "delegate", "--password-stdin",
+                    input="q08-delegate-disposable-password\n")
+        me = gate.remote(server, base, session, "whoami")
+        matrix.require(me["user"]["username"] == "delegate" and not me["user"]["admin"],
+                       "ordinary credential did not identify the same non-admin user")
+        token = json.loads(session.read_text())["token"]
+        matrix.require(authenticated_status(base, "/api/audit?limit=1", token) == 200,
+                       "active auditor grant stopped authorizing audit read")
+        # Collection reads filter visible users; creation is the administration boundary.
+        settings = tomllib.loads(config.read_text())
+        rates = settings.get("rate_limits", {})
+        limit = rates.get("general", 600) if type(rates) is dict else None
+        matrix.require(settings.get("database_key_file") is None
+                       and settings.get("trusted_proxies", []) == []
+                       and re.fullmatch(r"http://127\.0\.0\.1:([0-9]+)", base) is not None
+                       and settings.get("issuer") == base
+                       and settings.get("listen") == base.removeprefix("http://")
+                       and type(limit) is int and 1 <= limit <= 100_000,
+                       "unsupported user-create admission fixture")
+        connection = config.parent / settings["postgres"]["connection_file"]
+        target = re.fullmatch(r"host=127\.0\.0\.1 port=([0-9]+) dbname=riauth_transition "
+                              r"user=riauth_test sslmode=disable", connection.read_text().strip())
+        matrix.require(target is not None and 0 < int(target[1]) <= 65535,
+                       "unexpected user-create refusal snapshot target")
+
+        def refusal_rows():
+            result = subprocess.run([
+                "psql", "-h", "127.0.0.1", "-p", target[1], "-U", "riauth_test", "-d", "riauth_transition",
+                "-X", "--no-password", "-v", "ON_ERROR_STOP=1", "-At", "-F", "|", "-c",
+                "SELECT encode(key,'hex'),encode(value,'hex') FROM riauth_store.records_v1 ORDER BY key",
+            ], capture_output=True, timeout=5)
+            matrix.require(result.returncode == 0 and result.stdout,
+                           "full user-create refusal snapshot unavailable")
+            return result.stdout
+
+        revision = gate.remote(server, base, session, "revision")["revision"]
+        before_refusal = refusal_rows()
+        lower_ns, tick = time.time_ns(), time.monotonic_ns()
+        denied = gate.remote(server, base, session, "--if-revision", revision,
+                             "--idempotency-key", os.urandom(16).hex(),
+                             "user", "create", "shared-refused-user", "--password-stdin",
+                             input="q08-refused-disposable-password\n", expected=4)
+        elapsed_ns, upper_ns = time.monotonic_ns() - tick, time.time_ns()
+        matrix.require(denied["error"]["http_status"] == 403
+                       and denied["error"]["code"] == "access_denied"
+                       and denied["exit_code"] == 4,
+                       "ordinary auditor gained user administration")
+        after_refusal = refusal_rows()
+        try:
+            try:
+                admitted = any(after_refusal == expected for expected in refusal_admission_snapshots(
+                    before_refusal, lower_ns, upper_ns, elapsed_ns, limit))
+            except (ValueError, OverflowError):
+                admitted = False  # Unsupported admission evidence remains a full-snapshot failure.
+            matrix.require(admitted,
+                           "refused user creation changed durable records")
+        except AssertionError as error:
+            if type(error) is AssertionError:
+                try:
+                    error.store_snapshot_counts = refusal_snapshot_counts(before_refusal, after_refusal)
+                except BaseException:
+                    pass  # Diagnostics must not replace the original complete-snapshot failure.
+            raise
+        time.sleep(0.2)
+        again = gate.remote(server, base, session, "whoami")
+        matrix.require(again["expires_at"] == me["expires_at"], "session expiry was renewed")
+        gate.remote(server, base, session, "logout")
+        matrix.require(authenticated_status(base, "/api/me", token) == 401,
+                       "logout failed to revoke the session")
+        gate.remote(server, base, admin, "login", "admin", "--password-stdin",
+                    input="q08-disposable-password\n")
+        grants = gate.remote(server, base, admin, "grants", "get", "delegate")
+        matrix.require(grants["grants"] == [{"role": "auditor", "scope": "audit/events",
+                                            "target_id": "events"}], "auditor grant changed")
+        group = gate.remote(server, base, admin, "get", "group", "shared-fixture")
+        matrix.require(me["groups"], "ordinary membership missing")
+        gate.remote(server, base, admin, "logout")
+        return {"user": me["user"], "groups": me["groups"], "group": group,
+                "grants": grants, "audit_status": 200, "users_status": 403}, token
+```
+
+### Exact zero-context helper diff against d00c968 — UNAPPLIED
+
+```diff
+--- a/scripts/check-local-edition-transition-postgres.py
++++ b/scripts/check-local-edition-transition-postgres.py
+@@ -10,0 +11 @@
++import base64
+@@ -194,0 +196,72 @@
++def refusal_admission_snapshots(before, lower_ns, upper_ns, elapsed_ns, limit):
++    # Derive complete expected records from BEFORE only; never interpret AFTER.
++    if (any(type(value) is not int for value in (lower_ns, upper_ns, elapsed_ns, limit))
++            or not 0 <= lower_ns <= upper_ns <= (2 ** 64 - 1) * 1_000_000_000
++            or not 0 <= elapsed_ns <= 5_000_000_000
++            or upper_ns - lower_ns > 6_000_000_000
++            or abs(upper_ns - lower_ns - elapsed_ns) > 250_000_000
++            or not 1 <= limit <= 100_000):
++        raise ValueError("refusal_admission_prerequisite")
++    refusal_snapshot_counts(before, before)  # Existing bounded, strict hex/duplicate parser.
++    rows = {}
++    for line in before.split(b"\n")[:-1]:
++        key_hex, value_hex = line.split(b"|", 1)
++        rows[bytes.fromhex(key_hex.decode("ascii"))] = value_hex
++
++    def pack(records):
++        raw = b"".join(key.hex().encode("ascii") + b"|" + records[key] + b"\n"
++                       for key in sorted(records))
++        if len(raw) > 8 * 1024 ** 2:
++            raise ValueError("refusal_admission_prerequisite")
++        return raw
++
++    if pack(rows) != before:
++        raise ValueError("refusal_admission_prerequisite")
++    rate_id = base64.urlsafe_b64encode(hashlib.sha256(b"127.0.0.1\x00general").digest()).rstrip(b"=")
++    rate_key = b"http_rates/" + rate_id
++    rate_hex = rows.get(rate_key)
++    if rate_hex is None:
++        raise ValueError("refusal_admission_prerequisite")
++    rate = re.fullmatch(rb"\[(0|[1-9][0-9]{0,19}),(0|[1-9][0-9]{0,9})\]",
++                        bytes.fromhex(rate_hex.decode("ascii")))
++    if rate is None:
++        raise ValueError("refusal_admission_prerequisite")
++    start, count = int(rate[1]), int(rate[2])
++    lower, upper = lower_ns // 1_000_000_000, upper_ns // 1_000_000_000
++    if not 0 <= start <= lower or not 1 <= count <= 2 ** 32 - 1:
++        raise ValueError("refusal_admission_prerequisite")
++    total = sum(key.startswith(b"http_rates/") for key in rows)
++    if (not 1 <= total <= 100_000
++            or rows.get(b"index_counts/http_rates") != str(total).encode("ascii").hex().encode("ascii")):
++        raise ValueError("refusal_admission_prerequisite")
++    index_id = base64.urlsafe_b64encode(hashlib.sha256(rate_id).digest()).rstrip(b"=")
++    id_hex = (b'"' + rate_id + b'"').hex().encode("ascii")
++
++    def expiry_key(at):
++        return (b"index_expiry_http_rates/"
++                + f"{min(at + 60, 2 ** 64 - 1):020}/".encode("ascii") + index_id)
++
++    old_expiry = expiry_key(start)
++    if (rows.get(old_expiry) != id_hex
++            or sum(key.startswith(b"index_expiry_http_rates/") and value == id_hex
++                   for key, value in rows.items()) != 1):
++        raise ValueError("refusal_admission_prerequisite")
++    seen = set()
++    for at in range(lower, upper + 1):  # At most seven independently bracketed Unix seconds.
++        next_start, prior_count = (start, count) if min(start + 60, 2 ** 64 - 1) > at else (at, 0)
++        if prior_count >= limit:  # Such a transaction returns 429, never the required 403.
++            continue
++        next_count = min(prior_count + 1, 2 ** 32 - 1)
++        if (next_start, next_count) in seen:
++            continue
++        seen.add((next_start, next_count))
++        new_expiry = expiry_key(next_start)
++        if new_expiry != old_expiry and new_expiry in rows:
++            raise ValueError("refusal_admission_prerequisite")
++        expected = rows.copy()
++        expected[rate_key] = f"[{next_start},{next_count}]".encode("ascii").hex().encode("ascii")
++        del expected[old_expiry]
++        expected[new_expiry] = id_hex
++        yield pack(expected)
++
++
+@@ -211 +284,11 @@
+-        connection = config.parent / tomllib.loads(config.read_text())["postgres"]["connection_file"]
++        settings = tomllib.loads(config.read_text())
++        rates = settings.get("rate_limits", {})
++        limit = rates.get("general", 600) if type(rates) is dict else None
++        matrix.require(settings.get("database_key_file") is None
++                       and settings.get("trusted_proxies", []) == []
++                       and re.fullmatch(r"http://127\.0\.0\.1:([0-9]+)", base) is not None
++                       and settings.get("issuer") == base
++                       and settings.get("listen") == base.removeprefix("http://")
++                       and type(limit) is int and 1 <= limit <= 100_000,
++                       "unsupported user-create admission fixture")
++        connection = config.parent / settings["postgres"]["connection_file"]
+@@ -228,0 +312 @@
++        lower_ns, tick = time.time_ns(), time.monotonic_ns()
+@@ -232,0 +317 @@
++        elapsed_ns, upper_ns = time.monotonic_ns() - tick, time.time_ns()
+@@ -239 +324,6 @@
+-            matrix.require(after_refusal == before_refusal,
++            try:
++                admitted = any(after_refusal == expected for expected in refusal_admission_snapshots(
++                    before_refusal, lower_ns, upper_ns, elapsed_ns, limit))
++            except (ValueError, OverflowError):
++                admitted = False  # Unsupported admission evidence remains a full-snapshot failure.
++            matrix.require(admitted,
+```
+
+### Exact sole workflow fixed-helper-hash diff — UNAPPLIED
+
+```diff
+--- a/.github/workflows/check-local-shared-handoff.yml
++++ b/.github/workflows/check-local-shared-handoff.yml
+@@ -239 +239 @@
+-              "check-local-edition-transition-postgres.py": "4c60a7448d3c836215068fcc4f6822655c483f172a822e085f077d27b6a0c6fa",
++              "check-local-edition-transition-postgres.py": "32a2952e3b4c3ff2ab73a747238862d3446c31bf4896c869bc9efacb1ba8fe49",
+```
+
+### Static complete inverse/protected-body witnesses
+
+The complete archived diffs were forward-applied and reversed as TEXT ONLY
+using independent zero-context hunk-position/count checking. Both forward
+results equal the recorded full candidates; both full inverses equal the fixed
+d00c968 originals. The inverse helper AST equals the entire original AST with
+positions omitted. All old top-level function ASTs except shared_probe remain
+exact; refusal_snapshot_counts/main/load/rows/E-P-E helpers are unchanged. The
+shared_probe inverse also reproduces its entire original body. Static AST call
+lists prove every existing gate.remote call, subprocess.run query and time.sleep
+is byte/AST-identical and in the same order. Only stdlib base64 is added as an
+import; no dependency or runtime import occurred. The workflow's full inverse,
+controller inverse and bootstrap literal equality are checked; the bootstrap
+SHA and all four other import hashes match the fixed identities above.
+
+No candidate functions/cases, helper/module main, harness/trace construction,
+controller/bootstrap, native product, PG/SQL/CLI/HTTP, Cargo, provider, browser,
+network query/download or dispatch executed. Only source text, sanitized fixed
+documents, hashes, ASTs and this report were read/constructed. No database rows,
+private raw key/value/message evidence, process arguments or environment values
+were inspected. Actual source files remain d00-equivalent; only this report is
+written. No other-worker contact, task/WT/status/publication action occurred.
+
+### Proposed necessary later validation and current stop boundary
+
+Before source ownership/runtime, root should independently inspect this full
+kernel/diff and its clock/encryption/current-row prerequisites. The smallest
+meaningful subsequent validation would isolate only the new pure generator plus
+the unchanged bounded counts parser in memory with synthetic ordered bytes:
+current-window exact increment and identical index bytes; exact deadline reset
+with derived old/new index entries; a crossing bracket and the limit-before-reset
+case; rejection of zero/+2/other-bucket/protected/count/expiry mutations; malformed,
+noncanonical/duplicate/capped snapshots and tuple/integer bounds; missing/stale
+indexes, count inconsistency and prospective index collision; out-of-range/drift/
+noninteger clock brackets; private sentinel values preserved in expected bytes
+and absent from fixed diagnostics. It must verify canonical complete-row equality,
+not category/count equality. Cases for routing/key/limit guards can be static
+caller checks or synthetic-only stubs, without shared_probe/module/SQL/CLI calls.
+No case count is fabricated, no archived payload/command is released here, and
+none of these cases was evaluated during this design phase.
+
+Then, only after immutable source review/materialization/validator selection and
+separate root runtime authorization, one bounded hosted shared repeat could
+measure this exact expectation. Failure must retain the existing optional fixed
+count projection; no raw key/value logging, blanket exclusions, forced clock,
+rate disabling, sleep/poll/retry or product mutation is proposed. A valid admission
+match would prove this refusal preserves all forbidden identity/credential/receipt/
+audit/revision/config/grant records within the complete captured store while
+allowing only the independently specified HTTP counter transaction. It would not
+by itself prove later session expiry, E-P-E completion or the whole shared gate.
+A09 stays open/root-owned; I02/I10/R05/W02/W05 remain DONE unchanged.
+
+### Actual static authoring checks in this phase
+
+The authoring command completed only byte/hash/AST/string checks and appended
+this report. It checked the exact 262,952-byte prefix, six fresh source pins,
+baseline identities against validator/workflow objects, candidate AST syntax,
+complete two-file text forward/reversal and protected function/call/import/
+bootstrap bodies. The fixed sanitized document and root receipt hashes matched.
+No proposed source function was evaluated. Docs/whitespace/source-scope checks
+follow as static validation before the report-only commit; they do not authorize
+or imply runtime evidence. Further source implementation and all runtime remain
+HELD pending root and independent review.
+
+### Completed static validation receipt
+
+python3 scripts/check-docs.py and git diff --check exited 0. The independent
+static archive checker re-read the four exact code/diff fences, reconstructed
+both complete candidates, matched their recorded hashes, reversed both whole
+files to d00c968, matched complete new function/probe ASTs, checked all protected
+old function ASTs and verified that the expectation has no AFTER parameter.
+It also rechecked the full 262,952-byte prior prefix, unchanged actual helper/
+workflow bytes and sole-report change scope. No candidate/source function or
+case was evaluated. The first complete append was 35,733 bytes; this receipt is
+a further append in the same report-only phase. Final docs/whitespace and
+protected-source/prefix checks cover this receipt before the one report commit.
+All further source implementation, memory/native/hosted execution and publication
+remain held for root review/reservation; no gate or row status was changed.
