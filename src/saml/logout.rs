@@ -206,6 +206,15 @@ pub(crate) struct Flow {
     finish: Finish,
 }
 impl Flow {
+    pub(crate) fn requires_platform(&self) -> bool {
+        !self.targets.is_empty()
+            || self.pending.is_some()
+            || self.position != 0
+            || self.confirmed != 0
+            || self.failed != 0
+            || self.finish.response.is_some()
+    }
+
     fn status(&self, core: &impl SamlLogoutCore) -> Value {
         let completed = self.position == self.targets.len();
         json!({"protocol":"saml","logged_out":true,"status":if completed {if self.failed==0 {"complete"} else {"partial_logout"}}else if self.expires_at<=now(){"expired"}else{"pending"},"confirmed":self.confirmed,"failed":self.failed,"remaining":self.targets.len()-self.position,"expires_at":self.expires_at,"resume_uri":flow_url(core,&self.id),"retry_after":self.pending.as_ref().map(|p|p.deadline.saturating_sub(now()))})

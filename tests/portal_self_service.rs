@@ -141,6 +141,147 @@ fn binding(view: &Value) -> Binding {
 }
 
 #[test]
+fn oidc_only_session_revocation_remains_shared_edition_state() {
+    let fixture = Fixture::new();
+    let alice = fixture.user("logout-alice");
+    fixture
+        .core
+        .create_client(
+            &fixture.admin,
+            NewClient {
+                client_id: "frontchannel".into(),
+                name: "Frontchannel application".into(),
+                confidential: false,
+                redirect_uris: vec!["https://sample.example/callback".into()],
+                scopes: ["openid".into()].into(),
+                allowed_groups: Default::default(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    frontchannel_logout_uri: Some("https://sample.example/logout".into()),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+    let verifier = riauth::crypto::random_token("");
+    let redirect = fixture
+        .core
+        .authorize(
+            &alice,
+            riauth::oidc::Authorization {
+                response_type: "code".into(),
+                client_id: "frontchannel".into(),
+                redirect_uri: "https://sample.example/callback".into(),
+                scope: "openid".into(),
+                code_challenge: digest(&verifier),
+                code_challenge_method: "S256".into(),
+                decision: Some("approve".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let code = url::Url::parse(&redirect)
+        .unwrap()
+        .query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .into_owned();
+    fixture
+        .core
+        .token(riauth::oidc::TokenRequest {
+            grant_type: "authorization_code".into(),
+            client_id: Some("frontchannel".into()),
+            code: Some(code),
+            redirect_uri: Some("https://sample.example/callback".into()),
+            code_verifier: Some(verifier),
+            ..Default::default()
+        })
+        .unwrap();
+    let cookie = fixture.browser("logout-alice");
+    let view = fixture.core.portal_security(Some(&cookie)).unwrap();
+    let result = fixture
+        .core
+        .portal_revoke_all_sessions(Some(&cookie), &binding(&view))
+        .unwrap();
+    assert_eq!(
+        result.body["frontchannel_urls"].as_array().unwrap().len(),
+        1
+    );
+    assert!(fixture.core.me(&alice).is_err());
+    let flows = fixture
+        .core
+        .store
+        .list::<Value>("saml_logout_flows")
+        .unwrap();
+    assert_eq!(flows.len(), 1);
+    assert_eq!(flows[0].1["targets"], json!([]));
+    let config = fixture.core.config.clone();
+    let before = fixture.core.store.read(|tx| tx.snapshot()).unwrap();
+    drop(fixture.core);
+    #[cfg(feature = "platform")]
+    {
+        let report =
+            riauth::edition::preflight(&config, riauth::edition::Target::Essentials).unwrap();
+        assert!(!report["blockers"].as_array().unwrap().iter().any(|row| {
+            row["resource"]
+                .as_str()
+                .unwrap()
+                .starts_with("saml_logout_flows/")
+        }));
+        assert!(
+            riauth::store::Store::inspect(&config, |_, tx| tx.unwrap().snapshot()).unwrap()
+                == before
+        );
+    }
+    #[cfg(not(feature = "platform"))]
+    {
+        let reopened = Core::open(config.clone()).unwrap();
+        assert_eq!(
+            reopened
+                .store
+                .list::<Value>("saml_logout_flows")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(reopened.me(&alice).is_err());
+        assert!(
+            reopened
+                .login("logout-alice".into(), PASSWORD.into(), None)
+                .is_ok()
+        );
+        drop(reopened);
+        // Startup is allowed; its ordinary activation metadata may change.
+        assert!(
+            before
+                .keys()
+                .any(|key| key.starts_with("saml_logout_flows/"))
+        );
+    }
+    #[cfg(feature = "platform")]
+    {
+        let store = riauth::store::Store::from_config(&config).unwrap();
+        store.write(|tx| {
+            let mut flow = flows[0].1.clone();
+            flow["targets"] = json!([{"peer":{"kind":"client","id":"saml-peer","fingerprint":"fixture"},
+                "name_id":"fixture","format":"persistent","index":"fixture"}]);
+            tx.put("saml_logout_flows", &flows[0].0, &flow)
+        }).unwrap();
+        drop(store);
+        let report =
+            riauth::edition::preflight(&config, riauth::edition::Target::Essentials).unwrap();
+        assert!(report["blockers"].as_array().unwrap().iter().any(|row| {
+            row["resource"]
+                .as_str()
+                .unwrap()
+                .starts_with("saml_logout_flows/")
+        }));
+    }
+}
+
+#[test]
 fn browser_revocation_is_owned_and_sign_out_everywhere_ends_terminal_grants() {
     let fixture = Fixture::new();
     let alice_token = fixture.user("alice");

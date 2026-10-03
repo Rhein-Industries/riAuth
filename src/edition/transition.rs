@@ -580,7 +580,13 @@ pub(super) fn current_store_blockers(
                 break;
             }
             after = page.last().map(|(key, _)| key.clone());
-            for (id, _) in page {
+            for (id, value) in page {
+                if *bucket == "saml_logout_flows"
+                    && serde_json::from_value::<crate::saml::logout::Flow>(value)
+                        .is_ok_and(|flow| !flow.requires_platform())
+                {
+                    continue;
+                }
                 issue!(
                     format!("{bucket}/{id}"),
                     format!("Stored {bucket} requires the Platform build or an explicit migration")
