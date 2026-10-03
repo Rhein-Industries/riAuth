@@ -487,3 +487,48 @@ The default Platform plus test-support source defines14 tests after these additi
 ### Actual source-report checks
 
 After this source-phase appendix was written: `python3 scripts/check-docs.py` exit0; `python3 scripts/check-repo-hygiene.py` exit0 (1085 tracked files); `git diff --check` exit0. Entire64870-byte84d3 prefix equality, report-only current scope, exact committed four-file source equality and unchanged actual guide/D01/build-input proofs passed. The two earlier failed lookup witnesses remain explicitly retained above. Final staged whitespace/prefix/scope and clean immutable handoff are returned separately. The guide paragraph remains an unapplied concrete proposal pending exact root path coordination; these checks confer no type/test/runtime pass or I07 gate completion.
+
+
+## 2026-10-03: exact ENT-06 documentation scope coordinated, guide-only commit
+
+Root separately reserved ONLY `docs/enterprise/ENT-06.md` for the verbatim concrete paragraph froma140, plus this append-only report. The earlier missing `docs/device-trust.md`, discovery/coordination history, source-only limits, static lookup failures and every actual negative/reporting failure remain byte-exact in the complete81449-byte a140 report prefix, SHA256 `13372e42b1fa62a0212dba36f5d9379c25f1112dcb968e76e86b975ec216683d`. No stub guide was created at that absent path. This appendix records the new explicit reservation and completed paragraph, without retroactively rewriting the earlier pending scope input.
+
+Guide commit `ed5f59fbfad2539a158ac5b08db133ed58f15c9a`, parent `a140d1b37f3489991ef204b452417b4fcc436473`, tree `f0d567d5b0eb11804c0ed0294ebbc6dd8c97d5b6`, changes ONLY `docs/enterprise/ENT-06.md`:ONE additive hunk,2 added lines/zero removed lines, immediately after `## Shared behavior`. Its complete467-byte paragraph was extracted from the immutable a140 blockquote by removing ONLY the two quote-prefix bytes; no word, punctuation or whitespace inside the paragraph changed. The added paragraph plus its two newline bytes is469 bytes, SHA256 `ffe8602e7260dbf3b0b4d7ef902cf2272d77655460b52d4cecbcd79bf36738d0`.
+
+| Complete guide object | Bytes/lines | Blob | SHA256 |
+| --- | --- | --- | --- |
+| Baseline, byte-equal to immutable published758c43a | 13373/92 | `f71d5fdbc33591d02a1c5f9daa5bf6621c45a6fc` | `16ddfb51e8579a4dab74d49dc6c4b486eb42e5f633271daa71afae29cf5fee02` |
+| Committed guide | 13842/94 | `4f19f9bcfde2d6ae5b325f8eb5c1218be9829875` | `cd002bfcbef02aaa2c4f344ef74fe2b419b3b89c33faac3f8a0e9ac30149a531` |
+
+Removing that ONE unique exact469-byte addition reconstructs ALL13373 baseline bytes. The complete published/own baseline equality, unique heading/paragraph, exact a140 wording, one-hunk diff, staged guide-only scope and clean tree before this separate report phase were proved. No existing guide byte or code/test/manifests/config/provider behavior changed. The paragraph states provider-KIND binding, implicit/explicitLocal equivalence, missing/unknown retained-provider re-verification, existing unprotected behavior, and the absence of a complete key/customer/configuration fingerprint promise. The reserved serde-default Option field maps JSONnull toNone; null therefore falls within the missing retained-provider case, without altering the approved verbatim paragraph to add another word. This is source interpretation, not a fresh null-case execution. No approved_device/claim timestamp contract changed.
+
+Actual guide-phase checks: `python3 scripts/check-docs.py` exit0; `git diff --check` and staged `git diff --cached --check` exit0. Source/test/code equality and the full-byte inverse passed. No formatter/compiler/Cargo/provider/version/helper/CLI service/HTTP/listener/browser/Driver/native/runtime executed. The original four-file source commit remains `19805cb9250f3b3d77da4c15b52c313794450143`; all of its source/test objects and every other tracked file were preserved. Root's accepted design and ongoing independent19805 review are coordination inputs, not an independent verdict observed by this worker. Runtime remains HELD; no slot was acquired or released.
+
+### Fresh read-only warm-cache and capacity prerequisites
+
+At `2026-10-03T08:28:11.358751+00:00`, a fresh statvfs sample reported16614924288 bytes/15.473854GiB usable free capacity, above the proposed12GiB launch floor. An earlier same-phase sample was16621158400 bytes/15.479660GiB. These are unreserved, time-specific observations: root must remeasure at any later approved launch and retain the9GiB own-stop/8GiB floor with2s samples. `pgrep -x cargo` and `pgrep -x rustc` each returned1/count0; no process arguments/environment were read and no signal was sent. This does not acquire a runtime lane or guarantee future process absence.
+
+The existing own `target/wave30-o06-readiness` is an owned regular non-symlink directory. Bounded owned regular metadata reads found:
+
+| Existing metadata file, relative to target | Bytes | SHA256 |
+| --- | --- | --- |
+| `.rustc_info.json` | 1965 | `27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4` |
+| `debug/.fingerprint/riauth-0d65ce4b80b71950/lib-riauth.json` | 3611 | `ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10` |
+| `debug/.fingerprint/riauth-8df5dbea6d9f15f4/test-integration-test-device_trust.json` | 4019 | `f078dcd7d024389e415d7624eac3f0cedd05994bc36619bfd551a526795c4ee7` |
+
+Both lib/test fingerprints report features `["default", "essentials", "platform", "test-support"]`, rustc identity17329007180185699724, compile_kind0 and empty rustflags. Lib profile12672335563272108896 and test profile11094973624911973823 remain their respective recorded cache metadata. File metadata, WITHOUT reading/executing binary contents, found the regular owned `debug/deps/libriauth-0d65ce4b80b71950.rlib`411892376 bytes and prior `debug/deps/device_trust-8df5dbea6d9f15f4`68686848 bytes. These are reusable-cache prerequisites and old artifacts, not compiled evidence for19805 or the newly added tests.
+
+An initial guessed fingerprint `riauth-3c65d1e515a3f965/test-integration-test-device_trust.json` was absent and explicitly recorded as such. A path-only `rg --files --hidden --no-ignore` inventory then found the exact existing8df5 fingerprint; that immutable metadata was read above. The missing guess is not hidden or converted into an execution/build failure. No cache/target creation, deletion/prune, artifact content hash refresh, toolchain/native invocation or download occurred.
+
+Proposed ONE whole target command, STILL NOT RUN:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust -- --test-threads=1
+```
+
+Future prerequisites remain root full source/independent review and an explicit sole-lane release; fresh source/test equality, capacity and competitor samples; the same own warm target/jobs1/inc0/dev+testdebug0; one bounded invocation with private0700 evidence/exclusive0600 capped16MiB output, retained numeric status before grading, and exact owned process-group cleanup. The prior1800s/12GiB launch/9GiB stop/8GiB floor resource proposal is unchanged, but no execution or resource ownership is assumed. The new source-defined14-test count and anticipated negative correction are UNOBSERVED. No old failed11-test result, passing memory envelope or metadata artifact is borrowed as a current whole-target pass. I07 original task/status and D01 held state remain root-owned/unchanged; the guide paragraph resolves only the documented path-coordination gap.
+
+
+### Actual documentation-report checks
+
+After the coordination/cache appendix was written: `python3 scripts/check-docs.py` exit0; `git diff --check` exit0; complete a140 report-prefix, committed guide equality/verbatim whole-byte inverse to758c43a, exact guide/report-only scope and unchanged code/test/D01/manifest/toolchain checks passed. Final read-only capacity sample at 2026-10-03T08:32:56.569058+00:00 was16526512128 bytes/15.391514GiB; it is unreserved and must be sampled again before any separately approved launch. No resource slot was acquired/released, no runtime executed, and no new pass or gate disposition is supplied. Final staged whitespace/prefix/scope/clean proofs accompany the immutable report handoff.
