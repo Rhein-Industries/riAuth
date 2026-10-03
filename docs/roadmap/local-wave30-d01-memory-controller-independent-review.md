@@ -2537,3 +2537,344 @@ packet hash and entire 116152-byte ab8 prefix matched. Documentation links/
 build layout, whitespace and report-only scope checks exited 0 without
 errors. The paired source-pin blocker remains explicit; no private DATA
 writer or reviewed runtime was invoked.
+
+
+## 2026-10-03 — request-line timeout: actual failed fixture and one diagnostic-only proposal
+
+Reservation `wave30_D01_requestline_timeout_source_diagnosis`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing WT f2 / shell2173637e.
+ONLY this report is appended. Entry HEAD is
+`effd43bf00c56c19ba965e1c52e0d01d50ca343f`; its entire 146447-byte /
+2539-LF prefix, SHA-256
+`26f2417b875c2dcfa75380fcaa5a51006023b39541d08686c4bc49a474bb27da`,
+is preserved. The separately published current source is
+`2d0c6fbc79965db207da17f2ef551793e3746424` (accepted ade2bca).
+No alignment, helper/controller/production edit or runtime occurred.
+
+The actual fixture FAILED. The observation establishes a built-in
+`TimeoutError` while `Handler.handle_one_request` was at its request-line
+`readline` call, own line 468. It does not establish an empty connection,
+a sender, a requested route or a browser preconnect. The smallest proposed
+local seam is a terminal diagnostic classification at that exact read:
+retain the existing finite exception observation and report the already
+allowed `request_timeout` through the existing Failure/400 path. This is
+neither an idle-request allowance nor a cause fix; the journey would still
+fail on that timeout. Root must separately reserve any implementation.
+
+### Actual evidence bodies, identities and limits
+
+All three complete redacted documents and the complete root review were read;
+size, mode and SHA-256 were checked again. No private unredacted capture,
+credential, protocol, URL, request line or browser snapshot was read.
+The first three basenames share `d01-a270-real-1791000936131-` in the
+management WT's deployment-private directory.
+
+| Complete document | Bytes | Mode | SHA-256 |
+| --- | ---: | --- | --- |
+| outer.redacted.json | 4654 | 0600 | `d6660debec35bb09d5e1c46d9879eceaa42d5b9193ba1123973b19b190d8be5a` |
+| event.redacted.json | 240 | 0600 | `0ea6e45e59b9f8a590b9fd48c0827f5844746cdd7ebf0a8b15d601f04c6c6edd` |
+| cleanup.redacted.json | 5492 | 0600 | `d7bf7ba878594e1ac5f9563331893bf61f2f381e74fc63ad4f38d38d0d9d77ef` |
+| wave30-d01-a270-runtime-cleanup-root-review.json | 1638 | 0644 | `7561321eb839f96727fccad204912869bbda8934144e6158f802e523cab02f6b` |
+
+Root receipt location is the project's explicit orchestrator planning/evidence
+path supplied with this reservation. This report performs no orchestrator
+mutation or external query. The helper source identity in the actual outer
+record equals the published helper below. Its verifier identities are commit
+`9cefe7a56425bb73c17753e8766d92320b77da3b`, blob
+`3be747d03146f1bcaa3ec012ee8d173b61fa737d`, SHA-256
+`f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d`.
+
+Outer/helper numeric exits are 1/1; outer result is failed at
+browser_checkpoint/rp_nonzero. Helper result is failed at
+request/unexpected_failure, elapsed 15.307s, 73 disk samples and minimum
+17332441088 bytes. The outer records 25.3s, 24 samples and minimum
+17313075200 bytes. These elapsed totals are not a timestamp or duration of
+the failing read. The four-field observation is site handler, exception class
+TimeoutError, own function Handler.handle_one_request, own line 468;
+its public projection is valid. No foreign traceback frame, error message,
+request bytes, peer address, sender PID, per-read clock or attempt-state
+snapshot was retained. Two preflow Authorization refusals and the first
+request-invalid reason authorization are separate retained facts, not proof
+that the timeout connection carried Authorization.
+
+Credential-private, provider-identity, discovery and protected-without-cookie
+checks are true; protected_before is 403. Root supplies semantic snapshot
+p862 for that successful public checkpoint. Authorization redirect,
+state/issuer/flow-cookie, S256 exchange, RS256/JWKS claims, userinfo-subject
+and fresh protected-cookie checks are false, with corresponding later HTTP
+statuses null. Sign-in/consent/callback/crypto acceptance is unearned. The
+successful earlier checkpoint does not identify the later connection or prove
+which navigation/request had stalled. A false later check is not a recorded
+private cookie/pending/subject value.
+
+Cleanup is a separate result. Worker receipts record Driver kill/end returned,
+owned window count 0, lab absence, ports 3000/9000 absence and seven actual
+owned-child exit records. Root freshly verified all nine exact owned PIDs
+absent (72429, 72449, 72478, 72483, 72485, 72486, 72487, 72523, 72784),
+both ports absent and the lab removed. This reviewer performed no process,
+port, Driver or group probe. Root's lane release is supplied actual evidence,
+not a release performed here. The event explicitly has first_event_proven
+false; cleanup retains first_event_unproven and whole_cleanup_within60_proven
+false. Latch-to-absence 8315ms and observation-to-final 8866ms do not establish
+the unobserved first event or a whole 60s cleanup bound. Sender, exact failing
+request, first-event timing and original historical causes remain UNKNOWN.
+
+The separately accepted whole new36 MEMORY envelope at 238dc6c used exact
+controller 4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f
+and outer 72ff2cbe0a9478fa172c74b5d8e34cfad16e5dd57d67e4c3e50077038a165dcf:
+36 cases, 51 cells, 311714 assertions and 2294 privacy checks passed.
+That is root's separate bounded memory result; it does not pass this real
+fixture or the unapplied helper proposal. All preceding failed envelopes and
+unknown historical causes remain exactly preserved.
+
+### Full helper read and precise source witnesses
+
+The full 35749-byte / 757-LF helper at the published Git object was read,
+including the initially omitted middle span by bounded reread. Git mode is
+100644, blob `a01b1f3f81f0978eb0a02ed339c7248cae485350`; SHA-256
+`75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1`.
+Own helper bytes are equal; neither copy was edited.
+
+| Original helper witness | Span | Source consequence |
+| --- | --- | --- |
+| Budget.tick / limit | 180–214 | Global/operation/pending minima; a budget expiry raises Halt, not TimeoutError; unwinding does not replace an in-flight exception with a new tick. |
+| observe_unexpected_failure | 224–268 | First-only closed projection, exact class identity, built-in traceback descriptor, trusted code identity, 64-frame/1024-line cap; no raw exception formatting. |
+| Demo.begin / callback | 324–392 | Attempt, pending flow, PKCE, callback consumption and cryptographic checks have separate mutations; a request-line error earns none. |
+| HeaderReader.readline | 404–410 | Header bytes/lines remain capped; this adapter is installed only after the request-line call returns. |
+| DemoServer.process_request / handle_error | 419–432 | Accepted socket is finally shut down; server exception path retains terminal failure and finite observation. |
+| Handler.handle_one_request | 461–529 | Request parsing and every Host/Authorization/framing/target guard follow successful readline; TimeoutError currently falls into generic Exception and terminal 400. |
+| Handler.reply | 575–601 | Existing response budget, fixed HTML/security headers, connection close and cookie rules. |
+| main | 609–753 | Serve loop, terminal failed exit, actual evidence, owned listener/connection cleanup and private-reference clearing. |
+
+At line 468 the assignment has not returned when the error is raised; the
+following EOF branch, length guard, parser, headers and dispatch have not run
+for that connection. Initial command is None and requestline is empty, but
+those pre-read assignments are not evidence of zero received bytes. The
+first observed trusted frame is selected from a finite projection, not a
+retained full trace. It does not establish the native raising frame or an
+exact five-second duration. Socket read timeout is a source-supported path,
+not a remotely attested hidden stack or an OS diagnosis.
+
+### Pinned CPython source and the unsafe empty-connection inference
+
+Only installed source files were read/hash checked, not imported or executed:
+
+| CPython 3.14.6 installed source | Bytes | Mode | SHA-256 |
+| --- | ---: | --- | --- |
+| Lib/http/server.py | 53122 | 0644 | `b917e19d333ae8aa1995063c9bddf5a15391f8f7caf32e41a22067824d643429` |
+| Lib/socketserver.py | 28065 | 0644 | `ecbbe1a633801460399a8f10b39007aa0e13cdbdad507e39414000f097b769b5` |
+| Lib/socket.py | 37536 | 0644 | `873ff8912562c0375e75a7301024e61e878eef101b566dc0f3b6644c81874c8e` |
+
+All were read from the exact installed versioned framework path, not a
+moving PATH resolution. Actual fixture receipts do not retain equivalent
+interpreter/native/stdlib hashes, so these source identities are not a
+retroactive attestation of the fixture's entire runtime stack.
+
+Full relevant bodies read: server.py parse_request 320–435,
+handle_one_request/handle 455–500; socketserver.py handle_request and
+_handle_request_noblock 276–325, finish_request 360–362,
+BaseRequestHandler construction 752–776, StreamRequestHandler setup/finish
+809–832, and TCP socket accept/shutdown/close; socket.py makefile 308–355
+and SocketIO.readinto 716–736. Stream setup applies Handler.timeout=5 and
+uses buffered makefile input. SocketIO records a read timeout and re-raises;
+the helper's independent 5s phase limit/global cap may instead raise Halt.
+No equality between either configured cap and this observed total is assumed.
+
+Pinned upstream CPython v3.14.6 BufferedReader._buffered_readline was read as
+primary C source: it accumulates chunks across raw fills and can exit on a
+later fill error without returning those chunks. Thus a partial request line
+can produce this exception with no completed Python assignment. Reading
+raw_requestline, testing command None, or blanket-catching TimeoutError
+cannot safely distinguish idle from partial input. No timed-out stream
+retry or buffer recovery is proposed. [Pinned buffered reader source](https://raw.githubusercontent.com/python/cpython/v3.14.6/Modules/_io/bufferedio.c).
+
+The stock BaseHTTPRequestHandler catches both read/write TimeoutError and
+closes that connection. Its broad behavior is not an equivalent substitute
+for this fixture's strict terminal request policy or budget exception model.
+[CPython v3.14.6 handler source](https://github.com/python/cpython/blob/v3.14.6/Lib/http/server.py).
+Current official socket documentation also cautions about buffered state
+after a makefile timeout; the retrieved documentation is 3.14.8, distinct
+from the pinned source body. [socket.makefile documentation](https://docs.python.org/3.14/library/socket.html#socket.socket.makefile).
+
+No source-backed proof currently permits ignoring this original timeout as
+idle. That proposed behavior would require a separately reviewed, bounded
+pre-parser observation of actual read progress plus explicit acceptance and
+budget rules; none is silently introduced here. No browser, sender, operating
+system or kernel cause is inferred.
+
+### Composed a270 snapshot, first-latch and cleanup boundaries
+
+The entire composition was reconstructed as DATA from the unique complete
+251a29 report fence (SHA 484bd441ef0f3db547d75f6138f2943b07a3ef090c30271a9cdc3d7914dda02e)
+plus the published two literal entry-source pin replacements. Result is exact
+113395 bytes / 1241 LF, SHA-256
+`a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`.
+Published user-browser/root-user report bodies affirm the same composition.
+Its exact unchanged 33701-byte suffix is 505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f.
+No composed function, collector, private reader or VM was executed.
+
+Complete relevant function bodies were read: pDecodeSnapshot/pSnapshotProjection,
+pWindows, finiteObservation/diagnostic, latch/observeController/pollController,
+timedDriver, cleanup, checked/page/navigateAndSnapshot, entry/continuation,
+projectPublicDecision/publicPredicate and terminal output. Witnesses: finite
+observation 793–828; first latch 829–835; controller exit/helper refusal
+retention 836–900; timed cleanup 901–1026; page proof 1044–1085;
+entry 1086–1119; single-use continuation 1120–1167; fixed public projection
+1168–1200. The preparation/window owners, exact blank match, same-result
+snapshot refs, clear-before-input and all public decisions stay unchanged.
+A page dispatch is not journey credit. Entry polls the owned controller
+before/after its two navigations; a subsequent helper failure latches
+helper_failed independently of an earlier valid protected snapshot.
+
+Active boundary remains start+840000ms; owned join uses start+900000ms.
+Cleanup's 30s kill / 15s end / 5s window allocations and residual readback
+measurement do not enforce a universal inclusive 60s bound; source explicitly
+continues essential join if late and always records first_event_unproven and
+whole_cleanup_within60_proven false. The actual first-clock marker is later
+than the unproven event. This appendix changes none of these clocks, root
+stop protocol, private input transfer, tool wrappers or accepted memory data.
+
+### ONE exact unapplied local diagnostic hunk
+
+Proposed path ONLY `scripts/d01-confidential-browser-demo.py`, replacing its
+one assignment at line 468 with a local TimeoutError catch. The native
+exception is observed while still current, using the identical protected
+observer call. Then an existing closed Failure tag request_timeout reaches
+the unchanged Failure handler: demo.done true, fixed 400 response and closed
+connection. No valid request is accepted, no socket is retried and no idle
+allowance is added. Historical result request/unexpected_failure stays
+unchanged; this is a prospective source classification, not a rewritten
+receipt or proof the same fixture would pass.
+
+| Source or diff | Bytes | LF | SHA-256 |
+| --- | ---: | ---: | --- |
+| Published helper | 35749 | 757 | `75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1` |
+| Unapplied candidate | 36069 | 764 | `c7bf043a05c9603891e7fdb9da26e63214362e8edc7abb196e42d242eb6984ab` |
+| Forward zero-context diff | 589 | 12 | `71d2db5f9062b1b59fb4308a06848588dbb11c7842ab8c20fef0808dc9eeba51` |
+| Inverse zero-context diff | 589 | 12 | `87055ece897f1267df317eb8280c2aa87663b37b4aac34b50ce6eec3e54d2a2b` |
+
+```diff
+--- published-2d0c6-helper-75bfb8a6
++++ requestline-timeout-diagnostic-proposal
+@@ -468 +468,8 @@
+-                self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
++                try:
++                    self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
++                except TimeoutError:
++                    try:
++                        observe_unexpected_failure(demo.unexpected_failure_observation, "handler")
++                    except BaseException:
++                        pass
++                    raise Failure("request_timeout") from None
+```
+
+```diff
+--- requestline-timeout-diagnostic-proposal
++++ published-2d0c6-helper-75bfb8a6
+@@ -468,8 +468 @@
+-                try:
+-                    self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
+-                except TimeoutError:
+-                    try:
+-                        observe_unexpected_failure(demo.unexpected_failure_observation, "handler")
+-                    except BaseException:
+-                        pass
+-                    raise Failure("request_timeout") from None
++                self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
+```
+
+The complete candidate is reconstructible uniquely from the pinned entire
+helper and this single exact diff. It exists only in static parser memory;
+no executable/helper file was created. Both byte inversion and normalized
+whole-AST inversion restore the entire published helper. Exactly one
+assignment is wrapped; the wrapper's original assignment, all remaining
+With statements, all sibling statements/handlers and all 34 other complete
+function spans remain identical. Constants, imports, Budget, observer,
+private-file modes/caps, native/verifier/crypto pins, main, evidence writing,
+server cleanup and fixed HTML are byte-exact. Candidate has the same 35
+functions, no new import and no public evidence schema extension.
+
+The AST inverse locates Handler.handle_one_request's outer Try, its first
+budget With, and replaces only that With's first new Try with its sole old
+Assign. It verifies one TimeoutError handler and no else/finally; the whole
+result equals the baseline ast.dump with attributes excluded. All unaffected
+function spans were compared as bytes. Baseline and candidate ASTs were
+compiled to code objects only; no code object/function was invoked.
+
+Security and outcome boundaries remain fail closed. Every nonempty completed
+line still goes through the identical 8192-byte limit, capped parser/header
+adapter, exact Host, Authorization, framing, origin, method and target guards.
+No body read, parse acceptance, flow/cookie/subject mutation, attempt credit,
+authorization credit or response success is added. A partial or empty-input
+timeout receives the same terminal treatment, not a bypass. Request/response
+5s limits, global validated 1..600s deadline, pending 180s minimum and 8.5GiB
+stop remain unchanged; no operation/attempt budget restarts or increases.
+Authorization refusals still count first-three nonterminal/fourth terminal,
+and all post-flow Authorization remains refused. Budget Halt remains a
+BaseException outside this TimeoutError/Exception catch; EOF and other
+exceptions retain their old control paths. The existing response operation
+and its own failure paths remain in force.
+
+Existing finite observer first-only behavior and its absence/storage-failure
+fallback are reused. Existing server handling may still set unexpected_failure
+if the attempted 400 response itself fails; the proposal does not fix that
+separate behavior or promise a final request_timeout tag in every secondary
+failure path. The first finite native observation is not overwritten. The
+composed root helper_failed latch, real numeric exit and cleanup acceptance
+remain unchanged. No exception text, subtype name, traceback, path, request,
+header, cookie, Origin, username/subject, local value or private URL is added
+to evidence; the diagnostic shape remains exactly its four closed fields.
+
+### Future finite validation prerequisite; no execution authorized
+
+A separately reserved observer-aware helper memory design would need focused
+cases for: exact TimeoutError at this read; partial-input then timeout with
+zero parse/guard/dispatch calls; post-flow timeout still terminal; successful
+line and EOF unchanged; request/global/pending Halt propagation; non-Timeout
+Exception unchanged; observer absence/access/storage failure preserving the
+terminal result; and a failing error reply retaining first observation.
+TimeoutError subclasses require truthful existing other-class projection,
+not an inferred builtin-class label. Existing strict Host/Authorization,
+framing/body/parser, preflow fourth-refusal and postflow sink cases must
+retain their exact prior outcomes. No arbitrary campaign, native socket or
+fixture retry is proposed, and no such case/harness was implemented or run.
+Root must first review/reserve the one source hunk, then review the exact
+changed-source finite envelope and independently decide any real fixture.
+
+Entry docs checker and tracked-file hygiene both exited 0. In-memory full
+source pin/reconstruction, parse/compile-only, unique byte inverse, normalized
+AST inverse and 34 protected-function comparisons exited 0. Source/body reads
+and identity comparisons are distinguished above. No check exposed a private
+payload or a new source defect requiring weakened acceptance. This is a
+source-derived diagnostic proposal; empty-connection handling is blocked by
+missing progress evidence. Original cause/sender/request/timing unknowns and
+false first-event/whole-cleanup proof remain. S02 owns the runtime lane;
+this reviewer acquired/released no slot and invoked no native/helper/browser,
+HTTP/service, Driver, Cargo, controller or memory runtime.
+
+
+Actual final static receipt: docs checker exited 0; tracked-file hygiene exited
+0 (1059 files); whitespace check exited 0. The first report-fence/source scope
+checker exited 1 at its last helper-equality assertion: it compared read_bytes()
+to the decoded str baseline, an error in this review check. Fence hashes,
+forward/inverse reconstruction and AST proof had already passed. Correcting
+only that comparison to the original baseline bytes produced exit 0 for the
+complete checker: both exact 589-byte fenced diffs, whole-byte inverse,
+normalized whole-AST inverse, compile-only, full prefix, only-report scope,
+empty index/untracked list and untouched actual helper bytes. No candidate,
+helper or evidence bytes were changed to make this check pass. This is not a
+repository checker defect or any new runtime/fixture result.
+
+
+Policy source read: complete CONTRIBUTING.md and SECURITY.md match their
+published 2d0c6 bytes (3603/48 LF, SHA-256
+7e7dd7b756f734a8105cad5b96dffa8a51977c64f3ecd70b8182fa3de6ba6737;
+981/15 LF, SHA-256
+2556771d58d09a2a4754e7484645b7e948b84286ef0d21cc66169b920a31c4d8).
+Their privacy and actual-environment disclosure requirements are retained;
+the explicit report-only/runtime-held reservation controls this phase.
+Direct Budget Halt from the read remains uncaught by the new TimeoutError
+branch. The protected observation itself retains its existing BaseException
+fallback, followed immediately by terminal Failure; no accepted request or
+continued serve attempt can result from that fallback. This proposal does
+not turn a budget expiry or secondary reply failure into a passing result.
