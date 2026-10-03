@@ -28,3 +28,13 @@ dependency setup or test was invoked. The newly selected test remains UNRUN
 until a later exact-source CI result or separately authorized fixture proves it.
 This correction establishes test selection, not full U10/hardware/accessibility
 or journey completion.
+
+## Actual selector failure and full-title correction, 2026-10-03
+
+Public CI run37106315679 at source1a517a1 failed integration job111159428293 after the existing setup completed9 passes and the authenticator allowlist completed22 passes with2 skips. The subsequent focused U10 invocation reported **No tests found**, so it supplies no execution or assertion result for the missing-credential case. Root retained the complete private log and checked the checkout, command and result boundaries. [Exact log/source identities and limits](evidence/wave30-u10-full-title-selector-root-review.json) accompany this observation.
+
+My previous static selection check missed that Playwright applies grep to the full project/file/describe/test title string. The beginning anchor incorrectly required the bare test name at the beginning of that string. The [official grep documentation](https://playwright.dev/docs/api/class-testconfig#test-config-grep) describes this full-title matching behavior.
+
+Source-only commit5ecf4710a403f7b59306b08ea9f67ae3f7475594 removes only that beginning anchor. The ending anchor, selected file, Chromium project, one worker, zero retries, all test assertions and every previous workflow byte remain unchanged. Reversing that one-character change reconstructs the full previous workflow. Ruby Psych parsed the corrected YAML; all27 shell run blocks passed bash syntax parsing; whitespace checks passed. These checks executed no workflow, Playwright or browser code.
+
+The corrected selector remains unverified by runtime. The earlier a6 completed CI check is separate evidence and did not execute this focused U10 case. No local browser/Cargo invocation, original U10 completion, assistive-reader, hardware or complete user-journey result follows from this correction. The original task and primary assignment remain unchanged.

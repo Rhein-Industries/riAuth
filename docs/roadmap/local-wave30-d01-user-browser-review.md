@@ -20382,3 +20382,110 @@ Only this existing D01 report is appended in Git. Current helper remains exact37
 ### Actual evidence-handoff static checks
 
 After the actual-result appendix: `python3 scripts/check-docs.py` exit0 (“Markdown links and build-directory layout checked”); `git diff --check` exit0. Only the existing D01 report was modified. The entire starting1488800-byte report prefix and current helper/I07 test/I07 report whole-byte equality passed. Final staged whitespace/scope/hygiene and immutable clean-tree proofs accompany this report-only commit handoff. These checks do not add a second memory invocation or expand runtime credit. Validation was already released before any report append; all historical private files/source/failures remain preserved.
+
+
+## 2026-10-03 — adopted-timeout checkpoint refused BEFORE START; lanes released unused
+
+Reservation `wave30_D01_adopted_timeout_confidential_browser_once`, same project891e7443-8dac-4c1b-897f-9e53cb59c7ee, existing WT7/shell7a798ec7 only. Root released ONE sole desktop/operator/validation checkpoint after reviewing9aef and publishing actual94-case memory evidence in `a8707bab1265ebb3396d9e60ef1bd68a6b73ad9d`. Entry was clean9aef. The entire1499832-byte prior report prefix remains exact, SHA256 `917a2c03de124e2adee164bddd7d467aa2ecf11d84d2ef60702ec482514953ae`. All dated failures/unknown sender/cause/lost values and unproved whole60 limits remain unchanged; the prior94 memory PASS is neither reversed nor credited as a browser journey.
+
+Actual outcome: `root_runtime_input_unconfirmed`. The exact composed source refused its initial input guard BEFORE inclusive START, archive call, controller construction/launch, provider/CLI/helper/browser preparation or any owned fixture resource. Its returned public object was `{"proposal_refused":"root_runtime_input_unconfirmed","journey_credit":false,"resource_release_proven":false}`. That false proof flag is retained; no controller/helper/provider/CLI numeric exit exists to promote to0. Dependent steps stopped, with no reset, correction, retry, alternate provider or substitute sign-in. Desktop/operator/validation lanes were RELEASED UNUSED in the first commentary after the source refusal. No child existed to join and no own browser/session/listener/lab was created; no cleanup command or speculative signal was sent. This is a worker-input refusal, not a product/authentication/provider/browser failure or checkpoint pass.
+
+### Source and Driver prerequisites actually read/verified
+
+From immutablea870, read the accepted adoption report `docs/roadmap/local-wave30-d01-request-timeout-adoption-composition-plan.md` (184338 bytes; SHA256 `c85ba85ce3fe702a7f0d4dbd0307bf2ccc9177b142c4acfcff55b0a4e6d3ac65`) and located its complete exact composition fence. Data reconstruction verified113395 bytes/1241 lines SHA256 `5e3e5e24fa15bfb4dd28626d5b3368c76d571b77dac6e066edac03b46d261d6c`; decoded controller17326 bytes/225 lines SHA256 `2dde53fd3f87508e840fedc88af2b85369854eedd050f77708c8e52f43eac691`. All ten approved inverse literal substitutions reconstructed completea270 SHA256 `a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`. Entire33701-byte continuation suffix remained SHA256 `505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f`. No whole-composition/memory36 verification was invented or repeated.
+
+Read the actual root94 memory receipt `docs/roadmap/evidence/wave30-d01-timeout-memory-94-root-review.json` and closed blank Driver contract `docs/roadmap/evidence/wave30-d01-root-blank-driver-contract.json` at a870. Root's whole-source review remains the authority; this turn's data/byte/hash/inverse checks and selected launcher/preparation/continuation/controller body reads are not a new independent full-body review of every composition function. Initial combined public-source/guidance output was clipped; bounded follow-ups read the relevant missing contracts/guards/lifecycle bodies. No hash-only identity is promoted to a full body review.
+
+Applied installed cua-driver SKILL/MACOS/BROWSER guidance and current advertised MCP tool descriptions, with MCP-only provider and no fallback. Installed skill-pack0.29.1 is distinct from actual live Driver0.30.4. Read-only health checks reported darwin/macOS26.2 arm64, overallok, driver version0.30.4, active MCP transport, bundle com.trycua.driver and both Accessibility/Screen Recording granted. `check_permissions(prompt=false)` reported both grants; direct capture was not probed and capturability remainednull. `get_session({})` returned `session_not_started`/isError for the implicit lifecycle; this is distinct from healthy active MCP transport and did not launch a session. No health/session/browser/Driver call followed the source refusal. No screenshot, permission prompt automation, profile change or GUI action occurred.
+
+Before source invocation, private directory0700/current-owner and exact current helper36884-byte/37d pin checks passed; three c01 artifact paths existed with metadata sizes183038592/56499296/20406784 bytes for server/maintenance/client. Fresh free sample15749332992 bytes/14.668GiB was above8.5GiB. Actual full artifact/verifier/provider rehash, retained63ASCII full OpenSSL version/exit, port preflight and monitored fixture setup were the unchanged controller's next steps but were UNREACHED. No fresh native/provider verification, free-port proof or physical resource absence is inferred from those planned guards or existence/hash identities.
+
+Two source-discovery failures also preceded any fixture invocation and are preserved: a guessed root receipt filename lacking `-94-` was absent at a870, then immutable tree discovery located the exact receipt read above; first extraction tried ASCII decoding of the UTF8 Markdown report and raised UnicodeDecodeError, then corrected UTF8 data decoding recovered the unchanged exact ASCII composition fence. These were read/data-preparation failures, not product execution/case outcomes or source/case changes. The actual source refusal was not retried.
+
+### Exact attempted input and concrete freshness blocker
+
+Only permitted fresh public release bindings were instantiated: nonce `mus2env1-5b596cc9`, lifecycle label `d01-sol4-timeout-mus2env1-5b596cc9`, and six distinct absent own JSON basenames recorded below. The exact composition string was loaded from the pinned public archive and invoked once in `functions.exec` through an AsyncFunction loader receiving only tools/load/store/text/exit. Its source bytes/literals were unchanged. Inclusive START and the three substitutions were source-local operations after the initial guard, so none occurred. There was no actual substituted controller payload to archive or execute; do not claim the prospective template as an actual controller command.
+
+The initial source guard is exactly `!lReleaseValid(lRelease) || load("d01_preparation_seed") !== undefined && load("d01_preparation_seed") !== null`. Bounded post-refusal checks of the same public release input showed all11 release predicates true and `preparation_seed_absent=false`. The stored source latch retained `root_runtime_input_unconfirmed`, controller_exitnull, zero local tool receipts, final_absencenull and resource_release_provenfalse. This identifies a pre-existing non-null preparation-seed entry in this worker's functions store as the rejected guard input. Its old values/PIDs/password/source/origin were neither inspected nor inferred. No assertion is made about any historical request sender/cause or external actor.
+
+I missed this store-freshness check before invoking the composition. The guard correctly refused; I did not clear the entry, loosen the guard, relabel the refusal as a pass or run another attempt. A future attempt needs separately root-reviewed fresh-store/lifecycle input preparation compatible with the unchanged guards and a separately released checkpoint. This appendix neither implements that input preparation nor assumes clearing only one key would satisfy all later context gates. Password/consent/callback/protected403/native verification/userinfo/protected200, all later phase transitions and all owned-cleanup timing/readbacks are UNREACHED for this attempt.
+
+### Exclusive retained refusal, unchanged historical scope
+
+Retained a new exclusive/fsynced0600 fixed metadata receipt at `deployment-private/d01-timeout-adopted-mus2env1-5b596cc9-launcher-cleanup.json`:2894 bytes, SHA256 `2cd40361adbc199f1a43eae5c880fa12a29606258c92036df38d1898fbf195c2`. All six declared output paths were still absent immediately before writing this one refusal receipt. No controller/provider/helper/cookie/password/raw request or historical metadata was copied. Regular/current-owner/nlink1/nofollow/mode and complete hash readback passed. The full finite receipt follows; it preserves the original source proof flag separately from the worker's unused-lane release:
+
+```json
+{
+  "browser_preparations": 0,
+  "cleanup_performed": false,
+  "composition_sha256": "5e3e5e24fa15bfb4dd28626d5b3368c76d571b77dac6e066edac03b46d261d6c",
+  "controller_invocations": 0,
+  "controller_payload_archived": false,
+  "controller_template_sha256": "2dde53fd3f87508e840fedc88af2b85369854eedd050f77708c8e52f43eac691",
+  "gate_checks": {
+    "basenames_shape": true,
+    "basenames_unique": true,
+    "controller_template_pin": true,
+    "driver_contract_pin": true,
+    "driver_readonly_preflight_verified": true,
+    "entry_pin": true,
+    "helper_pin": true,
+    "keyset_exact": true,
+    "preparation_seed_absent": false,
+    "runtime_release": true,
+    "session_shape": true,
+    "single_controller": true
+  },
+  "helper_invocations": 0,
+  "helper_sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+  "inclusive_START_reached": false,
+  "journey_credit": false,
+  "owned_child_statuses": null,
+  "prior_seed_values_inspected": false,
+  "project_id": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "provider_invocations": 0,
+  "release_input": {
+    "cleanup_basename": "d01-timeout-adopted-mus2env1-5b596cc9-cleanup.json",
+    "controller_template_sha256": "2dde53fd3f87508e840fedc88af2b85369854eedd050f77708c8e52f43eac691",
+    "driver_contract_receipt_sha256": "b8145f029796a2063dfe167f026fe299d85afcaedbec5a7abacbeb5bf1a5ea27",
+    "driver_readonly_preflight_verified": true,
+    "entry_source_sha256": "505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f",
+    "event_basename": "d01-timeout-adopted-mus2env1-5b596cc9-event.json",
+    "helper_sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+    "launcher_cleanup_basename": "d01-timeout-adopted-mus2env1-5b596cc9-launcher-cleanup.json",
+    "outer_basename": "d01-timeout-adopted-mus2env1-5b596cc9-outer.json",
+    "payload_basename": "d01-timeout-adopted-mus2env1-5b596cc9-payload.json",
+    "provider_basename": "d01-timeout-adopted-mus2env1-5b596cc9-provider.json",
+    "runtime_release": true,
+    "session": "d01-sol4-timeout-mus2env1-5b596cc9",
+    "single_controller": true
+  },
+  "reservation": "wave30_D01_adopted_timeout_confidential_browser_once",
+  "reserved_lanes_released_unused": true,
+  "retry_or_correction": false,
+  "schema": "riauth.d01-adopted-timeout-prestart-refusal/v1",
+  "source_latch_record": {
+    "cleanup_errors": [],
+    "controller_exit": null,
+    "final_absence": null,
+    "first_event_proven": false,
+    "first_failure": "root_runtime_input_unconfirmed",
+    "first_observation_wall_ms": 1791012176464,
+    "journey_credit": false,
+    "local_tool_receipts": [],
+    "owned_child_exits": null,
+    "resource_release_proven": false,
+    "schema": "riauth.d01-owned-launcher/v1",
+    "whole_cleanup_within60_proven": false
+  },
+  "source_pin": "a8707bab1265ebb3396d9e60ef1bd68a6b73ad9d",
+  "whole_cleanup_within60_proven": false
+}
+```
+
+Only this existing D01 report is appended in Git. Current helper remains36884 bytes SHA256 `37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406`. I07 formatted test/source6ba and reportf605 remain whole-byte exact to9aef and HELD; no I07 runtime ran. All historical private artifacts,12 metadata, five failed-fixture captures and new94 memory receipts were untouched; no historical private contents were read for this attempt. No Cargo/compiler/build, source/helper/product/guide/D05/test edit, source alignment, cache deletion, main/push/task status, new worker/task/WT/shell or other-worker contact occurred. No resource/journey/full D01/D05/physical/passkey/tenant/installation/HA/release acceptance is supplied. Whole60 and historical first event remain unproved. Root alone original gate interpretation, integration/publication/status and any next source/input/runtime reservation.
+
+
+### Actual refusal-evidence handoff checks
+
+`python3 scripts/check-docs.py` exit0 (“Markdown links and build-directory layout checked”); report `git diff --check` exit0. Complete prior9aef report-prefix equality and exact current helper/I07 test/I07 report equality passed; current Git scope is only this existing D01 report. The guessed root receipt pathname described above was queried twice, with the same absent-path diagnostic, before immutable tree discovery corrected the read target. No source or runtime correction followed the actual composition refusal. Final staged whitespace/scope/hygiene and clean immutable report-commit proofs accompany the handoff. Lane release already occurred unused; these metadata/document checks add no fixture, provider, GUI, test, memory or journey result.
