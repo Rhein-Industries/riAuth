@@ -80,6 +80,9 @@ Delegated humans use `HumanGrant::allows` in
 - `security_administrator` allows `key.read` and `key.write` on its exact
   scope, and `key.rotate` when the resource is `key/signing` and the scope
   is that same resource.
+  Importing a caller-supplied private key additionally requires instance-wide
+  `key.write` authority; a domain-scoped role can generate keys or bind
+  operator-configured signers without importing private key material.
 - `application_owner` allows `client.read` and `client.owner_update`. A
   delegated caller who changes a client secret is refused in
   `check_client_as`.
@@ -522,7 +525,8 @@ EdDSA. `rotate-key` is the `key.rotate` path and always generates RS256.
 `keys bind` uses the public key and `kid` already configured for that
 signer name. A PEM or `kid` supplied together with `--signer` returns 400
 `External keys use the pinned public key and kid from server configuration`.
-`keys import` stores a caller-supplied private key. The response on this
+`keys import` stores a caller-supplied private key and additionally requires
+instance-wide `key.write=*` authority, or a full administrator. The response on this
 page for the default key is `rotate-key`, which generates the replacement
 inside the server.
 

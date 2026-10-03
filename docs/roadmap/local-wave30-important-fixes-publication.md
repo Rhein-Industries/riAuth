@@ -58,3 +58,55 @@ enabled after reap. No such runtime occurred and this archived supervisor is
 not used by the fresh hosted managed CI job. The corrected I07 supervisor and
 other source-only controller designs likewise remain unexecuted. Root has
 neither waived disk guards nor authorized additional cache deletion.
+
+
+## Follow-up fixes verified locally
+
+The original publication's hosted run `37119721014` passed audit, integration
+and the managed Windows device-host self-test. Integration passed both selected
+sign-in input cases. Its check job failed the bootstrap passkey fixture while
+reopening the store; that failed result remains separate from later validation.
+
+The following fixes and regressions have since been reviewed and tested:
+
+- Scoped source-link creation and issuer repair use the credential-exposure
+  fence. Genuine no-ops and verified account-owner linking retain their existing
+  behavior. The exact source-link regression passed.
+- SCIM writes reject a resource whose stored wrapper cannot be decoded, with
+  complete rollback. SCIM deletion preserves memberships outside the caller's
+  group authority. Five storage/patch tests and five group-management tests
+  passed, including preserved valid opaque metadata and delete/re-enable policy.
+- Private signing-key imports require instance-wide key authority. Domain-scoped
+  generation and configured external signing remain available. The entire
+  signing-key management target passed, covering human and agent scopes, retained
+  verification keys and exact public-result retries.
+- Copied application environment assignments quote every value for POSIX shell
+  consumption. Six environment and existing passkey-flow unit tests passed;
+  administration JavaScript syntax was checked. CI runs these unit tests.
+- Setup account limits resolve the trusted-proxy client address and normalize
+  grouped addresses through the existing API helpers. All three proxy/rate
+  regressions passed in an immutable combined run.
+- Essentials startup reads sessions in bounded pages. Four transition-preflight
+  tests passed, including late-page protocol blockers and unchanged snapshots.
+- Edition inspection recognizes a well-formed OIDC-only logout handoff without
+  importing the Platform SAML adapter. Actual Essentials restart passed with a
+  restored shared handoff; Platform inspection still refuses SAML-bearing state.
+- The bootstrap fixture drains concurrent response bodies and joins a graceful
+  listener shutdown before reopening storage. Its focused regression passed.
+  The complete target then passed 11 tests with one PostgreSQL fixture ignored;
+  all four portal self-service tests passed in the same run.
+
+These are scoped local results. The initial logout test had a response-envelope
+expectation error; a later Essentials compilation exposed a Platform-only type
+reference. Both failed runs were retained before correction. The first root
+source-link filter selected zero tests and has no execution credit; the exact
+module-qualified filter subsequently passed. The first proxy compilation also
+included concurrent unrelated source edits, so the later immutable combined
+run supplies its final verification. No ignored PostgreSQL, tenant, native
+Windows, physical authenticator or confidential browser checkpoint is credited.
+
+Only reviewed fixes with recorded verification are selected for this follow-up
+publication. Further source findings remain under review, and the security
+review as a whole is not declared complete. Original task statuses and deferred
+Entra tenant validation remain unchanged. Fresh hosted CI for the follow-up
+source must be assessed separately from these local results.
