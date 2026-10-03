@@ -447,3 +447,118 @@ readback, pinned candidate hashes, original test insertion inverse and source
 AST preservation passed. No product, fixture, browser, assistive, physical-device,
 helper, native, protocol, capacity or cleanup runtime was performed. No current
 all-green, U10 DONE, or other-row disposition is inferred.
+
+
+## Source-only materialization — wave30_U10_missing_credential_field_association
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original U10
+`934531ec-3a80-497c-b931-0d86b298ead2`, existing WT f2 only. Root reserved
+exactly the three production hunks and one test above from immutable proposal
+`e62a4b53098ff5ec47f856a9d2c72c38ba921c8f`. This phase implements those bytes;
+it adds no runtime or original-journey completion credit. Original primary,
+assignment and status remain root-owned and unchanged here.
+
+Entry HEAD was e62a, with tracked/index/untracked clean. Before editing, both
+complete local files equaled their HEAD and fixed published
+`544d1340b80cd3e040dc13142cdcbc1d75fea4cb` bytes and mode 100644:
+
+| Path | Original bytes / LF | Original Git blob | Original SHA-256 |
+| --- | --- | --- | --- |
+| `src/portal/signin.js` | 23197 / 373 | `af602f2449f83a7489f5c8f6aa47d737dfc523c8` | `3d5ee4cfc1b3a88b3d6fa46d064df36b7f1a227d03a1a557830eac4528ccff22` |
+| `tools/browser/signin.spec.js` | 33817 / 593 | `50bf9a0623d4c72211d14ce0cccf1ac8afbd4dfa` | `d24ed29b9dcad2d143999c0df2fd328da8a62239bec9f3f8a0124df402518bb5` |
+
+No alignment or whole-file import occurred. The approved isolated edits were
+applied to those local baselines. The rest of this WT is not asserted to equal
+the complete published tree.
+
+Code-only commit: `6800973556f45ed2136467bde1e7d74cd98aa633`, parent e62a.
+Its complete scope is two existing files, 68 insertions and three deletions.
+Both remain mode 100644:
+
+| Path | Materialized bytes / LF | Exact SHA-256 |
+| --- | --- | --- |
+| `src/portal/signin.js` | 23771 / 384 | `d42f6ead02c1c27f55778b75b00d7ede654bbe669004aa07c964088124e0797b` |
+| `tools/browser/signin.spec.js` | 36605 / 647 | `2cc417e36f76e4455fa78488e2019f19abb05999323b8e7cd8193b0d1ec49c88` |
+
+The missing-credential branch now marks precisely its missing username and/or
+required password and associates those fields with the existing focused alert.
+Clearing the alert or editing each credential removes its stale association.
+The OTP hint stays associated. The original missing predicate, error text,
+focus call, immediate return and all other auth/native/passkey/OTP/decision/
+guard behavior are preserved. Static preservation does not establish execution.
+
+Actual readback independently applied the archived 2388-byte three-hunk diff
+as DATA to the full fixed baseline and reproduced the complete materialized
+production file. Applying its inverse restored all original 23197 bytes.
+The test insertion is exactly the archived readable JS fence plus one blank LF,
+2788 bytes, SHA-256
+`89304ee4f7c4825a4c47ebe3e4cb6cdcdcbd118f5852ab085585622b075e23d8`.
+Its single unique insertion before the double-click-jacking comment reproduces
+the full materialized test; removing it restores all 33817 original bytes.
+
+Installed Node's bundled Acorn parsed both complete originals and actual files
+as DATA, exit 0. There remain 62 production function nodes. Only the enclosing
+IIFE and its three approved leaf functions (`clearError`, submit callback,
+input callback) have changed source spans; all 58 other spans are byte-exact.
+Restoring only those three leaf AST nodes yields whole normalized AST equality.
+Removing only the new top-level test call yields the complete original test AST.
+No reviewed module, callback, fixture, test or browser was executed.
+
+Actual source-phase checks all exited 0: `node --check src/portal/signin.js`,
+`node --check tools/browser/signin.spec.js`, the byte/reconstruction/AST checker,
+`python3 scripts/check-docs.py`, `python3 scripts/check-repo-hygiene.py`
+(1062 tracked files), `git diff --check` and staged `git diff --cached --check`.
+Before the code commit, staged hashes matched both reviewed candidates, staged
+scope was exactly the two code files, and the complete report remained unchanged.
+No static failure occurred in this phase. Commit hooks and signing were disabled
+for this commit invocation; no persistent Git setting changed.
+
+### Prepared focused validation, still held
+
+The unchanged prepared command, from `tools/browser`, is source DATA only:
+
+```sh
+CARGO_TARGET_DIR="$PWD/../../target" ./node_modules/.bin/playwright test signin.spec.js --project=chromium --workers=1 --retries=0 --grep '^empty interaction credentials identify missing fields without a request$' --reporter=line
+```
+
+This selects only the authored three rejection states, input clearing, retained
+OTP hint, focused alert, 320×640 viewport, axe, zero-POST and portal-401 assertions.
+They are assertions prepared in source, not reached passes. Existing test bytes,
+CSP/page-error checks, certificate/receipt/header/PAM/Group contracts and fixture
+setup were not edited. It grants no physical authenticator, assistive reader,
+real mobile OS or independent full-journey credit.
+
+Current metadata-only check still found the own-WT Playwright CLI absent. A later
+root release needs reviewed fixture/product alignment, a provenance-pinned
+private `target/debug/examples/portal_fixture` containing the changed embedded
+portal, Playwright 1.63.0, axe 4.13.0 and its pinned Chromium assets. No fixture
+build, dependency install, browser download or readiness claim occurred here.
+The absolute target expression above resolves to this WT's existing private
+target; no cold duplicate target or cache deletion is proposed.
+
+Source-read resource shape is one worker, zero retries, one Chromium project,
+one issuer fixture and its loopback relying-party stub. The existing per-test
+limit is 60000ms; fixture startup defaults to 120000ms with the unchanged 5000ms
+beforeAll allowance. No deadline increase is proposed. Existing fixture stop
+sends SIGTERM and awaits exit without its own outer deadline, so this command
+alone does not provide finite whole-run cleanup. Root must separately review
+finite browser supervision, actual process ownership and cleanup, private
+bounded output, fresh capacity and monitoring with the 8GiB floor before release.
+Peak build/browser allocation is unmeasured; no capacity success or safe peak is
+inferred. Any necessary Cargo preparation must separately reserve the private
+jobs1/incremental0/dev+test-debug0 build. A09 ARM37101183416 owns the sole validation/
+Cargo lane; this phase acquired and released no runtime slot.
+
+The complete original 38802-byte / 449-LF report prefix is retained byte-for-byte,
+SHA-256 `de6e1ae88af84eaefa94957564be5f967b4eb9ae2336b695dae874d9d79bc0ef`.
+All historical outcomes, missing user/device evidence and original open gates
+above remain intact. This appended source receipt does not change any other
+row, report, source, workflow, guide or protected product path. Root owns later
+independent review, integration, publication, runtime release and disposition.
+
+Report-present docs, hygiene (1062 tracked files), staged whitespace and
+prefix/scope/source-readback checks all exited 0. The staged evidence scope is
+this report only; its complete e62a prefix is exact, both committed code files
+retain the approved hashes, and there are no other tracked/index/untracked
+deltas. This final evidence paragraph is checked before the separate report
+commit. Runtime remains held; original U10 acceptance remains open.
