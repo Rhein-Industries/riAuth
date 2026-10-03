@@ -995,3 +995,70 @@ Static prototype review corrected two prospective boundaries before freezing thi
 Only this report append is modified. No evidence-directory/child/source file was created outside the report, and no actual load/store/collision/reset/cleanup operation occurred. ROOT MUST FULL-READ and independently review these exact bodies and caps/ownership assumptions before releasing any one memory invocation. After such a release, any refusal stops without retry/source correction; accepted memory would still not authorize a real checkpoint or supply journey/whole-D01/release credit. All earlier false proof flags/failures remain, with no status/integration/main/push change.
 
 Final separate checks: docs checker actual EXIT1 for exactly the same five retained layout directories above; hygiene actual EXIT0 (1027 files); staged whitespace actual EXIT0. Prefix/four-fence hashes/one-path staged scope passed, no unstaged change or executable non-sample hook. No prototype execution followed any check. Report-only immutable commit and clean-tree proof accompany the handoff.
+
+
+## 2026-10-03 — ONE released scoped-memory invocation; actual bounded PASS
+
+Reservation `wave30_D01_scoped_memory_once`, project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original D01 `a96a1977-3210-4284-8f7d-645793369301`, existing WT42/shellf157 only. Root issued the exclusive memory lane and exact evidence-leaf nonce `82aa5c155da9e29b`, which is ONLY a private memory-evidence basename, **not an actual host-store namespace**. Root source receipt and later explicit release were read before launch; earlier source receipt’s HELD snapshot is superseded by that release, not by a worker assumption. All0ca prior report bytes are preserved exactly: 416292 bytes SHA256 `82635007016c83407980f538c3e3589acd4ff09687837f6131dc44dcc7b12efd`. No source/controller/case/command correction, retry, smaller case set or second invocation occurred.
+
+**Actual result: supervisor numeric EXIT0 and child numeric EXIT0; nine groups PASS,300 actual assertions,16 preflight checks.** Child packet elapsed26ms; post-fsync supervisor elapsed68ms and numeric return0. Exact consuming waitpid matched the owned child and raw wait status0; child_reapedtrue, group_absenttrue, both stream EOFtrue, output_cappedfalse, input156277 bytes, stderr0. No destructive signal was attempted/delivered. Actual owner/sole validation lane was **RELEASED in commentary after the numeric exit plus retained source/hash/owned wait/group evidence, before this append**. No OWNED/BLOCKED cleanup condition remains for this memory invocation. I07/I08, real D01 fixture, desktop and Cargo remain held; no status/publication/journey grant follows this memory result.
+
+### Root authorization, actual preflight and exact launch
+
+Read public root receipts under project orchestrator `planning/evidence/`: source-review1482 bytes SHA256 `a4c2f9d4ba94bcbf2229cc5f3ea2a2448a32acc0976ae92fed38461644970146`; release819 bytes SHA256 `c9e073ade4562050a9730720320e1162d0bda8dadc482a7de1e96c7b07503ff5`. Release identifies author0ca, exact controller/payload, evidence leaf, existing shell and independent review `62ce970dd7e2b166c4497e009157ee7119976534`. No live board query or other-worker contact occurred.
+
+Author0ca clean/current tracked report bytes matched before launch. Exact original supervisor226923 bytes SHA256 `2a8be4dcad567d8e16a6a3ed1dc1bd0ef845d565e4db0c70be8834abcfad85e9`; immutable fence extracted as DATA from `git show 0ca9e897da1bd8fa12dc5e361493fefc78d5de1f:docs/roadmap/local-wave30-d01-fresh-invocation-inputs-plan.md`. A read-only extraction loader replaced itself using `os.execvp` with exact argv `python3 -c <entire unchanged ASCII supervisor source> 82aa5c155da9e29b`; exact WT42 cwd, no source transform or helper file. No shorter caller timeout cut the owned cleanup. Execution returned synchronously; no running tool session, extra wait/termination or outer signal was needed. The tool numeric exit0/full bounded stdout were retained in the actual tool response before this worker’s capture comparison. Its separate wall-time metadata0.01204275s is not used as an independent end-to-end duration; the source monotonic26/68ms clocks and actual numeric return remain the recorded budget evidence.
+
+Node was freshly opened nofollow and full rehashed before launch:50320 bytes, SHA256 `1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040`, regular/executable. The exact controller repeated its pin/size checks. No version/provenance probe or product binary executed; runtime Node/Python are the expressly released memory environment, not a product/native-peer proof. Fresh absent leaf and current-owner nonsymlink0700 `deployment-private` preflight passed; exclusive new leaf remained0700/current owner. Preflight free10277113856 bytes (9.571GiB), supervisor minimum10195812352 bytes, post-readback10167263232 bytes: all above8GiB; initial above8.5GiB. Shared free-space movement is not attributed entirely to this small memory invocation. Existing directories/caches/captures were not deleted/changed.
+
+### Complete retained output and checks actually executed
+
+| Declared group | Actual status | Actual checks |
+| --- | --- | --- |
+| `fresh_globals_untouched` | PASS | 5 |
+| `occupied_all_seven_no_write` | PASS | 98 |
+| `closed_keys_and_input_bounds` | PASS | 153 |
+| `direct_reference_and_state` | PASS | 5 |
+| `nonce_collision_no_reuse` | PASS | 4 |
+| `private_state_separation` | PASS | 6 |
+| `durable_readback_false_unreached` | PASS | 7 |
+| `immutable_source_and_boundary` | PASS | 3 |
+| `finite_privacy_failure` | PASS | 3 |
+
+Per-group checks284 plus16 actual preflight checks =300. These are actual counters from the complete one released child, not the old source-bound maximum or a legacy36/94/25 count. Positive invocation/constructor/full frozen body remained unexecuted; synthetic negative paths and original factory/readback functions exercised the approved Map fixtures only.
+
+Full exact child packet1285 bytes SHA256 `949f626b9526bad9cdfbab13ff71ef004d747011199594dc1e7ff4959d9b99d9`:
+
+```json
+{"schema":"riauth.d01-scoped-adapter-memory/v1","bindings":{"wrapper_bytes":123063,"wrapper_sha256":"17ccb4c036be980696b9fa3b0b6577033be648b1664082e548480bfb12e1b48f","template_bytes":5734,"template_sha256":"04bf0329e3b265d7800f4e7a0e3a023a79dafd0b943176014ec3c77f28147245","frozen_bytes":113395,"frozen_sha256":"5e3e5e24fa15bfb4dd28626d5b3368c76d571b77dac6e066edac03b46d261d6c","suffix_bytes":33701,"suffix_sha256":"505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"},"status":"passed","first_failure":null,"cases":[{"name":"fresh_globals_untouched","passed":true,"checks":5},{"name":"occupied_all_seven_no_write","passed":true,"checks":98},{"name":"closed_keys_and_input_bounds","passed":true,"checks":153},{"name":"direct_reference_and_state","passed":true,"checks":5},{"name":"nonce_collision_no_reuse","passed":true,"checks":4},{"name":"private_state_separation","passed":true,"checks":6},{"name":"durable_readback_false_unreached","passed":true,"checks":7},{"name":"immutable_source_and_boundary","passed":true,"checks":3},{"name":"finite_privacy_failure","passed":true,"checks":3}],"assertions":300,"preflight_checks":16,"privacy_verified":true,"constructor_executions":0,"frozen_body_executions":0,"synthetic_tool_calls":0,"public_sink_calls":0,"elapsed_ms":26}
+```
+
+Full bounded actual supervisor stdout copied verbatim from the execution response (571 bytes including newline; SHA256 `70ddc284cbedccc234835ee61566ec962f99d7c69eb1a6069b038315e582720b`); actual tool process EXIT0, not merely public acceptedtrue:
+
+```json
+{"accepted":true,"capture_retained":true,"capture_sha256":"c25447e2d5a7a7b05ef1636d85fb27ca1a109cddd0b7e47ce390a943f760d140","child_exit":0,"child_reaped":true,"controller_sha256":"2a8be4dcad567d8e16a6a3ed1dc1bd0ef845d565e4db0c70be8834abcfad85e9","elapsed_ms":68,"first_failure":null,"group_absent":true,"minimum_free_bytes":10195812352,"payload_sha256":"521e676819aa5b1a696c2b7c33cffa70883b88859475114869b79a234dd9ddb8","review_sha256":"ecc772bf79fa3522f091ec7a9f8fb353bdeeb01f10114725d29c313e0f0427fb","schema":"riauth.d01-scoped-memory-supervisor/v1","spawn_count":1}
+```
+
+### Retention BEFORE grading, ownership and privacy
+
+The reviewed supervisor saved its exact controller/payload sources, then complete capped stdout/stderr/packet and capture receipt with actual exit/EOF/owned-process evidence BEFORE packet grading. Its review is explicitly a pre-final-clock candidate; final output and actual numeric exit0 are required separately. After execution this worker first nofollow-read the bounded seven fresh files, checked regular/current-owner0600/nlink1/mode/length/full SHA, and only then parsed/compared the finite JSON. Stdout equals packet byte-exact; stderr is empty; capture/review hashes equal the actual supervisor output. Source files match the exact reviewed226923/156277 byte hashes. No original/private global input/capture was opened; actual PIDs remain only in the private capture, not this public appendix.
+
+| Fresh retained file (under `deployment-private/d01_scoped_memory_82aa5c155da9e29b/`) | Bytes | SHA256 | Mode / links |
+| --- | --- | --- | --- |
+| `controller.py` | 226923 | `2a8be4dcad567d8e16a6a3ed1dc1bd0ef845d565e4db0c70be8834abcfad85e9` | 0600 / nlink1 |
+| `harness.js` | 156277 | `521e676819aa5b1a696c2b7c33cffa70883b88859475114869b79a234dd9ddb8` | 0600 / nlink1 |
+| `stdout.raw` | 1285 | `949f626b9526bad9cdfbab13ff71ef004d747011199594dc1e7ff4959d9b99d9` | 0600 / nlink1 |
+| `stderr.raw` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | 0600 / nlink1 |
+| `packet.json` | 1285 | `949f626b9526bad9cdfbab13ff71ef004d747011199594dc1e7ff4959d9b99d9` | 0600 / nlink1 |
+| `capture.json` | 1382 | `c25447e2d5a7a7b05ef1636d85fb27ca1a109cddd0b7e47ce390a943f760d140` | 0600 / nlink1 |
+| `review.json` | 903 | `ecc772bf79fa3522f091ec7a9f8fb353bdeeb01f10114725d29c313e0f0427fb` | 0600 / nlink1 |
+
+Seven files total388055 content bytes; fresh dir0700. The full private capture includes exact owned child/group PID, `cleanup.identity:"consuming_waitpid"`, waitpid_exacttrue and raw wait_status0, all four errno fieldsnull, signal_attemptedfalse, signal_deliveredfalse. Source-order signals_after_reap0 is not claimed as an extra kernel tracer. Group absence is the separate actual non-delivering post-reap existence query; no stale/guessed PID signal or autoreap/absence-to-zero conversion occurred. No signal/clock/cap/error fallback branch is credited as executed beyond this normal consuming-wait path. No real hoststore read/write, credential, global secret copy, helper/native product/HTTP/provider/Driver/browser/Cargo invocation occurred.
+
+Full privacy check passed; constructor_executions/frozen_body_executions/synthetic_tool_calls/public_sink_calls all0 under the reviewed source-path constraints, not a new native dynamic tracer. The synthetic sentinel was not present in the public child packet. No actual stale seed/value/PID/password/source/origin was read, reset or cleared. The API/VM host maps were entirely synthetic. Nine-group memory PASS supports the router/freshness/refusal/reference/readback contract and exact source binding only; it neither proves installed actual-host store serialization/exclusivity nor removes the non-atomic unique-nonce/root ownership prerequisite.
+
+### Limits retained and next authority
+
+Original a270/c88 request failures/unknown sender/partial bytes, old515 memory/controller failure and old be6 preSTART non-null-global-seed refusal remain FAILED/unknown as recorded. This result does not retroactively attribute their cause, restore lost values, execute an original helper, manufacture a first event or prove whole60. Source/private archival identities remain separate from actual product journey/release evidence. No real confidential journey, U10/D05/full D01/physical-device/tenant/release completion is claimed. Root alone interprets original gates, integrates/publishes/statuses and may reserve a later exact real invocation. Driver MCP only for separately authorized future desktop, still held.
+
+Actual report-only checks: `python3 scripts/check-repo-hygiene.py` EXIT0 (1027 tracked files); report `git diff --check` EXIT0; whole0ca prefix, all four original source fences, exact child-packet fence hash and closed JSON counts/source/scope verification passed. `python3 scripts/check-docs.py` EXIT1 solely for the same five retained build-directory layout errors (`target-wave29-source`, `target-wave28-scim`, `target-wave28-portal`, `target-wave28`, `target-wave27`); no Markdown link error. No caches/checker were changed. Final staged whitespace/scope and clean immutable commit accompany the handoff. Only this report append is tracked; all0ca prefix/source fences and actual retained capture files are preserved. No auto-retry or future runtime was started after release.
