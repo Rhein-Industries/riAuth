@@ -401,3 +401,89 @@ Original I07 todo/primaryd0ce and every prior authority/review/receipt/header/PA
 ### Actual evidence-report checks
 
 After the actual-evidence appendix was written: `python3 scripts/check-docs.py` exit0 (Markdown links and build-directory layout checked); `python3 scripts/check-repo-hygiene.py` exit0 (1085 tracked files); `git diff --check` exit0. Full53246-byte prior-prefix equality, report-only current scope, protected current/HEAD source equality and entire fixed544 test inverse all passed. These passing document/scope checks do not change the actual Cargo exit101 or supply the unreached error-code/unprotected control assertions. Final staged whitespace/prefix/scope and clean-tree proofs are returned with the separate immutable evidence commit. No further Cargo/test/native/provider/Driver execution occurred after lane release.
+
+
+## 2026-10-03: reserved retained-provider binding correction, source/static only
+
+Reservation `wave30_I07_retained_provider_binding_correction`, same project891e7443-8dac-4c1b-897f-9e53cb59c7ee and existing WT7/shell only. Root explicitly authorized the additive retained provider field, canonical kind identity, policy freshness equality, both successful writers, literal compatibility and focused regressions. Original I07 task/primary/todo and root gate authority remain unchanged. This appendix preserves the ENTIRE64870-byte84d3 report prefix, SHA256 `0e92ef3c37dde6d154dd8ef53fa7188c89dabb5ea33b51c01836e73ca55ed99c`. The previous actual negative exit101, unwrap-error-on-Ok1821, initial classifier error and separate correction, strict-error/plain assertions unreached, private captures and release remain dated evidence, not new outcomes.
+
+Source commit `19805cb9250f3b3d77da4c15b52c313794450143`, parent `84d3d8a46df6cf9635bd00123592d2d67b573fa9`, tree `31d713bb4405c5c5372cf0e5b9fe508d64365ead`: ONLY four reserved source/test files,309 added lines and zero removed lines. The tree was clean after that source commit and before this separate report phase. Documentation path coordination remains the concrete outstanding scope input described below; no outside guide path was edited or new stub guide created.
+
+### Implemented contract and exact source identities
+
+`DeviceVerification` gains ONLY `#[serde(default)] pub provider: Option<String>` with its explanatory comment. A row lacking the field deserializes toNone, not local. `ProviderKind::identity()` returns only fixed `local` and `google_verified_access_v2`. The local and Google successful record writers each stamp their corresponding fixed enum identity, independently of a caller value or a configurable string. Neither writer manufactures trust before its existing verification checks or weakens the device-id binding.
+
+In `policy_reason`, the existing unprotected-client early return, missing-config/readiness gates and identity-required gate remain byte-exact. Only after provider readiness and identity succeed does a pure `provider_kind(config)?.identity()` resolve the configured kind. Its underlying `provider_kind` body is unchanged: omitted `TrustConfig.provider` and explicit `local` map toLocal; unsupported configured kinds are already refused by readiness. The freshness predicate gains one conjunction: `record.provider.as_deref() == Some(provider)`. Missing, null, unknown or different retained kind cannot satisfy that equality. Missing WHOLE `device_trust` configuration remains unconfigured; it is not the same as an omitted provider within a valid local configuration.
+
+This binds a retained proof to the kind that accepted it. It does not fingerprint keys, customer identity, policy settings or every same-kind configuration change. Returning to a kind matching a still-fresh retained proof is governed by the same current-kind comparison and existing session/freshness checks, not a new configuration-change epoch. No broader invalidation or physical-provider provenance promise is introduced.
+
+| Complete committed file | Bytes/lines | Git blob | SHA256 |
+| --- | --- | --- | --- |
+| `src/device_trust_types.rs` | 3338/99 | `d62bbc5e57a01a7548cceac2c28ffef1e706895e` | `9b8a931b68b2a453350904b32f5e6f7a98f3cecb88a0cebde41f7ed3f9803825` |
+| `src/device_trust.rs` | 12917/361 | `af21281b8c484e6ca46d2571e379c30c867ca363` | `5b2960a196a678e13fc767d6e662d7a099e8a5da1d3bdb82be01dc6b1878993e` |
+| `src/assembly/device_trust.rs` | 16909/424 | `0ed73bb89732933ded0407877e571476eaba427e` | `95c0a41470d4bf6cd68a6017e308ef090cf282e7f999eaaa4476fca8c2afea7b` |
+| `tests/device_trust.rs` | 74157/2118 | `54bc47d08b5562ed6d836df55144c93b5ac8dd2d` | `f5fc6b3d42f97bf7c4601d8228e713066af1e3a95eeee3aca60dfeeec4c7f5df` |
+
+Full bodies of CONTRIBUTING/SECURITY, shared retained/config types, device-trust policy/verifier source, assembly entry points and the actual ENT-06 guide were read. Relevant existing synthetic Google transport/account/challenge/response helpers, existing successful Google verification test, the old transition test and all new/changed source bodies were read. Other old test bodies were compared as complete source spans; their body-content identity is not a claim of new execution or a fresh manual review of every unchanged body. The full candidate bodies are concrete Git source objects at19805cb, not merely an unmaterialized diff.
+
+### Whole-file reconstruction and protected spans
+
+For each of the four source files, a line-preserving comparison against84d3 had only `equal` and `insert` operations. Removing ALL declared insertion spans reconstructed the ENTIRE corresponding prior object byte-for-byte, including every unchanged old function and surrounding source. No exclusions, snapshot normalization or changed old assertions were used.
+
+| Prior complete file | Bytes | SHA256 | New inserted lines |
+| --- | --- | --- | --- |
+| `src/device_trust_types.rs` | 3188 | `2940b6fa74757e5e25a3761c1bb9cae4303a2f54c0c8c58cad550b66a2803273` | 3 retained-field lines |
+| `src/device_trust.rs` | 12579 | `8524103a534cde6e785f3b272f4b69d28becf462c4b005232058d20fb37b51a0` | 9 identity-helper lines,1 kind resolution,1 equality |
+| `src/assembly/device_trust.rs` | 16633 | `2ad918244800eb6f6c5ce3ab2cdeb8790dc60bbd96e0fcb8de5191819eee688b` | 1 local writer line,5 formatted Google writer lines |
+| `tests/device_trust.rs` | 64683 | `ee9c1676e8fb3aa6f6d2092a343e70bb0beae703d563d3e410ad611093e340dd` | 1 existing-literal compatibility line,288 new regression lines |
+
+A separate comment/string-masked lexical function-span comparison found68 prior full function spans byte-exact. Exactly FOUR old spans have additions: `policy_reason`, `device_verify_local`, `device_verify_google`, and the existing missing-verifier test's sole `DeviceVerification` literal. Exactly FOUR new function spans exist: `ProviderKind::identity` and the three regressions listed below. This is static lexical span evidence, not Rust typechecking or AST execution. Whole-file byte reconstruction supplies the stronger no-other-byte-change proof.
+
+The existing strict `google::retained_local_proof_requires_reverification_after_provider_change` complete attributed/function block remains1945 bytes/51 lines, SHA256 `4c16bd1ff495e791878972a7841463959b95e5f62e72457bf912a23241209354`, present exactly once and byte-exact to84d3/6ba. Its previously recorded1947-byte addition includes two surrounding newline bytes, so these lengths are deliberately distinguished. After removing this phase's additions, removing the original1947-byte6ba addition still reconstructs ALL62736 fixed544 test bytes. Source line numbers shift by the earlier literal addition; the old actual1821 failure remains attributed to its executed pre-fix source, not this unrun candidate.
+
+The sole existing test literal adds `provider: None` to preserve its legacy/planted-row purpose. Explicit path-bounded static lookup found exactly FOUR type/literal sites: the shared struct, two assembly writers and this one test literal. Source namespace lookup showed the only production `tx.put("device_verifications",...)` sites are those two successful writers. Beyond the reserved retained-field addition, no new writer, arbitrary provider, storage schema version/migration, config/challenge/epoch/token/public route contract/workflow change is added.
+
+All original identity/user/session/epoch, live-session, expiry and nonempty-device predicates remain exact; provider equality is an additional requirement. Challenge/replay/transaction/device-id-change/audit behavior, verifier and remote HTTP/private credential bounds, local JWT limits and public error/response bodies remain exact. Both writer `verified_at` calculations and expiry minima are untouched. `src/assembly/claims.rs` and approved_device/timestamp projection were not edited. Unprotected callers still return before reading provider/config/proof state. Cleanup still preserves the session's device-id binding until its original expiry/revocation behavior; it does not discard that binding to permit another device after a kind change.
+
+### Focused new regression definitions, UNRUN
+
+The original strict negative remains unchanged. New definitions add:
+
+| New test | Intended source-defined oracle; no observed pass |
+| --- | --- |
+| `google::retained_google_proof_requires_reverification_and_can_rebind_both_providers` | Existing synthetic Google helpers perform initial acceptance and stampGoogle; reopened local configuration rejects protected access with exact `unmet_authentication_requirements` while plain remains usable; a new signed local challenge proof stampsLocal and restores protected access. Reopening Google rejects the retained local proof again; existing synthetic Google verification stampsGoogle and restores access. All three accepted signals use the same device id, preserving the existing different-device refusal. |
+| `implicit_and_explicit_local_provider_keep_the_same_retained_binding` | Both omitted-to-explicitLocal and explicitLocal-to-omitted transitions reopen Core on the same fixture store. A real local verification writer stamps canonicalLocal in each source-defined branch, and that retained proof is expected to remain usable without another verification merely for the equivalent spelling. |
+| `legacy_and_unknown_provider_rows_require_actual_reverification` | Starting from a successful local writer, only the retained provider is removed, setnull or changed to a fixed unknown synthetic string. Each negative requires exact protected refusal and preserves plain access. A NEW signed challenge proof through the actual local writer, not a forged success row, replaces that legacy/unknown provider and is expected to restore access. |
+
+These are three meaningful regression definitions covering the requested kind/compatibility/writer seams, not three observed passes. Source-only raw-row alterations are used solely to model negative legacy/unknown inputs; every positive result is reached through the existing cryptographic verification path. The accepted in-process Google helpers handframe a synthetic challenge/response and script a synthetic accepted response. No actual Google/device attestation, managed Windows enrollment, hardware key or physical-provider success is claimed. No fixture, key generation, helper function, service, HTTP request or test case ran in this phase.
+
+### Exact documentation mismatch; paragraph reserved for root coordination
+
+The authorized path `docs/device-trust.md` DOES NOT EXIST. Initial path-specific `rg` returned2 with that missing-file diagnostic. The current published/own guide is `docs/enterprise/ENT-06.md`,13373 bytes, blob `f71d5fdbc33591d02a1c5f9daa5bf6621c45a6fc`, SHA256 `16ddfb51e8579a4dab74d49dc6c4b486eb42e5f633271daa71afae29cf5fee02`. Its complete body was read and stays byte-exact. Before touching any outside path, an asynchronous root coordination question requested either reservation of that guide or root ownership of the paragraph. No answer or outside-path authorization has arrived as this appendix is prepared; neither the real guide nor a misleading new stub path was written.
+
+Concrete proposed ONE paragraph, immediately after ENT-06's `## Shared behavior` heading, pending exact root reservation:
+
+> Each retained verification records the provider kind that accepted it (`local` or `google_verified_access_v2`). Protected clients require verification again when that kind differs from the configured provider, or the retained provider is missing or unknown. Omitted `provider` and explicit `local` are equivalent. This kind binding does not fingerprint every configuration, key or customer setting. Clients without `require_device_trust` keep their existing behavior.
+
+This is the single remaining documentation scope input; it is not an invented product/runtime blocker or a completed guide edit. Root can review this concrete paragraph and reserve the actual path, or integrate it itself. No broader guide/API/release-note expansion is proposed.
+
+### Actual static checks, retained failures and held runtime
+
+Ran direct formatter ONLY on the four reserved files: `rustfmt --edition 2024 --config skip_children=true src/device_trust_types.rs src/device_trust.rs src/assembly/device_trust.rs tests/device_trust.rs` exit0; subsequent same-files `rustfmt --edition 2024 --check --config skip_children=true ...` exit0 with empty stdout. Whole-file reconstruction confirmed the formatter altered no prior source byte. `python3 scripts/check-docs.py` exit0; `python3 scripts/check-repo-hygiene.py` exit0 (1085 tracked files); source `git diff --check` and staged `git diff --cached --check` exit0. These are formatting/parser/document/source checks, with NO Cargo/Rust typecheck/compiler/test/native/provider/browser execution.
+
+Two static lookup-witness attempts FAILED before completing their later receipt/source checks: the first Python-spawned `rg` had an overescaped regex and no explicit search paths; it returned1 with no matches. The corrected regex still returned1 because that child inherited the exhausted heredoc stdin and had no explicit search paths. A trailing separate namespace lookup caused the second shell's aggregate exit0 despite the Python subcheck's traceback; that aggregate is NOT treated as a passing witness check. The final corrected read-only witness explicitly supplied `src`/`tests` and DEVNULL stdin, returned0, found all four intended sites, and completed exact scope/protected-source/private-capture checks. No product/test assertion failed or runtime rerun occurred in this source phase. Earlier actual negative and formatting/reporting failures remain preserved separately above.
+
+All EIGHT private files from84d3's actual negative directory were rehashed without publishing contents: complete hashes and0600 modes still match the prior table, including raw output, initial incorrect grade, separate panic classifier, child/status/cleanup receipts and supervisor source. No historical file was overwritten. D01 report1512584 bytes SHA256 `7fe8d1ee394268ccedc49947c3b35422656068dd044049941b73b5611e0e60aa`, helper36884 bytes SHA256 `37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406`, existing ENT-06 guide, build manifests/lock/toolchain and initial I07 prefix remain byte-exact. No D01 store/controller/private-input/browser action or source alignment occurred. Unknown historic sender/cause/lost values, old failures and unproved whole60 cleanup remain unchanged.
+
+Prospective ONE whole device_trust target command, NOT EXECUTED and requiring separate root runtime release after full source/independent review:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust -- --test-threads=1
+```
+
+The default Platform plus test-support source defines14 tests after these additions, but there is no observed new discovery/count/result. The existing own warm target and previous exact-command artifact evidence stay dated; no new target, cold duplicate, cache deletion, artifact/provider pin refresh or download occurred. Proposed future resources remain the root-coordinated sole lane, fresh12GiB launch/9GiB own-stop/8GiB floor,2s samples, one1800s bounded invocation, capped private16MiB output and exact owned group TERM/KILL/reap if required. Root must review/reserve those actual runtime details; this source phase acquires/releases no validation/Cargo/desktop slot. Runtime remains FREE/unused by this worker and D01 HELD. No current passing negative, type safety, whole-target pass, physical provenance or whole-I07 closure is asserted. Root alone owns production/source/doc integration, later execution and original acceptance/status.
+
+
+### Actual source-report checks
+
+After this source-phase appendix was written: `python3 scripts/check-docs.py` exit0; `python3 scripts/check-repo-hygiene.py` exit0 (1085 tracked files); `git diff --check` exit0. Entire64870-byte84d3 prefix equality, report-only current scope, exact committed four-file source equality and unchanged actual guide/D01/build-input proofs passed. The two earlier failed lookup witnesses remain explicitly retained above. Final staged whitespace/prefix/scope and clean immutable handoff are returned separately. The guide paragraph remains an unapplied concrete proposal pending exact root path coordination; these checks confer no type/test/runtime pass or I07 gate completion.
