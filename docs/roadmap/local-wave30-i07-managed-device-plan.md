@@ -332,3 +332,72 @@ A09 ARM37101183416 still owns validation/Cargo. No Cargo/test/provider/native ar
 ### Actual correction-report checks
 
 After this appendix was written: `python3 scripts/check-docs.py` exit0 (“Markdown links and build-directory layout checked”); `git diff --check` exit0. Exact source-commit scope and report-only current scope passed. Entire b05 report-prefix equality, committed formatted-test equality and protected D01/manifest/lock/toolchain byte equality passed. Final staged whitespace/scope/prefix and clean-tree proofs are returned with the separate report commit. These checks add no compiled/type/runtime result and do not erase the original fmt failure. Runtime remains held; no lane was acquired/released.
+
+
+## 2026-10-03: ONE released provider-transition negative regression, actual failure
+
+Reservation `wave30_I07_provider_transition_negative_once`, project891e7443-8dac-4c1b-897f-9e53cb59c7ee, original I07 `34688b10-fa4b-4b83-8070-adfb3e55dc41`, existing WT7/shell7a only. Root explicitly released the sole Cargo/validation lane for ONE exact focused command after the A09 lane exited. The dated source-only proposals, initial rustfmt exit1, later formatting exit0 and all earlier unknown/physical-provider limits above remain intact. This appendix preserves the entire53246-byte f605 report prefix, SHA256 `9c6b2d1083c33d0ac2a6bf052961099611b77f9734072e1ca2fff5b9e741fc0d`.
+
+Actual Cargo exit101:0 passed,1 failed,0 ignored,0 measured,10 filtered out. The expected negative oracle was reached at `tests/device_trust.rs:1821:14`, the protected authorization `.unwrap_err()` after switching configuration to Google. The fixed panic classifier recognizes the unwrap-error-on-Ok condition without copying its response values. The later strict error-code equality and unprotected-client assertion were NOT reached. This supplies a concrete failing regression under the accepted provider-transition contract, not a passing production fix or physical Google/Windows/managed-device result. No assertion was weakened, product code changed or second command run.
+
+### Exact source and launch prerequisites
+
+The clean reviewed branch before launch was `be6d4afe932bf03454d6b0dedfa482c8a2e33b4f`, tree `503b86e60d29c5e8b5349f5139620603b718bdd1`. The current test was byte-exact to source commit `6ba2e95c42c271804d1715eb05380953b008130d` and retained blob `5c9d9401961033805745335ac353309237e9ba65`:64683 bytes/1829 lines, SHA256 `ee9c1676e8fb3aa6f6d2092a343e70bb0beae703d563d3e410ad611093e340dd`. Removing the complete formatted1947-byte/52-line addition again restored ALL62736 bytes of fixed `544d1340b80cd3e040dc13142cdcbc1d75fea4cb`, SHA256 `2287bfff16bac53e096652ac9760342577f0a46aaf3f5e714d064a6947559e8f`. The original1959-byte pre-format proposal and its qualified reversal remain dated above.
+
+All tracked files since6ba differed only in the existing D01 and I07 reports. Entire production/test/scripts/manifests/config/toolchain bytes were otherwise unchanged; the working tree was clean. Direct current/reviewed equality also covered:
+
+| Build input | Bytes | SHA256 |
+| --- | --- | --- |
+| `Cargo.toml` | 4020 | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| `Cargo.lock` | 109243 | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| `rust-toolchain.toml` | 86 | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+
+Before spawn, exact-name `pgrep -x cargo` and `pgrep -x rustc` each returned1 with empty stdout/stderr, confirming no observed competing process. No unrelated arguments/environment were read or process signalled. The existing own, regular non-symlink `target/wave30-o06-readiness` cache had the reviewed `riauth-0d65ce4b80b71950/lib-riauth.json` SHA256 `ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10`, features `["default", "essentials", "platform", "test-support"]`, and its existing rlib. This is a warm-cache source prerequisite; the actual result below separately supplies compilation/test evidence. No duplicate cold target, cache prune, artifact/provider refresh or toolchain/version invocation was performed.
+
+The only Cargo invocation was exactly:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust google::retained_local_proof_requires_reverification_after_provider_change -- --exact --test-threads=1
+```
+
+The private supervisor archived the exact displayed command and equivalent expanded `env` argument vector BEFORE launching it directly, with the current WT as cwd. No extra test filter/target, feature, offline flag or timeout flag was added to Cargo. It installed `SIGCHLD` default before any subprocess so the actual Cargo child status could be consumed. Fresh capacity was remeasured immediately before spawn:16775020544 bytes/15.622955GiB, above the12GiB launch requirement.
+
+### Finite runtime, retained output and actual failure classification
+
+A NEW absent directory `deployment-private/i07-provider-transition-negative-20261003-3a19d4ccecd6` was created0700; every contained file is owned, regular and0600. Source archive, combined output, numeric status, grading and later classification use exclusive creation; no historical evidence was overwritten. The supervisor's source was parsed and compiled to an unexecuted code object before its single runtime invocation. Its actual Cargo child used `start_new_session=True`; PID55144/PGID55144 was independently checked before collection. Supervisor PID55106 subsequently exited0.
+
+The inclusive bound was1800s, with an active stop at1765s reserving cleanup time. It used nonblocking bounded output collection, a16MiB combined-log cap, nominal2s disk samples, own-stop below9GiB and8GiB floor. Stops for capacity, output cap, deadline or observed dependency download request would send TERM only to the proven own group, then KILL/reap if needed. The actual run completed in62.326150s with no stop reason, no internal failure, no cleanup error, no signal and complete output EOF. No dependency-download announcement was observed; this is not an independently monitored network claim.
+
+There were32 retained disk samples including initial/final readings. Minimum free16485629952 bytes/15.353439GiB; final16697425920 bytes/15.550690GiB. Maximum observed sampling gap2.180825s is retained rather than claiming exact two-second scheduling. Neither9GiB stop nor8GiB floor was reached. The full1549-byte combined Cargo output and exit101 were flushed/fsynced before any grading, below the16MiB cap with no truncation. Its content remains private; no response debug values, keys, identifiers, request values or arbitrary panic text are copied into this report.
+
+The initial private `grade.redacted.json` correctly recorded counts/exit/reaping but its strict thread-prefix regex did not match the observed panic rendering, so it initially recorded a null location and `expected_oracle_reached:false`. That reporting error is preserved byte-exact. A separate read-only bounded classifier, run AFTER output/status retention and resource release, matched only the fixed `tests/device_trust.rs` panic location and the fixed unwrap-error-on-Ok condition. New `panic-location.redacted.json` records1821:14 and `expected_oracle_reached:true`. No test or supervisor rerun/correction occurred. This is a correction to reporting interpretation, not a revised runtime outcome.
+
+The actual failure stops at the newly reserved protected-provider-transition oracle. Source control flow establishes that local proof creation/verification, initial protected authorization, Google configuration reopening and installation of the existing synthetic `Boom` transport precede that line. The later `assert_eq!(error.code, "unmet_authentication_requirements")` and unprotected authorization follow it and remain unreached. This run does not demonstrate an unprotected-client pass, a production repair, actual Google verification, supported physical Windows enrollment, TPM/hardware provenance, or complete I07 acceptance. The existing fixture uses software-generated synthetic keys/private files and the in-process `Boom` transport; no real device/provider credential or Google response was supplied.
+
+### Private evidence identities and release
+
+All paths in this table are relative to the new0700 directory above. Hashes identify complete files; public receipt fields and fixed failure extraction were read, while raw response values were not published.
+
+| Retained file | Bytes | SHA256 |
+| --- | --- | --- |
+| `supervisor.py` | 14537 | `d2ef5042864f3d5f85248edb894a7472e497048ae18045fe3e58de2079e8ac70` |
+| `launch-source.redacted.json` | 2688 | `2de54e3e1f188cddbe3e584760fba70549efa11d6220cbe61887e7adc6f87608` |
+| `owned-child.redacted.json` | 112 | `b6385f5f7adc18dc042eb89a20f3673161d7c8a356169b1433739f6749af7084` |
+| `cargo-combined.private.log` | 1549 | `b87625e6e5fdcd355641a2f104fd7ecbb8d4fb126ca38749ba6cfc81ab43db48` |
+| `actual-status.redacted.json` | 4008 | `a6da69b426fe23f1aa7d1a8888336d6db83ad1e1db68f4de97e13ae7f0cd24e2` |
+| Initial `grade.redacted.json`, preserved reporting error | 1189 | `4f05c6fee69f98743c0a1f6b43c17f719f363a3357e783a5eb927a73b3a9afb6` |
+| Separate `panic-location.redacted.json` | 412 | `f5f3d9a6ceeec2b8955d5abccc05dff518eda3e4c7996cef81f984865c7ab79d` |
+| `cleanup-release.redacted.json` | 341 | `99c9e0e46e36a9398105e39fe8c46f707bb6f45a96fa9ea872be31b9bfd29ae7` |
+
+Cargo exit101 was consumed and the child reaped; fresh exact PID55144 and PGID55144 absence were read back. The supervisor's tool result was exit0, and fresh PID55106 absence was also confirmed. There were no remaining owned children/group, no TERM/KILL, and no cleanup error. SOLE CARGO/VALIDATION RELEASE was sent immediately after these joined-exit/absence proofs, BEFORE the report appendix. The supervisor exit0 indicates successful retention/cleanup, not a passing Cargo test. Retained private evidence stays available for root review. No browser, Driver/session, service/listener or operator fixture was created by this assignment.
+
+### Protected history and next authority boundary
+
+Only this I07 report is appended. Current `tests/device_trust.rs`, every tracked production/script/config/manifest/toolchain file and D01 report/helper remain byte-exact to pre-run be6. Protected D01 report1512584 bytes SHA256 `7fe8d1ee394268ccedc49947c3b35422656068dd044049941b73b5611e0e60aa`; helper36884 bytes SHA256 `37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406`. The be6 D01 refusal stays failed/unused, D01/browser remains HELD, and no old functions-store value was inspected/reset. All earlier source/formatting failures, historical private captures, unknown sender/cause/lost-value corrections, failed envelopes and unproved whole60 cleanup remain preserved. No source alignment, product/test/helper correction, second Cargo command, worker contact, task/worktree/shell creation, main/push/status or cache deletion occurred.
+
+Original I07 todo/primaryd0ce and every prior authority/review/receipt/header/PAM/held Group/nonrenewed60s/paused IO contract remain unchanged. Root alone reviews this actual negative result and may separately reserve the exact production correction; this worker claims no whole-row closure, current physical-device/provider success or D01/D05 gate completion. Final document, whitespace, full-prefix, report-only scope and clean-tree checks are returned with the separate immutable evidence commit.
+
+
+### Actual evidence-report checks
+
+After the actual-evidence appendix was written: `python3 scripts/check-docs.py` exit0 (Markdown links and build-directory layout checked); `python3 scripts/check-repo-hygiene.py` exit0 (1085 tracked files); `git diff --check` exit0. Full53246-byte prior-prefix equality, report-only current scope, protected current/HEAD source equality and entire fixed544 test inverse all passed. These passing document/scope checks do not change the actual Cargo exit101 or supply the unreached error-code/unprotected control assertions. Final staged whitespace/prefix/scope and clean-tree proofs are returned with the separate immutable evidence commit. No further Cargo/test/native/provider/Driver execution occurred after lane release.
