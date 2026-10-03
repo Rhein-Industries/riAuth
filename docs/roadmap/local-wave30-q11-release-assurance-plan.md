@@ -350,3 +350,65 @@ markers, sole-new-file staged scope, unchanged existing files and protected
 report hashes. Source readiness is not runtime approval. Root alone chooses any
 later paragraph/verifier reservation, integration, publication and original Q11
 disposition; this original row remains unchanged.
+
+## Approved SPDX publication wording: source-only implementation
+
+2026-10-03, project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, reservation
+`wave30_Q11_spdx_publication_wording`. Root explicitly approved only the first
+sentences of the existing Q11 procedure's package-linux paragraph and this
+appendix. Original primary/status remain unchanged; no source alignment or
+full-file import occurred.
+
+Guide-only commit: `96fb8d181f61fecc05881466ef8961951e1a3850`, parent
+`4598a9e337a86bb8eb9d682dbf35ff089e959e63`. Exactly one hunk, four added lines
+and three removed lines in [the guide](q11-release-evidence.md). It now states
+that named inputs are validated and all three documents prepared before separate
+file publication; preparation failures write none, while publication I/O can
+leave a partial set and must stop the release job. This is a wording correction,
+not new transaction behavior or fault-injection evidence.
+
+Before editing, the entire own guide equaled fixed published
+`544d1340b80cd3e040dc13142cdcbc1d75fea4cb:docs/roadmap/q11-release-evidence.md`:
+26192 bytes, SHA256
+`5a3a0981ebdf7215c497fd748f32934e1a2cc7ba3cef4c98982c2c70f0fe1f39`.
+The approved 158-byte old span occurs once; its 283-byte replacement matches
+the proposal in the initial 4598 report exactly apart from line wrapping.
+Result: 26317 bytes, SHA256
+`c36719cbbdb396e7b662b9e8e51c3a156cb085ce5b24d298842fa3640a029394`.
+
+Whole-byte inverse proof completed with exit 0: splitting the fixed original on
+that unique old span yields prefix and suffix; the result equals that prefix,
+the approved replacement, and that exact suffix. The suffix starts at
+`--server-manifest`, so every byte from there onward remains identical. Replacing
+the unique new span with the old span reconstructs the entire fixed 26192-byte
+file and SHA256 above. Forward reconstruction also equals every resulting byte.
+All other guide paragraphs, command text, fixtures, reproducibility/refusal
+claims and release/attestation disclaimers are unchanged.
+
+Static checks actually completed with exit 0: whole guide/source byte comparison
+and inverse; approved sentence comparison; strict UTF-8/final newline and no
+trailing whitespace; ten paired code-fence markers and twelve existing local
+Markdown link targets; `git diff --check` and `git diff --cached --check`; sole
+guide staged scope, no unrelated diff; and guide-only commit/clean-state checks.
+No helper was imported and no source checker, fixture, fault injection, native
+binary, compiler, Cargo, tool setup/version, signing/verification, artifact,
+dispatch, network/provider/browser or service ran. No validation/Cargo lane was
+taken or released; root-owned ARM run `37101183416` was neither queried nor
+affected. There was no new check failure in this wording phase; the initial
+audit's Git lookup failure and truncated-read limits remain recorded above.
+
+The report prefix from 4598 remains all 23803 bytes, SHA256
+`bb094cee5363889086217e95383d065d152b25099d0966b933d18f43925f7e6e`.
+This appendix is committed separately from the guide. Only the authorized guide
+and report differ from 4598; helpers/workflows/tests/config/manifests and all
+other docs/evidence retain their prior bytes. Q08/S02 report hashes and every
+prior S02/D01 failed/actual receipt remain intact. No task/assignment/status,
+main/push, other worker contact, new resource, receipt/header/PAM/Group or
+60-second protocol change occurred.
+
+The dated initial proposal is deliberately retained above; this appendix records
+its later approved wording implementation only. Exact release source/version,
+subject/bundle/approved trust root, real verification/publication and external
+assessment prerequisites are still unbound. Root reviews/integrates/publishes
+and owns original Q11 disposition. This correction grants no runtime permission
+and does not establish an atomic three-file publication guarantee.
