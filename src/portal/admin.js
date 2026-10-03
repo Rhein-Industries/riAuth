@@ -782,9 +782,10 @@
       connection.pkce ? row("Sign-out", connection.end_session_endpoint) : null);
   }
   function envSnippet(connection, secret) {
-    const text = [`OIDC_ISSUER=${connection.issuer}`, `OIDC_CLIENT_ID=${connection.client_id}`, secret ? `OIDC_CLIENT_SECRET=${secret}` : null,
-      connection.redirect_uris.length ? `OIDC_REDIRECT_URI=${connection.redirect_uris[0]}` : null, `OIDC_SCOPES="${connection.scopes.join(" ")}"`].filter(Boolean).join("\n");
-    return h("div", { class: "snippet" }, h("div", { class: "section-heading" }, h("h3", {}, "Environment for the app"), copyButton(text, "environment settings")), h("pre", { class: "settings-json" }, text));
+    const quote = (value) => "'" + String(value).replaceAll("'", "'\"'\"'") + "'";
+    const text = [`OIDC_ISSUER=${quote(connection.issuer)}`, `OIDC_CLIENT_ID=${quote(connection.client_id)}`, secret ? `OIDC_CLIENT_SECRET=${quote(secret)}` : null,
+      connection.redirect_uris.length ? `OIDC_REDIRECT_URI=${quote(connection.redirect_uris[0])}` : null, `OIDC_SCOPES=${quote(connection.scopes.join(" "))}`].filter(Boolean).join("\n");
+    return h("div", { class: "snippet" }, h("div", { class: "section-heading" }, h("h3", {}, "POSIX shell environment assignments"), copyButton(text, "shell environment assignments")), h("pre", { class: "settings-json" }, text));
   }
   // riAuth's findings plus one only the browser can make: whether the issuer's discovery
   // document is served here. connect-src 'self' limits that to this origin.
