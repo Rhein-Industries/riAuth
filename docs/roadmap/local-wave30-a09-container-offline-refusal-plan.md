@@ -3975,3 +3975,98 @@ The new and older runs remain FAILED; older unknown causes are retained;
 original A09 full shared/platform gate remains open and closed
 I02/I10/R05/W02/W05 remain unchanged. Root alone owns source proof,
 reservation, integration/publication and original-gate disposition.
+
+
+## Exact Linux bind-option source materialization — 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`; existing WT
+`a1303b57-4a34-487e-9c63-a841f05b51a0`; reservation
+`wave30_A09_linux_bind_option_materialization`. **SOURCE ONLY, UNEXECUTED.**
+The complete 239,347-byte `7951b40772051c360a2b719bd9a1e683050778cb` report,
+SHA256 `e5ba7eefc28aacadf8d144bd9f58d247fc6b404244be2e9917df3a839c032c98`,
+remains this appendix's exact prefix. All earlier unknown failures and dated
+conditional-source limits remain in their original text.
+
+Root resolved the preceding primary-source gap and explicitly approved this
+exact materialization. I read its complete project-scoped receipt
+`planning/evidence/wave30-a09-linux-bind-static-source-root-review.json`:
+**1,680 bytes / SHA256
+`f963cf62f313a1631a57a83480181bbd5a752d0f2877206c65d36636b306ec36`**.
+It records root's [Linux v6.8 primary source](https://raw.githubusercontent.com/torvalds/linux/v6.8/net/ipv4/inet_connection_sock.c)
+witness, 42,070 bytes / SHA256
+`f5a183a1e55ac0a2b3b949478ea68b625891ff61d09dc5f7a27c5c57aa488470`,
+its complete selected `inet_bind_conflict` body, and root's
+[socket(7) documentation](https://man7.org/linux/man-pages/man7/socket.7.html)
+reference. I did not fetch either source or independently identify the hosted
+kernel. The full primary-file digest and the same-address/wildcard/get_port
+review are explicitly **root's source witness**, not a new network/runtime
+observation in this lane.
+
+The selected body excludes TCP_LISTEN from the both-reuseaddr relaxation;
+without reuseport the conflict branch remains true. Root separately reviewed
+inet_bind_conflict160–187, same-address/wildcard paths and get_port217–290 /
+471–559 for the default AF_INET probe without FORCE, bound device or
+SO_REUSEPORT. Combined with the previously pinned Tokio/Mio option ordering,
+root judges the exact Linux-only insertion source-compatible and statically
+preserves active-listener exclusion. This is **selected-source safety
+inference**, not proof of the actual runner kernel, measured listener refusal,
+a passed synthetic socket test or an explanation of errno98. The prospective
+native probe remains unperformed; it is not an additional implementation gate
+imposed by this reservation. Root controls any separately authorized runtime.
+
+Source commit **`77a9785fbde5c27c06c690d6c15964761d72552c`** contains only
+`scripts/check-local-container-cohort.py`, **+2 / -0**. Exact baseline9f959 was
+verified before editing. The materialized source equals the complete archived
+7951 candidate and adds only the Linux-guarded
+`listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)` before the
+existing exact127.0.0.1/fixed-port bind. There is no new import or alternative
+probe. No option failure is swallowed.
+
+| Protected source | Bytes | SHA256 / Git blob |
+| --- | ---: | --- |
+| Baseline helper at7951 | 138,268 | `9f95975a70caf47c06b224226134649f552169714f9ebf3b54b4b55da98f5908` / `676e7033dda5f17bbc4b51ca186f081c372dd4ba` |
+| Materialized helper | 138,392 | `6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221` / `eceef440f33c2f1c83ad3f0c212d1683ea23317f` |
+| Unchanged workflow | 4,574 | `3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851` / `b23d5bbec2aade53d68a3af2848f2be3aeb0600a` |
+
+Actual static checks passed, with no checker failure in this phase:
+
+- Source SHA/length/mode0644 and exact archived two-line diff; whole byte
+  inverse to9f959; entire normalized AST inverse after removing precisely the
+  new If; all **60 other Cohort methods** retain exact spans, ASTs and order.
+  Entire inverse also protects all imports/top-level/main/except/finally.
+- `ast.parse` and in-memory `compile(..., "exec", dont_inherit=True)` accepted
+  both full sources. The resulting code objects were **never executed**;
+  no definition/module/helper/function/case was imported or evaluated and no
+  harness/bytecode file was created.
+- `python3 scripts/check-docs.py`, `python3 scripts/check-repo-hygiene.py`
+  (1,021 tracked files), `git diff --check` and staged whitespace checks
+  exited0 before the source commit. Staged scope was exactly one helper,
+  +2/-0. The report was still byte-identical to7951 during that commit.
+- The separate report is append-only; its prefix, final source hashes,
+  report-only staging, docs/hygiene/whitespace and clean-branch checks are
+  verified for the report handoff.
+
+No SO_REUSEPORT/listen/accept/connect/adoption, port change, signaling, retry,
+fallback, extra sleep or logging was introduced. Non-Linux behavior, private
+transport/source/input/ELF/image/UID bindings, capabilities, reader-alone
+physical checks, complete unfiltered logical/config/key/metadata/count
+preservation, full refusal/PLAN/E-P-E/security assertions and all writer /
+creation-identity/cleanup controls remain exact. This includes authority for
+all 149 containers in the dated failed run, not a promise of any future count.
+30GiB start /10GiB stop /8GiB floor,2s sampling,7200s controller /1200s fixture /
+240s cleanup and existing job/child bounds are unchanged.
+
+Actual37097066234 remains **FAILED**, start_app/errno98 with cause UNKNOWN;
+its 12 fresh reader observations, seven packets and cleanup remain only their
+previously measured reached credit. Earlier37087561409 remains **FAILED**
+with site/errno/cause UNKNOWN. E-P-E/platform aggregate completion remains
+unproved; no source option is credited as a runtime pass or TIME_WAIT diagnosis.
+No live/native/socket/HTTP/Docker/Cargo/compiler/version/probe/helper/function /
+case/network/query/download/dispatch/browser/Driver or deletion occurred;
+Python static code-object compilation is the explicitly authorized exception.
+No workflow/product/input edit, alignment/merge/main/push/status, new
+worker/task/worktree/shell or other-worker contact was used. No runtime lane
+was acquired/released. **All runtime remains HELD** for root's separate
+immutable review/integration/publication and any one exact same-prebuilt
+hosted-cohort release. Closed rows and original A09 primary are unchanged.

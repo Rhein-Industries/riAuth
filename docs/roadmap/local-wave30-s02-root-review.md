@@ -160,3 +160,8 @@ Root collapses only the watchdog's nested Some(handle)/join-error conditional in
 ## 2026-10-03 — owned-string worker source and dated DATA binding reviewed
 
 Read all 279 added lines of 1749f4f8470bd1979c35f11f2e04468cf0b074df; exact one-declaration fixture matches root5b bytes and its whole reversal preserves all oracles. Its held25993-byte aa7057 DATA is a dated source-only proposal and was not materialized or run. The subsequent root8d66 lint correction requires its own exact source and DATA binding; old5b/aa7057 are not the released candidate. Full report prefix, original failed-v1 captures and source history remain preserved. All cost, latency, security and concurrency runtime outcomes remain unmeasured.
+
+
+## 2026-10-03 — final corrected fixture and complete DATA review
+
+Reviewed all297 added536ab811 lines and exact ec431625 fixture7360487b against root8d66; all358 selected source/build/common/test objects match. Root's five DATA replacements reconstruct25993B/535-line supervisor835e110e with whole reverse to3089723 and all20 function/class bodies unchanged. This is the final held binding; oldaa7057/5b binding stays dated. The13GiB launch/9GiB stop/8GiB floor and every numeric/schema/security/writer assertion remain unchanged. Fresh host capacity is below13GiB, so no corrected invocation is released. Actual compilation/materialization/security/concurrency and measured cost outcomes remain unearned.

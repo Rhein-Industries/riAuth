@@ -5063,3 +5063,300 @@ Original primary1e336a3d and finished rows are unchanged; root owns next
 review/runtime/integration/status. No product/helper/manifest/other-doc edit,
 runtime/service/provider/browser, cleanup/deletion, merge/alignment, main/push,
 new task/worker/worktree/managed shell or worker contact occurred.
+
+## Fixture lint structure and final held binding — source only, 2026-10-03
+
+Project **891e7443-8dac-4c1b-897f-9e53cb59c7ee**, original S02
+**fdda2152-73a0-4dce-9e5e-aff4b232a6fd**; reservation
+`wave30_S02_lint_fixture_and_final_binding`, existing supporting worktree
+**e1b4399a-8c0d-46b8-880c-a71a4ebf53e7** only.
+The entire **248,385-byte** report at
+**1749f4f8470bd1979c35f11f2e04468cf0b074df**, SHA-256
+`fe1ea68d26c5cfde1320178ed81a47be6b88e444a560d7e331a11cfa63946040`,
+remains byte-exact. Its owned-String phase remains dated and unrun, its
+aa7057 DATA remains a dated proposal, and all earlier compile failures,
+private captures and report-verifier failures are preserved.
+
+The present corrected fixture and binding are **UNCOMPILED/UNRUN**.
+Only the exact five fixture substitutions and this report append are written.
+No Cargo/Clippy/typecheck/test/self-check, compiler/helper/native/version/
+product CLI, supervisor, socket/service/provider/browser runtime, resource
+acquisition, cache cleanup/deletion or worker contact occurs in this phase.
+
+### Pinned root evidence and exact five fixture substitutions
+
+The exact published source
+**8d66b513e9e241aedc5e1d8d56f8084dc95de188** and complete
+`docs/roadmap/evidence/wave30-s02-ci-lint-source-root-review.json`
+were read. The review body is **638 bytes**, SHA-256
+`6d0bc9d97f04684894286e8cf56eeb84c8d37dc10530dc53dbac2993dacdd2e4`.
+It attributes CI37096740915/job111128393479 at
+efd01727f2f4d92fe10d721740146e9e40f639cf to two Clippy fixture lints,
+with all-target tests skipped; full104212B log SHA
+`61b8556f0f9ffc37068e33fc8b8ae72b3daa8ce913d6b087513c5841125914d2`.
+The user/root state that the explicit-type errors are gone in that CI attempt.
+This is root-attributed later evidence, not a retroactive local pass or an
+independent reread/download of that raw CI log.
+
+Separate source commit **ec4316259b3cb04496e5467336ecebee15b92f2c**, parent1749f4f,
+changes only [the existing fixture](../../tests/s02_group_listing_paging.rs)
+with the exact root five-hunk delta:
+
+1. Watchdog Drop uses the let-chain form of the same handle.take()/join:
+   take once; join only a present handle, once; join Err still exits124.
+   Stop-lock, notify ordering, own thread and deadlines remain untouched.
+2. expected_audit destructures its final two time bounds as
+   `(start, end): (u64, u64)`. The function body and bound checks remain exact.
+3. assert_member_effect passes exactly `(start, end)` in the former final
+   start/end slots.
+4. assert_revoke_effect passes exactly that same tuple.
+5. assert_parent_disable_effect passes exactly that same tuple.
+
+These are the only literal substitutions. The supplied values, evaluation
+order of those copied u64 bounds, full snapshots/audit/receipt expectations,
+every assertion, operation and other source byte remain unchanged.
+No lint allowance, argument removal, swallowing a join error, assertion
+relaxation or production change is introduced.
+
+Entire resulting source: **60,276 bytes**, SHA-256
+`7360487b4f866f1d524eb8c25a154386d33203f7c4879734bfbd129f9473d404`,
+exactly the published root fixture. Reversing all five uniquely anchored
+substitutions reconstructs the entire60306B/5b714a fixture. That inverse
+was independently proved before editing against immutable root bytes.
+After applying only the five hunks, root-blob equality and whitespace passed;
+explicit pinned rustfmt `--check --edition 2024` exited0 without modifying
+formatting. This proves the exact source/parser scope, not Clippy/typecheck
+or future fixture success.
+
+All **357 non-fixture** selected production/crates/common/manifests/toolchain/
+build-setting objects equal reviewed74c1 and published8d66.
+After the fixture-only commit, all **358 selected mode/object/path records**
+equal root8d66. No merge/alignment or root-doc/source wholesale import occurred.
+Core remains57913B/`686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea`.
+The previously disclosed unselected tests/cli.rs difference is not imported.
+Every other branch file and prior history remains preserved.
+
+### Exact retained DATA → five-constant final binding
+
+The complete absolute design body was read from
+`/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/evidence/wave30-s02-lint-corrected-supervisor-binding-design.json`:
+**1,757 bytes**, SHA-256
+`5dd96eb1b562a3b8dd91bb42cf0076408cbaa4fd21a85a24391e88babe157425`.
+
+Starting from the preserved25988B/535-line/3089723 supervisor, exactly five
+constant substitutions derive the candidate:
+
+- BASE changes from failed-v1 basename to the still-absent
+  `s02-group-list-owned-string-v2`.
+- STAGED and SOURCE each bind to immutable8d66b513.
+- The fixture PINS value changes from9284a0 to7360487b.
+- The rustc_info PINS value changes from the old27df40 to the actually
+  observed7d6b9b. No other source/cache value is revised.
+
+Candidate DATA is **25,993 bytes /535 lines**, SHA-256
+`835e110e354294fbab39704eeb735fdd3381f88a45aaef82526a3bdfb680c8b4`.
+It exists only in memory and the reproducible report composition below.
+No candidate source file is materialized or executed.
+
+Exact canonical unified diff: **2469 bytes**, SHA-256
+`3de0eb5bb6dd2e2f6bc6121e7f9ec85440f1063352bd021ee8c840ceec2dd814`.
+The following ordered JSON line strings preserve every diff byte, including
+blank context lines, while avoiding Markdown trailing whitespace.
+Joining them reconstructs the full exact diff:
+
+```json
+[
+  "--- retained-3089723-supervisor-DATA\n",
+  "+++ held-835e110e-supervisor-DATA\n",
+  "@@ -4,7 +4,7 @@\n",
+  " \n",
+  " ROOT = Path(\"/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27\")\n",
+  " TARGET = ROOT / \"target\"\n",
+  "-BASE = TARGET / \"s02-group-list-ba3cd18-v1\"\n",
+  "+BASE = TARGET / \"s02-group-list-owned-string-v2\"\n",
+  " LOG = Path(str(BASE) + \".log\")\n",
+  " OBS = Path(str(BASE) + \"-observations.json\")\n",
+  " EVIDENCE = Path(str(BASE) + \"-evidence.json\")\n",
+  "@@ -21,8 +21,8 @@\n",
+  "        \"CARGO_NET_OFFLINE\": \"true\", \"CARGO_TARGET_DIR\": str(TARGET),\n",
+  "        \"CARGO_BUILD_JOBS\": \"1\", \"CARGO_INCREMENTAL\": \"0\",\n",
+  "        \"CARGO_PROFILE_DEV_DEBUG\": \"0\", \"CARGO_PROFILE_TEST_DEBUG\": \"0\"}\n",
+  "-STAGED = \"cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57\"\n",
+  "-SOURCE = \"ba3cd1837f798dd1a8d005ead842660fe7564a39\"\n",
+  "+STAGED = \"8d66b513e9e241aedc5e1d8d56f8084dc95de188\"\n",
+  "+SOURCE = \"8d66b513e9e241aedc5e1d8d56f8084dc95de188\"\n",
+  " PATHS = [\"src\", \"crates\", \"Cargo.toml\", \"Cargo.lock\", \"rust-toolchain.toml\",\n",
+  "          \"build.rs\", \".cargo\", \"rustfmt.toml\", \".rustfmt.toml\",\n",
+  "          \"tests/common\", \"tests/s02_group_listing_paging.rs\"]\n",
+  "@@ -31,11 +31,11 @@\n",
+  "     \"/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/rustc\": \"766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941\",\n",
+  "     \"/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/cargo\": \"6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d\",\n",
+  "     \"src/core.rs\": \"686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea\",\n",
+  "-    \"tests/s02_group_listing_paging.rs\": \"9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444\",\n",
+  "+    \"tests/s02_group_listing_paging.rs\": \"7360487b4f866f1d524eb8c25a154386d33203f7c4879734bfbd129f9473d404\",\n",
+  "     \"Cargo.toml\": \"58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8\",\n",
+  "     \"Cargo.lock\": \"b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426\",\n",
+  "     \"rust-toolchain.toml\": \"887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167\",\n",
+  "-    \"target/.rustc_info.json\": \"27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4\",\n",
+  "+    \"target/.rustc_info.json\": \"7d6b9b4c5d7047c09e065993326b9e70aa2aaf59a3c99c0e42f5de4102edead5\",\n",
+  "     \"target/debug/.fingerprint/riauth-507476e43f01092f/lib-riauth.json\": \"a5aa512953c0cde2259c2f11e126dda519ad8ea9e3c46bd8f57e2575ec997941\",\n",
+  "     \"target/debug/.fingerprint/riauth-f685f1e2409027d4/lib-riauth.json\": \"78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af\"}\n",
+  " CAP = 32 * 2**20\n"
+]
+```
+
+Whole five-substitution reversal restores **all** retained3089723 bytes and
+AST. All20 top-level function/class definitions have byte-exact full bodies
+and equal ASTs. Only BASE/STAGED/SOURCE/PINS assignment ASTs differ; every
+other top-level node matches. The original SIGCHLD default setter, real
+consuming waitpid status, retained PID/owned group identity, joined IO and
+cleanup/absence, output capture/fsync-before-grade, first failure/final
+clock/exits, complete metric schemas and security oracles remain untouched.
+
+### Fresh protected pins and failed-artifact preservation
+
+Read-only actual identity sample at epoch ns **1791003696616901000**
+matches every candidate PINS entry. Source readiness is established only
+for these exact metadata bindings:
+
+| Object | Bytes | SHA-256 |
+| --- | ---: | --- |
+| fixture | 60,276 | `7360487b4f866f1d524eb8c25a154386d33203f7c4879734bfbd129f9473d404` |
+| Core | 57,913 | `686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea` |
+| Cargo.toml | 4,020 | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| Cargo.lock | 109,243 | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| rust-toolchain.toml | 86 | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+| target/.rustc_info.json | 1,966 | `7d6b9b4c5d7047c09e065993326b9e70aa2aaf59a3c99c0e42f5de4102edead5` |
+| riauth-507476e43f01092f/lib-riauth.json | 3,621 | `a5aa512953c0cde2259c2f11e126dda519ad8ea9e3c46bd8f57e2575ec997941` |
+| riauth-f685f1e2409027d4/lib-riauth.json | 3,590 | `78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af` |
+| selected Python | 34,640 | `4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56` |
+| selected cargo | 31,960,040 | `6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d` |
+| selected rustc | 412,504 | `766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941` |
+
+There is no fresh rustc_info disagreement or invented matching. No tool/
+version/library probe, cache-hit assumption, capacity sampling or runtime/
+resource allocation follows from these static byte checks. Literal installed
+tool paths remain those in the protected original DATA.
+
+The five failed-v1 artifacts remain regular/nonsymlink/nlink1/UID501/mode0600,
+with every exact previous byte/hash preserved: supervisor25988B/3089723,
+log3597B/9f9aa0, observations55B/0ccfe4, evidence12635B/1a3742 and
+decision158B/2203b6. No contents, receipt result or historical failure was
+rewritten. All v2 paths remain absent:
+`target/s02-group-list-owned-string-v2-supervisor.py`,
+`target/s02-group-list-owned-string-v2.log`,
+`target/s02-group-list-owned-string-v2-observations.json`,
+`target/s02-group-list-owned-string-v2-evidence.json`,
+`target/s02-group-list-owned-string-v2-decision.json`.
+No new directory or private script/log/evidence was created.
+
+### Full exact reconstruction and reversal DATA
+
+This standalone composition reconstructs original dd1cd DATA from immutable
+820c4e, applies only the previously reviewed SIGCHLD line to restore the
+retained3089723 source, then applies exactly the five final constant
+substitutions. It proves the final hash, whole inverse and protected bodies.
+The fence is source-composition DATA, statically parsed only; no supervisor
+is imported, materialized, executed or called. Equivalent byte transformations
+were independently verified in memory above.
+
+```python
+# SOURCE COMPOSITION DATA ONLY. Do not materialize/run a supervisor here.
+import ast, hashlib, subprocess
+from pathlib import Path
+
+REPORT = "docs/roadmap/local-wave30-s02-index-pagination-plan.md"
+report = subprocess.check_output([
+    "/usr/bin/git", "show",
+    "820c4e397d69a718b609afee1b795e80bb235249:" + REPORT,
+]).decode("utf-8")
+marker = "```python\n# DATA ONLY: archive this exact source; do not execute before root release."
+start = report.index(marker) + len("```python\n")
+original = report[start:report.index("```", start)]
+assert len(original.encode()) == 25939
+assert hashlib.sha256(original.encode()).hexdigest() == "dd1cd5765d12ad1b027094dec7230149e812a439ab8ac4ad990ea944c02a069d"
+needle = '            "unsupported_supervision_host")\n    s=TARGET.lstat()'
+insertion = "    signal.signal(signal.SIGCHLD,signal.SIG_DFL)\n"
+assert original.count(needle) == 1
+retained = original.replace(
+    needle, '            "unsupported_supervision_host")\n' + insertion + "    s=TARGET.lstat()", 1,
+)
+assert len(retained.encode()) == 25988
+assert retained.count("\n") == 535
+assert hashlib.sha256(retained.encode()).hexdigest() == "3089723bdf659b8d36461f4f344d26efb31b05128ffd0a40c0d06b1dbe4fe48e"
+assert Path("target/s02-group-list-ba3cd18-v1-supervisor.py").read_bytes() == retained.encode()
+
+REPLACEMENTS = (
+    ("BASE = TARGET / \"s02-group-list-ba3cd18-v1\"", "BASE = TARGET / \"s02-group-list-owned-string-v2\""),
+    ("STAGED = \"cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57\"", "STAGED = \"8d66b513e9e241aedc5e1d8d56f8084dc95de188\""),
+    ("SOURCE = \"ba3cd1837f798dd1a8d005ead842660fe7564a39\"", "SOURCE = \"8d66b513e9e241aedc5e1d8d56f8084dc95de188\""),
+    ("\"tests/s02_group_listing_paging.rs\": \"9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444\"", "\"tests/s02_group_listing_paging.rs\": \"7360487b4f866f1d524eb8c25a154386d33203f7c4879734bfbd129f9473d404\""),
+    ("\"target/.rustc_info.json\": \"27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4\"", "\"target/.rustc_info.json\": \"7d6b9b4c5d7047c09e065993326b9e70aa2aaf59a3c99c0e42f5de4102edead5\""),
+)
+prospective = retained
+for old, new in REPLACEMENTS:
+    assert prospective.count(old) == 1
+    prospective = prospective.replace(old, new, 1)
+assert len(prospective.encode()) == 25993
+assert prospective.count("\n") == 535
+assert hashlib.sha256(prospective.encode()).hexdigest() == "835e110e354294fbab39704eeb735fdd3381f88a45aaef82526a3bdfb680c8b4"
+inverse = prospective
+for old, new in reversed(REPLACEMENTS):
+    assert inverse.count(new) == 1
+    inverse = inverse.replace(new, old, 1)
+assert inverse == retained
+assert ast.dump(ast.parse(inverse)) == ast.dump(ast.parse(retained))
+before = ast.parse(retained)
+after = ast.parse(prospective)
+protected_before = [n for n in before.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
+protected_after = [n for n in after.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
+assert [ast.dump(n) for n in protected_before] == [ast.dump(n) for n in protected_after]
+assert [ast.get_source_segment(retained, n) for n in protected_before] == [
+    ast.get_source_segment(prospective, n) for n in protected_after
+]
+# prospective is DATA only; no write/import/exec/function call from it.
+```
+
+The future child argv remains the identical archived pinned Cargo/default
+Platform command: `--locked --features test-support --test
+s02_group_listing_paging`, exact named ignored filter and
+`--exact --ignored --test-threads=1 --nocapture`.
+Its closed ENV/offline=true/private own target/jobs1/incremental0/dev+testdebug0
+and source/security/output assertions are unchanged.
+No command is invoked or released by this appendix.
+
+Every original budget remains exact:13GiB start,4GiB planning allowance,
+9GiB stop/8GiB floor,2s monitor,1800s outer/1790s command monitor,
+10s own cleanup reserve,32MiB private0600 raw capture,300s fixture and10s
+owned-thread bounds. No measured peak/quota, heap/RSS/allocation/IO/cost/
+speedup or latency assumption is added. Root alone must review this immutable
+source and DATA completely, then separately obtain fresh prerequisites and
+choose whether to release one corrected filter. No runtime slot was acquired.
+
+### Actual checks and residual outcome
+
+Passed static checks: complete pinned source/delta/root evidence and design
+reads; five fixture-substitution whole inverse; exact60276B/7360487b
+readback/root-blob match; explicit-file rustfmt parser/check0 with no
+format changes; source-only staged scope/whitespace;357 protected non-fixture
+and358 final selected objects matching reviewed/root source; all fresh
+candidate pins; exact five DATA substitutions and full byte/AST reversal;
+all20 full function/class bodies and all other AST nodes unchanged; exact
+diff archive decoding/reconstruction; no materialized v2 source and preserved
+failed artifacts; entire1749 report prefix, docs links, whitespace and separate
+append-only report scope.
+
+The later CI lint boundary is supplied by root, and the source matches its
+reviewed correction. No successful Clippy/typecheck or fixture outcome is
+claimed for this corrected source. There are still no local sample/summary/
+self-check/result/security/writer/concurrency/expiry/parent/cleanup metrics
+from a completed S02 fixture. Historical local Cargo101 and later root CI
+failures remain failures, with all-target tests skipped as recorded.
+Root's original measured equivalent-security disposition stays pending.
+
+Only the reserved fixture and append-only plan changed. No production,
+manifest/lint policy, assertion/value/operation, helper, other doc, root/main/
+accepted file or old capture was edited; no merge/reset/alignment, push,
+board/status action, new worker/task/worktree/managed shell, external message
+or worker contact occurred. Original primary1e336a3d and finished rows remain
+unchanged; root owns next complete source/DATA review and runtime reservation.

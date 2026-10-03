@@ -232,3 +232,6 @@ Read all288 added lines of7951b40772051c360a2b719bd9a1e683050778cb. The complete
 ## 2026-10-03 — exact Linux bind option source accepted
 
 Reviewed source77a9785fbde5c27c06c690d6c15964761d72552c: only two Linux-guarded lines before the existing loopback bind, entire helper138392B/SHA6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221. Removing those exact124 bytes restores full9f959 source; deleting the single AST If restores the entire original AST. All other methods, workflow/provenance/limits/ownership/oracles/cleanup remain unchanged. Primary Linux static active-listener exclusion remains the source safety basis; no synthetic socket proof or new native/container runtime is claimed. Corrected same-prebuilt hosted cohort remains held until final report review/publication and separate exact reservation.
+
+
+Reviewed all95 added2bab8f3 lines, preserving the entire7951 report and exact source77a9785. The old failed replay and conditional proposal remain historical; source matching and whole inverse are actual static evidence only. Root may separately reserve a fresh same-prebuilt cohort after publication; no result is borrowed from the two-line fix or from the unrun synthetic socket proposal.
