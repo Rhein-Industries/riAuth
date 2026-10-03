@@ -212,6 +212,22 @@ fn audit_target(job: &Job) -> String {
 /// toward `state`, so a hidden pending target never reads as delivered.
 fn view(tx: &Tx<'_>, job: &Job, viewer: Option<&Principal>) -> Result<Value> {
     let mut value = serde_json::to_value(job).map_err(Error::internal)?;
+    if let Some(viewer) = viewer
+        && let Some(downstream) = value
+            .get_mut("result")
+            .and_then(|result| result.get_mut("downstream"))
+    {
+        if let Some(targets) = downstream.get_mut("targets").and_then(Value::as_array_mut) {
+            targets.retain(|entry| {
+                entry["target"].as_str().is_some_and(|target| {
+                    validate_name(target).is_ok()
+                        && viewer.allows("provisioner.read", &format!("provisioner/{target}"))
+                })
+            });
+        } else {
+            *downstream = json!({"targets": []});
+        }
+    }
     let Some(rollup) = downstream_rollup(tx, job, viewer)? else {
         return Ok(value);
     };
@@ -313,7 +329,8 @@ fn downstream_rollup(
             _ => {}
         }
         if viewer.is_some_and(|viewer| {
-            !viewer.allows("provisioner.read", &format!("provisioner/{target}"))
+            validate_name(target).is_err()
+                || !viewer.allows("provisioner.read", &format!("provisioner/{target}"))
         }) {
             hidden += 1;
             continue;
@@ -321,6 +338,13 @@ fn downstream_rollup(
         match row {
             Some(row) => {
                 let delivery_state = row.delivery_state();
+                let evidence_readable = match viewer {
+                    None => true,
+                    Some(viewer) => tx.get::<User>("users", &row.user_id)?.is_some_and(|user| {
+                        user.id == row.user_id
+                            && viewer.allows("user.read", &format!("user/{}", user.username))
+                    }),
+                };
                 full_targets.push(json!({
                     "target": target,
                     "delivery": id,
@@ -331,9 +355,9 @@ fn downstream_rollup(
                     "attempts": row.attempts,
                     "last_error": row.last_error,
                     "delivered_at": row.delivered_at,
-                    "resolution": row.resolution,
+                    "resolution": row.resolution.as_ref().filter(|_| evidence_readable),
                     "uncertain": row.uncertain,
-                    "dismissal": row.dismissal,
+                    "dismissal": row.dismissal.as_ref().filter(|_| evidence_readable),
                 }));
                 if delivery_state != "succeeded" {
                     attention_targets.push(attention_target(target, id, &row, delivery_state));

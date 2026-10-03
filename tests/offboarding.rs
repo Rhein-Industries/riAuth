@@ -4528,3 +4528,441 @@ fn retained_due_cursor_wraps_once_to_a_redue_earlier_deactivation() {
         deactivations
     );
 }
+
+#[test]
+fn offboarding_views_scope_targets_and_attestations_without_changing_history() {
+    let f = Fixture::new();
+    f.user("projection-user");
+    f.user("projection-other");
+    let id = job_id(&schedule(
+        &f.core,
+        &f.admin,
+        "projection-user",
+        soon(3600),
+        "UTC",
+    ));
+    age(&f.core, &id);
+    assert!(
+        f.core
+            .offboard_process("projection-worker", |_| BeforeCommit::Proceed)
+            .unwrap()
+    );
+    let subject = account(&f.core, "projection-user");
+    assert!(!subject.enabled);
+
+    let resolution_evidence = "PROJECTION-RESOLUTION-PRIVATE";
+    let dismissal_evidence = "PROJECTION-DISMISSAL-PRIVATE";
+    let hidden_target = "hidden-projection-target";
+    let hidden_delivery = "hidden-projection-delivery";
+    let mut resolution = deactivation(
+        "resolved-projection-delivery",
+        "resolve-target",
+        &subject,
+        downstream::Status::Stale,
+    );
+    resolution.lease_owner = None;
+    resolution.lease_until = 0;
+    resolution.dispatch_started = None;
+    resolution.outcome = None;
+    resolution.uncertain = true;
+    let mut dismissed = deactivation(
+        "waived-projection-delivery",
+        "waive-target",
+        &subject,
+        downstream::Status::Failed,
+    );
+    dismissed.lease_owner = None;
+    dismissed.lease_until = 0;
+    dismissed.dispatch_started = None;
+    dismissed.outcome = None;
+    let mut hidden = deactivation(
+        hidden_delivery,
+        hidden_target,
+        &subject,
+        downstream::Status::Pending,
+    );
+    hidden.lease_owner = None;
+    hidden.lease_until = 0;
+    hidden.dispatch_started = None;
+    hidden.outcome = None;
+    for row in [&resolution, &dismissed, &hidden] {
+        plant(&f.core, &id, row);
+    }
+    let attestor = agent(
+        &f,
+        "projection-attestor",
+        &[
+            ("provisioner.sync", "provisioner/resolve-target"),
+            ("provisioner.read", "provisioner/resolve-target"),
+            ("provisioner.sync", "provisioner/waive-target"),
+            ("provisioner.read", "provisioner/waive-target"),
+            ("user.read", "user/projection-user"),
+        ],
+    );
+    let resolved = f
+        .core
+        .provisioning_deactivation_resolve(
+            &attestor,
+            &resolution.id,
+            Resolve {
+                observed: downstream::Observed::Applied,
+                evidence: resolution_evidence.into(),
+                create_settlement: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(resolved["delivery_state"], "resolved");
+    assert!(resolved["delivered_at"].is_null());
+    let dismissal_context = riauth::context::RequestContext {
+        idempotency_key: Some("projection-dismissal".into()),
+        fingerprint: crypto::digest("projection-dismissal"),
+        revision: Some(revision(&f.core)),
+        ..Default::default()
+    };
+    let waived = riauth::context::scope(Some(dismissal_context), || {
+        f.core.provisioning_deactivation_dismiss(
+            &attestor,
+            &dismissed.id,
+            serde_json::from_value(json!({"revision":dismissed.revision().unwrap(),
+                "reason":"remote_absent", "evidence":dismissal_evidence}))
+            .unwrap(),
+        )
+    })
+    .unwrap();
+    assert_eq!(waived["delivery_state"], "dismissed");
+    assert!(waived["delivered_at"].is_null());
+
+    let no_target = agent(
+        &f,
+        "projection-no-target",
+        &[("user.offboard", "user/projection-user")],
+    );
+    let target_only = agent(
+        &f,
+        "projection-target-only",
+        &[
+            ("user.offboard", "user/projection-user"),
+            ("provisioner.read", "provisioner/resolve-target"),
+            ("provisioner.read", "provisioner/waive-target"),
+        ],
+    );
+    let wrong_user = agent(
+        &f,
+        "projection-wrong-user",
+        &[
+            ("user.offboard", "user/projection-user"),
+            ("provisioner.read", "provisioner/resolve-target"),
+            ("provisioner.read", "provisioner/waive-target"),
+            ("user.read", "user/projection-other"),
+        ],
+    );
+    let current_user = agent(
+        &f,
+        "projection-current-user",
+        &[
+            ("user.offboard", "user/projection-user"),
+            ("provisioner.read", "provisioner/resolve-target"),
+            ("provisioner.read", "provisioner/waive-target"),
+            ("user.read", "user/projection-user"),
+        ],
+    );
+    let renamed_user = agent(
+        &f,
+        "projection-renamed-user",
+        &[
+            ("user.offboard", "user/projection-user"),
+            ("provisioner.read", "provisioner/resolve-target"),
+            ("provisioner.read", "provisioner/waive-target"),
+            ("user.read", "user/projection-renamed"),
+        ],
+    );
+    let all_targets = agent(
+        &f,
+        "projection-all-targets",
+        &[
+            ("user.offboard", "user/projection-user"),
+            ("provisioner.read", "*"),
+        ],
+    );
+    let no_offboard = agent(
+        &f,
+        "projection-no-offboard",
+        &[("user.read", "user/projection-user")],
+    );
+
+    let assert_views =
+        |token: &str, expected_targets: &[&str], hidden_count: u64, evidence: bool, state: &str| {
+            let before = f.snapshot().unwrap();
+            let one = f.core.offboard_get(token, &id).unwrap();
+            f.assert_snapshot(&before);
+            let listed = f.core.offboard_list(token).unwrap();
+            f.assert_snapshot(&before);
+            assert_eq!(listed, json!([one]));
+            assert_eq!(one["downstream"]["state"], state);
+            assert_eq!(one["downstream"]["hidden_targets"], hidden_count);
+            let live: Vec<_> = one["downstream"]["targets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|entry| entry["target"].as_str().unwrap())
+                .collect();
+            let recorded: Vec<_> = one["result"]["downstream"]["targets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|entry| entry["target"].as_str().unwrap())
+                .collect();
+            assert_eq!(live.as_slice(), expected_targets);
+            assert_eq!(recorded.as_slice(), expected_targets);
+            let serialized = one.to_string();
+            if !expected_targets.contains(&hidden_target) {
+                assert!(!serialized.contains(hidden_target));
+                assert!(!serialized.contains(hidden_delivery));
+            }
+            if evidence {
+                assert_eq!(
+                    reported(&one, "resolve-target")["resolution"],
+                    resolved["resolution"]
+                );
+                assert_eq!(
+                    reported(&one, "waive-target")["dismissal"],
+                    waived["dismissal"]
+                );
+            } else {
+                assert!(!serialized.contains(resolution_evidence));
+                assert!(!serialized.contains(dismissal_evidence));
+                assert!(!serialized.contains("agent:projection-attestor"));
+                for target in one["downstream"]["targets"].as_array().unwrap() {
+                    assert!(target["resolution"].is_null());
+                    assert!(target["dismissal"].is_null());
+                }
+            }
+            assert!(
+                one["result"]["local"]["account_disabled"]
+                    .as_bool()
+                    .unwrap()
+            );
+        };
+    assert_views(&no_target, &[], 3, false, "pending");
+    for token in [&target_only, &wrong_user] {
+        assert_views(
+            token,
+            &["resolve-target", "waive-target"],
+            1,
+            false,
+            "pending",
+        );
+    }
+    assert_views(
+        &current_user,
+        &["resolve-target", "waive-target"],
+        1,
+        true,
+        "pending",
+    );
+    assert_views(
+        &all_targets,
+        &["resolve-target", "waive-target", hidden_target],
+        0,
+        false,
+        "pending",
+    );
+    assert_views(
+        &f.admin,
+        &["resolve-target", "waive-target", hidden_target],
+        0,
+        true,
+        "pending",
+    );
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core.offboard_get(&no_offboard, &id).unwrap_err().status,
+        StatusCode::FORBIDDEN
+    );
+    f.assert_snapshot(&before);
+    assert_eq!(f.core.offboard_list(&no_offboard).unwrap(), json!([]));
+    f.assert_snapshot(&before);
+    let trusted = f
+        .core
+        .offboard_commit("projection-observer", &id, BeforeCommit::Proceed)
+        .unwrap();
+    assert_eq!(
+        reported(&trusted, "resolve-target")["resolution"],
+        resolved["resolution"]
+    );
+    assert_eq!(
+        reported(&trusted, "waive-target")["dismissal"],
+        waived["dismissal"]
+    );
+    assert_eq!(
+        trusted["result"],
+        serde_json::to_value(stored(&f.core, &id)).unwrap()["result"]
+    );
+    f.assert_snapshot(&before);
+
+    // A reused historical username never transfers the original user's evidence.
+    let mut renamed = subject.clone();
+    renamed.username = "projection-renamed".into();
+    f.core
+        .store
+        .write(|tx| {
+            tx.delete("usernames", &subject.username)?;
+            tx.put("users", &subject.id, &renamed)?;
+            tx.put("usernames", &renamed.username, &renamed.id)
+        })
+        .unwrap();
+    f.user("projection-user");
+    let replacement = account(&f.core, "projection-user");
+    assert_ne!(replacement.id, subject.id);
+    assert_views(
+        &current_user,
+        &["resolve-target", "waive-target"],
+        1,
+        false,
+        "pending",
+    );
+    assert_views(
+        &renamed_user,
+        &["resolve-target", "waive-target"],
+        1,
+        true,
+        "pending",
+    );
+    f.core
+        .store
+        .write(|tx| tx.delete("users", &subject.id))
+        .unwrap();
+    assert_views(
+        &renamed_user,
+        &["resolve-target", "waive-target"],
+        1,
+        false,
+        "pending",
+    );
+    assert_views(
+        &f.admin,
+        &["resolve-target", "waive-target", hidden_target],
+        0,
+        false,
+        "pending",
+    );
+    f.core
+        .store
+        .write(|tx| {
+            tx.delete("users", &replacement.id)?;
+            tx.delete("usernames", &renamed.username)?;
+            tx.put("users", &subject.id, &subject)?;
+            tx.put("usernames", &subject.username, &subject.id)
+        })
+        .unwrap();
+    assert_views(
+        &current_user,
+        &["resolve-target", "waive-target"],
+        1,
+        true,
+        "pending",
+    );
+
+    f.core
+        .revoke_agent(&f.admin, "projection-current-user")
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        f.core.offboard_get(&current_user, &id).unwrap_err().status,
+        StatusCode::UNAUTHORIZED
+    );
+    f.assert_snapshot(&before);
+    assert_eq!(
+        f.core.offboard_list(&current_user).unwrap_err().status,
+        StatusCode::UNAUTHORIZED
+    );
+    f.assert_snapshot(&before);
+
+    // Malformed metadata is not a target grant, even for a wildcard reader.
+    let original = stored(&f.core, &id);
+    for targets in [
+        json!({"target":hidden_target, "delivery":hidden_delivery}),
+        json!(hidden_delivery),
+        json!([null, {"target":123,"delivery":hidden_delivery},
+            {"target":"","delivery":hidden_delivery}]),
+    ] {
+        let mut malformed = original.clone();
+        malformed.result.as_mut().unwrap()["downstream"]["targets"] = targets;
+        f.core
+            .store
+            .write(|tx| tx.put(BUCKET, &id, &malformed))
+            .unwrap();
+        let before = f.snapshot().unwrap();
+        let one = f.core.offboard_get(&all_targets, &id).unwrap();
+        assert_eq!(one["result"]["downstream"]["targets"], json!([]));
+        assert!(!one.to_string().contains(hidden_target));
+        assert!(!one.to_string().contains(hidden_delivery));
+        assert_eq!(f.core.offboard_list(&all_targets).unwrap(), json!([one]));
+        f.assert_snapshot(&before);
+    }
+    let mut malformed = original.clone();
+    malformed.result.as_mut().unwrap()["downstream"] = json!(hidden_delivery);
+    f.core
+        .store
+        .write(|tx| tx.put(BUCKET, &id, &malformed))
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    let one = f.core.offboard_get(&no_target, &id).unwrap();
+    assert_eq!(one["result"]["downstream"], json!({"targets":[]}));
+    assert!(one.get("downstream").is_none());
+    assert!(!one.to_string().contains(hidden_delivery));
+    assert_eq!(f.core.offboard_list(&no_target).unwrap(), json!([one]));
+    f.assert_snapshot(&before);
+
+    // Completion classification uses the original full intent, not the redacted result.
+    let mut completion = original.clone();
+    completion.result.as_mut().unwrap()["downstream"]["targets"] = json!([
+        {"target":"resolve-target", "delivery":resolution.id},
+        {"target":hidden_target, "delivery":hidden_delivery},
+    ]);
+    hidden.status = downstream::Status::Stale;
+    hidden.resolution = Some(downstream::Resolution {
+        observed: downstream::Observed::Absent,
+        evidence: "PROJECTION-HIDDEN-ATTESTATION".into(),
+        by: "hidden-attestor".into(),
+        at: crypto::now(),
+        create_settlement: None,
+    });
+    f.core
+        .store
+        .write(|tx| {
+            tx.put(BUCKET, &id, &completion)?;
+            tx.put(downstream::BUCKET, &hidden.id, &hidden)
+        })
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    for read in [
+        f.core.offboard_get(&target_only, &id).unwrap(),
+        f.core.offboard_list(&target_only).unwrap()[0].clone(),
+    ] {
+        assert_eq!(read["downstream"]["state"], "resolved");
+        assert_eq!(read["downstream"]["hidden_targets"], 1);
+        assert!(!read.to_string().contains(hidden_target));
+        assert!(!read.to_string().contains(hidden_delivery));
+        assert!(reported(&read, "resolve-target")["resolution"].is_null());
+        assert_eq!(
+            reported(&read, "resolve-target")["delivery_state"],
+            "resolved"
+        );
+        assert!(reported(&read, "resolve-target")["delivered_at"].is_null());
+        f.assert_snapshot(&before);
+    }
+    let persisted: downstream::Deactivation = f
+        .core
+        .store
+        .get(downstream::BUCKET, &resolution.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(persisted.delivery_state(), "resolved");
+    assert_eq!(
+        persisted.resolution.as_ref().unwrap().evidence,
+        resolution_evidence
+    );
+    assert_eq!(stored(&f.core, &id).result, completion.result);
+    f.assert_snapshot(&before);
+}
