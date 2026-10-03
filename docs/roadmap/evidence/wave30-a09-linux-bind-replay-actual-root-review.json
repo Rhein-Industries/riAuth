@@ -1,0 +1,103 @@
+{
+  "utc": "2026-10-03T05:19:38.159010+00:00",
+  "run": 37099059596,
+  "job": 111134825816,
+  "controller": "e17f723c211b9cba4c8f07257f3e40560325c223",
+  "product": "b619fe25269ccc150e473bbcde47cdb3623ef810",
+  "tree": "a627df2ce21a4d255b8c1914d4f543e32f40f4de",
+  "helper_sha256": "6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221",
+  "workflow_sha256": "3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851",
+  "result": "passed",
+  "checks": [
+    "uid10001_copy_up_private_modes",
+    "encrypted_redb_key_configured",
+    "pinned_format3_startup_and_sixteen_rates",
+    "exact_discovery_and_jwks",
+    "all12_userview_fields_and_group_grant_subject",
+    "audit_events200_user_create403_client4",
+    "two_logout401_client3_across_handoffs",
+    "issuer_policy_loginrate_specific_offline_refusals",
+    "read_only_plan_exact_token_EPE",
+    "wrong_direct_build_refused",
+    "isolated_platform_agent_and_downgrade_refusal"
+  ],
+  "outer_artifact": {
+    "id": 11265212727,
+    "name": "riauth-local-container-x86_64-37099059596-1",
+    "bytes": 115361104,
+    "sha256": "4afb3c28549f918e032d201a1b58f86fd2660adaac4e0e7dc8764025d8735435"
+  },
+  "manifest": [
+    {
+      "name": "container-cohort.json",
+      "bytes": 664171,
+      "sha256": "e2ae4ab255b8e75495485efa66c799a8d251710304261e404366f3537dbd3036"
+    },
+    {
+      "name": "launch.json",
+      "bytes": 163,
+      "sha256": "1f5cf77362ce17b87f4ec9a43a74f2f8ec91a1c879b1d8cd7741e8effd627daa"
+    },
+    {
+      "name": "local-essentials-x86_64.docker.tar.gz",
+      "bytes": 48936063,
+      "sha256": "d1c47ee3a3e17864b5f18aa99dd9bb5d2a6d8c0f5c9de9d4e052f3377a6b66a5"
+    },
+    {
+      "name": "local-platform-x86_64.docker.tar.gz",
+      "bytes": 53552130,
+      "sha256": "5a81a46ee436d1eb56614cdce7f572325a71dfc4bb8e5b5d43f2c0cb3c1d4347"
+    },
+    {
+      "name": "local-store-reader-x86_64.bin",
+      "bytes": 12199608,
+      "sha256": "b6be98dddc96df4220e9423425ebb668a0dda0a7ac439dd7d7e73dc187e7b707"
+    },
+    {
+      "name": "resources.jsonl",
+      "bytes": 8099,
+      "sha256": "6d57957d73c860686680ac134c7bdd82ce2497c02926e3afe29c6aa51dc1048d"
+    }
+  ],
+  "resource_samples": 45,
+  "min_free_bytes": {
+    "host": 91356917760,
+    "private": 91356917760,
+    "workspace": 91356893184,
+    "docker_storage": 91356884992
+  },
+  "max_gap_seconds": 2.001125501000004,
+  "owned_steps_joined": 2700,
+  "fresh_reader_observations": 18,
+  "fresh_offline_packets": 10,
+  "physical_redb_equal_by_packet": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "shared_full_gate": "not_run",
+  "builds_this_run": false,
+  "official_release": false,
+  "owner": "a09-17f3a1cf1c5947a0be2bf31170d60394",
+  "cleanup_errors": [],
+  "remaining_cli_groups_containers_volumes": [
+    0,
+    0,
+    0
+  ],
+  "images_inventory_empty": true,
+  "runtime_released": true,
+  "images_reader_root_extracted_or_executed": false,
+  "old_failed_causes": "UNKNOWN; not assigned from new pass",
+  "root_checker_errors": [
+    "shape assertion on two guessed archive names after download0/wholeSHA valid before extraction; expected declarednames corrected",
+    "print KeyError failure because success JSON omits failure/phase/os_error; corrected actual-schema guard before release"
+  ]
+}

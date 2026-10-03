@@ -1,0 +1,155 @@
+{
+  "utc": "2026-10-03T05:29:56.133180+00:00",
+  "run_head": "536ab811c3cf396df5ceae6509e109164cec9b2c",
+  "records": 139,
+  "samples": 120,
+  "summaries": 12,
+  "all_exact_cells_and_recomputed_summaries": true,
+  "raw_fetch_materialization": {
+    "control": "one fetch of 513 rows",
+    "paged": "five fetches; histogram 1 row x1 and 128 rows x4; total513"
+  },
+  "point_reads_and_value_bytes_by_scope": {
+    "scoped": [
+      [
+        2,
+        1024387
+      ]
+    ],
+    "admin": [
+      [
+        5,
+        1025375
+      ]
+    ]
+  },
+  "all_samples_zero_commits_writer_holds": true,
+  "median_call_ratios": [
+    {
+      "pair": 0,
+      "scope": "scoped",
+      "control_p50_ns": 40989792,
+      "paged_p50_ns": 43016042,
+      "paged_div_control": 1.049433039328426
+    },
+    {
+      "pair": 0,
+      "scope": "admin",
+      "control_p50_ns": 45120750,
+      "paged_p50_ns": 47825917,
+      "paged_div_control": 1.0599539458009897
+    },
+    {
+      "pair": 1,
+      "scope": "scoped",
+      "control_p50_ns": 41275125,
+      "paged_p50_ns": 42980917,
+      "paged_div_control": 1.0413273612133216
+    },
+    {
+      "pair": 1,
+      "scope": "admin",
+      "control_p50_ns": 45819458,
+      "paged_p50_ns": 47776625,
+      "paged_div_control": 1.0427147566869952
+    },
+    {
+      "pair": 2,
+      "scope": "scoped",
+      "control_p50_ns": 41291042,
+      "paged_p50_ns": 43030750,
+      "paged_div_control": 1.042132819026461
+    },
+    {
+      "pair": 2,
+      "scope": "admin",
+      "control_p50_ns": 45984250,
+      "paged_p50_ns": 47733167,
+      "paged_div_control": 1.0380329569363422
+    }
+  ],
+  "other_records": [
+    {
+      "buckets": [
+        0,
+        1,
+        1,
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "heap_claim": false,
+      "parser_refusal_cases": 5,
+      "rows": 513,
+      "rss_claim": false,
+      "scan_count": 5,
+      "schema": "riauth.s02-telemetry-self-check/v1"
+    },
+    {
+      "fresh_request_checked": true,
+      "old_snapshot_exact": true,
+      "operation": "membership",
+      "schema": "riauth.s02-ordered-snapshot/v1",
+      "writer_joined": true
+    },
+    {
+      "fresh_request_checked": true,
+      "old_snapshot_exact": true,
+      "operation": "revoke",
+      "schema": "riauth.s02-ordered-snapshot/v1",
+      "writer_joined": true
+    },
+    {
+      "attempts": 8,
+      "between_page_injection": false,
+      "complete_pre_or_post_oracles": true,
+      "observed_call_interval_overlap": true,
+      "schema": "riauth.s02-core-overlap/v1",
+      "writer_joined": true
+    },
+    {
+      "child_token_retired": true,
+      "expiry_refusal_exact": true,
+      "expiry_same_second_observed": true,
+      "expiry_source": "trusted_canonical_stored_timestamp_at_real_now",
+      "legacy_enabled_child_with_disabled_parent_runtime_claim": false,
+      "natural_ttl_elapsed_claim": false,
+      "public_parent_disable_exact_snapshot": true,
+      "schema": "riauth.s02-authority-boundaries/v1",
+      "unrelated_authority_preserved": true
+    },
+    {
+      "heap_claim": false,
+      "latency_grade": false,
+      "native_point_and_value_byte_equivalence": true,
+      "observed_fetch_materialization_improved": true,
+      "rss_claim": false,
+      "schema": "riauth.s02-measurement-decision/v2",
+      "scoped_latency_p50_lower_in_every_pair": false
+    },
+    {
+      "all_owned_threads_joined": true,
+      "cost_gate": "observed_raw_fetch_row_materialization",
+      "groups": 513,
+      "heap_claim": false,
+      "latency_grade": false,
+      "members_per_group": 128,
+      "order": "ABBAAB",
+      "pairs": 3,
+      "pg_claim": false,
+      "private_fixture_directories_removed_and_checked": true,
+      "rss_claim": false,
+      "samples_per_lane_scope": 10,
+      "schema": "riauth.s02-group-list-result/v1",
+      "scoped_groups": 3,
+      "total_samples": 120,
+      "warmups_per_lane_scope": 5
+    }
+  ],
+  "heap_rss_or_latency_grade": false,
+  "root_checker_error": "Initial checker guessed point_reads=2 for all scopes and unverified admin bytes; assertion failed. Corrected to actual within-pair lane equivalence; admin5/1025375, scoped2/1024387. No source/run/capture change or rerun.",
+  "security_source_body_review": "prior reviewed entire60276 fixture; actual records plus final successful assertion completion",
+  "original_scope_independent_review_pending": true
+}
