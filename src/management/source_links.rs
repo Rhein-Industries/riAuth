@@ -2,6 +2,7 @@
 
 use crate::{
     agent::Principal,
+    config::Config,
     error::{Error, Result},
     model::User,
     source::{Link, LinkSpec, enabled, link_key},
@@ -14,6 +15,7 @@ pub(crate) enum SourceLinkAuthority<'a> {
     Plan {
         actor: &'a Principal,
         spec: &'a LinkSpec,
+        config: &'a Config,
     },
     /// The source adapter verifies the upstream response, target binding and
     /// consent before this call. The completed login emits `source.link` or
@@ -48,7 +50,7 @@ pub(crate) fn write_source_link(
     };
     let source = enabled(tx, source_id)?;
     let (user, login) = match &authority {
-        SourceLinkAuthority::Plan { actor, spec } => {
+        SourceLinkAuthority::Plan { actor, spec, .. } => {
             actor.require("source.write", &format!("source/{}", spec.source))?;
             actor.require("user.write", &format!("user/{}", spec.username))?;
             let user = crate::core::user_by_name(tx, &spec.username)?;
@@ -107,6 +109,11 @@ pub(crate) fn write_source_link(
                 && link.issuer != source.issuer
             {
                 let previous_issuer = link.issuer.clone();
+                if let SourceLinkAuthority::Plan { actor, config, .. } = &authority
+                    && actor.agent
+                {
+                    crate::delegation::mark_credential_exposure(config, tx, actor, &user)?;
+                }
                 tx.put(
                     "source_links",
                     &id,
@@ -132,6 +139,11 @@ pub(crate) fn write_source_link(
     }
     // A verified login keeps the previous upsert behavior. Plan apply treats
     // an existing link to the same account as a no-op.
+    if let SourceLinkAuthority::Plan { actor, config, .. } = &authority
+        && actor.agent
+    {
+        crate::delegation::mark_credential_exposure(config, tx, actor, &user)?;
+    }
     tx.put(
         "source_links",
         &id,

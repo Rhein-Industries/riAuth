@@ -153,8 +153,9 @@ pub(crate) enum GroupIntent<'a> {
         present: bool,
         scope: &'a str,
     },
-    /// Dependent cleanup for an already disabled identity. This only removes
-    /// that identity and is authorized by its exact user.write scope.
+    /// Dependent cleanup for an already disabled identity. Its exact user.write
+    /// scope permits deactivation; membership is retained unless the actor also
+    /// has group.members authority for this exact group.
     #[cfg(feature = "platform")]
     OffboardMember {
         user_id: &'a str,
@@ -417,6 +418,9 @@ pub(crate) fn configure_signing_key(
     input: KeyInput,
 ) -> Result<Value> {
     let actor = core.management(tx, token, "key.write", &format!("key/{}", input.id))?;
+    if input.private_key_pem.is_some() {
+        actor.require("key.write", "*")?;
+    }
     let replacement = if let Some(name) = &input.remote_signer {
         if input.private_key_pem.is_some() || input.kid.is_some() {
             return Err(Error::bad(
@@ -758,6 +762,13 @@ fn write_group_inner(
             }
             validate_name(name)?;
             let mut group = existing_group(tx, name)?;
+            if !actor.allows("group.members", &resource) {
+                return Ok(GroupWrite {
+                    group,
+                    changed: false,
+                });
+            }
+            actor.require("group.members", &resource)?;
             let changed = group.members.remove(user_id);
             if changed {
                 persist_group(tx, &group, false)?;

@@ -32,6 +32,18 @@ struct Record {
     #[serde(default)]
     version: String,
 }
+
+fn validate_stored_record(record: &Record) -> Result<()> {
+    serde_json::to_vec(record)
+        .and_then(|bytes| serde_json::from_slice::<Record>(&bytes))
+        .map(|_| ())
+        .map_err(|_| {
+            Error::oauth(
+                "invalidValue",
+                "SCIM resource exceeds supported storage complexity",
+            )
+        })
+}
 pub fn metadata(kind: &str) -> Result<Value> {
     Ok(match kind {
         "ServiceProviderConfig" => {
@@ -1689,6 +1701,7 @@ impl Core {
                         .as_ref()
                         .map_or_else(crypto::id, |record| record.version.clone()),
                 };
+                validate_stored_record(&record)?;
                 let record_changed = existing.as_ref() != Some(&record);
                 if kind == "Groups" {
                     let intent = if existing.is_none() {

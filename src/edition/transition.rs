@@ -2,6 +2,47 @@
 use super::*;
 use serde_json::{Value, json};
 
+// The shared OIDC handoff has no SAML targets or protocol continuation.
+// Decode its complete shape without requiring the Platform XML adapter.
+fn shared_oidc_logout_flow(value: Value) -> bool {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Finish {
+        redirect: Option<String>,
+        #[serde(default)]
+        return_binding: Option<crate::session_protocol::PostLogoutReturn>,
+        response: Option<Value>,
+        frontchannel_urls: std::collections::BTreeSet<String>,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Flow {
+        id: String,
+        expires_at: u64,
+        targets: Vec<Value>,
+        position: usize,
+        pending: Option<Value>,
+        confirmed: usize,
+        failed: usize,
+        finish: Finish,
+    }
+    serde_json::from_value::<Flow>(value).is_ok_and(|flow| {
+        let _ = (
+            flow.id,
+            flow.expires_at,
+            flow.finish.redirect,
+            flow.finish.return_binding,
+            flow.finish.frontchannel_urls,
+        );
+        flow.targets.is_empty()
+            && flow.pending.is_none()
+            && flow.position == 0
+            && flow.confirmed == 0
+            && flow.failed == 0
+            && flow.finish.response.is_none()
+    })
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Inspection {
     DirectOpen,
@@ -516,23 +557,31 @@ pub(super) fn current_store_blockers(
             ),
         }
     }
-    for (id, value) in tx.list::<Value>("sessions")? {
-        match serde_json::from_value::<crate::model::Session>(value) {
-            Ok(session) => {
-                if session.identity.amr.iter().any(|method| method == "cert")
-                    || (session.identity.source.is_none()
-                        && session.identity.amr.iter().any(|method| method == "x509"))
-                {
-                    issue!(
-                        format!("sessions/{id}"),
-                        "Stored certificate-authenticated session requires the Platform build"
-                    );
+    let mut after = None;
+    loop {
+        let page = tx.scan::<Value>("sessions", after.as_deref(), PAGE)?;
+        if page.is_empty() {
+            break;
+        }
+        after = page.last().map(|(key, _)| key.clone());
+        for (id, value) in page {
+            match serde_json::from_value::<crate::model::Session>(value) {
+                Ok(session) => {
+                    if session.identity.amr.iter().any(|method| method == "cert")
+                        || (session.identity.source.is_none()
+                            && session.identity.amr.iter().any(|method| method == "x509"))
+                    {
+                        issue!(
+                            format!("sessions/{id}"),
+                            "Stored certificate-authenticated session requires the Platform build"
+                        );
+                    }
                 }
+                Err(_) => issue!(
+                    format!("sessions/{id}"),
+                    format!("Stored session {id:?} is malformed")
+                ),
             }
-            Err(_) => issue!(
-                format!("sessions/{id}"),
-                format!("Stored session {id:?} is malformed")
-            ),
         }
     }
     for bucket in ["reconciliation_jobs", "reconciliation_schedules"] {
@@ -572,7 +621,10 @@ pub(super) fn current_store_blockers(
                 break;
             }
             after = page.last().map(|(key, _)| key.clone());
-            for (id, _) in page {
+            for (id, value) in page {
+                if *bucket == "saml_logout_flows" && shared_oidc_logout_flow(value) {
+                    continue;
+                }
                 issue!(
                     format!("{bucket}/{id}"),
                     format!("Stored {bucket} requires the Platform build or an explicit migration")

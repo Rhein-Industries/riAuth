@@ -15,6 +15,7 @@ pub(crate) use crate::source::WorkflowBinding;
 
 use crate::{
     agent::Principal,
+    config::Config,
     core::{Core, audit, require_factor_session, validate_display, validate_email, validate_name},
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -30,13 +31,18 @@ use sha2::{Digest, Sha256, Sha512};
 use std::collections::BTreeSet;
 
 pub(crate) fn reconcile_link(
+    config: &Config,
     tx: &Tx<'_>,
     actor: &Principal,
     spec: &LinkSpec,
 ) -> Result<Option<crate::state::Change>> {
     let written = crate::management::write_source_link(
         tx,
-        crate::management::SourceLinkAuthority::Plan { actor, spec },
+        crate::management::SourceLinkAuthority::Plan {
+            actor,
+            spec,
+            config,
+        },
     )?;
     if let Some(previous_issuer) = written.previous_issuer {
         let before = LinkSpec {

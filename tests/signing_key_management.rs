@@ -355,3 +355,244 @@ async fn signing_key_configuration_denies_unbound_writes_and_replays_one_activat
     );
     assert!(!events.to_string().contains("PRIVATE KEY"));
 }
+
+#[cfg(feature = "platform")]
+#[tokio::test]
+async fn private_imports_require_instance_authority_and_preserve_scoped_generation() {
+    use riauth::{
+        agent::{NewAgent, Permission},
+        crypto,
+        delegation::{GrantChangeBinding, GrantInput, HumanRole},
+        keyring::KeyInput,
+        model::NewUser,
+    };
+
+    let f = Fixture::new();
+    f.core
+        .configure_key(
+            &f.admin,
+            KeyInput {
+                remote_signer: None,
+                id: "scoped-key".into(),
+                algorithm: "ES256".into(),
+                private_key_pem: None,
+                kid: None,
+            },
+        )
+        .unwrap();
+    let human = f.user("key-operator");
+    let administrators: Vec<String> = ["key-reviewer", "key-executor"]
+        .into_iter()
+        .map(|username| {
+            f.core
+                .create_user(
+                    &f.admin,
+                    NewUser {
+                        username: username.into(),
+                        password: PASSWORD.into(),
+                        email: None,
+                        display_name: username.into(),
+                        admin: true,
+                    },
+                )
+                .unwrap();
+            f.core
+                .login(username.into(), PASSWORD.into(), None)
+                .unwrap()["session_token"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    let change = f
+        .core
+        .stage_human_grants(
+            &f.admin,
+            "key-operator",
+            vec![GrantInput {
+                role: HumanRole::SecurityAdministrator,
+                scope: "key/scoped-key".into(),
+            }],
+        )
+        .unwrap();
+    let change_id = change["proposal"]["id"].as_str().unwrap();
+    let binding = GrantChangeBinding {
+        digest: change["digest"].as_str().unwrap().into(),
+    };
+    f.core
+        .approve_human_grant_change(&administrators[0], change_id, binding.clone())
+        .unwrap();
+    f.core
+        .execute_human_grant_change(&administrators[1], change_id, binding)
+        .unwrap();
+
+    let create_agent = |id: &str, resource: &str| {
+        f.core
+            .create_agent(
+                &f.admin,
+                NewAgent {
+                    id: id.into(),
+                    ttl: 3600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "key.write".into(),
+                        resource: resource.into(),
+                    }],
+                },
+            )
+            .unwrap()["credential"]["token"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let scoped = create_agent("scoped-key-operator", "key/scoped-key");
+    let wildcard = create_agent("instance-key-operator", "*");
+    let app = riauth::api::router(f.core.clone());
+    let revision = || {
+        f.core
+            .store
+            .get::<u64>("meta", "revision")
+            .unwrap()
+            .unwrap_or(0)
+    };
+    let candidate = crypto::SigningKey::generate_algorithm("ES256").unwrap();
+    let absent_kid = "denied-import-candidate";
+
+    for (name, token) in [("agent", &scoped), ("human", &human)] {
+        for (kind, pem) in [
+            ("valid", candidate.pem.as_str()),
+            ("malformed", "not a PEM"),
+        ] {
+            let before = f.snapshot().unwrap();
+            let jwks = f.core.jwks().unwrap();
+            let body = json!({"id":"scoped-key", "algorithm":"ES256",
+                "private_key_pem":pem, "kid":absent_kid});
+            let (status, error) = configure(
+                &app,
+                body,
+                Some(token),
+                None,
+                Some(revision()),
+                Some(&format!("denied-{name}-{kind}")),
+            )
+            .await;
+            assert_eq!(status, StatusCode::FORBIDDEN);
+            assert_eq!(error["error"], "access_denied");
+            assert!(!error.to_string().contains("PRIVATE KEY"));
+            f.assert_snapshot(&before);
+            assert_eq!(f.core.jwks().unwrap(), jwks);
+            assert!(
+                jwks["keys"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|key| key["kid"] != absent_kid)
+            );
+        }
+
+        // Generation stays within the granted domain and returns only public data.
+        let old = f
+            .core
+            .store
+            .get::<crypto::Keys>("key_domains", "scoped-key")
+            .unwrap()
+            .unwrap();
+        let at = revision();
+        let body = json!({"id":"scoped-key", "algorithm":"ES256"});
+        let key = format!("scoped-generation-{name}");
+        let first = configure(&app, body.clone(), Some(token), None, Some(at), Some(&key)).await;
+        assert_eq!(first.0, StatusCode::OK);
+        assert_eq!(first.1["retained_verification_keys"], old.retired.len() + 1);
+        assert!(!first.1.to_string().contains("PRIVATE KEY"));
+        assert!(
+            f.core.jwks().unwrap()["keys"]
+                .as_array()
+                .unwrap()
+                .contains(&old.active.jwk().unwrap())
+        );
+        let after = f.snapshot().unwrap();
+        assert_eq!(
+            configure(&app, body, Some(token), None, Some(at), Some(&key)).await,
+            first
+        );
+        f.assert_snapshot(&after);
+    }
+
+    for (name, token) in [("wildcard", &wildcard), ("administrator", &f.admin)] {
+        let id = format!("import-{name}");
+        let kid = format!("accepted-import-{name}");
+        let key = format!("instance-import-{name}");
+        let body = json!({"id":id, "algorithm":"ES256",
+            "private_key_pem":candidate.pem, "kid":kid});
+        let at = revision();
+        let first = configure(&app, body.clone(), Some(token), None, Some(at), Some(&key)).await;
+        assert_eq!(first.0, StatusCode::OK);
+        assert_eq!(first.1["active"]["kid"], kid);
+        assert!(!first.1.to_string().contains("PRIVATE KEY"));
+        assert_eq!(revision(), at + 1);
+        let after = f.snapshot().unwrap();
+        assert_eq!(
+            configure(&app, body, Some(token), None, Some(at), Some(&key)).await,
+            first
+        );
+        f.assert_snapshot(&after);
+        let events = f.core.audit_events(&f.admin, 100).unwrap();
+        assert_eq!(
+            events
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|event| event["action"] == "signing_key.configure" && event["target"] == id)
+                .count(),
+            1
+        );
+        assert!(!events.to_string().contains("PRIVATE KEY"));
+    }
+
+    // A historical matched public receipt must not rerun the new import guard or writer.
+    let context = riauth::context::RequestContext {
+        idempotency_key: Some("historical-scoped-import".into()),
+        fingerprint: crypto::digest("historical-scoped-import-fingerprint"),
+        revision: Some(0),
+        ..Default::default()
+    };
+    let historical = json!({"id":"scoped-key", "active":{"kid":"historical-public-kid"},
+        "retained_verification_keys":0});
+    f.core
+        .store
+        .write(|tx| {
+            let actor = f.core.principal(tx, &scoped)?;
+            let receipt_key = crypto::digest(&format!(
+                "{}\0{}",
+                actor.id,
+                context.idempotency_key.as_ref().unwrap()
+            ));
+            tx.put(
+                "receipts",
+                &receipt_key,
+                &json!({
+                    "fingerprint":context.fingerprint, "permissions":actor.permissions,
+                    "result":historical, "expires_at":crypto::now() + 3600,
+                }),
+            )
+        })
+        .unwrap();
+    let before = f.snapshot().unwrap();
+    let jwks = f.core.jwks().unwrap();
+    let replay = riauth::context::scope(Some(context), || {
+        f.core.configure_key(
+            &scoped,
+            KeyInput {
+                remote_signer: None,
+                id: "scoped-key".into(),
+                algorithm: "ES256".into(),
+                private_key_pem: Some("not a PEM".into()),
+                kid: Some(absent_kid.into()),
+            },
+        )
+    })
+    .unwrap();
+    assert_eq!(replay, historical);
+    f.assert_snapshot(&before);
+    assert_eq!(f.core.jwks().unwrap(), jwks);
+}

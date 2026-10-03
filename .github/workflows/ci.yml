@@ -184,6 +184,7 @@ jobs:
           cargo build --locked --bin riauth
           npm ci --prefix tools/browser
           cd tools/browser
+          node --test *.test.js
           ./node_modules/.bin/playwright install --with-deps chromium firefox webkit
           ./node_modules/.bin/playwright test setup.spec.js --reporter=list
       - name: Headless portal authenticator journeys

@@ -17,7 +17,7 @@ riauth login admin
 
 For a local instance, use `export RIAUTH_CONFIG=/path/to/riauth.toml` from the private operator directory instead; the CLI reads that file's issuer.
 
-Import a matching RSA IdP private key and its public X.509 certificate. Run these commands from a private operator directory outside the source checkout, with `idp-private.pem` readable only by the operator. Existing Authentik keys/certificates and user subject overrides can preserve configured identity values. The normal `key.write` agent permission controls key import; `client.write` controls provider settings and manifests.
+Import a matching RSA IdP private key and its public X.509 certificate. Run these commands from a private operator directory outside the source checkout, with `idp-private.pem` readable only by the operator. Existing Authentik keys/certificates and user subject overrides can preserve configured identity values. Private-key import requires a full administrator or an agent with instance-wide `key.write=*`, in addition to authority on the selected domain. Scoped key administrators can generate keys inside the server or bind operator-configured external signers. `client.write` controls provider settings and manifests.
 
 ```sh
 mkdir -p deployment-private

@@ -2345,7 +2345,7 @@ fn reconcile(
         });
     }
     for spec in &manifest.source_links {
-        if let Some(change) = crate::source::reconcile_link(tx, actor, spec)? {
+        if let Some(change) = crate::source::reconcile_link(&core.config, tx, actor, spec)? {
             changes.push(change);
         }
     }
