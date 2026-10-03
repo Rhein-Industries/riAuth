@@ -280,6 +280,7 @@ class Demo:
         self.failure = None
         self.request_invalid_reason = None
         self.preflow_authorization_refusals = 0
+        self.preflow_request_timeouts = 0
         self.unexpected_failure_observation = {"observed": False, "diagnostic": None}
 
     def invoke(self, stage, seconds, function, *args, **kwargs):
@@ -465,7 +466,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             demo.stage = "request"
             with demo.budget.limit(5, "request_timeout"):
-                self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
+                try:
+                    self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
+                except TimeoutError as timeout:
+                    if not (type(timeout) is TimeoutError
+                            and demo.attempted is False and demo.pending is None
+                            and demo.cookie is None and demo.subject is None
+                            and demo.done is False and demo.failure is None
+                            and type(demo.preflow_request_timeouts) is int
+                            and 0 <= demo.preflow_request_timeouts < 4):
+                        raise
+                    demo.preflow_request_timeouts += 1
+                    if demo.preflow_request_timeouts == 4:
+                        demo.failure, demo.done = "request_timeout", True
+                        try:
+                            observe_unexpected_failure(demo.unexpected_failure_observation, "handler")
+                        except BaseException:
+                            pass
+                    return
                 if not self.raw_requestline:
                     return
                 require(len(self.raw_requestline) <= MAX_REQUEST_LINE, "request_limit")
@@ -613,6 +631,7 @@ def main():
     record = {"schema": "riauth.d01-confidential-browser/v1", "result": "failed",
               "failure_stage": None, "failure_tag": None, "checks": {}, "cleanup": {},
               "request_invalid_reason": None, "preflow_authorization_refusals": 0,
+              "preflow_request_timeouts": 0,
               "unexpected_failure_observation": {"observed": False, "diagnostic": None},
               "source": {"verifier_commit": VERIFIER_COMMIT, "verifier_blob": VERIFIER_BLOB,
                          "verifier_expected_sha256": VERIFIER_SHA256},
@@ -707,6 +726,7 @@ def main():
         if demo is not None:
             record["request_invalid_reason"] = demo.request_invalid_reason
             record["preflow_authorization_refusals"] = demo.preflow_authorization_refusals
+            record["preflow_request_timeouts"] = demo.preflow_request_timeouts
             try:
                 demo.clear()
                 record["cleanup"]["private_references_cleared"] = True
