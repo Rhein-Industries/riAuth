@@ -186,7 +186,7 @@ jobs:
             --reporter=list
           ./node_modules/.bin/playwright test signin.spec.js \
             --project=chromium --workers=1 --retries=0 \
-            --grep 'empty interaction credentials identify missing fields without a request$' \
+            --grep '(empty interaction credentials identify missing fields|empty required interaction code identifies its field) without a request$' \
             --reporter=line
       - name: PostgreSQL Q05 replay and lease schedules
         run: PG_BIN="$(pg_config --bindir)" RIAUTH_PG_TEST_TARGET=q05_replay_concurrency scripts/test-postgres.sh
