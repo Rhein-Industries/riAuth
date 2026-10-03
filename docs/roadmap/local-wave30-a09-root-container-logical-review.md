@@ -213,3 +213,25 @@ Independent additive-source review remains pending. This source is UNEXECUTED an
 Root read all291 lines of independent d88ece174746e3354e2022b8d852fba8050eeac0, exact18538-byte/a129e385 report, and matched its complete helper/workflow/source reconstruction and 54-method preservation findings to staged e612 source. No concrete additive blocker was found. The historical image owner is limited to proved-absent exact imported image content; new containers/volumes/processes retain fresh ownership. Untagged or ambiguous partial-load resources remain a cleanup refusal, not an authorization to adopt or prune them. All original fixture/security/reader/refusal operations and source diagnostic remain exact.
 
 This accepts only the exact materialized source. One future separately reserved x86 replay must prove fresh transport/artifact availability, native host/daemon, full hashes before extraction, absence before import, fresh measurements/complete E-P-E and Platform assertions, real owned cleanup and unchanged resource limits. Old37087561409 remains FAILED; no old checks, official artifact, current S02 build, runtime success or original A09 completion is imported. Runtime remains held until root publishes and explicitly dispatches one invocation.
+
+
+## 2026-10-03 — actual build-free replay failure and safe bind review
+
+The ONE manual run37097066234/job111129048979 at controller6f1c294 and historical productb619 ended FAILED. Its closed diagnostic is start_app/errno98, with no recorded live-listener/closed-state cause. The complete public cohort, seven fresh logical packets and resources were reviewed: all logical rows/config/key/metadata comparisons pass with zero added/removed/changed rows, while each physical redb byte comparison is false. Twelve fresh reader observations pass; none close the complete shared gate. All1776 owned child steps are reaped with empty groups, containers/volumes/images are absent and cleanup_errors is empty. Runtime was released; no repeat is authorized by this receipt.
+
+Outer artifact11263904739 has115154036 bytes and full SHA c3ffe9081896edd54225f9beb8681e7898317f794f28d14ba83c6adc64fd2145, verified before guarded extraction of only three public evidence members. Images/reader were streamed for hashes without root extraction or execution. Full check list is empty and shared_full_gate remains not_run.
+
+Pinned Linux v6.8 inet_bind_conflict source and Linux socket(7) distinguish address reuse from simultaneous listeners: SO_REUSEADDR without SO_REUSEPORT retains a same-address TCP_LISTEN conflict. This supports a prospective compatibility review against the pinned Tokio/Mio option setting, not a claim about the actual runner kernel or errno98 cause. Source-only conditional helper design is delegated; no socket/native/Docker test or helper correction is executed by this review. See the three adjacent public root JSON receipts for exact provenance, comparisons and limits.
+
+
+## 2026-10-03 — complete actual bind diagnosis and source-only reservation
+
+Read all288 added lines of7951b40772051c360a2b719bd9a1e683050778cb. The complete149-container/two-volume cleanup and sequential reached-prefix attribution are bounded to this failed run; E-P-E/platform completion remains unproved. Candidate6726dfd945 adds only Linux SO_REUSEADDR before the unchanged fixed loopback bind; no retry, signal, port substitution or SO_REUSEPORT. Root primary Linux static review supplies the missing active-listener exclusion, with same-address/wildcard paths; actual runner kernel and live-listener-versus-retained-state cause remain unknown. Matching the pinned Tokio/Mio option is sufficient to reserve this reversible two-line source change. The author's prospective synthetic Linux socket proof remains unrun and is not represented as a user-required pre-implementation gate. Full same-prebuilt runtime remains separately held for exact immutable review/publication and reservation.
+
+
+## 2026-10-03 — exact Linux bind option source accepted
+
+Reviewed source77a9785fbde5c27c06c690d6c15964761d72552c: only two Linux-guarded lines before the existing loopback bind, entire helper138392B/SHA6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221. Removing those exact124 bytes restores full9f959 source; deleting the single AST If restores the entire original AST. All other methods, workflow/provenance/limits/ownership/oracles/cleanup remain unchanged. Primary Linux static active-listener exclusion remains the source safety basis; no synthetic socket proof or new native/container runtime is claimed. Corrected same-prebuilt hosted cohort remains held until final report review/publication and separate exact reservation.
+
+
+Reviewed all95 added2bab8f3 lines, preserving the entire7951 report and exact source77a9785. The old failed replay and conditional proposal remain historical; source matching and whole inverse are actual static evidence only. Root may separately reserve a fresh same-prebuilt cohort after publication; no result is borrowed from the two-line fix or from the unrun synthetic socket proposal.

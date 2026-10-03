@@ -1874,6 +1874,8 @@ COPY --from=reader-build /reader-output/riauth-store-probe /riauth-store-probe
     def start_app(self, fixture, edition):
         require(fixture["app"] is None, "writer_already_active")
         with socket.socket() as listener:
+            if platform.system() == "Linux":
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(("127.0.0.1", fixture["port"]))  # Never stop a competing listener.
         mounts = [fixture["mounts"][0] + ",readonly", fixture["mounts"][1]]
         name = self.create_container(self.images[edition], "server", "/usr/local/bin/riauth",

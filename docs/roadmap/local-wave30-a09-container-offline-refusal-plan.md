@@ -3687,3 +3687,386 @@ alignment, main/push/status or other-worker contact was used. No runtime lane
 was acquired/released; D01 owns the current runtime. All replay runtime is
 **HELD** for independent findings, root final review/publication and an exact
 separate release. Original A09 primary and closed rows remain unchanged.
+
+
+## Actual prebuilt x86 bind failure and conditional compatibility design — 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`; existing WT
+`a1303b57-4a34-487e-9c63-a841f05b51a0`; reservation
+`wave30_A09_prebuilt_actual_bind_source_diagnosis`. **READ-ONLY source/design;
+only this appendix is written.** The entire 221,791-byte report at
+`cdb3ff6c35b161513cb784492561762547a5e119`, SHA256
+`1d271418e4e34992dd735cef5aa039c680847c8e903648162dfe43b932e1ec30`,
+remains the exact prefix. This is the reader/helper author's diagnosis, not
+independent self-verification.
+
+### New actual failure and fresh evidence
+
+Run **37097066234 / job111129048979 / attempt1**, published controller
+`6f1c2940de4b6f456354812f7d8c24a93100d3fb`, actually ended
+**failed_or_refused**, `fixture / unexpected_OSError`, with finite diagnostic
+`{"site":"start_app","errno":98}`. The code-identity projection measures the
+innermost recognized Python region; it is not a syscall trace, listener owner
+or TCP-state observation. **Live competing listener versus retained TCP state /
+TIME_WAIT remains UNKNOWN.** Old run37087561409 site/errno/cause stays UNKNOWN;
+there is no retrospective errno98 assignment.
+
+Both approved root planning documents were read in full; all four approved
+public data files were parsed and hashed. No archive/binary/private config,
+key/store/protocol body or extra joblog was opened.
+
+| Approved input | Bytes | SHA256 |
+| --- | ---: | --- |
+| `planning/evidence/wave30-a09-prebuilt-replay-dispatch.json` | 4,256 | `71a1beb676d9b6a59d52435242c6bbb8f7a5beffcc021668eacd340a663c022b` |
+| `planning/evidence/wave30-a09-prebuilt-replay-actual-root-review.json` | 1,128 | `4d55a79c7db74c9151f916c141f03173aaa8fe11b0827dbfb41d2e47431204e9` |
+| `container-cohort.json` | 458,148 | `67984924e072bd4cf623aa79e49b32186a8eabf39af4555e2499b8fe45568f59` |
+| `resources.jsonl` | 7,054 | `97bbd3bbd94bc69a425824a5bd96b5c60ad6316782079780d805537cc0964325` |
+| `launch.json` | 163 | `e7700319fdc34c395953cf51ef1744a1058544d5c5cbe9b98783f4d9b441cc16` |
+| `manifest.json` | 914 | `2f767d34a417ada90a523697b67593cd689b9f95eb7766c0ad45b711edfd2c22` |
+
+Actual supplied-file modes are 0600. Root's new artifact identity is11263904739,
+`riauth-local-container-x86_64-37097066234-1`,115,154,036 bytes, whole ZIP SHA256
+`c3ffe9081896edd54225f9beb8681e7898317f794f28d14ba83c6adc64fd2145`.
+The root receipt agrees with size/digest. API+wholeZIP-before-extraction, six
+streamed-hashed members and only three public artifact members extracted are
+root's retained transport observations, not archive operations repeated here.
+The manifest lists all six members, including two images and one reader.
+
+Fresh results, recomputed from this run rather than copied from old evidence:
+
+- Both imports have new-run tag/ID absence, attempted load and confirmed
+  flags; both load steps exited0. Builds and builder-created flags are false.
+  Daemon is Linux x86_64 Docker28.0.4. Six copied-product and two capabilities
+  steps exited0; source/edition/server identities retain dated productb619.
+- **12 fresh** snapshot-reader and 12 copy steps exited0. The reader counter
+  is 12. The full `logical_snapshot` body increments it only after complete
+  before/after config/key/redb physical equality passes, so all 12 have fresh
+  reader-alone physical-preservation credit. This borrows no old counts.
+- **Seven fresh** packets independently have complete unfiltered row-hash /
+  keyset, metadata and count equality, config/key/candidate byte equality,
+  added=removed=changed=0. All physical config/key flags aretrue; physical
+  redb flags arefalse. This credits only the reached logical refusal packets,
+  not any older physical failure cause.
+- Exact sequential fixture/source guards reach initial ordinary identity,
+  discovery/JWKS, scope/403 CLI4, logout/401 CLI3, issuer/policy/login-rate
+  refusals and the first wrong-build direct refusal. Only one server-start
+  and one owned stop exited0. Source order plus `site=start_app` localizes
+  the new failure to the subsequent platform start region before the second
+  server launch. **checks=[]; shared_full_gate=not_run. E-P-E equality and
+  the final platform-state/downgrade gate remain unproved.**
+- All **1,776** steps were checked individually: child-reaped=true,
+  group-empty=true, output-recorded=false. Creation records contain 149
+  containers and two fresh volumes; both precredential UID probes are
+  10001:10001:700. Cleanup errors=[], remaining groups/containers/volumes=0,
+  pending maps={}, owned image inventory empty. Nonzero exits are the
+  source-required absence/refusal/plan statuses, not unreaped children.
+- All 39 resource lines were parsed: minimum across four paths is
+  91,343,507,456 bytes; receipt maxgap2.019518998999999s is serialized as
+  JSONL2.020s. Root's actual receipt releases runtime and authorizes no repeat.
+  This source review took/released no runtime lane.
+
+Retained Essentials archive 48,936,063 bytes /
+`d1c47ee3a3e17864b5f18aa99dd9bb5d2a6d8c0f5c9de9d4e052f3377a6b66a5`,
+Platform 53,552,130 /
+`5a81a46ee436d1eb56614cdce7f572325a71dfc4bb8e5b5d43f2c0cb3c1d4347`,
+and reader 12,199,608 /
+`b6be98dddc96df4220e9423425ebb668a0dda0a7ac439dd7d7e73dc187e7b707`
+remain historical37087561409 imports. New-run server hashes are Essentials
+`62a933b0f94401e15699ced6b3ae1e18f9a06e42993d50f0f438902fcfdce78c`
+and Platform
+`a28827dffe27a2a42ec3fd44411ae5c343402c1a461582b17d236cb5de6dd668`.
+No rebuild/current-S02/official-artifact/release credit is assigned.
+
+### Exact source mismatch and unresolved kernel guarantee
+
+Complete current `start_app`, `stop_app`, `new_fixture`, `fixture_gate`,
+`create_container`, `confirm_container`, `remove_container` and `cleanup`
+bodies were read, plus main's exact code-identity diagnostic/finally and
+complete logical/preservation bodies. Own helper/workflow equal published6f
+without alignment: 138,268 bytes /
+`9f95975a70caf47c06b224226134649f552169714f9ebf3b54b4b55da98f5908`;
+4,574 bytes /
+`3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851`.
+
+Dated `b619fe25269ccc150e473bbcde47cdb3623ef810` /
+`a627df2ce21a4d255b8c1914d4f543e32f40f4de` source was read through Git:
+
+| Product source | Bytes | SHA256 |
+| --- | ---: | --- |
+| `src/main.rs` | 1,058 | `e5b3b111a4c5173f15e1fc0268681fc5b7a98b323f38752848ff3fafd28fb6bc` |
+| `src/cli.rs` | 129,441 | `09bf4315bf23a926819854801f3f96d6edf23a8841a31e96c572af16fcef3fc9` |
+| `src/bootstrap.rs` | 31,640 | `5c9b63a293ccbef46ab2a583bde1c54036e4a0b8cf655e26c6ae8c617b5b495e` |
+| `src/api/server.rs` | 14,305 | `3b3354abda21573b4f45accc19ee5c049fd7a408d015a2d7c0b699f2c5259af7` |
+| `Cargo.lock` | 109,243 | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| `Cargo.toml` | 4,020 | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| `rust-toolchain.toml` | 86 | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+
+Trace: cli.rs1433 loads Config → bootstrap.rs352-374 opens initialized Core
+→ api/server.rs136 starts role runtime → serve_http193/198 calls
+`tokio::net::TcpListener::bind(config.listen)`. Both TLS/plain branches use
+that same listener. The fixture sets 127.0.0.1 / its original port and uses
+host networking; no listener descriptor or port is adopted. Its Python
+preflight instead uses a plain socket with no reuse option.
+
+The exact lock selects Tokio 1.53.1, Mio 1.2.3, socket2 0.6.5 and libc 0.2.189.
+Their relevant cached primary project bodies, manifest versions and VCS
+labels were read; no Cargo/network/version query was used:
+
+| Cached primary body | Bytes | SHA256 |
+| --- | ---: | --- |
+| `tokio-1.53.1/src/net/tcp/listener.rs` | 14,706 | `7deb1f8a9b64b02178e07e2d9b93acc36d743b5216d6ad17d09cacaceeb94f4b` |
+| `mio-1.2.3/src/net/tcp/listener.rs` | 9,897 | `2d56fd760c2027fc14aa6960c3e0df9bc3e8c6bf3001999273ff9ed913ebefc0` |
+| `mio-1.2.3/src/sys/unix/tcp.rs` | 4,810 | `5746cfeef8431b8737d9cd97b98118f214f6c37cf88ddaa4f34f47317cc6e2f9` |
+| `mio-1.2.3/src/sys/unix/net.rs` | 8,201 | `1d085c2125333474fbf2f50f7391b1cf40a2a7593980cc2a3dc7ee10df8a269c` |
+| `socket2-0.6.5/src/socket.rs` | 89,654 | `14d718fc14286e1a0c35d785d1ece2096c5af12188c248a7493851d0d87f824d` |
+
+Tokio bind delegates to Mio bind; Mio creates an AF_INET SOCK_STREAM socket,
+sets reuseaddr=true before bind, then listens. Unix setsockopt uses
+SOL_SOCKET/SO_REUSEADDR with integer 1. Linux creation adds NONBLOCK/CLOEXEC,
+not REUSEPORT. The exact source/documentation proves the expected product
+option/order. Cache VCS labels are Tokio `75fef53d0a8590c2d1dbb63672aa7b7d1ef51155`,
+Mio `da425f909dd6b86d887da9eaefcb158099b5b165`,
+socket2 `239dd83a4ced08e514d2c38942aab99791119f0d`.
+.cargo-checksum.json is absent; cached file/version/VCS evidence is not
+represented as an independently reconstructed package checksum or inspection
+of archived executable internals.
+
+**Concrete source prerequisite remains:** active-LISTEN exclusion and retained
+connection reuse rules were not independently established from Linux
+kernel/socket(7) primary sources. Allowed local searches found no Linux
+socket(7)/IPv4 bind-conflict implementation; macOS manuals are not Linux proof.
+Mio quick-reuse documentation, socket2's portable occupied-port description,
+and installed CPython POSIX create_server source do not establish this exact
+Linux equal-address active-listener guarantee. The explicit no-query/download
+constraint was honored, so there was no external lookup. **This is conditional
+design, not a proved safe materialization recommendation or a TIME_WAIT cause.**
+
+Before ownership/release, root needs primary Linux socket(7) plus applicable
+IPv4 TCP bind-conflict source: same 127.0.0.1/port and wildcard LISTEN must remain
+conflicts even when the listener already uses REUSEADDR; characterize retained
+connections and both-sockets reuse requirements. Do not generalize to Windows,
+bound-but-not-listening sockets, different addresses/families or REUSEPORT.
+The current probe-close/server-bind gap already permits a later race; a reuse
+option neither reserves a port nor authorizes adoption of an existing listener.
+
+### One exact in-memory conditional hunk
+
+Subject to that prerequisite and separately approved source ownership, the
+smallest mismatch correction adds only two Linux-guarded lines to the fixed
+port probe. No new import/workflow delta. Candidate **138,392 bytes / SHA256
+`6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221`**,
+Git blob `eceef440f33c2f1c83ad3f0c212d1683ea23317f`. It exists only in memory
+and the following report archive; existing helper/workflow remain unchanged.
+
+```diff
+--- a/scripts/check-local-container-cohort.py
++++ b/scripts/check-local-container-cohort.py
+@@ -1876,0 +1877,2 @@
++            if platform.system() == "Linux":
++                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+```
+
+Complete proposed changed body:
+
+```python
+    def start_app(self, fixture, edition):
+        require(fixture["app"] is None, "writer_already_active")
+        with socket.socket() as listener:
+            if platform.system() == "Linux":
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("127.0.0.1", fixture["port"]))  # Never stop a competing listener.
+        mounts = [fixture["mounts"][0] + ",readonly", fixture["mounts"][1]]
+        name = self.create_container(self.images[edition], "server", "/usr/local/bin/riauth",
+                                    ["--config", "/config/riauth.toml", "serve"],
+                                    mounts=mounts, network="host")
+        fixture["app"] = name
+        code, _, _ = self.docker("server-start", "container", "start", name)
+        require(code == 0, "server_start_failed")
+        end = min(time.monotonic() + 45, self.fixture_deadline)
+        while time.monotonic() < end:
+            self.check_budget()
+            require(self.confirm_container(name)["State"]["Running"], "server_exited_before_ready")
+            try:
+                status, _, _ = self.http(fixture["base"] + "/readyz", cap=65536)
+                if status == 200:
+                    return
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                pass
+            time.sleep(0.2)
+        raise Refusal("server_readiness_deadline")
+```
+
+No option failure is swallowed. No retry/fallback/sleep/port selection,
+SO_REUSEPORT, listen/accept/connect, descriptor adoption or competitor signal
+is added. Non-Linux probe behavior is unchanged. New_fixture ephemeral
+allocation, all container/UID/crypto/security/writer/snapshot/refusal/policy/
+process cleanup operations, full logical/config/key equality, resource guards,
+first failure/finite diagnostic/main finally remain byte-exact.
+
+Static proof actually passed: whole-byte reverse; candidate ast.parse;
+delete exactly the new If in start_app's first With and compare entire
+normalized AST to baseline. **All 60 other Cohort methods retain exact byte /
+AST spans and order**; whole inverse protects main/top-level functions too.
+No candidate function/case was evaluated and no harness/source was written.
+
+### Proposed bounded Linux proof and one future same-prebuilt gate
+
+**Not performed or released.** After primary-source review, propose one
+stdlib native-Linux socket proof, one owned process with 30s inner /35s outer
+bound, exclusive0600 finite fixed output and cleanup of only own sockets/child.
+No product/Cargo/HTTP/Docker build. All endpoints are fresh self-owned loopback;
+a scenario keeps its initially selected port, with no fallback/port change or
+foreign listener contact, signaling, adoption or host-state cleanup.
+
+1. Negative: own active 127.0.0.1 listener with REUSEADDR/no REUSEPORT;
+   candidate exact bind must refuse EADDRINUSE. Retain owner/listener and prove
+   a second own connection still reaches it after rejection. Also cover own
+   wildcard IPv4 listener and own listener without REUSEADDR. After controlled
+   listener closure, close only own descriptors; immediate rebinding is not a
+   required result for a variant retaining incompatible connection state. The
+   separate positive case below establishes reuse-compatible retained state.
+2. Positive: one own connection from a REUSEADDR listener; accepted server
+   endpoint actively closes first with an explicit finite EOF handshake, then
+   peer/listener close. Establish retained state by plain exact-port bind
+   refusing EADDRINUSE, then require reuse bind success on that same address /
+   port. If the finite setup cannot establish the condition, report
+   **unestablished**, never manufacture TIME_WAIT, add sleep/retry or substitute
+   another port to pad success. Primary source must justify the interpretation.
+
+Only fixed case labels/outcomes, booleans, bounded errno and elapsed/reaped
+counts may be retained, with no ports/keys/protocol/raw exception/path/inventory.
+Exact future payload/privacy/cleanup requires its own source review. Synthetic
+proof would not identify the actual hosted listener or retained TCP state.
+
+Only then could root separately reserve **ONE** fresh same-prebuilt x86 gate
+with unchanged productb619/treea627/native/image/reader/receipt provenance and
+original full fixture, using the reviewed two-line delta if approved. Existing
+workflow invocation stays `python3 controller/scripts/check-local-container-cohort.py
+--prebuilt-x86` with exact controller/product/review/root arguments. Preserve
+fullZIP SHA before extraction, source/ELF/image/capability/UID authority,
+30GiB start /10GiB stop /8GiB floor,2s sampling, original process/fixture
+bounds, full PLAN/snapshot/E-P-E/platform assertions and all cleanup.
+Any failure remains evidence; no automatic repetition or dated pass borrowing.
+
+### Actual static checking and limits
+
+Read-only checker issues: an initial comparison of rounded JSONL2.020 against
+unrounded receipt2.019518998999999 exited1; source-precision comparison passed.
+A .cargo-checksum.json read exited1 because the file is absent; only actual
+source/manifest/VCS hashes are claimed. Initial Git lookups of src/cli/mod.rs
+and src/cli/serve.rs failed; corrected dated src/cli.rs was read. Cached Mio
+test-file lookup returned2 because tests are not packaged. A report-assembly
+placeholder check wrongly rejected ordinary diff @@ and exited1 **before any
+write**; exact placeholder checks replaced it. These are static audit issues,
+not executed candidate/product/socket failures; no observed gate is recast.
+
+Actual `python3 scripts/check-docs.py` and `git diff --check` exited0.
+The separate parser/hash/scope validator passed preserved221,791-byte prefix,
+archived exact diff/body, full byte/AST inverse,60 protected methods and
+unchanged helper/workflow hashes. Only this report is changed; no untracked
+file was created. These static checks complete the report-only handoff.
+No reviewed helper/function/module/case/harness/VM/native/
+socket/Docker/Cargo/compiler/probe/tool-version/HTTP/PG/provider/browser/Driver,
+archive/binary extraction, network/query/download/dispatch or deletion was used.
+No worker contact/new worker/task/worktree/shell, alignment/merge/main/push/
+status or runtime slot action. **All later source/runtime remains HELD.**
+The new and older runs remain FAILED; older unknown causes are retained;
+original A09 full shared/platform gate remains open and closed
+I02/I10/R05/W02/W05 remain unchanged. Root alone owns source proof,
+reservation, integration/publication and original-gate disposition.
+
+
+## Exact Linux bind-option source materialization — 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`; existing WT
+`a1303b57-4a34-487e-9c63-a841f05b51a0`; reservation
+`wave30_A09_linux_bind_option_materialization`. **SOURCE ONLY, UNEXECUTED.**
+The complete 239,347-byte `7951b40772051c360a2b719bd9a1e683050778cb` report,
+SHA256 `e5ba7eefc28aacadf8d144bd9f58d247fc6b404244be2e9917df3a839c032c98`,
+remains this appendix's exact prefix. All earlier unknown failures and dated
+conditional-source limits remain in their original text.
+
+Root resolved the preceding primary-source gap and explicitly approved this
+exact materialization. I read its complete project-scoped receipt
+`planning/evidence/wave30-a09-linux-bind-static-source-root-review.json`:
+**1,680 bytes / SHA256
+`f963cf62f313a1631a57a83480181bbd5a752d0f2877206c65d36636b306ec36`**.
+It records root's [Linux v6.8 primary source](https://raw.githubusercontent.com/torvalds/linux/v6.8/net/ipv4/inet_connection_sock.c)
+witness, 42,070 bytes / SHA256
+`f5a183a1e55ac0a2b3b949478ea68b625891ff61d09dc5f7a27c5c57aa488470`,
+its complete selected `inet_bind_conflict` body, and root's
+[socket(7) documentation](https://man7.org/linux/man-pages/man7/socket.7.html)
+reference. I did not fetch either source or independently identify the hosted
+kernel. The full primary-file digest and the same-address/wildcard/get_port
+review are explicitly **root's source witness**, not a new network/runtime
+observation in this lane.
+
+The selected body excludes TCP_LISTEN from the both-reuseaddr relaxation;
+without reuseport the conflict branch remains true. Root separately reviewed
+inet_bind_conflict160–187, same-address/wildcard paths and get_port217–290 /
+471–559 for the default AF_INET probe without FORCE, bound device or
+SO_REUSEPORT. Combined with the previously pinned Tokio/Mio option ordering,
+root judges the exact Linux-only insertion source-compatible and statically
+preserves active-listener exclusion. This is **selected-source safety
+inference**, not proof of the actual runner kernel, measured listener refusal,
+a passed synthetic socket test or an explanation of errno98. The prospective
+native probe remains unperformed; it is not an additional implementation gate
+imposed by this reservation. Root controls any separately authorized runtime.
+
+Source commit **`77a9785fbde5c27c06c690d6c15964761d72552c`** contains only
+`scripts/check-local-container-cohort.py`, **+2 / -0**. Exact baseline9f959 was
+verified before editing. The materialized source equals the complete archived
+7951 candidate and adds only the Linux-guarded
+`listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)` before the
+existing exact127.0.0.1/fixed-port bind. There is no new import or alternative
+probe. No option failure is swallowed.
+
+| Protected source | Bytes | SHA256 / Git blob |
+| --- | ---: | --- |
+| Baseline helper at7951 | 138,268 | `9f95975a70caf47c06b224226134649f552169714f9ebf3b54b4b55da98f5908` / `676e7033dda5f17bbc4b51ca186f081c372dd4ba` |
+| Materialized helper | 138,392 | `6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221` / `eceef440f33c2f1c83ad3f0c212d1683ea23317f` |
+| Unchanged workflow | 4,574 | `3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851` / `b23d5bbec2aade53d68a3af2848f2be3aeb0600a` |
+
+Actual static checks passed, with no checker failure in this phase:
+
+- Source SHA/length/mode0644 and exact archived two-line diff; whole byte
+  inverse to9f959; entire normalized AST inverse after removing precisely the
+  new If; all **60 other Cohort methods** retain exact spans, ASTs and order.
+  Entire inverse also protects all imports/top-level/main/except/finally.
+- `ast.parse` and in-memory `compile(..., "exec", dont_inherit=True)` accepted
+  both full sources. The resulting code objects were **never executed**;
+  no definition/module/helper/function/case was imported or evaluated and no
+  harness/bytecode file was created.
+- `python3 scripts/check-docs.py`, `python3 scripts/check-repo-hygiene.py`
+  (1,021 tracked files), `git diff --check` and staged whitespace checks
+  exited0 before the source commit. Staged scope was exactly one helper,
+  +2/-0. The report was still byte-identical to7951 during that commit.
+- The separate report is append-only; its prefix, final source hashes,
+  report-only staging, docs/hygiene/whitespace and clean-branch checks are
+  verified for the report handoff.
+
+No SO_REUSEPORT/listen/accept/connect/adoption, port change, signaling, retry,
+fallback, extra sleep or logging was introduced. Non-Linux behavior, private
+transport/source/input/ELF/image/UID bindings, capabilities, reader-alone
+physical checks, complete unfiltered logical/config/key/metadata/count
+preservation, full refusal/PLAN/E-P-E/security assertions and all writer /
+creation-identity/cleanup controls remain exact. This includes authority for
+all 149 containers in the dated failed run, not a promise of any future count.
+30GiB start /10GiB stop /8GiB floor,2s sampling,7200s controller /1200s fixture /
+240s cleanup and existing job/child bounds are unchanged.
+
+Actual37097066234 remains **FAILED**, start_app/errno98 with cause UNKNOWN;
+its 12 fresh reader observations, seven packets and cleanup remain only their
+previously measured reached credit. Earlier37087561409 remains **FAILED**
+with site/errno/cause UNKNOWN. E-P-E/platform aggregate completion remains
+unproved; no source option is credited as a runtime pass or TIME_WAIT diagnosis.
+No live/native/socket/HTTP/Docker/Cargo/compiler/version/probe/helper/function /
+case/network/query/download/dispatch/browser/Driver or deletion occurred;
+Python static code-object compilation is the explicitly authorized exception.
+No workflow/product/input edit, alignment/merge/main/push/status, new
+worker/task/worktree/shell or other-worker contact was used. No runtime lane
+was acquired/released. **All runtime remains HELD** for root's separate
+immutable review/integration/publication and any one exact same-prebuilt
+hosted-cohort release. Closed rows and original A09 primary are unchanged.

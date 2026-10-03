@@ -1,0 +1,28 @@
+{
+  "utc": "2026-10-03T04:59:07.065562+00:00",
+  "run": 37097066234,
+  "result": "FAILED",
+  "failure": "unexpected_OSError",
+  "os_error": {
+    "errno": 98,
+    "site": "start_app"
+  },
+  "read_full_json": true,
+  "fresh_physical_observations": 12,
+  "fresh_offline_packets": 7,
+  "each_logical_packet": "added/removed/changed0 and all logical/config/key metadata comparisons true; physical redb false, not full byte preservation",
+  "resource_samples": 39,
+  "max_recorded_gap": 2.02,
+  "recorded_min_free_bytes": {
+    "host": 91343507456,
+    "private": 91343507456,
+    "workspace": 91343507456,
+    "docker_storage": 91343507456
+  },
+  "joined_steps": 1776,
+  "owned_remaining": 0,
+  "cleanup_errors": [],
+  "checks": [],
+  "shared_full_gate": "not_run",
+  "new_socket_or_cohort_execution": false
+}
