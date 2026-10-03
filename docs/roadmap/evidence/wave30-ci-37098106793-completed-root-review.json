@@ -1,0 +1,114 @@
+{
+  "reviewed_at": "2026-10-03T06:36:05.019246+00:00",
+  "run_id": 37098106793,
+  "source": "143d99dbe43fefd6aeb3d274a0d974fd025292e0",
+  "status": "completed",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "databaseId": 111134191804,
+      "name": "audit",
+      "conclusion": "success",
+      "startedAt": "2026-10-03T05:08:15Z",
+      "completedAt": "2026-10-03T05:12:02Z"
+    },
+    {
+      "databaseId": 111134191840,
+      "name": "check",
+      "conclusion": "success",
+      "startedAt": "2026-10-03T05:08:14Z",
+      "completedAt": "2026-10-03T06:10:20Z"
+    },
+    {
+      "databaseId": 111134191938,
+      "name": "integration",
+      "conclusion": "success",
+      "startedAt": "2026-10-03T05:08:14Z",
+      "completedAt": "2026-10-03T05:28:15Z"
+    }
+  ],
+  "raw_check_log": {
+    "bytes": 472408,
+    "sha256": "8e4a535d877e228c9c74e8fae5b572fb65dde96988b175bd8ee0eec0b21993e4"
+  },
+  "raw_integration_log": {
+    "bytes": 265769,
+    "sha256": "f1ea748ec8e652305b37e1e6dfb74ee31801f7cadbbdf3c715b8443984048afd"
+  },
+  "check_all_targets": {
+    "command": "cargo test --all-targets --features test-support,fuzzing --locked",
+    "result_blocks": 182,
+    "passed": 1330,
+    "failed": 0,
+    "ignored": 182,
+    "counts_are_not_distinct_global_tests": true
+  },
+  "selected": {
+    "tests/reports.rs": {
+      "line": 3395,
+      "target": "tests/reports.rs (target/debug/deps/reports-a4cda652f16ce40d)",
+      "result": "ok",
+      "passed": 12,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0,
+      "duration": "8.40s",
+      "step_header": "cargo test --all-targets --features test-support,fuzzing --locked"
+    },
+    "tests/scim_oauth.rs": {
+      "line": 3548,
+      "target": "tests/scim_oauth.rs (target/debug/deps/scim_oauth-d6fcf7949ceddaf2)",
+      "result": "ok",
+      "passed": 24,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0,
+      "duration": "26.70s",
+      "step_header": "cargo test --all-targets --features test-support,fuzzing --locked"
+    },
+    "tests/source_stage.rs": {
+      "line": 3715,
+      "target": "tests/source_stage.rs (target/debug/deps/source_stage-a38c26bd311a9457)",
+      "result": "ok",
+      "passed": 24,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0,
+      "duration": "40.33s",
+      "step_header": "cargo test --all-targets --features test-support,fuzzing --locked"
+    },
+    "tests/saml_sp_peer.rs": {
+      "line": 3502,
+      "target": "tests/saml_sp_peer.rs (target/debug/deps/saml_sp_peer-eb35331e75f2600f)",
+      "result": "ok",
+      "passed": 0,
+      "failed": 0,
+      "ignored": 2,
+      "filtered": 0,
+      "duration": "0.00s",
+      "step_header": "cargo test --all-targets --features test-support,fuzzing --locked"
+    },
+    "tests/s02_group_listing_paging.rs": {
+      "line": 3488,
+      "target": "tests/s02_group_listing_paging.rs (target/debug/deps/s02_group_listing_paging-6fcb1d4c11c76338)",
+      "result": "ok",
+      "passed": 0,
+      "failed": 0,
+      "ignored": 1,
+      "filtered": 0,
+      "duration": "0.00s",
+      "step_header": "cargo test --all-targets --features test-support,fuzzing --locked"
+    }
+  },
+  "background_capacity_named_pass": true,
+  "product_src_crates_manifests_toolchain_equal_published_544d": true,
+  "helper_workflow_docs_may_differ": true,
+  "limits": [
+    "one completed CI run at exact source143",
+    "ignored Lasso and S02 not executed by all-targets",
+    "latest main and ARM run not covered",
+    "prior failures preserved",
+    "rare-race eradication not established"
+  ],
+  "parser_note": "Initial target index did not strip ANSI and missed target names. Corrected before result attribution. Multiline step header is labeled as step_header rather than executable command."
+}

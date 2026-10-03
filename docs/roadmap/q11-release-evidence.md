@@ -211,9 +211,10 @@ python3 scripts/spdx_sbom.py verify \
 `PATH` is an exact file. A local sample records that sample. It does not
 create a release SBOM.
 
-`package-linux` is the binding the packager uses. It writes no document until
-every named archive and image is a regular file, then writes all three or
-none. `--server-manifest` and `--client-manifest` run the locked offline
+`package-linux` is the binding the packager uses. It validates the named inputs
+and prepares all three documents before publishing each file separately.
+Preparation failures write no documents; an I/O failure during publication can
+leave a partial set and must stop the release job. `--server-manifest` and `--client-manifest` run the locked offline
 metadata commands. The fixtures pass `--essentials-metadata`,
 `--platform-metadata`, and `--client-metadata` instead, so those fixtures do
 not run cargo. A second write of the same inputs is byte-identical. Changed
