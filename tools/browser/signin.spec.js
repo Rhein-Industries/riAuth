@@ -645,3 +645,66 @@ test.describe('on a phone-sized screen', () => {
     expect((await callback(page, request)).get('code')).toBeTruthy();
   });
 });
+
+test('empty required interaction code identifies its field without a request', async ({ page, context, browserName }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  const request = authorization(fixture.clients.mfa);
+  let posts = 0;
+  page.on('request', (r) => { if (r.method() === 'POST') posts += 1; });
+  await page.goto(request.url);
+  await screen(page, 'authenticate');
+  const placeholder = await ssoCookie(context);
+  expect(Boolean(placeholder && /^ri_sso_/.test(placeholder.value))).toBe(true);
+  const username = page.locator('#signin-username');
+  const password = page.locator('#signin-password');
+  const otp = page.locator('#signin-otp');
+  const error = page.locator('#signin-error');
+  await expect(otp).toHaveAttribute('required', '');
+  await expect(otp).toHaveAttribute('aria-describedby', 'signin-otp-hint');
+  await tabTo(page, browserName, 'signin-username');
+  await page.keyboard.type(fixture.users.bob.username);
+  await page.keyboard.press('Tab');
+  expect(await focusedId(page)).toBe('signin-password');
+  await page.keyboard.type(fixture.users.bob.password);
+  await page.keyboard.press('Tab');
+  expect(await focusedId(page)).toBe('signin-otp');
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(error).toHaveText('Enter your authenticator or recovery code, or sign in with a passkey.');
+  await expect(otp).toHaveAttribute('aria-invalid', 'true');
+  await expect(otp).toHaveAttribute('aria-describedby', 'signin-otp-hint signin-error');
+  for (const field of [username, password]) {
+    await expect(field).not.toHaveAttribute('aria-invalid');
+    await expect(field).not.toHaveAttribute('aria-describedby');
+  }
+  expect(await fitsWidth(page)).toBe(true);
+  await axe(page);
+  expect(posts).toBe(0);
+  expect(await page.evaluate((url) => fetch(url).then((r) => r.status), `${fixture.issuer}/api/portal`)).toBe(401);
+  expect((await ssoCookie(context))?.value === placeholder.value).toBe(true);
+  await tabTo(page, browserName, 'signin-otp');
+  await page.keyboard.type('local-only-not-submitted');
+  await expect(otp).not.toHaveAttribute('aria-invalid');
+  await expect(otp).toHaveAttribute('aria-describedby', 'signin-otp-hint');
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(otp).toHaveAttribute('aria-invalid', 'true');
+  await expect(otp).toHaveAttribute('aria-describedby', 'signin-otp-hint signin-error');
+  expect(posts).toBe(0);
+  // Another local refusal clears the OTP error without an OTP input event.
+  await tabTo(page, browserName, 'signin-username');
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(error).toHaveText('Enter your username and password.');
+  await expect(otp).not.toHaveAttribute('aria-invalid');
+  await expect(otp).toHaveAttribute('aria-describedby', 'signin-otp-hint');
+  await screen(page, 'authenticate');
+  expect(await fitsWidth(page)).toBe(true);
+  expect(await page.evaluate((url) => fetch(url).then((r) => r.status), `${fixture.issuer}/api/portal`)).toBe(401);
+  expect((await ssoCookie(context))?.value === placeholder.value).toBe(true);
+  expect(posts).toBe(0);
+});
