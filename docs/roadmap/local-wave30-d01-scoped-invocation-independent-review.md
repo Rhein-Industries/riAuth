@@ -290,3 +290,230 @@ push/status change occurred. Only this new report is committed. Root alone owns
 future source/harness review, memory and actual-checkpoint reservations, integration
 and original completion. Existing receipt-secret/header/PAM/Group/60s and closed
 task boundaries remain unchanged; future desktop remains RiWork Cua.ai Driver only.
+
+## 2026-10-03 — independent scoped-memory source review, no execution
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; reservation
+`wave30_D01_scoped_memory_independent_review`, same supporting worktree/branch.
+Clean entry and preserved report prefix are
+`62ce970dd7e2b166c4497e009157ee7119976534`: 19818 bytes, 292 lines, SHA256
+`a8a10e5021a925c268f3018769098fe943c7f21e8db6424179679ab6deaadb55`.
+Everything above remains byte-exact, including conditional namespace acceptance
+and historical failed/unknown observations.
+
+**Hold the proposed memory invocation for two bounded supervisor corrections:**
+an existing evidence-directory collision can cause writes into that existing
+directory, and successful reaping/final drain lacks a post-operation check of
+the absolute 30-second child deadline. These are source counterexamples, not
+executed cases or attributions of any historical failure. The namespace wrapper,
+frozen composition and declared negative invocation paths remain unchanged; no
+certain case/body containment blocker was found in those paths.
+
+### Immutable bodies actually read and reconstructed
+
+The sole new author input is immutable
+`0ca9e897da1bd8fa12dc5e361493fefc78d5de1f`:
+`docs/roadmap/local-wave30-d01-fresh-invocation-inputs-plan.md`.
+Its whole body is 416292 bytes / 997 lines, SHA256
+`82635007016c83407980f538c3e3589acd4ff09687837f6131dc44dcc7b12efd`.
+The new append is 262337 bytes / 671 lines and preserves the entire 153955-byte
+`92b5b43131dad13da1af7288934ed595718209ef` prefix. I read all new prose, all 305
+readable-JS lines and all supervisor control/data lines except the enormous
+encoded payload initializer, which was decoded and checked as DATA. That encoded
+line is not a new semantic body review. Reused wrapper/body coverage remains the
+full outer-JS review and explicitly limited nested-source coverage stated above.
+
+| Archived body | Bytes / SHA256 | Independent extent in this continuation |
+| --- | --- | --- |
+| Readable memory logic, fence index 2 | 20272 / `c95b0489cf352720d80ce06b1e8609fc8ca7dba19a18bd43733ef4c4e98d6653` | Complete 305-line body read and Acorn parsed; every case, oracle, emit/error path and VM/negative-invocation boundary reviewed. |
+| Complete assembled child | 156277 / `521e676819aa5b1a696c2b7c33cffa70883b88859475114869b79a234dd9ddb8` | Strict base64 decode of the supervisor AST Constant; equals the entire readable logic with only its two exact JSON string substitutions. It was parsed as source/DATA, never evaluated. |
+| Supervisor, fence index 3 | 226923 / `2a8be4dcad567d8e16a6a3ed1dc1bd0ef845d565e4db0c70be8834abcfad85e9` | Complete 297-line source reviewed with the one encoded initializer represented by its length/hash; Python AST parsing and complete DATA reconstruction. All eleven function definitions, including the nested consuming-wait helper, read. |
+| Unchanged wrapper | 123063 / `17ccb4c036be980696b9fa3b0b6577033be648b1664082e548480bfb12e1b48f` | Whole byte equality to previously reviewed `92b5`; readable 104-line template reread. No substituted mock body. |
+| Unchanged template | 5734 / `04bf0329e3b265d7800f4e7a0e3a023a79dafd0b943176014ec3c77f28147245` | Whole byte equality, same mapping, validators, single seed and construction boundary. |
+| Frozen composition | 113395 / `5e3e5e24fa15bfb4dd28626d5b3368c76d571b77dac6e066edac03b46d261d6c` | Decoded wrapper Literal equals the complete adoption fence at fixed `1a517a1a461b7017c353d37a5e498d2c7cfa7985`; previous body review reused by exact identity. No renewed independent review claim for encoded nested controllers. |
+
+The complete suffix remains 33701 bytes /
+`505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f`.
+The supervisor's only three payload initializers normalize to an 18524-byte source
+with SHA256 `5d100dd8403eb1989e61914a80d6d8a8ae4706fcf27ad23bc937c711570efe50`;
+reinserting the exact SHA/string, decimal length and base64/string reconstructs
+all 226923 bytes. None of the candidate's assembly/source functions was called.
+
+### B1 — failed exclusive mkdir still exposes an existing directory to writes
+
+Supervisor line numbers below refer to the 297-line decoded fence, not the
+Markdown report or the long initializer's character offsets.
+
+At line 189, `evidence=private/("d01_scoped_memory_"+sys.argv[1])` is assigned
+**before** `os.mkdir(evidence,0o700)` succeeds. Directory ownership/mode checks
+are only at lines 190–191. The exception handler at 229 latches the fixed
+`preflight_failed`, but the `finally` branch at 251 treats any non-None `evidence`
+as permission to save stdout/stderr/packet/capture. The later branch at 276 also
+attempts the review save.
+
+Finite witness, derived without creating or opening any fixture: all public
+preconditions pass, but the selected basename already names an empty current-owner
+0700 directory below the current-owner 0700 `deployment-private`. Its five output
+names are absent. `mkdir` raises EEXIST, so no child is spawned and the intended
+exclusive ownership was never acquired. Nevertheless, the `finally` path creates
+`stdout.raw`, `stderr.raw`, `packet.json` and `capture.json` in that existing
+directory; the later path can also create `review.json`. Individual O_EXCL/0600
+file checks do not prove ownership of the directory. The final result still
+refuses, but refusal does not undo those writes. The unchanged prose's promise
+that no existing path is opened for mutation is therefore false on this path.
+
+Smallest prospective reservation: change only this preflight publication of the
+directory reference. Derive a local candidate path, mkdir it exclusively, perform
+the existing lstat/current-owner/0700 checks, then assign it to `evidence`. Keep
+`evidence is None` on creation/verification failure, so the existing capture and
+review guards cannot write there. Do not inspect/reset/delete the collision or
+automatically choose another nonce. Preserve every save mode/cap/receipt, child
+argument, ownership check and wrapper byte. This is a proposed supervisor hunk,
+not an authorized source correction or a filesystem experiment.
+
+### B2 — successful join can cross the child clock without a late refusal
+
+The capture loop checks the absolute `CHILD_DEADLINE` at 207–208. On normal EOF,
+`cleanup` takes its natural-exit path: line 85 checks the clock **before**
+`consume_ready()`, whose `os.waitpid(pid,os.WNOHANG)` is at 71. The returned exact
+terminal status sets `reaped=True` at 76. Line 89 then latches `child_deadline`
+only when `not reaped`. No clock is checked after that successful wait, after
+the group-absence query or after final drain at 233–249. The next acceptance
+clock is the later 35-second outer clock at 280–282 and 296.
+
+Finite source-level schedule witness: input is completely sent and both streams
+reach EOF just before elapsed 30 seconds, with no prior failure. The natural-exit
+loop enters at elapsed 29.999 seconds. The exact-child nonblocking wait returns
+an exited status/code0 at elapsed 30.001 seconds after scheduling/syscall delay;
+the code learns only the returned status, not its occurrence time. `reaped=True`
+skips line 89's refusal, the group is absent, final drain/caps/packet are valid,
+and the fsynced captures/review finish before 35 seconds. A child-local elapsed
+value below 30000 is compatible with this schedule because its clock starts
+after parent preflight. The current source can return accepted/code0 despite
+the parent receiving its joined observation after its absolute child deadline.
+WNOHANG is not claimed to intentionally wait, and this is not an observed slow
+syscall or a kernel-I/O quota claim. A delayed observation needs an explicit
+late check to support the stated bound.
+
+Smallest prospective reservation: after joined cleanup and bounded final drain,
+before capture retention/grade, check `time.monotonic_ns()>=CHILD_DEADLINE` and
+latch the existing fixed `child_deadline`. Keep the sticky first-failure rule,
+32-second failed-child cleanup allowance, 35-second final clock and numeric-exit
+check. Do not move destructive signaling after reap, change thresholds or accept
+an inferred earlier exit time. This conservatively refuses a late successful
+observation even if the child might have exited earlier. No new native probe or
+timing test was run or is authorized by this report.
+
+### Case and privacy boundaries that survive inspection
+
+All nine case groups and all their finite variants were read. The independent
+expected-path arithmetic is a maximum of 300 checks: 15 source checks, final
+one, and group bounds 5/98/153/5/4/6/7/3/3. It is not a result or a fabricated
+observed count. CHECK_CAP512 and AST visit cap100000 remain independent bounds.
+
+| Group | Exact source-reviewed boundary |
+| --- | --- |
+| `fresh_globals_untouched` | Synthetic host Maps retain old canonical sentinel references; all seven fresh physical loads, zero factory writes, one explicit public release write, other six absent. No real host/global read. |
+| `occupied_all_seven_no_write` | Fourteen fixtures (each key with null/non-null) assert all seven reads, fixed refusal and zero writes both for the factory and negative invoke. No seed/constructor is reached. |
+| `closed_keys_and_input_bounds` | Eight unknown keys, closed observation keys, nine malformed nonces, 31 malformed releases, five null interface/tools fields and one extra input field refuse before the relevant host access. |
+| `direct_reference_and_state` | Synthetic object/function values and load/store references preserve identity; mutating the same object is visible through the same mapping. This is not a host serialization implementation or positive invocation. |
+| `nonce_collision_no_reuse` | Occupied release refuses without a new write; another nonce stays separate. Controlled seventh-read race intentionally observes competing DATA, demonstrating that the seven reads are not atomic ownership. |
+| `private_state_separation` | Only synthetic scoped seed/password values are set/cleared; distinct nonce and unscoped references remain separate. It exercises no real private custody. |
+| `durable_readback_false_unreached` | A second synthetic VM reads retained original profile-shaped objects by reference with the same nonce, fixed refusal label and original false/null proof fields; wrong schema/null refuses and absent other nonce stays undefined. |
+| `immutable_source_and_boundary` | Source hashes, suffix, copied validator and constructor argument/order checks stay exact. Positive release validation does not invoke the frozen body. |
+| `finite_privacy_failure` | A synthetic sentinel-bearing host error is caught without copying its error/value into the finite packet, tool callback or public sink. |
+
+Independent Acorn inventory found exactly five `api.d01InvokeFresh` sites at
+readable-logic lines 205/221/233/236/239, at most 60 certified negative calls.
+The original wrapper rejects each before its public release store/constructor:
+occupied keys at fresh-open, malformed nonce at its guard, and release/interface/
+extra-field errors at the initial guard. There is no valid invoke, direct frozen
+call/eval or new AsyncFunction in the memory logic. Future VM evaluation is
+limited to unchanged wrapper declarations/read-only API extraction, with string
+and wasm code generation disabled. That future VM has not run in this review.
+
+The two execution counters initialize to0 and have no write sites. They are
+**source-backed expected zeros, not runtime instrumentation of a constructor or
+body**. Zero containment rests on the hash-bound rejection paths and VM defense,
+not those counters alone. Synthetic tool/sink counters increment only if their
+denial callbacks are reached. The original observation profiles independently
+decode to the exact 12/18/19-field AST objects; first-event/whole60 and existing
+journey/resource flags remain false and exit/absence remain null. No pass flags
+are synthesized for an unreached original phase.
+
+The child packet has finite case names/counts/booleans/bindings and fixed failure
+labels. Errors are not copied, counters are not clipped, and sentinel/cap failure
+emits only the separate fixed privacy-refusal packet. Parent duplicate-key/type/
+bool-vs-int/schema/binding/order/count validation stays closed; malformed/failed
+packets cannot pass. No raw child output/error, dynamic filename, PID, password,
+host state or nonce is included in the parent's public result. Private captures
+are proposed exclusive0600 files below a proposed private0700 directory; B1 is
+why that directory's acquired ownership must gate their creation.
+
+### Join, retention and final-result ordering
+
+Exactly one Popen at supervisor 198–201, with start_new_session and the closed
+PATH/LANG/LC_ALL environment. Default SIGCHLD is set at 195 before spawning;
+there is no candidate poll/wait/communicate or other consuming reaper. Only exact
+waitpid plus terminal status yields numeric code/reaped. WNOWAIT/exact live
+group identity holds the unreaped sole leader before the one SIGKILL site109;
+non-EPERM waitid errors/invalid identity disable destruction. EPERM does not
+invent an exit or authorize a signal by itself. Lack of identity permits only
+the exact-child consuming-wait attempt. No destructive signal follows consuming
+reap. The later signal-zero existence query at123 is non-delivering, and any
+existing/reused/unqueryable group refuses rather than being killed after reap.
+`signals_after_reap:0` describes this source order, not a kernel tracer.
+
+Normal EOF gets the natural-exit wait; it is not equated with process exit.
+Both capture and final drain set EOF flags, cap actual bytes and never turn a
+missing status into0. Partial send, missing EOF, overflow, unknown join/absence
+or failed retention refuses. Limits remain stdout32768/stderr16384, writes16384,
+reads4096 and final drain13 chunks per stream, child30/cleanup32/outer35 and a
+sampled8GiB floor every2s after the 8.5GiB launch condition. These are bounded
+source policies with scheduling/filesystem limits, not measured resource use or
+hard kernel quotas. B2 closes the missing successful-join late-check boundary.
+
+Full capped output bytes, numeric wait status, EOF/send/cap/ownership and finite
+diagnostics are saved/fsynced/closed at254–265 **before** `grade_packet` at270.
+The proposed review file records a pre-final-clock candidate only. Its last save
+at277 completes before the final clock at280, with no evidence write afterwards.
+The one nonblocking public write is capped4096; actual return still rechecks the
+outer clock at296. Thus accepted:true by itself is insufficient without the true
+parent code0; a partial/nonwritten output or late return refuses. If evidence
+IO stalls, the source cannot guarantee physical completion but cannot grade a
+retention exception into acceptance. Original capture/review remain separate
+observations, not a post-final-clock proof.
+
+### Actual static checks and bounded handoff
+
+Actual checks in this continuation are fixed Git reads, full new prose/logic/
+supervisor review, strict base64 and two-string whole-child construction, Python
+AST/Constant inspection and complete supervisor normalization/inverse, and
+installed internal Acorn parsing/traversal of DATA. Complete readable logic,
+wrapper and frozen composition parse; new logic has 4192 traversed objects.
+Independent original-profile comparison and five-call/nine-group/counter-write
+inventories pass. No candidate import, VM, AsyncFunction, source function,
+controller, case or child was evaluated/executed. No static checker failed in
+this continuation; the author's retained parser-site-count/docs failures remain
+attributed to its own report, and the previous independent check failures above
+remain unchanged.
+
+Final sole-report prefix/UTF-8/fence/relative-link/hash/scope and Git whitespace
+checks accompany this append-only commit. The new source-reference path exists
+at the reviewed immutable object but is absent in this unaligned supporting
+tree; it is recorded as a pinned path, with no broken new local link or file
+import. No broad docs/hygiene script, target
+inventory, installed binary/version/library rehash, environment/secret/nonce
+inspection or runtime preflight was attempted. The source's selected Node pin
+and owner workspace are future prerequisites, not observed readiness here.
+
+Root can reserve only the two supervisor hunks and exact whole-source inverse/
+static review next; this report grants no edit or invocation permission. All
+wrapper, old body, case/oracle/privacy/ownership/signal/cap constants remain
+protected. No runtime slot acquired/released, worker contacted, task/primary/
+status changed, source aligned, resource created/deleted, or main merged/pushed.
+The historical unused pre-START refusal still supplies no first-event/whole60/
+confidential-app journey or original D01 credit. Real fixture/browser/Driver
+remains HELD; root alone owns later source review, exact memory release and
+original disposition. Existing receipt/header/PAM/Group/nonrenewed60s contracts
+and RiWork Cua.ai Driver-only future desktop preference are preserved.
