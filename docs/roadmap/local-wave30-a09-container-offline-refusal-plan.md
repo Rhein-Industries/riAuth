@@ -2026,3 +2026,126 @@ The reader's existence, dependency/build/export compatibility, output transfer,
 reader-alone physical preservation and complete refused-open logical preservation
 remain unmeasured prerequisites. Root-reported PG success remains separate from
 this container design; acceptance/status/integration/publication are root-owned.
+
+## 2026-10-03 — exact approved reader source materialization, runtime HELD
+
+Project 891e7443-8dac-4c1b-897f-9e53cb59c7ee; original A09 task
+506e3979-a590-4af3-8fa8-ee90d3a517f2; existing Sol5 WT
+a1303b57-4a34-487e-9c63-a841f05b51a0. Reservation
+wave30_A09_complete_logical_reader_source_implementation authorizes SOURCE ONLY.
+This appendix preserves the COMPLETE c5515afb096a6bb7499e6c37cc4db46af2372e76
+123,022-byte report prefix, SHA256
+96f8f9c1a2ae6da9cbf4b046e26ef355166e329f11b25215e7ce1994a5ceb8e0.
+All preceding container failures/UNKNOWN logical/component causes, dated
+unexecuted candidates and separate root-reported PG success remain historical
+and are not reassigned to this source implementation.
+
+### Exact published baseline and own-history disposition
+
+Before materialization, immutable published
+ffda21202dc60021fc955078bbc9e4585444a7d0 helper was read and compared in FULL to
+7869b96453c13fdec5af35fd5cf661849d417f36. Both are exactly99,566 bytes/SHA256
+c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837,
+Git blob45af8123aa3055e7dffa7c56d6e1eefcd628bb4d, mode100644.
+Published source includes the unchanged complete offline/direct/config/
+platform refusal and handoff bodies. There is no unexpected published mismatch.
+
+Own clean c551 branch has NO tracked or filesystem helper at that path.
+The explicit full-candidate authority therefore adds the reviewed complete
+helper as one mode100644 file. No historic helper is overwritten or reset.
+No baseline-only preparation, branch alignment/merge, workflow, probe,
+Dockerfile, manifest, product or other old-file import is performed. Existing
+own history and protected source remain unchanged. Root integration must port
+this exact reviewed helper onto its existing published baseline; the source
+commit is an added file in this older isolated branch, not a merge of a held stack.
+
+### Immutable source commit and exact target
+
+Source commit: ff056428e1ab2655358088cf2fbb5c812aa067af.
+Only path: scripts/check-local-container-cohort.py.
+Git blob: 1859d4d61a05565ec68dfe229f33e6111518a024.
+119,193 bytes; SHA256
+1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67.
+
+The source was reconstructed ONLY from c551's uniquely delimited Archive A
+zero-context diff applied to the checked7869/published baseline. Archive diff
+length21,274/SHA256
+bc82bf6446fdd99d0e0726e5f915ee0aa560b56ad4a24c402c61abcc56c35628
+was verified BEFORE writing. Exact materialized target equals the reviewed
+candidate, with no design/code adjustment. Applying that exact diff backward
+returns the ENTIRE99,566-byte c5ede631 baseline, not a sampled span or AST alone.
+The c551 report remained byte-exact during the one-helper source commit.
+
+Existing changed methods are ONLY __init__, direct_refusal, config_refusals and
+platform_refusal_fixture. Eight new methods are build_reader, reader_offline,
+reader_io, reader_file_identity, parse_reader_snapshot, logical_snapshot,
+preservation_before and preservation_after. main adds only the reader build
+between build_images and fixture_gate. All48 unaffected existing Cohort methods
+matched source spans INCLUDING decorators and normalized ASTs exactly.
+Top-level names/imports/constants/other executable bodies are unchanged;
+only Cohort/main differ under complete module comparison.
+
+Read-only PLAN/handoff activation config/key assertions, Docker28 strict image
+archive checks, five native products/transport/features/ELF pinning, original
+public refusal/marker checks, HTTP/CLI/E-P-E actions, owner/PID/group/builder/
+volume tracking, resource sampler/deadlines, cleanup/full reap and always-upload
+roles stay protected. New readonly config-plan/preflight physical guards are
+exactly as approved, in addition to the protected handoff oracle.
+
+The reader requires literal snapshot, only the exact ignored accepted target,
+original valid config, stopped owner and fresh volume identity, UID10001 and
+private caller-created output, capped/nofollow descriptor-bound observation.
+Each reader MUST prove all3 physical files unchanged by itself. Refused open
+requires EVERY row key/fingerprint, complete metadata/counts and exact original
+config/key/candidate bytes, without shared() exclusions, format2 or mutation
+actions. Physical redb equality remains separately reported; no harmlessness
+or logical success is inferred from physical change.
+
+Root explicitly approved the additive local-store-reader-ARCH.bin plus fixed
+public source/build provenance artifact allowlist. This contains only product
+code/provenance; raw row/key/config/node-security metadata, private snapshots,
+paths/env/protocol bodies are not uploaded. That approval is source authority,
+not evidence of an existing reader executable. No binary, artifact, snapshot
+or reader provenance runtime output has been produced in this session.
+
+### Actual static checks, hygiene and limits
+
+- Published/7869 full-byte equality and baseline identity passed before write.
+- Full report/archive digest and uniquely bounded diff extraction passed.
+- Whole target SHA/length matched the approved119193/1ac9 candidate.
+- Complete forward and inverse hunk checks passed, including exact removed
+  lines and hunk counts; inverse is the whole baseline byte sequence.
+- All48 protected function spans/decorators and ASTs passed; changed/new
+  methods/module names matched only the approved scope.
+- Python ast.parse and compile(source, filename, 'exec', dont_inherit=True)
+  succeeded. The latter created only a syntax-checked code object in memory:
+  it was NEVER executed/evaluated/imported; no pyc/harness/source-function run.
+- Exclusive O_EXCL/O_NOFOLLOW file creation materialized the authorized target
+  as mode100644; its bytes and staged blob were checked before source commit.
+- python3 scripts/check-docs.py exited0, Markdown links/build-directory layout.
+- git diff --check and git diff --cached --check exited0.
+- Staged source scope was exactly one helper; report was still unchanged.
+  Source commit completed, and own branch was clean before this evidence append.
+
+One initial tool wrapper was rejected by JavaScript syntax parsing before any
+shell command launched; it made no file change or measurement. Correcting that
+tool-call wrapper did not change candidate source or run a helper. All completed
+source/static checks above succeeded. No native/Cargo/Docker/PG/test failure or
+runtime result is claimed from this phase.
+
+This appendix is the separate report-only evidence commit. Final docs,
+whitespace, exact c551-prefix, source-digest and two-commit scope checks follow.
+No helper/probe/functions/controller/Dockerfile/build/native/toolsetup,
+VM/Node/memory case, Cargo/Rust compiler, Docker/PG/SQL/HTTP/service, query/download/
+dispatch or provider was run. No private row/key/archive/binary body was read,
+no deletion, other-worker contact, new worker/task/WT/shell, main/push/status
+or branch alignment occurred. No runtime lane was acquired/released.
+ALL runtime remains HELD for independent/root source review and a separately
+reserved serialized X64 actual gate.
+
+Compile/dependency/linkage/export/ownership compatibility, actual reader-alone
+physical preservation and COMPLETE refused-open logical equality remain
+unmeasured. The source change neither resolves the prior observed physical
+failure nor proves container E-P-E/shared/release/tenant behavior. Root alone
+publishes, reserves runtime and interprets original A09/status. Closed
+I02/I10/R05/W02/W05 rows remain closed.

@@ -25,3 +25,17 @@ are not public artifacts. BuildKit named context/export/copy/runtime linkage,
 reader physical preservation and complete container semantic equality are
 unmeasured. All build/dispatch/runtime remains held until reviewed source,
 immutable publication and a fresh serialized release. Original A09 remains open.
+
+
+## Exact source materialization received
+
+Root fully read all materialization evidence at
+0747c84ef68e8cad0b42b7b67a542e4af1929d42 and checked source
+ff056428e1ab2655358088cf2fbb5c812aa067af. The support branch adds the file
+because its old checkout lacked this helper; root ports only exact reviewed
+119193-byte helper onto the existing published99566-byte baseline. Its full
+bytes equal root's independent diff reconstruction; Python parsing succeeds
+without import/execution. The report appends after the entire123022-byte c551
+source design. Independent source review remains pending; all actual hosted
+build, reader, container, download and dispatch are held. No old support branch
+history or unrelated product file is imported.

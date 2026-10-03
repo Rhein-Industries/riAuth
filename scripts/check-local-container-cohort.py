@@ -252,7 +252,7 @@ class Cohort:
                         "limits": [self.selected["cohort_limit"],
                                    "resource-only Dockerfile variant",
                                    "format3 enforcement through pinned public entrypoints",
-                                   "no raw agreement or credential-row probe",
+                                   "private complete logical snapshot; no raw rows in evidence",
                                    "b619 native notices were later found stale; retained, not regenerated",
                                    "sampling is not a hard quota",
                                    "no registry/tag/release/tenant/device claim"]}
@@ -1245,6 +1245,316 @@ class Cohort:
             code, output, _ = self.command("native-tool-version", [product, "--version"])
             require(code == 0 and output.decode().split() == [product.name, self.version], "cohort_tool_version")
 
+    def build_reader(self):
+        """One separate source-pinned release/no-run target; no product image change."""
+        self.phase = "reader-build"
+        self.capacity(30 * GiB)
+        source = self.args.product / "tests/edition_transition_store_probe.rs"
+        require(not source.is_symlink() and source.is_file()
+                and source.stat().st_size == 5722
+                and file_hash(source) == "da486cb8cd7c9d6dfcd78da2704e27688b43a8dd40c7fa58e5b4574f678aed32",
+                "reader_source_identity")
+        inputs = {
+            "Cargo.toml": "58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8",
+            "Cargo.lock": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426",
+            "rust-toolchain.toml": "887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167",
+            "Dockerfile": DOCKERFILE_HASH,
+            ".dockerignore": "4fbd9472316442bdd8b72e268feb1140701e87ac28dd02295c687b6d379eb093",
+            "tests/edition_transition_store_probe.rs": file_hash(source),
+        }
+        for relative, expected in inputs.items():
+            require(file_hash(self.args.product / relative) == expected, "reader_input_identity")
+        context = self.root / "reader-test"
+        context.mkdir(mode=0o700)
+        private_write(context / source.name, source.read_bytes())
+        # Main .dockerignore stays unchanged. This named context contains exactly one pinned file.
+        require(list(context.iterdir()) == [context / source.name], "reader_context_allowlist")
+        stage = b"""
+FROM build AS reader-build
+COPY --from=reader-test /edition_transition_store_probe.rs /build/tests/edition_transition_store_probe.rs
+RUN set -eu; test "$RIAUTH_EDITION" = platform; \
+    for file in /build/target/release/deps/edition_transition_store_probe-*; do \
+      test ! -L "$file"; if test -f "$file" && test -x "$file"; then exit 2; fi; \
+    done; \
+    CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_RELEASE_DEBUG=0 \
+      cargo test --release --locked --no-default-features --features platform,test-support --test edition_transition_store_probe --no-run; \
+    found=0; picked=; \
+    for file in /build/target/release/deps/edition_transition_store_probe-*; do \
+      test ! -L "$file"; \
+      if test -f "$file" && test -x "$file"; then found=$((found + 1)); picked="$file"; fi; \
+    done; \
+    test "$found" -eq 1; mkdir -m 0700 /reader-output; \
+    cp -- "$picked" /reader-output/riauth-store-probe; chmod 0755 /reader-output/riauth-store-probe
+
+FROM scratch AS reader-export
+COPY --from=reader-build /reader-output/riauth-store-probe /riauth-store-probe
+"""
+        recipe = self.root / "Dockerfile.reader"
+        private_write(recipe, self.recipe.read_bytes() + stage)
+        exported = self.root / "reader-export"
+        exported.mkdir(mode=0o700)
+        code, _, _ = self.docker("build-store-reader", "buildx", "build", "--builder", self.builder,
+            "--platform", self.selected["platform"], "--progress", "plain", "--file", recipe,
+            "--target", "reader-export", "--build-context", "reader-test=" + str(context),
+            "--build-arg", "RIAUTH_EDITION=platform",
+            "--output", "type=local,dest=" + str(exported), self.args.product,
+            timeout=1800)
+        require(code == 0 and list(exported.iterdir()) == [exported / "riauth-store-probe"],
+                "reader_build_or_export_failed")
+        binary = exported / "riauth-store-probe"
+        metadata = binary.lstat()
+        require(stat.S_ISREG(metadata.st_mode) and not binary.is_symlink()
+                and metadata.st_nlink == 1 and metadata.st_uid == os.getuid()
+                and 0 < metadata.st_size <= 128 * 1024**2, "reader_artifact_shape")
+        # Public source artifact; only the explicitly bound file is accessible to UID10001.
+        binary.chmod(0o755)
+        self.elf(binary, self.selected["elf_machine"])
+        self.reader = binary
+        self.reader_hash = file_hash(binary)
+        retained = self.evidence / ("local-store-reader-" + self.selected["architecture"] + ".bin")
+        private_write(retained, binary.read_bytes())
+        require(file_hash(retained) == self.reader_hash
+                and stat.S_IMODE(retained.stat().st_mode) == 0o600, "reader_retention_identity")
+        self.receipt["reader"] = {
+            "schema": "riauth.local-snapshot-reader/v1", "source": self.selected["source"],
+            "source_tree": self.selected["tree"], "inputs": inputs,
+            "architecture": self.selected["architecture"], "target": self.selected["target"],
+            "elf_machine": self.selected["elf_machine"], "features": ["platform", "test-support"],
+            "profile": "release", "locked": True, "default_features": False, "build_jobs": 1,
+            "incremental": 0, "debug": 0, "compile_no_run": True,
+            "test_target": "edition_transition_store_probe", "recipe_sha256": file_hash(recipe),
+            "binary_sha256": self.reader_hash, "binary_bytes": metadata.st_size,
+            "retained_artifact": retained.name, "native_transport_member": False,
+            "action": "snapshot", "verified_physical_observations": 0,
+        }
+        for relative, expected in inputs.items():
+            require(file_hash(self.args.product / relative) == expected, "reader_input_changed")
+        require(file_hash(context / source.name) == inputs["tests/edition_transition_store_probe.rs"],
+                "reader_context_changed")
+        self.save()
+
+    def reader_offline(self, fixture):
+        require(fixture["app"] is None, "logical_reader_requires_stopped_owner")
+        volumes = {fixture["config_volume"], fixture["data_volume"]}
+        for volume in volumes:
+            self.confirm_volume(volume)  # Existing owner/CreatedAt/Mountpoint identity.
+        for name in list(self.containers):
+            item = self.confirm_container(name)
+            if any(m["Type"] == "volume" and m["Name"] in volumes for m in item["Mounts"]):
+                require(not item["State"]["Running"], "logical_reader_competing_owned_process")
+
+    def reader_io(self, fixture, script):
+        self.reader_offline(fixture)
+        code, out, _ = self.tool(self.images["platform"], "/bin/sh", ["-ceu", script],
+            mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1]], timeout=20)
+        require(code == 0, "private_reader_io_failed")
+        return out
+
+    def reader_file_identity(self, fixture, filename, empty=False):
+        require(re.fullmatch(r"/data/\.a09-reader-[0-9a-f]{32}/snapshot\.json", filename) is not None,
+                "reader_closed_output_path")
+        out = self.reader_io(fixture, "stat -c '%u:%g:%a:%i:%s:%h:%f' " + filename)
+        fields = out.strip().split(b":")
+        require(len(fields) == 7 and all(re.fullmatch(rb"[0-9]+", f) for f in fields[:6])
+                and re.fullmatch(rb"[0-9a-f]+", fields[6]) is not None, "reader_output_stat")
+        uid, gid, mode, inode, size, links = (int(f) for f in fields[:6])
+        require(uid == gid == 10001 and mode == 600 and inode > 0 and links == 1
+                and stat.S_ISREG(int(fields[6], 16)) and 0 <= size <= LOG_CAP
+                and ((size == 0) if empty else (size > 0)), "private_reader_output_shape")
+        return uid, gid, mode, inode, links
+
+    @staticmethod
+    def parse_reader_snapshot(data):
+        require(0 < len(data) <= LOG_CAP, "logical_snapshot_input_cap")
+
+        def pairs(items):
+            result = {}
+            for key, value in items:
+                require(key not in result, "logical_snapshot_duplicate_key")
+                result[key] = value
+            return result
+
+        def integer(text):
+            require(len(text) <= 20, "logical_snapshot_integer_cap")
+            return int(text)
+
+        def no_number(text):
+            raise Refusal("logical_snapshot_unsupported_number")
+
+        value = json.loads(data, object_pairs_hook=pairs, parse_int=integer,
+                           parse_float=no_number, parse_constant=no_number)
+        pending, visited = [(value, 0)], 0
+        while pending:
+            item, depth = pending.pop()
+            visited += 1
+            require(depth <= 32 and visited <= 100000, "logical_snapshot_structure_cap")
+            if type(item) is dict:
+                require(all(type(key) is str and len(key.encode("utf-8")) <= 4096 for key in item),
+                        "logical_snapshot_key_cap")
+                pending.extend((child, depth + 1) for child in item.values())
+            elif type(item) is list:
+                pending.extend((child, depth + 1) for child in item)
+            elif type(item) is str:
+                require(len(item.encode("utf-8")) <= 1024**2, "logical_snapshot_value_cap")
+            else:
+                require(item is None or type(item) in (int, bool), "logical_snapshot_value_type")
+        require(type(value) is dict and set(value) == {"row_hashes", "metadata", "counts"},
+                "logical_snapshot_schema")
+        rows, metadata, counts = value["row_hashes"], value["metadata"], value["counts"]
+        require(type(rows) is dict and 0 < len(rows) <= 100000
+                and all(type(v) is str and re.fullmatch(r"[A-Za-z0-9_-]{43}", v) for v in rows.values()),
+                "logical_snapshot_rows")
+        require(type(metadata) is dict and set(metadata) ==
+                {"issuer", "node_security", "version_activation", "edition_provenance", "revision"},
+                "logical_snapshot_metadata")
+        require(type(counts) is dict and set(counts) ==
+                {"identities", "credentials", "grants", "revocations"}
+                and all(type(v) is int and 0 <= v <= 1000000 for v in counts.values()),
+                "logical_snapshot_counts")
+        return value
+
+    def logical_snapshot(self, fixture):
+        self.reader_offline(fixture)
+        require(file_hash(self.reader) == self.reader_hash, "reader_binary_changed")
+        before_physical = self.offline_hashes(fixture)
+        directory = "/data/.a09-reader-" + uuid.uuid4().hex
+        filename = directory + "/snapshot.json"
+        self.reader_io(fixture, "umask 077; mkdir -m 0700 " + directory
+                       + "; set -C; : > " + filename)
+        initial = self.reader_file_identity(fixture, filename, empty=True)
+        host_directory = self.root / ("logical-observation-" + uuid.uuid4().hex)
+        host_directory.mkdir(mode=0o700)
+        host_identity = host_directory.stat()
+        destination = host_directory / "snapshot.json"
+        require(not destination.exists() and not destination.is_symlink(), "reader_copy_destination_exists")
+        mount = "type=bind,src=" + str(self.reader) + ",dst=/cohort/riauth-store-probe,readonly"
+        name = self.create_container(self.images["platform"], "snapshot-reader", "/usr/bin/env",
+            ["-i", "PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/tmp", "LANG=C.UTF-8",
+             "LC_ALL=C.UTF-8", "RUST_BACKTRACE=0",
+             "RIAUTH_PROBE_CONFIG=/config/riauth.toml", "RIAUTH_PROBE_ACTION=snapshot",
+             "RIAUTH_PROBE_OUTPUT=" + filename, "RIAUTH_PROBE_AGREEMENT=/tmp/unused-agreement",
+             "/cohort/riauth-store-probe", "--exact", "isolated_store_probe", "--ignored",
+             "--test-threads=1"],
+            mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1], mount])
+        try:
+            result = self.docker("snapshot-reader", "container", "start", "--attach", "--interactive",
+                                 name, timeout=90)
+            state = self.confirm_container(name)["State"]
+            require(not state["Running"] and result[0] == state["ExitCode"] == 0,
+                    "snapshot_reader_failed")
+            # fs::write truncates the caller-created file; it must not replace its inode.
+            require(self.reader_file_identity(fixture, filename) == initial,
+                    "reader_output_identity_changed")
+            # No --follow-link; copy only the known regular file from the exited owner.
+            # Body is file-to-file, never CLI/stdout/public evidence; raw tool errors stay private.
+            code, _, _ = self.docker("copy-logical-snapshot", "container", "cp",
+                                    name + ":" + filename, destination, timeout=20)
+            require(code == 0 and self.reader_file_identity(fixture, filename) == initial,
+                    "reader_output_copy_failed")
+            parent = host_directory.lstat()
+            require(stat.S_ISDIR(parent.st_mode) and parent.st_uid == os.getuid()
+                    and stat.S_IMODE(parent.st_mode) == 0o700
+                    and (parent.st_dev, parent.st_ino) ==
+                    (host_identity.st_dev, host_identity.st_ino), "reader_copy_parent_changed")
+            observed = destination.lstat()
+            require(stat.S_ISREG(observed.st_mode) and observed.st_uid == os.getuid()
+                    and observed.st_gid == os.getgid()
+                    and stat.S_IMODE(observed.st_mode) == 0o600 and observed.st_nlink == 1
+                    and 0 < observed.st_size <= LOG_CAP, "private_reader_copy_shape")
+            fd = os.open(destination, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                opened = os.fstat(fd)
+                require((opened.st_dev, opened.st_ino) == (observed.st_dev, observed.st_ino),
+                        "reader_copy_open_identity")
+                data = bytearray()
+                while block := os.read(fd, 65536):
+                    self.check_budget()
+                    data.extend(block)
+                    require(len(data) <= LOG_CAP, "reader_copy_input_cap")
+                final = os.fstat(fd)
+                current = destination.lstat()
+                parent_final = host_directory.lstat()
+                require(all(getattr(parent_final, field) == getattr(parent, field)
+                            for field in ("st_dev", "st_ino", "st_uid", "st_gid", "st_mode")),
+                        "reader_copy_parent_read_identity")
+                require(all(getattr(state, field) == getattr(observed, field)
+                            for state in (final, current) for field in
+                            ("st_dev", "st_ino", "st_uid", "st_gid", "st_mode", "st_nlink", "st_size"))
+                        and len(data) == observed.st_size, "reader_copy_read_identity")
+            finally:
+                os.close(fd)
+            value = self.parse_reader_snapshot(bytes(data))
+        finally:
+            self.remove_container(name, cleanup=True)
+        after_physical = self.offline_hashes(fixture)
+        self.receipt["reader"]["last_physical_observation"] = {
+            "config_equal": before_physical.splitlines()[0] == after_physical.splitlines()[0],
+            "key_equal": before_physical.splitlines()[1] == after_physical.splitlines()[1],
+            "redb_equal": before_physical.splitlines()[2] == after_physical.splitlines()[2],
+        }
+        require(after_physical == before_physical, "reader_changed_physical_state")
+        self.receipt["reader"]["verified_physical_observations"] += 1
+        return value
+
+    def preservation_before(self, fixture, config="riauth.toml"):
+        self.reader_offline(fixture)
+        require(config in {"riauth.toml", "candidate-issuer.toml", "candidate-policy.toml",
+                           "candidate-rate.toml"}, "refusal_closed_config")
+        directory = "/data/.a09-preservation-" + uuid.uuid4().hex
+        # Exact private byte copies; nothing from config/key is emitted to stdout.
+        script = "umask 077; mkdir -m 0700 " + directory + "; set -C; "
+        for source, name in (("/config/riauth.toml", "config"), ("/config/database.key", "key"),
+                             ("/config/" + config, "candidate")):
+            script += "test -f " + source + "; test ! -L " + source + "; cat " + source
+            script += " > " + directory + "/" + name + "; "
+        self.reader_io(fixture, script)
+        modes = self.reader_io(fixture, "stat -c '%u:%g:%a:%h:%F' "
+            + directory + "/config " + directory + "/key " + directory + "/candidate")
+        require(modes.splitlines() == [b"10001:10001:600:1:regular file"] * 3,
+                "private_preservation_copy_modes")
+        logical = self.logical_snapshot(fixture)
+        return {"directory": directory, "config": config, "logical": logical,
+                "physical": self.offline_hashes(fixture)}
+
+    def preservation_after(self, fixture, before, failure):
+        directory, config = before["directory"], before["config"]
+        require(re.fullmatch(r"/data/\.a09-preservation-[0-9a-f]{32}", directory) is not None
+                and config in {"riauth.toml", "candidate-issuer.toml", "candidate-policy.toml",
+                               "candidate-rate.toml"}, "preservation_closed_paths")
+        # No key/config values in transport: only three fixed cmp exit booleans.
+        script = ""
+        for source, name in (("/config/riauth.toml", "config"), ("/config/database.key", "key"),
+                             ("/config/" + config, "candidate")):
+            script += "if cmp -s " + source + " " + directory + "/" + name
+            script += "; then printf '1'; else printf '0'; fi; "
+        exact = self.reader_io(fixture, script)
+        require(re.fullmatch(rb"[01]{3}", exact) is not None, "preservation_cmp_shape")
+        physical = self.offline_hashes(fixture)
+        a, b = before["logical"], self.logical_snapshot(fixture)
+        rows_a, rows_b = a["row_hashes"], b["row_hashes"]
+        added, removed = len(rows_b.keys() - rows_a.keys()), len(rows_a.keys() - rows_b.keys())
+        changed = sum(rows_a[key] != rows_b[key] for key in rows_a.keys() & rows_b.keys())
+        fields_a, fields_b = before["physical"].splitlines(), physical.splitlines()
+        require(len(fields_a) == len(fields_b) == 3
+                and all(re.fullmatch(rb"[0-9a-f]{64}  /(?:config/riauth\.toml|config/database\.key|data/riauth\.redb)", v)
+                        for v in fields_a + fields_b), "preservation_physical_shape")
+        packet = {"schema": "riauth.offline-preservation/v1",
+            "config_equal": exact[0:1] == b"1", "key_equal": exact[1:2] == b"1",
+            "candidate_config_equal": exact[2:3] == b"1",
+            "physical_config_equal": fields_a[0] == fields_b[0],
+            "physical_key_equal": fields_a[1] == fields_b[1],
+            "physical_redb_equal": fields_a[2] == fields_b[2],
+            "row_hashes_equal": rows_a == rows_b,
+            "metadata_equal": json_bytes(a["metadata"]) == json_bytes(b["metadata"]),
+            "counts_equal": a["counts"] == b["counts"],
+            "added": added, "removed": removed, "changed": changed}
+        packets = self.receipt.setdefault("offline_preservation", [])
+        require(len(packets) < 32, "preservation_packet_cap")
+        packets.append(packet)
+        require(exact == b"111" and packet["physical_config_equal"] and packet["physical_key_equal"]
+                and packet["row_hashes_equal"] and packet["metadata_equal"] and packet["counts_equal"],
+                failure)
+
     def maintenance(self, fixture, edition, command, *, config="riauth.toml", input_data=None):
         mount = "type=bind,src=" + str(self.bins[(edition, "riauth-maintenance")])
         mount += ",dst=/cohort/riauth-maintenance,readonly"
@@ -1420,7 +1730,7 @@ class Cohort:
 
     def direct_refusal(self, fixture, edition, config="riauth.toml", marker=None):
         require(fixture["app"] is None, "direct_refusal_requires_stopped_writer")
-        before = self.offline_hashes(fixture)
+        before = self.preservation_before(fixture, config)
         code, out, _ = self.tool(self.images[edition], "/usr/local/bin/riauth",
             ["--config", "/config/" + config, "--json", "serve"],
             mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1]], timeout=20)
@@ -1428,7 +1738,7 @@ class Cohort:
         require(code == 2 and envelope["ok"] is False, "direct_open_refusal")
         if marker is not None:
             require(marker in envelope["error"]["message"], "specific_direct_refusal")
-        require(self.offline_hashes(fixture) == before, "refused_open_changed_store_or_config")
+        self.preservation_after(fixture, before, "refused_open_changed_store_or_config")
 
     def plan(self, fixture, target, *, config="riauth.toml", expected=0):
         code, out, _ = self.maintenance(fixture, "platform", ["transition-plan", "--target", target],
@@ -1448,7 +1758,7 @@ class Cohort:
             ("policy", "meta/node_security", "Configured token lifetimes or password policy do not match the initialized instance"),
             ("rate", "meta/node_security", "Configured HTTP rate limit for login"),
         )
-        before = self.offline_hashes(fixture)
+        before = self.preservation_before(fixture)
         for name, resource, reason in specifications:
             text = original.decode()
             wanted = json.loads(json.dumps(parsed))
@@ -1473,11 +1783,13 @@ class Cohort:
             # Closed filenames above; exclusive creation as the same unprivileged owner.
             self.shell(fixture, "umask 077; set -C; cat > /config/" + filename,
                        input_data=text.encode())
+            plan_before = self.offline_hashes(fixture)
             report = self.plan(fixture, "platform", config=filename, expected=5)
             require(any(b["resource"] == resource and reason in b["reason"] for b in report["blockers"]),
                     "specific_config_plan_blocker")
+            require(self.offline_hashes(fixture) == plan_before, "read_only_config_plan_changed_store")
             self.direct_refusal(fixture, "essentials", config=filename, marker=reason)
-            require(self.offline_hashes(fixture) == before, "config_refusal_changed_original")
+            self.preservation_after(fixture, before, "config_refusal_changed_original")
         require(self.shell(fixture, "cat /config/riauth.toml") == original, "original_config_preserved")
 
     def handoff(self, fixture, target):
@@ -1513,8 +1825,9 @@ class Cohort:
             require(status == 200, "platform_agent_status")
         finally:
             self.stop_app(fixture)
-        before = self.offline_hashes(fixture)
+        before = self.preservation_before(fixture)
         self.direct_refusal(fixture, "essentials", marker="Platform")
+        plan_before = self.offline_hashes(fixture)
         code, out, _ = self.maintenance(fixture, "platform", ["transition-preflight", "--target", "essentials"])
         envelope = json.loads(out)
         require(code == 5 and envelope["ok"] is False and envelope["data"]["ready"] is False
@@ -1522,7 +1835,8 @@ class Cohort:
                         for b in envelope["data"]["blockers"])
                 and any(b["resource"] == "meta/edition_provenance" for b in envelope["data"]["blockers"]),
                 "platform_state_downgrade_blockers")
-        require(self.offline_hashes(fixture) == before, "platform_refusal_changed_store")
+        require(self.offline_hashes(fixture) == plan_before, "read_only_preflight_changed_store")
+        self.preservation_after(fixture, before, "platform_refusal_changed_store")
 
     def fixture_gate(self):
         self.phase = "fixture"
@@ -1700,6 +2014,7 @@ def main():
         gate.native_transport()
         gate.daemon_setup()
         gate.build_images()
+        gate.build_reader()
         gate.fixture_gate()
         # Recheck committed source and manifests after every product operation.
         require(gate.git(args.product, "status", "--porcelain") == b"", "product_checkout_changed")
