@@ -2604,3 +2604,1019 @@ tracked hygiene (960 files) and git diff --check all passed. Final staged
 whitespace/scope and commit readback are part of this report-only handoff.
 These are static checks; no candidate or signal/SDK/runtime observation is
 added. Root's source/independent reviews and later release remain pending.
+
+## 2026-10-03 — wave30_I08_disable_sdk_certificate_bootstrap
+
+Project 891e7443-8dac-4c1b-897f-9e53cb59c7ee; existing worktree
+ed9ac424-59f4-4520-905b-919aea3521eb and existing shell only.
+Runtime is **HELD**. The complete **139,859-byte / 2,606-line** report at
+**3ae7c2040163f128cb979f447bc7839494288e5c**, SHA-256
+**48c9ee846b65b7bd5322dad6f944ab50476d0c11aa8d5df708f3086fe70a31b2**, remains the exact prefix.
+The old 1,483-byte command, initial controller and SIGCHLD-corrected
+controller remain dated historical text. This appendix supplies the
+certificate-disabled command/controller for root and independent review
+before any separately released execution; it replaces none of those bytes.
+
+### Primary-source witnesses and bounded conclusion
+
+I read the complete five retained primary-source bodies below, **29,149
+bytes / 681 lines** total, including the certificate gate and PATH factory.
+Those body reads are distinct from the subsequent size/hash identity
+checks. The root receipt is
+`planning/evidence/wave30-i08-sdk-first-run-root-source-review.json`
+under the explicit project orchestrator directory
+`/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee`.
+The bodies are retained alongside it in
+`planning/evidence/wave30-i08-sdk-first-run-sources`.
+
+The initial receipt read was **1,645 bytes**, SHA-256
+**76e18c2cbcf14de7126918001bc8e729b7beb929c135dbf2f98c52544b953e06**.
+It initially labeled 90e8 as a tree. The current root-corrected receipt
+is **2,073 bytes**, SHA-256
+**7bccf827ed7a583b2a661ffaf8aca490a2eaa520d7aa957522229650a5c2942e**: SDK tag **v9.0.200**, source commit
+**90e8b202f25b7c2bf3b883d421ad5b1cb477e8b0**, source tree
+**c322ba339d3adb62d542ea33c1f5b3d9935e7988**. Its pin_label_correction
+preserves the initial receipt identity and states all source body bytes
+are unchanged. The commit matches the earlier public installed SDK
+.version metadata identity. I checked the retained receipt and all
+five body hashes; I did not query the recorded remote API, invoke the
+SDK or independently attest the root's commit/tree lookup.
+
+| Retained primary body | Bytes / lines | SHA-256 |
+| --- | --- | --- |
+| Program.cs | 16466 / 368 | ba0c8927d8141cba0cd0397cc85471ee9fd823a1e5dc1600bc55ba483545f607 |
+| DotnetFirstTimeUseConfigurer.cs | 5124 / 112 | 5188ea10dd70d67abeecb767d554739f4c2be6eb337e23e530e66d60a747f3c7 |
+| OsxBashEnvironmentPath.cs | 2949 / 81 | 262e46e3e41726d505e24251414e9da26ee291dfbcfc1c666916ce3c33e074a6 |
+| DotnetFirstRunConfiguration.cs | 1004 / 32 | cf0209c2c0b92e6e56135d6ebac83a3a7c79a8cb450cd9e059bcd42a77f63bf4 |
+| EnvironmentPathFactory.cs | 3606 / 88 | ffaa6fef0ef73a5eecb632de37583753a535a22df8edd840bb5d0252b488eb11 |
+
+SDK Program.cs:171 reads DOTNET_GENERATE_ASPNET_CERTIFICATE with
+defaultValue: true. Program.cs:190–195 passes that value into the
+first-run configuration; DotnetFirstRunConfiguration.cs:25 stores
+GenerateAspNetCertificate. Program.cs:197–204 and :314–338 construct
+and call the first-use configurer. DotnetFirstTimeUseConfigurer.cs:
+77–82 invokes GenerateAspNetCoreDevelopmentCertificate and creates
+the certificate sentinel only when CanGenerateAspNetCertificate is true.
+At :102–107 that predicate requires enabled configuration and an
+absent sentinel (or is false under the compile-time exclusion).
+Explicit false therefore prevents this identified generator invocation
+regardless of sentinel presence. That is source inference: neither
+the SDK nor generator ran here, and no actual certificate/keychain/
+store mutation is claimed.
+
+DOTNET_SKIP_FIRST_TIME_EXPERIENCE is not read in these five selected
+bodies. Its old assignment is retained; it is not the certificate
+protection. Other first-use paths, including NuGet migration and the
+first-use sentinel at DotnetFirstTimeUseConfigurer.cs:51–74, remain
+defined. This opt-out does not prove that every SDK first-use write
+or effect is disabled. The implementation of the generator itself
+is outside this supplied set; no side-effect conclusion is drawn
+from its construction in Program.cs.
+
+Program.cs:181 defaults the native-installer flag to false; only the
+InstallSuccess branch at :182–187 changes it. The exact argv is run.
+EnvironmentPathFactory.cs:21 starts with DoNothingEnvironmentPath,
+and its macOS branch at :47 requires that native-installer flag to
+select OsxBashEnvironmentPath. Its paths.d write at :45 is consequently
+outside this run selection. No unrelated PATH setting, configuration
+or argument is changed. This is source selection, not a PATH experiment.
+
+### Exact future command and binding
+
+The sole command addition is
+`DOTNET_GENERATE_ASPNET_CERTIFICATE=false` before the sole SDK launch.
+The corrected command is **1,528 bytes** with no terminal newline,
+SHA-256 **8a5b54debc10ba837af3b319e964724a9f47909ef8bf95c88edb2c9a7f44c1c3**. Parsing shell tokens as data after removing
+backslash-newline continuations gives **28 tokens**: env, **11**
+explicit environment assignments and the same **16** SDK argv tokens.
+Removing the new **45-byte** line recovers the entire old command,
+SHA-256 **6217c5e88aa76979bb0f91fae2faabcea2e9ffcfff722983f8058947c827ab7d**. Every previous assignment and argument
+remains exact: telemetry/no-logo/workload flags, disabled server/
+shared-compiler reuse, one CPU, private outputs, offline restore/
+empty feeds/fallback and selftest mode. The production 15-second
+client timeout in unchanged e31 source is preserved.
+
+The controller's command hash/byte count, token count, assignment/
+executable/return slices and receipt command_bytes now bind these
+identities. The guard requires the exact eleven-key allowlist and
+the new false value, failing with the existing fixed
+command_environment code before Popen if the binding is wrong.
+The complete pinned command hash binds all old values too.
+The fixed token count, unique dictionary length and exact key set
+reject missing, duplicate or extra assignments. env.update overrides
+an inherited certificate setting with false; that same env goes to
+the sole Popen. inputs records the new command hash/byte count and
+explicit eleven-entry environment, so its derived input hash binds
+the opt-out before launch. No other inherited-environment policy changes.
+
+The shell fence's presentation newline is excluded from its identity;
+COMMAND below contains exactly the **1,528 bytes**. All fences are DATA,
+not executed/imported/evaluated/compiled code.
+
+```sh
+env \
+  DOTNET_ROOT=/usr/local/share/dotnet \
+  DOTNET_CLI_HOME=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/cli-home \
+  NUGET_PACKAGES=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/packages \
+  DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+  DOTNET_GENERATE_ASPNET_CERTIFICATE=false \
+  DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=true \
+  DOTNET_NOLOGO=1 \
+  DOTNET_PROCESSOR_COUNT=1 \
+  DOTNET_CLI_USE_MSBUILD_SERVER=0 \
+  MSBUILDDISABLENODEREUSE=1 \
+  /usr/local/share/dotnet/dotnet run \
+  --project /Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/windows/RiAuth.DeviceHost/RiAuth.DeviceHost.csproj \
+  --configuration Debug \
+  --property:BaseIntermediateOutputPath=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/obj/ \
+  --property:BaseOutputPath=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/bin/ \
+  --property:RestoreConfigFile=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/nuget-offline.config \
+  --property:RestoreSources=/Users/dominik/.nuget/packages \
+  --property:NuGetAudit=false \
+  --property:UseSharedCompilation=false \
+  --property:BuildInParallel=false \
+  --property:ConcurrentBuild=false \
+  -- selftest
+```
+
+Zero-context command diff: **140 bytes**, SHA-256 **3c063ec0e74347b034e47e969c049964b2cf510506256c8d82f7f1e19418bcc3**.
+Forward and inverse text application recover both whole command strings.
+
+```diff
+--- i08-managed-command-historical
++++ i08-managed-command-certificate-disabled
+@@ -6,0 +7 @@
++  DOTNET_GENERATE_ASPNET_CERTIFICATE=false \
+```
+
+### Complete corrected controller and minimal inverse
+
+Complete prospective controller: **32,459 bytes / 730 lines**, including
+final newline, SHA-256 **81366c6e29fb324e66206e2936b2faafc67d91cd6d9585910b6d1c9867ae95ae**. It retains the SIGCHLD-default
+requirement: one standalone main-thread signal installation and exact
+verification, fixed refusal before the sole Popen, and no restoration
+of ignored SIGCHLD before join/reap. require_waitable_child and the
+whole run body remain byte-identical to 3ae7c204.
+
+The only changes from the **31,893-byte / 721-line** controller,
+SHA-256 **a833a87be91e401d86617467d2aaf2ee946a49daf7e385ec5c7f9d0fac696f34**, are the command/environment bindings above.
+Zero-context controller diff: **1770 bytes**, SHA-256 **79f566ce6800a121b6b6373edc67daaffd91e49e89b3256d807c3184a5fd44df**.
+Reversing its listed text changes recovers all old bytes. An independent
+AST inverse restores only COMMAND/COMMAND_SHA, the two command-byte
+constants, token count, three slices and environment guard, recovering
+the complete old AST without locations. Other top-level assignments,
+all class bodies and all functions except preflight remain exact.
+Configuration, source/SDK identities, failure codes, standalone entry,
+limits, cleanup and grading remain unchanged.
+
+```diff
+--- i08-managed-controller-historical
++++ i08-managed-controller-certificate-disabled
+@@ -20 +20 @@
+-COMMAND_SHA = "6217c5e88aa76979bb0f91fae2faabcea2e9ffcfff722983f8058947c827ab7d"
++COMMAND_SHA = "8a5b54debc10ba837af3b319e964724a9f47909ef8bf95c88edb2c9a7f44c1c3"
+@@ -26,0 +27 @@
++  DOTNET_GENERATE_ASPNET_CERTIFICATE=false \
+@@ -228 +229 @@
+-    if len(COMMAND.encode()) != 1483 or digest(COMMAND.encode()) != COMMAND_SHA:
++    if len(COMMAND.encode()) != 1528 or digest(COMMAND.encode()) != COMMAND_SHA:
+@@ -231,2 +232,2 @@
+-    if (len(tokens) != 27 or tokens[0] != "env"
+-            or tokens[11:13] != ["/usr/local/share/dotnet/dotnet", "run"]
++    if (len(tokens) != 28 or tokens[0] != "env"
++            or tokens[12:14] != ["/usr/local/share/dotnet/dotnet", "run"]
+@@ -235,2 +236,10 @@
+-    assignments = dict(item.split("=", 1) for item in tokens[1:11])
+-    if len(assignments) != 10:
++    assignments = dict(item.split("=", 1) for item in tokens[1:12])
++    if (len(assignments) != 11
++            or set(assignments) != {
++                "DOTNET_ROOT", "DOTNET_CLI_HOME", "NUGET_PACKAGES",
++                "DOTNET_CLI_TELEMETRY_OPTOUT", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE",
++                "DOTNET_GENERATE_ASPNET_CERTIFICATE",
++                "DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE", "DOTNET_NOLOGO",
++                "DOTNET_PROCESSOR_COUNT", "DOTNET_CLI_USE_MSBUILD_SERVER",
++                "MSBUILDDISABLENODEREUSE"}
++            or assignments.get("DOTNET_GENERATE_ASPNET_CERTIFICATE") != "false"):
+@@ -242 +251 @@
+-              "command_sha256": COMMAND_SHA, "command_bytes": 1483,
++              "command_sha256": COMMAND_SHA, "command_bytes": 1528,
+@@ -247 +256 @@
+-    return tokens[11:], env, inputs
++    return tokens[12:], env, inputs
+```
+
+```python
+# DESIGN ONLY: root must separately release this exact one-shot controller.
+import ctypes
+import hashlib
+import json
+import os
+from pathlib import Path
+import selectors
+import shlex
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+ROOT = Path("/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27")
+LEAF = ROOT / "target/wave27/i08-managed"
+PROJECT = ROOT / "windows/RiAuth.DeviceHost/RiAuth.DeviceHost.csproj"
+SDK = Path("/usr/local/share/dotnet")
+SOURCE_PIN = "e31fbee66f1038cfc2412e17497bbf07f83e1314"
+COMMAND_SHA = "8a5b54debc10ba837af3b319e964724a9f47909ef8bf95c88edb2c9a7f44c1c3"
+COMMAND = r"""env \
+  DOTNET_ROOT=/usr/local/share/dotnet \
+  DOTNET_CLI_HOME=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/cli-home \
+  NUGET_PACKAGES=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/packages \
+  DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+  DOTNET_GENERATE_ASPNET_CERTIFICATE=false \
+  DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=true \
+  DOTNET_NOLOGO=1 \
+  DOTNET_PROCESSOR_COUNT=1 \
+  DOTNET_CLI_USE_MSBUILD_SERVER=0 \
+  MSBUILDDISABLENODEREUSE=1 \
+  /usr/local/share/dotnet/dotnet run \
+  --project /Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/windows/RiAuth.DeviceHost/RiAuth.DeviceHost.csproj \
+  --configuration Debug \
+  --property:BaseIntermediateOutputPath=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/obj/ \
+  --property:BaseOutputPath=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/bin/ \
+  --property:RestoreConfigFile=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/nuget-offline.config \
+  --property:RestoreSources=/Users/dominik/.nuget/packages \
+  --property:NuGetAudit=false \
+  --property:UseSharedCompilation=false \
+  --property:BuildInParallel=false \
+  --property:ConcurrentBuild=false \
+  -- selftest"""
+CONFIG = b"""<configuration>
+  <packageSources><clear /></packageSources>
+  <fallbackPackageFolders><clear /></fallbackPackageFolders>
+</configuration>
+"""
+SOURCE_HASHES = {
+    "DeviceHost.cs": "c87516ac0323e4d009e6d438cfdf2b74918db3d7c0ad9ab4b9b67fd2367c48ee",
+    "Program.cs": "a1fe254ebf65a2153fcf2a17728b4b1b2283ca3d6e991be92eff2bb26126a241",
+    "SelfTest.cs": "69bd5f5031bfdb9b974cb2e8201e6f2823a3f32e924eb53f5a38392807e1b38e",
+    "RiAuth.DeviceHost.csproj": "e5af8331053b1167d6af93ea9ad657a0983e694fa5bb71f8f003370fbed499ea",
+    "WindowsLocalAccount.cs": "85641bd7baef27b419899ec76d9665c8d5cfb90b59641bafe5908524763f0d0c",
+    "WindowsStateStore.cs": "9999747d0183650a109368feb0d11644ff90ad30c23b0d0be6b0ca3a930d9ce0",
+}
+METADATA_HASHES = {
+    ".version": "835299a4fd4532244a680605ad2047c1d44d6f8a34834b1bb747fa74ca38e11a",
+    "dotnet.runtimeconfig.json": "e90a7dd2984b3ade889585a0f593d097a9421f9a0d63d64ae8ffdd313e24daf0",
+    "MSBuild.runtimeconfig.json": "e90a7dd2984b3ade889585a0f593d097a9421f9a0d63d64ae8ffdd313e24daf0",
+    "Roslyn/bincore/csc.runtimeconfig.json": "e46be9b13a311147cbc2203dae66958ced66105c7369690ce4ab75fdbcebb561",
+    "Microsoft.NETCoreSdk.BundledVersions.props": "887582b3c662e6de057c3e1a89daa500c8f9526f3418cc8f8fddef13a70989ee",
+}
+SDK_FILES = {
+    "dotnet": (140128, 0o755),
+    "sdk/9.0.200/dotnet.dll": (3394048, 0o644),
+    "sdk/9.0.200/MSBuild.dll": (1035776, 0o644),
+    "sdk/9.0.200/Roslyn/bincore/csc.dll": (132096, 0o644),
+    "sdk/9.0.200/NuGet.targets": (74726, 0o644),
+    "sdk/9.0.200/NuGet.Build.Tasks.dll": (233984, 0o644),
+    "sdk/9.0.200/Sdks/Microsoft.NET.Sdk/Sdk/Sdk.props": (2432, 0o644),
+    "sdk/9.0.200/Sdks/Microsoft.NET.Sdk/Sdk/Sdk.targets": (4767, 0o644),
+    "host/fxr/9.0.2/libhostfxr.dylib": (401072, 0o755),
+    "shared/Microsoft.NETCore.App/9.0.2/libhostpolicy.dylib": (420240, 0o755),
+    "shared/Microsoft.NETCore.App/9.0.2/System.Private.CoreLib.dll": (16264704, 0o644),
+    "packs/Microsoft.NETCore.App.Ref/9.0.2/ref/net9.0/System.Runtime.dll": (837120, 0o644),
+    "packs/Microsoft.NETCore.App.Host.osx-arm64/9.0.2/runtimes/osx-arm64/native/apphost": (140896, 0o755),
+}
+GIB = 1024 ** 3
+START_FREE = 9 * GIB
+STOP_FREE = 17 * GIB // 2
+RSS_CAP = 2 * GIB
+TREE_CAP = 256 * 1024 ** 2
+LOG_CAP = 64 * 1024
+RECEIPT_CAP = 512 * 1024
+ENTRY_CAP = 4096
+PID_CAP = 256
+SAMPLE_CAP = 144
+CHILD_SECONDS = 120.0
+CLEANUP_SECONDS = 10.0
+
+class FixedFailure(Exception):
+    pass
+
+def require_waitable_child():
+    try:
+        signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+        if signal.getsignal(signal.SIGCHLD) is not signal.SIG_DFL:
+            raise FixedFailure("sigchld_default_unverified")
+    except FixedFailure:
+        raise
+    except BaseException:
+        raise FixedFailure("sigchld_default_unavailable_or_refused") from None
+
+# Numeric Darwin layouts from the installed public headers; names are padding.
+class BsdInfo(ctypes.Structure):
+    _fields_ = [(n, ctypes.c_uint32) for n in (
+        "flags", "status", "xstatus", "pid", "ppid", "uid", "gid",
+        "ruid", "rgid", "svuid", "svgid", "reserved")] + [
+        ("unused_names", ctypes.c_byte * 48),
+        ("nfiles", ctypes.c_uint32), ("pgid", ctypes.c_uint32),
+        ("jobc", ctypes.c_uint32), ("tdev", ctypes.c_uint32),
+        ("tpgid", ctypes.c_uint32), ("nice", ctypes.c_int32),
+        ("start_sec", ctypes.c_uint64), ("start_usec", ctypes.c_uint64)]
+
+class TaskInfo(ctypes.Structure):
+    _fields_ = [(n, ctypes.c_uint64) for n in (
+        "virtual", "resident", "total_user", "total_system",
+        "threads_user", "threads_system")] + [(n, ctypes.c_int32) for n in (
+        "policy", "faults", "pageins", "cow_faults", "messages_sent",
+        "messages_received", "syscalls_mach", "syscalls_unix", "csw",
+        "threadnum", "numrunning", "priority")]
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False).encode("ascii")
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+def bounded_regular(path, cap, owner=None):
+    # Reject symlink components before reading only approved public inputs/logs.
+    if path.resolve(strict=True) != path:
+        raise FixedFailure("input_symlink")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > cap:
+            raise FixedFailure("input_type_size")
+        if owner is not None and info.st_uid != owner:
+            raise FixedFailure("input_owner")
+        data = bytearray()
+        while len(data) <= cap:
+            chunk = os.read(fd, min(4096, cap + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) > cap:
+            raise FixedFailure("input_type_size")
+        return bytes(data)
+    finally:
+        os.close(fd)
+
+def free_bytes():
+    info = os.statvfs(ROOT)
+    return info.f_bavail * info.f_frsize
+
+def check_directory(path, owner):
+    info = path.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != owner
+            or path.resolve(strict=True) != path):
+        raise FixedFailure("directory_identity")
+    return info
+
+def verify_sources():
+    if sorted(item.name for item in PROJECT.parent.iterdir()) != sorted(SOURCE_HASHES):
+        raise FixedFailure("project_input_catalog")
+    observed = {}
+    for name, expected in SOURCE_HASHES.items():
+        value = digest(bounded_regular(PROJECT.parent / name, 65536))
+        if value != expected:
+            raise FixedFailure("source_identity")
+        observed[name] = value
+    for name in ("bin", "obj"):
+        if os.path.lexists(PROJECT.parent / name):
+            raise FixedFailure("project_output_present")
+    return observed
+
+def preflight():
+    if Path.cwd() != ROOT or sys.platform != "darwin" or os.uname().machine != "arm64":
+        raise FixedFailure("host_cwd_identity")
+    if not all(hasattr(os, n) for n in ("waitid", "WNOWAIT", "WEXITED", "P_PID")):
+        raise FixedFailure("wait_observer_unavailable")
+    if os.path.lexists(LEAF):
+        raise FixedFailure("private_leaf_present")
+    for parent in (ROOT, ROOT / "target", ROOT / "target/wave27"):
+        check_directory(parent, os.getuid())
+    if free_bytes() < START_FREE:
+        raise FixedFailure("start_disk")
+    for key in ("DOTNET_ROOT", "DOTNET_ROOT_ARM64", "DOTNET_ROOT_X64",
+                "DOTNET_MSBUILD_SDK_RESOLVER_SDKS_DIR",
+                "DOTNET_MSBUILD_SDK_RESOLVER_SDKS_VER", "MSBuildSDKsPath",
+                "MSBUILD_EXE_PATH", "DOTNET_CLI_HOME", "NUGET_PACKAGES",
+                "DOTNET_STARTUP_HOOKS", "DOTNET_ADDITIONAL_DEPS"):
+        if key in os.environ:
+            raise FixedFailure("inherited_override")
+    for parent in (PROJECT.parent, *PROJECT.parent.parents):
+        for name in ("global.json", "Directory.Build.props", "Directory.Build.targets",
+                     "Directory.Packages.props", "NuGet.Config", "nuget.config"):
+            if os.path.lexists(parent / name):
+                raise FixedFailure("inherited_configuration")
+    if os.path.lexists(PROJECT.parent / "Properties/launchSettings.json"):
+        raise FixedFailure("launch_settings_present")
+    sources = verify_sources()
+    if sorted(item.name for item in (SDK / "sdk").iterdir()) != ["9.0.200"]:
+        raise FixedFailure("sdk_selection_metadata")
+    for relative, (size, mode) in SDK_FILES.items():
+        path = SDK / relative
+        info = path.lstat()
+        if (path.resolve(strict=True) != path or not stat.S_ISREG(info.st_mode)
+                or info.st_uid != 0 or info.st_size != size
+                or stat.S_IMODE(info.st_mode) != mode):
+            raise FixedFailure("sdk_file_metadata")
+    if not os.access(SDK / "dotnet", os.R_OK | os.X_OK):
+        raise FixedFailure("sdk_executable_access")
+    for relative in ("sdk/9.0.200", "host/fxr/9.0.2",
+                     "shared/Microsoft.NETCore.App/9.0.2",
+                     "packs/Microsoft.NETCore.App.Ref/9.0.2",
+                     "packs/Microsoft.NETCore.App.Host.osx-arm64/9.0.2"):
+        check_directory(SDK / relative, 0)
+    metadata = {}
+    for name, expected in METADATA_HASHES.items():
+        value = digest(bounded_regular(SDK / "sdk/9.0.200" / name, 60000, 0))
+        if value != expected:
+            raise FixedFailure("sdk_metadata_identity")
+        metadata[name] = value
+    check_directory(Path("/Users/dominik/.nuget/packages"), os.getuid())
+    if len(COMMAND.encode()) != 1528 or digest(COMMAND.encode()) != COMMAND_SHA:
+        raise FixedFailure("command_identity")
+    tokens = shlex.split(COMMAND.replace("\\\n", ""), posix=True)
+    if (len(tokens) != 28 or tokens[0] != "env"
+            or tokens[12:14] != ["/usr/local/share/dotnet/dotnet", "run"]
+            or tokens[-2:] != ["--", "selftest"]):
+        raise FixedFailure("command_tokens")
+    assignments = dict(item.split("=", 1) for item in tokens[1:12])
+    if (len(assignments) != 11
+            or set(assignments) != {
+                "DOTNET_ROOT", "DOTNET_CLI_HOME", "NUGET_PACKAGES",
+                "DOTNET_CLI_TELEMETRY_OPTOUT", "DOTNET_SKIP_FIRST_TIME_EXPERIENCE",
+                "DOTNET_GENERATE_ASPNET_CERTIFICATE",
+                "DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE", "DOTNET_NOLOGO",
+                "DOTNET_PROCESSOR_COUNT", "DOTNET_CLI_USE_MSBUILD_SERVER",
+                "MSBUILDDISABLENODEREUSE"}
+            or assignments.get("DOTNET_GENERATE_ASPNET_CERTIFICATE") != "false"):
+        raise FixedFailure("command_environment")
+    env = os.environ.copy()
+    env.update(assignments)
+    inputs = {"source_pin": SOURCE_PIN, "sources": sources,
+              "sdk_public_metadata": metadata, "sdk_file_metadata": SDK_FILES,
+              "command_sha256": COMMAND_SHA, "command_bytes": 1528,
+              "explicit_environment": assignments, "config_sha256": digest(CONFIG),
+              "start_free": START_FREE, "stop_free": STOP_FREE,
+              "rss_cap": RSS_CAP, "tree_cap": TREE_CAP, "log_cap": LOG_CAP,
+              "child_seconds": CHILD_SECONDS, "cleanup_seconds": CLEANUP_SECONDS}
+    return tokens[12:], env, inputs
+
+class GroupObserver:
+    def __init__(self):
+        if ctypes.sizeof(BsdInfo) != 136 or ctypes.sizeof(TaskInfo) != 96:
+            raise FixedFailure("process_abi")
+        self.lib = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+        self.lib.proc_listpids.argtypes = (
+            ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_int)
+        self.lib.proc_listpids.restype = ctypes.c_int
+        self.lib.proc_pidinfo.argtypes = (
+            ctypes.c_int, ctypes.c_int, ctypes.c_uint64,
+            ctypes.c_void_p, ctypes.c_int)
+        self.lib.proc_pidinfo.restype = ctypes.c_int
+        self.identities = {}
+
+    def members(self, pgid):
+        buf = (ctypes.c_int * (PID_CAP + 1))()
+        ctypes.set_errno(0)
+        count = self.lib.proc_listpids(2, pgid, buf, ctypes.sizeof(buf))
+        if (count < 0 or (count == 0 and ctypes.get_errno() != 0)
+                or count % 4 or count >= ctypes.sizeof(buf)):
+            raise FixedFailure("group_list_bound")
+        values = sorted({int(pid) for pid in buf[:count // 4] if pid > 0})
+        if len(values) > PID_CAP:
+            raise FixedFailure("group_member_cap")
+        return values
+
+    def info(self, pid, pgid):
+        value = BsdInfo()
+        count = self.lib.proc_pidinfo(pid, 3, 0, ctypes.byref(value), 136)
+        if count != 136:
+            try:
+                if os.getpgid(pid) != pgid:
+                    return None
+            except ProcessLookupError:
+                return None
+            raise FixedFailure("process_identity_unreadable")
+        if value.pid != pid or value.pgid != pgid or value.uid != os.getuid():
+            raise FixedFailure("process_identity")
+        identity = (int(value.start_sec), int(value.start_usec))
+        if pid in self.identities and self.identities[pid] != identity:
+            raise FixedFailure("process_identity_changed")
+        self.identities[pid] = identity
+        return value
+
+    def sample(self, pgid):
+        members = self.members(pgid)
+        resident = 0
+        for pid in members:
+            identity = self.info(pid, pgid)
+            if identity is None or identity.status == 5:  # SZOMB, not running.
+                continue
+            task = TaskInfo()
+            count = self.lib.proc_pidinfo(pid, 4, 0, ctypes.byref(task), 96)
+            if count != 96:
+                again = self.info(pid, pgid)
+                if again is None or again.status == 5:
+                    continue
+                raise FixedFailure("rss_unreadable")
+            resident += int(task.resident)
+        return members, resident
+
+def tree_bytes(leaf_identity):
+    info = check_directory(LEAF, os.getuid())
+    if (info.st_dev, info.st_ino) != leaf_identity:
+        raise FixedFailure("private_leaf_identity")
+    total, entries = 0, 0
+    def walk_error(_):
+        raise FixedFailure("private_scan")
+    for parent, dirs, files in os.walk(LEAF, followlinks=False, onerror=walk_error):
+        if len(Path(parent).relative_to(LEAF).parts) > 32:
+            raise FixedFailure("private_depth")
+        for name in dirs + files:
+            entries += 1
+            if entries > ENTRY_CAP:
+                raise FixedFailure("private_entry_cap")
+            item = (Path(parent) / name).lstat()
+            if (item.st_uid != os.getuid()
+                    or not (stat.S_ISREG(item.st_mode) or stat.S_ISDIR(item.st_mode))):
+                raise FixedFailure("private_entry_type")
+            total += max(item.st_size, item.st_blocks * 512)
+    return total
+
+def run():
+    first_error = None
+    child = None
+    pgid = None
+    verified_group = False
+    child_started_at = None
+    cleanup_deadline = None
+    reaped = False
+    child_exit = None
+    observer = None
+    leaf_identity = None
+    inputs = None
+    input_hash = None
+    samples = []
+    logs = {}
+    selector = selectors.DefaultSelector()
+    cleanup = {"attempted": False, "term": False, "kill": False,
+               "reaped": False, "group_empty": None, "errors": []}
+    phase = "preflight"
+    receipt_durable = False
+
+    def latch(code, exc=None):
+        nonlocal first_error
+        if first_error is None:
+            names = ((FixedFailure, "FixedFailure"), (OSError, "OSError"),
+                     (ValueError, "ValueError"), (RuntimeError, "RuntimeError"),
+                     (KeyboardInterrupt, "KeyboardInterrupt"), (SystemExit, "SystemExit"))
+            kind = next((name for cls, name in names if type(exc) is cls), "Other")
+            first_error = {"code": code, "class": kind if exc is not None else None}
+
+    def catch(code, exc):
+        if type(exc) is FixedFailure:
+            latch(exc.args[0], exc)  # Only controller-owned fixed string literals.
+        else:
+            latch(code, exc)
+
+    def cleanup_error(code):
+        if code not in cleanup["errors"] and len(cleanup["errors"]) < 12:
+            cleanup["errors"].append(code)
+
+    def exclusive(name):
+        fd = os.open(LEAF / name,
+                     os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        if stat.S_IMODE(os.fstat(fd).st_mode) != 0o600:
+            os.close(fd)
+            raise FixedFailure("private_file_mode")
+        return fd
+
+    def write_all(fd, data):
+        view = memoryview(data)
+        while view:
+            count = os.write(fd, view)
+            if count <= 0:
+                raise FixedFailure("private_write")
+            view = view[count:]
+
+    def ended():
+        # No poll()/wait() before cleanup: WNOWAIT reserves the group-leader PID.
+        return os.waitid(os.P_PID, child.pid,
+                         os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
+
+    def pump(timeout):
+        for key, _ in selector.select(max(0.0, timeout)):
+            name = key.data
+            try:
+                data = os.read(key.fileobj.fileno(), 4096)
+            except BlockingIOError:
+                continue
+            if not data:
+                selector.unregister(key.fileobj)
+                key.fileobj.close()
+                logs[name]["eof"] = True
+                continue
+            log = logs[name]
+            log["seen"] += len(data)
+            available = LOG_CAP - log["kept"]
+            retained = data[:max(0, available)]
+            if retained:
+                write_all(log["fd"], retained)
+                log["kept"] += len(retained)
+            if len(data) > available:
+                log["truncated"] = True
+                latch(name + "_cap")
+
+    def sample():
+        members, resident = observer.sample(pgid)
+        used = tree_bytes(leaf_identity)
+        available = free_bytes()
+        if len(samples) >= SAMPLE_CAP:
+            raise FixedFailure("sample_cap")
+        samples.append({"seconds": round(time.monotonic() - child_started_at, 6),
+                        "members": members, "rss_bytes": resident,
+                        "private_bytes": used, "free_bytes": available})
+        if available <= STOP_FREE:
+            raise FixedFailure("stop_disk")
+        if resident > RSS_CAP:
+            raise FixedFailure("rss_cap")
+        if used + RECEIPT_CAP > TREE_CAP:
+            raise FixedFailure("private_growth")
+        return members
+
+    def signal_group(sig):
+        if not verified_group or reaped:
+            cleanup_error("group_signal_ownership")
+            return
+        try:
+            os.killpg(pgid, sig)
+            cleanup["term" if sig == signal.SIGTERM else "kill"] = True
+        except ProcessLookupError:
+            pass
+        except BaseException:
+            cleanup_error("group_signal")
+
+    def finish_group():
+        nonlocal reaped, child_exit, cleanup_deadline
+        if child is None:
+            cleanup["group_empty"] = True
+            return
+        cleanup["attempted"] = True
+        if cleanup_deadline is None:
+            cleanup_deadline = time.monotonic() + CLEANUP_SECONDS
+        if not verified_group:
+            cleanup_error("group_unverified")
+            # Only the unreaped direct Popen child is addressable in this branch.
+            try:
+                child.kill()
+            except BaseException:
+                cleanup_error("direct_kill")
+        else:
+            signal_group(signal.SIGTERM)
+        kill_at = cleanup_deadline - 5.0
+        if first_error is not None and first_error["code"] in (
+                "stop_disk", "rss_cap", "private_growth", "stdout_cap", "stderr_cap"):
+            kill_at = time.monotonic()
+        next_sample = time.monotonic()
+        while time.monotonic() < cleanup_deadline:
+            now = time.monotonic()
+            if not cleanup["kill"] and now >= kill_at:
+                if verified_group:
+                    signal_group(signal.SIGKILL)
+                else:
+                    try:
+                        child.kill()
+                        cleanup["kill"] = True
+                    except BaseException:
+                        cleanup_error("direct_kill")
+            try:
+                pump(min(0.1, cleanup_deadline - now))
+            except BaseException as exc:
+                catch("cleanup_capture", exc)
+                cleanup_error("capture_drain")
+            try:
+                if now >= next_sample and verified_group:
+                    next_sample = now + 1.0
+                    sample()
+                members = observer.members(pgid) if verified_group else []
+                done = ended()
+                if done and (not verified_group or not set(members) - {child.pid}):
+                    # Send final KILL while the unreaped leader still reserves PGID.
+                    if verified_group:
+                        signal_group(signal.SIGKILL)
+                    child_exit = child.wait(timeout=max(0.0, cleanup_deadline - time.monotonic()))
+                    reaped = True
+                    break
+            except BaseException as exc:
+                cleanup_error("group_observation")
+                catch("cleanup_observation", exc)
+                # Observation errors remove grace, not group ownership.
+                kill_at = time.monotonic()
+        if not reaped:
+            if verified_group:
+                signal_group(signal.SIGKILL)
+            try:
+                child_exit = child.wait(timeout=max(0.0, cleanup_deadline - time.monotonic()))
+                reaped = True
+            except BaseException:
+                cleanup_error("direct_reap")
+        cleanup["reaped"] = reaped
+        # After reaping, never signal a potentially reused group number.
+        try:
+            os.killpg(pgid, 0)
+            cleanup["group_empty"] = False
+        except ProcessLookupError:
+            cleanup["group_empty"] = True
+        except BaseException:
+            cleanup["group_empty"] = None
+            cleanup_error("final_group_probe")
+        if cleanup["group_empty"] is not True:
+            cleanup_error("group_not_empty")
+        if verified_group and observer is not None:
+            try:
+                if observer.members(pgid):
+                    cleanup["group_empty"] = False
+                    cleanup_error("final_group_members")
+            except BaseException:
+                cleanup["group_empty"] = None
+                cleanup_error("final_group_members")
+
+    try:
+        argv, env, inputs = preflight()
+        input_hash = digest(canonical(inputs))
+        observer = GroupObserver()  # Future numeric observation only, no helper child.
+        os.umask(0o077)  # This standalone controller retains 077 until exit.
+        os.mkdir(LEAF, 0o700)  # Fails if any competing/existing leaf is present.
+        leaf = check_directory(LEAF, os.getuid())
+        if stat.S_IMODE(leaf.st_mode) != 0o700:
+            raise FixedFailure("private_leaf_mode")
+        leaf_identity = (leaf.st_dev, leaf.st_ino)
+        for name in ("cli-home", "packages"):
+            os.mkdir(LEAF / name, 0o700)
+        fd = exclusive("nuget-offline.config")
+        try:
+            write_all(fd, CONFIG)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        for name in ("stdout", "stderr"):
+            logs[name] = {"fd": exclusive(name + ".log"), "seen": 0,
+                          "kept": 0, "truncated": False, "eof": False}
+        if free_bytes() < START_FREE:
+            raise FixedFailure("start_disk")
+        require_waitable_child()
+        phase = "child"
+        child_started_at = time.monotonic()
+        child = subprocess.Popen(argv, cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 bufsize=0, start_new_session=True, close_fds=True)
+        pgid = child.pid
+        verified_group = os.getpgid(pgid) == pgid and os.getsid(pgid) == pgid
+        if not verified_group:
+            raise FixedFailure("new_group_identity")
+        for name, stream in (("stdout", child.stdout), ("stderr", child.stderr)):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ, name)
+        owner = observer.info(pgid, pgid)
+        if owner is None:
+            raise FixedFailure("new_group_owner_record")
+        launch = canonical({"schema_version": 1, "input_sha256": input_hash,
+                            "pid": child.pid, "pgid": pgid, "session": pgid,
+                            "owner_uid": int(owner.uid),
+                            "leader_start_sec": int(owner.start_sec),
+                            "leader_start_usec": int(owner.start_usec),
+                            "start_monotonic": child_started_at,
+                            "child_deadline_monotonic": child_started_at + CHILD_SECONDS,
+                            "grade_performed": False}) + b"\n"
+        if len(launch) > 2048:
+            raise FixedFailure("launch_receipt_cap")
+        fd = exclusive("launch.json")
+        try:
+            write_all(fd, launch)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        deadline = child_started_at + CHILD_SECONDS
+        next_sample = time.monotonic()
+        while first_error is None:
+            now = time.monotonic()
+            if now >= deadline:
+                latch("child_timeout")
+                break
+            if now >= next_sample:
+                sample()
+                next_sample = time.monotonic() + 1.0
+            pump(min(0.1, deadline - time.monotonic()))
+            if ended():
+                break
+    except BaseException as exc:
+        catch(phase + "_exception", exc)
+    finally:
+        phase = "cleanup"
+        try:
+            finish_group()
+        except BaseException as exc:
+            catch("cleanup_exception", exc)
+            cleanup_error("cleanup_exception")
+            # A final reserved-PID group KILL; the same deadline is not reset.
+            if child is not None and not reaped:
+                signal_group(signal.SIGKILL)
+                try:
+                    child_exit = child.wait(timeout=max(
+                        0.0, (cleanup_deadline or time.monotonic()) - time.monotonic()))
+                    reaped = True
+                    cleanup["reaped"] = True
+                except BaseException:
+                    cleanup_error("direct_reap")
+            cleanup["group_empty"] = None
+        try:
+            # Final bounded nonblocking drain after group cleanup, not a new grace.
+            for _ in range(34):
+                if not selector.get_map():
+                    break
+                pump(0.0)
+        except BaseException as exc:
+            catch("capture_finalize", exc)
+        for key in list(selector.get_map().values()):
+            try:
+                selector.unregister(key.fileobj)
+                key.fileobj.close()
+            except BaseException:
+                cleanup_error("pipe_close")
+        try:
+            selector.close()
+        except BaseException:
+            cleanup_error("selector_close")
+        for log in logs.values():
+            try:
+                os.fsync(log["fd"])
+            except BaseException as exc:
+                catch("capture_fsync", exc)
+            finally:
+                try:
+                    os.close(log["fd"])
+                except BaseException:
+                    cleanup_error("capture_close")
+
+    # All serialization and grading are AFTER the cleanup finally above.
+    if child_exit is not None and child_exit != 0:
+        latch("child_nonzero")
+    captured = {}
+    post_sources = None
+    try:
+        if leaf_identity is None:
+            raise FixedFailure("no_owned_receipt_workspace")
+        for name, log in logs.items():
+            data = bounded_regular(LEAF / (name + ".log"), LOG_CAP, os.getuid())
+            captured[name] = data
+            if len(data) != log["kept"]:
+                latch("capture_identity")  # Keep actual bounded failed-output evidence.
+        post_sources = verify_sources()
+        tree = tree_bytes(leaf_identity)
+        available = free_bytes()
+        if available <= STOP_FREE:
+            latch("stop_disk")
+        if tree + RECEIPT_CAP > TREE_CAP:
+            latch("private_growth")
+        for name, log in logs.items():
+            if not log["eof"]:
+                latch(name + "_eof_unverified")
+        elapsed = None if child_started_at is None else time.monotonic() - child_started_at
+        receipt = {"schema_version": 1, "source_pin": SOURCE_PIN,
+                   "command_sha256": COMMAND_SHA, "input_sha256": input_hash,
+                   "inputs": inputs, "child_started": child is not None,
+                   "child_pid": None if child is None else child.pid, "pgid": pgid,
+                   "child_exit": child_exit, "elapsed_through_cleanup": elapsed,
+                   "first_error": first_error, "cleanup": cleanup,
+                   "post_sources": post_sources, "resource_samples": samples,
+                   "final_private_bytes_before_receipt": tree, "final_free_bytes": available,
+                   "outputs": {name: {"bytes": len(captured.get(name, b"")),
+                              "sha256": digest(captured.get(name, b"")),
+                              "bytes_observed": log["seen"], "bytes_kept_recorded": log["kept"],
+                              "truncated": log["truncated"], "eof": log["eof"]}
+                               for name, log in logs.items()},
+                   "grade_performed": False}
+        payload = canonical(receipt) + b"\n"
+        if len(payload) > RECEIPT_CAP:
+            raise FixedFailure("receipt_cap")
+        fd = exclusive("result.json")
+        try:
+            write_all(fd, payload)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        dir_fd = os.open(LEAF, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+        receipt_durable = True
+    except BaseException as exc:
+        catch("receipt_exception", exc)
+        # No retry/overwrite and no grading. The preceding finally already
+        # attempted group cleanup even if serialization/fsync now fails.
+    ok = (receipt_durable and first_error is None and child is not None
+          and child_exit == 0 and cleanup["reaped"]
+          and cleanup["group_empty"] is True and not cleanup["errors"]
+          and captured.get("stdout", b"").splitlines().count(b"selftest passed") == 1)
+    # No exception text, raw output, source values, environment, or private path.
+    status = "UNGRADABLE" if not receipt_durable else ("PASS" if ok else "FAIL")
+    public = {"schema_version": 1, "status": status,
+              "receipt_durable": receipt_durable, "input_sha256": input_hash,
+              "first_error": first_error, "cleanup_errors": cleanup["errors"],
+              "child_exit": child_exit, "reaped": cleanup["reaped"],
+              "group_empty": cleanup["group_empty"]}
+    try:
+        print(json.dumps(public, sort_keys=True, separators=(",", ":")))
+    except BaseException:
+        return 2  # Durable private receipt remains; no raw exception is printed.
+    return 0 if ok else 2
+
+if __name__ == "__main__":
+    sys.exit(run())
+```
+
+### Actual static checks, corrections and retained limits
+
+Complete byte and independent structural AST inverses passed. Both
+zero-context diffs applied forward/reverse reconstruct whole strings.
+AST parsing passed; this is not compilation/evaluation/import of the
+candidate. The archived COMMAND equals the shell data and hash/count.
+All eleven keys and the new false predicate were checked as AST/data;
+all ten previous values and sixteen argv tokens are exact. There is
+one Popen. The same signal-default helper/call precedes that Popen;
+all original class/function bodies except preflight remain byte/AST
+identical. This is source identity/control-flow evidence, not a signal
+or native-wait experiment.
+
+Two initial static validator attempts failed before any append/file
+write: the first structural inverse incorrectly required every tokens
+access to be a slice (tokens[0] is an index); the diagnostic then
+assumed every slice bound was a Constant (tokens[-2:] uses UnaryOp).
+The corrected validator changes only the three designated positive
+constant slices and leaves unrelated indexes/negative bounds intact.
+A third preparation check stopped before any write when its exact
+initial receipt size assertion encountered the root's newly corrected
+2,073-byte commit/tree-label receipt. I reread that public receipt,
+recorded both identities and verified that all five bodies retain
+their original hashes. The candidate itself did not change in these
+corrections; these failures were static preparation checks, not
+SDK/runtime results.
+
+All six current project files equal their whole e31fbee66f1038cfc2412e17497bbf07f83e1314
+blobs and retained hashes: DeviceHost.cs, Program.cs, SelfTest.cs,
+RiAuth.DeviceHost.csproj, WindowsLocalAccount.cs and WindowsStateStore.cs.
+The five old mocks and sixth stall fixture, production 15-second
+deadline and all product/security semantics remain unchanged.
+Private i08-managed and project bin/obj remain absent; no output,
+config/cache/dependency path was created.
+
+The 120-second child / 10-second cleanup deadlines, one-second
+samples, 2-GiB RSS / 256-MiB growth limits, 9-GiB start / 8.5-GiB stop
+margin over the 8-GiB floor, 64-KiB cap per stream, WNOWAIT reservation,
+TERM/KILL/reap ordering, first error and separate cleanup status are
+exact. Bounded full-output retention, numeric exit/elapsed/input hash/
+resource samples, owned reap/group-empty facts and private fsync
+still precede grading the exact selftest marker. Cleanup is still in
+finally before serialization; there is no retry or second child.
+These are prospective controls, not results: sampled limits are not
+continuous peaks/quotas, escaped process groups and blocking native
+operations retain their stated limits, and SDK metadata is not binary
+attestation or a network sandbox.
+
+All earlier source/preparation failures and unknowns remain in the
+preserved prefix. No actual old certificate mutation or new SDK pass
+is inferred. No SDK/version/compiler/selftest/native/keychain/
+certificate/store, controller/function/main/helper/import, network/
+installation/download/browser/Driver/service/runtime invocation
+occurred. No lane was taken or released; no process/deletion probe
+or new output path was used. Only this report is written; sources,
+project/config/helper, other reports, tasks/status, main/accepted
+and history remain unchanged. Root must review this whole controller
+and independent report before a separate one-shot runtime release.
+Native signed Windows inputs and original lifecycle gates remain
+separate. Final docs/hygiene/whitespace/scope and immutable commit
+readback are recorded below.
+
+Final static checks for this appendix passed: complete command/controller
+archives, pinned byte/hash/line/token/environment identities, whole-byte
+and independent AST inverses, zero-context diff forward/reverse
+application, unchanged sixteen SDK argv tokens, exact eleven-key guard
+and false certificate binding. The SIGCHLD-default helper and whole run
+body are preserved; one Popen remains. All six e31 source blobs remain
+exact and private/project output paths are absent. The full 139,859-byte
+3ae7c204 report prefix is unchanged, and Git scope contains only this
+report with no untracked files or staged unrelated changes.
+
+python3 scripts/check-docs.py passed (Markdown links/build-directory
+layout); python3 scripts/check-repo-hygiene.py passed (960 tracked files);
+git diff --check passed. These are source/data/document checks only.
+The final append and staged scope/whitespace are checked before the
+report-only commit and immutable object readback. The complete corrected
+controller remains UNEXECUTED; runtime is HELD for root and independent
+review and later separate release. No certificate or SDK mutation/pass
+is claimed, and no original Windows gate is closed by this report.
