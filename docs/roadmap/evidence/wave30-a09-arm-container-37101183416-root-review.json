@@ -1,0 +1,318 @@
+{
+  "reviewed_at": "2026-10-03T06:53:29.617250+00:00",
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "run_id": 37101183416,
+  "job_id": 111140870511,
+  "attempt": 1,
+  "controller_source": "544d1340b80cd3e040dc13142cdcbc1d75fea4cb",
+  "product_source": "9a819317efb3a13fa27cd86f884be2be00898fc0",
+  "product_tree": "1528b61ba463d9262d6252d54174748a176f313b",
+  "architecture": "arm64",
+  "workflow_sha256": "63887b4f57c959ce5256865c2befc7cc568b95e9eb7d10eff0909cf3dc6747b8",
+  "helper_sha256": "6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221",
+  "artifact": {
+    "id": 11267885639,
+    "node_id": "MDg6QXJ0aWZhY3QxMTI2Nzg4NTYzOQ==",
+    "name": "riauth-local-container-arm64-37101183416-1",
+    "size_in_bytes": 112643167,
+    "url": "https://api.github.com/repos/Rhein-Industries/riAuth/actions/artifacts/11267885639",
+    "archive_download_url": "https://api.github.com/repos/Rhein-Industries/riAuth/actions/artifacts/11267885639/zip",
+    "expired": false,
+    "digest": "sha256:82693c5e8b90118e9e927c62605fec387da71bca2cc5869dfd89e0413b466501",
+    "created_at": "2026-10-03T06:47:36Z",
+    "updated_at": "2026-10-03T06:47:36Z",
+    "expires_at": "2026-10-17T06:47:35Z",
+    "workflow_run": {
+      "id": 37101183416,
+      "repository_id": 1387816591,
+      "head_repository_id": 1387816591,
+      "head_branch": "main",
+      "head_sha": "544d1340b80cd3e040dc13142cdcbc1d75fea4cb"
+    }
+  },
+  "root_transport_rehashed": true,
+  "artifact_executed_by_root": false,
+  "members": [
+    {
+      "name": "build-essentials.log",
+      "bytes": 52852,
+      "sha256": "8167308fff07a102c3bf0fe2975f28847aca80b5d690f9684717ed4dfbb613fa"
+    },
+    {
+      "name": "build-platform.log",
+      "bytes": 39930,
+      "sha256": "65b98ed5de0eb2452d51e122fc541652487723d4b0aef9abfa379bf8506cfbae"
+    },
+    {
+      "name": "builder-bootstrap.log",
+      "bytes": 1897,
+      "sha256": "aabade2a1ca5521cb70505c28dc9abbcc707dd693e044e621d7753fd6dedc19b"
+    },
+    {
+      "name": "builder-create.log",
+      "bytes": 45,
+      "sha256": "ea074691fc416caaf2afc0736da58f2271a4938aad6e2dc8e4306e1ba0f13c71"
+    },
+    {
+      "name": "container-cohort.json",
+      "bytes": 667025,
+      "sha256": "48338cb11ecdab5184966e70152442349411a96ab5ea182aa052ab642f142523"
+    },
+    {
+      "name": "launch.json",
+      "bytes": 167,
+      "sha256": "b60d78ac7770232e8e8bd5ff53ac145997656c22cc7bf774ac92305186810477"
+    },
+    {
+      "name": "local-essentials-aarch64.docker.tar.gz",
+      "bytes": 48610393,
+      "sha256": "08eb887ec14f647f6e21e9ae6837ff5567ebce91d03c2850355920509c830757"
+    },
+    {
+      "name": "local-platform-aarch64.docker.tar.gz",
+      "bytes": 52992508,
+      "sha256": "030e0d64f20af0b26cf3e4dceeb115d8e42f45473d38785af95ebdb5d50fdd92"
+    },
+    {
+      "name": "local-store-reader-arm64.bin",
+      "bytes": 9966472,
+      "sha256": "6f3254ef47cae40b11f8b90f8b400efe69b102dd562e0916bee9e506e0f7d469"
+    },
+    {
+      "name": "pull-pinned-buildkit.log",
+      "bytes": 1377,
+      "sha256": "eda578ec703d816e784400acdd5cec8d143a7bfa88335588f816d8881f2b841b"
+    },
+    {
+      "name": "resources.jsonl",
+      "bytes": 308967,
+      "sha256": "cbaca945d6e14feef899122b2f5d54bdca2af23b62d284b05de084ee453c3a0e"
+    }
+  ],
+  "checks": [
+    "uid10001_copy_up_private_modes",
+    "encrypted_redb_key_configured",
+    "pinned_format3_startup_and_sixteen_rates",
+    "exact_discovery_and_jwks",
+    "all12_userview_fields_and_group_grant_subject",
+    "audit_events200_user_create403_client4",
+    "two_logout401_client3_across_handoffs",
+    "issuer_policy_loginrate_specific_offline_refusals",
+    "read_only_plan_exact_token_EPE",
+    "wrong_direct_build_refused",
+    "isolated_platform_agent_and_downgrade_refusal"
+  ],
+  "result": "passed",
+  "daemon": {
+    "Architecture": "aarch64",
+    "OSType": "linux",
+    "OperatingSystem": "Ubuntu 24.04.5 LTS",
+    "ServerVersion": "28.0.4"
+  },
+  "reader": {
+    "source": "9a819317efb3a13fa27cd86f884be2be00898fc0",
+    "source_tree": "1528b61ba463d9262d6252d54174748a176f313b",
+    "target": "aarch64-unknown-linux-gnu",
+    "binary_bytes": 9966472,
+    "binary_sha256": "6f3254ef47cae40b11f8b90f8b400efe69b102dd562e0916bee9e506e0f7d469",
+    "features": [
+      "platform",
+      "test-support"
+    ],
+    "build_jobs": 1,
+    "debug": 0,
+    "incremental": 0,
+    "elf_machine": 183,
+    "verified_physical_observations": 18
+  },
+  "images": {
+    "essentials": {
+      "architecture": "arm64",
+      "archive": "local-essentials-aarch64.docker.tar.gz",
+      "archive_bytes": 48610393,
+      "archive_sha256": "08eb887ec14f647f6e21e9ae6837ff5567ebce91d03c2850355920509c830757",
+      "server_sha256": "94b1288287b81759cd14c57a3de09a62a3a8a63ccefe3e72af61237741a21a10",
+      "id": "sha256:1ecfdb745204bd1a4462a51f6fd8946ea91c4adc84642a413cec81fbac13ffd3"
+    },
+    "platform": {
+      "architecture": "arm64",
+      "archive": "local-platform-aarch64.docker.tar.gz",
+      "archive_bytes": 52992508,
+      "archive_sha256": "030e0d64f20af0b26cf3e4dceeb115d8e42f45473d38785af95ebdb5d50fdd92",
+      "server_sha256": "5b34e091a6c999a066d1020251e01a11a952e8317e8cf5e41d782508f08c1894",
+      "id": "sha256:de68f52d81a8bccac43e506f50b1435caced55d3e42ccab4fa21bcb3407ea207"
+    }
+  },
+  "steps": {
+    "count": 2726,
+    "exit_counts": {
+      "0": 2237,
+      "1": 470,
+      "3": 6,
+      "4": 3,
+      "5": 4,
+      "2": 6
+    },
+    "all_children_reaped": true,
+    "all_groups_empty": true,
+    "nonzero_exits_are_refusals_and_absence_checks_not_all_commands_zero": true,
+    "selected_build_and_serve_steps": [
+      {
+        "elapsed": 921.138,
+        "exit": 0,
+        "log_bytes": 52852,
+        "log_sha256": "8167308fff07a102c3bf0fe2975f28847aca80b5d690f9684717ed4dfbb613fa",
+        "name": "build-essentials",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 1169.203,
+        "exit": 0,
+        "log_bytes": 39930,
+        "log_sha256": "65b98ed5de0eb2452d51e122fc541652487723d4b0aef9abfa379bf8506cfbae",
+        "name": "build-platform",
+        "output_recorded": true,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 12.502,
+        "exit": 0,
+        "name": "save-essentials",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 13.291,
+        "exit": 0,
+        "name": "save-platform",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 1148.163,
+        "exit": 0,
+        "name": "build-store-reader",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.066,
+        "exit": 0,
+        "name": "server-start",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.044,
+        "exit": 0,
+        "name": "owned-container-stop",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.061,
+        "exit": 0,
+        "name": "server-start",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.044,
+        "exit": 0,
+        "name": "owned-container-stop",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.06,
+        "exit": 0,
+        "name": "server-start",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.042,
+        "exit": 0,
+        "name": "owned-container-stop",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.06,
+        "exit": 0,
+        "name": "server-start",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      },
+      {
+        "elapsed": 0.042,
+        "exit": 0,
+        "name": "owned-container-stop",
+        "output_recorded": false,
+        "owned_child_reaped": true,
+        "owned_group_empty": true
+      }
+    ]
+  },
+  "creation_counts": {
+    "containers": 226,
+    "volumes": 4
+  },
+  "offline": {
+    "packets": 10,
+    "full_protected_logical_comparisons_equal": true,
+    "physical_redb_equal_in_packets": false,
+    "config_and_key_bytes_equal": true
+  },
+  "resource": {
+    "maximum_gap_seconds": 2.004374746999929,
+    "minimum_free_bytes": {
+      "docker_storage": 108513771520,
+      "host": 108513771520,
+      "private": 108513771520,
+      "workspace": 108513771520
+    },
+    "samples": 1672
+  },
+  "cleanup": {
+    "errors": [],
+    "groups": 0,
+    "containers": 0,
+    "volumes": 0,
+    "pending_maps_empty": true,
+    "images_empty": true,
+    "builder_children_removed": true
+  },
+  "official_release": false,
+  "shared_full_gate": "not_run",
+  "limits": [
+    "native ARM64 LOCAL cohort only",
+    "resource-only Dockerfile variant",
+    "format3 enforcement through pinned public entrypoints",
+    "private complete logical snapshot; no raw rows in evidence",
+    "b619 native notices were later found stale; retained, not regenerated",
+    "sampling is not a hard quota",
+    "no registry/tag/release/tenant/device claim"
+  ],
+  "root_review_limits": [
+    "Root streamed and hashed all 11 ZIP members, extracted only the three JSON/JSONL evidence files; images/reader not extracted or executed.",
+    "Resource minima/sample count exactly recomputed; JSONL gap rounds to 2.004 vs full-precision summary2.004374746999929 within0.0005 rounding tolerance.",
+    "One initial root assertion incorrectly required exact gap equality; it failed before job-log fetch and was corrected without evidence/cohort changes.",
+    "Initial verbose capability display truncated; bounded edition/target/features and outcome projections reread; parsing all data is not a full source-body or individual runtime replay.",
+    "Original native-input transport rehash occurred in helper; root_outer_zip_rehashed=false remains for the earlier ARM native input. Current new outer cohort ZIP rehashed independently.",
+    "No latest a6d product/official release/tenant/device/Linux-vs-allOS assertion."
+  ]
+}

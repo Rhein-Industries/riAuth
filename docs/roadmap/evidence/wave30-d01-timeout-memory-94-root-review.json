@@ -1,0 +1,100 @@
+{
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "reviewed_at": "2026-10-03T07:08:12.107089+00:00",
+  "reservation": "wave30_D01_timeout_memory_verification_once",
+  "helper_sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+  "payload_sha256": "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e",
+  "supervisor_sha256": "10eaff2057fd1a715658ff32ebe30a2d8d0770ec9e372978fe654270f15cba57",
+  "child": {
+    "child_exit": 0,
+    "child_pid": 96790,
+    "child_reaped": true,
+    "elapsed_seconds": 0.066264,
+    "fixed_result": {
+      "assertions": 871,
+      "baseline_requests": 21,
+      "baseline_sha256": "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1",
+      "candidate_requests": 97,
+      "candidate_sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+      "completed": 94,
+      "failure_class": null,
+      "first_failure": null,
+      "groups": {
+        "authorization_parity": 7,
+        "controller_interpretation": 4,
+        "discard_lifecycle": 1,
+        "eligible_counter": 4,
+        "exception_identity": 3,
+        "guard_parity": 12,
+        "halt_boundaries": 7,
+        "normal_after_discard": 3,
+        "observer_first_only": 4,
+        "operation_boundaries": 4,
+        "record_schema": 6,
+        "shutdown_failure": 1,
+        "strict_state": 38
+      },
+      "journey_credit": false,
+      "planned": 94,
+      "result": "passed",
+      "schema": "riauth.d01-timeout-memory/v1",
+      "whole60_proven": false
+    },
+    "payload_bytes": 128630,
+    "payload_sha256": "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e",
+    "schema": "riauth.d01-timeout-memory-outer/v1",
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 712,
+    "stdout_sha256": "9770574df53444e6c50be10d30ff56616e6d3b08ce07f378eefec91797512855",
+    "supervisor_failure": null,
+    "timeout": false
+  },
+  "outer": {
+    "elapsed_seconds": 0.090999,
+    "outer_bound_seconds": 50,
+    "outer_failure": null,
+    "outer_timeout": false,
+    "payload_sha256": "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e",
+    "retained_result_bytes": 1459,
+    "retained_result_sha256": "f9291a20eb3778bacc32f4a1cccff68b919e99714e6832e6f455d3c348c5da27",
+    "schema": "riauth.d01-timeout-memory-invocation/v1",
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 104,
+    "stdout_sha256": "1bbb472e2878af8b22e7e1d68135525aa8da9d1634483c97aefe6522f59ff038",
+    "supervisor_exit": 0,
+    "supervisor_pid": 96788,
+    "supervisor_reaped": true,
+    "supervisor_sha256": "10eaff2057fd1a715658ff32ebe30a2d8d0770ec9e372978fe654270f15cba57"
+  },
+  "retained_files": {
+    "outer.redacted.json": {
+      "bytes": 2347,
+      "sha256": "d9fa068dc0690254f55bea0fa377c07b2b92056a19dfd19193547ded0db06a2b",
+      "mode": "0600"
+    },
+    "supervisor.py": {
+      "bytes": 7196,
+      "sha256": "10eaff2057fd1a715658ff32ebe30a2d8d0770ec9e372978fe654270f15cba57",
+      "mode": "0600"
+    },
+    "result.redacted.json": {
+      "bytes": 1459,
+      "sha256": "f9291a20eb3778bacc32f4a1cccff68b919e99714e6832e6f455d3c348c5da27",
+      "mode": "0600"
+    },
+    "payload.py": {
+      "bytes": 128630,
+      "sha256": "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e",
+      "mode": "0600"
+    }
+  },
+  "root_executed_runtime": false,
+  "source_archives_read_and_hash_verified": true,
+  "all13_groups_counts_verified": true,
+  "journey_credit": false,
+  "whole60_proven": false,
+  "release_before_evidence_publication": true,
+  "limit": "Pure memory synthetic stream/clock/sink cases; no browser, cryptographic, native provider, HTTP or helper-main execution."
+}

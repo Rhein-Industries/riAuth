@@ -1,0 +1,28 @@
+{
+  "run_id": 37101112623,
+  "source": "544d1340b80cd3e040dc13142cdcbc1d75fea4cb",
+  "conclusion": "success",
+  "jobs": [
+    {
+      "id": 111143705453,
+      "name": "integration",
+      "conclusion": "success"
+    },
+    {
+      "id": 111143705604,
+      "name": "audit",
+      "conclusion": "success"
+    },
+    {
+      "id": 111143705622,
+      "name": "check",
+      "conclusion": "success"
+    }
+  ],
+  "metadata": {
+    "path": "planning/evidence/wave30-ci-37101112623-completed-metadata.json",
+    "sha256": "875b97892399353d20ea134d3f47896ed568b8896563e64a94fdbea10ad1f357"
+  },
+  "observed_at": "2026-10-03T07:04:55.514229+00:00",
+  "latest_a6d_result_not_inferred": true
+}
