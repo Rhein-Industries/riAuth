@@ -2,6 +2,47 @@
 use super::*;
 use serde_json::{Value, json};
 
+// The shared OIDC handoff has no SAML targets or protocol continuation.
+// Decode its complete shape without requiring the Platform XML adapter.
+fn shared_oidc_logout_flow(value: Value) -> bool {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Finish {
+        redirect: Option<String>,
+        #[serde(default)]
+        return_binding: Option<crate::session_protocol::PostLogoutReturn>,
+        response: Option<Value>,
+        frontchannel_urls: std::collections::BTreeSet<String>,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Flow {
+        id: String,
+        expires_at: u64,
+        targets: Vec<Value>,
+        position: usize,
+        pending: Option<Value>,
+        confirmed: usize,
+        failed: usize,
+        finish: Finish,
+    }
+    serde_json::from_value::<Flow>(value).is_ok_and(|flow| {
+        let _ = (
+            flow.id,
+            flow.expires_at,
+            flow.finish.redirect,
+            flow.finish.return_binding,
+            flow.finish.frontchannel_urls,
+        );
+        flow.targets.is_empty()
+            && flow.pending.is_none()
+            && flow.position == 0
+            && flow.confirmed == 0
+            && flow.failed == 0
+            && flow.finish.response.is_none()
+    })
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Inspection {
     DirectOpen,
@@ -581,10 +622,7 @@ pub(super) fn current_store_blockers(
             }
             after = page.last().map(|(key, _)| key.clone());
             for (id, value) in page {
-                if *bucket == "saml_logout_flows"
-                    && serde_json::from_value::<crate::saml::logout::Flow>(value)
-                        .is_ok_and(|flow| !flow.requires_platform())
-                {
+                if *bucket == "saml_logout_flows" && shared_oidc_logout_flow(value) {
                     continue;
                 }
                 issue!(

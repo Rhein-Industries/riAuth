@@ -218,8 +218,34 @@ fn oidc_only_session_revocation_remains_shared_edition_state() {
         .store
         .list::<Value>("saml_logout_flows")
         .unwrap();
-    assert_eq!(flows.len(), 1);
-    assert_eq!(flows[0].1["targets"], json!([]));
+    #[cfg(feature = "platform")]
+    {
+        assert_eq!(flows.len(), 1);
+        assert_eq!(flows[0].1["targets"], json!([]));
+    }
+    #[cfg(not(feature = "platform"))]
+    {
+        // Essentials propagates OIDC URLs without creating a SAML flow.
+        assert!(flows.is_empty());
+        // A restored shared OIDC handoff from Platform must also permit startup.
+        fixture
+            .core
+            .store
+            .write(|tx| {
+                tx.put(
+                    "saml_logout_flows",
+                    "shared-oidc",
+                    &json!({
+                        "id":"shared-oidc", "expires_at":now()+300, "targets":[], "position":0,
+                        "pending":null, "confirmed":0, "failed":0, "finish":{
+                            "redirect":null, "return_binding":null, "response":null,
+                            "frontchannel_urls":["https://sample.example/logout"]
+                        }
+                    }),
+                )
+            })
+            .unwrap();
+    }
     let config = fixture.core.config.clone();
     let before = fixture.core.store.read(|tx| tx.snapshot()).unwrap();
     drop(fixture.core);
