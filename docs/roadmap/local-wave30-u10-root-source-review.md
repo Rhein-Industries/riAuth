@@ -72,3 +72,23 @@ This is a successful check job within a failed aggregate run, with no rare-race,
 external-provider, release, whole journey or original U10 completion claim.
 
 [Finite root receipt](evidence/wave30-ci-37106315679-completed-check-root-review.json).
+
+
+## Actual focused browser result after the title-selector correction
+
+Run `37109601795`, integration job `111168254338`, source
+`758c43acf94395b439c9aea30055e69c708a8690`, completed successfully.
+Root retained the complete 266,444-byte private log, SHA-256
+`b6072e8cdc373c529a285312b9a4f7fdda6115e6e8cc52f2dffbc26adb472ef4`,
+and read checkout, exact command, selection boundaries and focused result.
+The Chromium command selected exactly one
+`empty interaction credentials identify missing fields without a request`
+case at `signin.spec.js:526:1`: **1 passed (9.5s)**, one worker, zero retries.
+The preceding authenticator browser block remains 22 passed / 2 skipped.
+
+The new required-code case and closed-two-title selector in unpublished
+`051c821` / `7f28f41` did not run at this source. The check job was still
+in progress at observation; no aggregate all-green claim is made. The previous
+`1a517` No-tests-found failure remains failed. This focused result supplies no
+complete U10 journey, assistive-technology, physical authenticator or release
+acceptance. [Exact finite receipt](evidence/wave30-u10-37109601795-focused-ci-root-review.json).
