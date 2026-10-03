@@ -95,3 +95,18 @@ A09 run37087561409 still owns validation; all local Cargo, native, memory and
 browser runtime remains held. Original S02 remains in_progress. A root static
 lookup guessed absent local-wave30-s02-root-source-review.md before using
 the existing root-review file; no guessed path was edited or imported.
+
+## 2026-10-03 — safe design independent review accepted as source
+
+Root read the complete 346-line independent appendix at
+`5f1d674f1ed0c958177250a9a17342a64bdddb29`, checked its exact old prefix
+and proposed fixture identity against the fully reviewed `02b1e38` design.
+No new source blocker was found. This accepts the exact safe fixture
+materialization, with production traversal unchanged. Native fetched-row batch
+population can support the bounded materialization facet; it supplies no live
+heap, RSS, fewer total rows/bytes, or assumed speedup. Actual timings, complete
+results, authority, full-state and concurrency oracles remain required.
+The old unsafe fixture and F1 remain historical and unrun. No Cargo or
+fixture invocation is released by this report. Original S02 remains open.
+Root's first integration Python snippet had a non-ASCII bytes literal and was
+rejected before any writes. Corrected UTF-8 serialization changes no source.
