@@ -1774,4 +1774,57 @@ mod google {
         fixture.core.install_verified_access_transport(transport);
         assert!(fixture.core.device_challenge("not-a-session").is_err());
     }
+
+    #[test]
+    fn retained_local_proof_requires_reverification_after_provider_change() {
+        let account_dir = tempfile::tempdir().unwrap();
+        let (pkcs8, _) = materials();
+        let account = write_account(account_dir.path(), &pkcs8, |_| {});
+        let mut f = Fixture::new();
+        let (private_pem, public_pem) = super::es256_pair();
+        f.core.config.device_trust =
+            Some(super::trust(f._dir.path(), &public_pem, "local-device"));
+        f.client("app", false);
+        f.client("plain", false);
+        enable(&f, "app");
+        let session = f.user("alice");
+        let issued = f.core.device_challenge(&session).unwrap();
+        let proof = super::sign(
+            &private_pem,
+            "local-device",
+            &super::device_claims(
+                &f.core.config.issuer,
+                issued["challenge"].as_str().unwrap(),
+                now() + 600,
+            ),
+        );
+        f.core.device_verify(&session, &proof).unwrap();
+        assert!(
+            f.core
+                .authorize(&session, f.request("app", &crypto::random_token("")))
+                .is_ok()
+        );
+
+        let Fixture { _dir, core, admin } = f;
+        let mut config = core.config.clone();
+        drop(core);
+        config.device_trust = Some(account.config);
+        let f = Fixture {
+            _dir,
+            core: riauth::core::Core::open(config).unwrap(),
+            admin,
+        };
+        let transport: Arc<dyn VerifiedAccessTransport> = Arc::new(Boom);
+        f.core.install_verified_access_transport(transport);
+        let error = f
+            .core
+            .authorize(&session, f.request("app", &crypto::random_token("")))
+            .unwrap_err();
+        assert_eq!(error.code, "unmet_authentication_requirements");
+        assert!(
+            f.core
+                .authorize(&session, f.request("plain", &crypto::random_token("")))
+                .is_ok()
+        );
+    }
 }
