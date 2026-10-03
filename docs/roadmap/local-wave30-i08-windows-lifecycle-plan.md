@@ -394,3 +394,165 @@ Recommend **one separately reserved managed deadline correction**, followed
 by root's already-requested Windows host/signing input decision. Recommend
 no original I08 DONE inference from this report. Root owns implementation
 reservation, native/runtime evidence, integration/publication and status.
+
+## Managed response deadline materialized — source only, runtime held
+
+2026-10-03. Reservation `wave30_I08_managed_response_deadline`, same project,
+WT ed9, branch and existing shell `0164baca-c6c1-4cb1-81db-6d424f0640ac`.
+Root authorized exactly the three managed files below and this report append.
+The approval ledger records `SOURCE_ONLY_RESERVED` and runtime `HELD`.
+The original **27,950-byte / 396-line** report from
+`d4a2319f8be5716550b84392c782d59efd4f8d1d`, SHA-256
+`a965fc6931bb308687b467fd655205d9aa0b89b522797f68e29cd10ab610fd58`,
+is retained byte for byte, including all old failures and historical limits.
+
+**Source commit:** `e31fbee66f1038cfc2412e17497bbf07f83e1314`, parent
+`d4a2319f8be5716550b84392c782d59efd4f8d1d`; exactly three files,
+128 insertions / one deletion. The report is committed separately.
+This closes the reserved source implementation seam subject to root review;
+it supplies **no compilation, self-test or Windows runtime pass**.
+
+### Reviewed baseline and exact source results
+
+Resolved the user's published base shorthand to
+`a6d361600a03713fc1b687f367e9db84efe43463`, the local published-main reference
+at the initial source inspection. The first literal three-character `a6d`
+Git lookup failed; full object discovery and the main reference resolved it
+without fetching, alignment or edits. The older `a6df27e` object is unrelated
+and was not used as this base.
+
+Read the entire protected `DeviceHost.cs`, `Program.cs` and `SelfTest.cs`,
+plus CONTRIBUTING, SECURITY and the project definition. Each of those three
+current files matched the full reviewed a6d361 object before editing:
+
+| File | Baseline blob | Baseline SHA-256 |
+| --- | --- | --- |
+| `windows/RiAuth.DeviceHost/DeviceHost.cs` | `1b9adc281aa2414a698558663e8b78a2f15a4f5b` | `b060bb09bf9fda05e1497d70053d621227dcce6adb0aef1195f0bf0e5f9121ba` |
+| `windows/RiAuth.DeviceHost/Program.cs` | `6e518365a220f7ea3aceb260d12ca3f37f2d0a80` | `59e065d324dd684615aea08f4c7f19551e178208a99fcf691f4d85e4381639b2` |
+| `windows/RiAuth.DeviceHost/SelfTest.cs` | `16529c0e757bf29d4986ba2d7ad33b59aa7f7969` | `c78dd4496222c58a36e575ddb0bb21be8e8d8904748aeebb8280e12479f08156` |
+
+Committed candidate identities, read back from e31fbee:
+
+| File | Bytes / lines | Candidate blob | Candidate SHA-256 |
+| --- | ---: | --- | --- |
+| `windows/RiAuth.DeviceHost/DeviceHost.cs` | 12,178 / 237 | `3cd1bb86906ee5e01a68ce0adb05e48b1f7af19e` | `c87516ac0323e4d009e6d438cfdf2b74918db3d7c0ad9ab4b9b67fd2367c48ee` |
+| `windows/RiAuth.DeviceHost/Program.cs` | 11,078 / 232 | `6cf7f027aadc58697a04f846257428f8146081a6` | `a1fe254ebf65a2153fcf2a17728b4b1b2283ca3d6e991be92eff2bb26126a241` |
+| `windows/RiAuth.DeviceHost/SelfTest.cs` | 11,597 / 228 | `0ecc40250fe659c278109bf2833355018a6ca611` | `69bd5f5031bfdb9b974cb2e8201e6f2823a3f32e924eb53f5a38392807e1b38e` |
+
+### Production behavior and preservation proof
+
+`DeviceApi.SendAsync` has one seven-line insertion. It snapshots
+`HttpClient.Timeout`, rejects `Timeout.InfiniteTimeSpan` or a nonpositive
+value **before creating/sending the request**, with fixed configuration text
+`riAuth request timeout must be finite and positive`. It creates a disposable
+`CancellationTokenSource` linked to the original caller token, calls
+`CancelAfter(timeout)` once, and assigns that source's token to the existing
+local `cancellation` parameter. A stronger/pre-cancelled caller remains
+linked; there is no replacement by an independent weaker caller token.
+
+The original send, content-stream creation, each stream read and JSON parse
+all continue to use that **same** local token. The timer starts before send
+and is never reset by headers or a chunk. Production's unchanged client
+timeout remains 15 seconds. This is a cooperative whole-request cancellation
+deadline; it is not a hard cancellation bound on arbitrary synchronous code,
+the two-request login or the native provider's joins.
+
+Deleting precisely that insertion reconstructs the **entire original
+DeviceHost file**, proving all other helpers, headers/paths, status/64 KiB/
+JSON guards, identity/epoch/expiry checks, ticket redemption, Save/Purge and
+no-retry behavior remain byte-identical. All four token-consuming call sites
+and the single pre-send `CancelAfter` were checked as source.
+
+Program's sole change is `catch (TaskCanceledException)` to
+`catch (OperationCanceledException)`. Reversing that substitution reconstructs
+the entire original file, including the fixed timeout message and exit 3.
+The fixed bad-configuration `InvalidOperationException` still reaches the
+existing configuration/error exit-1 arm; it is not a successful operation or
+an automatic retry. No raw cancellation exception or response is printed.
+
+### One additive self-test definition
+
+The original five scenario bodies and every original helper remain exactly
+unchanged. Removing the one new invocation and appended local helpers
+reconstructs the complete original 6,105-byte SelfTest file and its baseline
+hash. Existing `MemoryStore`/`FakeHandler` implementations were not modified.
+
+The new `StalledResponseMustTimeOutAsync` uses those existing fake request
+dispatch semantics plus three strictly local fixtures: a Save/Purge-counting
+store, disposal-observing `StreamContent`, and a cancellation-aware partial
+stream. It returns 200 headers, delivers a bounded incomplete JSON prefix,
+then waits for disposal with the read's cancellation token. It records an
+actual cancellation exception at that stalled read, rather than supplying a
+timeout result from the handler.
+
+The operation is called with `CancellationToken.None`; its injected finite
+client timeout is one second. An independent five-second `WaitAsync` guard
+observes the refusal task and **does not supply an operation token**. It
+requires both partial-prefix delivery and observed read cancellation, one
+request, zero redeem/offline calls, zero Save/Purge, complete DeviceState
+equality and no successfully completed login/approval result. It checks both
+content and stream disposal **before fixture cleanup**, avoiding a
+fixture-driven disposal oracle.
+
+The finally block disposes only the owned synthetic content. This releases
+an old implementation's uncancelled wait after a guard failure, then observes
+the refusal task under a separate one-second cleanup guard. Cleanup exceptions
+are suppressed there to preserve the first test failure; they cannot convert
+the earlier independent guard/expectation into a pass. These are nominal
+managed test guards, not measured hard process deadlines. All diagnostics are
+fixed and no synthetic secret/state/body is printed. This adds no device-proof
+transition or I07 case, and exercises no server/OS account state.
+
+### Actual static checks and corrections
+
+- Whole-byte baseline comparison, three full-file inverse proofs and exact
+  source-only staged scope passed. The first SelfTest inverse checker failed
+  because its reconstruction added an extra blank line before the original
+  class close. Corrected the **checker boundary only**, then the full inverse
+  matched the original hash; candidate source remained unchanged.
+- Static lexical delimiter inspection passed for the three C# files after
+  ignoring strings/comments. This is neither a C# grammar/typecheck nor a
+  compiler/AST claim. Static guard checks verified the explicit cancellation,
+  independent guards, complete-state/counter/no-approval assertions and
+  disposal-before-cleanup ordering without evaluating any case or function.
+- `git diff --check` and `git diff --cached --check` passed.
+- `python3 scripts/check-docs.py` passed before and after the source changes:
+  “Markdown links and build-directory layout checked.”
+- `python3 scripts/check-repo-hygiene.py` passed, including staged source,
+  for **960** tracked files. No checker/build cache was removed.
+- Source commit readback matched the three candidate blob/hash identities;
+  the source commit ended with a clean worktree. Append-only report-prefix,
+  report scope and final documentation/whitespace checks follow below.
+
+No `.NET` SDK/version/compiler/selftest, PowerShell/native/signature command,
+HTTP/socket/provider/browser/Driver, helper, Cargo or other runtime was
+invoked. No SDK availability inventory was needed or performed; availability
+is not asserted. Source inspection must not be reported as an executed
+six-case pass. The earlier parser failure and historical 1/1, 11/11 and
+Windows-native evidence limits stay exactly as dated above.
+
+### Runtime readiness and original acceptance residual
+
+The immutable three-file source is ready for root's independent review.
+The sole prospective managed command remains
+`dotnet run --project windows/RiAuth.DeviceHost -- selftest`, **HELD** until
+root separately releases it with a usable SDK and resource envelope. It
+compiles/runs the original five mocks and the one new case; it does not install
+or exercise Windows SAM/DPAPI/ACL/LSA/LogonUI, sign a bundle, test a Windows
+update/uninstall or prove release readiness. No native or signed-artifact
+credit is added by this slice.
+
+Original I08 remains subject to its already-requested signed Windows host
+inputs and actual complete lifecycle evidence. Root owns interpretation,
+runtime release, integration/publication and status; this worker changed no
+primary/task status or closed-row disposition. No main/accepted edit, push,
+merge/alignment, new task/WT/worker/shell, dependency acquisition, installation
+or other-worker contact occurred. No runtime lane was taken or released.
+
+Final append validation: the entire 27,950-byte prefix matched d4a2319,
+and all **25** full object references resolved. The source stayed byte-exact
+to e31fbee; only this report had a pending tracked change, with no untracked
+files or unrelated staged changes. Markdown checking, tracked hygiene
+(960 files) and whitespace checking passed after the append. Final staged
+scope/whitespace and commit readback are checked for the report-only handoff;
+they add no runtime or native evidence.
