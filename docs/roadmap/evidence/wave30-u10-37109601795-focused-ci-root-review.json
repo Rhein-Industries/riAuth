@@ -1,0 +1,37 @@
+{
+  "schema": "riauth.wave30.u10.focused-ci-root-review/v1",
+  "reviewed_at": "2026-10-03T09:11:07.444143+00:00",
+  "run": 37109601795,
+  "job": 111168254338,
+  "source": "758c43acf94395b439c9aea30055e69c708a8690",
+  "job_conclusion": "success",
+  "aggregate_run_conclusion": "pending check job at observation",
+  "raw_log": {
+    "bytes": 266444,
+    "sha256": "b6072e8cdc373c529a285312b9a4f7fdda6115e6e8cc52f2dffbc26adb472ef4",
+    "private_mode": "0600"
+  },
+  "read_scope": "whole raw hash plus checkout/command/group boundary and complete focused selected result block; not whole raw body semantic review",
+  "command": "./node_modules/.bin/playwright test signin.spec.js --project=chromium --workers=1 --retries=0 --grep 'empty interaction credentials identify missing fields without a request$' --reporter=line",
+  "focused": {
+    "title": "empty interaction credentials identify missing fields without a request",
+    "project": "chromium",
+    "location": "signin.spec.js:526:1",
+    "passed": 1,
+    "failed": 0,
+    "duration_summary": "9.5s",
+    "workers": 1,
+    "retries": 0
+  },
+  "earlier_browser_block": {
+    "passed": 22,
+    "skipped": 2,
+    "duration": "6.6m"
+  },
+  "required_otp_new_case": "unpublished051c821 and7f28f41, not selected/run at758",
+  "limits": [
+    "No whole U10 journey/AT/physical-authenticator/release completion",
+    "Earlier1a517 selector failure remains actual failed; this later run does not reclassify it",
+    "Check job is still in progress; no all-green run claim"
+  ]
+}

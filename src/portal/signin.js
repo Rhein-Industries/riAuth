@@ -67,6 +67,7 @@
     if (id === "signin-error") {
       for (const field of FIELDS) $(field).removeAttribute("aria-invalid");
       for (const field of ["signin-username", "signin-password"]) $(field).removeAttribute("aria-describedby");
+      $("signin-otp").setAttribute("aria-describedby", "signin-otp-hint");
     }
   }
   function showError(id, text, portal = false) {
@@ -319,7 +320,11 @@
       if ($("signin-password").required && !password) { $("signin-password").setAttribute("aria-invalid", "true"); $("signin-password").setAttribute("aria-describedby", "signin-error"); }
       showError("signin-error", "Enter your username and password."); return;
     }
-    if ($("signin-otp").required && !otp) { clearError("signin-error"); showError("signin-error", state?.requirements?.configured_totp ? "Enter your current authenticator code." : "Enter your authenticator or recovery code, or sign in with a passkey."); return; }
+    if ($("signin-otp").required && !otp) {
+      clearError("signin-error");
+      $("signin-otp").setAttribute("aria-invalid", "true"); $("signin-otp").setAttribute("aria-describedby", "signin-otp-hint signin-error");
+      showError("signin-error", state?.requirements?.configured_totp ? "Enter your current authenticator code." : "Enter your authenticator or recovery code, or sign in with a passkey."); return;
+    }
     $("signin-password").value = "";
     act($("signin-submit"), "signin-error", async () => {
       await cancelPasskey();
@@ -331,6 +336,7 @@
   for (const field of FIELDS) $(field).addEventListener("input", () => {
     $(field).removeAttribute("aria-invalid");
     if (field !== "signin-otp") $(field).removeAttribute("aria-describedby");
+    if (field === "signin-otp") $(field).setAttribute("aria-describedby", "signin-otp-hint");
   });
   $("signin-passkey").addEventListener("click", () => {
     if (acting) return;

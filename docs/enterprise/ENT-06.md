@@ -83,6 +83,8 @@ The service-account file is an external credential. The backup archive stores it
 
 ## Shared behavior
 
+Each retained verification records the provider kind that accepted it (`local` or `google_verified_access_v2`). Protected clients require verification again when that kind differs from the configured provider, or the retained provider is missing or unknown. Omitted `provider` and explicit `local` are equivalent. This kind binding does not fingerprint every configuration, key or customer setting. Clients without `require_device_trust` keep their existing behavior.
+
 `GET /api/policy/explain` is a username-based simulation without a session proof. For a protected client it reports `device_trust_session_required`, or `device_trust_verifier_unconfigured` if the configured provider cannot be loaded; it never borrows another session's trust.
 
 This binds the accepted device signal to a session, not every HTTP request to hardware. The session remains a bearer credential; a copied session can be used until revoked or expired.

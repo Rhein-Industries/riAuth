@@ -114,7 +114,7 @@ internal static class Program
             Console.Error.WriteLine("riAuth is unreachable; access denied and local state retained");
             return 3;
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             Console.Error.WriteLine("riAuth timed out; access denied and local state retained");
             return 3;

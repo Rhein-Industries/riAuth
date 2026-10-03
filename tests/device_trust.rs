@@ -331,6 +331,7 @@ fn missing_verifier_fails_closed_and_default_flag_does_not() {
                     user_id: user_id.clone(),
                     session_id: String::new(),
                     epoch: 0,
+                    provider: None,
                     verified_at: now(),
                     expires_at: now() + 300,
                 },
@@ -1773,5 +1774,345 @@ mod google {
         let transport: Arc<dyn VerifiedAccessTransport> = Arc::new(Boom);
         fixture.core.install_verified_access_transport(transport);
         assert!(fixture.core.device_challenge("not-a-session").is_err());
+    }
+
+    #[test]
+    fn retained_local_proof_requires_reverification_after_provider_change() {
+        let account_dir = tempfile::tempdir().unwrap();
+        let (pkcs8, _) = materials();
+        let account = write_account(account_dir.path(), &pkcs8, |_| {});
+        let mut f = Fixture::new();
+        let (private_pem, public_pem) = super::es256_pair();
+        f.core.config.device_trust = Some(super::trust(f._dir.path(), &public_pem, "local-device"));
+        f.client("app", false);
+        f.client("plain", false);
+        enable(&f, "app");
+        let session = f.user("alice");
+        let issued = f.core.device_challenge(&session).unwrap();
+        let proof = super::sign(
+            &private_pem,
+            "local-device",
+            &super::device_claims(
+                &f.core.config.issuer,
+                issued["challenge"].as_str().unwrap(),
+                now() + 600,
+            ),
+        );
+        f.core.device_verify(&session, &proof).unwrap();
+        assert!(
+            f.core
+                .authorize(&session, f.request("app", &crypto::random_token("")))
+                .is_ok()
+        );
+
+        let Fixture { _dir, core, admin } = f;
+        let mut config = core.config.clone();
+        drop(core);
+        config.device_trust = Some(account.config);
+        let f = Fixture {
+            _dir,
+            core: riauth::core::Core::open(config).unwrap(),
+            admin,
+        };
+        let transport: Arc<dyn VerifiedAccessTransport> = Arc::new(Boom);
+        f.core.install_verified_access_transport(transport);
+        let error = f
+            .core
+            .authorize(&session, f.request("app", &crypto::random_token("")))
+            .unwrap_err();
+        assert_eq!(error.code, "unmet_authentication_requirements");
+        assert!(
+            f.core
+                .authorize(&session, f.request("plain", &crypto::random_token("")))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn retained_google_proof_requires_reverification_and_can_rebind_both_providers() {
+        let account_dir = tempfile::tempdir().unwrap();
+        let (pkcs8, _) = materials();
+        let account = write_account(account_dir.path(), &pkcs8, |_| {});
+        let google_config = account.config;
+        let mut f = Fixture::new();
+        f.core.config.device_trust = Some(google_config.clone());
+        f.client("app", false);
+        f.client("plain", false);
+        enable(&f, "app");
+        let session = f.user("alice");
+        install(
+            &f.core,
+            vec![
+                token_reply(3600, None, "Bearer"),
+                generate_reply(0x51),
+                verify_reply(
+                    "local-device-1",
+                    "C01234567",
+                    &json!("CHROME_OS_VERIFIED_MODE"),
+                ),
+            ],
+        );
+        let issued = f.core.device_challenge(&session).unwrap();
+        let challenge = issued["challenge"].as_str().unwrap();
+        assert_eq!(
+            submit(&f.core, &session, challenge, &answer(challenge, 0x61)).unwrap()["verified"],
+            true
+        );
+        let record = f
+            .core
+            .store
+            .list::<DeviceVerification>("device_verifications")
+            .unwrap()
+            .pop()
+            .unwrap()
+            .1;
+        assert_eq!(
+            record.provider.as_deref(),
+            Some("google_verified_access_v2")
+        );
+        assert!(
+            f.core
+                .authorize(&session, f.request("app", &crypto::random_token("")))
+                .is_ok()
+        );
+
+        let (private_pem, public_pem) = super::es256_pair();
+        let local_config = super::trust(f._dir.path(), &public_pem, "local-device");
+        let Fixture { _dir, core, admin } = f;
+        let mut config = core.config.clone();
+        drop(core);
+        config.device_trust = Some(local_config);
+        let f = Fixture {
+            _dir,
+            core: riauth::core::Core::open(config).unwrap(),
+            admin,
+        };
+        let error = f
+            .core
+            .authorize(&session, f.request("app", &crypto::random_token("")))
+            .unwrap_err();
+        assert_eq!(error.code, "unmet_authentication_requirements");
+        assert!(
+            f.core
+                .authorize(&session, f.request("plain", &crypto::random_token("")))
+                .is_ok()
+        );
+        let issued = f.core.device_challenge(&session).unwrap();
+        let proof = super::sign(
+            &private_pem,
+            "local-device",
+            &super::device_claims(
+                &f.core.config.issuer,
+                issued["challenge"].as_str().unwrap(),
+                now() + 600,
+            ),
+        );
+        assert_eq!(
+            f.core.device_verify(&session, &proof).unwrap()["verified"],
+            true
+        );
+        let record = f
+            .core
+            .store
+            .list::<DeviceVerification>("device_verifications")
+            .unwrap()
+            .pop()
+            .unwrap()
+            .1;
+        assert_eq!(record.provider.as_deref(), Some("local"));
+        assert!(
+            f.core
+                .authorize(&session, f.request("app", &crypto::random_token("")))
+                .is_ok()
+        );
+
+        let Fixture { _dir, core, admin } = f;
+        let mut config = core.config.clone();
+        drop(core);
+        config.device_trust = Some(google_config);
+        let f = Fixture {
+            _dir,
+            core: riauth::core::Core::open(config).unwrap(),
+            admin,
+        };
+        let error = f
+            .core
+            .authorize(&session, f.request("app", &crypto::random_token("")))
+            .unwrap_err();
+        assert_eq!(error.code, "unmet_authentication_requirements");
+        assert!(
+            f.core
+                .authorize(&session, f.request("plain", &crypto::random_token("")))
+                .is_ok()
+        );
+        install(
+            &f.core,
+            vec![
+                token_reply(3600, None, "Bearer"),
+                generate_reply(0x52),
+                verify_reply(
+                    "local-device-1",
+                    "C01234567",
+                    &json!("CHROME_OS_VERIFIED_MODE"),
+                ),
+            ],
+        );
+        let issued = f.core.device_challenge(&session).unwrap();
+        let challenge = issued["challenge"].as_str().unwrap();
+        assert_eq!(
+            submit(&f.core, &session, challenge, &answer(challenge, 0x62)).unwrap()["verified"],
+            true
+        );
+        let record = f
+            .core
+            .store
+            .list::<DeviceVerification>("device_verifications")
+            .unwrap()
+            .pop()
+            .unwrap()
+            .1;
+        assert_eq!(
+            record.provider.as_deref(),
+            Some("google_verified_access_v2")
+        );
+        assert!(
+            f.core
+                .authorize(&session, f.request("app", &crypto::random_token("")))
+                .is_ok()
+        );
+    }
+}
+
+#[test]
+fn implicit_and_explicit_local_provider_keep_the_same_retained_binding() {
+    for provider in [None, Some("local".to_owned())] {
+        let mut f = Fixture::new();
+        let (private_pem, public_pem) = es256_pair();
+        let mut local = trust(f._dir.path(), &public_pem, "local-device");
+        local.provider = provider.clone();
+        f.core.config.device_trust = Some(local);
+        f.client("app", false);
+        enable(&f, "app");
+        let session = f.user("alice");
+        let issued = f.core.device_challenge(&session).unwrap();
+        let proof = sign(
+            &private_pem,
+            "local-device",
+            &device_claims(
+                &f.core.config.issuer,
+                issued["challenge"].as_str().unwrap(),
+                now() + 600,
+            ),
+        );
+        f.core.device_verify(&session, &proof).unwrap();
+        let record = f
+            .core
+            .store
+            .list::<DeviceVerification>("device_verifications")
+            .unwrap()
+            .pop()
+            .unwrap()
+            .1;
+        assert_eq!(record.provider.as_deref(), Some("local"));
+        let Fixture { _dir, core, admin } = f;
+        let mut config = core.config.clone();
+        drop(core);
+        config.device_trust.as_mut().unwrap().provider = if provider.is_none() {
+            Some("local".into())
+        } else {
+            None
+        };
+        let f = Fixture {
+            _dir,
+            core: riauth::core::Core::open(config).unwrap(),
+            admin,
+        };
+        assert!(
+            f.core
+                .authorize(&session, f.request("app", &crypto::random_token("")))
+                .is_ok()
+        );
+    }
+}
+
+#[test]
+fn legacy_and_unknown_provider_rows_require_actual_reverification() {
+    let mut f = Fixture::new();
+    let (private_pem, public_pem) = es256_pair();
+    f.core.config.device_trust = Some(trust(f._dir.path(), &public_pem, "local-device"));
+    f.client("app", false);
+    f.client("plain", false);
+    enable(&f, "app");
+    let session = f.user("alice");
+    let issued = f.core.device_challenge(&session).unwrap();
+    let proof = sign(
+        &private_pem,
+        "local-device",
+        &device_claims(
+            &f.core.config.issuer,
+            issued["challenge"].as_str().unwrap(),
+            now() + 600,
+        ),
+    );
+    f.core.device_verify(&session, &proof).unwrap();
+
+    for provider in [
+        None,
+        Some(Value::Null),
+        Some(json!("unrecognized_provider")),
+    ] {
+        let (key, record) = f
+            .core
+            .store
+            .list::<DeviceVerification>("device_verifications")
+            .unwrap()
+            .pop()
+            .unwrap();
+        let mut retained = serde_json::to_value(record).unwrap();
+        let fields = retained.as_object_mut().unwrap();
+        match provider {
+            None => fields.remove("provider"),
+            Some(value) => fields.insert("provider".into(), value),
+        };
+        f.core
+            .store
+            .write(|tx| tx.put("device_verifications", &key, &retained))
+            .unwrap();
+        let error = f
+            .core
+            .authorize(&session, f.request("app", &crypto::random_token("")))
+            .unwrap_err();
+        assert_eq!(error.code, "unmet_authentication_requirements");
+        assert!(
+            f.core
+                .authorize(&session, f.request("plain", &crypto::random_token("")))
+                .is_ok()
+        );
+        let issued = f.core.device_challenge(&session).unwrap();
+        let proof = sign(
+            &private_pem,
+            "local-device",
+            &device_claims(
+                &f.core.config.issuer,
+                issued["challenge"].as_str().unwrap(),
+                now() + 600,
+            ),
+        );
+        assert_eq!(
+            f.core.device_verify(&session, &proof).unwrap()["verified"],
+            true
+        );
+        let record = f
+            .core
+            .store
+            .get::<DeviceVerification>("device_verifications", &key)
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.provider.as_deref(), Some("local"));
+        assert!(
+            f.core
+                .authorize(&session, f.request("app", &crypto::random_token("")))
+                .is_ok()
+        );
     }
 }

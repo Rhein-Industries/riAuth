@@ -1,0 +1,42 @@
+{
+  "schema": "riauth.root.u10-required-otp-port/v1",
+  "at": "2026-10-03T08:39:32.356666+00:00",
+  "author_source": "25b4bdfe1e0167da6e43f021d1e61358de91341f",
+  "author_evidence": "df845a80f06522e64f568b4cca55d585b9c6af3c",
+  "accepted_source": "051c8213bcb48fc6538ac8494a8b74b3406ddd9c",
+  "accepted_selection": "7f28f4121aeee4b652afe4cc42e66bdd0c8acedc",
+  "author_base_diff": "Own worker base predates accepted missing-credential attributes and test. Root ported exactly three OTP hunks and preserved all existing accepted credential behavior; no whole worker file import.",
+  "full_js_inverse": true,
+  "full_existing_test_prefix_preserved": true,
+  "author_new_test_addition": {
+    "bytes": 3367,
+    "sha256": "54d234e8acbf4d10824b38b0450955977ff8a991f32978da411edeb9ba350adb"
+  },
+  "accepted_files": [
+    {
+      "path": "src/portal/signin.js",
+      "sha256": "dca71dab7d39cbd5cc6c4fc1342b8b915f8a7c8614a4338735582f0e6b3405fa"
+    },
+    {
+      "path": "tools/browser/signin.spec.js",
+      "sha256": "48f2bbef4e7adaf2be72d2a8a074ca0097fd95dc4e6f1775977df37cef569837"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "dd35aab3986574f485269db3334ce9121f6078715cc875013a6bf0dc13db50cf"
+    }
+  ],
+  "selection": "Closed suffix alternation for exactly credential and required-code feedback titles, no beginning anchor; same file/Chromium/one worker/zero retries",
+  "static": [
+    "Node syntax check both JS files",
+    "Exact current-base JS whole-byte inverse",
+    "Entire old test prefix and exact authored addition",
+    "Ruby Psych YAML",
+    "27 Bash syntax blocks",
+    "Unique title and documented prefixed-title regex matching",
+    "Git whitespace"
+  ],
+  "runtime": false,
+  "full_journey": false,
+  "original_u10_status": "unchanged"
+}

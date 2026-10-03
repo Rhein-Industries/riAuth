@@ -301,3 +301,192 @@ all failed/skipped receipts remain byte-preserved. Source readiness/field semant
 are inspection findings. The root owns future file/runtime reservations, published
 integration and original task disposition; accepted receipt-secret/header/PAM,
 Group and 60s boundaries are unchanged.
+
+## Source-only required-OTP association implementation, 2026-10-03
+
+Reservation: `wave30_U10_required_otp_field_association`, same project/original
+U10/primary/supporting worktree. Root authorized exactly three OTP attribute/
+clear/input hunks in `src/portal/signin.js`, one additive focused case in
+`tools/browser/signin.spec.js`, and this append-only report. Source commit:
+`25b4bdfe1e0167da6e43f021d1e61358de91341f`, parent
+`170819f04ebfaff59125f4033f25bcd5153660ef`. It changes only the two approved source
+paths: 76 added lines, three removed lines. No helper, fixture, HTML, workflow,
+dependency, manifest, policy or other existing test changes.
+
+The entire initial report above remains its exact 25463-byte prefix, SHA-256
+`2541997702e04062403b129e5f73da1b550963f141de620e8d6366b1697c41d7`.
+Its dated running observation and original beginning-anchored proposed command
+remain historical text; the terminal selector failure below supersedes neither
+by retrospective editing. All earlier failures/skips and external-input limits
+remain. This source slice is UNRUN, not original U10 completion.
+
+### Own base versus accepted source: narrow integration required
+
+Before editing, own clean HEAD matched `170819f` but the two reserved files did
+**not** equal published `1a517a1a461b7017c353d37a5e498d2c7cfa7985`:
+
+| Object | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Own complete JS base | 23197 | `3d5ee4cfc1b3a88b3d6fa46d064df36b7f1a227d03a1a557830eac4528ccff22` |
+| Own complete test base | 33817 | `d24ed29b9dcad2d143999c0df2fd328da8a62239bec9f3f8a0124df402518bb5` |
+| Published JS base | 23771 | `d42f6ead02c1c27f55778b75b00d7ede654bbe669004aa07c964088124e0797b` |
+| Published test base | 36605 | `2cc417e36f76e4455fa78488e2019f19abb05999323b8e7cd8193b0d1ec49c88` |
+
+The complete base diff is the already accepted `6800973` missing-username/
+required-password three-hunk association change and its one focused test. No
+other base differences were observed in those two files. No alignment, merge,
+reset, whole-file import or import of that prior test was performed. Only the
+new OTP delta was applied to the own base; all other own bytes remain unchanged.
+
+Root must port/resolve the three hunks onto accepted source while retaining its
+credential associations. Do not replace root's complete JS or test with these
+older-base complete files. The appended new case is compatible with the existing
+accepted case and does not modify it. No product source outside the two reserved
+paths changed; this report does not claim the own complete production tree equals
+current main.
+
+### Production behavior and exact reversals
+
+The required-empty-code branch still uses the exact predicate
+`$("signin-otp").required && !otp`, unchanged normalization, and the two exact
+existing messages. It still clears the error first, focuses the alert through
+the same `showError`, and returns before password clearing, `act`, passkey
+cancellation or a password POST. Its only additions are OTP invalid state and
+description `signin-otp-hint signin-error`. Error reset and OTP input restore
+`signin-otp-hint`; invalid removal for all fields stays. No acting, transport,
+binding, generation, cancellation, decision or other authentication logic changes.
+
+Each following `after`→`before` replacement occurs exactly once in the committed
+own JS. Applying all three reconstructs the **entire** own 23197-byte base above,
+not just selected method names or predicates. The pair labels are data for review;
+no source functions were executed.
+
+```javascript
+// clear: before
+    if (id === "signin-error") for (const field of FIELDS) $(field).removeAttribute("aria-invalid");
+// clear: after
+    if (id === "signin-error") {
+      for (const field of FIELDS) $(field).removeAttribute("aria-invalid");
+      $("signin-otp").setAttribute("aria-describedby", "signin-otp-hint");
+    }
+
+// required OTP: before
+    if ($("signin-otp").required && !otp) { clearError("signin-error"); showError("signin-error", state?.requirements?.configured_totp ? "Enter your current authenticator code." : "Enter your authenticator or recovery code, or sign in with a passkey."); return; }
+// required OTP: after
+    if ($("signin-otp").required && !otp) {
+      clearError("signin-error");
+      $("signin-otp").setAttribute("aria-invalid", "true"); $("signin-otp").setAttribute("aria-describedby", "signin-otp-hint signin-error");
+      showError("signin-error", state?.requirements?.configured_totp ? "Enter your current authenticator code." : "Enter your authenticator or recovery code, or sign in with a passkey."); return;
+    }
+
+// input: before
+  for (const field of FIELDS) $(field).addEventListener("input", () => $(field).removeAttribute("aria-invalid"));
+// input: after
+  for (const field of FIELDS) $(field).addEventListener("input", () => {
+    $(field).removeAttribute("aria-invalid");
+    if (field === "signin-otp") $(field).setAttribute("aria-describedby", "signin-otp-hint");
+  });
+```
+
+For the precise accepted-base port, retain published `clearError`'s existing
+username/password description-removal loop, and append the new OTP hint reset
+after it. Retain the published input handler's existing non-OTP description
+removal, and append the new OTP-only hint reset after it. Replace only the shared
+one-line required-OTP branch with the `after` branch above. All three published-
+base edits are uniquely anchored. In-memory data comparison proved that adding
+the already accepted credential delta to the changed own JS yields exactly this
+published-base OTP port. That comparison did not write either source file or
+import/execute JavaScript.
+
+### One additive definition and immutable source pins
+
+The new case is appended **after** the complete old test, preserving all original
+33817 bytes as a prefix, including every helper, assertion and older case. The
+addition is exactly 3367 bytes/63 lines, SHA-256
+`54d234e8acbf4d10824b38b0450955977ff8a991f32978da411edeb9ba350adb`,
+and has one new title:
+`empty required interaction code identifies its field without a request`.
+
+The case uses the existing MFA application and Bob fixture, a 320×640 CSS viewport
+and keyboard typing/Tab/Enter. It captures the initial unauthenticated placeholder,
+checks required OTP, submits empty code with supplied credentials, then checks the
+exact focused alert, OTP-only invalid state and hint+error description, unchanged
+placeholder, portal 401, fit/axe and zero POSTs. Its local unsubmitted OTP input
+checks invalid-state clearing and hint restoration. After another empty-code
+submission, a missing-username local refusal checks OTP error reset without an OTP
+input event. Final portal 401, unchanged placeholder, the authentication screen
+remaining visible and zero POSTs remain. Cookie comparisons report booleans rather than cookie
+values. No valid factor is submitted, no code is spent, and no application or
+session is granted by this definition. It adds no fill/click/route helper override.
+
+| Immutable source object / data-only composition | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `25b4bdfe`: `src/portal/signin.js`, Git blob `e3dbd3b6e87eaa92d16d4c042a32e1c6386855ea` | 23549 | `48400c065d0baf1cba74c9d0ea1a1b05f84f7ff336ab3a7a0456bd4e516308f6` |
+| `25b4bdfe`: `tools/browser/signin.spec.js`, Git blob `3b0e1cf8ca58811d75aadee8592cff2eb39eac0d` | 37184 | `73145ae9c4c028cc33f581c18ef5f15d19a72ccf589eb01f0d041a488d1386ad` |
+| In-memory precise port on entire published `1a517a1` JS | 24098 | `dca71dab7d39cbd5cc6c4fc1342b8b915f8a7c8614a4338735582f0e6b3405fa` |
+| In-memory published `1a517a1` complete test plus exactly this addition | 39972 | `48f2bbef4e7adaf2be72d2a8a074ca0097fd95dc4e6f1775977df37cef569837` |
+
+Removing the addition recovers the whole own old test; removing it from the
+published-base composition recovers the whole published 36605-byte test. The two
+in-memory compositions are scope/port proofs, not tracked artifacts, syntax-check
+results for current root source, or runtime results. Root independently owns the
+accepted-base adaptation and checks before any execution.
+
+### Terminal CI selector failure and corrected prospective command
+
+Pinned root source `5ecf4710a403f7b59306b08ea9f67ae3f7475594` and complete root
+receipt `4cd99258223ed59fd19b653adf9109524ebb1df8:docs/roadmap/evidence/wave30-u10-full-title-selector-root-review.json`
+were read. Both short names were resolved to full commit IDs before body reads.
+The receipt is 1547 bytes, SHA-256
+`1c54c648bce799b33153cd5c5b6e3285d378c89c4d8f5fe9437e1ee06dbfc67b`.
+It records `37106315679`/integration job `111159428293` at published `1a517a1`:
+setup nine passed; authenticator allowlist 22 passed/two skipped; focused U10
+command **No tests found; no test executed**; integration failed. Root retains
+the 257387-byte private log, SHA-256
+`d9dc126d7d050e050f645cb07934ecea5f5fe0628f2cfe54ad4ae71733bedcd7`.
+This worker read only the public receipt, not that log, and queried no job.
+
+The root receipt attributes the beginning-anchored grep to root's static review
+error: grep sees the full project/file/describe/title string. Root's exact source
+correction removes only `^`, retaining the ending `$`, file/project/worker/retry
+settings. No root runtime after that correction is credited by this receipt.
+No test result exists for either newly added case in the evidence supplied here.
+Neither the prior 22-pass subset nor original A6 job metadata is borrowed for it.
+
+Any later separately reserved single command for this new case must omit the
+beginning anchor and retain the ending anchor. Proposed command, from
+`tools/browser`, after root's exact-source embedded-fixture/dependency and finite
+own-process preflight:
+
+```sh
+CARGO_TARGET_DIR="$PWD/../../target" ./node_modules/.bin/playwright test signin.spec.js --project=chromium --workers=1 --retries=0 --grep 'empty required interaction code identifies its field without a request$' --reporter=line
+```
+
+This command was not run and is not released. No workflow was changed to select
+the new case. Exact fixture identity, private capture, finite outer cleanup and
+capacity remain separate prerequisites, not an implicit build/dependency permit.
+
+### Actual static checks and remaining scope
+
+Actual successful source checks:
+
+- `node --check src/portal/signin.js`, exit 0.
+- `node --check tools/browser/signin.spec.js`, exit 0.
+- Data-only exact-three-pair whole production inverse and complete old test-prefix
+  inverse; unique additive title and no old test/helper byte changes.
+- Data-only narrow published-base composition and accepted-credential equivalence;
+  bytes/hashes above, with no whole-file import or source alignment.
+- Complete source diff read; Git whitespace checks; source commit limited to the
+  two approved files. UTF-8, fence, report-prefix, path/scope and report hygiene
+  checks precede the separate append-only report commit.
+
+Node performed syntax checking only; no JS import/test/fixture/browser executed.
+No Cargo/build/typecheck/dependency install/Playwright/provider/GUI/assistive reader,
+product or helper runtime occurred, and no lane was acquired/released. There were
+no failed node syntax checks in this slice. The historical selector failure and
+all prior failed/skipped receipts remain unchanged. Required predicates, messages,
+normalization, focus/early refusal, all other own JS bytes, old complete fixture
+prefix and receipt/header/PAM/Group/60s contracts are preserved. U10's original
+complete journey/AT/selected supported-authenticator evidence is still open;
+this isolated feedback definition supplies no original completion/status claim.
+Root alone reviews, ports, publishes, assigns later runtime and reconciles status.

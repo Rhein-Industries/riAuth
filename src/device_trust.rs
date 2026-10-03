@@ -71,6 +71,15 @@ pub(crate) enum ProviderKind {
     GoogleVerifiedAccessV2,
 }
 
+impl ProviderKind {
+    pub(crate) fn identity(self) -> &'static str {
+        match self {
+            Self::Local => "local",
+            Self::GoogleVerifiedAccessV2 => "google_verified_access_v2",
+        }
+    }
+}
+
 pub(crate) fn provider_kind(config: &TrustConfig) -> Result<ProviderKind> {
     match config.provider.as_deref() {
         None | Some("local") => {
@@ -210,6 +219,7 @@ pub fn policy_reason(
     let Some(identity) = identity else {
         return Ok(Some("device_trust_session_required"));
     };
+    let provider = provider_kind(config)?.identity();
     let at = now();
     let session_active = tx
         .stored_session(&identity.session_id)?
@@ -227,6 +237,7 @@ pub fn policy_reason(
                 && record.epoch == identity.epoch
                 && record.expires_at > at
                 && !record.device_id.is_empty()
+                && record.provider.as_deref() == Some(provider)
         });
     if session_active && fresh {
         Ok(None)

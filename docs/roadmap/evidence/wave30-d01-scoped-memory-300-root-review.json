@@ -1,0 +1,112 @@
+{
+  "schema": "riauth.wave30.d01-scoped-memory-root-review/v1",
+  "at": "2026-10-03T09:38:01.252663+00:00",
+  "author_source": "0ca9e897da1bd8fa12dc5e361493fefc78d5de1f",
+  "author_actual_report": "0b04fcafbf6884bf5b98985301dcd3f32606fd26",
+  "independent_source_report": "640affad29ea7849005a1da142c88245434370b8",
+  "root_coverage": "Complete actual report/finite capture, packet and review; all seven source/capture files hashed and modes checked. Full independent227-line continuation and exact supervisor source boundaries read.",
+  "actual": {
+    "supervisor_exit": 0,
+    "supervisor_exit_method": "Worker exact immutable tool-response archive; root verified archived full571-byte public JSON/hash and private capture agreement. Root did not rerun or directly trace the worker shell.",
+    "child_exit": 0,
+    "wait_status": 0,
+    "child_reaped": true,
+    "group_absent": true,
+    "stream_eof": {
+      "err": true,
+      "out": true
+    },
+    "signal_attempted": false,
+    "signal_delivered": false,
+    "output_capped": false,
+    "minimum_free_bytes": 10195812352,
+    "supervisor_elapsed_ms": 68,
+    "child_elapsed_ms": 26,
+    "packet": {
+      "schema": "riauth.d01-scoped-adapter-memory/v1",
+      "bindings": {
+        "wrapper_bytes": 123063,
+        "wrapper_sha256": "17ccb4c036be980696b9fa3b0b6577033be648b1664082e548480bfb12e1b48f",
+        "template_bytes": 5734,
+        "template_sha256": "04bf0329e3b265d7800f4e7a0e3a023a79dafd0b943176014ec3c77f28147245",
+        "frozen_bytes": 113395,
+        "frozen_sha256": "5e3e5e24fa15bfb4dd28626d5b3368c76d571b77dac6e066edac03b46d261d6c",
+        "suffix_bytes": 33701,
+        "suffix_sha256": "505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"
+      },
+      "status": "passed",
+      "first_failure": null,
+      "cases": [
+        {
+          "name": "fresh_globals_untouched",
+          "passed": true,
+          "checks": 5
+        },
+        {
+          "name": "occupied_all_seven_no_write",
+          "passed": true,
+          "checks": 98
+        },
+        {
+          "name": "closed_keys_and_input_bounds",
+          "passed": true,
+          "checks": 153
+        },
+        {
+          "name": "direct_reference_and_state",
+          "passed": true,
+          "checks": 5
+        },
+        {
+          "name": "nonce_collision_no_reuse",
+          "passed": true,
+          "checks": 4
+        },
+        {
+          "name": "private_state_separation",
+          "passed": true,
+          "checks": 6
+        },
+        {
+          "name": "durable_readback_false_unreached",
+          "passed": true,
+          "checks": 7
+        },
+        {
+          "name": "immutable_source_and_boundary",
+          "passed": true,
+          "checks": 3
+        },
+        {
+          "name": "finite_privacy_failure",
+          "passed": true,
+          "checks": 3
+        }
+      ],
+      "assertions": 300,
+      "preflight_checks": 16,
+      "privacy_verified": true,
+      "constructor_executions": 0,
+      "frozen_body_executions": 0,
+      "synthetic_tool_calls": 0,
+      "public_sink_calls": 0,
+      "elapsed_ms": 26
+    },
+    "capture_sha256": "c25447e2d5a7a7b05ef1636d85fb27ca1a109cddd0b7e47ce390a943f760d140"
+  },
+  "lane": "RELEASED_AFTER_JOIN_AND_GROUP_ABSENCE",
+  "limitations": {
+    "real_confidential_browser": "HELD_NOT_PASSED",
+    "whole_60_seconds": false,
+    "journey_or_full_D01_D05_credit": false,
+    "real_host_store_used": false,
+    "execution_counter_method": "Expected zeros supported by static rejection paths/VM containment; no native execution tracer",
+    "namespace_open_is_atomic": false
+  },
+  "source_findings": {
+    "B1": "Reference assigned before exclusive mkdir; collision can reach writes in preexisting evidence directory. Not observed by actual fresh leaf.",
+    "B2": "Natural successful reap/final drain lacks renewed30s deadline check; a late successful observation can grade within35s. Not observed by68ms actual run.",
+    "disposition": "Supervisor reuse held; only two-hunk source correction separately reserved. Namespace/logic/wrapper and actual pass retained."
+  },
+  "root_runtime_executed": false
+}
