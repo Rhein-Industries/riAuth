@@ -56,3 +56,42 @@ foreign-operation/window/cache limitations retain their source-only scope.
 Actual cost improvement, full security/concurrency outcomes and cleanup remain
 unmeasured. Original S02 stays in_progress; primary and completed rows remain
 unchanged. Remote A09 owns the sole validation runtime.
+
+
+## 2026-10-03 — safe native fetch measurement design, runtime held
+
+Root read the complete1715-line /60049-byte proposed fixture archived at
+`02b1e38bc2919ccb7c99711bcb304f3f050e9ba8`, SHA256
+a93636a21a4a5cae53b2a5b844e8e5534e10fc0b1941cc43927f75b720cf63d6,
+and its complete design explanation and limits. The exact report append is
+imported over the unchanged45580-byte d6b prefix. No Rust test or production
+source is materialized by this integration. The committed74c1 test still has
+the applicable unsafe_code=forbid blocker and remains held outside main.
+
+The proposed safe observer uses existing Sizes::render and checked native
+histogram deltas. Root read the complete render_buckets and Sizes bodies,
+Reads scan/accessors and Tx raw_scan_base/scan_direction to verify the metric:
+raw records retained by a fetch before typed decoding. The observed gate
+would compare one513-row unbounded fetch against five fetches of at most128
+rows, with all513 rows traversed and equal point/value-byte counters. This is
+a narrower fetched-record materialization cost; it is not measured heap/RSS,
+fewer total rows/bytes, lower scan count or assumed latency improvement.
+All raw samples and full result/security/snapshot oracles remain required.
+The original unnecessary-materialization outcome makes this metric relevant;
+its suitability and exact fixture remain pending independent source review.
+An actual latency regression must remain visible and cannot become a speedup
+claim or an automatic original-task closure.
+
+Root reviewed the declared stored-expiry compatibility setup and normal
+public parent-disable case, exact full-state expectations, fresh principal
+refusals and unrelated authority preservation. These definitions are unrun.
+Normal child retirement does not isolate a surviving legacy child beside a
+disabled parent, and no natural-TTL elapsed proof is borrowed from setup.
+Frozen control, complete JSON, writer/concurrency and closed-copy protocols
+remain intact in the proposal. There is no new dependency or lint exception.
+
+Independent review is separately reserved in the existing ed9 worktree.
+A09 run37087561409 still owns validation; all local Cargo, native, memory and
+browser runtime remains held. Original S02 remains in_progress. A root static
+lookup guessed absent local-wave30-s02-root-source-review.md before using
+the existing root-review file; no guessed path was edited or imported.
