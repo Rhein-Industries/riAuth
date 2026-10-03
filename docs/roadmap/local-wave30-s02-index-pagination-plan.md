@@ -4784,3 +4784,282 @@ file/cache cleanup or deletion, alignment, status/main/push, worker contact or n
 worktree/managed shell occurred. Original primary1e336a3d and completed rows
 remain unchanged; root owns source reservation, future runtime, independent
 review/integration and original task disposition.
+
+## Owned seed String and exact supervisor binding — source only, 2026-10-03
+
+Project **891e7443-8dac-4c1b-897f-9e53cb59c7ee**, original S02
+**fdda2152-73a0-4dce-9e5e-aff4b232a6fd**; reservation
+`wave30_S02_owned_string_and_supervisor_binding`, existing support worktree
+**e1b4399a-8c0d-46b8-880c-a71a4ebf53e7** only.
+The entire **231,344-byte** report at
+**d2c88749d3149ff39b5bb6f057589b35a9f26c51**, SHA-256
+`c6c1306917c298b67ce5ba7c5fca44e39b8d77aeebefb16ec7a9250e17264ed4`,
+remains byte-exact. All previous failures, raw capture identities, empty
+fixture results, source definitions and limitations remain historical.
+The new source is **UNCOMPILED/UNRUN**; this phase runs no Cargo, Clippy,
+typecheck, fixture/self-check/benchmark or supervisor.
+
+### Complete root reads and exact one-declaration correction
+
+Complete immutable **8c2b258949a7a4c71f744cfb389769ac1a04e7a0** bodies read:
+
+| Body | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `docs/roadmap/local-wave30-s02-root-review.md` | 11,960 | `92c161e19a41fcde1991cf367c0d8efc292ec438b617f384a07ebe8aaaa89120` |
+| `docs/roadmap/evidence/wave30-s02-owned-string-type-root-review.json` | 400 | `f748e525c1fcd5315641173f5580b93db05c34356f5b9d9e3f50da3e6de58bda` |
+
+The root review attributes CI37095568049/check111125150428 to the same
+E0277/E0308 compiler boundary and retains the full108215B/4a381561 log;
+its all-targets test step was skipped. That is root-attributed CI evidence:
+this phase did not query/download/reinspect its raw log or claim a CI pass.
+The earlier local complete3597B/9f9aa0 failure remains independently recorded.
+
+Only the declaration at [fixture line498](../../tests/s02_group_listing_paging.rs#L498)
+was changed, in separate source commit
+**0b48f04d43d84dba0c6ef97ba6e13786457a8671**, parentd2c8874:
+
+```diff
+-        let admin = Zeroizing::new(
++        let admin: Zeroizing<String> = Zeroizing::new(
+```
+
+The entire resulting fixture is **60,306 bytes**, SHA-256
+`5b714a5ea4006163a08e5e3c0d9d7fc065c621e906495018d42b3bbf0640498c`,
+exactly root8c's blob. Removing only this19-byte annotation addition
+reconstructs the complete60287B/9284a0 fixture. This was proved before
+editing against the root blob and again after applying the single hunk.
+Explicit pinned rustfmt `--check --edition 2024` on this file exited0
+without any formatting transformation. No private-value conversion, setter/
+call/assertion/order, frozen control, metric, result/security/writer/
+concurrency body, timeout or other fixture byte changed.
+
+No production file, manifest/lint/dependency, common helper or root file was
+imported or edited. Whole **357** non-fixture tracked mode/object/path records
+for src/crates/common/manifests/toolchain/build settings equal both reviewed
+74c1fb and root8c; with the corrected fixture, all **358** selected records
+in own source HEAD equal root8c. Existing branch history and prior backups/
+captures are preserved: no merge, alignment, reset or stale-file replacement
+was used. The previous unselected tests/cli.rs difference remains disclosed.
+
+### Fresh source/cache identity and five DATA substitutions
+
+The complete absolute design body was read from
+`/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/evidence/wave30-s02-owned-string-supervisor-binding-design.json`:
+**1,649 bytes**, SHA-256
+`b300c31ad86c768713b920a81b9e3be9500671d7082cc275ce0979cbf530744e`.
+Its five exact replacements are the sole prospective DATA differences.
+They rebind fresh output names, immutable selected source/fixture identity
+and the already observed Cargo metadata hash; they do not alter a control
+or security/outcome assertion.
+
+Starting source is the retained **25,988-byte/535-line** supervisor,
+SHA `3089723bdf659b8d36461f4f344d26efb31b05128ffd0a40c0d06b1dbe4fe48e`.
+The bound in-memory DATA is **25,993 bytes/535 lines**, SHA
+`aa7057d866c9200161bd00fd515fdfb2163f7d60ed930931340e55cf0eae2fcf`.
+Exactly five substitutions produce three diff hunks; exact diff is
+**2,471 bytes**, SHA
+`54e6a03fca0a84d31a6459155675b75797cdc15871b3f121802949cbcb7da32a`:
+The archive below is an ordered JSON array of exact line strings; joining
+them in order reconstructs those complete unified-diff bytes.
+
+```json
+[
+  "--- retained-3089723-supervisor-DATA\n",
+  "+++ proposed-aa7057-supervisor-DATA\n",
+  "@@ -4,7 +4,7 @@\n",
+  " \n",
+  " ROOT = Path(\"/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27\")\n",
+  " TARGET = ROOT / \"target\"\n",
+  "-BASE = TARGET / \"s02-group-list-ba3cd18-v1\"\n",
+  "+BASE = TARGET / \"s02-group-list-owned-string-v2\"\n",
+  " LOG = Path(str(BASE) + \".log\")\n",
+  " OBS = Path(str(BASE) + \"-observations.json\")\n",
+  " EVIDENCE = Path(str(BASE) + \"-evidence.json\")\n",
+  "@@ -21,8 +21,8 @@\n",
+  "        \"CARGO_NET_OFFLINE\": \"true\", \"CARGO_TARGET_DIR\": str(TARGET),\n",
+  "        \"CARGO_BUILD_JOBS\": \"1\", \"CARGO_INCREMENTAL\": \"0\",\n",
+  "        \"CARGO_PROFILE_DEV_DEBUG\": \"0\", \"CARGO_PROFILE_TEST_DEBUG\": \"0\"}\n",
+  "-STAGED = \"cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57\"\n",
+  "-SOURCE = \"ba3cd1837f798dd1a8d005ead842660fe7564a39\"\n",
+  "+STAGED = \"8c2b258949a7a4c71f744cfb389769ac1a04e7a0\"\n",
+  "+SOURCE = \"8c2b258949a7a4c71f744cfb389769ac1a04e7a0\"\n",
+  " PATHS = [\"src\", \"crates\", \"Cargo.toml\", \"Cargo.lock\", \"rust-toolchain.toml\",\n",
+  "          \"build.rs\", \".cargo\", \"rustfmt.toml\", \".rustfmt.toml\",\n",
+  "          \"tests/common\", \"tests/s02_group_listing_paging.rs\"]\n",
+  "@@ -31,11 +31,11 @@\n",
+  "     \"/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/rustc\": \"766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941\",\n",
+  "     \"/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/cargo\": \"6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d\",\n",
+  "     \"src/core.rs\": \"686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea\",\n",
+  "-    \"tests/s02_group_listing_paging.rs\": \"9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444\",\n",
+  "+    \"tests/s02_group_listing_paging.rs\": \"5b714a5ea4006163a08e5e3c0d9d7fc065c621e906495018d42b3bbf0640498c\",\n",
+  "     \"Cargo.toml\": \"58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8\",\n",
+  "     \"Cargo.lock\": \"b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426\",\n",
+  "     \"rust-toolchain.toml\": \"887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167\",\n",
+  "-    \"target/.rustc_info.json\": \"27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4\",\n",
+  "+    \"target/.rustc_info.json\": \"7d6b9b4c5d7047c09e065993326b9e70aa2aaf59a3c99c0e42f5de4102edead5\",\n",
+  "     \"target/debug/.fingerprint/riauth-507476e43f01092f/lib-riauth.json\": \"a5aa512953c0cde2259c2f11e126dda519ad8ea9e3c46bd8f57e2575ec997941\",\n",
+  "     \"target/debug/.fingerprint/riauth-f685f1e2409027d4/lib-riauth.json\": \"78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af\"}\n",
+  " CAP = 32 * 2**20\n"
+]
+```
+
+Whole inverse bytes and AST recover the complete retained3089723 source.
+All **20 top-level function/class definitions** have identical whole textual
+bodies and ASTs. Only four top-level assignments differ: BASE, STAGED, SOURCE
+and the two changed PINS entries. Every other top-level AST node also matches.
+SIGCHLD default before metadata children, actual consuming waitpid status,
+owned-group signals/join/reap/absence, first-failure capture/fsync-before-grade,
+private output schemas, final clock/exits and all security checks remain exact.
+No control assertion or permissive outcome was introduced.
+
+Independent fresh read-only pin sample at epoch ns
+**1791002401854027000** verified all proposed hashes against actual files:
+
+| Actual protected object | Bytes | SHA-256 |
+| --- | ---: | --- |
+| fixture | 60,306 | `5b714a5ea4006163a08e5e3c0d9d7fc065c621e906495018d42b3bbf0640498c` |
+| Core | 57,913 | `686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea` |
+| Cargo.toml | 4,020 | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| Cargo.lock | 109,243 | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| rust-toolchain.toml | 86 | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+| target/.rustc_info.json | 1,966 | `7d6b9b4c5d7047c09e065993326b9e70aa2aaf59a3c99c0e42f5de4102edead5` |
+| riauth-507476e43f01092f/lib-riauth.json | 3,621 | `a5aa512953c0cde2259c2f11e126dda519ad8ea9e3c46bd8f57e2575ec997941` |
+| riauth-f685f1e2409027d4/lib-riauth.json | 3,590 | `78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af` |
+| selected Python | 34,640 | `4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56` |
+| selected cargo | 31,960,040 | `6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d` |
+| selected rustc | 412,504 | `766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941` |
+
+Every sampled pin matches; there was no newer rustc_info disagreement,
+invented identity or unapproved metadata update. These are static byte/
+metadata identities, not a tool-version/library invocation, cache-hit
+guarantee or measured fixture result. Tool literal paths remain the exact
+archived PINS/OUTER_PYTHON/TOOLCHAIN values. No resource/capacity result or
+future process absence is inferred from these source checks.
+
+All five failed-v1 artifacts retain their exact previous hashes/bytes and
+regular/nonsymlink/nlink1/UID501/mode0600 metadata:
+supervisor25988B/3089723, log3597B/9f9aa0, observations55B/0ccfe4,
+evidence12635B/1a3742, decision158B/2203b6. Nothing overwrote or deleted them.
+The five fresh v2 supervisor/log/observations/evidence/decision paths derived
+from `target/s02-group-list-owned-string-v2` are checked absent; no v2
+file or directory was created.
+
+### Reproducible full DATA composition, not an executable reservation
+
+The following source-composition DATA reconstructs the entire prospective
+supervisor from the immutable820c4e report plus the exact approved SIGCHLD
+insertion and five literal replacements. It also checks equality to the
+retained3089723 file. It writes no file, imports/executes no supervisor and
+calls no candidate function. This fence was statically parsed only; the
+equivalent byte/AST transformations above were performed in memory for
+verification, with no prospective supervisor materialization or execution.
+
+```python
+# SOURCE COMPOSITION DATA ONLY. Do not materialize/run a supervisor here.
+import ast, hashlib, subprocess
+from pathlib import Path
+
+REPORT = "docs/roadmap/local-wave30-s02-index-pagination-plan.md"
+report = subprocess.check_output([
+    "/usr/bin/git", "show",
+    "820c4e397d69a718b609afee1b795e80bb235249:" + REPORT,
+]).decode("utf-8")
+marker = "```python\n# DATA ONLY: archive this exact source; do not execute before root release."
+start = report.index(marker) + len("```python\n")
+original = report[start:report.index("```", start)]
+assert len(original.encode()) == 25939
+assert hashlib.sha256(original.encode()).hexdigest() == "dd1cd5765d12ad1b027094dec7230149e812a439ab8ac4ad990ea944c02a069d"
+needle = '            "unsupported_supervision_host")\n    s=TARGET.lstat()'
+insertion = "    signal.signal(signal.SIGCHLD,signal.SIG_DFL)\n"
+assert original.count(needle) == 1
+retained = original.replace(
+    needle, '            "unsupported_supervision_host")\n' + insertion + "    s=TARGET.lstat()", 1,
+)
+assert len(retained.encode()) == 25988
+assert retained.count("\n") == 535
+assert hashlib.sha256(retained.encode()).hexdigest() == "3089723bdf659b8d36461f4f344d26efb31b05128ffd0a40c0d06b1dbe4fe48e"
+assert Path("target/s02-group-list-ba3cd18-v1-supervisor.py").read_bytes() == retained.encode()
+
+REPLACEMENTS = (
+    ("BASE = TARGET / \"s02-group-list-ba3cd18-v1\"", "BASE = TARGET / \"s02-group-list-owned-string-v2\""),
+    ("STAGED = \"cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57\"", "STAGED = \"8c2b258949a7a4c71f744cfb389769ac1a04e7a0\""),
+    ("SOURCE = \"ba3cd1837f798dd1a8d005ead842660fe7564a39\"", "SOURCE = \"8c2b258949a7a4c71f744cfb389769ac1a04e7a0\""),
+    ("\"tests/s02_group_listing_paging.rs\": \"9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444\"", "\"tests/s02_group_listing_paging.rs\": \"5b714a5ea4006163a08e5e3c0d9d7fc065c621e906495018d42b3bbf0640498c\""),
+    ("\"target/.rustc_info.json\": \"27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4\"", "\"target/.rustc_info.json\": \"7d6b9b4c5d7047c09e065993326b9e70aa2aaf59a3c99c0e42f5de4102edead5\""),
+)
+prospective = retained
+for old, new in REPLACEMENTS:
+    assert prospective.count(old) == 1
+    prospective = prospective.replace(old, new, 1)
+assert len(prospective.encode()) == 25993
+assert prospective.count("\n") == 535
+assert hashlib.sha256(prospective.encode()).hexdigest() == "aa7057d866c9200161bd00fd515fdfb2163f7d60ed930931340e55cf0eae2fcf"
+inverse = prospective
+for old, new in reversed(REPLACEMENTS):
+    assert inverse.count(new) == 1
+    inverse = inverse.replace(new, old, 1)
+assert inverse == retained
+assert ast.dump(ast.parse(inverse)) == ast.dump(ast.parse(retained))
+before = ast.parse(retained)
+after = ast.parse(prospective)
+protected_before = [n for n in before.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
+protected_after = [n for n in after.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))]
+assert [ast.dump(n) for n in protected_before] == [ast.dump(n) for n in protected_after]
+assert [ast.get_source_segment(retained, n) for n in protected_before] == [
+    ast.get_source_segment(prospective, n) for n in protected_after
+]
+# prospective is DATA only; no write/import/exec/function call from it.
+```
+
+The sole future filter remains the same archived pinned Cargo argv with
+`--locked --features test-support --test s02_group_listing_paging`,
+the exact named ignored function, `--exact --ignored --test-threads=1
+--nocapture`, closed env/offline=true/private own target/jobs1/incremental0/
+dev+testdebug0. The sole proposed future outer path changes to
+`$PWD/target/s02-group-list-owned-string-v2-supervisor.py`.
+**No such file exists and neither command is invoked.**
+
+All original budgets remain byte-identical:13GiB launch,4GiB planning
+allowance,9GiB stop/8GiB floor,2s monitor,1800s cooperative outer envelope,
+10s own cleanup reserve,32MiB private0600 raw cap,300s fixture and10s
+owned-thread caps. This metadata binding supplies no new capacity/peak/
+quota/timing or cached-build promise and does not release a runtime lane.
+Root must separately review this exact binding and later remeasure identity,
+capacity/owned processes and fresh paths after serialized A09, then decide
+whether to release one invocation. No A09 query/contact or slot acquisition/
+release occurred here.
+
+### Actual static checks and remaining outcome
+
+Passed actual checks: complete root-review/owned-type/design body reads;
+before/after entire fixture/root-blob equality and exact annotation inverse;
+explicit-file rustfmt check0 with no formatting changes; source-only commit
+scope/whitespace;357 non-fixture and358 selected root object equivalence;
+all fresh proposed pins; full supervisor inverse/hash/AST and all20 function/
+class text+AST identities; exact diff hash; all prior private capture hashes/
+ownership and new-path absence; report d2c prefix, documentation links,
+whitespace and separate report-only scope checks.
+
+The first report verifier exited1: the copied diff fence had an extra final
+newline from the metadata tool's print framing, making it2472B/c238dc06
+instead of the computed2471B/54e6a03f. Removing that sole fence newline
+restores the exact generated diff and its recorded hash. The fixture and
+prospective supervisor bytes did not change; no controller or oracle was
+executed. The next verifier passed those identities but Git whitespace
+exited2 on the diff's literal space-only context line. Encoding exact diff
+lines as the ordered JSON array above preserves every byte and avoids
+Markdown trailing whitespace. The final static checks passed; both earlier
+failures are report preparation results, not runtime or source outcomes.
+
+The explicit String annotation matches the observed type boundary and the
+root-approved source; it **does not establish successful typecheck or
+execution**. Prior local Cargo101 and CI compile failures remain failed.
+All S02 cost/latency/result/security/writer/concurrency/self-check/cleanup
+outcomes remain unknown. No measured batch improvement, heap/RSS/allocation/
+IO/speedup or original-task completion is claimed. Production, frozen control,
+expected results, authority/expiry/parent/writer/snapshot semantics and
+credential/header/PAM/Group/60s contracts remain source-byte preserved.
+Original primary1e336a3d and finished rows are unchanged; root owns next
+review/runtime/integration/status. No product/helper/manifest/other-doc edit,
+runtime/service/provider/browser, cleanup/deletion, merge/alignment, main/push,
+new task/worker/worktree/managed shell or worker contact occurred.
