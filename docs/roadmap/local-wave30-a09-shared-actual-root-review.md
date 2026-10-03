@@ -44,3 +44,69 @@ Transport validated the original ARM ZIP49,177,062 bytes/fc2a83dd286b70e455802af
 Root read the current helper shared_probe and source Core::list_users. Helper150 requires GET /api/users status403 as evidence of user-administration refusal. Core authenticates then filters individual users by user.read and returns an array, including an empty successful array. This source-backed fixture expectation is incorrect for a collection read. A genuine refused user-creation mutation with valid revision/idempotency/public headers is being designed separately; no production authority change or weakened403 oracle is approved by this receipt. Neither earlier missing failure cause is retrospectively assigned. All following E-P-E/configuration/row-preservation oracles remain unreached.
 
 Seven resource samples had minimum115,577,597,952 bytes on all three observed filesystems and maximum gap2.000528821s, above30GiB start/10GiB stop/8GiB floor. Cleanup failures are empty, fixture and private scratch removed, one owned process reaped, zero remaining processes and no live owned PostgreSQL. The pidfile was not verified; no stronger cluster inventory is inferred. Finalization exit1 preserved the focused failure. Root released the preparation lane after terminal cleanup inspection, before source follow-up. No repeat or A09/full-shared/release completion is credited.
+
+
+## Corrected x86 container run 37078338496: actual terminal failure
+
+Root reviewed the terminal API, full compact 301-command inventory and cleanup flags,
+both image/capability envelopes, UID probes and all 822 resource records from
+[run 37078338496](https://github.com/Rhein-Industries/riAuth/actions/runs/37078338496),
+job 111073123720. Workflow/controller `7869b96453c13fdec5af35fd5cf661849d417f36`,
+product `b619fe25269ccc150e473bbcde47cdb3623ef810` and review
+`66c814a339665e6b3f8e6c22bc59d4f6f0aa224c` remain distinct roles.
+The [fixed root receipt](evidence/wave30-a09-container-37078338496-root-review.json)
+contains the entire sanitized cohort and exact artifact/file identities.
+Root downloaded artifact 11258610583 once, verified its 102,853,462 bytes and
+SHA256 `c3c78b5e516f0625ed828e83648eb18ec77d23a943e45ff6c8cf713522c8ae6b`
+before extracting only three fixed evidence documents. Root also rehashed the
+five build/tool logs and both compressed image archives from the verified ZIP;
+no inner image extraction or native/Docker execution occurred in this review.
+
+Both image builds, save/load, strict Docker28 archive validation, source labels,
+ELF/product/notices and native capability parity completed. Essentials build
+691.482s and Platform 874.222s; archives are 48,933,284 bytes/SHA256
+`26487fd77b0af69db3e7fb49eecbbe291f203d91cf72f9913a55edb46d348ec1`
+and 53,552,781 bytes/SHA256
+`86b97616e6a8e10180281ce8f97e68427b2a65957487a5744fb571fe1fc8118c`.
+Two actual before-credential UID/GID10001 mode700 volume probes passed, followed
+by key-backed private initialization and the initial native client sequence.
+No whole fixture check list was credited: `checks` is empty and shared_full_gate
+is not_run.
+
+The actual failure is `fixture/refused_open_changed_store_or_config`. Root read
+fixed helper direct_refusal/config_refusals/fixture_gate and offline_hashes.
+At the first issuer candidate, code2/ok=false and the specific refusal message
+precede comparison of three physical file hashes: original config, database key
+and redb file. That composite comparison failed. The changed component and raw
+hash values are unrecorded, so neither a logical-record mutation nor a product
+defect is established. Later E-P-E and Platform-state downgrade assertions were
+not reached. A separately reserved source diagnosis is required before a repeat.
+
+All 301 command children were reaped with empty owned groups. Cleanup_errors is
+empty; pending and remaining containers/volumes and command groups are zero;
+builder children were removed and the owned image inventory is empty. Root
+released the sole temporary validation lane after those checks at
+2026-10-03T00:08:00.206661+00:00. The 822-sample minimum is 85,391,880,192 bytes
+on private/workspace/Docker storage and 85,391,912,960 on host; reported maximum
+gap2.023212598s is retained. No resource stop or quota guarantee is inferred.
+Earlier archive failure stays failed; this run is also failed. ARM container,
+full shared, official release and deployment gates remain open.
+
+One root lookup guessed a nonexistent generic A09 root-report filename and was
+corrected to this existing report without writes. Oversized cohort displays
+were reread in complete compact command/feature projections before inventory
+claims. A failed generic D01 controller-fence hash lookup likewise made no
+source or runtime change and gives no fresh controller reconstruction credit.
+
+## Exact HTTP admission expectation: source proposal read
+
+Root fully read author `f6076932855384997b23bbe5859cbac7208206dd`, its complete
+598-line appendix, pure BEFORE-only generator, entire proposed shared_probe and
+both exact helper/workflow diffs. The proposal independently constructs full
+canonical snapshots allowing only one loopback general-counter transaction and
+its exact derived expiry index, with bounded wall/monotonic reset alternatives.
+Every protected/other record remains byte exact. Actual 37077820186 establishes
+only one changed http_rates record, not its opaque key/value or tuple. No older
+failure is retrospectively assigned. An independent source review is active;
+helper/workflow implementation and all runtime remain held. The old 89-case
+memory pass does not validate this new generator.
