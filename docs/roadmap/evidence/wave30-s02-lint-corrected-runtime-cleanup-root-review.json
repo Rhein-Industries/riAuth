@@ -1,0 +1,45 @@
+{
+  "utc": "2026-10-03T05:27:18.591369+00:00",
+  "source": "ec4316259b3cb04496e5467336ecebee15b92f2c",
+  "run_head": "536ab811c3cf396df5ceae6509e109164cec9b2c",
+  "cargo_exit": 0,
+  "cargo_wait_status": 0,
+  "leader_reaped": true,
+  "group_absent_recorded": true,
+  "root_fresh_pid_group_members": [],
+  "pid": 44999,
+  "pgid": 44999,
+  "metadata_children_joined": 77,
+  "pipe_eof": true,
+  "signals": [],
+  "minimum_available_bytes": 16189808640,
+  "captures": [
+    {
+      "name": "s02-group-list-owned-string-v2-supervisor.py",
+      "bytes": 25993,
+      "sha256": "835e110e354294fbab39704eeb735fdd3381f88a45aaef82526a3bdfb680c8b4"
+    },
+    {
+      "name": "s02-group-list-owned-string-v2.log",
+      "bytes": 75770,
+      "sha256": "740c72eafa5d5e99b16d81a1e051b626dc316f2a8040570d5236474375774ddb"
+    },
+    {
+      "name": "s02-group-list-owned-string-v2-evidence.json",
+      "bytes": 22908,
+      "sha256": "e2425797bb6c92a7c209019d7229d13c036bf99d2a36aade0f5a2f1ec81bedf1"
+    },
+    {
+      "name": "s02-group-list-owned-string-v2-observations.json",
+      "bytes": 72117,
+      "sha256": "2a7d4d5893b4f9d9600f3b49b1350dcc26df1336bd45203f94667d1f4877d7b9"
+    },
+    {
+      "name": "s02-group-list-owned-string-v2-decision.json",
+      "bytes": 681,
+      "sha256": "25dc5259ff77cad2a43b3c0e40c816923d55fba105efd535265583e412f94553"
+    }
+  ],
+  "result_grade_pending_root_review": true,
+  "released": true
+}

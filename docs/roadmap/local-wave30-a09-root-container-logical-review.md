@@ -235,3 +235,12 @@ Reviewed source77a9785fbde5c27c06c690d6c15964761d72552c: only two Linux-guarded 
 
 
 Reviewed all95 added2bab8f3 lines, preserving the entire7951 report and exact source77a9785. The old failed replay and conditional proposal remain historical; source matching and whole inverse are actual static evidence only. Root may separately reserve a fresh same-prebuilt cohort after publication; no result is borrowed from the two-line fix or from the unrun synthetic socket proposal.
+
+
+## 2026-10-03 — corrected same-prebuilt x86 cohort actually passed
+
+ONE manual run37099059596/job111134825816/attempt1 at controller e17f723c211b9cba4c8f07257f3e40560325c223 completed successfully. Product b619fe25269ccc150e473bbcde47cdb3623ef810, helper6726 and workflow3cf remain pinned. Root verified the actual outer artifact11265212727,115361104 bytes, full SHA4afb3c28549f918e032d201a1b58f86fd2660adaac4e0e7dc8764025d8735435 before streaming all six member hashes. Only the three public evidence files were extracted; images and reader were neither extracted nor executed by root.
+
+All eleven declared local checks reached and passed, including E-P-E identity, authorization, revocation, format3/sixteen rates and refusal paths plus isolated Platform downgrade handling. Eighteen fresh reader observations and ten fresh offline packets show exact logical row/keyset/metadata/config/key equality, zero changed/added/removed rows; all ten physical redb byte comparisons remain false. All2700 owned steps were reaped with empty groups, no remaining containers/volumes/CLI groups or owned images, cleanup_errors empty. Root independently verified cleanup and released the lane before the separate S02 run. Forty-five resource samples remained above original guards; exact minima and gaps are in the [actual root receipt](evidence/wave30-a09-linux-bind-replay-actual-root-review.json). No build occurred in this replay.
+
+The shared_full_gate field remains not_run. This pass covers the bounded local x86 container profile, not ARM containers, official release, current S02 product builds or every advertised deployment. Both earlier container failures remain failed with unknown original causes; this success does not establish a historical TIME_WAIT diagnosis. Root's initial two-name archive shape assumption and later missing failure-key print raised assertions after successful transport verification; both were corrected to the actual declared success schema, without artifact/source change, re-download or repeat.
