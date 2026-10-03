@@ -293,3 +293,241 @@ credential content inspected, no other worker contacted and no validation slot
 taken or released. Original primary/status and all closed rows remain intact;
 root owns any later reservation, independent review, integration/publication
 and original Q03 disposition.
+
+## Upstream PKCE applicability follow-up — source only, 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; reservation
+`wave30_Q03_upstream_pkce_applicability_followup`, same supporting WT/shell.
+Entry HEAD `2b1a2b873d98d04458b4099607b872994352017d` was clean. Only this
+report may be appended. Its original23568 bytes/SHA-256
+`fb0def83b27ac5db3db158b9194f3fb4a9fc4dc7e87b1a18550e62413cb9e97c`
+remain an exact prefix. The original row, ownership/status and dated proposals
+above are retained; the new source findings do not recast them as executed.
+
+**Finding:** the unchanged pinned Basic plan contains an ordinary positive
+`oidcc-server` flow without PKCE. Published product
+`1a517a1a461b7017c353d37a5e498d2c7cfa7985` requires valid S256 for every
+client. Therefore this unmodified Basic plan cannot support a complete
+successful pilot for the presently claimed mandatory-PKCE profile. This is
+a source-derived incompatibility, not an observed suite failure, formal
+certification ruling or product defect. Do not relax PKCE or relabel an
+expected authorization refusal as a successful happy flow.
+
+### Saved upstream identity and full-body inspection
+
+Root supplied read-only DATA under
+`/tmp/riauth-root-q03-pinned-upstream-source`; no query/download occurred here.
+The mirror selector is commit `440eec8bac7b12b7389d7ca9cbc459b53507a443`,
+with root tree `e03cffcff4031d3e31fd7b37381d63219be334dd`. Saved `tree.json`
+is2064761 bytes/SHA-256
+`3ec978d90a9de3bb6db8ba648de21ee628eb798f163256bd041fd44e072a1605`,
+6502 entries, `truncated:false`; its response `sha` field is the commit
+selector440, rather than the reconstructed root-tree ID. Independently
+reconstructed all306 directory tree objects from their immediate children's
+mode/name/Git-object bytes, checked each declared subtree and obtained root
+e03. Unique paths, parent-tree types and all nine supplied source blobs'
+`SHA1("blob " + length + NUL + bytes)` and sizes match that saved tree.
+This binds the body bytes through the complete saved hierarchy; it does not
+independently reproduce a signed commit, official deployed suite or live API.
+
+| Saved source (unique basename in pinned tree) | Bytes | Git blob | SHA-256 |
+| --- | ---: | --- | --- |
+| `OIDCCBasicTestPlan.java` | 5210 | `ce62d47b9ed99481b1fd0c504d13c94f7196e8d7` | `3633b091fd8d27893e10330f2b9d0cecd9c1e55dcdaba2289dfed74fa4d65eef` |
+| `OIDCCServerTest.java` | 3827 | `68ab759a192533ae9ac3498bf3a5ca77819dbe82` | `e0b8474972651f01e97f6bce536ef7cacd6445797dfc90c425f64a1249709b1e` |
+| `AbstractOIDCCServerTest.java` | 32843 | `2309043d3db8bda16dd6ffc9d1b4bc896d1532f8` | `2d87e8affd916a8cfbc89161b9f521e25ed29b3b56811f616758c17652bcf226` |
+| `OIDCCEnsureRequestWithValidPkceSucceeds.java` | 1604 | `89181d0ed1ce82aa032c0cbc4599e01247985468` | `844b9c506e8125d173d1ab1cdd591f63e66bbbb1df1a56e0febed7165cce4e96` |
+| `CreateAuthorizationEndpointRequestFromClientInformation.java` | 1596 | `856968fbc9dfdbd3eeb88f0ea779e225ea001fd5` | `731ca692064e0d74a4d913e788658a8c39d6c51e5e228ad6e0ef55f115ab0edb` |
+| `CreateTokenEndpointRequestForAuthorizationCodeGrant.java` | 1062 | `6dd10e11063ba9581c9578bba2951eb3a1c6d623` | `595ff1787f032afa7d256d33b73d190ee16993369d86940d45efe2556a5a571d` |
+| `SetupPkceAndAddToAuthorizationRequest.java` | 917 | `d23c04f8b26489a9349e4954d3cb142d469f9b68` | `bab137a2c8b86024e9b9c710922d1c915f5e26a86386f4a7bd4e4b9e7700eda0` |
+| `scripts/run-test-plan.py` | 79831 | `45e82abab5713cd03b9305ae2ed5bbac9c3a7ba2` | `2abe903a8458efabda79e19dcb8f2be08a158fbe65d9e9169f1d6140fa36820e` |
+| `scripts/test_plan_parser.py` | 3329 | `872aff69b61635a147730343bb4184ef304c92ee` | `2b00870b2dc46f1d44d047c715c0ef6978f24ece97a4a9d3b48ceeea8d01830f` |
+
+The Java files reside under `src/main/java/net/openid/conformance/`: the four
+test/base classes in `openid/`, the two request builders in `condition/client/`
+and PKCE sequence in `sequence/client/`. All seven complete Java bodies were
+read, including the full745-line base, not merely imports or class names.
+The entire97-line parser source was read without calling/importing it.
+Scoped complete runner reads cover top-level imports/environment setup,
+`run_queue`, `run_test_plan`, `run_test_module`, `analyze_plan_results`,
+`analyze_result_logs`, CLI argument grammar, plan/config/queue setup and
+result/exit handling. The remaining presentation/profile-inventory code in
+the1646-line runner, its imported `conformance.py`, deeper Java framework,
+variant enums and PKCE leaf-condition implementations were not fully reviewed
+or supplied as executable prerequisites. AST parsing of the two saved Python
+files executed no imported source, definitions, parser callbacks or main.
+
+### Exact applicability trace
+
+1. `OIDCCBasicTestPlan.java` publishes
+   `oidcc-basic-certification-test-plan`/`Basic OP`. Its first list includes
+   `OIDCCServerTest.class`; `variantCodeBasic` fixes response type`code`,
+   client authentication`client_secret_basic`, response mode`default`.
+   It also separately includes the valid-PKCE module in its third list with
+   these same fixed variants. Presence of that extra module does not modify
+   the first happy-flow module or turn the whole plan into PKCE-only testing.
+2. Full `OIDCCServerTest.java` extends `AbstractOIDCCServerTest`, overriding
+   token/code/claim validation and post-flow checks, but neither request
+   sequence nor token-request construction. The base `onConfigure` is empty;
+   normal metadata/static-client selection and Basic authentication setup
+   do not introduce PKCE.
+3. Base `performAuthorizationFlow`505–511 calls request construction,
+   redirect construction and `performRedirect`. `CreateAuthorizationRequestSteps`
+   513–537 builds client/redirect/scope, random state, random nonce and
+   response type, plus form-post mode only when selected. Its default factory
+   539–545 returns that sequence. The complete request-builder body creates
+   a fresh object from only `client_id`, `redirect_uri` and optional `scope`;
+   a client config field named challenge/verifier is not copied by it.
+   No PKCE sequence occurs in this ordinary path.
+4. Base `createAuthorizationCodeRequest`629–636 creates a fresh code-grant
+   token form and adds selected client authentication. Its complete builder
+   writes `grant_type`, `code`, `redirect_uri` and resets headers. No verifier
+   is added by the ordinary module. Its callback checks require successful
+   authorization/code extraction, then token success and UserInfo; rejection
+   is not its positive oracle.
+5. Product `src/oidc.rs::validate_authorization`157–166 refuses unless method
+   equals`S256`, challenge length43 and base64url decoding yields32 bytes;
+   its fixed error states that the requirement applies to every client.
+   The branch does not exempt confidential Basic clients. This full module
+   is16308 bytes/SHA-256
+   `affdc18fcf9aad41f87ee522f52a0000eb4d58068f0db37e6e05521f5a2ef81b`,
+   byte-equal to the original544d read. No request/status/token transcript
+   was observed in this follow-up.
+6. The dedicated module publishes
+   `oidcc-ensure-request-with-valid-pkce-succeeds`. Its sequence override
+   appends `SetupPkceAndAddToAuthorizationRequest`; its token override calls
+   `AddCodeVerifierToTokenEndpointRequest`. The complete PKCE sequence calls
+   random verifier, `CreateS256CodeChallenge`, environment exposure and
+   `AddCodeChallengeToAuthorizationEndpointRequest` under RFC7636 requirements.
+   These are inspected call sites, not an executed request or an independent
+   full audit of the unsupplied leaf algorithms.
+
+This one unavoidable ordinary positive is sufficient to reject a proposed
+**complete unmodified Basic-plan PASS claim** against this product source.
+It does not assert that every Basic test is inapplicable, that the dedicated
+module already passes, or that another official suite/profile/version cannot
+accommodate the mandatory-PKCE policy. Formal applicability/exceptions and
+submission requirements still belong to the chosen official procedure.
+
+### Actual upstream arguments, endpoint roles and private configuration
+
+`run-test-plan.py::parser_args_cli`1045–1060 takes `params` with `nargs='+'`;
+it has `--no-parallel`/`--export-dir`, not a `--suite` argument. Main joins
+positional strings, then the source grammar scans plan expression plus config
+path. The outer local `scripts/run-conformance.py` owns the separate `--suite`
+checkout argument and passes `plan` and `config` as positional upstream argv.
+Both layers must be distinguished.
+
+| Role | Source-grounded behavior | Still required before runtime |
+| --- | --- | --- |
+| Suite-management base | Main1128–1257 uses `CONFORMANCE_SERVER` as `api_url_base`, trailing-slash normalizes it, constructs `Conformance(api_url_base, token, verify_ssl)`, waits for suite readiness and requests test-module inventory. Plan/module creation and log links use this base. | Authorized pinned suite deployment/API/account, TLS and reachability. This is **not** the riAuth OP issuer. |
+| Suite credential | Non-development branch1191–1194 reads `CONFORMANCE_TOKEN`; development mode can omit it. | Authorized suite API token handled privately; it is not a riAuth client secret/session. No token was inspected or created here. |
+| OP under test | Java base configuration fields select `server.discoveryUrl` for discovery, or `server.issuer`, `jwks_uri`, authorization/token/UserInfo endpoints for static metadata. | Actual reviewed OP artifact/source/edition/issuer/security profile and matching private config. An annotation is not a complete config schema or supplied deployment. |
+| Client/callback | Static-client field`client.client_id`, Basic field`client.client_secret`; Java base creates/exposes redirect URI and selects registration/authentication variants. | Exact suite-derived callback/alias and normal reviewed client creation authority/receipt/header contract. No client, grant, account or secret was created. |
+| Suite URL substitutions | `run_test_plan` replaces `{BASEURL}`, `{LOCALBASEURL}`, `{EXTERNALBASEURL}`, `{HOSTNAME}` and `{BASEURLMTLS}` from suite environment; `EXTERNAL_URL` overrides external base. | Callback routing and OP issuer must be reviewed separately. These substitutions are not evidence of an OP URL or tenant. |
+
+When the suite base is omitted, upstream main tries localhost ngrok discovery
+then development defaults; main also reads its `scripts/certs-keys/` directory
+**before** parsing CLI options and the `--list` branch. Thus even a list request
+is not authorized here as a pure argument/parser check. `DISABLE_SSL_VERIFY`
+presence or `CONFORMANCE_DEV_MODE` changes verification; the future security
+profile must not silently accept those bypasses. Imported API transport/cert
+fixtures remain source/setup prerequisites. No environment values or private
+configuration content were read by this audit.
+
+### One limited module-selection proposal, not certification
+
+The smallest source-backed candidate is **only** the published valid-PKCE
+module from Basic, with discovery/static registration explicitly selected.
+The plan entry itself fixes code/Basic/default; these do not need duplicate
+outer variants. Proposed literal `--plan` value,143 ASCII bytes:
+
+```text
+oidcc-basic-certification-test-plan[server_metadata=discovery][client_registration=static_client]:oidcc-ensure-request-with-valid-pkce-succeeds
+```
+
+This is a source/grammar proposal, **not parsed or executed**, and is below
+the unchanged local runner's200-character limit. Saved grammar supports name,
+`[name=value]` variants and `:module[,module...]`, then a separate config path;
+the config path alphabet is ASCII alphanumeric plus`-_./`, excluding spaces,
+colon and backslash. A concrete authorized private path must fit it. No
+nested `{op_test}` pairing, sample Node/FAPI client, environment grammar,
+restart rerun or expected-failure/skip list is proposed.
+
+Upstream `run_test_plan`149–248 reads config, creates the plan and filters
+returned modules to the selected name; the future receipt must verify that
+selection resolves to exactly the intended module/variant. A nonempty
+returned subset alone is insufficient proof that arbitrary requested names
+were all recognized. `--no-parallel` serializes both queue levels. The source
+default `CONFORMANCE_RESTART_RETRIES=2` allows up to three attempts; a future
+single-invocation pilot would explicitly set the normal environment override
+to`0`, with separately reviewed finite supervision rather than hidden retries.
+The CLI does not by itself automate the riAuth OP's consent/approval browser
+interaction: the selected server module can wait for it. Actual interaction
+and cleanup remain prerequisites, with Driver-only desktop preference.
+
+Module execution, source-only metadata preparation and formal certification
+are separate reservations. Root already asked once for suite/acceptance
+profile/authorized private configuration; the answer is pending. This report
+does not repeat that question, query an account or invent its response.
+Root's official `connect_op_testing` page review is supplied process context;
+its complete page bytes were not supplied/read independently here, so no new
+official procedure, approved waiver or certification entitlement is asserted.
+
+### Smallest prospective runner seam and normative-result limits
+
+The existing local runner remains8023 bytes/SHA-256
+`eb4ef137caba864192988581c66258b973adc6715843ba4170f2c26fdce25e35`
+at1a517a1, equal to the original544d body. Its subprocess launch in `main`
+and cleanup/evidence block is the already identified narrow prospective seam:
+finite owned-process supervision/capped private captures and retained detailed
+module/export evidence **before** grading, while preserving all current
+suite/config/output/source/secret guards. No source hunk is implemented or
+reserved by this follow-up; exact controller/retention limits require root's
+separate source reservation after the input package.
+
+Upstream `run_test_module`251–431 captures each module ID, info and condition
+logs; `run_test_plan` optionally calls `conformance.exportjson(plan_id,
+output_dir)` after its queue. `analyze_plan_results`619–691 distinguishes
+incomplete execution and unexpected failure/warning/skip conditions;
+`analyze_result_logs`702–870 examines normative condition results. It admits
+several final labels and relies on condition logs for failed results; numeric
+process exit alone must not be called a clean module PASS. The pilot needs
+the actual selected module/variant, terminal status/result, normative
+failure/warning/skip inventory and full private exported result—not only
+an output-file count/digest. The imported export/HTTP implementation and
+actual export shape/caps were not read, executed or asserted here.
+
+The unchanged local runner hashes temporary stdout/stderr/exports and then
+deletes its managed raw files before writing `run.json`; it still reports
+`certification_claim:false`. A future retention design must retain bounded
+owner-only raw normative exports privately, with sanitized public result
+summary and provenance, before cleanup or pass evaluation. No raw credentials,
+code/token/state/nonce/verifier/cookie/subject or full suite log/config belong
+in the public report. Exception/restart logs can contain sensitive material;
+unmodified upstream stdout is not a preapproved public artifact.
+
+The original Q03 result-publication/certification gate remains open. All prior
+local/native failures and scoped CI passes stay attributed to their original
+pins; none is an OIDF result or a fresh1a517a1 run. No product authorization,
+secret/receipt/header/PAM, Group, nonrenewed60s or paused-I/O behavior changed.
+
+### Follow-up static checks and explicit non-execution
+
+Actual independent DATA checks: all nine Git blob/size/SHA bindings,
+all306 directory/root-tree bindings, original prefix size/SHA and three
+product/source-guide object equalities passed; saved Python AST parses passed.
+Full-byte hashing is identity evidence, with the scoped body-read limits above.
+`python3 scripts/check-docs.py` exited0; indexed
+`python3 scripts/check-repo-hygiene.py` exited0 (1024 paths);
+`git diff --check` and `git diff --cached --check` exited0.
+The exact23568-byte prefix, nine-row appended source table and sole modified
+report scope checks exited0. Final index/file, immutable commit and clean-tree
+checks accompany this report-only handoff.
+
+No upstream parser/import/module/main, condition, helper, product function,
+certification account/token/client creation, native/browser/Driver, service,
+HTTP/provider/network/query/download/dispatch, Cargo/compiler/version or test
+was run. No runtime slot was acquired/released, no source/helper/guide/config
+was edited, and no alignment/merge/status/main/push/new worker/task/WT/shell
+or other-worker contact occurred. Root owns later review/reservation/runtime,
+integration/publication and original disposition.
