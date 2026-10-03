@@ -17379,3 +17379,312 @@ integration/publication/status. Original closed rows remain closed. Source
 alignment and docs checks do not prove any new browser journey or completion.
 Only this appendix is authored after the merge, and its immutable report
 commit/scope/prefix/clean hashes are handed off separately.
+
+## 2026-10-03 — ONE composed prepared real-browser checkpoint; FAILED, resources released
+
+Reservation `wave30_D01_composed_prepared_real_browser_checkpoint`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original D01
+`a96a1977-3210-4284-8f7d-645793369301`, existing Sol4 WT7
+`7c85f5ef-3fac-4f72-aaed-08474d7fb454`.
+Entry remained clean at `2fa6f7e24f389cd215515407a4ecdb800d125f9f`.
+This is one newly released actual checkpoint, not a retry of an older fixture.
+The complete1262232-byte prior report prefix remains unchanged, SHA256
+`2beeed986256b8467fa32d807a4ef8112338637cd8fb2ede448c47c5cad1b05a`.
+
+**Actual outcome: FAILED.** The freshly bound browser observed the
+protected-before page; the RP recorded HTTP403 and
+`protected_without_cookie_denied=true`. Before the application page/sign-in
+action, the helper exited1 with `unexpected_failure` at stage `request`.
+The first controller observation latched `helper_failed`; the outer fixture
+exited1 with `rp_nonzero` at `browser_checkpoint`. The finite observer was:
+
+```json
+{"observed":true,"diagnostic":{"site":"handler","exception_class":"TimeoutError","own_function":"Handler.handle_one_request","own_line":468}}
+```
+
+The retained first request-invalid reason is `authorization`, with exactly
+two stateless preflow Authorization refusals. Those refusals remained refusals;
+they did not terminate the helper via the fourth-refusal limit or earn journey
+credit. Their retained reason is distinct from the fatal timeout observation.
+No raw request/header/method/path/query/value or sender is recorded.
+The sender and origin of both the refused traffic and timed-out connection
+remain UNKNOWN. No claim attributes them to Driver, a browser preconnect,
+another process or a product defect.
+
+At immutable current helper line468, the named own frame is the bounded
+request-line read. The observer identifies that source point and fixed
+exception category; it does not reveal the connection contents, causal
+sequence or true exception-event timestamp. No source/controller correction,
+guard loosening, additional observation request or automatic retry followed.
+
+**Desktop/operator/validation RELEASE was sent immediately after the completed
+reviewed cleanup returned its independent owned absence/join proofs, before
+this evidence appendix.** Controller1, helper1, server0 and all five setup
+CLI0 were retained. Exact guard/server/browser/helper PIDs were absent;
+owned PID-filtered windows were empty, the named session ended, ports9000/3000
+were absent and the private lab was gone. Resource release is PROVEN.
+The first true event and whole60s cleanup remain UNPROVEN, separate from
+resource absence. No Cargo resource was acquired or released.
+
+### Immutable prerequisites read and exact source executed
+
+Before fixture resources, I read the FULL public root memory receipt at
+`238dc6c0f24e372a677f971c76944527d6d52629`:
+`docs/roadmap/evidence/wave30-d01-terminal-eperm-memory-root-review.json`,
+26762 bytes, SHA256
+`e922bab864c4de42df578a73ea267bcd0b6de9effa4ec4f04e228f6159f1b560`.
+It records outer/controller/Node exit0,36 complete cases,51 cells,
+311714 assertions,2294 privacy checks, consuming wait0, both reaped/empty and
+fresh PID/group56346/56347 absence. Its controller4ff0525f/242593 and outer
+72ff2c/21684 identities belong to the memory envelope; they were not executed
+or substituted for the real fixture here. The receipt's root checker-alias
+correction and all older failed envelopes remain dated. That actual memory
+pass supplies no real browser journey credit.
+
+I reconstructed the complete113395-byte,1241-line preparation/launcher module
+from immutable own `b21135a5c804de6ef9308b305d47b5021af71092`, its complete
+113395-byte archived base plus the exactly approved two equality-literal edits.
+The executed module SHA256 was exactly
+`a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`.
+Its complete33701-byte continuation/projection suffix was exactly
+`505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f`.
+The two-literal inverse reconstructed complete base484bd441; the suffix stayed
+byte-exact. No function, literal, source guard, interface or accepted set was
+changed to execute it. All launcher/preparation/entry/continuation bodies and
+embedded controller/carrier/collector sources were read as source before launch.
+The continuation suffix was not invoked again after this failed entry.
+
+The first source extractor included one extra trailing fence LF and exited1
+on the expected hash assertion. Removing that sole Markdown framing LF
+recovered the immutable base exactly; candidate source was not altered.
+No fixture/native/Driver action had started at that assertion. The first
+combined receipt/contracts/guide displays were truncated. Complete receipt
+chunks, bounded instruction reads, exact extracted source and targeted guide
+sections supplied the required reads afterward; truncated displays are not
+counted as full body review.
+
+The public controller template was17326 bytes, SHA256
+`5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0`.
+The actual17332-byte command had SHA256
+`156c1637bb000aad98bbb6d29de8348f415d95c109e7c5b838eaa36d7d4e6bff`.
+The launcher exclusively saved/fsynced its complete source/hash/three-edit
+manifest BEFORE its first execution. The only three substitutions were fresh
+once-START and the two new outer/provider basenames. Complete byte reversal
+and data-only AST reversal afterward recovered the template. No controller
+behavior, extra RP readiness request, probe, counter allowance, ref routing or
+deadline was added. One helper main ran, and one isolated Driver browser was
+prepared. Numeric receipts were retained before source/response comparisons.
+
+Current helper stayed exactly35749 bytes, SHA256
+`75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1`.
+It was not copied from470 or aligned again. No helper/controller executable
+file or product/guide/D05 change was authored.
+
+### Actual operator setup and source/artifact pins
+
+Fresh capacity before setup was16589635584 bytes /15.450302GiB. The private
+root already existed as an own0700 non-symlink directory. The reviewed archive
+preflight required the fresh paths absent and ports9000/3000 unused before
+any fixture setup. The outer's1s tick sampling retained24 disk samples and
+minimum17313075200 bytes, safely above the8.5GiB stop margin and8GiB floor.
+This is sampled fixture capacity, not a reserved quota or a hard bound on
+unrelated processes. No unrelated process/cache was inspected, signaled or
+deleted.
+
+The once-START was1791000936135 epoch milliseconds. The controller retained
+25.3s elapsed; its active840/inclusive900, preparation180, helper600/pending180,
+HTTP/native5, CLI60 and listener/page30 bounds were unchanged. There was no
+renewed START, preparation, listener or helper allowance.
+
+The native c01 Essentials artifacts were freshly rehashed by the unchanged
+controller before execution:
+
+| Actual artifact | SHA256 |
+| --- | --- |
+| riauth | `7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606` |
+| riauth-maintenance | `86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95` |
+| riauthctl | `bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf` |
+
+They were the released prebuilt c01 paths under
+`riAuth-public-preview-local-module-boundaries-wave27/target/d01-essentials-c01c39a/aarch64-apple-darwin/debug`;
+no build, install, Cargo or replacement binary was used.
+The imported verifier source was exact commit
+`9cefe7a56425bb73c17753e8766d92320b77da3b`, blob
+`3be747d03146f1bcaa3ec012ee8d173b61fa737d`, SHA256
+`f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d`.
+The fixed OpenSSL provider rehash matched
+`67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72`.
+Native version exit0, stdout63 ASCII bytes and stderr0 were exclusively
+retained BEFORE exact full-version comparison. Full observed stdout was
+`OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)`
+plus one LF, under the closed HOME/LANG/LC_ALL/PATH/TMPDIR environment.
+No lost earlier version value was reconstructed or replaced.
+
+Current published guide input was fixed560525a:
+`docs/essentials-guide.md`, SHA256
+`9df3c2861984751d48b28d284cfb47c07801fd3934072e2ccb829edeb35579a0`;
+`docs/oidc-profiles.md`, SHA256
+`50e749a35ebed44e7430eb8400debbbce89d15444079913237a349b6fb21ca21`.
+Section3 and relevant OIDC browser/consent guidance were read directly.
+Starting a local application is an explicit task input. The reviewed disposable
+helper supplies that prerequisite; client registration does not itself start
+an application. No guide edit or undocumented advanced-policy setup was added.
+
+Actual printed operator setup was exactly normal maintenance init
+(`--issuer http://localhost:9000 --listen 127.0.0.1:9000 --data-dir data --admin admin`),
+server serve, then public base-client login, confidential create
+(`local-demo --name Local demo --confidential --redirect-uri http://localhost:3000/callback --scope openid,profile --secret-file`),
+discovery and whoami. Five CLI commands exited0; maintenance/password login
+consumed two/one non-echo password prompts respectively. The fresh synthetic
+password, lab0700, private XDG/session, caller0600 client-secret and
+browser-password transfer used the reviewed source. The private stdout carrier
+returned103 bounded characters internally; only numeric exit/size was retained.
+Its value was never model-visible, printed or durably evidenced, and the
+password store was cleared before cleanup awaits. No service-session,
+terminal approval, HTTP sign-in or session substitution drove browser behavior.
+
+### Actual Driver sequence and bounded UI observations
+
+Installed skill pack0.29.1 SKILL/MACOS/BROWSER instructions and advertised
+MCP descriptions were read before GUI action. Live readonly health reported
+RiWork Cua.ai Driver0.30.4, macOS26.2/arm64, active MCP transport and both
+Accessibility/Screen Recording grants. The content-free initial lifecycle
+read returned `session_not_started` / isError=true; no session was visible
+to that transport. This was retained as the empty pre-preparation lifecycle
+state, not retried or represented as global desktop ownership proof.
+Root's explicit sole-controller assignment supplied desktop authorization.
+The closed root blank-contract receipt3893 bytes/SHA
+`b8145f029796a2063dfe167f026fe299d85afcaedbec5a7abacbeb5bf1a5ea27`
+was read; all nine required Driver tools were advertised. No history tools
+were advertised, so none was invoked.
+
+The exact source prepared one `isolated_new` Driver-owned browser during the
+180s barrier, before helper listener creation. It then chose the uniquely
+observed about:blank window, bound exact returned handles and verified a fresh
+complete inert-root semantic snapshot. Actual binding:
+
+| Owned binding | Actual returned identity |
+| --- | --- |
+| named lifecycle | `d01-a270-real-1791000936131` |
+| browser PID | 72523 |
+| native window | 104665 |
+| target | `bt-f68ca0aa-912a-43a9-b3b0-8f6a8eca9e06` |
+| tab | `tab-1d337953-f4a6-402a-a835-3eeef6681963` |
+
+Preparation/binding/snapshot respectively took1985/150/120ms; the PID-filtered
+window read took134ms. Private transfer exited0. Exact guard/server/live lab
+proof allowed one exclusive0600 prepared marker; helper3000 listener ownership
+was then established. No description load, model yield, reprepare or rebind
+occurred between that marker, listener and initial navigation.
+
+One Driver navigation to the fixed protected page and one fresh semantic
+snapshot completed. The snapshot was complete, matched heading Local demo
+and text Sign in required, had no error label and no clickable ref. The helper
+independently recorded protected_before403. The next original controller poll
+received helper exit1, latched `helper_failed` synchronously before any cleanup
+await/output, and immediately ran the reviewed composed cleanup in the same
+functions.exec cell. No application-home navigation, ref-targeted type/click,
+password sign-in, consent, callback or authenticated protected snapshot followed.
+There were no screenshots, physical/passkey prompts, clipboard, raw CDP,
+Playwright, provider fallback, HTTP UI substitute or additional RP request.
+No rejected traffic was counted as a journey step.
+
+Actual helper checks and statuses:
+
+| Check | Actual boolean |
+| --- | --- |
+| authorization_redirect_issued | false |
+| confidential_s256_exchange_verified | false |
+| credential_private_validated | true |
+| discovery_verified | true |
+| protected_with_fresh_cookie_accepted | false |
+| protected_without_cookie_denied | true |
+| provider_identity_verified | true |
+| rs256_jwks_issuer_audience_nonce_time_access_hash_verified | false |
+| state_issuer_flow_cookie_verified | false |
+| userinfo_subject_verified | false |
+
+authorization_redirect/callback/token_exchange/userinfo/protected_after
+statuses are all null. protected_before is403. Bootstrap credential/discovery/
+provider validation is distinct from confidential exchange and native ID-token/
+UserInfo validation, which remained false because no flow began.
+No application session or fresh-cookie200 was inferred.
+
+### Actual cleanup, exits and observational timing
+
+The parent had already completed its original owned-child finally when the
+composed stop collector observed `lab_absent`. The source still persisted the
+first observation and ran essential Driver cleanup: exact proven-owned
+kill_app ONCE, exact end_session, PID-filtered windows, own-controller join and
+independent fixed PID/ports/lab readback. No cooperative hotkey, unrelated
+process signal, manual browser kill or substitute provider was used.
+
+| Original owned child | PID | Numeric reaped exit |
+| --- | ---: | ---: |
+| helper | 72784 | 1 |
+| whoami | 72487 | 0 |
+| discovery | 72486 | 0 |
+| confidential_client_create | 72485 | 0 |
+| operator_login | 72483 | 0 |
+| server | 72478 | 0 |
+| maintenance_init | 72449 | 0 |
+
+Guard/controller PID72429 exited1 through its own exec handle98265.
+The independently observed primary guard/server/browser/helper PID set was
+72429/72478/72523/72784, all absent.
+The seven own child exits are parent-handle reaping evidence; I do not relabel
+that as a separate fresh process query for every earlier CLI PID.
+
+Driver kill/end/windows and final owned-join/readback actions returned, with
+measured651/1083/1204/2013ms and no observed allocation overrun. First controller-response
+helper-failure observation wall time was1791000961249ms; collector monotonic
+first clock was2498292809238708ns and final absence clock2498301124388791ns.
+Latch-clock to absence was8315ms; recorded first-observation-to-final wall
+interval was8866ms. These establish observed cleanup after the retained
+controller response, not the unrecorded first actual timeout/termination event.
+`first_event_unproven` remains a cleanup limitation and
+`whole_cleanup_within60_proven=false`. No hard MCP timeout/cancel, prior119s
+cleanup pass or whole60 guarantee is invented. Essential cleanup and independent
+absence/join proof establish release separately from that timing limitation.
+
+### Exclusive actual evidence identities and preserved scope
+
+The five new retained private files below are own regular/nlink1/mode0600.
+Bounded nofollow descriptor reads confirmed stable inode/size/time identities.
+No private credential/query/request content was opened for evidence.
+
+| New deployment-private file | Bytes | SHA256 |
+| --- | ---: | --- |
+| d01-a270-real-1791000936131-cleanup.redacted.json | 5492 | `d7bf7ba878594e1ac5f9563331893bf61f2f381e74fc63ad4f38d38d0d9d77ef` |
+| d01-a270-real-1791000936131-event.redacted.json | 240 | `0ea6e45e59b9f8a590b9fd48c0827f5844746cdd7ebf0a8b15d601f04c6c6edd` |
+| d01-a270-real-1791000936131-outer.redacted.json | 4654 | `d6660debec35bb09d5e1c46d9879eceaa42d5b9193ba1123973b19b190d8be5a` |
+| d01-a270-real-1791000936131-controller-source.json | 18122 | `532e75c9f3d0229cd05f27ff17e92e9a1f6c816c6821200a04b342382ca6cfe0` |
+| d01-a270-real-1791000936131-provider.redacted.json | 359 | `6fad035f1897b5287b2ebd812405fcabf6a33b72d2d4f498f3bca7081eb719ab` |
+
+The sixth declared launcher-cleanup path remained absent because the launcher
+succeeded and the entry cell owned cleanup; it was not fabricated. Existing
+captures were never overwritten. The helper's sanitized result survives inside
+the new outer record after its own temporary lab evidence was removed.
+
+The whole tracked tree stayed clean at2fa after runtime; current helper still
+matched75b exactly. The only subsequent tracked write is this report appendix.
+All prior dated report bytes, historical metadata/evidence/source, unknown
+senders/causes, lost-value correction, failed61/76,78/128/18 memory-only limits,
+failed real fixtures and original failed envelopes are retained. This new36
+root memory PASS does not rewrite any failed earlier envelope, and this
+actual real checkpoint remains FAILED.
+
+No new task/worker/worktree, source alignment, product/helper/guide/D05 edit,
+compiler/Cargo/build/provider campaign, cache deletion, main/push/status or
+other-worker contact occurred. RiWork Cua.ai Driver MCP was the sole desktop
+provider. Source-only A09 and held S02 remain outside this checkpoint.
+Root alone adjudicates original D01/D05 acceptance and any separately reserved
+correction/runtime. This evidence does not prove application sign-in, ordinary
+nonadmin, invitation, physical passkey/hardware, installation, LDAP/SCIM, tenant,
+HA/release or universal workflow completion.
+
+Actual post-evidence checks: `python3 scripts/check-docs.py` exited0 and
+`git diff --check` exited0. The scope check found exactly this report modified,
+no staged/untracked paths, the complete1262232-byte prior prefix exact and the
+35749-byte helper SHA75bfb8a unchanged. These are report/scope checks, not
+additional fixture execution or a changed outcome.
