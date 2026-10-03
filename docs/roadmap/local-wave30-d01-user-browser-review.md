@@ -19999,3 +19999,293 @@ def main():
 if __name__ == "__main__":
     raise SystemExit(main())
 ```
+
+## 2026-10-03 — Supervisor real-child-status correction: source DESIGN ONLY
+
+Reservation wave30_D01_timeout_memory_supervisor_real_child_status, project
+891e7443-8dac-4c1b-897f-9e53cb59c7ee, existing WT7
+7c85f5ef-3fac-4f72-aaed-08474d7fb454, original D01/D05 support.
+Own scope is ONLY this append. Entry clean033e341 and the complete1475162-byte
+prior report prefix are preserved exactly; all old proposals stay dated UNRUN.
+No helper/controller/supervisor file is materialized or changed here.
+
+Root's FULL source review identified a prospective blocker: inherited
+SIGCHLD=SIG_IGN may auto-reap a child and allow Popen to substitute returncode0
+without a consumed real status. This is a source-derived planning defect,
+not an executed memory failure or proof of the signal disposition in any
+historical actual attempt. No retrospective sender/cause/status attribution.
+Read the complete public855-byte root blocker receipt at
+planning/evidence/wave30-d01-memory-supervisor-source-review-blocker.json
+under the explicitly named project orchestrator workspace. SHA256
+ e273bc23c3332e4720e0021d5fad15160c43fb8323ad02a7af70d48399be7e27.
+Its runtime remains held/no invocation; its exact old proposal pins match this
+archive. Read the entire old146-line supervisor. Its old7132-byte/db8fb source
+remains in the preserved prefix, unexecuted; it is not relabeled as a pass.
+
+The ONLY prospective additions are import signal, and
+signal.signal(signal.SIGCHLD, signal.SIG_DFL) as the first executable statement
+of main, before any file resource or Popen. A successful actual install is
+required to reach spawn; failure propagates immediately, without a catch,
+fallback or ignored result that could proceed. This is source sequencing,
+not an observed installation. No status-check or metadata child is introduced.
+The one original Popen and ordinary communicate/wait consumption/reaping paths
+remain exact. Future real child status/reaping still needs actual retained
+numeric evidence. All observed error/deadline/join failures remain failed;
+a parsed stdout success cannot override them. No universal wait-status
+assurance under unseen concurrent reapers or unrelated state is inferred.
+
+The exact two additions have whole-byte and independent whole-AST inverses to
+complete7132-byte/db8fb source. public_result is byte/AST-identical; removing
+only the first main statement makes the entire old main body identical.
+Imports/constants, return/result schemas, one child method, communicate/kill/
+join calls,30s active/35s total bounds and exclusive0600 private fsync-before-
+grade remain byte-exact outside those additions. No getsignal assertion,
+wrapper process, metadata subprocess or alternate wait method is invented.
+
+The complete128630-byte child payload164123 is unchanged, with94 planned
+cases/13 groups and21 baseline/97 candidate full-pass request counts.
+Executed cases0. No helper function, case, VM, child, signal call, module main
+or supervisor executed. Helper remains36884-byte/777-line37d32 and exactly
+matches published6a4066c/sourcec62. No payload/controller/composition pin,
+source alignment, native/provider hash or runtime release input changed.
+Root separately owns the remaining composed36-case adoption design.
+
+Actual checks here are data/source reads, AST parsing and code-object compile
+ONLY, exact two-addition diff, whole byte/AST inverse, other-function span,
+unchanged payload/helper/published-object equality and prior-prefix proof.
+Documentation/whitespace/scope checks accompany the report commit receipt.
+No historical private capture was opened or modified in this correction;
+all old source/evidence and unknown sender/cause, failed actual fixtures and
+unprovenwhole60 cleanup limits stay preserved. No runtime lane acquired or
+released. RiWork Cua.ai Driver MCP preference remains; no Driver/browser/native/
+provider/CLI/network/Cargo invocation, main/push/status/alignment/deletion,
+new task/WT/worker or contact. Root alone integration, acceptance and release.
+One later memory execution needs full immutable review plus exact NEW hash
+release; this appendix is design, not a retroactive execution outcome.
+
+### Exact corrected supervisor manifest and static proofs
+
+```json
+{
+  "corrected_supervisor": {
+    "bytes": 7196,
+    "executed": false,
+    "lines": 148,
+    "sha256": "10eaff2057fd1a715658ff32ebe30a2d8d0770ec9e372978fe654270f15cba57"
+  },
+  "exact_two_addition_diff": {
+    "bytes": 168,
+    "lines": 6,
+    "sha256": "6cb44acb546f455182caea206be44b267692ac88f45f55009522bf2863bd9b8f"
+  },
+  "helper_sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+  "helper_source_commit": "c62bebcd8b24e66f4c77b8eaae49a669b2d77165",
+  "old_supervisor": {
+    "bytes": 7132,
+    "executed": false,
+    "lines": 146,
+    "sha256": "db8fb36ea4460ed862b3c627ba5083388f1901e725d33e77dc8e96a575b16d30"
+  },
+  "prior_report_bytes": 1475162,
+  "prior_report_commit": "033e3410d600430cd3264681873a9b2deb83ca65",
+  "prior_report_sha256": "456870a53c01ea1829d3725d007d8b22eb2fa71636effcd01c95ab4a41f351c8",
+  "protected_function": {
+    "bytes": 1592,
+    "name": "public_result",
+    "new_lines": [
+      29,
+      62
+    ],
+    "old_lines": [
+      28,
+      61
+    ],
+    "sha256": "3b116b705a24bbee1ac6604fdbd209d036e62c3b6ad25becda748ca43d2852e8"
+  },
+  "published_helper_source": "6a4066c72ac58225cd444a806032eef8515e646b",
+  "reservation": "wave30_D01_timeout_memory_supervisor_real_child_status",
+  "resource_acquired_or_released": false,
+  "static_proofs": {
+    "first_main_statement_is_SIGCHLD_default_install": true,
+    "main_remainder_bytes_and_AST_identical": true,
+    "one_original_Popen_unchanged": true,
+    "public_result_bytes_and_AST_identical": true,
+    "signal_install_not_caught_or_deferred": true,
+    "whole_AST_inverse": true,
+    "whole_byte_inverse": true
+  },
+  "unchanged_payload": {
+    "baseline_requests_if_complete": 21,
+    "bytes": 128630,
+    "candidate_requests_if_complete": 97,
+    "executed_cases": 0,
+    "groups": 13,
+    "planned_cases": 94,
+    "sha256": "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e"
+  }
+}
+```
+
+### Exact two-addition source diff (virtual archive names only)
+
+```diff
+--- a/archived-memory-supervisor.py
++++ b/archived-memory-supervisor.py
+@@ -6,0 +7 @@
++import signal
+@@ -63,0 +65 @@
++    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+```
+
+### Complete corrected supervisor — UNEXECUTED
+
+```python
+#!/usr/bin/env python3
+"""Proposed once-only memory supervisor; never run in this source phase."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+EXPECTED_PAYLOAD_SHA256 = "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e"
+EXPECTED_GROUPS = {
+    "discard_lifecycle": 1, "eligible_counter": 4, "strict_state": 38,
+    "exception_identity": 3, "operation_boundaries": 4, "halt_boundaries": 7,
+    "normal_after_discard": 3, "guard_parity": 12, "authorization_parity": 7,
+    "observer_first_only": 4, "record_schema": 6, "controller_interpretation": 4,
+    "shutdown_failure": 1,
+}
+BASELINE_SHA256 = "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1"
+CANDIDATE_SHA256 = "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406"
+RESULT_KEYS = {
+    "schema", "result", "planned", "completed", "assertions", "groups",
+    "first_failure", "failure_class", "baseline_requests", "candidate_requests",
+    "journey_credit", "whole60_proven", "baseline_sha256", "candidate_sha256",
+}
+
+def public_result(raw):
+    if len(raw) > 4096:
+        return None
+    try:
+        value = json.loads(raw.decode("ascii"))
+    except (ValueError, UnicodeError):
+        return None
+    if type(value) is not dict or set(value) != RESULT_KEYS:
+        return None
+    if (value["schema"] != "riauth.d01-timeout-memory/v1"
+            or value["result"] not in ("passed", "failed")
+            or value["baseline_sha256"] != BASELINE_SHA256
+            or value["candidate_sha256"] != CANDIDATE_SHA256
+            or value["journey_credit"] is not False
+            or value["whole60_proven"] is not False):
+        return None
+    if any(type(value[name]) is not int or not 0 <= value[name] <= 100000
+           for name in ("planned", "completed", "assertions", "baseline_requests", "candidate_requests")):
+        return None
+    groups = value["groups"]
+    if (type(groups) is not dict or set(groups) != set(EXPECTED_GROUPS)
+            or any(type(count) is not int or not 0 <= count <= EXPECTED_GROUPS[name]
+                   for name, count in groups.items())):
+        return None
+    failure = value["first_failure"]
+    if failure is not None:
+        if (type(failure) is not str or len(failure) > 80
+                or not failure.isascii()
+                or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789_/" for ch in failure)):
+            return None
+    if value["failure_class"] not in (None, "CheckFailed", "AssertionError", "MemoryDeadline",
+                                     "TypeError", "ValueError", "KeyError", "other"):
+        return None
+    return value
+
+def main():
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    # A future root release supplies one new absent own deployment-private path.
+    if len(sys.argv) != 2:
+        raise SystemExit(2)
+    path = Path(sys.argv[1])
+    parent = path.parent
+    directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(directory)
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o700 or path.name in ("", ".", "..")):
+            raise SystemExit(2)
+        fd = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o600, dir_fd=directory)
+        os.fchmod(fd, 0o600)
+    finally:
+        os.close(directory)
+    raw = sys.stdin.buffer.read(262145)
+    payload_hash = hashlib.sha256(raw).hexdigest()
+    record = {"schema": "riauth.d01-timeout-memory-outer/v1",
+              "payload_sha256": payload_hash, "payload_bytes": len(raw),
+              "child_pid": None, "child_exit": None, "child_reaped": False,
+              "timeout": False, "elapsed_seconds": None,
+              "stdout_bytes": 0, "stderr_bytes": 0,
+              "stdout_sha256": None, "stderr_sha256": None,
+              "fixed_result": None, "supervisor_failure": None}
+    started = time.monotonic()
+    child = None
+    out = err = b""
+    try:
+        if not 0 < len(raw) <= 262144 or payload_hash != EXPECTED_PAYLOAD_SHA256:
+            record["supervisor_failure"] = "payload_invalid"
+        else:
+            child = subprocess.Popen([sys.executable, "-B", "-c", raw.decode("ascii")],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+            record["child_pid"] = child.pid
+            try:
+                out, err = child.communicate(timeout=max(0.001, 30 - (time.monotonic() - started)))
+            except subprocess.TimeoutExpired:
+                record["timeout"] = True
+                child.kill()  # Only this supervisor's exact created child handle.
+                out, err = child.communicate(timeout=max(0.001, 35 - (time.monotonic() - started)))
+            record["child_exit"] = child.returncode
+            record["child_reaped"] = child.returncode is not None
+    except BaseException:
+        record["supervisor_failure"] = "supervisor_failed"
+        if child is not None and child.poll() is None:
+            try:
+                child.kill()
+                out, err = child.communicate(timeout=max(0.001, 35 - (time.monotonic() - started)))
+            except BaseException:
+                pass
+        if child is not None:
+            record["child_exit"] = child.poll()
+            record["child_reaped"] = child.returncode is not None
+    finally:
+        record["elapsed_seconds"] = round(time.monotonic() - started, 6)
+        record["stdout_bytes"], record["stderr_bytes"] = len(out), len(err)
+        record["stdout_sha256"] = hashlib.sha256(out).hexdigest()
+        record["stderr_sha256"] = hashlib.sha256(err).hexdigest()
+        record["fixed_result"] = public_result(out)
+        # Exclusive0600 complete fixed result, exit/elapsed/hash BEFORE grading.
+        with os.fdopen(fd, "wb") as evidence:
+            evidence.write((json.dumps(record, sort_keys=True, indent=2) + "\n").encode("ascii"))
+            evidence.flush()
+            os.fsync(evidence.fileno())
+    result = record["fixed_result"]
+    passed = (record["child_exit"] == 0 and record["child_reaped"] is True
+              and not record["timeout"] and record["supervisor_failure"] is None
+              and record["stderr_bytes"] == 0 and record["elapsed_seconds"] <= 35
+              and result is not None and result["result"] == "passed"
+              and result["planned"] == result["completed"] == 94
+              and result["groups"] == EXPECTED_GROUPS
+              and result["baseline_requests"] == 21 and result["candidate_requests"] == 97
+              and result["first_failure"] is None and result["failure_class"] is None)
+    print(json.dumps({"result": "passed" if passed else "failed",
+                     "child_exit": record["child_exit"], "child_reaped": record["child_reaped"],
+                     "completed": None if result is None else result["completed"],
+                     "evidence_retained": True}, sort_keys=True), flush=True)
+    return 0 if passed else 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
