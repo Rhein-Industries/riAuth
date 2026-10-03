@@ -556,3 +556,217 @@ files or unrelated staged changes. Markdown checking, tracked hygiene
 (960 files) and whitespace checking passed after the append. Final staged
 scope/whitespace and commit readback are checked for the report-only handoff;
 they add no runtime or native evidence.
+
+## Existing managed SDK readiness — metadata only, runtime still held
+
+2026-10-03. Reservation `wave30_I08_managed_sdk_readiness`; same project,
+WT ed9 and shell0164. Clean starting commit
+`a839b2a8bbc308e3ddedb2185f5936adab9ffdcd`. The preceding **37,937 bytes /
+558 lines**, SHA-256
+`2ffe2670605d6aaeae2e6043fa81d25b6b0e298df3e76f5f940c33cf34cf7e73`,
+are preserved exactly. This appendix changes no source/project/configuration.
+D01 owns validation; this lane took/released no runtime slot.
+
+**A concrete matching installed SDK is available by metadata:**
+`/usr/local/share/dotnet/dotnet`, SDK `9.0.200`, installed runtime `9.0.2`,
+SDK RID `osx-arm64`, matching this host's `arm64` machine metadata. No SDK
+installation or dependency acquisition is needed for the proposed managed
+Debug fixture based on the inspected project/pack metadata. This is a
+readiness recommendation for a separately released command, not proof that
+the executable loads, the source compiles or any case passes.
+
+### Executable, SDK, runtime and dependency inventory
+
+Inspected only path/lstat/access metadata, directory/version names, bounded
+SDK version/runtime-configuration metadata and the project manifest. No
+executable or library content was read, loaded or invoked. Concrete findings:
+
+| Existing input | Metadata actually observed |
+| --- | --- |
+| `/usr/local/share/dotnet/dotnet` | Nonsymlink regular file, 140,128 bytes, root-owned, mode 0755; readable/executable access check true. |
+| `sdk/9.0.200` | Nonsymlink root-owned 0755 directory, readable/searchable; sole installed SDK directory under this root. |
+| SDK `.version` | 88-byte regular metadata file: `9.0.200`, `osx-arm64`, build `9.0.200-rtm.25073.12`, source identity `90e8b202f25b7c2bf3b883d421ad5b1cb477e8b0`. These are file values, not `dotnet --version` output. |
+| CLI/MSBuild/compiler components | Regular root-owned files present: `dotnet.dll`, `MSBuild.dll`, `Roslyn/bincore/csc.dll`, `NuGet.targets`, `NuGet.Build.Tasks.dll`, and `Sdks/Microsoft.NET.Sdk/Sdk/{Sdk.props,Sdk.targets}`. DLLs were statted only. |
+| Bounded runtime config metadata | CLI, MSBuild and compiler JSON name `net9.0` / `Microsoft.NETCore.App` `9.0.2`; compiler metadata additionally permits major roll-forward. No resolver was executed. |
+| Runtime/host | Installed `host/fxr/9.0.2` and `shared/Microsoft.NETCore.App/9.0.2`; regular `libhostfxr.dylib`, `libhostpolicy.dylib`, `System.Private.CoreLib.dll` present. No library loading/ABI proof. |
+| Reference/apphost packs | Installed `Microsoft.NETCore.App.Ref/9.0.2` and `Microsoft.NETCore.App.Host.osx-arm64/9.0.2`; required `ref/net9.0/System.Runtime.dll` and `runtimes/osx-arm64/native/apphost` are regular files. |
+| SDK bundled version metadata | `Microsoft.NETCoreSdk.BundledVersions.props`, 51,705 bytes, SHA-256 `887582b3c662e6de057c3e1a89daa500c8f9526f3418cc8f8fddef13a70989ee`: SDK/RID `9.0.200`/`osx-arm64`; net9 targeting and apphost pack versions both `9.0.2`. Inspected as text metadata only, not evaluated as MSBuild. |
+| Other SDK roots | No executable at the inspected usual x64, `/usr/local/bin`, Homebrew, `/usr/share/dotnet` or user `.dotnet` candidates. The absolute usable candidate above avoids PATH dependence. |
+
+The project's entire unchanged 19-line manifest targets `net9.0`, with
+**zero PackageReference and zero ProjectReference** declarations. The
+`win-x64`/self-contained/single-file settings are explicitly Release-only.
+The planned command uses the normal Debug configuration, preserving the
+managed mock route rather than trying to acquire/build a Windows Release
+runtime. SDK metadata names exactly the reference/apphost pack versions
+already present. No general package-cache completeness assertion follows.
+
+The existing NuGet package directory `/Users/dominik/.nuget/packages` is
+UID501/mode0755 with **115 immediate package directories**, counted by
+directory metadata only. No package payload or secret was inspected. The
+user NuGet configuration is a 205-byte regular mode0600 file; its content
+was **not** read. Case-variant names resolve on this filesystem and are not
+credited as two distinct configurations. The future command below uses a
+public, private-workspace offline settings file instead of depending on that
+unread user configuration or its feeds/credentials.
+
+No `global.json`, `Directory.Build.props`, `Directory.Build.targets`,
+`Directory.Packages.props` or ancestor/project NuGet settings file was present
+along the project-to-root ancestor path. `Properties/launchSettings.json` is
+absent. Relevant SDK-root/resolver/MSBuild/NuGet-package/CLI-home override
+presence checks were false; no unrelated environment or credential values
+were printed. No config was rewritten or canonicalized.
+
+### Private output and resource readiness
+
+The existing own-worktree `target` and `target/wave27` are nonsymlink
+UID501 directories, mode0755, owner-writable/searchable. The proposed leaf
+`target/wave27/i08-managed` is **absent**. Project `bin` and `obj` are absent.
+No leaf/output/configuration was created by this audit, and no accepted/shared
+build output is selected. The root caller must create an exclusive mode0700
+leaf and use umask077 **only after separate preparation/runtime release**;
+the existing 0755 parent is not itself described as private.
+
+Available disk readings were **15,747,485,696** and **15,742,705,664** bytes,
+about 14.66 GiB, versus the 8 GiB floor **8,589,934,592** bytes. These are
+dated statvfs observations, not a reserved-capacity or future headroom promise.
+Recheck at release and stop before available space approaches the floor.
+No build-output/cache deletion or capacity remediation was performed.
+
+### Immutable prospective ONE managed self-test command
+
+This command is a **proposal and has not been invoked**. Root must separately
+release the serialized lane and prepare its private output/settings/log
+envelope. Run from this existing worktree, on protected source
+`e31fbee66f1038cfc2412e17497bbf07f83e1314` with unchanged project; verify its
+source hashes above before starting. No baseline/second invocation or
+automatic correction/retry is requested.
+
+```sh
+env \
+  DOTNET_ROOT=/usr/local/share/dotnet \
+  DOTNET_CLI_HOME=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/cli-home \
+  NUGET_PACKAGES=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/packages \
+  DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+  DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE=true \
+  DOTNET_NOLOGO=1 \
+  DOTNET_PROCESSOR_COUNT=1 \
+  DOTNET_CLI_USE_MSBUILD_SERVER=0 \
+  MSBUILDDISABLENODEREUSE=1 \
+  /usr/local/share/dotnet/dotnet run \
+  --project /Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/windows/RiAuth.DeviceHost/RiAuth.DeviceHost.csproj \
+  --configuration Debug \
+  --property:BaseIntermediateOutputPath=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/obj/ \
+  --property:BaseOutputPath=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/bin/ \
+  --property:RestoreConfigFile=/Users/dominik/orca/projects/riAuth-public-preview-local-revisions-coordination-wave27/target/wave27/i08-managed/nuget-offline.config \
+  --property:RestoreSources=/Users/dominik/.nuget/packages \
+  --property:NuGetAudit=false \
+  --property:UseSharedCompilation=false \
+  --property:BuildInParallel=false \
+  --property:ConcurrentBuild=false \
+  -- selftest
+```
+
+The future exclusive mode0600 `nuget-offline.config` contains only this fixed
+public text; it has **not** been written or parsed by NuGet here:
+
+```xml
+<configuration>
+  <packageSources><clear /></packageSources>
+  <fallbackPackageFolders><clear /></fallbackPackageFolders>
+</configuration>
+```
+
+Its explicit `RestoreConfigFile` excludes unread user feed/credential
+configuration. The only proposed restore source is an existing local package
+directory; auditing and workload-update notification are disabled. Because
+this project has no package references and required SDK packs exist, restore
+should generate local assets rather than fetch dependencies. That is a
+source/metadata expectation, not a witnessed offline restore. Missing pack,
+source query/download attempt, unexpected package acquisition, SDK selection
+or CLI argument failure must stop this one attempt for root review; no
+installer, new feed, retry or substitute SDK is authorized by this report.
+
+The flags retain default Debug semantics and the unfiltered `selftest`
+argument: all original five scenarios plus the single new sixth stalled
+content case. They change output/restore/build-resource handling only; the
+production 15-second setting and one-second synthetic request timeout are
+unchanged. No Release/publish, Windows RID, test-filter, weaker assertion,
+new timeout property or stronger-caller cancellation override is introduced.
+Command parsing/loadability/build behavior remains unverified until release.
+
+### Expected build and caller cleanup envelope
+
+The planned one invocation performs an offline project restore, a normal
+managed Debug compile and `selftest`. It can launch owned MSBuild/compiler/
+apphost children; it needs no server, listener, browser, Windows/native device
+API or real peer. Shared compiler/MSBuild reuse is disabled, processor count
+is one, and project/compiler parallel build settings are false. These are
+requested resource settings, not measured peak-thread/RSS guarantees.
+
+Proposed outer envelope: **120 seconds** for the single child/build/fixture,
+then **10 seconds** for caller-owned termination/reaping if necessary;
+at most **2 GiB aggregate observed RSS** and **256 MiB private output** before
+stop, with the unchanged 8 GiB disk floor. These are prospective stop limits,
+not observed consumption or a claim that startup/build will finish inside
+them. The sixth case separately retains its one-second request deadline,
+five-second independent assertion guard and one-second task-observation guard.
+
+Before execution the root caller must establish exclusive private output,
+bounded mode0600 stdout/stderr capture (proposed 64 KiB each), child process
+group identity and resource/disk observation. Record exact source/SDK
+metadata, full bounded output hashes, numeric exit, elapsed duration and
+cleanup/resource result **before grading**. Expected success is exit0 plus
+the helper's fixed `selftest passed`, with all six defined cases reached;
+no per-case timing/count or pass is measured today. On nonzero/timeout/cap/
+unexpected download, preserve the first failure and do not retry.
+
+Terminate/reap only the owned child/group, prove no owned compiler/server/
+apphost remains, and retain the fixed receipt/log evidence before any optional
+cleanup of this exclusive leaf. Never delete SDK, NuGet global cache, parent
+targets, accepted outputs or another lane's processes. If ownership/reaping
+cannot be established, keep the fixture held and report the concrete boundary.
+This audit launches nothing, creates no output/settings file, and deletes
+nothing; root owns the eventual controller and release, not this readiness
+report.
+
+### Actual evidence and remaining prerequisites
+
+Observed no missing SDK/runtime/reference/apphost component in this bounded
+inventory. Remaining local prerequisites are **root's runtime release**,
+private caller-envelope preparation and release-time capacity recheck;
+executable loadability, CLI parsing and compilation have intentionally not
+been tested. SDK/version commands, libraries, compilers, self-test, native/
+PowerShell, HTTP/provider/browser/Driver and Cargo remain **UNRUN** here.
+No installation, download or dependency mutation occurred.
+
+Protected DeviceHost/Program/SelfTest/project bytes still equal e31fbee;
+all three source candidate hashes above and the unchanged project SHA-256
+`e5af8331053b1167d6af93ea9ad657a0983e694fa5bb71f8f003370fbed499ea`
+were checked. Report-prefix, metadata JSON/text, source identity, documentation,
+whitespace and scope checks are static. User NuGet/private credential/artifact
+contents were not read, and no real Windows build/lifecycle/signing result is
+borrowed from these installed macOS components.
+
+I08 native Windows/environment requirements remain exactly separate and
+already requested through root. No original row, primary assignment, closed
+row, source/configuration, main/accepted history or status was changed. No
+merge/alignment, push, new worker/task/WT/shell or other-worker contact.
+
+Actual readiness static checks: the single fenced command is **1,483 bytes**
+excluding fence/final newline, SHA-256
+`6217c5e88aa76979bb0f91fae2faabcea2e9ffcfff722983f8058947c827ab7d`.
+Line-continuation normalization followed by Python `shlex` data parsing
+verified 27 tokens, ten environment assignments, eight build properties,
+Debug and the sole `selftest` argument; no command evaluation or CLI syntax
+acceptance is inferred. All four source/project files equal their complete
+e31fbee blobs; all 37,937 prior report bytes remain identical. The private
+leaf and project bin/obj are still absent. A later metadata-only capacity
+reading was **16,786,821,120 bytes** available; none is reserved.
+
+`python3 scripts/check-docs.py`, `python3 scripts/check-repo-hygiene.py`
+(960 files) and `git diff --check` passed. The unstaged scope is this report
+alone, the starting index has no staged changes and no untracked files were
+present. Staged whitespace/scope and immutable commit readback complete the
+report-only handoff; they add no SDK/runtime evidence.
