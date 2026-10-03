@@ -2889,3 +2889,89 @@ def main():
     return 0 if passed else 1
 if __name__=="__main__":sys.exit(main())
 ```
+
+## 2026-10-03 — exact new36 outer launch refused in preflight
+
+Root read the complete `ecb7552` launcher design, including all380 source
+lines and manifest. The staged launcher21320 bytes/SHA
+`40302bd5b6f10b1c3f7f2c0cebf4b7e7dd8d77810a71180fd98af23835babacb`
+and composed controller242290 bytes/SHA
+`d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a`
+were exact private0600 DATA. ONE separately released pinned CPython -I/-S
+outer invocation at fresh nonce`f18ba1c0174eaf5a` returned1,
+`outer_preflight_failed`, elapsed0.012147583s. No outer or inner evidence
+directory was created; the source-bound return reports `not_spawned`, no
+controller handle/status and no complete capture. Zero memory cases ran.
+Root retained the actual tool exit/full closed return before comparisons and
+released the unused validation lane immediately, before this report.
+
+A separately authorized single pinned-interpreter startup diagnostic, same
+imports/cwd/closed three-key environment, returned0 in0.028264417s, stderr0.
+Actual UID/cwd/root/executable/isolated/no_site matched; PATH/LANG/LC_ALL
+values matched. The observed environment had four keys, with only the fixed
+extra name `__CF_USER_TEXT_ENCODING`; unknown-extra-key count0. Its value
+was neither captured nor inferred. This proves a current conflict with the
+strict whole-environment predicate, not the unrecorded predicate/cause of
+the earlier call or an attested native loader/startup setter. Full actual
+outputs and source identities are retained in
+[evidence](evidence/wave30-d01-new36-outer-preflight-root-review.json).
+The diagnostic spawned no controller, Node, product or browser.
+
+The next reservation is source design only: one narrow launcher comparison
+for this fixed platform metadata key, preserving the caller/child closed
+three-key environment and refusing every other extra key. No correction or
+memory repeat is released here. Old25 failed cleanup/packet observations,
+all prior confidential-browser failures and current real-journey gap remain.
+
+## 2026-10-03 — corrected environment launch reached memory, envelope failed
+
+Root read the exact `ab8d7e7` one-expression proposal, independently reversed
+the complete21381-byte/8a4da launcher to21320/40302 and normalized only its
+DictComp AST node to the old Call. Every other byte and the d29c5 controller
+remained exact. Old launcher DATA was preserved; new private DATA readback
+matched. Caller/child ENV remains three keys; only the named platform metadata
+key is omitted from this one observation comparison. No value was read.
+
+ONE separately released invocation, nonce`fd49b9cead44f00b`, returned outer1
+and controller1. It completed bounded capture, retained actual output/status
+before expectations, and produced both private evidence directories. Actual
+controller exit1 was consumed/reaped; its group was empty. Node actual exit0
+was also consumed/reaped and its group empty. Both cleanup diagnostics record
+validated terminal WNOWAIT identity2 followed by `signal_owned_group` errno1:
+outer wait/reap code1,status1; inner code1,status0. The exact node output6862B
+was closed-parsed; all36 cases/51 cells/311714 assertions/2294 privacy checks
+completed, unreached empty and child first_failure null. Yet controller and
+outer first_failure are `owned_cleanup_unconfirmed`: WHOLE ENVELOPE FAILED.
+No passing memory envelope, browser, product or real journey is credited.
+
+Root reviewed the full actual retained/review packets and consuming-wait
+proofs, then freshly checked exact PIDs/PGs31721/31722 absent using read-only
+metadata/signal-zero. The validation lane was released on this actual cleanup
+proof before report writing; this is not an inferred zero, an automatic
+release from the failed outer grade, or any nonzero post-reap signal. No extra
+cleanup delivery or retry occurred. Source/native pins matched in the actual
+outer preflight; observed minima15262130176B outer/15261577216B inner exceed
+8GiB floor. Outer elapsed0.197602042s and controller0.141543084s retained.
+Full fixed diagnostics, counts and all nine600-capture identities are in
+[evidence](evidence/wave30-d01-new36-corrected-env-root-review.json).
+
+The next reservation is source design only for the shared cleanup function:
+a terminal-child errno1 may only be considered resolved by unchanged actual
+consuming-reap plus proven group absence. Live/unknown/other errors must still
+fail, and no fake wait or post-reap delivered signal is allowed. This report
+implements no such correction and releases no repeat. First old515 native
+cause remains UNKNOWN; all earlier failures stay failed and unchanged.
+
+## Terminal-child cleanup source and composed input review — 2026-10-03
+
+Root read the complete 512-line `effd43bf00c56c19ba965e1c52e0d01d50ca343f` appendix, shared 78-line function and both callers. Independent whole-byte/AST inverses reproduce d29 controller and 8a4 outer; every other function stays exact. The six-line branch defers only exact errno 1 PermissionError after validated terminal WNOWAIT of the original unreaped child. Actual consuming status and group absence remain required; live/unknown/other-error cases, nonzero exit, incomplete evidence and prior failures still refuse. No kernel cause is inferred.
+
+Root separately reviewed and bound outer SOURCE_BYTES=242593 and SOURCE_SHA=4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f. Controller DATA is 242593 bytes, SHA-256 `4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f`; composed outer DATA is 21684 bytes, SHA-256 `72ff2cbe0a9478fa172c74b5d8e34cfad16e5dd57d67e4c3e50077038a165dcf`. Apart from the shared insertion, only these two existing outer assignments change. Exact previous DATA files were preserved in exclusive private 0600 backups, and active legacy filenames were deliberately retained with new full hash/size binding. All native pins, closed caller environment, timing/IO/resource limits, Node payload and 36 cases remain unchanged. AST parse/in-memory compilation passed without executing the resulting code objects. This source staging alone creates no child, product or browser result.
+
+## Actual composed memory envelope — 2026-10-03
+
+ONE separately released invocation used controller `4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f` and composed outer `72ff2cbe0a9478fa172c74b5d8e34cfad16e5dd57d67e4c3e50077038a165dcf`, nonce `2f6d72ad10ef4385`. Actual tool/outer/controller/Node exits were all 0; inclusive outer elapsed 0.198059417 seconds and controller elapsed 0.117424208 seconds. Full bounded output and actual numeric status were retained before grading; both final-clock verdicts passed. Node completed 36 cases, 51 cells, 311714 assertions and 2294 privacy checks, with no failure or unreached case. Complete closed captures and provenance are in the [root receipt](evidence/wave30-d01-terminal-eperm-memory-root-review.json).
+
+Both levels recorded terminal-child signal errno 1 as a deferred observation, then obtained real consuming exit status 0 and confirmed empty groups. Fresh exact PID/PG checks for 56346 and 56347 confirmed absence. Root released serialization immediately after this verification and before the report. The first root readback checker used nonexistent inner field aliases and raised KeyError; corrected reads used the actual retained `owned_group_empty` and `first_failure_before_grade` keys, without changing any capture or rerunning the invocation. Outer/inner minimum free bytes were 12861591552/12861587456, above the unchanged floor.
+
+This is a whole bounded MEMORY envelope pass, not real browser, credential, userinfo, protected-app or product acceptance. Earlier failed native/outer envelopes remain failed, and their unknown original causes are not reassigned. The confidential browser journey remains pending a separate exact release; no task status changed.

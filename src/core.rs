@@ -554,13 +554,28 @@ impl Core {
     pub fn list_groups(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let actor = self.principal(tx, token)?;
-            Ok(json!(
-                tx.list::<Group>("groups")?
-                    .into_iter()
-                    .filter(|(_, u)| actor.allows("group.read", &format!("group/{}", u.name)))
-                    .map(|(_, g)| g)
-                    .collect::<Vec<_>>()
-            ))
+            // Preserve the complete array without retaining the whole decoded
+            // Group bucket before applying each row's read permission.
+            let mut groups = Vec::new();
+            let mut after = None;
+            loop {
+                let page =
+                    tx.scan::<Group>("groups", after.as_deref(), crate::store::maintenance::PAGE)?;
+                if page.is_empty() {
+                    break;
+                }
+                let full = page.len() == crate::store::maintenance::PAGE;
+                after = page.last().map(|(key, _)| key.clone());
+                for (_, group) in page {
+                    if actor.allows("group.read", &format!("group/{}", group.name)) {
+                        groups.push(json!(group));
+                    }
+                }
+                if !full {
+                    break;
+                }
+            }
+            Ok(Value::Array(groups))
         })
     }
     fn require_group_retry_binding() -> Result<()> {

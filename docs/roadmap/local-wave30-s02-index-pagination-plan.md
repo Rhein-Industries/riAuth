@@ -3443,3 +3443,1109 @@ all earlier failures/pins/evidence, primary assignment, completed rows and
 protected contracts remain unchanged. No code, test, manifest, helper, existing
 guide/other report, runtime, service, worker, desktop/provider, network, branch
 alignment, main, push or board change occurred.
+
+## Approved safe fixture materialization — 2026-10-03
+
+Project **891e7443-8dac-4c1b-897f-9e53cb59c7ee**, original S02
+**fdda2152-73a0-4dce-9e5e-aff4b232a6fd**, same supporting worktree
+**e1b4399a-8c0d-46b8-880c-a71a4ebf53e7** and branch. Original primary
+`1e336a3d-bb03-4057-a6a3-df2b057b2af3` remains unchanged. Reservation:
+**`wave30_S02_safe_fixture_materialization`**. User/root authorized only this
+fixture and this append-only report after their full source reviews. The root
+attributed the independent review to5f1d674; I did not query/contact its worker
+or reclassify that review as my own runtime evidence.
+
+**Source-only commit `ba3cd1837f798dd1a8d005ead842660fe7564a39`** contains
+only `tests/s02_group_listing_paging.rs`. No production, manifest, dependency,
+crate, lint policy or other source path changed. The entire02b report prefix is
+preserved: **159,464 bytes**, SHA-256
+`1fc39d4b93a92b82bc4269e8506c7d2eda8fc1a0a4c8129350bb63f77fc69e7a`.
+Every dated prior appendix, first unsafe source and its **historical F1
+unsafe-forbid contradiction** remain in source/report history. This section
+supersedes only the earlier “not materialized” status.
+
+**UNCOMPILED / UNRUN.** No Cargo/rustc/typecheck, fixture/self-check/measurement,
+concurrency, benchmark, service, provider/native/artifact, browser/desktop,
+network query or runtime occurred. No slot was requested/acquired/released.
+Removing the source of F1 is not a claim that the fixture now compiles or passes
+any security/performance/cleanup gate.
+
+### Exact materialization and allowed formatter transformation
+
+Read the approved fence and42-hunk diff from immutable
+`02b1e38bc2919ccb7c99711bcb304f3f050e9ba8`, rather than generating a new
+fixture design or changing oracles. Asserted clean own branch and exact old
+fixture/Core/report pins, then wrote the **exact60,049-byte fence**, SHA-256
+`a93636a21a4a5cae53b2a5b844e8e5534e10fc0b1941cc43927f75b720cf63d6`.
+That exact initial write was read back and matched. The complete42-hunk
+forward/inverse matched old55,835B/b340155 and the approved fence.
+
+`rustfmt --edition 2024 --check tests/s02_group_listing_paging.rs` then
+returned **exit1 for formatting differences**, having parsed the input.
+This was not a compiler/typecheck or runtime failure. Applied only
+`rustfmt --edition 2024 tests/s02_group_listing_paging.rs`; the subsequent
+same explicit-file `--check` returned **exit0**. No Cargo fmt/all-target command
+or unrelated path formatting was used.
+
+The final committed fixture is **60,287 bytes /1,734 lines**, SHA-256
+`9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444`.
+It is **not byte-identical to the approved unformatted fence**. The exact
+formatter-only diff below is **3,428 bytes**, SHA-256
+`23723447a90723227981fe4ecda7cb3f78b5b3b41e8a8f0b204ac9db16cb5cc0`,
+with12 hunks. Besides line breaks/indentation and format-trailing commas,
+rustfmt added two braces around the existing match-arm boolean expressions
+and removed one brace pair around the single-expression p50 closure.
+The expression operands/order, labels, literal JSON, calls/arguments,
+operations, inputs, oracles, caps and deadlines were not revised.
+
+Actual static whole-file reconstruction:
+
+1. Final60,287B/9284a0 → inverse of the12-hunk formatter diff →
+   exact60,049B/a936 approved fence.
+2. Exact approved fence → inverse of its42-hunk diff →
+   **entire55,835B/b340155 old fixture** from02b/74c1.
+3. Both forward patches also recover the exact approved/final bytes.
+
+A lexical text verifier compared the whole approved/final source after
+reversing only those **three exact formatter brace transformations** and
+normalizing trailing format commas/whitespace. Tokens, comments and literal
+content matched. It is a static text proof, **not** a Rust AST/typecheck or
+unsafe-policy compiler result. An initial verifier assertion returned exit1
+because it normalized only the two match arms and omitted the p50 closure
+brace removal. Reading the full formatter diff identified that missing
+normalization; the corrected verifier passed. No Rust source or oracle was
+changed to make that proof pass.
+
+Exact formatter-only diff, approved fence to final committed fixture:
+
+```diff
+--- a/tests/s02_group_listing_paging.rs
++++ b/tests/s02_group_listing_paging.rs
+@@ -697 +697,3 @@
+-            after.checked_sub(before).expect("native counter went backwards")
++            after
++                .checked_sub(before)
++                .expect("native counter went backwards")
+@@ -974,6 +976,10 @@
+-                    Lane::Control => row.native.fetches_over_128() == 1
+-                        && row.native.unbounded == 1
+-                        && row.native.unbounded_rows == 513,
+-                    Lane::Paged => row.native.fetches_over_128() == 0
+-                        && row.native.bounded == 5
+-                        && row.native.bounded_rows == 513,
++                    Lane::Control => {
++                        row.native.fetches_over_128() == 1
++                            && row.native.unbounded == 1
++                            && row.native.unbounded_rows == 513
++                    }
++                    Lane::Paged => {
++                        row.native.fetches_over_128() == 0
++                            && row.native.bounded == 5
++                            && row.native.bounded_rows == 513
++                    }
+@@ -983,3 +989 @@
+-                let p50 = |lane| {
+-                    percentile(select(lane).map(|row| row.elapsed_ns).collect(), 1, 2)
+-                };
++                let p50 = |lane| percentile(select(lane).map(|row| row.elapsed_ns).collect(), 1, 2);
+@@ -1163,5 +1167 @@
+-fn authority_agent(
+-    fixture: &Fixture,
+-    id: &str,
+-    parent: Option<String>,
+-) -> Zeroizing<String> {
++fn authority_agent(fixture: &Fixture, id: &str, parent: Option<String>) -> Zeroizing<String> {
+@@ -1189,3 +1189 @@
+-        user.totp_secret.is_none()
+-            && user.totp_pending.is_none()
+-            && user.recovery_codes.is_empty(),
++        user.totp_secret.is_none() && user.totp_pending.is_none() && user.recovery_codes.is_empty(),
+@@ -1194 +1192,4 @@
+-    let mut view = require(serde_json::to_value(UserView::from(user)), "expected User view");
++    let mut view = require(
++        serde_json::to_value(UserView::from(user)),
++        "expected User view",
++    );
+@@ -1217 +1218,4 @@
+-    assert!(old_user.enabled && !old_user.admin, "enabled non-admin parent");
++    assert!(
++        old_user.enabled && !old_user.admin,
++        "enabled non-admin parent"
++    );
+@@ -1246 +1250,4 @@
+-    for key in ["provisioning_user_generation/all", "user_listing_generation/all"] {
++    for key in [
++        "provisioning_user_generation/all",
++        "user_listing_generation/all",
++    ] {
+@@ -1272 +1279,4 @@
+-    assert!(expected == *after, "complete public parent-disable snapshot");
++    assert!(
++        expected == *after,
++        "complete public parent-disable snapshot"
++    );
+@@ -1293 +1303,4 @@
+-    assert!(record.enabled && record.parent_user.is_none(), "isolated expiry fixture");
++    assert!(
++        record.enabled && record.parent_user.is_none(),
++        "isolated expiry fixture"
++    );
+@@ -1297 +1310,4 @@
+-        fixture.core.store.write(|tx| tx.put("agents", &record.id, &record)),
++        fixture
++            .core
++            .store
++            .write(|tx| tx.put("agents", &record.id, &record)),
+@@ -1303 +1319,4 @@
+-    assert!(crypto::now() >= boundary, "real clock moved before expiry boundary");
++    assert!(
++        crypto::now() >= boundary,
++        "real clock moved before expiry boundary"
++    );
+```
+
+### Protected byte identities and scope
+
+The following whole function bodies match **old fixture → approved fence →
+final formatted fixture** byte for byte, including literal frozen control,
+independent complete result, exact authority refusals/full snapshots, rollback,
+normal writer/audit/revision effects and both concurrency distinctions:
+
+| Whole protected function | Bytes | SHA-256 |
+| --- | --- | --- |
+| `list_groups` | 448 | `8c3e2a22db02f3a1d60ef164a88679c9fcfa782a6de29209ec67697ea8bf1c03` |
+| `expected` | 594 | `67214ddf287266cb6c8f7af0e365dd35cb3959bb9e926be5b1712b8fde01d92f` |
+| `checked_read` | 531 | `baf79b08d22576c15c73d73927e51065c56c57ccaadbade7e9419ae1689718e0` |
+| `refused_read` | 782 | `f67813385cffa53421c1d454dea983b0ac79331d98c420fd660fde420e15376c` |
+| `denied_member_write` | 581 | `ff62942ad582f59f7f5fb8751a4c109e0c3a7fb608e8de37a8ba43f36bb11c99` |
+| `malformed_write_refusal` | 868 | `f29bd5154b6dc867881bac4aa1a92e39b899fda8893b867d1214e9c7f9c65f2f` |
+| `source_digest` | 274 | `a6130f8f77c59c5ba13cdd966422668de1ce5748045a0ca6a30f0eaeb5e2e270` |
+| `expected_audit` | 1,107 | `fde6d3025636f1e7c2c0798feae47d23f47b55dc7411013d720bc2e2b04892b1` |
+| `admin_id` | 107 | `fd1b5b4e2ef3c9c28c0bf4ecb8e7a3675b7b5c0155f233c77510b3ff9a13e375` |
+| `advance_revision` | 222 | `1e414a910ee1e9e96a7cc1bb89efc4677ba8482c58163fee437cf2857124c8bc` |
+| `assert_member_effect` | 2,019 | `63aabbfb1ba94bb811f289359af99a10bf27796aea366a7ee6b5e2b399f3988a` |
+| `assert_revoke_effect` | 1,184 | `798e169bbfb68744a34ba185462f07acfd508e094c7e9e0458ff3153af5476e0` |
+| `finish_snapshot` | 722 | `1ecaebd9938a21b8b32c2f8b6e2da1d72288e53c31bffc47b088edb06d5d847a` |
+| `ordered_interleaving` | 3,477 | `3fc03a748678a3f897e20bade55b41fdac894afd7f5fd19e922dbdb5a57efe03` |
+| `core_overlap` | 2,321 | `8c46c73c5f2482faaea8d31bb2f3af9671276aca0bdc8e391a21c8b6ffcb2c10` |
+
+Approved `telemetry_self_check`, `measure`, `emit` and `percentile` bodies
+also match the final formatted source byte for byte. These are definition
+identities only; none was invoked. The formatter's change to `summaries` is
+limited to the exact brace/p50 formatting shown above, not a cost/speed gate
+change. The newly approved expiry/parent cases are materialized exactly plus
+the disclosed formatter changes; they were not expanded into a legacy-parent,
+natural elapsed-TTL or external-profile claim.
+
+The whole `src/core.rs` remains exactly the74c1 reader source:
+**57,913 bytes**, SHA-256
+`686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea`.
+The frozen old method remains literal448B/8c3e2a22. Principal-first/sameTx,
+stored-name permissions, actual key cursor, complete JSON/order/errors and
+zero writer/schema/member/API change remain the accepted production behavior.
+All other source/manifests/toolchain paths stayed unchanged relative to own02b
+HEAD; there was no alignment/merge or claim of new current-main equivalence.
+
+The materialized measurement is exactly the accepted **native raw-fetch
+record-frequency** design: existing safe `Sizes::render` bucket/count/sum
+observations and strict finite schema, independent observer self-consistency
+definitions, every120 raw row and twelve summaries, equal native points and
+encoded value-byte work, full administrator/scoped/empty outcomes, and actual
+elapsed ns/p50/p95. The asserted cost is observed fetch-batch materialization,
+not inferred heap/RSS/total IO/speed. Latency regression remains visible and
+does not become a speedup claim. No global allocator, raw pointer/unsafe block,
+allow/override, dependency or external observer was added.
+
+The expiry case is a declared canonical timestamp compatibility seed at
+real now, preserving enabled/hash/token-map and the exact whole snapshot;
+normal parent disable performs public atomic child retirement with a complete
+expected durable effect map. Source/runtime distinctions for equality timing,
+natural TTL and legacy surviving-child fallback remain exactly those in the
+approved design. Unrelated authority, membership, audit, receipt-secret,
+route-header, PAM, Group and shared60s contracts are untouched.
+
+### Actual static checks and remaining held work
+
+Actual passed checks:
+
+- Exact approved initial materialization hash and readback; original whole
+  frozen Core control and protected function identities.
+- 12-hunk formatter forward/inverse plus whole42-hunk approved inverse, and
+  exact source-token comparison with the disclosed three brace normalizations.
+- One ignored named test, no unsafe/global allocator/allow/raw allocation
+  symbols, and actual Core byte equality to74c1.
+- Explicit-file rustfmt parse/format followed by `--check` exit0; Git
+  whitespace and exact staged source-only scope checks.
+- Complete02b report-prefix identity, documentation links and report-only
+  staged scope/whitespace checks before the separate report commit.
+
+The first formatting check exit1 and first lexical-verifier assertion exit1
+are preserved above as **static preparation outcomes**. Historical F1 is not
+erased or mislabeled as an executed Cargo result. Parser/text checks cannot
+establish typing, allocation safety, observer correctness, durable transition/
+snapshot/concurrency outcomes or actual performance.
+
+The single exact future ignored command remains **HELD**:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo test --locked --features test-support --test s02_group_listing_paging \
+  group_listing_paging_preserves_snapshot_authority_and_measures_materialization \
+  -- --exact --ignored --test-threads=1 --nocapture
+```
+
+Root must review these immutable final source/format bytes, then separately
+coordinate exact current-production alignment, credible fresh cache/capacity
+and bounded outer supervision before any release. Own private target/jobs1/
+incremental0/dev+testdebug0, proposed13GiB start/4GiB planning allowance/
+9GiB stop/8GiB floor/1800s envelope and unchanged300s fixture policy remain
+proposals, not newly measured prerequisites or runtime evidence. No target/lab
+directory was created and no cleanup/deletion occurred in this phase.
+
+There is no known additional static blocker in the authorized materialization;
+**typecheck, native observer/self-check, measured cost/latency, security/writer/
+concurrency, deadline and private cleanup results remain unknown**. No original
+S02 completion or task/board action is claimed. Root owns the next reservation,
+review, integration/main/push/status; original primary and all completed rows
+remain unchanged. The A09 terminal failure/cleanup attribution is root-owned
+and supplied by the user; it grants no S02 runtime credit or slot. No extra
+worker/task/worktree/managed shell, contact, UI provider or external message
+was used.
+
+## One-filter source/resource preparation — 2026-10-03
+
+Project **891e7443-8dac-4c1b-897f-9e53cb59c7ee**, original S02
+**fdda2152-73a0-4dce-9e5e-aff4b232a6fd**; reservation
+`wave30_S02_one_filter_resource_preparation`. This is preparation data only.
+The entire **173,920-byte** report at
+`00a07b2115ea727521382e6e599300f2b9230456`, SHA-256
+`9f62e864f38093331e3f05639818ffb80c468354adb8408adfb28ca9a56e24db`,
+remains the exact prefix. Historical F1, formatter preparation outcomes,
+safe design and materialization retain their original scope and wording.
+No Cargo/typecheck/fixture/benchmark/native/version invocation, target/log
+creation, deletion, merge/alignment or source edit occurred here.
+
+### Whole selected source equivalence
+
+Root's staged, not yet published or executed, source is
+**cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57**. Own starting HEAD is
+**00a07b2115ea727521382e6e599300f2b9230456**, with materialized source
+**ba3cd1837f798dd1a8d005ead842660fe7564a39** and the accepted74c1
+production reader. Whole recursive Git mode/object/path records match
+**358/358 tracked objects**, with no missing/different selected object:
+
+- Entire `src/`, `crates/`, `tests/common/`.
+- `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `build.rs`,
+  `.cargo/`, `rustfmt.toml`, `.rustfmt.toml` where tracked.
+- The entire [named fixture](../../tests/s02_group_listing_paging.rs).
+
+Working-file readback also matches staged bytes. Selected explicit identities:
+
+| Whole file | Bytes | SHA-256 |
+| --- | ---: | --- |
+| [Core](../../src/core.rs) | 57,913 | `686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea` |
+| named fixture | 60,287 | `9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444` |
+| [Store](../../src/store.rs) | 82,583 | `dfb62f2e482e9e334e148a932c7900607f37297748f0c1f90a8ef65f77babc0f` |
+| [telemetry](../../src/telemetry.rs) | 24,046 | `d23e9a03f2129601a1a37ace5ad80b0473bbc63a6ddb47be75728882fb0e12fd` |
+| [manifest](../../Cargo.toml) | 4,020 | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| lockfile | 109,243 | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| [toolchain pin](../../rust-toolchain.toml) | 86 | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+
+A broader entire-`tests/` comparison has one informational difference:
+`tests/cli.rs`. Stagedcb uses TCP connect readiness; own history retains
+the earlier bind-based readiness loop and lacks that TcpStream import.
+The selected integration target does not import/select that fixture.
+It is not an S02 source mismatch and no alignment is proposed; this report
+does **not** claim entire-test-tree identity. No root staging history was
+imported. Frozen control, complete expected results, expiry/parent refusal,
+writer effects, ordered snapshot/Core-overlap definitions, native metrics
+and all production protections remain exactly the materialized source.
+
+### Existing private cache and measured capacity
+
+The existing literal private `$PWD/target`, `debug`, `.fingerprint`
+and `deps` directories are owned by UID501, mode0755, nonsymlinks,
+with resolved paths under this worktree. Read-only `du -sk` reports
+**9,007,172 KiB** for this existing cache. No duplicate/cold target is
+proposed, no S02 executable exists there yet, and no accepted historical
+test/helper/server/client/evidence artifact is changed or deleted.
+
+Two cached riAuth library fingerprints exist:
+
+| Fingerprint | Actual features | Bytes / SHA-256 |
+| --- | --- | --- |
+| `riauth-507476e43f01092f/lib-riauth.json` | default, essentials, platform, test-support, fuzzing | 3,621 / `a5aa512953c0cde2259c2f11e126dda519ad8ea9e3c46bd8f57e2575ec997941` |
+| `riauth-f685f1e2409027d4/lib-riauth.json` | default, essentials, platform | 3,590 / `78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af` |
+
+Their **53 dependency tuples**, profile12672335563272108896, config,
+rustc17329007180185699724 and empty rustflags match; differing keys are
+features/local. Manifest test-support/fuzzing are empty features.
+There is **no exact default + test-support without fuzzing library
+fingerprint**. This is a warm dependency cache, not a test-only/library-hit
+promise: the new feature library and new test must build, and Cargo may
+normally link package binaries for this target. No extra target is requested.
+
+Read-only file sizes inform, but do not measure a future peak: existing
+riAuth rlibs407,106,624/409,471,184B, rmeta46,149,481/46,276,739B;
+redb11,007,528B, serde_json2,474,768B, tempfile586,488B,
+zeroize537,448B, sha2994,872B and selected base64962,336B.
+The untouched accepted `saml_source_peer-edfdf6287bca6298` executable
+is57,972,288B; this is a historical metadata reference, not S02 evidence.
+
+Selected dependency fingerprint readback:
+
+| Existing fingerprint JSON | SHA-256 |
+| --- | --- |
+| `redb-c0a17d790ab2a011/lib-redb.json` | `1de37391b3314d2f30dc4b33d5c289d009e816ac670dab6da1f8b08cab2ac999` |
+| `serde_json-90730a418a77511a/lib-serde_json.json` | `1ce73d684ef79bb6db25e2b569bc7d4bef60e12cc747fc02c03cc86d008a84c8` |
+| `tempfile-3606bf3ae9042636/lib-tempfile.json` | `15a8774a92a8109fae637ff504e2c8e0663160affa97c503d46d4526b934005b` |
+| `zeroize-3f95ee7d857e762e/lib-zeroize.json` | `341c7246b29e23360ba817ea52f71a05e5d085a023ebfeeffe397418d38a8eea` |
+| `sha2-5bae4dba7bee861d/lib-sha2.json` | `404d30f30a84a9791b2917dbbfdb44696556758abdb265153246ea4192b98c3a` |
+| `base64-2619175bdd8f26bb/lib-base64.json` | `c01374b2ecdefab6bc2443de81c989e3bfe717b7b3356f09c03404b68f054a50` |
+| `openssl-43b098cf0be13958/lib-openssl.json` | `5e3a94a039d007acba3789d3abf0cc8876b8a41e049fc935c93e322a2bfe2d50` |
+| `aws-lc-sys-06c91758ec414101/lib-aws_lc_sys.json` | `3f30e1cf49fb3319422cd8cc3b4856923df586843d6e9169b5c175c565978efa` |
+| `postgres-b4cd5d1723dfc704/lib-postgres.json` | `5fa516dede41a3870654b4fb475996e77752ee1f241792d16a7250d14ead5df8` |
+| `tokio-1f958987b4e39bc9/lib-tokio.json` | `45a50fdbcaf1eecfc23df3f35f7ad020bf55434dd0f717d1f05ede95b2272823` |
+
+No dependency binary/library is executed. Fingerprint metadata is compatible
+with likely reuse; it does not prove Cargo freshness or link success.
+
+Actual `statvfs.f_bavail * f_frsize` samples from the own target filesystem:
+
+| UTC sample | Available bytes | GiB | Headroom above9GiB | >=13GiB |
+| --- | ---: | ---: | ---: | --- |
+| 2026-10-03T03:15:15.904Z | 14,355,791,872 | 13.369873 | 4,692,115,456B | yes |
+| 2026-10-03T03:20:00.998Z | 15,458,168,832 | 14.396542 | 5,794,492,416B | yes |
+| 2026-10-03T03:37:18.205Z | 14,261,022,720 | 13.281612 | 4,597,346,304B | yes |
+| 2026-10-03T03:43:57.267Z | 13,560,836,096 | **12.629513** | **3,897,159,680B** | **no** |
+
+Last sample epoch ns is1790999037267232000. The newest observation is a
+**start-capacity blocker**; no command is run. Shared free-space variation
+is not attributed to any worker or used as an own peak measurement.
+A later exact release still requires fresh >=13GiB; no threshold reduction,
+cache deletion or alternate target is proposed.
+
+The conservative **4GiB additional planning allowance** is retained:
+roughly0.9GiB permanent new riAuth metadata/library/test/possible package links,
+2GiB temporary compilation/link work, and1.1GiB fixture/copies/log allowance.
+These are estimates informed by the existing sizes, not measured maxima or
+quotas. Encrypted redb/private lab copies and link temporaries may differ;
+the fixture has not run. At exactly13GiB start, 4GiB reaches9GiB, so the
+wrapper stops at9GiB, while8GiB remains the floor; it also stops on observed
+host drain >4GiB or unexpected dependency compilation. New source/tool/cache
+mismatch, dependency rebuild, host drain or insufficient capacity is a
+refusal, not permission for more space, another feature set or a rerun.
+
+### Read-only tool identities and exact future command
+
+Pinned channel is1.98.1/minimal with rustfmt/clippy. Existing
+`target/.rustc_info.json` is1,965B SHA-256
+`27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4`;
+its **historical cached** stdout names rustc1.98.1/48a229cea and
+aarch64-apple-darwin. No current tool version command is run.
+
+The literal installed cargo/rustc are regular UID501/mode0755/nlink1 files,
+respectively31,960,040B SHA
+`6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d`
+and412,504B SHA
+`766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941`.
+Their directory is
+`/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin`.
+This is byte/metadata identity, not a new version/ABI execution check.
+The rustup cargo symlink is not selected by the proposed supervisor.
+
+Read-only `/opt/homebrew/bin/python3` resolves to
+`/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/bin/python3.14`:
+regular UID501/mode0755/nlink1,34,640B,
+SHA `4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56`.
+No version invocation or dependency/library probe is made. Static documentation
+parsing below is not an invocation of the archived supervisor.
+
+The sole proposed Cargo operation retains the approved arguments:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo test --locked --features test-support --test s02_group_listing_paging \
+  group_listing_paging_preserves_snapshot_authority_and_measures_materialization \
+  -- --exact --ignored --test-threads=1 --nocapture
+```
+
+The archived DATA resolves `cargo` to the explicit pinned installed binary,
+uses this own cwd/target, preserves default features, and adds no target/case.
+Its full child environment is the fixed, nonsecret `ENV` below rather than
+inherited ambient variables: selected toolchain PATH, HOME, C locale,
+no color, offline Cargo, jobs1/incremental0/dev+testdebug0. No RUSTFLAGS,
+lint-policy override, inherited secret or native peer input is supplied.
+Offline is a refusal on missing cached inputs, not permission to download.
+
+After a **separate** root source/capacity/runtime release, exact DATA could
+be archived exclusively0600 to the already-existing target path
+`target/s02-group-list-ba3cd18-v1-supervisor.py`; the reviewed outer
+invocation would be:
+
+```sh
+env -i HOME=/Users/dominik PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=C LC_ALL=C \
+  /opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/bin/python3.14 \
+  -I -S -B "$PWD/target/s02-group-list-ba3cd18-v1-supervisor.py"
+```
+
+This and the Cargo command are **not executed**. Before any invocation root
+must confirm the immutable DATA hash, absent destination, clean source/pins,
+tool identity, no competing Cargo and fresh capacity. There is no new
+target directory or resource creation in the preparation phase.
+
+### Exact supervision and outcome retention contract
+
+Full prior own finite supervision source
+`target/i04-lasso-idp-4ed5b49-owned-asn1-filter-supervisor.py`
+was read:15,046B SHA
+`fbccc3823b0fd978b22d243c56188d335dc077d9c79958b86b6d6462e3974d94`,
+regular/nonsymlink/nlink1/UID501/mode0600. This is the earlier I04
+supervision source and historical evidence context only; its captures/native
+inputs were not reopened and its old actual PASS is not S02 runtime credit.
+
+The new **DATA-only** adaptation below is not byte-equivalent to that
+supervisor. It preserves one Cargo invocation, own group/deadlines/private
+capture and disk guards, changes the old16MiB cap to the requested32MiB,
+uses exact safe S02 output schemas, and adds observation-before-grade/fsync
+ordering and a final post-save/output clock refusal. It uses WNOWAIT to retain
+the direct child PID through all signals; nonblocking final waitpid reaps only
+after TERM/KILL decisions. Observation errors retain failure and do not skip
+the termination phase. No `Popen.poll` reaps the leader early.
+
+This DATA has **25,939 bytes / 534 lines**, SHA-256
+`dd1cd5765d12ad1b027094dec7230149e812a439ab8ac4ad990ea944c02a069d`.
+Only `ast.parse` and static structure/text checks were applied; no import,
+compile/exec/eval, candidate function, subprocess/control loop, fixture or
+observer function was invoked. The full source is archived in the next fence,
+not materialized as a Python file. Actual AST checks identify one Cargo launch
+site, one read-only bounded Git/ps launch site and exactly one cleanup call;
+no unlink/rmtree/poll/exec/eval/compile call exists. Literal source checks
+place observations/evidence fsync before grading and decision/output before
+the final clock.
+
+The future raw capture is merged full stdout/stderr in one exclusive nofollow
+0600 regular/nlink1 file capped at32MiB; no raw output is echoed. A cap/encoding/
+schema/line violation aborts and is explicitly incomplete evidence. Public
+records accept only eight exact schema/key sets, typed nonboolean uint64s,
+booleans, fixed enums and fixed seven/eight-element numeric arrays; unknown
+keys/schemas, duplicate keys, missing/type-invalid fields and nonfinite numbers
+refuse. Native raw-fetch histograms and values remain measurements, not heap,
+RSS, IO or speed claims.
+
+A successful invocation would collect **120 unique numeric sample records**,
+**12 unique p50/p95 summaries**, one telemetry self-check, one measurement
+decision, one authority-boundary result, two ordered snapshot records, one
+Core-overlap observation and one final result:139 records total.
+The parser retains exactly received partial records on any failure and does
+not infer reached oracles from expected counts. Raw latency for every pair/
+lane/scope/sample and regression remain visible; false observed Core overlap,
+same-second timing or scoped latency comparison is not turned into a fabricated
+pass or additional test failure. The fixture's unchanged assertions own the
+cost/security/writer/concurrency gate, not the outer supervisor.
+
+Preflight is fail closed on source/tool/cache pins, dirty source, unsupported
+Darwin/Python WNOWAIT primitives, old output paths, competing Cargo or capacity.
+Runtime monitoring targets2-second disk/selected-cache/owned-group samples,
+stops at9GiB or >4GiB sampled host drain, and retains8GiB floor. The shared
+1800-second cooperative envelope reserves the final10 seconds for own cleanup,
+so the command monitor reaches at most1790 seconds including preflight.
+The unchanged **300-second fixture** and **10-second owned-thread** limits
+are not extended. Unexpected dependency build text triggers termination;
+the new riAuth feature build is allowed. Each read-only Git/ps metadata child
+has1-second/capped-output handling and numeric join observations.
+
+Only the newly captured and confirmed child PGID is signaled. The retained
+unreaped PID prevents group-ID reuse before TERM/KILL; an unconfirmed group
+permits only the owned leader PID, never another group. Group members/active
+PIDs, signals, raw wait status, normalized exit/signal, joined leader, pipe EOF,
+sampled free bytes and post-reap group absence are retained. There is no global
+kill/prune and no claim about unobserved escaped process groups. Metadata/
+cleanup/EOF ambiguity makes the candidate fail; it never proves absence.
+Kernel uninterruptible IO, metadata calls or fsync cannot be given a hard
+kernel time/space quota by this Python design. The caller's actual numeric
+exit, elapsed time and confirmed cleanup remain decisive; a cleanup failure
+must not be reported as a released clean runtime lane.
+
+Fresh expected-absent literal paths (checked absent in this preparation):
+`target/s02-group-list-ba3cd18-v1-supervisor.py`,
+`target/s02-group-list-ba3cd18-v1.log`,
+`target/s02-group-list-ba3cd18-v1-observations.json`,
+`target/s02-group-list-ba3cd18-v1-evidence.json`,
+`target/s02-group-list-ba3cd18-v1-decision.json`.
+None was created. Future receipts are exclusive nofollow0600/fsynced.
+Observations contain the closed numeric records; evidence contains actual raw
+log identity/completeness, numeric wait/exit/status/cleanup/source/cache/disk
+observations. Both are saved **before** any success/count comparison. The
+decision is saved afterwards, preserving the first fixed failure. Existing
+Cargo cache metadata can legitimately refresh during a new feature build and
+is recorded; selected cached dependencies/source pins remain guarded.
+
+All receipts and printed summary are explicitly **pre-final observations**.
+The final monotonic clock follows their writes/fsync/close and the closed
+summary flush. Nothing is written after that clock; >=1800 seconds refuses
+with outer exit1 even if a pre-final decision recorded candidate_pass=true.
+No IO deadline guarantee is inferred from the journal. The invocation caller
+must retain actual supervisor exit/time before accepting those receipts.
+
+```python
+# DATA ONLY: archive this exact source; do not execute before root release.
+import datetime, hashlib, json, os, re, selectors, signal, stat, subprocess, sys, time
+from pathlib import Path
+
+ROOT = Path("/Users/dominik/orca/projects/riAuth-public-preview-local-extension-isolation-wave27")
+TARGET = ROOT / "target"
+BASE = TARGET / "s02-group-list-ba3cd18-v1"
+LOG = Path(str(BASE) + ".log")
+OBS = Path(str(BASE) + "-observations.json")
+EVIDENCE = Path(str(BASE) + "-evidence.json")
+DECISION = Path(str(BASE) + "-decision.json")
+NAME = "group_listing_paging_preserves_snapshot_authority_and_measures_materialization"
+OUTER_PYTHON = Path("/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/bin/python3.14")
+TOOLCHAIN = Path("/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin")
+ARGV = [str(TOOLCHAIN / "bin/cargo"), "test", "--locked", "--features", "test-support",
+        "--test", "s02_group_listing_paging", NAME,
+        "--", "--exact", "--ignored", "--test-threads=1", "--nocapture"]
+ENV = {"HOME": "/Users/dominik",
+       "PATH": str(TOOLCHAIN / "bin") + ":/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+       "LANG": "C", "LC_ALL": "C", "CARGO_TERM_COLOR": "never",
+       "CARGO_NET_OFFLINE": "true", "CARGO_TARGET_DIR": str(TARGET),
+       "CARGO_BUILD_JOBS": "1", "CARGO_INCREMENTAL": "0",
+       "CARGO_PROFILE_DEV_DEBUG": "0", "CARGO_PROFILE_TEST_DEBUG": "0"}
+STAGED = "cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57"
+SOURCE = "ba3cd1837f798dd1a8d005ead842660fe7564a39"
+PATHS = ["src", "crates", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
+         "build.rs", ".cargo", "rustfmt.toml", ".rustfmt.toml",
+         "tests/common", "tests/s02_group_listing_paging.rs"]
+PINS = {
+    "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/bin/python3.14": "4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56",
+    "/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/rustc": "766eda9d8f53afd6fc7f27b3cd2e444dd22afacb5afa710a5625fc8e45b8c941",
+    "/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/cargo": "6e17e865f3a20dd55a1d212f849f58b77124179f0de7c52973096d84ba34118d",
+    "src/core.rs": "686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea",
+    "tests/s02_group_listing_paging.rs": "9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444",
+    "Cargo.toml": "58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8",
+    "Cargo.lock": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426",
+    "rust-toolchain.toml": "887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167",
+    "target/.rustc_info.json": "27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4",
+    "target/debug/.fingerprint/riauth-507476e43f01092f/lib-riauth.json": "a5aa512953c0cde2259c2f11e126dda519ad8ea9e3c46bd8f57e2575ec997941",
+    "target/debug/.fingerprint/riauth-f685f1e2409027d4/lib-riauth.json": "78f678582dfa4aa8cd29b6e242eaf56767e59066c661ce2f47f5ac7277bc68af"}
+CAP = 32 * 2**20
+START_FREE = 13 * 2**30
+STOP = 9 * 2**30
+FLOOR = 8 * 2**30
+ALLOWANCE = 4 * 2**30
+BEGIN = time.monotonic()
+END = BEGIN + 1800
+# Reserve the last ten seconds for own-group cleanup within the same outer budget.
+CHILD_END = END - 10
+p = selector = log = None
+group_confirmed = False
+leader_info = None
+first_failure = None
+pending = b""
+bytes_seen = 0
+log_hash = hashlib.sha256()
+source_before = None
+cache_before = {}
+retained = False
+evidence_eligible = False
+r = {"schema": "riauth.s02-supervisor-observations/v1",
+     "project_id": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+     "task_id": "fdda2152-73a0-4dce-9e5e-aff4b232a6fd",
+     "worktree_id": "e1b4399a-8c0d-46b8-880c-a71a4ebf53e7",
+     "cwd": str(ROOT), "argv": ARGV, "env": ENV, "stage": "preflight",
+     "cargo_exit": None, "cargo_wait_status": None, "cargo_signal": None,
+     "disk": [], "process_groups": [], "signals": [], "pipe_eof": False,
+     "leader_reaped": False, "group_absent": False, "remaining_active": [],
+     "compiler_error_codes": [], "panic_locations": [], "compile_packages": [],
+     "start_bytes": None, "minimum_available_bytes": None,
+     "outer_seconds": 1800, "child_monitor_seconds": 1790, "cleanup_max_seconds": 10,
+     "monitor_seconds": 2, "start_free_bytes": START_FREE,
+     "stop_bytes": STOP, "floor_bytes": FLOOR, "planning_drain_bytes": ALLOWANCE,
+     "log_cap_bytes": CAP, "sampled_host_free_not_own_peak": True}
+records = []
+B = "bool"
+U = "uint"
+A = "array8uint"
+schemas = {
+"riauth.s02-telemetry-self-check/v1": {
+ "scan_count":U,"rows":U,"buckets":A,"parser_refusal_cases":U,"heap_claim":B,"rss_claim":B},
+"riauth.s02-group-list-sample/v2": {
+ "pair":U,"lane":("control","paged"),"scope":("scoped","admin"),"sample":U,
+ "elapsed_ns":U,"point_reads":U,"native_point_plus_scan_value_bytes":U,
+ "bounded_scans":U,"bounded_rows":U,"unbounded_scans":U,"unbounded_rows":U,
+ "row_histogram_bounds":"array7uint","bounded_cumulative_buckets":A,
+ "unbounded_cumulative_buckets":A,"fetches_over_128_rows":U,"writer_holds":U,"commits":U,
+ "encrypted_at_rest":B,"latency_interval":("complete_list_call",),"heap_claim":B,"rss_claim":B},
+"riauth.s02-group-list-summary/v2": {
+ "pair":U,"lane":("control","paged"),"scope":("scoped","admin"),"samples":U,
+ "median_fetches_over_128_rows":U,"p50_complete_call_elapsed_ns":U,
+ "p95_complete_call_elapsed_ns":U,"heap_claim":B,"rss_claim":B},
+"riauth.s02-measurement-decision/v2": {
+ "native_point_and_value_byte_equivalence":B,"observed_fetch_materialization_improved":B,
+ "scoped_latency_p50_lower_in_every_pair":B,"latency_grade":B,"heap_claim":B,"rss_claim":B},
+"riauth.s02-authority-boundaries/v1": {
+ "expiry_source":("trusted_canonical_stored_timestamp_at_real_now",),
+ "expiry_refusal_exact":B,"expiry_same_second_observed":B,"natural_ttl_elapsed_claim":B,
+ "public_parent_disable_exact_snapshot":B,"child_token_retired":B,
+ "legacy_enabled_child_with_disabled_parent_runtime_claim":B,"unrelated_authority_preserved":B},
+"riauth.s02-ordered-snapshot/v1": {
+ "operation":("membership","revoke"),"writer_joined":B,
+ "old_snapshot_exact":B,"fresh_request_checked":B},
+"riauth.s02-core-overlap/v1": {
+ "attempts":U,"observed_call_interval_overlap":B,"writer_joined":B,
+ "complete_pre_or_post_oracles":B,"between_page_injection":B},
+"riauth.s02-group-list-result/v1": {
+ "pairs":U,"order":("ABBAAB",),"warmups_per_lane_scope":U,"samples_per_lane_scope":U,
+ "total_samples":U,"groups":U,"members_per_group":U,"scoped_groups":U,
+ "all_owned_threads_joined":B,"private_fixture_directories_removed_and_checked":B,
+ "cost_gate":("observed_raw_fetch_row_materialization",),"latency_grade":B,
+ "heap_claim":B,"rss_claim":B,"pg_claim":B}}
+test_results = []
+class Refusal(Exception): pass
+
+def fail(reason):
+    global first_failure
+    if first_failure is None:
+        first_failure = reason
+
+def require(condition, reason):
+    if not condition:
+        raise Refusal(reason)
+
+def free():
+    s = os.statvfs(TARGET)
+    return s.f_bavail * s.f_frsize
+
+def private_open(path):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        s = os.fstat(fd)
+        require(stat.S_ISREG(s.st_mode) and s.st_uid == os.geteuid()
+                and s.st_nlink == 1 and stat.S_IMODE(s.st_mode) == 0o600, "evidence_ownership")
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+def save(path, value):
+    data = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    require(len(data) <= CAP, "evidence_cap")
+    with os.fdopen(private_open(path), "wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+
+def meta_command(args, limit=2**20):
+    # Read-only git/ps children: bounded nonblocking stdout and owned direct PID.
+    q = subprocess.Popen(args, cwd=ROOT, env=ENV, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    out=bytearray()
+    poll=selectors.DefaultSelector()
+    os.set_blocking(q.stdout.fileno(),False)
+    poll.register(q.stdout,selectors.EVENT_READ)
+    until=time.monotonic()+1
+    try:
+        while poll.get_map():
+            require(time.monotonic()<until,"metadata_deadline")
+            for key,_ in poll.select(0.02):
+                data=os.read(key.fd,65536)
+                if not data:poll.unregister(key.fileobj)
+                else:
+                    require(len(out)+len(data)<=limit,"metadata_cap")
+                    out.extend(data)
+        require(q.wait(timeout=max(0.001,until-time.monotonic()))==0,"metadata_refusal")
+        return bytes(out)
+    finally:
+        if q.returncode is None:
+            # Unreaped PID cannot be reused before our signal/wait.
+            q.kill()
+            q.wait(timeout=1)
+        r.setdefault("metadata_children",[]).append({"pid":q.pid,"exit":q.returncode,
+                                                  "joined":q.returncode is not None})
+        poll.close()
+        q.stdout.close()
+
+def tree(pin):
+    return meta_command(["/usr/bin/git","ls-tree","-rz",pin,"--",*PATHS])
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def metadata(path):
+    s = path.lstat()
+    require(stat.S_ISREG(s.st_mode) and s.st_uid == os.geteuid()
+            and not path.is_symlink(), "cache_ownership")
+    return [s.st_size,s.st_mtime_ns,s.st_ino,s.st_dev]
+
+def process_table():
+    raw = meta_command(["/bin/ps","-axo","pid=,ppid=,pgid=,stat=,comm="])
+    rows = []
+    for line in raw.decode("utf-8", "strict").splitlines():
+        fields = line.split(None,4)
+        require(len(fields)==5 and all(x.isdecimal() for x in fields[:3]),
+                "process_metadata")
+        pid,ppid,pgid = map(int,fields[:3])
+        rows.append((pid,ppid,pgid,fields[3],Path(fields[4]).name))
+    return rows
+
+def owned_rows():
+    return [x for x in process_table() if p is not None and x[2] == p.pid]
+
+def observe_leader():
+    global leader_info
+    if leader_info is None:
+        # Never poll/reap before signals: retained PID anchors the captured PGID.
+        try:
+            leader_info = os.waitid(os.P_PID,p.pid,os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        except OSError:
+            fail("leader_observation_failure")
+    return leader_info
+
+def sample():
+    available = free()
+    r["disk"].append({"elapsed_seconds":time.monotonic()-BEGIN,"available_bytes":available})
+    r["minimum_available_bytes"] = min(x["available_bytes"] for x in r["disk"])
+    if available <= STOP:
+        fail("disk_floor" if available <= FLOOR else "disk_stop")
+    if r["start_bytes"] - available > ALLOWANCE:
+        fail("planning_drain")
+    rows = owned_rows()
+    require(len(rows)<=256,"process_member_cap")
+    require(len(r["process_groups"])<901,"process_sample_cap")
+    r["process_groups"].append({"elapsed_seconds":time.monotonic()-BEGIN,
+                               "members":[{"pid":x[0],"ppid":x[1],"pgid":x[2],
+                                           "zombie":x[3].startswith("Z")}
+                                          for x in rows]})
+    r["remaining_active"] = [x[0] for x in rows if not x[3].startswith("Z")]
+    for path, value in cache_before.items():
+        if metadata(ROOT/path) != value:
+            fail("cached_dependency_changed")
+
+def unique_object(pairs):
+    out = {}
+    for k,v in pairs:
+        if k in out:
+            raise Refusal("duplicate_output_key")
+        out[k] = v
+    return out
+
+def valid_value(value, kind):
+    if kind == U:
+        return type(value) is int and 0 <= value < 2**64
+    if kind == B:
+        return type(value) is bool
+    if kind in (A,"array7uint"):
+        n = 8 if kind == A else 7
+        return type(value) is list and len(value)==n and all(valid_value(x,U) for x in value)
+    return type(value) is str and value in kind
+
+def line(data):
+    try:
+        text = data.decode("utf-8","strict")
+    except UnicodeError:
+        fail("output_encoding")
+        return
+    prefix = "test " + NAME + " ... "
+    if text.startswith(prefix):
+        text = text[len(prefix):]
+    if text.startswith("{"):
+        try:
+            value = json.loads(text,object_pairs_hook=unique_object,
+                               parse_constant=lambda _: (_ for _ in ()).throw(Refusal("output_schema")))
+            require(type(value) is dict, "output_schema")
+            schema = value.get("schema")
+            require(type(schema) is str and schema in schemas, "output_schema")
+            spec = schemas[schema]
+            require(set(value)==set(spec)|{"schema"}, "output_schema")
+            require(all(valid_value(value[k],kind) for k,kind in spec.items()), "output_schema")
+            require(len(records)<256, "record_cap")
+            records.append(value) # closed fixed schema/enums and numeric/boolean values only
+        except (Refusal,ValueError,TypeError,OverflowError,RecursionError):
+            fail("output_schema")
+    m = re.fullmatch(r"test result: (ok|FAILED)\. ([0-9]+) passed; ([0-9]+) failed; ([0-9]+) ignored; ([0-9]+) measured; ([0-9]+) filtered out; finished in ([0-9]+(?:\.[0-9]+)?)s",text)
+    if m:
+        require(len(test_results)<2,"result_cap")
+        test_results.append({"status":m[1],"passed":int(m[2]),"failed":int(m[3]),
+                             "ignored":int(m[4]),"measured":int(m[5]),
+                             "filtered":int(m[6]),"seconds":float(m[7])})
+    if re.search(r"^\s*Compiling (?!riauth v)[A-Za-z0-9_+.-]+ v",text):
+        fail("unexpected_dependency_rebuild")
+    if re.search(r"^\s*Compiling riauth v",text):
+        r["compile_packages"] = ["riauth"]
+    r["compiler_error_codes"] = sorted(set(r["compiler_error_codes"] +
+                                           re.findall(r"error\[(E[0-9]{4})\]",text)))
+    m = re.search(r"panicked at tests/s02_group_listing_paging\.rs:([0-9]+):([0-9]+):",text)
+    if m and len(r["panic_locations"])<8:
+        r["panic_locations"].append({"line":int(m[1]),"column":int(m[2])})
+
+def capture(timeout):
+    global pending,bytes_seen
+    for key,_ in selector.select(timeout):
+        data = os.read(key.fd,65536)
+        if not data:
+            selector.unregister(key.fileobj)
+            r["pipe_eof"] = True
+            continue
+        room = CAP-log.tell()
+        log.write(data[:max(0,room)])
+        log_hash.update(data[:max(0,room)])
+        bytes_seen += len(data)
+        if len(data)>room:
+            fail("log_cap")
+            return
+        pending += data
+        while b"\n" in pending:
+            one,pending = pending.split(b"\n",1)
+            if len(one)>32768:
+                fail("output_line_cap")
+                return
+            line(one)
+        if len(pending)>32768:
+            fail("output_line_cap")
+            return
+
+def cleanup():
+    if p is None:
+        return
+    at=time.monotonic()
+    limit=min(at+10,END)
+    def active():
+        try:
+            return [x for x in owned_rows() if not x[3].startswith("Z")]
+        except BaseException:
+            fail("process_metadata")
+            return None # conservatively keep terminating the owned group
+    def send(sig):
+        r["signals"].append("TERM" if sig==signal.SIGTERM else "KILL")
+        try:
+            if group_confirmed:os.killpg(p.pid,sig)
+            else:os.kill(p.pid,sig) # only owned unreaped leader if group identity failed
+        except ProcessLookupError:pass
+    def drain():
+        try:capture(0.02)
+        except BaseException:fail("capture_cleanup_failure")
+    rows=active() if group_confirmed else None
+    if observe_leader() is None or rows is None or rows:
+        send(signal.SIGTERM)
+        until=min(at+5,limit)
+        while time.monotonic()<until:
+            drain()
+            rows=active() if group_confirmed else None
+            if observe_leader() is not None and rows==[]:
+                break
+        rows=active() if group_confirmed else None
+        if observe_leader() is None or rows is None or rows:
+            send(signal.SIGKILL)
+    while time.monotonic()<limit:
+        drain()
+        rows=active() if group_confirmed else None
+        if observe_leader() is not None and (rows==[] or not group_confirmed):
+            break
+    # All termination signals precede this nonblocking reap; observation failure
+    # cannot skip TERM/KILL or introduce a blocking wait past the cleanup budget.
+    if leader_info is not None:
+        r["leader_observed_status"]={"code":leader_info.si_code,"status":leader_info.si_status}
+    waited,status=os.waitpid(p.pid,os.WNOHANG)
+    require(waited==p.pid,"leader_cleanup_deadline")
+    p.returncode=os.waitstatus_to_exitcode(status)
+    r["cargo_exit"]=p.returncode
+    r["cargo_wait_status"]=status
+    r["cargo_signal"]=-p.returncode if p.returncode<0 else None
+    r["leader_reaped"]=True
+    r["cleanup_seconds"]=time.monotonic()-at
+    # No further group/PID signal after waitpid. Absence is an observation.
+    if group_confirmed:
+        rows=active()
+        r["remaining_active"]=None if rows is None else [x[0] for x in rows]
+        try:os.killpg(p.pid,0);absent=False
+        except ProcessLookupError:absent=True
+        r["group_absent"]=absent and rows==[]
+    else:
+        fail("group_identity_unproven")
+    if not r["group_absent"]:fail("group_remaining")
+    if time.monotonic()>=limit:fail("cleanup_deadline")
+    while selector is not None and selector.get_map() and time.monotonic()<limit:
+        drain()
+    if selector is not None and selector.get_map():fail("pipe_eof_deadline")
+    if pending:
+        try:line(pending)
+        except BaseException:fail("output_schema")
+    if time.monotonic()>=END:fail("outer_deadline")
+
+def grade():
+    require(first_failure is None,"observed_refusal")
+    require(r["cargo_exit"]==0 and r["leader_reaped"] and r["group_absent"] and r["pipe_eof"],
+            "cargo_or_cleanup_failure")
+    require(len(test_results)==1 and test_results[0]["status"]=="ok"
+            and [test_results[0][x] for x in ["passed","failed","ignored","measured","filtered"]]
+            ==[1,0,0,0,0], "libtest_outcome")
+    by={}
+    for value in records:
+        by.setdefault(value["schema"],[]).append(value)
+    counts={"riauth.s02-telemetry-self-check/v1":1,"riauth.s02-group-list-sample/v2":120,
+            "riauth.s02-group-list-summary/v2":12,"riauth.s02-measurement-decision/v2":1,
+            "riauth.s02-authority-boundaries/v1":1,"riauth.s02-ordered-snapshot/v1":2,
+            "riauth.s02-core-overlap/v1":1,"riauth.s02-group-list-result/v1":1}
+    require({k:len(v) for k,v in by.items()}==counts,"incomplete_record_counts")
+    samples=by["riauth.s02-group-list-sample/v2"]
+    keys={(v["pair"],v["lane"],v["scope"],v["sample"]) for v in samples}
+    require(keys=={(pair,lane,scope,sample) for pair in range(3)
+                  for lane in ("control","paged") for scope in ("scoped","admin")
+                  for sample in range(10)}, "duplicate_or_missing_sample")
+    summaries=by["riauth.s02-group-list-summary/v2"]
+    require({(v["pair"],v["lane"],v["scope"]) for v in summaries}
+            =={(pair,lane,scope) for pair in range(3) for lane in ("control","paged")
+               for scope in ("scoped","admin")}, "duplicate_or_missing_summary")
+    # Fixture assertions own performance/security grading. False observed overlap,
+    # same-second or scoped latency comparison is retained, not turned into failure.
+    return {"schema":"riauth.s02-supervisor-decision/v1","candidate_pass":True,
+            "record_counts":counts,"latency_grade":False,"heap_claim":False,"rss_claim":False,
+            "observation_sha256":digest(OBS),"evidence_sha256":digest(EVIDENCE),
+            "prefinal_elapsed_seconds":time.monotonic()-BEGIN,"first_failure":None}
+
+try:
+    require(Path.cwd()==ROOT and ROOT.resolve()==ROOT,"cwd")
+    require(Path(sys.executable).resolve()==OUTER_PYTHON,"outer_python_identity")
+    require(sys.platform=="darwin" and all(hasattr(os,key) for key in
+            ["waitid","P_PID","WEXITED","WNOHANG","WNOWAIT","waitpid","killpg"]),
+            "unsupported_supervision_host")
+    s=TARGET.lstat()
+    require(stat.S_ISDIR(s.st_mode) and s.st_uid==os.geteuid() and TARGET.resolve()==TARGET,
+            "target_ownership")
+    require(all(not os.path.lexists(x) for x in [LOG,OBS,EVIDENCE,DECISION]),"evidence_exists")
+    evidence_eligible=True
+    source_before=meta_command(["/usr/bin/git","rev-parse","HEAD"]).decode().strip()
+    require(meta_command(["/usr/bin/git","status","--porcelain=v1"])==b"","dirty_source")
+    require(tree("HEAD")==tree(STAGED),"source_tree_mismatch")
+    for path,pin in PINS.items():
+        metadata(ROOT/path)
+        require(digest(ROOT/path)==pin,"source_or_cache_pin")
+    for path in ["target/debug/.fingerprint/redb-c0a17d790ab2a011/lib-redb.json",
+                 "target/debug/.fingerprint/serde_json-90730a418a77511a/lib-serde_json.json",
+                 "target/debug/.fingerprint/tempfile-3606bf3ae9042636/lib-tempfile.json"]:
+        cache_before[path]=metadata(ROOT/path)
+    for tool in [TOOLCHAIN/"bin/cargo",TOOLCHAIN/"bin/rustc"]:
+        metadata(tool)
+    require(not any(x[4] in ("cargo","rustc","rustdoc") for x in process_table()),
+            "competing_cargo")
+    r["start_bytes"]=free()
+    require(r["start_bytes"]>=START_FREE,"start_capacity")
+    r["head_before"]=source_before
+    r["pins_before"]=dict(PINS)
+    r["cache_metadata_before"]=dict(cache_before)
+    log=os.fdopen(private_open(LOG),"wb",buffering=0)
+    p=subprocess.Popen(ARGV,cwd=ROOT,env=ENV,stdin=subprocess.DEVNULL,
+                       stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+    r["pid"]=p.pid;r["pgid"]=p.pid
+    require(p.pid!=os.getpgrp() and os.getpgid(p.pid)==p.pid,"owned_group_identity")
+    group_confirmed=True
+    os.set_blocking(p.stdout.fileno(),False)
+    selector=selectors.DefaultSelector()
+    selector.register(p.stdout,selectors.EVENT_READ)
+    r["stage"]="cargo"
+    next_sample=time.monotonic()
+    while first_failure is None:
+        now=time.monotonic()
+        if now>=CHILD_END:
+            fail("outer_deadline")
+            break
+        if now>=next_sample:
+            sample();next_sample=now+2
+            if time.monotonic()-now>2:fail("monitor_overrun")
+        capture(min(0.1,max(0,CHILD_END-time.monotonic())))
+        if observe_leader() is not None and not selector.get_map():
+            break
+except Refusal as error:
+    fail(str(error))
+except BaseException:
+    fail("supervisor_exception")
+finally:
+    if p is not None:
+        try:cleanup() # exactly one cleanup phase; never retry the Cargo command
+        except BaseException:fail("cleanup_failure")
+    try:
+        if log is not None:
+            log.flush();os.fsync(log.fileno());log.close()
+        if selector is not None:selector.close()
+        if p is not None and p.stdout is not None:p.stdout.close()
+    except BaseException:fail("capture_close_failure")
+    r["first_failure"]=first_failure
+    r["log_complete"]=bytes_seen<=CAP and r["pipe_eof"]
+    r["log_bytes"]=min(bytes_seen,CAP)
+    r["log_sha256"]=log_hash.hexdigest() if log is not None else None
+    r["bytes_received"]=bytes_seen
+    r["test_results"]=test_results
+    r["elapsed_seconds"]=time.monotonic()-BEGIN
+    try:
+        r["available_after_bytes"]=free()
+        if r["available_after_bytes"]<=STOP:fail("disk_stop")
+        r["head_after"]=meta_command(["/usr/bin/git","rev-parse","HEAD"]).decode().strip()
+        if source_before is not None and r["head_after"]!=source_before:fail("source_changed")
+        if tree("HEAD")!=tree(STAGED):fail("source_changed")
+        if meta_command(["/usr/bin/git","status","--porcelain=v1"])!=b"":fail("source_changed")
+        r["pins_after"]={path:digest(ROOT/path) for path in PINS}
+        for path,pin in PINS.items():
+            if not path.startswith("target/") and r["pins_after"][path]!=pin:
+                fail("source_pin_changed")
+        # Existing Cargo metadata may legitimately refresh during the new
+        # feature/library build. Record it; dependency metadata guards remain.
+        for path,value in cache_before.items():
+            if metadata(ROOT/path)!=value:fail("cached_dependency_changed")
+    except BaseException:fail("postcheck_failure")
+    r["first_failure"]=first_failure
+    try:
+        require(evidence_eligible,"evidence_preflight")
+        save(OBS,{"schema":"riauth.s02-closed-records/v1","records":records})
+        save(EVIDENCE,r) # actual output/exit/status/cleanup fsynced BEFORE grade
+        retained=True
+    except BaseException:fail("receipt_failure")
+decision={"schema":"riauth.s02-supervisor-decision/v1","candidate_pass":False,
+          "first_failure":first_failure,"prefinal_elapsed_seconds":time.monotonic()-BEGIN}
+if retained:
+    try:decision=grade()
+    except Refusal as error:
+        fail(str(error));decision["first_failure"]=first_failure
+try:
+    require(evidence_eligible,"evidence_preflight")
+    save(DECISION,decision)
+except BaseException:
+    fail("decision_receipt_failure");decision["candidate_pass"]=False
+summary={"stage":r["stage"],"cargo_exit":r["cargo_exit"],"cargo_signal":r["cargo_signal"],
+         "first_failure":first_failure,"records":len(records),
+         "samples":sum(x["schema"]=="riauth.s02-group-list-sample/v2" for x in records),
+         "summaries":sum(x["schema"]=="riauth.s02-group-list-summary/v2" for x in records),
+         "leader_reaped":r["leader_reaped"],"group_absent":r["group_absent"],
+         "minimum_available_bytes":r["minimum_available_bytes"],
+         "prefinal_elapsed_seconds":time.monotonic()-BEGIN,"receipts_prefinal":True}
+print(json.dumps(summary,sort_keys=True),flush=True)
+# No file/JSON/stdout writes after this final post-save/post-output clock.
+final_elapsed=time.monotonic()-BEGIN
+late=final_elapsed>=1800
+sys.exit(0 if decision["candidate_pass"] and first_failure is None and not late else 1)
+```
+
+### Actual preparation checks and held handoff
+
+Actual checks in this phase: initial clean branch/HEAD, exact whole selected
+358-object equivalence and explicit source readback hashes; existing own cache/
+dependency/feature/profile/tool metadata and byte identities; sampled capacity/
+future path absence; full earlier finite-supervisor body review; AST-only
+parsing and structural retention/cleanup/final-clock checks of the DATA;
+whole00a prefix preservation, unchanged code/fixture pins, documentation-link,
+Git whitespace and report-only scope checks. No fixture/telemetry self-check,
+allocator, benchmark or Cargo/runtime was executed.
+
+The source is ready for root's independent immutable review; resource readiness
+is **not** satisfied at the latest sample:12.629513GiB <13GiB.
+Do not release this command on those bytes. No runtime slot was acquired or
+released; the root D01 preflight failure supplied in the assignment creates
+no S02 result or permission here. Root must review the exact archived DATA and
+separately remeasure capacity/source/cache/process prerequisites before any
+single invocation. Missing typing, measured result/cost/latency, durable
+security/writer/concurrency and cleanup outcomes remain unknown. Original
+S02 stays root-owned/in_progress; no completion, status, main/push or new
+worker/task/worktree/managed shell action is claimed. Original primary
+1e336a3d remains unchanged.

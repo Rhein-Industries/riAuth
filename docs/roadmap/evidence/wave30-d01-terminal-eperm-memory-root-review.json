@@ -1,0 +1,761 @@
+{
+  "nonce": "2f6d72ad10ef4385",
+  "files": {
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-composed-outer-2f6d72ad10ef4385/controller.stdout": {
+      "bytes": 336,
+      "sha256": "25bf4436471d0a40acc12a80a54b2ff47ca798682435492d26f25eb87f38a0b8",
+      "mode": "0600"
+    },
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-composed-outer-2f6d72ad10ef4385/controller.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0600"
+    },
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-composed-outer-2f6d72ad10ef4385/resources.json": {
+      "bytes": 195,
+      "sha256": "e1c4b512a00c3e32bb9176f866ecca87d894cb81321878439bfb2de103c08376",
+      "mode": "0600"
+    },
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-composed-outer-2f6d72ad10ef4385/retained.json": {
+      "bytes": 2352,
+      "sha256": "407fc468260bb3406213e2b264727e67ce73bf6aafcf6161748ab41b351aa6ff",
+      "mode": "0600"
+    },
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-composed-outer-2f6d72ad10ef4385/review.json": {
+      "bytes": 299,
+      "sha256": "be2cdc710cdae7e1c0a3f4f13cc62e8df687cba82dfaa0a892865c856d326f48",
+      "mode": "0600"
+    },
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-continuation-memory-2f6d72ad10ef4385/child.stdout": {
+      "bytes": 6861,
+      "sha256": "9029a65a106c2c335427ddd30c597b7e04a31db5bc95849f1141e651f9c863cc",
+      "mode": "0600"
+    },
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-continuation-memory-2f6d72ad10ef4385/child.stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "0600"
+    },
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-continuation-memory-2f6d72ad10ef4385/retained.json": {
+      "bytes": 725,
+      "sha256": "2337149010eaa25d968809dc315d4fb3300f2373984d5f391ee7442c9e0af194",
+      "mode": "0600"
+    },
+    "/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/deployment-private/d01-continuation-memory-2f6d72ad10ef4385/review.json": {
+      "bytes": 7091,
+      "sha256": "1bb1b5ca1b7d11cc79fb705594b0dd17a715ceb8809abb666eed9a40a3fe85cd",
+      "mode": "0600"
+    }
+  },
+  "outer": {
+    "actual_product_or_driver": false,
+    "bytes_seen": {
+      "err": 0,
+      "out": 336
+    },
+    "capture_end_elapsed_ns": 197120417,
+    "cleanup_diagnostic": {
+      "errno": 1,
+      "identity": 2,
+      "reap_code": 1,
+      "reap_status": 0,
+      "stage": "signal_owned_group",
+      "waitid_code": 1,
+      "waitid_status": 0
+    },
+    "complete_bounded_capture": true,
+    "controller_exit": 0,
+    "controller_group_empty": true,
+    "controller_handle_acquired": true,
+    "controller_pid": 56346,
+    "controller_reaped": true,
+    "controller_source_bytes": 242593,
+    "controller_source_sha256": "4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f",
+    "first_failure": null,
+    "input_sent": 242593,
+    "minimum_free_bytes": 12861591552,
+    "nested_node_cleanup": "unknown",
+    "output_capped": false,
+    "schema": "riauth.d01-composed-outer-capture/v1",
+    "spawn_attempts": 1,
+    "spawn_elapsed_ns": 19766750,
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 336,
+    "stdout_sha256": "25bf4436471d0a40acc12a80a54b2ff47ca798682435492d26f25eb87f38a0b8",
+    "stream_eof": {
+      "err": true,
+      "out": true
+    },
+    "verified_files": {
+      "controller_source": {
+        "bytes": 242593,
+        "mode": 384,
+        "sha256": "4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f",
+        "uid": 501
+      },
+      "node_executable": {
+        "bytes": 50320,
+        "mode": 365,
+        "sha256": "1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040",
+        "uid": 501
+      },
+      "posixsubprocess_native": {
+        "bytes": 54784,
+        "mode": 493,
+        "sha256": "ededa2d9c463ba4d1fd39ac1cf36a7f4393c1179543dec22fb8b2389983abef8",
+        "uid": 501
+      },
+      "python_build_header": {
+        "bytes": 60669,
+        "mode": 420,
+        "sha256": "e875b545c5d65a9598f2b3f4a8c2c1a8dfb81fc7baace25acc22aafaf9e2b421",
+        "uid": 501
+      },
+      "python_build_makefile": {
+        "bytes": 223264,
+        "mode": 420,
+        "sha256": "516889e804bfce1dd5c7e2c9d94c0a30c2ca6c0f3c758f56d30c123dceeec3d3",
+        "uid": 501
+      },
+      "python_build_setup": {
+        "bytes": 11083,
+        "mode": 420,
+        "sha256": "7db652648cd3f0f9afee585595fa80b52d53cf414514eb856803fc5dddf0f13b",
+        "uid": 501
+      },
+      "python_executable": {
+        "bytes": 34640,
+        "mode": 493,
+        "sha256": "4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56",
+        "uid": 501
+      },
+      "python_framework": {
+        "bytes": 5468672,
+        "mode": 493,
+        "sha256": "15436055aa2c02ed0218ac0e02b3a27a92102f88cd59ab5094896b9306317336",
+        "uid": 501
+      },
+      "signal_stdlib": {
+        "bytes": 2495,
+        "mode": 420,
+        "sha256": "0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a",
+        "uid": 501
+      },
+      "subprocess_stdlib": {
+        "bytes": 90732,
+        "mode": 420,
+        "sha256": "6628ffdd65c093a6c08cae01ffe82877d3ced515aac9e7be0cff16512c30a7d9",
+        "uid": 501
+      }
+    }
+  },
+  "inner": {
+    "child_exit": 0,
+    "child_pid": 56347,
+    "child_reaped": true,
+    "cleanup_diagnostic": {
+      "errno": 1,
+      "identity": 2,
+      "reap_code": 1,
+      "reap_status": 0,
+      "stage": "signal_owned_group",
+      "waitid_code": 1,
+      "waitid_status": 0
+    },
+    "first_failure_before_grade": null,
+    "minimum_free_bytes": 12861587456,
+    "output_capped": false,
+    "owned_group_empty": true,
+    "payload_bytes": 151979,
+    "payload_sha256": "a5d564be3b8a27abaead1b85b7f87cf2e7a0fe755144e48429b4a505118f8697",
+    "schema": "riauth.d01-continuation-memory-retained/v1",
+    "spawn_count": 1,
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 6861,
+    "stdout_sha256": "9029a65a106c2c335427ddd30c597b7e04a31db5bc95849f1141e651f9c863cc",
+    "stream_eof": {
+      "err": true,
+      "out": true
+    }
+  },
+  "outer_review": {
+    "controller_exit": 0,
+    "controller_group_empty": true,
+    "controller_reaped": true,
+    "first_failure": null,
+    "grade_before_final_clock": true,
+    "independent_nested_ownership_proof": false,
+    "nested_node_cleanup": "controller_reported_clean",
+    "retained_before_grade": true,
+    "schema": "riauth.d01-composed-outer-review/v1"
+  },
+  "controller_return": {
+    "actual_product_or_driver": false,
+    "child_exit": 0,
+    "child_failure": null,
+    "child_reaped": true,
+    "completed_cases": 36,
+    "elapsed_seconds": 0.117424208,
+    "first_failure": null,
+    "full_packet_retained_before_grade": true,
+    "owned_group_empty": true,
+    "result": "passed",
+    "review_closed": true,
+    "schema": "riauth.d01-continuation-memory-return/v1",
+    "within35": true
+  },
+  "packet": {
+    "schema": "riauth.d01-continuation-memory/v1",
+    "source": {
+      "candidate_sha256": "505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f",
+      "candidate_bytes": 33701,
+      "baseline_sha256": "7ab23019e838512a84600d4069fef2e419b9bb7f07ff5aaa2c7477af956f9ca8",
+      "baseline_bytes": 32502,
+      "diff_sha256": "b6f884994720949a44bfb417ff68de56e71e04f04d7357686ffc71452a873ed2",
+      "logic_sha256": "6ae4fd802a5515aade80b0b46cffe38030d9b4a46db427b32ed47fb9e20e583c",
+      "full_inverse": true
+    },
+    "planned": [
+      {
+        "name": "phase_entry_then_continuation",
+        "group": "phase_binding"
+      },
+      {
+        "name": "password_survives_until_password_dispatch",
+        "group": "secret_lifetime"
+      },
+      {
+        "name": "missing_password_refuses_without_input",
+        "group": "secret_lifetime"
+      },
+      {
+        "name": "unowned_context_refuses_without_operations",
+        "group": "phase_binding"
+      },
+      {
+        "name": "undeclared_ref_refuses_input",
+        "group": "phase_binding"
+      },
+      {
+        "name": "stale_ref_cannot_cross_cells",
+        "group": "phase_binding"
+      },
+      {
+        "name": "invalid_kind_repeated_cleanup_clears_before_await",
+        "group": "secret_lifetime"
+      },
+      {
+        "name": "helper_zero_final_snapshot_then_cleanup",
+        "group": "helper_handoff"
+      },
+      {
+        "name": "helper_zero_missing_page_still_fails",
+        "group": "helper_handoff"
+      },
+      {
+        "name": "helper_nonzero_final_still_refuses",
+        "group": "helper_handoff"
+      },
+      {
+        "name": "helper_zero_other_kind_still_refuses",
+        "group": "helper_handoff"
+      },
+      {
+        "name": "helper_zero_prepared_phase_still_refuses",
+        "group": "helper_handoff"
+      },
+      {
+        "name": "partial_line_drains_before_output_and_next_cell",
+        "group": "partial_framing"
+      },
+      {
+        "name": "partial_exact_cap_is_accepted",
+        "group": "partial_framing"
+      },
+      {
+        "name": "partial_over_cap_refuses",
+        "group": "partial_framing"
+      },
+      {
+        "name": "partial_joined_controller_refuses",
+        "group": "partial_framing"
+      },
+      {
+        "name": "partial_unavailable_controller_refuses",
+        "group": "partial_framing"
+      },
+      {
+        "name": "partial_deadline_prevents_extra_poll",
+        "group": "partial_framing"
+      },
+      {
+        "name": "partial_completed_late_still_refuses",
+        "group": "partial_framing"
+      },
+      {
+        "name": "retained_start_budget_refuses_next_cell",
+        "group": "phase_binding"
+      },
+      {
+        "name": "inclusive_cleanup_deadline_does_not_invent_join",
+        "group": "cleanup_latch"
+      },
+      {
+        "name": "first_page_failure_survives_later_helper_error",
+        "group": "cleanup_latch"
+      },
+      {
+        "name": "missing_absence_proof_prevents_release",
+        "group": "cleanup_latch"
+      },
+      {
+        "name": "cleanup_exception_is_private",
+        "group": "cleanup_latch"
+      },
+      {
+        "name": "pending_metadata_command_prevents_release",
+        "group": "cleanup_latch"
+      },
+      {
+        "name": "projection_exact_pairs_and_private_field_omission",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_otp_observed_without_action_or_value",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_required_consent_allow_roundtrip",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_optional_consent_continue_roundtrip",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_role_and_label_rejections",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_incomplete_and_error_rejections",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_missing_or_wrong_advertised_action",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_malformed_refs",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_disjoint_rows_do_not_infer_association",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_duplicate_actions_preserve_multiplicity",
+        "group": "public_projection"
+      },
+      {
+        "name": "projection_latest_success_replaces_previous_snapshot",
+        "group": "public_projection"
+      }
+    ],
+    "attempted": [
+      "phase_entry_then_continuation",
+      "password_survives_until_password_dispatch",
+      "missing_password_refuses_without_input",
+      "unowned_context_refuses_without_operations",
+      "undeclared_ref_refuses_input",
+      "stale_ref_cannot_cross_cells",
+      "invalid_kind_repeated_cleanup_clears_before_await",
+      "helper_zero_final_snapshot_then_cleanup",
+      "helper_zero_missing_page_still_fails",
+      "helper_nonzero_final_still_refuses",
+      "helper_zero_other_kind_still_refuses",
+      "helper_zero_prepared_phase_still_refuses",
+      "partial_line_drains_before_output_and_next_cell",
+      "partial_exact_cap_is_accepted",
+      "partial_over_cap_refuses",
+      "partial_joined_controller_refuses",
+      "partial_unavailable_controller_refuses",
+      "partial_deadline_prevents_extra_poll",
+      "partial_completed_late_still_refuses",
+      "retained_start_budget_refuses_next_cell",
+      "inclusive_cleanup_deadline_does_not_invent_join",
+      "first_page_failure_survives_later_helper_error",
+      "missing_absence_proof_prevents_release",
+      "cleanup_exception_is_private",
+      "pending_metadata_command_prevents_release",
+      "projection_exact_pairs_and_private_field_omission",
+      "projection_otp_observed_without_action_or_value",
+      "projection_required_consent_allow_roundtrip",
+      "projection_optional_consent_continue_roundtrip",
+      "projection_role_and_label_rejections",
+      "projection_incomplete_and_error_rejections",
+      "projection_missing_or_wrong_advertised_action",
+      "projection_malformed_refs",
+      "projection_disjoint_rows_do_not_infer_association",
+      "projection_duplicate_actions_preserve_multiplicity",
+      "projection_latest_success_replaces_previous_snapshot"
+    ],
+    "completed": [
+      "phase_entry_then_continuation",
+      "password_survives_until_password_dispatch",
+      "missing_password_refuses_without_input",
+      "unowned_context_refuses_without_operations",
+      "undeclared_ref_refuses_input",
+      "stale_ref_cannot_cross_cells",
+      "invalid_kind_repeated_cleanup_clears_before_await",
+      "helper_zero_final_snapshot_then_cleanup",
+      "helper_zero_missing_page_still_fails",
+      "helper_nonzero_final_still_refuses",
+      "helper_zero_other_kind_still_refuses",
+      "helper_zero_prepared_phase_still_refuses",
+      "partial_line_drains_before_output_and_next_cell",
+      "partial_exact_cap_is_accepted",
+      "partial_over_cap_refuses",
+      "partial_joined_controller_refuses",
+      "partial_unavailable_controller_refuses",
+      "partial_deadline_prevents_extra_poll",
+      "partial_completed_late_still_refuses",
+      "retained_start_budget_refuses_next_cell",
+      "inclusive_cleanup_deadline_does_not_invent_join",
+      "first_page_failure_survives_later_helper_error",
+      "missing_absence_proof_prevents_release",
+      "cleanup_exception_is_private",
+      "pending_metadata_command_prevents_release",
+      "projection_exact_pairs_and_private_field_omission",
+      "projection_otp_observed_without_action_or_value",
+      "projection_required_consent_allow_roundtrip",
+      "projection_optional_consent_continue_roundtrip",
+      "projection_role_and_label_rejections",
+      "projection_incomplete_and_error_rejections",
+      "projection_missing_or_wrong_advertised_action",
+      "projection_malformed_refs",
+      "projection_disjoint_rows_do_not_infer_association",
+      "projection_duplicate_actions_preserve_multiplicity",
+      "projection_latest_success_replaces_previous_snapshot"
+    ],
+    "completed_groups": {
+      "phase_binding": 5,
+      "secret_lifetime": 3,
+      "helper_handoff": 5,
+      "partial_framing": 7,
+      "cleanup_latch": 5,
+      "public_projection": 11
+    },
+    "cells": 51,
+    "stub_counts": {
+      "collector_marker": 2,
+      "controller_poll": 107,
+      "navigate": 2,
+      "snapshot": 41,
+      "type": 2,
+      "click": 4,
+      "collector_stop": 27,
+      "collector_clock": 213,
+      "kill": 27,
+      "end_session": 27,
+      "windows": 27,
+      "collector_readback": 27,
+      "collector_persist": 27
+    },
+    "assertions_completed": 311714,
+    "privacy_checks_completed": 2294,
+    "first_failure": null,
+    "unreached": [],
+    "elapsed_ms": 61.27725,
+    "full_candidate_only": true,
+    "actual_tools_or_product": false
+  },
+  "inner_review": {
+    "child_exit": 0,
+    "child_reaped": true,
+    "closed_child_packet": {
+      "actual_tools_or_product": false,
+      "assertions_completed": 311714,
+      "attempted": [
+        "phase_entry_then_continuation",
+        "password_survives_until_password_dispatch",
+        "missing_password_refuses_without_input",
+        "unowned_context_refuses_without_operations",
+        "undeclared_ref_refuses_input",
+        "stale_ref_cannot_cross_cells",
+        "invalid_kind_repeated_cleanup_clears_before_await",
+        "helper_zero_final_snapshot_then_cleanup",
+        "helper_zero_missing_page_still_fails",
+        "helper_nonzero_final_still_refuses",
+        "helper_zero_other_kind_still_refuses",
+        "helper_zero_prepared_phase_still_refuses",
+        "partial_line_drains_before_output_and_next_cell",
+        "partial_exact_cap_is_accepted",
+        "partial_over_cap_refuses",
+        "partial_joined_controller_refuses",
+        "partial_unavailable_controller_refuses",
+        "partial_deadline_prevents_extra_poll",
+        "partial_completed_late_still_refuses",
+        "retained_start_budget_refuses_next_cell",
+        "inclusive_cleanup_deadline_does_not_invent_join",
+        "first_page_failure_survives_later_helper_error",
+        "missing_absence_proof_prevents_release",
+        "cleanup_exception_is_private",
+        "pending_metadata_command_prevents_release",
+        "projection_exact_pairs_and_private_field_omission",
+        "projection_otp_observed_without_action_or_value",
+        "projection_required_consent_allow_roundtrip",
+        "projection_optional_consent_continue_roundtrip",
+        "projection_role_and_label_rejections",
+        "projection_incomplete_and_error_rejections",
+        "projection_missing_or_wrong_advertised_action",
+        "projection_malformed_refs",
+        "projection_disjoint_rows_do_not_infer_association",
+        "projection_duplicate_actions_preserve_multiplicity",
+        "projection_latest_success_replaces_previous_snapshot"
+      ],
+      "cells": 51,
+      "completed": [
+        "phase_entry_then_continuation",
+        "password_survives_until_password_dispatch",
+        "missing_password_refuses_without_input",
+        "unowned_context_refuses_without_operations",
+        "undeclared_ref_refuses_input",
+        "stale_ref_cannot_cross_cells",
+        "invalid_kind_repeated_cleanup_clears_before_await",
+        "helper_zero_final_snapshot_then_cleanup",
+        "helper_zero_missing_page_still_fails",
+        "helper_nonzero_final_still_refuses",
+        "helper_zero_other_kind_still_refuses",
+        "helper_zero_prepared_phase_still_refuses",
+        "partial_line_drains_before_output_and_next_cell",
+        "partial_exact_cap_is_accepted",
+        "partial_over_cap_refuses",
+        "partial_joined_controller_refuses",
+        "partial_unavailable_controller_refuses",
+        "partial_deadline_prevents_extra_poll",
+        "partial_completed_late_still_refuses",
+        "retained_start_budget_refuses_next_cell",
+        "inclusive_cleanup_deadline_does_not_invent_join",
+        "first_page_failure_survives_later_helper_error",
+        "missing_absence_proof_prevents_release",
+        "cleanup_exception_is_private",
+        "pending_metadata_command_prevents_release",
+        "projection_exact_pairs_and_private_field_omission",
+        "projection_otp_observed_without_action_or_value",
+        "projection_required_consent_allow_roundtrip",
+        "projection_optional_consent_continue_roundtrip",
+        "projection_role_and_label_rejections",
+        "projection_incomplete_and_error_rejections",
+        "projection_missing_or_wrong_advertised_action",
+        "projection_malformed_refs",
+        "projection_disjoint_rows_do_not_infer_association",
+        "projection_duplicate_actions_preserve_multiplicity",
+        "projection_latest_success_replaces_previous_snapshot"
+      ],
+      "completed_groups": {
+        "cleanup_latch": 5,
+        "helper_handoff": 5,
+        "partial_framing": 7,
+        "phase_binding": 5,
+        "public_projection": 11,
+        "secret_lifetime": 3
+      },
+      "elapsed_ms": 61.27725,
+      "first_failure": null,
+      "full_candidate_only": true,
+      "planned": [
+        {
+          "group": "phase_binding",
+          "name": "phase_entry_then_continuation"
+        },
+        {
+          "group": "secret_lifetime",
+          "name": "password_survives_until_password_dispatch"
+        },
+        {
+          "group": "secret_lifetime",
+          "name": "missing_password_refuses_without_input"
+        },
+        {
+          "group": "phase_binding",
+          "name": "unowned_context_refuses_without_operations"
+        },
+        {
+          "group": "phase_binding",
+          "name": "undeclared_ref_refuses_input"
+        },
+        {
+          "group": "phase_binding",
+          "name": "stale_ref_cannot_cross_cells"
+        },
+        {
+          "group": "secret_lifetime",
+          "name": "invalid_kind_repeated_cleanup_clears_before_await"
+        },
+        {
+          "group": "helper_handoff",
+          "name": "helper_zero_final_snapshot_then_cleanup"
+        },
+        {
+          "group": "helper_handoff",
+          "name": "helper_zero_missing_page_still_fails"
+        },
+        {
+          "group": "helper_handoff",
+          "name": "helper_nonzero_final_still_refuses"
+        },
+        {
+          "group": "helper_handoff",
+          "name": "helper_zero_other_kind_still_refuses"
+        },
+        {
+          "group": "helper_handoff",
+          "name": "helper_zero_prepared_phase_still_refuses"
+        },
+        {
+          "group": "partial_framing",
+          "name": "partial_line_drains_before_output_and_next_cell"
+        },
+        {
+          "group": "partial_framing",
+          "name": "partial_exact_cap_is_accepted"
+        },
+        {
+          "group": "partial_framing",
+          "name": "partial_over_cap_refuses"
+        },
+        {
+          "group": "partial_framing",
+          "name": "partial_joined_controller_refuses"
+        },
+        {
+          "group": "partial_framing",
+          "name": "partial_unavailable_controller_refuses"
+        },
+        {
+          "group": "partial_framing",
+          "name": "partial_deadline_prevents_extra_poll"
+        },
+        {
+          "group": "partial_framing",
+          "name": "partial_completed_late_still_refuses"
+        },
+        {
+          "group": "phase_binding",
+          "name": "retained_start_budget_refuses_next_cell"
+        },
+        {
+          "group": "cleanup_latch",
+          "name": "inclusive_cleanup_deadline_does_not_invent_join"
+        },
+        {
+          "group": "cleanup_latch",
+          "name": "first_page_failure_survives_later_helper_error"
+        },
+        {
+          "group": "cleanup_latch",
+          "name": "missing_absence_proof_prevents_release"
+        },
+        {
+          "group": "cleanup_latch",
+          "name": "cleanup_exception_is_private"
+        },
+        {
+          "group": "cleanup_latch",
+          "name": "pending_metadata_command_prevents_release"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_exact_pairs_and_private_field_omission"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_otp_observed_without_action_or_value"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_required_consent_allow_roundtrip"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_optional_consent_continue_roundtrip"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_role_and_label_rejections"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_incomplete_and_error_rejections"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_missing_or_wrong_advertised_action"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_malformed_refs"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_disjoint_rows_do_not_infer_association"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_duplicate_actions_preserve_multiplicity"
+        },
+        {
+          "group": "public_projection",
+          "name": "projection_latest_success_replaces_previous_snapshot"
+        }
+      ],
+      "privacy_checks_completed": 2294,
+      "schema": "riauth.d01-continuation-memory/v1",
+      "source": {
+        "baseline_bytes": 32502,
+        "baseline_sha256": "7ab23019e838512a84600d4069fef2e419b9bb7f07ff5aaa2c7477af956f9ca8",
+        "candidate_bytes": 33701,
+        "candidate_sha256": "505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f",
+        "diff_sha256": "b6f884994720949a44bfb417ff68de56e71e04f04d7357686ffc71452a873ed2",
+        "full_inverse": true,
+        "logic_sha256": "6ae4fd802a5515aade80b0b46cffe38030d9b4a46db427b32ed47fb9e20e583c"
+      },
+      "stub_counts": {
+        "click": 4,
+        "collector_clock": 213,
+        "collector_marker": 2,
+        "collector_persist": 27,
+        "collector_readback": 27,
+        "collector_stop": 27,
+        "controller_poll": 107,
+        "end_session": 27,
+        "kill": 27,
+        "navigate": 2,
+        "snapshot": 41,
+        "type": 2,
+        "windows": 27
+      },
+      "unreached": []
+    },
+    "first_failure": null,
+    "full_packet_retained_before_grade": true,
+    "grade_before_final_clock": true,
+    "owned_group_empty": true,
+    "schema": "riauth.d01-continuation-memory-review/v1"
+  },
+  "fresh_cleanup_proof": [
+    {
+      "pid_and_group": 56346,
+      "absent": true
+    },
+    {
+      "pid_and_group": 56347,
+      "absent": true
+    }
+  ],
+  "whole_envelope_pass": true,
+  "actual_browser_or_product": false,
+  "root_verification_correction": "Initial checker used nonexistent inner child_group_empty and first_failure aliases; corrected to retained owned_group_empty and first_failure_before_grade. No captured bytes or runtime changed."
+}

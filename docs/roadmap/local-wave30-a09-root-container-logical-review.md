@@ -163,3 +163,39 @@ The [root machine-readable review](evidence/wave30-a09-reader-37087561409-root-r
 records exact transport/hash/failure/cleanup and review-check limits. This is
 a failed local cohort with useful prefix evidence, not A09 completion, a
 Linux-fixed claim, whole release proof or a retry authorization.
+
+## 2026-10-03 — actual failure source diagnosis and diagnostic-only seam
+
+Root read all479 lines of`f7fe852`, including the exact22-line proposed
+diagnostic and complete proposed main. Actual12 reader observations/seven
+logical packets/cleanup remain credited only to37087561409; the unlocated
+OSError and missing E-P-E/Platform gates remain failed/unproved. Generic last
+tool records support a restart region, not an errno, port/TIME_WAIT, or product
+cause. Old container failures retain their unknown changed component/cause.
+
+Root accepts only the smallest future source diagnostic: optional fixed
+innermost owned-code site and bounded exact integer errno in the existing
+exception catch. Unknown/external/clipped leaf remains other; no outer frame
+borrows its label, no exception text/path/locals/protocol is emitted. Original
+first failure, cleanup/evidence/result/exit and all guards remain exact.
+Source proposal120263 bytes/SHA
+`a9b91ea849840daee8fe25791e6751e77ec355fdd9e628ced2e317f00c9e74dd`
+is not a runtime correction or authorization to repeat the cohort.
+
+## 2026-10-03 — exact finite diagnostic staged, unexecuted
+
+Root read the full89-line `d1352c5` actual static appendix and exact source
+hunk at`f00756f318568b125b13b4391488eb4fc184fa9d`. Removing only its22
+lines independently reconstructs the full current119193-byte baseline;
+removing only its added If independently restores the entire module AST.
+Root staged exact120263-byte/a9b91e helper and report, preserving all60
+Cohort methods, first failure, output, cleanup and every guard. No new workflow,
+product, transport, build-reuse or runtime was introduced. The optional site/
+errno diagnostic remains UNEXECUTED;37087561409 still failed with unknown
+site/errno/cause. No next cohort dispatch is released by this source stage.
+
+## Dated prebuilt x86 replay source proposal — 2026-10-03
+
+Root read the full 882-line `33bff929ec2087cfe1eb0021b563d8e09b010165` appendix, all proposed import-method/main/workflow code, and complete contexts of the six changed original methods. Independent whole-file diff application and reversal reproduce helper 138268 bytes/SHA-256 `9f95975a70caf47c06b224226134649f552169714f9ebf3b54b4b55da98f5908` and workflow 4574 bytes/SHA-256 `3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851`. All 54 protected fixture/transition methods and the finite error-handler/finally bodies remain byte/AST exact.
+
+The proposal authenticates the full dated outer ZIP before guarded extraction, binds exact image/reader/source identities, requires absence of the historical image IDs/tags/label inventory before import, and registers each pending load before execution. Historical image provenance is separate from fresh container/volume authority. Cleanup may remove only exact attempted imported images; no earlier checks or builds become current-run evidence. Root approved exact two-path SOURCE-ONLY materialization while a separate read-only review continues. No proposed helper/workflow was executed, no remote dispatch occurred, and the earlier OSError failure remains failed with unknown cause. Dated b619 artifacts do not establish current S02 products, ARM containers or an official release.

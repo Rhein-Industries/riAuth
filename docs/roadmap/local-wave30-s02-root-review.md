@@ -110,3 +110,32 @@ The old unsafe fixture and F1 remain historical and unrun. No Cargo or
 fixture invocation is released by this report. Original S02 remains open.
 Root's first integration Python snippet had a non-ASCII bytes literal and was
 rejected before any writes. Corrected UTF-8 serialization changes no source.
+
+## 2026-10-03 — exact safe fixture and production traversal staged, unrun
+
+Root read the complete269-line `00a07b2` materialization appendix and all12
+formatter hunks, independently reconstructed approved60049-byte/a936 source
+from final60287-byte/9284a0, and forward recovered the final fixture.
+The original1715-line safe source was fully read and independently reviewed
+at5f1d674. Formatting only changes whitespace/trailing commas and the three
+disclosed brace normalizations. Historical unsafe F1 remains unrun/history.
+
+Root staged only the reviewed `74c1fb` Core reader hunk and final safe fixture
+from`ba3cd1837f798dd1a8d005ead842660fe7564a39`. Before applying, current
+Core was exactly the original parent; every other production/crates/manifest/
+toolchain/build-setting byte equaled the reviewed source. No stale source
+or unsafe fixture import occurred. Complete response/principal/same-Tx/error/
+writer/security/contracts remain the inspected originals. This source is
+UNCOMPILED/UNRUN; no Cargo or fixture/self-check was invoked by integration.
+Root still requires credible fresh capacity/cache and bounded owned outer
+supervision before ONE separately released named ignored command.
+
+## One-filter preparation review — 2026-10-03
+
+Root read the complete 837-line appendix at `820c4e397d69a718b609afee1b795e80bb235249`, including all 534 supervisor DATA lines. The report prefix and selected source/build objects match staged `cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57`. No Cargo or supervisor ran. The latest available-space sample does not meet the unchanged 13 GiB launch gate.
+
+Before any runtime, the supervisor must explicitly install SIGCHLD default disposition before its first metadata child, matching the reviewed D01 single-reaper premise. The pinned CPython 3.14.6 subprocess source at lines 2039–2049 can substitute status zero on ChildProcessError in its ordinary wait helper; no such event or current inherited disposition is claimed here. Cargo uses explicit consuming waitpid and fails if real status is unavailable. The proposed correction is a preflight setter only, with all source pins, command arguments, cleanup, output schemas and resource thresholds retained. Runtime remains held pending this concrete DATA correction and capacity.
+
+### Reviewed preflight DATA correction
+
+The complete supervisor from `820c4e397d69a718b609afee1b795e80bb235249` is revised only by inserting `signal.signal(signal.SIGCHLD,signal.SIG_DFL)` immediately after the unsupported-host guard and before `s=TARGET.lstat()`. Original source: 25,939 bytes, 534 lines, SHA-256 `dd1cd5765d12ad1b027094dec7230149e812a439ab8ac4ad990ea944c02a069d`. Corrected DATA: 25,988 bytes, 535 lines, SHA-256 `3089723bdf659b8d36461f4f344d26efb31b05128ffd0a40c0d06b1dbe4fe48e`. Removing that one exact line restores the entire original bytes and AST; all functions, pins, argv, thresholds and output/cleanup logic remain exact. AST parsing and in-memory compilation passed; the resulting code object was never executed. The supervisor DATA may be materialized privately for a later separate release; this review starts no process or Cargo command.
