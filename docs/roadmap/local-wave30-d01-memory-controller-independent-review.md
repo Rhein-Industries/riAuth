@@ -369,3 +369,297 @@ sole-new-report/tracked-byte/whitespace audit exited 0. These checks run
 the existing documentation checker and source-data audit only. No reviewed
 program was materialized or executed. This report provides source review
 and a held premise, not permission to execute the proposed controller.
+
+## Waitable SIGCHLD installation design — source only
+
+Reservation `wave30_D01_waitable_sigchld_install_design`, 2026-10-03,
+same project and existing Sol3 worktree. Root accepted the original F1
+as a source-proof gap, not actual historical signal flags or cause.
+The entire 24731-byte / 371-line cb7f883 report remains the exact prefix,
+SHA-256 `d800cc8c7ec8d55c35a1276cf437651bad32a2921d2a5647e6b263c302197973`.
+Entry was clean at `cb7f8833086f470859706c9ea11138f8a8b81e2f`.
+Only this appendix is owned. The earlier hold remains dated evidence.
+
+**Assessment: the one pre-spawn setter resolves F1 at source level for
+the explicitly pinned, fresh, sole-child CPython process described below.**
+It replaces the native signal flags rather than merely reading the
+cached handler. A successful setter followed by unchanged single-owner
+control flow establishes the missing no-automatic-reap premise before
+the child exists. This is conditional source acceptance of the seam,
+not an invocation, live signal readback, kernel certification, completed
+cleanup or memory pass. All materialization and runtime remain held.
+
+### Exact one-statement proposal and whole-source identity
+
+The input is the complete 213188-byte / 2183-line controller reconstructed
+from immutable 74a8fff and e443 as in the original review:
+SHA-256 `98c270c461afccce0483b003cd41178d268a16e49ce33abfa48da031d75d1117`.
+Insert exactly this 53-byte source line at new controller line 2071,
+immediately before the only Popen assignment, which moves to line 2072:
+
+```python
+        signal.signal(signal.SIGCHLD,signal.SIG_DFL)
+```
+
+The full resulting source is **213241 bytes / 2184 lines**, SHA-256
+`e109d30d3f481d9f0bacee5b34ca9ae1bae5457001c94ba931fd2f7520b60b54`.
+It is reconstructed in memory only; no executable controller file was
+created. The complete exact 534-byte / 10-line diff is SHA-256
+`af937c81b65f3dd6bf06f8ef1dea8ab399978ecf983609d068ec1c7d296f75d4`:
+
+```diff
+--- controller-74a8fff-98c270.py
++++ DESIGN-waitable-sigchld.py
+@@ -2068,6 +2068,7 @@
+         if free<FLOOR:raise ValueError("disk_floor")
+         evidence=private_directory(private,"d01-continuation-memory-"+sys.argv[1])
+         phase="spawn"
++        signal.signal(signal.SIGCHLD,signal.SIG_DFL)
+         child=subprocess.Popen([str(NODE),"--input-type=module","-"],cwd=evidence,
+             env={"PATH":"/usr/bin:/bin","LANG":"C","LC_ALL":"C"},
+             stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+```
+
+There is one added statement and no replacement, moved statement, import,
+constant, source-binding or payload edit. No child has been spawned at
+that statement. The dedicated controller process must have no foreign
+children: changing process-wide SIGCHLD in an existing embedded/shared
+interpreter is outside this design. There is no saved previous handler,
+restoration step, new wait fallback or additional signal operation.
+
+### Why this setter supplies the missing premise
+
+I independently reread the official CPython v3.14.6 implementation.
+The local `signal.py` wrapper passes integer enum values to `_signal.signal`.
+Native `signal_signal_impl` checks the main interpreter/main thread,
+selects SIG_DFL, calls `PyOS_setsig` at line 497 and propagates an error
+before updating its stored handler. On success its cached handler is
+set to the same default value. The existing cleanup `getsignal` guard
+is therefore retained as a consistency check, not the original proof
+that native flags were absent.
+[CPython signal implementation](https://github.com/python/cpython/blob/v3.14.6/Modules/signalmodule.c).
+
+With HAVE_SIGACTION, `PyOS_setsig`, lines 3361–3377, installs a replacement
+sigaction with default handler, empty handler mask and `SA_ONSTACK` flags.
+It does not preserve inherited `SA_NOCLDWAIT` or a previous ignored
+handler. A failed native installation returns SIG_ERR; a successful one
+supplies the premise F1 lacked. The macro HAVE_SIGINTERRUPT belongs to
+the alternate no-sigaction branch; it does not change this replacement.
+[CPython signal wrapper implementation](https://github.com/python/cpython/blob/v3.14.6/Python/pylifecycle.c).
+
+General current XNU `setsigvec`, lines 635–645, clears P_NOCLDWAIT when
+neither SA_NOCLDWAIT nor SIG_IGN is supplied. That supports the inference
+from this setter to ordinary waitable-child semantics. This is primary
+source reasoning, not a claim that Apple main is the exact host-kernel
+revision or that the old515 process had P_NOCLDWAIT.
+[Apple signal implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c).
+
+The unchanged child call still requests a new session; its single-owner
+parent performs only WNOWAIT observations before the one permitted
+nonzero group signal. With successful installation, no concurrent
+reaper/disposition changer and the retained original child, exit cannot
+permit PID reuse before this parent's explicit reap. Terminal event
+validation, cached-returncode refusal and the exact getpgid/terminal
+fallback paths remain unchanged. This setter addresses only F1; it is
+not an alternative status proof or authority to discover another group.
+
+If the setter raises an ordinary Exception, `phase` is already the fixed
+`spawn` value, so the unchanged catch latches `controller_spawn_failed`.
+The Popen assignment was not reached: child remains None and spawn_count
+remains zero; finally skips group_cleanup. The existing evidence path
+can retain the refusal, with no child exit/reap/empty-group fabrication.
+Secondary grading failures cannot overwrite that first failure. Existing
+BaseException propagation, including any pending interrupt raised before
+installation, remains unchanged; no new receipt guarantee is claimed
+for that outer boundary. A setter that returns late does not gain a new
+deadline or a hard syscall bound.
+
+### Installed metadata pins and exact future-launch assumptions
+
+No proposed-controller launch, reviewed native-module import or version
+command was invoked. Local Python served only as the static source/data
+audit tool. File metadata, bytes for hashing, installed Python source/build
+metadata and official source were read. Let F be the versioned directory:
+`/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14`.
+All files below were regular nonsymlinks at the named paths, UID 501.
+
+| Path relative to F | Bytes / mode | Independently read SHA-256 |
+| --- | ---: | --- |
+| bin/python3.14 | 34640 / 0755 | `4f00ea2ad53d62437a6a3946b73c73614a97e8accdc5b96dc095ea1a0d9c6a56` |
+| Python | 5468672 / 0755 | `15436055aa2c02ed0218ac0e02b3a27a92102f88cd59ab5094896b9306317336` |
+| include/python3.14/pyconfig.h | 60669 / 0644 | `e875b545c5d65a9598f2b3f4a8c2c1a8dfb81fc7baace25acc22aafaf9e2b421` |
+| lib/python3.14/signal.py | 2495 / 0644 | `0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a` |
+| lib/python3.14/config-3.14-darwin/Makefile | 223264 / 0644 | `516889e804bfce1dd5c7e2c9d94c0a30c2ca6c0f3c758f56d30c123dceeec3d3` |
+| lib/python3.14/config-3.14-darwin/Setup | 11083 / 0644 | `7db652648cd3f0f9afee585595fa80b52d53cf414514eb856803fc5dddf0f13b` |
+| lib/python3.14/subprocess.py | 90732 / 0644 | `6628ffdd65c093a6c08cae01ffe82877d3ced515aac9e7be0cff16512c30a7d9` |
+| lib/python3.14/lib-dynload/_posixsubprocess.cpython-314-darwin.so | 54784 / 0755 | `ededa2d9c463ba4d1fd39ac1cf36a7f4393c1179543dec22fb8b2389983abef8` |
+
+Header lines 1218 and 1230 independently match HAVE_SIGACTION=1 and
+HAVE_SIGINTERRUPT=1. The full installed signal.py source was read, not
+imported. Makefile lines 24–27 list `_signal` among built modules, omit
+it from MODSHARED_NAMES and include Modules/signalmodule.o in MODOBJS;
+the existing posix/wait support is also listed there. This supports a
+builtin `_signal` expectation whose native pin is the framework Python
+image, not an invented `_signal.so` artifact. It is build metadata, not
+an observation of a loaded module. The Makefile framework-install path
+uses the opt location; the named opt framework Python path currently
+resolves to F/Python. No loaded-image inspection was performed.
+
+A later root-reviewed launch must bind these assumptions explicitly:
+
+1. Use that exact absolute versioned interpreter, with its framework
+   image, signal.py, pyconfig/build metadata and unchanged subprocess/
+   _posixsubprocess identities rechecked as metadata before launch. Do
+   not substitute PATH-selected python3, a newer installation, a virtual
+   environment or an embedded interpreter. The actual loader must use
+   the pinned framework image, not an unreviewed DYLD override.
+2. Treat the mapping from that installed native build to the cited
+   v3.14.6 sigaction implementation as a declared source/build assumption.
+   A header and file hash alone do not prove how every native instruction
+   was compiled. Any distribution patch that changes this setter's
+   semantics requires review; no disassembly, import or native probe has
+   established instruction equivalence here.
+3. Run in a fresh main interpreter on its main thread, dedicated to the
+   controller, with no existing children or external reaper and no hook,
+   embedding/native actor or thread changing signal disposition after
+   installation. The complete controller has only its one Popen and no
+   such actor. A separately reviewed launch may use `-I -S` and a closed
+   parent environment to exclude Python startup/path customizations and
+   loader overrides; that is future launcher design, not a second edit
+   to this controller or an authorized invocation. Otherwise equivalent
+   startup isolation needs an explicit source-backed launch contract.
+4. Preserve the old25 ROOT/private directory/input nonce/Node binary
+   pin and every existing 30/35-second, output, resource, ownership and
+   evidence control. Retain ordinary waitable-child/sigaction semantics
+   for the selected host, without claiming an exact kernel pin from
+   current XNU source. Setter failure must stop before Popen; it cannot
+   authorize fallback, a retry, foreign-child cleanup or signal discovery.
+
+There is no new FFI, library setup, native diagnostic, alternate wait
+implementation or required tool execution in this design. The current
+metadata does not release any of those future launch prerequisites.
+
+### Whole-byte, statement and AST preservation
+
+The data-only forward construction contains the one 53-byte addition
+exactly once. Removing exactly that addition restores every 98c270
+byte. The complete twelve-function set stays unchanged: eleven source
+spans are byte-exact, including the previously changed closed_packet
+and group_cleanup; removing the one line restores main byte-exactly.
+New main is 8497 bytes, SHA-256
+`d0f1b32db1ea73595e8c58612850fbb0690fabdc772eccc8ad012e0190541461`.
+
+At AST level the sole inserted Expr is the exact
+`signal.signal(signal.SIGCHLD, signal.SIG_DFL)` call, immediately before
+the unchanged sole Popen Assign in main's existing try body. Deleting
+that Expr restores the entire module AST excluding locations. There
+is no other changed node, call, branch or exception handler.
+
+All sixteen assignment source spans/ASTs, imports and entrypoint remain
+exact. The complete old25 payload remains 132725 bytes with SHA-256
+`46c19af829c546cf0f32f0a587db084dd00d304ea9d508c98ccda0b2a6028866`.
+The revised assertion ceiling, strict packet integers/nonbools, twelve
+function behavior outside the setter, 30/35-second absolute clocks,
+EOF flags, pre-reap signal order, actual terminal/status-returning reap,
+first-failure latch, finite cleanup diagnostic, 8-GiB floor, output/file
+caps, fsync-before-grade and final-clock tail remain exact. The setter
+does not add an after-reap signal or remove the cached default guard.
+
+This is the complete reconstruction/protection checker as data. The
+independent static audit used these source/data operations; no proposed
+controller statement or imported reviewed module was executed:
+
+```python
+import ast, base64, difflib, hashlib, re, subprocess
+
+PATH = "docs/roadmap/local-wave30-d01-continuation-correction-plan.md"
+PROPOSAL = "74a8fff613c0edd6b4f842f380bd7125b4582c85"
+def sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+def fences(raw):
+    ticks = bytes([96]) * 3
+    return re.findall(b"^" + ticks + rb"([^\n]*)\n(.*?)^" + ticks + b"$", raw, re.M | re.S)
+def span(raw, node):
+    return b"".join(raw.splitlines(keepends=True)[node.lineno-1:node.end_lineno])
+archives = fences(subprocess.check_output(["git", "show", PROPOSAL + ":" + PATH]))
+original = next(v for _, v in archives if len(v) == 209970)
+original_tree = ast.parse(original)
+functions = {n.name: n for n in original_tree.body if isinstance(n, ast.FunctionDef)}
+base = original
+for name, size in (("closed_packet", 3772), ("group_cleanup", 3773), ("main", 8444)):
+    body = next(v for _, v in archives if len(v) == size and v.startswith(("def " + name + "(").encode()))
+    old = span(original, functions[name])
+    assert base.count(old) == 1
+    base = base.replace(old, body)
+assert len(base) == 213188 and sha(base) == "98c270c461afccce0483b003cd41178d268a16e49ce33abfa48da031d75d1117"
+anchor = b'        child=subprocess.Popen([str(NODE),"--input-type=module","-"],cwd=evidence,\n'
+addition = b'        signal.signal(signal.SIGCHLD,signal.SIG_DFL)\n'
+assert base.count(anchor) == 1 and addition not in base
+candidate = base.replace(anchor, addition + anchor)
+assert len(candidate) == 213241 and sha(candidate) == "e109d30d3f481d9f0bacee5b34ca9ae1bae5457001c94ba931fd2f7520b60b54"
+assert candidate.count(addition) == 1 and candidate.replace(addition, b"") == base
+diff = "".join(difflib.unified_diff(base.decode().splitlines(keepends=True),
+    candidate.decode().splitlines(keepends=True), fromfile="controller-74a8fff-98c270.py",
+    tofile="DESIGN-waitable-sigchld.py", n=3)).encode()
+assert len(diff) == 534 and sha(diff) == "af937c81b65f3dd6bf06f8ef1dea8ab399978ecf983609d068ec1c7d296f75d4"
+before, after = ast.parse(base), ast.parse(candidate)
+old_functions = {n.name: n for n in before.body if isinstance(n, ast.FunctionDef)}
+new_functions = {n.name: n for n in after.body if isinstance(n, ast.FunctionDef)}
+assert len(new_functions) == 12 and old_functions.keys() == new_functions.keys()
+for name in old_functions:
+    old, new = span(base, old_functions[name]), span(candidate, new_functions[name])
+    assert (new.replace(addition, b"") if name == "main" else new) == old
+def assignments(tree):
+    return {n.targets[0].id: n for n in tree.body if isinstance(n, ast.Assign)}
+old_assignments, new_assignments = assignments(before), assignments(after)
+assert len(old_assignments) == 16 and old_assignments.keys() == new_assignments.keys()
+for name, node in old_assignments.items():
+    assert span(base, node) == span(candidate, new_assignments[name])
+    assert ast.dump(node, include_attributes=False) == ast.dump(new_assignments[name], include_attributes=False)
+payload = base64.b64decode(new_assignments["PAYLOAD_B64"].value.value, validate=True)
+assert len(payload) == 132725 and sha(payload) == "46c19af829c546cf0f32f0a587db084dd00d304ea9d508c98ccda0b2a6028866"
+main_try = next(n for n in new_functions["main"].body if isinstance(n, ast.Try))
+statement = ast.parse("signal.signal(signal.SIGCHLD,signal.SIG_DFL)").body[0]
+matches = [i for i, n in enumerate(main_try.body)
+           if ast.dump(n, include_attributes=False) == ast.dump(statement, include_attributes=False)]
+assert len(matches) == 1
+i = matches[0]
+assert isinstance(main_try.body[i+1], ast.Assign)
+assert ast.unparse(main_try.body[i+1].value.func) == "subprocess.Popen"
+del main_try.body[i]
+assert ast.dump(after, include_attributes=False) == ast.dump(before, include_attributes=False)
+```
+
+### Actual static checks and boundaries
+
+Immutable source reads and independent data-only reconstruction exited
+0: exact old98 and newe109 hashes, complete diff hash, byte inverse,
+sole Expr AST inverse, eleven unchanged full functions plus restored
+main, sixteen assignment bytes/ASTs and complete payload matched.
+Installed metadata/source/hash reads exited 0 and reproduced root's
+pyconfig identity. No build, native import, version probe, signal call,
+process-control call, Node/VM/case/harness or executable-file creation
+was part of these checks. Official signal.py page reads returned an
+internal error/cache miss; no claim relies on those failed fetches.
+Its installed source body was read directly, and the native reasoning
+uses the successfully read official C sources.
+
+New36 DATA binding remains separately owned. This one-line proposal
+patches only the old25 controller code as data. A future composition
+must separately review the exact payload/binding/packet changes and
+all source identities; this appendix cannot certify that composition,
+its work ceiling or a case outcome. No other worker was contacted.
+
+Old515 remains FAILED, with cleanup cause and numeric child exit UNKNOWN;
+no earlier flag state, cause, sender or true cleanup-start instant is
+reconstructed. Root owns source review, publication and any separate
+single finite memory release. A09 run 37087561409 retains the sole
+validation lane; no local slot was acquired or released. All runtime
+is still held, including any setter/controller materialization.
+
+Final independent appendix checks exited 0 for the exact 24731-byte prefix,
+sole-file append, complete archived diff equality/hash, source reconstruction,
+byte inverse, candidate/checker AST syntax and trailing whitespace.
+`python3 scripts/check-docs.py` and `git diff --check` both exited 0, with
+no link or build-layout error. The appended source fences were parsed as
+data; neither the controller nor the archived checker was executed.
