@@ -1,0 +1,35 @@
+{
+  "schema": "wave30-ci-root-review-v1",
+  "reviewed_at": "2026-10-03T07:58:51.023119+00:00",
+  "run": 37104118354,
+  "source": "a6d361600a03713fc1b687f367e9db84efe43463",
+  "check_job": 111151263361,
+  "job_metadata_all_three_success": true,
+  "raw_log": {
+    "path": "planning/evidence/wave30-ci-37104118354-check-111151263361.log",
+    "bytes": 472393,
+    "sha256": "25e8b5a003725ba4b57ce6f38d30acc2d200d51ed4540784078f8ad3e6bf208a"
+  },
+  "all_targets_command": "cargo test --all-targets --features test-support,fuzzing --locked",
+  "test_summary_blocks": 182,
+  "aggregates": {
+    "passed": 1330,
+    "failed": 0,
+    "ignored": 182,
+    "filtered": 0
+  },
+  "selected_named": {
+    "background_capacity": "actual named ok",
+    "reports_attribution": "actual named ok",
+    "scim_oauth": "24 passed, 0 failed, 20.97s",
+    "source_stage": "24 passed, 0 failed, 31.05s"
+  },
+  "read_scope": "Complete raw file hashed; checkout/step boundaries/results/selected named blocks read and parsed; not a claim of reading every private-valued output line",
+  "U10_focused_new_test_run": false,
+  "limits": [
+    "Different source from current main1a517",
+    "U10 selection absent in a6",
+    "Ignored native/physical/provider tests not executed by all-targets",
+    "Not rare-race, external-provider, release or all-gates evidence"
+  ]
+}
