@@ -1846,3 +1846,570 @@ fresh release input, artifact inspection, other-worker contact or runtime slot
 occurred. All existing reports and protected source remain byte-identical to
 entry; a270 actual FAILURE, unknown sender/partial bytes and false whole60 remain.
 Future published fullSHA and root source/memory review/releases stay pending.
+
+## 2026-10-03 — exact adopted composition versus the successful 36-case envelope: literal-only binding seam
+
+Reservation `wave30_D01_exact_adopted_composition_memory_binding_design`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original D01
+`a96a1977-3210-4284-8f7d-645793369301`, supporting existing WT
+`42bb51c6-c198-4adb-bd92-0a5222853231` / shell
+`f1575610-c6f0-4dbf-9f33-d01ed057a194`. Primary assignment and board are unchanged.
+This appendix preserves all **150772** bytes of `96642ce0de03620b196acbff24f3c23a89acb2ba`
+(SHA-256 `6056ee2029c675001f061a71ceae4bedae8401f529828c39aedeb07154f12760`).
+Only this report is written. No envelope, controller, helper, VM, case, browser,
+Driver, native product or network operation is executed or materialized.
+
+**Source-backed blocker:** a complete 113395-byte composition cannot replace the
+33701-byte continuation in the existing envelope by changing DATA alone while
+keeping every executable function, assertion, case and closed schema unchanged.
+The successful envelope contains no helper, template or whole-composition pin.
+The smallest valid preservation result is an **empty envelope diff** plus the
+exact suffix-equivalence proof below. That is useful source evidence for the
+continuation; it is not a candidate claiming to validate the prepared launcher,
+Python helper or new request-timeout handling. I stopped before inventing a new
+source-binding algorithm or broadening the authorized cases.
+
+The root's correction of the earlier prompt's numeric 380 is recorded here:
+the actual adoption has **10 replacement sites / six JavaScript Literal nodes**.
+There is no missing 380-site gate. The prior publication prerequisite has now
+changed: helper37d and its accepted independent review are actually published at
+`6a4066c72ac58225cd444a806032eef8515e646b`. The old null publication field
+above remains historical rather than being silently rewritten. Published
+`scripts/d01-confidential-browser-demo.py` is exactly **36884** bytes /
+SHA-256 `37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406`,
+matching author `c62bebcd8b24e66f4c77b8eaae49a669b2d77165` and the full adopted
+source in the preceding report. Publication does not turn source acceptance into
+a helper-memory or browser pass.
+
+### Full source and historical evidence read
+
+I reconstructed and read the full successful outer/controller from immutable
+published Git source, including all supervisor, parser, resource, retention and
+reaper bodies. The source comes from the complete d29 controller fence in
+`docs/roadmap/local-wave30-d01-root-user-review.md` and the 8a4 outer/shared
+terminal-EPERM cleanup fences in
+`docs/roadmap/local-wave30-d01-memory-controller-independent-review.md`, both at
+the fixed published 6a4066c commit. The exact DATA recipe below replaces only the
+historically accepted shared cleanup body and the outer's existing two controller
+identity assignments, reproducing the actual accepted identities without reading
+private executable/capture files. These are historical source reconstruction
+steps, not new cleanup edits. Own `7a8cf695e6427c437ed1e5db1d127f117d352de4`
+remains the older 242237-byte projection-binding archive; it must not be
+misidentified as the later 242593-byte terminal-EPERM controller.
+
+| Public immutable object | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Successful envelope outer | 21684 | `72ff2cbe0a9478fa172c74b5d8e34cfad16e5dd57d67e4c3e50077038a165dcf` |
+| Successful Python controller | 242593 | `4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f` |
+| Node payload | 151979 | `a5d564be3b8a27abaead1b85b7f87cf2e7a0fe755144e48429b4a505118f8697` |
+| Entire 36-case readable logic | 39214 | `6ae4fd802a5515aade80b0b46cffe38030d9b4a46db427b32ed47fb9e20e583c` |
+| Root public receipt | 26762 | `e922bab864c4de42df578a73ea267bcd0b6de9effa4ec4f04e228f6159f1b560` |
+| Reviewed adopted full composition, preceding fence 4 | 113395 | `5e3e5e24fa15bfb4dd28626d5b3368c76d571b77dac6e066edac03b46d261d6c` |
+| Adopted embedded shell/Python template | 17326 | `2dde53fd3f87508e840fedc88af2b85369854eedd050f77708c8e52f43eac691` |
+| Adopted archive/helper reader | 3505 | `e20d2620f4f84f01c270361b03c78a679b7891b81376f6e3a962cc2117cd979f` |
+
+The complete public root receipt at
+`6a4066c72ac58225cd444a806032eef8515e646b:docs/roadmap/evidence/wave30-d01-terminal-eperm-memory-root-review.json`
+records the already executed 2026-10-03 invocation: numeric tool/outer/controller/
+Node exits 0, 36 cases, 51 cells, 311714 assertions and 2294 privacy checks.
+Outer elapsed 0.198059417 seconds and controller elapsed 0.117424208 seconds were
+historical, not observations made by this source audit. Both EOF flags, fsynced
+capture-before-grade and actual consuming-wait/group-absence evidence were
+retained. The receipt distinguishes the controller's nested cleanup report from
+root's separate exact PID/group absence readbacks; it does not claim independent
+nested ownership from the outer alone. The initial root readback's wrong inner
+field aliases and its corrected read are preserved. No private paths listed in
+that receipt were opened here.
+
+Terminal-child EPERM deferral remains exactly the accepted six-line branch:
+only errno 1 after verified original unreaped-child WNOWAIT identity can defer
+that signal observation. Neither an absent PID nor a caught exception yields a
+numeric exit. Original consuming waitid and exact child identity still supply
+the status; only status 0 passes, and independent group absence remains required.
+No nonzero group signal follows reap. This proposal changes none of that.
+
+### Why the requested literal-only update has no existing target
+
+The Node payload's canonical BINDING has precisely these 13 keys:
+
+`candidate_b64`, `baseline_b64`, `diff_b64`, `candidate_sha256`,
+`baseline_sha256`, `diff_sha256`, `logic_sha256`, `edits`, `collectors`,
+`case_plan`, `check_names`, `diff_headers`, `diff_hunks`.
+
+Its `bindSource()` is **1724 bytes** /
+SHA-256 `04d339062b35831173990839f39b66e4dc2f13c98bcee38d35545c8e471cca65`.
+It has the executable predicate:
+
+```javascript
+ensure(Buffer.byteLength(CANDIDATE)===33701&&sha(CANDIDATE)===BINDING.candidate_sha256,
+  "candidate_identity");
+```
+
+After the existing 32502-byte baseline / 2405-byte five-hunk inverse checks, it
+constructs SCRIPT from that entire CANDIDATE inside its async VM wrapper. No
+template or helper is decoded, imported, invoked or inspected by any of the 36
+cases. The `phase_entry_then_continuation` case starts from the continuation's
+synthetic `prepared_entry` owned record and a synthetic ready event; it does not
+execute `pPrepareEntry()`, `lArchive()` or the Python controller in the prepared
+composition. The adopted prefix actually calls `pPrepareEntry()` and has distinct
+launcher/private-transfer and ownership guards. Relabeling this case as a
+prepared-launcher test would therefore be wrong.
+
+I counted the full new/old helper SHA, new/old template SHA and full composition
+SHA literals in the entire outer, controller, payload, decoded continuation and
+decoded baseline: every count is **zero**. There are no obsolete helper hash/size
+pins in the old memory envelope to replace. Its PINS tuple covers the installed
+Python/Node artifacts and Python source/build metadata, not the browser helper.
+Its outer SOURCE_SHA/SOURCE_BYTES bind the Python memory controller, not the
+JavaScript prepared composition. Replacing those with 5e3e/113395 would send
+JavaScript to the Python interpreter and would not be an adoption.
+
+A DATA-only replacement of `BINDING.candidate_b64/candidate_sha256` with the full
+5e3e composition reaches the unchanged 33701-byte predicate and refuses before
+any case. Merely changing controller EXPECTED_SOURCE would instead disagree
+with the unchanged child source packet. Adding unused BINDING fields or
+comments would give no fail-closed verification. Extending the outer PINS tuple
+would add newly read inputs/authority and still would not exercise the prepared
+flow; it is not the requested preservation of the existing complete envelope.
+
+Thus **no changed full candidate envelope is archived or offered for execution**.
+The archived full 5e3e composition remains fence 4 in the immutable 96642ce
+prefix; the exact successful envelope is reconstructed in full by the following
+recipe. The only executable-envelope diff permitted by the inspected existing
+DATA fields is empty. Its byte inverse and whole AST inverse are identity; all
+12 Python controller functions, 11 outer functions, 36 payload FunctionDeclarations,
+all case code, collectors, 96 check names and seven expected source fields remain
+exact. That identity result cannot be called a new whole-composition binding.
+
+### Exact preservation and the smallest prospective seam for root
+
+The complete 33701-byte suffix of 5e3e, starting at byte 79694, equals the canonical
+decoded Node candidate exactly:
+`505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f`.
+All **39 top-level suffix AST nodes** normalize exactly to the same continuation
+AST. Entire 39214-byte/36-case logic and 151979-byte Node payload remain byte-exact.
+The controller's PLAN equals canonical BINDING.case_plan in order, all 96
+CHECK_NAMES match, and all seven EXPECTED_SOURCE fields match the decoded
+candidate/baseline/diff/logic. The unchanged successful-path 51-cell check stays
+in the logic; no synthetic cases, count padding or new pass predicate is added.
+
+The full adopted composition reverses the four reviewed replacement pairs at
+their exact counts (4/2/1/3) to the entire 113395-byte a270 composition. Independent
+original 251a fence 83 plus its exact two accepted entry-source substitutions
+reproduces that same a270; its SHA is
+`a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`.
+The existing six-JS-node adoption proof in the prefix and this whole-byte
+reconstruction establish the unchanged executable source outside the reviewed
+literal guards. They are source review, not a fresh a270 or 5e3e run.
+
+The unchanged packet count bound is
+`2501*(16*(262144+4424)+128)+(2501+75+36+1)*151979 = 11064426343`;
+privacy retains the independent 50000 cap and true-int/non-bool checks.
+The 30-second inner child, 35-second controller final clock, 40-second outer
+capture, 50-second outer cleanup and 55-second outer final-clock deadlines all
+stay exact. First failure remains latched, EOF/closed output mandatory, receipts
+and fsync/close occur before grading, and no evidence write or owned-child
+operation follows final clock. No budget/cap change is needed for the unchanged
+payload. New helper `initial_request_read_timeouts` remains a private
+helper_result member; it cannot earn a case, flatten a public value, satisfy a
+crypto/application predicate or justify a fabricated sender.
+
+**Smallest follow-up decision:** root can retain this exact 36-case envelope as
+a continuation-only source-equivalence gate, alongside the separately owned
+94-case helper-memory review. If root additionally requires runtime fail-closed
+binding of the *entire* prepared composition in this envelope, the first necessary
+seam is Node `bindSource()` plus its canonical BINDING DATA, archived in
+`docs/roadmap/local-wave30-d01-browser-decision-projection-plan.md` at
+`16032bdb992067889f56cd072df1ce0f1812ebc9`. A separately reserved design would
+need to authenticate full composition/template/helper identities, extract and
+prove the exact 33701-byte suffix **before** the original SCRIPT construction,
+and keep existing 36-case logic/collectors/cleanup intact. That is an executable
+source-verification seam, not literal substitution; executing the prepared
+prefix would require an even broader preparation/private-transfer fixture and
+is not proposed. I do not implement either seam or add a new runtime gate on my
+own. Root owns interpretation and any additional source reservation.
+
+The following review descriptor is DATA outside every runtime authority/packet
+schema. Fresh nonce and cwd remain explicit future root inputs, not this audit's
+actual values. Helper publication is concrete; a published adopted-composition
+checkout is still a root publication prerequisite if needed, not an invented
+commit.
+
+```json
+{
+  "schema": "riauth.d01-adopted-composition-memory-binding-source-review/v1",
+  "reservation": "wave30_D01_exact_adopted_composition_memory_binding_design",
+  "project_id": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "original_task_id": "a96a1977-3210-4284-8f7d-645793369301",
+  "worktree_id": "42bb51c6-c198-4adb-bd92-0a5222853231",
+  "status": "literal_only_whole_composition_binding_blocked",
+  "runtime_authorized": false,
+  "runtime_parameters": {
+    "nonce": "ROOT_FUTURE_FRESH_FIXED_16_HEX",
+    "cwd": "ROOT_FUTURE_EXACT_RESERVED_CWD",
+    "composition_publication_commit": null
+  },
+  "published_helper": {
+    "commit": "6a4066c72ac58225cd444a806032eef8515e646b",
+    "author_commit": "c62bebcd8b24e66f4c77b8eaae49a669b2d77165",
+    "path": "scripts/d01-confidential-browser-demo.py",
+    "bytes": 36884,
+    "sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+    "archive_read_cap": 36885
+  },
+  "reviewed_adopted_composition": {
+    "author_commit": "96642ce0de03620b196acbff24f3c23a89acb2ba",
+    "fence": 4,
+    "bytes": 113395,
+    "sha256": "5e3e5e24fa15bfb4dd28626d5b3368c76d571b77dac6e066edac03b46d261d6c",
+    "template_bytes": 17326,
+    "template_sha256": "2dde53fd3f87508e840fedc88af2b85369854eedd050f77708c8e52f43eac691",
+    "unchanged_suffix_bytes": 33701,
+    "unchanged_suffix_sha256": "505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f",
+    "adoption_literal_sites": 10,
+    "adoption_js_literal_nodes": 6
+  },
+  "preserved_memory_envelope": {
+    "outer": {
+      "bytes": 21684,
+      "sha256": "72ff2cbe0a9478fa172c74b5d8e34cfad16e5dd57d67e4c3e50077038a165dcf"
+    },
+    "controller": {
+      "bytes": 242593,
+      "sha256": "4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f"
+    },
+    "node": {
+      "bytes": 151979,
+      "sha256": "a5d564be3b8a27abaead1b85b7f87cf2e7a0fe755144e48429b4a505118f8697"
+    },
+    "expected_source": {
+      "candidate_sha256": "505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f",
+      "candidate_bytes": 33701,
+      "baseline_sha256": "7ab23019e838512a84600d4069fef2e419b9bb7f07ff5aaa2c7477af956f9ca8",
+      "baseline_bytes": 32502,
+      "diff_sha256": "b6f884994720949a44bfb417ff68de56e71e04f04d7357686ffc71452a873ed2",
+      "logic_sha256": "6ae4fd802a5515aade80b0b46cffe38030d9b4a46db427b32ed47fb9e20e583c",
+      "full_inverse": true
+    },
+    "plan_cases": 36,
+    "check_names": 96,
+    "successful_path_cells_source": 51,
+    "logic_bytes": 39214,
+    "logic_sha256": "6ae4fd802a5515aade80b0b46cffe38030d9b4a46db427b32ed47fb9e20e583c"
+  },
+  "binding_boundary": {
+    "hardcoded_candidate_size": 33701,
+    "requested_whole_composition_size": 113395,
+    "no_existing_helper_template_composition_literal_sites": true,
+    "empty_runtime_diff": true,
+    "whole_prepared_composition_validated_by_36_cases": false,
+    "helper_executed_by_36_cases": false
+  },
+  "historical_terminal_eperm_receipt": {
+    "commit": "6a4066c72ac58225cd444a806032eef8515e646b",
+    "path": "docs/roadmap/evidence/wave30-d01-terminal-eperm-memory-root-review.json",
+    "bytes": 26762,
+    "sha256": "e922bab864c4de42df578a73ea267bcd0b6de9effa4ec4f04e228f6159f1b560",
+    "completed_cases": 36,
+    "cells": 51,
+    "assertions": 311714,
+    "privacy_checks": 2294,
+    "actual_product_or_driver": false
+  },
+  "actual_a270_journey": {
+    "result": "failed",
+    "first_event_proven": false,
+    "whole_cleanup_within60_proven": false,
+    "sender_and_partial_bytes": "unknown"
+  },
+  "next_authority": "root_source_review_and_distinct_explicit_runtime_release"
+}
+```
+
+### Complete immutable reconstruction and static-only proof recipe
+
+This complete DATA reader reconstructs the actual old successful outer/controller,
+canonical Node payload/logic and entire adopted 5e3e composition from public Git
+objects. It verifies their full bytes, the 10-site inverse, exact canonical
+plan/catalog/expected-source and nested template/archive/helper identities.
+It parses and compiles Python code objects **without executing** them. No archived
+assembly function, parser-under-review, controller or helper function is called.
+The accompanying Acorn reader parses JavaScript source only; it never creates or
+runs a VM, candidate function or case. These recipes materialize no executable
+file. Full composition already resides in the retained preceding fence; full
+old envelope is unambiguously reconstructed rather than duplicated with a false
+adopted label.
+
+```python
+# Static DATA reader only. It never imports or executes archived code.
+import ast, base64, hashlib, json, re, subprocess
+PUBLISHED="6a4066c72ac58225cd444a806032eef8515e646b"
+ADOPTION="96642ce0de03620b196acbff24f3c23a89acb2ba"
+PROJECTION="16032bdb992067889f56cd072df1ce0f1812ebc9"
+ROOT_REPORT="docs/roadmap/local-wave30-d01-root-user-review.md"
+INDEPENDENT="docs/roadmap/local-wave30-d01-memory-controller-independent-review.md"
+PLAN="docs/roadmap/local-wave30-d01-request-timeout-adoption-composition-plan.md"
+PROJECTION_REPORT="docs/roadmap/local-wave30-d01-browser-decision-projection-plan.md"
+def obj(pin,path):
+    return subprocess.check_output(["git","show",pin+":"+path])
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+def fences(raw):
+    tick=bytes([96])*3
+    return re.findall(b"^"+tick+rb"([^\n]*)\n(.*?)^"+tick+b"$",raw,re.M|re.S)
+def identity(raw,size,sha):
+    assert len(raw)==size and digest(raw)==sha
+    return {"bytes":size,"sha256":sha}
+root=fences(obj(PUBLISHED,ROOT_REPORT))
+ind=fences(obj(PUBLISHED,INDEPENDENT))
+old_controller=root[0][1]
+old_outer=ind[9][1]
+cleanup=ind[14][1]
+identity(old_controller,242290,"d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a")
+identity(old_outer,21381,"8a4da1306765f331f18b4fd56cb71dff03395f40fb2246475be5e47b035e1e1b")
+identity(cleanup,4076,"c6c97888c986a89d7ac2b608f6bd0ebcb000279c90b1e1022a822b0c4e2fe75a")
+def cleanup_source(raw):
+    node=next(n for n in ast.parse(raw).body
+              if isinstance(n,ast.FunctionDef) and n.name=="group_cleanup")
+    lines=raw.splitlines(keepends=True)
+    lo=sum(map(len,lines[:node.lineno-1]))
+    hi=sum(map(len,lines[:node.end_lineno]))
+    return raw[:lo]+cleanup+raw[hi:]
+controller=cleanup_source(old_controller)
+outer=cleanup_source(old_outer)
+assert outer.count(b"SOURCE_BYTES=242290")==1
+assert outer.count(b"d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a")==1
+outer=outer.replace(b"SOURCE_BYTES=242290",b"SOURCE_BYTES=242593")
+outer=outer.replace(b"d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a",
+                    digest(controller).encode("ascii"))
+controller_identity=identity(controller,242593,"4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f")
+outer_identity=identity(outer,21684,"72ff2cbe0a9478fa172c74b5d8e34cfad16e5dd57d67e4c3e50077038a165dcf")
+# Source compiler creates code objects only; no exec/eval/import of these objects.
+for raw in (controller,outer):
+    ast.parse(raw);compile(raw,"<archived-envelope-SOURCE-ONLY>","exec")
+def literal_assignments(raw):
+    values={}
+    for n in ast.parse(raw).body:
+        if not isinstance(n,ast.Assign) or len(n.targets)!=1 or not isinstance(n.targets[0],ast.Name):
+            continue
+        if isinstance(n.value,ast.Constant):
+            values[n.targets[0].id]=n.value.value
+        elif (isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Attribute) and
+              isinstance(n.value.func.value,ast.Name) and n.value.func.value.id=="json" and
+              n.value.func.attr=="loads" and len(n.value.args)==1 and
+              isinstance(n.value.args[0],ast.Constant)):
+            # Decode literal DATA directly, never call the archived assignment.
+            values[n.targets[0].id]=json.loads(n.value.args[0].value)
+    return values
+data=literal_assignments(controller)
+payload=base64.b64decode(data["PAYLOAD_B64"],validate=True)
+identity(payload,data["PAYLOAD_BYTES"],data["PAYLOAD_SHA"])
+projection=fences(obj(PROJECTION,PROJECTION_REPORT))
+assert payload==projection[9][1]
+binding=json.loads(payload.split(b"const BINDING = ",1)[1].split(b"\n};",1)[0]+b"\n}")
+logic=projection[8][1]
+assert payload[-len(logic):]==logic
+identity(logic,39214,"6ae4fd802a5515aade80b0b46cffe38030d9b4a46db427b32ed47fb9e20e583c")
+continuation=base64.b64decode(binding["candidate_b64"],validate=True)
+baseline=base64.b64decode(binding["baseline_b64"],validate=True)
+diff=base64.b64decode(binding["diff_b64"],validate=True)
+assert (continuation,baseline,diff)==(projection[2][1],projection[6][1],projection[0][1])
+assert binding["case_plan"]==data["PLAN"] and binding["check_names"]==data["CHECK_NAMES"]
+assert len(data["PLAN"])==36 and len(data["CHECK_NAMES"])==96
+expected={"candidate_sha256":digest(continuation),"candidate_bytes":len(continuation),
+          "baseline_sha256":digest(baseline),"baseline_bytes":len(baseline),
+          "diff_sha256":digest(diff),"logic_sha256":digest(logic),"full_inverse":True}
+assert expected==data["EXPECTED_SOURCE"] and len(expected)==7
+prefix=obj(ADOPTION,PLAN)
+identity(prefix,150772,"6056ee2029c675001f061a71ceae4bedae8401f529828c39aedeb07154f12760")
+composition=fences(prefix)[4][1]
+identity(composition,113395,"5e3e5e24fa15bfb4dd28626d5b3368c76d571b77dac6e066edac03b46d261d6c")
+assert composition[-len(continuation):]==continuation
+# Reverse only the reviewed adoption DATA literals; compare independent full original.
+pairs=[("37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+        "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1",4),
+       ("36884","35749",2),("36885","35750",1),
+       ("2dde53fd3f87508e840fedc88af2b85369854eedd050f77708c8e52f43eac691",
+        "5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0",3)]
+restored=composition
+for new,old,count in pairs:
+    assert restored.count(new.encode("ascii"))==count
+    restored=restored.replace(new.encode("ascii"),old.encode("ascii"))
+identity(restored,113395,"a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e")
+original=fences(obj("251a29c097fc8b9a1fc1dd083bab97060242bdf0",
+                    "docs/roadmap/local-wave30-d01-user-browser-review.md"))[83][1][:-1]
+identity(original,113395,"484bd441ef0f3db547d75f6138f2943b07a3ef090c30271a9cdc3d7914dda02e")
+original=original.replace(b"d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d",
+                          b"505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f")
+assert restored==original
+def js_data(name):
+    match=re.search(rb"^const "+name.encode("ascii")+rb"=(.*);$",composition,re.M)
+    assert match is not None
+    return json.loads(match[1]).encode("utf-8")
+template=js_data("L_CONTROLLER_TEMPLATE")
+archive=js_data("L_ARCHIVE_SOURCE")
+identity(template,17326,"2dde53fd3f87508e840fedc88af2b85369854eedd050f77708c8e52f43eac691")
+identity(archive,3505,"e20d2620f4f84f01c270361b03c78a679b7891b81376f6e3a962cc2117cd979f")
+helper=obj(PUBLISHED,"scripts/d01-confidential-browser-demo.py")
+identity(helper,36884,"37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406")
+assert template.startswith(b"python3 -u - <<\'PY\'\n") and template.endswith(b"\nPY")
+# Extract the heredoc Python body for syntax only; original shell-template bytes stay intact.
+template_body=b"\n".join(template.split(b"\n")[1:-1])+b"\n"
+for raw in (template_body,archive,helper):
+    ast.parse(raw);compile(raw,"<adopted-private-Python-SOURCE-ONLY>","exec")
+receipt=obj(PUBLISHED,"docs/roadmap/evidence/wave30-d01-terminal-eperm-memory-root-review.json")
+receipt_identity=identity(receipt,26762,"e922bab864c4de42df578a73ea267bcd0b6de9effa4ec4f04e228f6159f1b560")
+json.loads(receipt) # PUBLIC Git receipt only, no private capture opens.
+pins={"whole_composition":digest(composition),"template":digest(template),"helper":digest(helper),
+      "old_helper":"75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1",
+      "old_template":"5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0"}
+zero_sites={label:{key:raw.count(value.encode("ascii")) for key,value in pins.items()}
+            for label,raw in (("outer",outer),("controller",controller),
+                              ("payload",payload),("continuation",continuation),("baseline",baseline))}
+assert all(n==0 for rows in zero_sites.values() for n in rows.values())
+assert b"Buffer.byteLength(CANDIDATE)===33701" in logic
+assert len(composition)!=33701
+functions={}
+for label,raw in (("outer",outer),("controller",controller)):
+    lines=raw.splitlines(keepends=True)
+    functions[label]=[{"name":n.name,"bytes":len(b"".join(lines[n.lineno-1:n.end_lineno])),
+                      "sha256":digest(b"".join(lines[n.lineno-1:n.end_lineno]))}
+                     for n in ast.parse(raw).body if isinstance(n,ast.FunctionDef)]
+cap=2501*(16*(262144+4424)+128)+(2501+75+len(data["PLAN"])+1)*data["PAYLOAD_BYTES"]
+summary={"controller":controller_identity,"outer":outer_identity,
+         "payload":{"bytes":len(payload),"sha256":digest(payload)},
+         "receipt":receipt_identity,"zero_literal_sites":zero_sites,
+         "candidate_bytes_guard":33701,"requested_composition_bytes":len(composition),
+         "plan":data["PLAN"],"check_names":data["CHECK_NAMES"],"expected_source":expected,
+         "assertion_cap":cap,"privacy_cap":50000,"protected_functions":functions,
+         "no_data_only_adopted_envelope_produced":True,"archived_objects_executed":False,
+         "continuation_suffix_exact":True,"adoption_literal_sites":10,"adoption_byte_inverse":True}
+print(json.dumps({"summary":summary,"payload":payload.decode("utf-8"),
+                  "composition":composition.decode("utf-8"),"continuation":continuation.decode("utf-8")},
+                 ensure_ascii=True,separators=(",",":")))
+```
+
+```javascript
+// Parser-only static reader. No candidate, VM, envelope or case invocation.
+const fs=require("node:fs"),crypto=require("node:crypto");
+const acorn=require("internal/deps/acorn/acorn/dist/acorn");
+const data=JSON.parse(fs.readFileSync(0,"utf8"));
+const parse=s=>acorn.parse(s,{ecmaVersion:"latest",sourceType:"module"});
+const sha=s=>crypto.createHash("sha256").update(s).digest("hex");
+const requireProof=(v,why)=>{if(!v)throw Error(why);};
+function walk(node,visit){
+ if(!node||typeof node!=="object")return;
+ if(Array.isArray(node)){node.forEach(n=>walk(n,visit));return;}
+ visit(node);
+ for(const [key,value] of Object.entries(node))
+  if(!["start","end","loc","range"].includes(key))walk(value,visit);
+}
+const payload=parse(data.payload),composition=parse(data.composition),continuation=parse(data.continuation);
+const binding=payload.body.find(n=>n.type==="VariableDeclaration"&&
+ n.declarations.some(x=>x.id.name==="BINDING")).declarations.find(x=>x.id.name==="BINDING").init;
+requireProof(binding.type==="ObjectExpression"&&binding.properties.length===13,"binding_closed_data");
+const keys=binding.properties.map(x=>x.key.value??x.key.name);
+requireProof(!keys.some(k=>/helper|template|composition/.test(k)),"no_prepared_source_binding");
+const functions=payload.body.filter(n=>n.type==="FunctionDeclaration");
+const runCase=functions.find(n=>n.id.name==="runCase");
+const cases=[];
+walk(runCase,n=>{if(n.type==="SwitchCase"&&n.test?.type==="Literal")cases.push(n.test.value);});
+requireProof(JSON.stringify(cases)===JSON.stringify(data.summary.plan.map(r=>r.name)),"exact_36_cases");
+const bindSource=functions.find(n=>n.id.name==="bindSource");
+const bindText=data.payload.slice(bindSource.start,bindSource.end);
+requireProof(bindText.includes("Buffer.byteLength(CANDIDATE)===33701"),"fixed_continuation_size");
+requireProof(bindText.includes('SCRIPT=new vm.Script("(async function(){\\n"+CANDIDATE+"\\n})()"'),"script_whole_continuation");
+requireProof(data.composition.endsWith(data.continuation),"exact_suffix");
+const suffixStart=data.composition.length-data.continuation.length;
+const suffixNodes=composition.body.filter(n=>n.start>=suffixStart);
+function clean(node){
+ if(typeof node==="bigint")return {decimal:node.toString(10)};
+ if(Array.isArray(node))return node.map(clean);
+ if(node&&typeof node==="object"){
+  const out={};for(const [k,v]of Object.entries(node))
+   if(!["start","end","loc","range"].includes(k))out[k]=clean(v);return out;
+ }return node;
+}
+requireProof(JSON.stringify(clean(suffixNodes))===JSON.stringify(clean(continuation.body)),"whole_suffix_AST");
+const entry=composition.body.find(n=>n.type==="IfStatement"&&
+ data.composition.slice(n.start,n.end).includes("preparedEntryGate"));
+const sourcePins={};
+for(const name of ["L_CONTROLLER_TEMPLATE","L_ARCHIVE_SOURCE"]){
+ const d=composition.body.flatMap(n=>n.type==="VariableDeclaration"?n.declarations:[])
+  .find(x=>x.id.name===name);
+ requireProof(d?.init.type==="Literal"&&typeof d.init.value==="string","source_literal");
+ sourcePins[name]={bytes:Buffer.byteLength(d.init.value),sha256:sha(d.init.value)};
+}
+const summary={binding_keys:keys,case_names:cases,case_count:cases.length,
+ payload_functions:functions.map(n=>({name:n.id.name,bytes:Buffer.byteLength(data.payload.slice(n.start,n.end)),
+ sha256:sha(data.payload.slice(n.start,n.end))})),
+ suffix_AST_exact:true,suffix_nodes:suffixNodes.length,source_pins:sourcePins,
+ adopted_prepared_flow_present:data.composition.includes("try{await pPrepareEntry();}"),
+ fixed_VM_continuation_size:33701,requested_composition_size:Buffer.byteLength(data.composition),
+ code_objects_or_cases_executed:false};
+process.stdout.write(JSON.stringify(summary)+"\n");
+```
+
+### Exact static outcomes and preserved limits
+
+Actual checks in this audit: Git immutable reads and SHA/byte checks; canonical
+literal JSON/base64 decoding; Python AST parsing and in-memory code-object
+compilation only; Acorn parsing of the full composition, continuation and Node
+payload; exact 36 SwitchCase names in canonical order; entire suffix AST
+equivalence; protected function source hashes; and the 10-site whole-byte
+adoption inverse. All of those final source checks passed. Zero cases/VMs/children/
+helper imports ran.
+
+One initial static reader returned SyntaxError because it passed the *shell*
+heredoc template itself to the Python parser. The reader was corrected to
+extract only that template's Python heredoc body for syntax checking; original
+17326-byte template and every candidate byte remained unchanged. This is a
+static-reader error, not a product/controller runtime failure. The first
+auxiliary Acorn metadata probe looked for a nonexistent `preparedEntryGate`
+name; the source-backed probe now uses actual `pPrepareEntry`, with no source
+change. Neither observation supplies runtime credit.
+
+The append-only/prefix, one-file scope, whitespace and docs-check results are
+recorded after this appendix is assembled. Global docs hygiene retains the
+known pre-existing private Cargo target-directory findings; no checker or cache
+is altered to hide them. No private capture, password, token, socket or product artifact is inspected.
+Installed Node is used solely for the explicitly permitted Acorn parser-only
+static check, not a VM, case, native probe or product/version invocation. No
+source executable file is materialized.
+
+The old actual a270 browser checkpoint remains **FAILED**. Its initial request
+read TimeoutError, Authorization sender/partial bytes UNKNOWN, first-event
+proof absent and whole60 false remain exactly as recorded. Earlier envelope
+failures remain failures; the dated old 36-case memory PASS is evidence for its
+own continuation envelope only. Helper94-case memory and any next envelope/
+Driver/native/browser invocation remain **HELD** pending root's exact reviews
+and separate release. No resource lane is acquired, no runtime nonce is invented,
+no A09/D01 task status changes, and RiWork Cua.ai Driver remains the only desktop
+provider if root later explicitly authorizes desktop work.
+
+### Final static receipt for this reservation
+
+The assembled append was checked with `git diff --check` (EXIT0), exact
+150772-byte 96642ce prefix comparison (PASS), one-owned-file scope (PASS),
+archived static-reader syntax/compile-object checks (PASS, object unexecuted),
+and final full immutable reconstruction/Acorn source-only readers (EXIT0).
+Actual appendix archives before this final receipt:
+static Python DATA reader 9285 bytes /
+SHA-256 `14680ee126cdfc851bb5e8375cb802b96a10883222125633ce4e18c8c52e5287`;
+Acorn reader 3700 bytes /
+SHA-256 `76fd0f452cad69d0a1a2df575a2dcda72fbe335214726a246ad0c3a84124bdf3`.
+Neither reader executes the archived envelope, VM or cases.
+
+`python3 scripts/check-docs.py` actually returned **EXIT1** solely for the same
+five pre-existing directory naming findings: `target-wave29-source`,
+`target-wave28-scim`, `target-wave28-portal`, `target-wave28`,
+`target-wave27`. There was **no Markdown-link failure**. No cache/checker
+change or runtime-capacity inspection was made.
+
+Final disposition: **no literal-only whole-composition envelope candidate** can
+be truthfully offered under the unchanged executable/schema restriction.
+The exact historical envelope is preserved, and its whole suffix matches the
+adopted source. Root has the smallest necessary source-verification seam and
+the option to use that honest continuation equivalence without adding a new
+gate. No helper94-case or envelope repeat is authorized or run here; no runtime
+lane/status/publication/desktop action occurred.
