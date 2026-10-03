@@ -4549,3 +4549,238 @@ security/writer/concurrency and cleanup outcomes remain unknown. Original
 S02 stays root-owned/in_progress; no completion, status, main/push or new
 worker/task/worktree/managed shell action is claimed. Original primary
 1e336a3d remains unchanged.
+
+## One corrected supervisor invocation — actual compile refusal, 2026-10-03
+
+Project **891e7443-8dac-4c1b-897f-9e53cb59c7ee**, original S02
+**fdda2152-73a0-4dce-9e5e-aff4b232a6fd**; runtime reservation
+`wave30_S02_one_corrected_supervisor_filter`, existing support worktree
+**e1b4399a-8c0d-46b8-880c-a71a4ebf53e7** only.
+This appendix preserves the entire **217,941-byte** report at
+**820c4e397d69a718b609afee1b795e80bb235249**, SHA-256
+`4673f1f9c8ae9c0e2df124b9edbbcf0ae9f093f5ec954e9a8d6a0df298ba5bf2`.
+Every prior source-only/unrun statement, unsafe F1, static failure, proposal
+and dated capacity blocker remains historical and byte-exact. This is the
+first authorized S02 Cargo invocation, not a rewrite of those observations.
+
+**Actual result: compilation failed; no fixture ran.** The corrected
+supervisor exited **1**, Cargo exited **101**, with four errors in the named
+integration fixture: three E0277 and one E0308. Zero telemetry, sample,
+summary, security/writer/concurrency or result records were emitted.
+The full bounded private output and numeric wait/cleanup observations were
+saved before outcome grading. No baseline, retry, source correction, extra
+target/feature or cache deletion occurred.
+
+### Complete root review, exact correction and independent prerequisites
+
+The complete published
+`78d3920d4c8b37371ba061d9472807bbf4a10eb6:docs/roadmap/local-wave30-s02-root-review.md`
+was read: **10,080 bytes**, SHA-256
+`567795d166a3f6cbf91f391d604bbc0c26e8d57fa77f879a39349c7bd822bea4`.
+The whole root evidence body was also read from
+`/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/evidence/wave30-s02-supervisor-default-sigchld-review.json`,
+SHA-256 `de9c3afb33f47e08250fe37f95bb4a0a79399c1e5e4458245778c90ec058fea2`.
+Its earlier HELD/executed=false fields describe that source review; the user's
+separate explicit one-invocation release authorized this later execution.
+
+Original archived DATA25939B/534 lines/dd1cd576 was extracted from immutable
+820c4e. Only this exact49-byte line was inserted immediately after the
+unsupported-host require and before `s=TARGET.lstat()`:
+
+```python
+    signal.signal(signal.SIGCHLD,signal.SIG_DFL)
+```
+
+Corrected DATA is **25,988 bytes /535 lines**, SHA-256
+`3089723bdf659b8d36461f4f344d26efb31b05128ffd0a40c0d06b1dbe4fe48e`.
+Whole byte reversal and AST reversal restore the complete archived DATA;
+AST parsing passed before execution. All original functions, pins, argv/env,
+output schemas, thresholds, consuming wait and cleanup bodies remain exact.
+The corrected file was materialized once through exclusive nofollow creation
+to `target/s02-group-list-ba3cd18-v1-supervisor.py`, fsynced, read back
+exactly, and verified regular/nonsymlink/UID501/nlink1/mode0600.
+
+Independent preflight before materialization verified:
+
+- Own clean HEAD820c4e, existing own target ownership/resolution, all five
+  proposed supervisor/log/receipt paths absent, supported Darwin WNOWAIT
+  primitives and no Cargo/rustc/rustdoc processes.
+- **358/358** selected whole mode/object/path records equal staged
+  **cb920b75a6f6e5ae4b624abeb3ed8b97c3a26c57**.
+  Entire production/crates/common/manifests/toolchain/build settings equal
+  reviewed **74c1fb7660791864a68b9caebb7977f30a53e41c**; the exact fixture
+  equals **ba3cd1837f798dd1a8d005ead842660fe7564a39**.
+  The already disclosed unselected tests/cli.rs difference was not imported.
+- Core57913B/`686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea`,
+  fixture60287B/`9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444`,
+  manifests/lock/toolchain, both prior library fingerprint JSONs and
+  target/.rustc_info matched every archived preflight pin.
+- Selected installed Python/cargo/rustc hashes matched the archived pins;
+  no version probe, alternate compiler or source alignment was performed.
+- Fresh independent free capacity **16,886,632,448B /15.726902GiB** at
+  epoch ns1791001310513396000, exceeding the unchanged13GiB start threshold.
+  Exact-feature library cache absence and4GiB planning estimate retained
+  their earlier honest scope; no test-only warm-cache assumption was added.
+
+### Exactly one executed command and actual retained outcome
+
+The exact archived closed environment/pinned Python outer command was invoked
+once from this worktree:
+
+```sh
+env -i HOME=/Users/dominik PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=C LC_ALL=C \
+  /opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/bin/python3.14 \
+  -I -S -B "$PWD/target/s02-group-list-ba3cd18-v1-supervisor.py"
+```
+
+It launched only the archived pinned Cargo command with `test-support`,
+default features, `--locked`, the named integration target/filter,
+`--exact --ignored --test-threads=1 --nocapture`, offline=true, private own
+target, jobs1/incremental0/dev+testdebug0. No extra target/case/helper/native
+probe or service ran. The exact full child argv/env is retained in private
+evidence and in the preceding archived DATA.
+
+Closed complete supervisor stdout, retained with actual outer exit1:
+
+```json
+{"cargo_exit": 101, "cargo_signal": null, "first_failure": "cargo_or_cleanup_failure", "group_absent": true, "leader_reaped": true, "minimum_available_bytes": 16426356736, "prefinal_elapsed_seconds": 55.919293666724116, "receipts_prefinal": true, "records": 0, "samples": 0, "stage": "cargo", "summaries": 0}
+```
+
+Actual detailed evidence:
+
+| Observation | Actual |
+| --- | --- |
+| Captured Cargo PID / confirmed PGID | 81387 /81387 |
+| Kernel WNOWAIT observation | code1, status101 |
+| Consuming waitpid raw status / normalized exit | 25856 /101 |
+| Signal | null; no TERM/KILL was necessary |
+| Leader joined/reaped / own group absent | true /true |
+| Remaining own active group members | [] |
+| Cleanup elapsed | 0.15114137483760715s |
+| Pipe EOF / full capture | true /true |
+| Complete raw output bytes | 3,597 of32MiB cap |
+| Read-only metadata children | 39; all joined, all observed exits0 |
+| Resource / own-group samples | 27 /27 |
+| Compiler package observed | riauth only |
+| Compiler codes / panic locations | E0277, E0308 /[] |
+| Libtest result summaries / closed fixture records | [] /0 |
+| Evidence pre-grade elapsed | 55.84801608370617s |
+| Decision pre-final elapsed | 55.91913974983618s |
+| Printed pre-final elapsed | 55.919293666724116s |
+| Decision candidate_pass | false |
+| Decision first failure | cargo_or_cleanup_failure |
+
+The unified grade reason does not imply a cleanup failure: the real Cargo
+exit101 failed that combined condition, while joined leader, EOF and group
+absence all passed. Evidence's pre-grade first_failure=null is retained as
+written; it already contains the real exit101 and full compiler capture.
+The later decision recorded the comparison refusal. The outer consuming tool
+returned1; no pass or missing status was substituted.
+
+Independent read-only post-exit inspection again found **zero** processes in
+captured PGID81387 and `killpg(81387,0)` raised ProcessLookupError.
+All metadata-child joins and private evidence ownership/hash/size checks
+passed. The immediate handoff reported actual failure and
+**SOLE CARGO SLOT RELEASED** after the owned Cargo leader/group cleanup;
+no runtime lane was reacquired and no further invocation is authorized here.
+
+Actual disk observations, distinct from own peak/IO/allocation measurements:
+
+| Observation | Bytes / GiB |
+| --- | --- |
+| Supervisor fresh start | 16,832,004,096B |
+| Minimum of27 runtime monitor samples | 16,426,356,736B /15.298237GiB |
+| Post-cleanup available sample | 16,355,966,976B /15.232681GiB |
+| Shared free-space net change start→post | 476,037,120B |
+
+The last monitor sample was at54.30645866692066s; the post-cleanup sample
+is later and lower, so the runtime-sample minimum is not presented as the
+minimum of all observations. Every observed value stays above9GiB stop/
+8GiB floor; no drain/cap/deadline/dependency-rebuild guard fired.
+The net shared free-space change is not measured own peak, heap/RSS,
+allocated bytes, IO or a guarantee that4GiB suffices for a later fixture run.
+The 300s fixture/10s thread caps were not exercised because libtest never
+started. Source/manifests/toolchain/Python/cargo/rustc and both old library
+fingerprint pins remain equal after execution. target/.rustc_info changed
+to `7d6b9b4c5d7047c09e065993326b9e70aa2aaf59a3c99c0e42f5de4102edead5`,
+a retained Cargo metadata refresh permitted by the reviewed controller.
+
+### Private immutable captures and finite compile boundary
+
+All five artifacts are regular/nonsymlink/nlink1/UID501/mode0600 under the
+existing own private target; none is added to Git, deleted or overwritten:
+
+| Literal relative path | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `target/s02-group-list-ba3cd18-v1-supervisor.py` | 25,988 | `3089723bdf659b8d36461f4f344d26efb31b05128ffd0a40c0d06b1dbe4fe48e` |
+| `target/s02-group-list-ba3cd18-v1.log` | 3,597 | `9f9aa0e6a88bd6cda923fe2e3b7684a5bd1fbd2c386e0c81ea23df598c760659` |
+| `target/s02-group-list-ba3cd18-v1-observations.json` | 55 | `0ccfe4f593d30bac977a423f49c37645f6f6dd400e635a8c8eb2e7bd070a773e` |
+| `target/s02-group-list-ba3cd18-v1-evidence.json` | 12,635 | `1a3742934f7253abe7aa90a8bfb7e7472e924d1a31f8d296ce684525fac1c82e` |
+| `target/s02-group-list-ba3cd18-v1-decision.json` | 158 | `2203b6820438815d8ddb5cec889ba9439d5a3f3ad90e1293ff5e8527f14da833` |
+
+Observed write mtimes ns: raw log1791001415487894650,
+closed observations1791001415795029317, evidence1791001415795521360,
+decision1791001415795677110. These agree with the reviewed actual sequence:
+full private output closed/fsynced, then observations and numeric evidence
+saved/fsynced, then outcome comparison and decision saved. Mtimes alone do
+not prove fsync durability; the exact executed source also establishes the
+ordering. The root receives hashes/finite outcomes, not raw output or private
+values. All pre-final/final-clock and kernel-IO limits remain as documented.
+
+Finite compiler locations in the unchanged
+[named fixture](../../tests/s02_group_listing_paging.rs):
+
+| Code | Line:column | Source boundary |
+| --- | --- | --- |
+| E0277 | 502:18 | inferred conversion in the login-token local |
+| E0277 | 498:13 | inferred unsized str local |
+| E0277 | 499:13 | inferred unsized str constructor argument |
+| E0308 | 573:17 | local assigned to Credentials.admin |
+
+Private log fixed projections confirm unsized-str diagnostics and an expected
+`Zeroizing<String>` versus found `Zeroizing<str>` mismatch.
+The first E0277 header remains unclassified by the finite allowlist; no raw
+header is copied and no additional cause is guessed. Immutable source at
+ba3 defines Credentials.admin as `Zeroizing<String>` at397 and the
+unannotated `Zeroizing::new(login["session_token"].as_str()... .into())`
+local at498–503. Its inferred unsized type conflicts at573. The final log
+explicitly refuses compiling `riauth` test `s02_group_listing_paging`
+due to four errors; no libtest-start marker exists. This is a concrete new
+fixture compile boundary, not an observed product/security failure.
+
+The smallest possible next source seam is an explicit owned String type for
+that one login-token local, preserving its zeroizing wrapper and every input/
+operation/oracle. This is a source-backed proposal only; it was **not edited,
+typechecked or rerun**, and needs root's separate exact reservation.
+No production, frozen control, public writer, security receipt/header/PAM/
+Group contract, metric or test policy change is justified by this compiler
+outcome. No unsafe allocator/lint workaround is proposed.
+
+### Actual checks, remaining gate and handoff
+
+Actual checks: complete root review/evidence body reads; corrected DATA
+whole inverse/hash/AST proof; whole selected source equivalence and fresh
+source/cache/tool/process/capacity preflight; exclusive0600 materialization;
+**one** exact Cargo invocation through that DATA; full retained raw log and
+numeric exit/status before grade; finite compiler-boundary extraction;
+joined own leader/all metadata children and independently absent owned group;
+private artifact hashes/modes, whole820 prefix, unchanged source/fixture
+pins, documentation links, Git whitespace and report-only scope checks.
+
+Reached S02 fixture oracles: **none**. There are no120 samples, twelve
+summaries, observer self-check results, complete-result/security snapshots,
+writer/revocation/expiry/parent transitions, concurrency overlap, read
+noninterference or private fixture-cleanup results. False overlap/same-second/
+latency values were not erased or upgraded: none was emitted. The production
+reader was included in this compile attempt; source acceptance remains source
+acceptance, not an executed semantic or performance pass.
+
+S02's measured equivalent-security outcome and original disposition remain
+pending the new fixture compile blocker and a separately approved successful
+invocation. The report makes no fetched-row improvement, speedup, heap/RSS/
+allocation/IO, PostgreSQL/concurrency-deployment or whole-task completion
+claim. No additional runtime, source/manifest/helper/other-doc edit,
+file/cache cleanup or deletion, alignment, status/main/push, worker contact or new task/
+worktree/managed shell occurred. Original primary1e336a3d and completed rows
+remain unchanged; root owns source reservation, future runtime, independent
+review/integration and original task disposition.

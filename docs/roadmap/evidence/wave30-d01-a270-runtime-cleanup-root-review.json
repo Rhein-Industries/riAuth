@@ -1,0 +1,66 @@
+{
+  "reviewed_utc": "2026-10-03T04:18:54.515497+00:00",
+  "result": "failed",
+  "helper_timeout": {
+    "diagnostic": {
+      "exception_class": "TimeoutError",
+      "own_function": "Handler.handle_one_request",
+      "own_line": 468,
+      "site": "handler"
+    },
+    "observed": true
+  },
+  "protected_before_403": true,
+  "no_confidential_journey_pass": true,
+  "whole_cleanup_within60_proven": false,
+  "worker_reported_absence": {
+    "lab": true,
+    "owned_pids": {
+      "72429": true,
+      "72478": true,
+      "72523": true,
+      "72784": true
+    },
+    "ports": {
+      "3000": true,
+      "9000": true
+    },
+    "session_ended": true,
+    "window_count": 0
+  },
+  "root_fresh_pid_absence": {
+    "72429": true,
+    "72449": true,
+    "72478": true,
+    "72483": true,
+    "72485": true,
+    "72486": true,
+    "72487": true,
+    "72523": true,
+    "72784": true
+  },
+  "root_fresh_port_absence": {
+    "9000": true,
+    "3000": true
+  },
+  "root_fresh_lab_absent": true,
+  "metadata": [
+    {
+      "name": "d01-a270-real-1791000936131-outer.redacted.json",
+      "bytes": 4654,
+      "sha256": "d6660debec35bb09d5e1c46d9879eceaa42d5b9193ba1123973b19b190d8be5a"
+    },
+    {
+      "name": "d01-a270-real-1791000936131-event.redacted.json",
+      "bytes": 240,
+      "sha256": "0ea6e45e59b9f8a590b9fd48c0827f5844746cdd7ebf0a8b15d601f04c6c6edd"
+    },
+    {
+      "name": "d01-a270-real-1791000936131-cleanup.redacted.json",
+      "bytes": 5492,
+      "sha256": "d7bf7ba878594e1ac5f9563331893bf61f2f381e74fc63ad4f38d38d0d9d77ef"
+    }
+  ],
+  "lane_release": "released; no Cargo acquired",
+  "no_repeat_authorized": true
+}

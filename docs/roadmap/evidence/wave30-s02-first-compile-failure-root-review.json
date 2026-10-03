@@ -1,0 +1,22 @@
+{
+  "reviewed_utc": "2026-10-03T04:24:28.924513+00:00",
+  "source_head": "820c4e397d69a718b609afee1b795e80bb235249",
+  "actual_cargo_exit": 101,
+  "supervisor_pass": false,
+  "compiler_error_codes": [
+    "E0277",
+    "E0308"
+  ],
+  "fixture_records": 0,
+  "test_function_not_started": true,
+  "log_bytes": 3597,
+  "log_sha256": "9f9aa0e6a88bd6cda923fe2e3b7684a5bd1fbd2c386e0c81ea23df598c760659",
+  "consumed_exit": 101,
+  "leader_reaped": true,
+  "group_absent": true,
+  "root_fresh_pid_absence": true,
+  "root_fresh_group_absence": true,
+  "minimum_free_bytes": 16426356736,
+  "no_stop_signals": true,
+  "no_repeat_authorized": true
+}
