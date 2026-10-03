@@ -367,3 +367,27 @@ the original LF. A complete new36 controller DATA binding is separately
 reserved, with all execution held behind the active A09 remote checkpoint.
 No new memory pass, real browser journey, D01/D05 completion or task status
 change follows from these source-only integrations.
+
+
+## 2026-10-03 — independent cleanup hold and narrow source remedy reservation
+
+Root fully read all371 lines of immutable
+`cb7f8833086f470859706c9ea11138f8a8b81e2f`, exact SHA256
+d800cc8c7ec8d55c35a1276cf437651bad32a2921d2a5647e6b263c302197973.
+Packet-bound/source-preservation findings are accepted. F1 remains a hold:
+getsignal(SIGCHLD)==SIG_DFL tests a handler, not native SA_NOCLDWAIT flags.
+The live-child signaling proof needs no-automatic-reaping established before
+spawn. This is no observation of historical flags, PID reuse or failure cause.
+
+A one-statement pre-spawn waitable-default SIGCHLD installation design is
+separately reserved. Root read the tagged CPython signal setter/wrapper and
+installed pyconfig.h,60669 bytes/SHA256
+e875b545c5d65a9598f2b3f4a8c2c1a8dfb81fc7baace25acc22aafaf9e2b421,
+whose HAVE_SIGACTION is1. That is source/build metadata, not a setter invocation
+or native flag measurement. The exact source and launch assumptions still
+need review. Old25 remains FAILED; new36 and real journey remain held.
+
+The previous root note's phrase five-hunk described five declared edits; the
+actual archive contains four unified-diff hunks. Both whole reconstruction and
+three-function byte/AST inverse passed; no archived source changed to correct
+this root count label. The remote A09 run continues as sole runtime owner.

@@ -26,3 +26,33 @@ An initial root lookup guessed absent src/group_management.rs and exited128
 before any edit. Reading the actual src/core.rs body and public principal in
 src/agent.rs corrected that source lookup. No guessed file or production span
 was copied. All held Group/receipt/authority and shared60s contracts remain.
+
+
+## 2026-10-03 — complete source review, bundled fixture held
+
+Root fully read the exact29-line production diff and all1641 lines of
+`74c1fb7660791864a68b9caebb7977f30a53e41c`, plus the full256-line source
+appendix at `d6b5545ba1d7827fadb098846da7f2bfdfa02b10`. Complete Core
+reversal and frozen-control identity passed. All measurement, seed, snapshot,
+writer, authority, allocation self-check, deadline and cleanup definitions
+were reviewed; no definition was compiled or executed.
+
+Root fully read all346 lines of the independent
+`4dcf8773e3989809e026b1fae7d235ff3eedc36e` review, exact SHA256
+6cc6952f2a670386b4f41a713049366494b083326201ed56c582da640c0f96cb.
+Its production result/permission/snapshot assessment finds no concrete new
+regression, but its F1 is a compile-policy blocker: unchanged Cargo.toml
+forbids unsafe code while the new package integration target has unsafe
+GlobalAlloc/probe code. Root independently read the full manifest and agrees.
+No compiler error is invented; ignoring the function does not avoid compiling
+its test crate. The source/test is held on its author branch, not imported
+into the integration tree or released to Cargo.
+
+The exact source report and independent report are imported as evidence.
+A bounded fixture measurement redesign is separately source-only reserved;
+no manifest policy relaxation, foreign allocator execution or performance
+pass is authorized by this note. Expiry/disabled-parent cases and the meter's
+foreign-operation/window/cache limitations retain their source-only scope.
+Actual cost improvement, full security/concurrency outcomes and cleanup remain
+unmeasured. Original S02 stays in_progress; primary and completed rows remain
+unchanged. Remote A09 owns the sole validation runtime.
