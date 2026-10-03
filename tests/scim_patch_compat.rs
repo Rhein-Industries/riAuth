@@ -347,3 +347,235 @@ async fn group_member_patch_accepts_echoed_display_but_rebuilds_it() {
     assert_eq!(error["scimType"], "mutability");
     f.assert_http_mutation_snapshot(&before);
 }
+
+async fn request_with_receipt(
+    app: &Router,
+    method: Method,
+    path: &str,
+    token: &str,
+    version: Option<&str>,
+    key: &str,
+    body: &Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(path)
+        .header("authorization", format!("Bearer {token}"))
+        .header("idempotency-key", key)
+        .header("content-type", "application/scim+json");
+    if let Some(version) = version {
+        builder = builder.header("if-match", version);
+    }
+    let response = app
+        .clone()
+        .oneshot(builder.body(Body::from(body.to_string())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), 32768)
+        .await
+        .unwrap();
+    (status, serde_json::from_slice(&bytes).unwrap())
+}
+
+fn user_with_opaque_name(username: &str, containers: usize) -> Value {
+    let mut metadata = json!("kept");
+    for _ in 0..containers {
+        metadata = json!({"next": metadata});
+    }
+    json!({"schemas":[scim::USER],"userName":username,
+        "displayName":"Stored Metadata","name":{"givenName":"Ada","opaque":metadata}})
+}
+
+#[tokio::test]
+async fn full_user_writes_refuse_undecodable_storage_wrappers_atomically() {
+    let f = Fixture::new();
+    f.user("storage-unrelated");
+    let token = agent(&f, "storage-boundary-agent");
+    let app = riauth::api::router(f.core.clone());
+    let create_path = "/scim/v2/Users";
+    let rejected = user_with_opaque_name("storage-refused", 125);
+    let bytes = serde_json::to_vec(&rejected).unwrap();
+    assert!(bytes.len() < 32768);
+    assert!(axum::Json::<Value>::from_bytes(&bytes).is_ok());
+    let before = f.snapshot().unwrap();
+    let (status, error) = request_with_receipt(
+        &app,
+        Method::POST,
+        create_path,
+        &token,
+        None,
+        "storage-refused-create",
+        &rejected,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(error["scimType"], "invalidValue");
+    assert_eq!(
+        error["detail"],
+        "SCIM resource exceeds supported storage complexity"
+    );
+    f.assert_http_mutation_snapshot(&before);
+    f.core
+        .update_user(
+            &token,
+            "storage-unrelated",
+            riauth::model::UserPatch {
+                display_name: Some("After create refusal".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let mut accepted = user_with_opaque_name("storage-replace", 124);
+    accepted["password"] = json!(common::PASSWORD);
+    let (status, created) = request(
+        &app,
+        Method::POST,
+        create_path,
+        &token,
+        None,
+        Some(&accepted),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let path = format!("{create_path}/{}", text(&created, "id"));
+    let session = text(
+        &f.core
+            .login("storage-replace".into(), common::PASSWORD.into(), None)
+            .unwrap(),
+        "session_token",
+    );
+    let mut replacement = user_with_opaque_name("storage-replace", 125);
+    replacement["active"] = json!(false);
+    replacement["displayName"] = json!("Refused replacement");
+    replacement["emails"] = json!([{"value":"replacement@example.test","primary":true}]);
+    let bytes = serde_json::to_vec(&replacement).unwrap();
+    assert!(bytes.len() < 32768);
+    assert!(axum::Json::<Value>::from_bytes(&bytes).is_ok());
+    let before = f.snapshot().unwrap();
+    let (status, error) = request_with_receipt(
+        &app,
+        Method::PUT,
+        &path,
+        &token,
+        Some(version(&created)),
+        "storage-refused-replace",
+        &replacement,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(error["scimType"], "invalidValue");
+    assert_eq!(
+        error["detail"],
+        "SCIM resource exceeds supported storage complexity"
+    );
+    f.assert_http_mutation_snapshot(&before);
+    assert!(f.core.me(&session).is_ok());
+    assert_eq!(
+        f.core
+            .scim_get(&token, "Users", created["id"].as_str().unwrap())
+            .unwrap(),
+        created
+    );
+    f.core
+        .update_user(
+            &token,
+            "storage-unrelated",
+            riauth::model::UserPatch {
+                display_name: Some("After replace refusal".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+}
+
+#[tokio::test]
+async fn decodable_opaque_metadata_survives_reopen_patch_and_receipts() {
+    let mut f = Fixture::new();
+    let token = agent(&f, "storage-compatible-agent");
+    let app = riauth::api::router(f.core.clone());
+    let input = user_with_opaque_name("storage-compatible", 124);
+    let (status, created) = request_with_receipt(
+        &app,
+        Method::POST,
+        "/scim/v2/Users",
+        &token,
+        None,
+        "storage-compatible-create",
+        &input,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let path = format!("/scim/v2/Users/{}", text(&created, "id"));
+    assert_eq!(created["name"], input["name"]);
+    let before = f.snapshot().unwrap();
+    let (status, replay) = request_with_receipt(
+        &app,
+        Method::POST,
+        "/scim/v2/Users",
+        &token,
+        None,
+        "storage-compatible-create",
+        &input,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(replay, created);
+    f.assert_http_mutation_snapshot(&before);
+    drop(app);
+    f = f.reopen_with(|_| {});
+    assert_eq!(
+        f.core
+            .scim_get(&token, "Users", created["id"].as_str().unwrap())
+            .unwrap(),
+        created
+    );
+    let app = riauth::api::router(f.core.clone());
+    let (status, echoed) = request(
+        &app,
+        Method::PUT,
+        &path,
+        &token,
+        Some(version(&created)),
+        Some(&created),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(echoed["name"], input["name"]);
+    let update = patch(json!([{"op":"replace","path":"name.givenName","value":"Augusta"}]));
+    let (status, changed) = request_with_receipt(
+        &app,
+        Method::PATCH,
+        &path,
+        &token,
+        Some(version(&echoed)),
+        "storage-compatible-patch",
+        &update,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(changed["name"]["givenName"], "Augusta");
+    assert_eq!(changed["name"]["opaque"], input["name"]["opaque"]);
+    assert_ne!(version(&changed), version(&created));
+    let before = f.snapshot().unwrap();
+    let (status, replay) = request_with_receipt(
+        &app,
+        Method::PATCH,
+        &path,
+        &token,
+        Some(version(&echoed)),
+        "storage-compatible-patch",
+        &update,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(replay, changed);
+    f.assert_http_mutation_snapshot(&before);
+    assert_eq!(
+        f.core
+            .scim_get(&token, "Users", created["id"].as_str().unwrap())
+            .unwrap(),
+        changed
+    );
+}
