@@ -206,7 +206,10 @@ fn oidc_only_session_revocation_remains_shared_edition_state() {
         .portal_revoke_all_sessions(Some(&cookie), &binding(&view))
         .unwrap();
     assert_eq!(
-        result.body["frontchannel_urls"].as_array().unwrap().len(),
+        result.body["propagation"]["frontchannel_urls"]
+            .as_array()
+            .unwrap()
+            .len(),
         1
     );
     assert!(fixture.core.me(&alice).is_err());
