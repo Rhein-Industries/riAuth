@@ -580,3 +580,1449 @@ staged whitespace and prefix/scope checks include this outcome before commit.
 Only the report is handed off; diagnostic source/reader build/native runtime
 remain unimplemented and HELD. Actual changed component/logical rows remain
 UNKNOWN, and A09 gate/status remains root-owned/open.
+
+## 2026-10-03 — complete logical-reader source design, not materialization or runtime
+
+Project 891e7443-8dac-4c1b-897f-9e53cb59c7ee; A09 original task
+506e3979-a590-4af3-8fa8-ee90d3a517f2; WT a1303b57-4a34-487e-9c63-a841f05b51a0.
+Reservation wave30_A09_complete_logical_reader_source_design is DESIGN ONLY.
+The complete 37,883-byte deceb318439f23984445b97cf99739fee4afe950 report prefix,
+SHA256 825187fdba0ffb762fa4ab9cac744f4f3a6aa0baad2825340f63bdaa7498a762,
+is retained. That dated component-only candidate is still unexecuted and is NOT
+the proposed next runtime: root expressly requires the complete logical gate.
+No existing helper/workflow/product/test file has been changed, imported or run.
+
+ONE proposed source slice is the isolated reader build/observation and complete
+refusal-preservation adapter below, against the actual 7869b964 Cohort helper.
+It changes only scripts/check-local-container-cohort.py. The workflow need not
+change: its current controller checkout supplies the new helper, while product
+and review checkouts remain immutable, timeout150/step125/always-upload remain
+exact, and the new stage uses the same exclusive verified builder. There is no
+new remote reader download, native archive member, image/archive tag, receipt
+schema adoption, dependency/toolchain override or production writer.
+
+### What is known and still unknown
+
+The original container 37078338496 issuer-specific direct refusal succeeded
+(code2, okfalse, exact marker), then its three-file SHA oracle failed.
+No component or logical row difference was retained. This remains UNKNOWN;
+the design does not declare redb churn harmless, assign an actual changed key,
+or reinterpret the earlier other hosted failures. E-P-E was not reached there.
+
+Root now reports a SEPARATE PostgreSQL run37082572962 passed its published04f
+format3/all-rates E-P-E oracle in helper20.219s with cleanup verified.
+This appendix did not inspect/run that PG fixture and does not borrow that pass
+for the container, reader build, refused-open logical comparison or release.
+
+### Exact source and inspection boundaries
+
+Baseline helper: 7869b96453c13fdec5af35fd5cf661849d417f36,
+99,566 bytes, SHA256 c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837.
+Workflow: same immutable source, 4,573 bytes,
+SHA256 9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4.
+Actual x86 product remains b619fe25269ccc150e473bbcde47cdb3623ef810,
+tree a627df2ce21a4d255b8c1914d4f543e32f40f4de; review66c814a339665e6b3f8e6c22bc59d4f6f0aa224c.
+Native five-product transport/archive/ELF/feature checks are untouched.
+
+The complete source bodies read include Dockerfile/.dockerignore/manifests,
+accepted probe, Store::inspect884–1002, complete snapshot/snapshot_all1977–2020,
+local ownership/read-only/scratch-lock checks, and Cohort source_check,
+daemon_setup/recover_builder, create/confirm/remove/tool, build_images,
+image archive validator, maintenance/shell/new_fixture/start/stop, complete
+offline_hashes/direct_refusal/plan/config_refusals/handoff/platform_refusal_fixture,
+fixture_gate/cleanup/main and full workflow. No binary/archive/private-row or key
+body was read. Store::inspect uses read-only redb and verifies encryption format;
+its local-lock proof creates/removes scratch beside the store. Directory access
+must therefore stay writable, without opening/repairing the actual database.
+snapshot_all iterates EVERY RECORDS row and decodes each Value; the unchanged
+probe hashes every key's serialized Value with the accepted crypto::digest.
+There is no category filter, sample, shared(), format2 expectation or metadata
+substitution. All five emitted metadata values and all four counts are included.
+
+Both current native architecture selections already have the exact same probe,
+Dockerfile, lockfile, manifests, toolchain, .dockerignore, Store/ownership/config/
+crypto/library sources relevant to this seam. Static Git hashes for both
+b619 (x86) and 9a819317efb3a13fa27cd86f884be2be00898fc0 (arm) were compared,
+not imported or executed. Their existing source/tree/review/native-ELF selections
+remain distinct and unchanged. The design compiles against the selected checkout,
+binds its actual source/tree/nativearch, and does not borrow a b619-built binary
+for arm64. Only the current b619/x86 prospective run is proposed here; arm
+compilation/runtime remains independently unmeasured and separately root-owned.
+
+| Exact reader input (equal at the two fixed product objects) | Bytes | SHA256 |
+| --- | ---: | --- |
+| Cargo.toml | 4020 | 58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8 |
+| Cargo.lock | 109243 | b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426 |
+| rust-toolchain.toml | 86 | 887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167 |
+| Dockerfile | 1512 | 458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb |
+| .dockerignore | 794 | 4fbd9472316442bdd8b72e268feb1140701e87ac28dd02295c687b6d379eb093 |
+| tests/edition_transition_store_probe.rs | 5722 | da486cb8cd7c9d6dfcd78da2704e27688b43a8dd40c7fa58e5b4574f678aed32 |
+
+The existing Dockerfile's Rust1.98.1-trixie@a8a5... image, minimal toolchain1.98.1,
+cmake/pkg-config/libssl-dev/clang inputs and runtime Debian/libssl pins are
+retained. test-support is an empty compile feature; platform includes essentials.
+The approved probe itself is not edited; NO fixture/agreement/mutation action is
+invoked. Integration-test --no-run can compile Cargo's implicit binary/development
+dependencies; this is not a promise of a library-only rebuild or warm target.
+No dependency/runtime success is claimed from the source review.
+
+### Concrete interface, acquisition and cleanup contract
+
+build_reader() runs AFTER unchanged build_images() and before fixture_gate().
+A separate Dockerfile.reader extends the EXACT serial recipe with reader-build/
+reader-export; original product image recipes/targets/archives stay unchanged.
+Because original .dockerignore excludes tests, ONE named BuildKit context
+reader-test contains only the exact unchanged accepted probe, mode0600 in0700.
+It does not alter .dockerignore or admit the rest of tests/local/private material.
+
+Future compile argv is the one release/locked/default-features-off target below.
+No tests run at build time. Before compile, the inherited platform build layer
+must contain zero executable probe matches; after compile it must contain exactly
+one regular executable probe and no symlink matches. That artifact is copied by
+the reader-only scratch export, never selected from an old host cache.
+The current same native BuildKit builder, no emulation, 8g/3cpu limits and
+global7200s budget apply. Compilation has existing1800s command bound;
+source/context/manifests are rechecked after completion. The local exporter must
+produce exactly one ordinary bounded artifact owned by the host caller or refuse.
+Missing named-context support, export ownership, dynamic libraries, compile or
+ELF identity is a failure; no fallback binary or altered reader is proposed.
+
+Its actual digest/size/source/tree/features/profile/recipe/nativearch are retained
+in reader provenance. A product-code-only .bin is retained0600 in the existing
+evidence directory; it contains no fixture data. The separate runtime copy is
+0755 under private0700 root, bound read-only into the selected owned UID10001
+container, like the existing maintenance binary. It is NOT one of the native
+five remote artifacts and not a release asset. Existing always-upload would
+retain this extra plainly named product-code artifact/provenance; root must
+approve this additive artifact allowlist before any downstream consumer/download.
+No snapshot, key copy, path, source body, row digest or metadata is uploaded.
+
+reader_offline() requires app=None, rechecks each exact owned volume creation/
+Mountpoint identity, and checks all tracked containers sharing
+either fresh owned fixture volume are stopped. All previous start/stop/tool
+processes use existing creation identity/reaping and group-empty checks.
+No unknown/unowned volume or daemon adversary is claimed supported. Config/key
+mount stays read-only for new IO/reader calls, data directory RW for scratch
+ownership proof and private controlled output. Networknone, readonly rootfs,
+cap-dropALL/no-new-privileges, 2g/2cpu/pids256/lognone controls are unchanged.
+One reader has90s bound; metadata/copy/cmp tools20s; original refused serve20s.
+No additional HTTP/SQL/login, retry, looped scheduling pass, sleep, forced time,
+writer restore, repair/adopt, schema change or Core fallback is introduced.
+
+The caller creates a unique0700 UID10001 output directory and an exclusive0600
+file with shell noclobber O_EXCL semantics BEFORE invoking the unchanged fs::write
+probe. It checks regular type, no symlink, nlink1, UID/GID10001, mode600, inode,
+empty-before/nonempty-after, finite<=8MiB source size. The selected reader's fixed
+env is reset with env-i; the only action is literal snapshot, original valid
+config, unused agreement path and closed output filename. Raw libtest errors are
+bounded/private and never formatted into public exceptions or uploaded logs.
+The body writes to a private file, never stdout. Docker cp WITHOUT --follow-link
+copies only that proven regular, stopped-owner file to a fresh private host
+directory; no row/tar/protocol body is streamed to stdout. Source inode is checked
+again. Host O_NOFOLLOW plus regular/0600/hostowner/nlink1/cap and pre/open/post
+device/inode/UID/GID/mode/size and host-parent checks bind the read. Existing destination pre-
+creation is deliberately not used for Docker cp, which may replace a destination:
+the exclusive PRECREATED proof file is the UID10001 probe output. Its host copy
+is fresh, then descriptor-bound before parsing. Host parent is an exclusively
+created0700 directory and checked across copy; only the controlled daemon copy
+and caller access it. This explicitly trusts the same verified local daemon as
+the existing container copy and ownership contracts; it is not an arbitrary
+untrusted archive extractor. Copy shape/ownership failure refuses, never relaxes
+the private file requirements. No precreated host inode is falsely assumed
+preserved by Docker cp.
+
+Parser rejects duplicates, numbers outside the bounded JSON grammar, oversized
+input/keys/values, unknown top-level/metadata/count fields, non43-character
+base64url row fingerprints, non-int/bool counts, >100000 structure nodes or
+depth32. Unsupported/dirty/repair-required storage, missing rows/key/format,
+output/parse/ownership errors remain fixed finite failures. No partial map is
+accepted; the complete JSON document is decoded. metadata canonical JSON equality
+retains type distinctions; row keysets/fingerprints and typed counts must match.
+
+Each logical_snapshot measures all three physical hashes before and after itself
+and REQUIRES exact equality, before any refusal comparison can use its output.
+The first observation is thus the mandatory reader-alone proof; EVERY later
+observation repeats that protection. A reader-caused physical difference fails
+reader_changed_physical_state with fixed component booleans. No reader output
+or unchanged logical map licenses the observer itself to alter the database.
+
+preservation_before copies complete original config, key and selected candidate
+to a separate owned0700 UID10001 directory, exclusive0600 regular nlink1 files.
+Nothing is emitted to stdout. After the single refused open, fixed cmp-s checks
+literal byte equality of all three inputs, not parsed config fields or hashes
+alone. In addition original SHA config/key comparisons remain required.
+Before/after logical row_hashes/keysets, canonical complete metadata and counts
+must match. Only the redb FILE byte comparison is measured separately after
+reader-alone proof and complete semantic checks. Both flags are reported;
+physical_redb_equal=False is neither assumed nor blanket evidence of correctness.
+The record equality is stronger than the old fixture's sampled online E-P-E
+view, but does not inventory every redb auxiliary/index/allocation table: the
+unchanged Store::inspect/probe checks format and complete decoded RECORDS table.
+No claim of all-page/all-index-byte preservation is added.
+
+direct_refusal retains code2/okfalse and each original marker assertion.
+Its old failure code stays refused_open_changed_store_or_config, now for failed
+exact config/key/candidate or COMPLETE logical preservation. Config refusal
+aggregate and platform-only aggregate receive the same complete oracle; no stale
+physical-only outer assertion is left to contradict the new contract.
+Config candidate generation, field validation, ordered cases, public blocker
+and user/session/grant/credential E-P-E tests are unchanged.
+Immediately around each existing readonly config PLAN and downgrade preflight,
+new physical before/after equality is required; an allowed refused-open physical
+change is not borrowed as permission for PLAN to change files.
+handoff()'s exact physical PLAN and activation original config/key assertions,
+offline_hashes(), plan(), maintenance(), shell(), fixture_gate() and all user/
+HTTP/CLI/security actions are byte/AST unchanged.
+
+Only fixed bools and added/removed/changed0..100000 counts enter a maximum32
+small offline_preservation packet list. No keys/digests/values/URI/path/env/raw
+error/metadata enters that packet. Logical difference fails, not excludes a
+category. No recorded row change exists yet. Private snapshots/baseline key
+copies stay outside evidence; existing full owned-volume/private-root cleanup
+removes them only after owned children/containers/builders are stopped/reaped.
+The new product-code reader/provenance remains in evidence0600. No extra image
+tag, fixture volume, unowned PID or global cache cleanup is added. Existing
+remaining-children/group-empty/identity-refusal checks and alwaysupload stay
+unchanged; inability to clean up remains failure.
+
+### Exact prospective identity and static proof (unexecuted source)
+
+
+```json
+{
+  "baseline_helper": "c5ede6313bf967ab1ab42429e74fb4ca9fcc03c82bd0da2e4433e2b129412837",
+  "candidate_helper": "1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67",
+  "candidate_helper_bytes": 119193,
+  "full_changed_bodies": "7b67c3e6008fc8449378826dc8aca96d02b968b5a293eff8ad36123c8af174b8",
+  "full_changed_bodies_bytes": 31360,
+  "reader_recipe": "ba68e6ccb19b2421b250a75e01fa41844b772a3c892f99777f7d5e375ff8adc7",
+  "reader_recipe_bytes": 2866,
+  "workflow_bytes": 4573,
+  "workflow_unchanged": "9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4",
+  "zero_context_diff": "bc82bf6446fdd99d0e0726e5f915ee0aa560b56ad4a24c402c61abcc56c35628",
+  "zero_context_diff_bytes": 21274
+}
+```
+
+Static AST span result: existing changed methods = __init__, config_refusals, direct_refusal, platform_refusal_fixture.
+New methods = build_reader, logical_snapshot, parse_reader_snapshot, preservation_after, preservation_before, reader_file_identity, reader_io, reader_offline. main adds only build_reader after build_images.
+The other 48 existing Cohort method ASTs are byte/AST protected.
+Zero-context whole-file forward/reversal returned EXACT c5ede631; baseline/workflow/probe hashes checked.
+No source functions, cases, harness, Dockerfile or build recipe were executed.
+
+### Archive A — complete zero-context source diff
+
+```diff
+--- a/scripts/check-local-container-cohort.py
++++ b/scripts/check-local-container-cohort.py
+@@ -255 +255 @@
+-                                   "no raw agreement or credential-row probe",
++                                   "private complete logical snapshot; no raw rows in evidence",
+@@ -1247,0 +1248,310 @@
++    def build_reader(self):
++        """One separate source-pinned release/no-run target; no product image change."""
++        self.phase = "reader-build"
++        self.capacity(30 * GiB)
++        source = self.args.product / "tests/edition_transition_store_probe.rs"
++        require(not source.is_symlink() and source.is_file()
++                and source.stat().st_size == 5722
++                and file_hash(source) == "da486cb8cd7c9d6dfcd78da2704e27688b43a8dd40c7fa58e5b4574f678aed32",
++                "reader_source_identity")
++        inputs = {
++            "Cargo.toml": "58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8",
++            "Cargo.lock": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426",
++            "rust-toolchain.toml": "887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167",
++            "Dockerfile": DOCKERFILE_HASH,
++            ".dockerignore": "4fbd9472316442bdd8b72e268feb1140701e87ac28dd02295c687b6d379eb093",
++            "tests/edition_transition_store_probe.rs": file_hash(source),
++        }
++        for relative, expected in inputs.items():
++            require(file_hash(self.args.product / relative) == expected, "reader_input_identity")
++        context = self.root / "reader-test"
++        context.mkdir(mode=0o700)
++        private_write(context / source.name, source.read_bytes())
++        # Main .dockerignore stays unchanged. This named context contains exactly one pinned file.
++        require(list(context.iterdir()) == [context / source.name], "reader_context_allowlist")
++        stage = b"""
++FROM build AS reader-build
++COPY --from=reader-test /edition_transition_store_probe.rs /build/tests/edition_transition_store_probe.rs
++RUN set -eu; test "$RIAUTH_EDITION" = platform; \
++    for file in /build/target/release/deps/edition_transition_store_probe-*; do \
++      test ! -L "$file"; if test -f "$file" && test -x "$file"; then exit 2; fi; \
++    done; \
++    CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_RELEASE_DEBUG=0 \
++      cargo test --release --locked --no-default-features --features platform,test-support --test edition_transition_store_probe --no-run; \
++    found=0; picked=; \
++    for file in /build/target/release/deps/edition_transition_store_probe-*; do \
++      test ! -L "$file"; \
++      if test -f "$file" && test -x "$file"; then found=$((found + 1)); picked="$file"; fi; \
++    done; \
++    test "$found" -eq 1; mkdir -m 0700 /reader-output; \
++    cp -- "$picked" /reader-output/riauth-store-probe; chmod 0755 /reader-output/riauth-store-probe
++
++FROM scratch AS reader-export
++COPY --from=reader-build /reader-output/riauth-store-probe /riauth-store-probe
++"""
++        recipe = self.root / "Dockerfile.reader"
++        private_write(recipe, self.recipe.read_bytes() + stage)
++        exported = self.root / "reader-export"
++        exported.mkdir(mode=0o700)
++        code, _, _ = self.docker("build-store-reader", "buildx", "build", "--builder", self.builder,
++            "--platform", self.selected["platform"], "--progress", "plain", "--file", recipe,
++            "--target", "reader-export", "--build-context", "reader-test=" + str(context),
++            "--build-arg", "RIAUTH_EDITION=platform",
++            "--output", "type=local,dest=" + str(exported), self.args.product,
++            timeout=1800)
++        require(code == 0 and list(exported.iterdir()) == [exported / "riauth-store-probe"],
++                "reader_build_or_export_failed")
++        binary = exported / "riauth-store-probe"
++        metadata = binary.lstat()
++        require(stat.S_ISREG(metadata.st_mode) and not binary.is_symlink()
++                and metadata.st_nlink == 1 and metadata.st_uid == os.getuid()
++                and 0 < metadata.st_size <= 128 * 1024**2, "reader_artifact_shape")
++        # Public source artifact; only the explicitly bound file is accessible to UID10001.
++        binary.chmod(0o755)
++        self.elf(binary, self.selected["elf_machine"])
++        self.reader = binary
++        self.reader_hash = file_hash(binary)
++        retained = self.evidence / ("local-store-reader-" + self.selected["architecture"] + ".bin")
++        private_write(retained, binary.read_bytes())
++        require(file_hash(retained) == self.reader_hash
++                and stat.S_IMODE(retained.stat().st_mode) == 0o600, "reader_retention_identity")
++        self.receipt["reader"] = {
++            "schema": "riauth.local-snapshot-reader/v1", "source": self.selected["source"],
++            "source_tree": self.selected["tree"], "inputs": inputs,
++            "architecture": self.selected["architecture"], "target": self.selected["target"],
++            "elf_machine": self.selected["elf_machine"], "features": ["platform", "test-support"],
++            "profile": "release", "locked": True, "default_features": False, "build_jobs": 1,
++            "incremental": 0, "debug": 0, "compile_no_run": True,
++            "test_target": "edition_transition_store_probe", "recipe_sha256": file_hash(recipe),
++            "binary_sha256": self.reader_hash, "binary_bytes": metadata.st_size,
++            "retained_artifact": retained.name, "native_transport_member": False,
++            "action": "snapshot", "verified_physical_observations": 0,
++        }
++        for relative, expected in inputs.items():
++            require(file_hash(self.args.product / relative) == expected, "reader_input_changed")
++        require(file_hash(context / source.name) == inputs["tests/edition_transition_store_probe.rs"],
++                "reader_context_changed")
++        self.save()
++
++    def reader_offline(self, fixture):
++        require(fixture["app"] is None, "logical_reader_requires_stopped_owner")
++        volumes = {fixture["config_volume"], fixture["data_volume"]}
++        for volume in volumes:
++            self.confirm_volume(volume)  # Existing owner/CreatedAt/Mountpoint identity.
++        for name in list(self.containers):
++            item = self.confirm_container(name)
++            if any(m["Type"] == "volume" and m["Name"] in volumes for m in item["Mounts"]):
++                require(not item["State"]["Running"], "logical_reader_competing_owned_process")
++
++    def reader_io(self, fixture, script):
++        self.reader_offline(fixture)
++        code, out, _ = self.tool(self.images["platform"], "/bin/sh", ["-ceu", script],
++            mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1]], timeout=20)
++        require(code == 0, "private_reader_io_failed")
++        return out
++
++    def reader_file_identity(self, fixture, filename, empty=False):
++        require(re.fullmatch(r"/data/\.a09-reader-[0-9a-f]{32}/snapshot\.json", filename) is not None,
++                "reader_closed_output_path")
++        out = self.reader_io(fixture, "stat -c '%u:%g:%a:%i:%s:%h:%f' " + filename)
++        fields = out.strip().split(b":")
++        require(len(fields) == 7 and all(re.fullmatch(rb"[0-9]+", f) for f in fields[:6])
++                and re.fullmatch(rb"[0-9a-f]+", fields[6]) is not None, "reader_output_stat")
++        uid, gid, mode, inode, size, links = (int(f) for f in fields[:6])
++        require(uid == gid == 10001 and mode == 600 and inode > 0 and links == 1
++                and stat.S_ISREG(int(fields[6], 16)) and 0 <= size <= LOG_CAP
++                and ((size == 0) if empty else (size > 0)), "private_reader_output_shape")
++        return uid, gid, mode, inode, links
++
++    @staticmethod
++    def parse_reader_snapshot(data):
++        require(0 < len(data) <= LOG_CAP, "logical_snapshot_input_cap")
++
++        def pairs(items):
++            result = {}
++            for key, value in items:
++                require(key not in result, "logical_snapshot_duplicate_key")
++                result[key] = value
++            return result
++
++        def integer(text):
++            require(len(text) <= 20, "logical_snapshot_integer_cap")
++            return int(text)
++
++        def no_number(text):
++            raise Refusal("logical_snapshot_unsupported_number")
++
++        value = json.loads(data, object_pairs_hook=pairs, parse_int=integer,
++                           parse_float=no_number, parse_constant=no_number)
++        pending, visited = [(value, 0)], 0
++        while pending:
++            item, depth = pending.pop()
++            visited += 1
++            require(depth <= 32 and visited <= 100000, "logical_snapshot_structure_cap")
++            if type(item) is dict:
++                require(all(type(key) is str and len(key.encode("utf-8")) <= 4096 for key in item),
++                        "logical_snapshot_key_cap")
++                pending.extend((child, depth + 1) for child in item.values())
++            elif type(item) is list:
++                pending.extend((child, depth + 1) for child in item)
++            elif type(item) is str:
++                require(len(item.encode("utf-8")) <= 1024**2, "logical_snapshot_value_cap")
++            else:
++                require(item is None or type(item) in (int, bool), "logical_snapshot_value_type")
++        require(type(value) is dict and set(value) == {"row_hashes", "metadata", "counts"},
++                "logical_snapshot_schema")
++        rows, metadata, counts = value["row_hashes"], value["metadata"], value["counts"]
++        require(type(rows) is dict and 0 < len(rows) <= 100000
++                and all(type(v) is str and re.fullmatch(r"[A-Za-z0-9_-]{43}", v) for v in rows.values()),
++                "logical_snapshot_rows")
++        require(type(metadata) is dict and set(metadata) ==
++                {"issuer", "node_security", "version_activation", "edition_provenance", "revision"},
++                "logical_snapshot_metadata")
++        require(type(counts) is dict and set(counts) ==
++                {"identities", "credentials", "grants", "revocations"}
++                and all(type(v) is int and 0 <= v <= 1000000 for v in counts.values()),
++                "logical_snapshot_counts")
++        return value
++
++    def logical_snapshot(self, fixture):
++        self.reader_offline(fixture)
++        require(file_hash(self.reader) == self.reader_hash, "reader_binary_changed")
++        before_physical = self.offline_hashes(fixture)
++        directory = "/data/.a09-reader-" + uuid.uuid4().hex
++        filename = directory + "/snapshot.json"
++        self.reader_io(fixture, "umask 077; mkdir -m 0700 " + directory
++                       + "; set -C; : > " + filename)
++        initial = self.reader_file_identity(fixture, filename, empty=True)
++        host_directory = self.root / ("logical-observation-" + uuid.uuid4().hex)
++        host_directory.mkdir(mode=0o700)
++        host_identity = host_directory.stat()
++        destination = host_directory / "snapshot.json"
++        require(not destination.exists() and not destination.is_symlink(), "reader_copy_destination_exists")
++        mount = "type=bind,src=" + str(self.reader) + ",dst=/cohort/riauth-store-probe,readonly"
++        name = self.create_container(self.images["platform"], "snapshot-reader", "/usr/bin/env",
++            ["-i", "PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/tmp", "LANG=C.UTF-8",
++             "LC_ALL=C.UTF-8", "RUST_BACKTRACE=0",
++             "RIAUTH_PROBE_CONFIG=/config/riauth.toml", "RIAUTH_PROBE_ACTION=snapshot",
++             "RIAUTH_PROBE_OUTPUT=" + filename, "RIAUTH_PROBE_AGREEMENT=/tmp/unused-agreement",
++             "/cohort/riauth-store-probe", "--exact", "isolated_store_probe", "--ignored",
++             "--test-threads=1"],
++            mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1], mount])
++        try:
++            result = self.docker("snapshot-reader", "container", "start", "--attach", "--interactive",
++                                 name, timeout=90)
++            state = self.confirm_container(name)["State"]
++            require(not state["Running"] and result[0] == state["ExitCode"] == 0,
++                    "snapshot_reader_failed")
++            # fs::write truncates the caller-created file; it must not replace its inode.
++            require(self.reader_file_identity(fixture, filename) == initial,
++                    "reader_output_identity_changed")
++            # No --follow-link; copy only the known regular file from the exited owner.
++            # Body is file-to-file, never CLI/stdout/public evidence; raw tool errors stay private.
++            code, _, _ = self.docker("copy-logical-snapshot", "container", "cp",
++                                    name + ":" + filename, destination, timeout=20)
++            require(code == 0 and self.reader_file_identity(fixture, filename) == initial,
++                    "reader_output_copy_failed")
++            parent = host_directory.lstat()
++            require(stat.S_ISDIR(parent.st_mode) and parent.st_uid == os.getuid()
++                    and stat.S_IMODE(parent.st_mode) == 0o700
++                    and (parent.st_dev, parent.st_ino) ==
++                    (host_identity.st_dev, host_identity.st_ino), "reader_copy_parent_changed")
++            observed = destination.lstat()
++            require(stat.S_ISREG(observed.st_mode) and observed.st_uid == os.getuid()
++                    and observed.st_gid == os.getgid()
++                    and stat.S_IMODE(observed.st_mode) == 0o600 and observed.st_nlink == 1
++                    and 0 < observed.st_size <= LOG_CAP, "private_reader_copy_shape")
++            fd = os.open(destination, os.O_RDONLY | os.O_NOFOLLOW)
++            try:
++                opened = os.fstat(fd)
++                require((opened.st_dev, opened.st_ino) == (observed.st_dev, observed.st_ino),
++                        "reader_copy_open_identity")
++                data = bytearray()
++                while block := os.read(fd, 65536):
++                    self.check_budget()
++                    data.extend(block)
++                    require(len(data) <= LOG_CAP, "reader_copy_input_cap")
++                final = os.fstat(fd)
++                current = destination.lstat()
++                parent_final = host_directory.lstat()
++                require(all(getattr(parent_final, field) == getattr(parent, field)
++                            for field in ("st_dev", "st_ino", "st_uid", "st_gid", "st_mode")),
++                        "reader_copy_parent_read_identity")
++                require(all(getattr(state, field) == getattr(observed, field)
++                            for state in (final, current) for field in
++                            ("st_dev", "st_ino", "st_uid", "st_gid", "st_mode", "st_nlink", "st_size"))
++                        and len(data) == observed.st_size, "reader_copy_read_identity")
++            finally:
++                os.close(fd)
++            value = self.parse_reader_snapshot(bytes(data))
++        finally:
++            self.remove_container(name, cleanup=True)
++        after_physical = self.offline_hashes(fixture)
++        self.receipt["reader"]["last_physical_observation"] = {
++            "config_equal": before_physical.splitlines()[0] == after_physical.splitlines()[0],
++            "key_equal": before_physical.splitlines()[1] == after_physical.splitlines()[1],
++            "redb_equal": before_physical.splitlines()[2] == after_physical.splitlines()[2],
++        }
++        require(after_physical == before_physical, "reader_changed_physical_state")
++        self.receipt["reader"]["verified_physical_observations"] += 1
++        return value
++
++    def preservation_before(self, fixture, config="riauth.toml"):
++        self.reader_offline(fixture)
++        require(config in {"riauth.toml", "candidate-issuer.toml", "candidate-policy.toml",
++                           "candidate-rate.toml"}, "refusal_closed_config")
++        directory = "/data/.a09-preservation-" + uuid.uuid4().hex
++        # Exact private byte copies; nothing from config/key is emitted to stdout.
++        script = "umask 077; mkdir -m 0700 " + directory + "; set -C; "
++        for source, name in (("/config/riauth.toml", "config"), ("/config/database.key", "key"),
++                             ("/config/" + config, "candidate")):
++            script += "test -f " + source + "; test ! -L " + source + "; cat " + source
++            script += " > " + directory + "/" + name + "; "
++        self.reader_io(fixture, script)
++        modes = self.reader_io(fixture, "stat -c '%u:%g:%a:%h:%F' "
++            + directory + "/config " + directory + "/key " + directory + "/candidate")
++        require(modes.splitlines() == [b"10001:10001:600:1:regular file"] * 3,
++                "private_preservation_copy_modes")
++        logical = self.logical_snapshot(fixture)
++        return {"directory": directory, "config": config, "logical": logical,
++                "physical": self.offline_hashes(fixture)}
++
++    def preservation_after(self, fixture, before, failure):
++        directory, config = before["directory"], before["config"]
++        require(re.fullmatch(r"/data/\.a09-preservation-[0-9a-f]{32}", directory) is not None
++                and config in {"riauth.toml", "candidate-issuer.toml", "candidate-policy.toml",
++                               "candidate-rate.toml"}, "preservation_closed_paths")
++        # No key/config values in transport: only three fixed cmp exit booleans.
++        script = ""
++        for source, name in (("/config/riauth.toml", "config"), ("/config/database.key", "key"),
++                             ("/config/" + config, "candidate")):
++            script += "if cmp -s " + source + " " + directory + "/" + name
++            script += "; then printf '1'; else printf '0'; fi; "
++        exact = self.reader_io(fixture, script)
++        require(re.fullmatch(rb"[01]{3}", exact) is not None, "preservation_cmp_shape")
++        physical = self.offline_hashes(fixture)
++        a, b = before["logical"], self.logical_snapshot(fixture)
++        rows_a, rows_b = a["row_hashes"], b["row_hashes"]
++        added, removed = len(rows_b.keys() - rows_a.keys()), len(rows_a.keys() - rows_b.keys())
++        changed = sum(rows_a[key] != rows_b[key] for key in rows_a.keys() & rows_b.keys())
++        fields_a, fields_b = before["physical"].splitlines(), physical.splitlines()
++        require(len(fields_a) == len(fields_b) == 3
++                and all(re.fullmatch(rb"[0-9a-f]{64}  /(?:config/riauth\.toml|config/database\.key|data/riauth\.redb)", v)
++                        for v in fields_a + fields_b), "preservation_physical_shape")
++        packet = {"schema": "riauth.offline-preservation/v1",
++            "config_equal": exact[0:1] == b"1", "key_equal": exact[1:2] == b"1",
++            "candidate_config_equal": exact[2:3] == b"1",
++            "physical_config_equal": fields_a[0] == fields_b[0],
++            "physical_key_equal": fields_a[1] == fields_b[1],
++            "physical_redb_equal": fields_a[2] == fields_b[2],
++            "row_hashes_equal": rows_a == rows_b,
++            "metadata_equal": json_bytes(a["metadata"]) == json_bytes(b["metadata"]),
++            "counts_equal": a["counts"] == b["counts"],
++            "added": added, "removed": removed, "changed": changed}
++        packets = self.receipt.setdefault("offline_preservation", [])
++        require(len(packets) < 32, "preservation_packet_cap")
++        packets.append(packet)
++        require(exact == b"111" and packet["physical_config_equal"] and packet["physical_key_equal"]
++                and packet["row_hashes_equal"] and packet["metadata_equal"] and packet["counts_equal"],
++                failure)
++
+@@ -1423 +1733 @@
+-        before = self.offline_hashes(fixture)
++        before = self.preservation_before(fixture, config)
+@@ -1431 +1741 @@
+-        require(self.offline_hashes(fixture) == before, "refused_open_changed_store_or_config")
++        self.preservation_after(fixture, before, "refused_open_changed_store_or_config")
+@@ -1451 +1761 @@
+-        before = self.offline_hashes(fixture)
++        before = self.preservation_before(fixture)
+@@ -1475,0 +1786 @@
++            plan_before = self.offline_hashes(fixture)
+@@ -1478,0 +1790 @@
++            require(self.offline_hashes(fixture) == plan_before, "read_only_config_plan_changed_store")
+@@ -1480 +1792 @@
+-            require(self.offline_hashes(fixture) == before, "config_refusal_changed_original")
++            self.preservation_after(fixture, before, "config_refusal_changed_original")
+@@ -1516 +1828 @@
+-        before = self.offline_hashes(fixture)
++        before = self.preservation_before(fixture)
+@@ -1517,0 +1830 @@
++        plan_before = self.offline_hashes(fixture)
+@@ -1525 +1838,2 @@
+-        require(self.offline_hashes(fixture) == before, "platform_refusal_changed_store")
++        require(self.offline_hashes(fixture) == plan_before, "read_only_preflight_changed_store")
++        self.preservation_after(fixture, before, "platform_refusal_changed_store")
+@@ -1702,0 +2017 @@
++        gate.build_reader()
+```
+
+### Archive B — every new/changed function body in full
+
+```python
+    def __init__(self, args):
+        self.selected = closed_platform(os.environ.get("ARCHITECTURE"))
+        self.args = args
+        self.root = args.root.resolve(strict=True)
+        expected_root = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve() / (
+            "riauth-container-" + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"])
+        require(self.root == expected_root, "exclusive_workflow_root")
+        self.evidence = self.root / "evidence"
+        require(self.root.is_dir() and not args.root.is_symlink()
+                and stat.S_IMODE(self.root.stat().st_mode) == 0o700,
+                "private_root_required")
+        self.started = time.monotonic()
+        self.deadline = self.started + 7200
+        self.fixture_deadline = None
+        self.cleanup_deadline = None
+        self.phase = "source"
+        self.owner = "a09-" + uuid.uuid4().hex
+        self.builder = self.owner + "-builder"
+        self.builder_container = "buildx_buildkit_" + self.builder + "0"
+        self.builder_volume = self.builder_container + "_state"
+        self.builder_attempted = False
+        self.daemon_seen = False
+        self.builder_id = None
+        self.builder_volume_record = None
+        self.builder_created_after = None
+        self.builder_instance = None
+        self.containers = {}
+        self.volumes = {}
+        self.images = {}
+        self.tags = {e: "riauth-local/" + self.owner + ":" + e
+                     for e in ("essentials", "platform")}
+        self.active = {}
+        self.lock = threading.Lock()
+        self.stop_event = threading.Event()
+        self.monitor_end = threading.Event()
+        self.resource_error = None
+        self.storage_paths = {"host": pathlib.Path("/"), "private": self.root,
+                              "workspace": pathlib.Path(os.environ["GITHUB_WORKSPACE"]),
+                              "docker_storage": pathlib.Path("/var/lib/docker")}
+        self.home = self.root / "home"
+        self.home.mkdir(mode=0o700)
+        self.config = self.root / "docker-config"
+        self.config.mkdir(mode=0o700)
+        private_write(self.config / "config.json", b"{}\n")
+        # Explicit allowlist: no CI transport token or operator Docker/riAuth env.
+        self.child_env = {"PATH": os.environ["PATH"], "HOME": str(self.home),
+                          "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
+                          "DOCKER_HOST": "unix:///var/run/docker.sock",
+                          "DOCKER_CONFIG": str(self.config),
+                          "BUILDX_CONFIG": str(self.config / "buildx")}
+        self.receipt = {"schema": "riauth.local-container-cohort/v1", "project": PROJECT,
+                        "repository": REPOSITORY, "official_release": False,
+                        "shared_full_gate": "not_run", "source": self.selected["source"],
+                        "source_tree": self.selected["tree"], "root_review": self.selected["review"],
+                        "architecture": self.selected["architecture"],
+                        "steps": [], "checks": [], "cleanup_errors": [],
+                        "images": {}, "resources": {}, "result": "not_run",
+                        "limits": [self.selected["cohort_limit"],
+                                   "resource-only Dockerfile variant",
+                                   "format3 enforcement through pinned public entrypoints",
+                                   "private complete logical snapshot; no raw rows in evidence",
+                                   "b619 native notices were later found stale; retained, not regenerated",
+                                   "sampling is not a hard quota",
+                                   "no registry/tag/release/tenant/device claim"]}
+        self.receipt.update(owner=self.owner, expected_builder={"name": self.builder,
+            "container": self.builder_container, "volume": self.builder_volume},
+            planned_image_tags=self.tags, creation_records={"containers": {}, "volumes": {}},
+            uid_probes=[])
+        self.receipt["github"] = {k: os.environ.get(k) for k in (
+            "GITHUB_REPOSITORY", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB",
+            "GITHUB_WORKFLOW_REF", "GITHUB_WORKFLOW_SHA", "GITHUB_SHA", "GITHUB_REF",
+            "GITHUB_EVENT_NAME")}
+        self.capacity(30 * GiB)
+        self.monitor = threading.Thread(target=self.sample_loop, daemon=True)
+        self.monitor.start()
+
+
+    def build_reader(self):
+        """One separate source-pinned release/no-run target; no product image change."""
+        self.phase = "reader-build"
+        self.capacity(30 * GiB)
+        source = self.args.product / "tests/edition_transition_store_probe.rs"
+        require(not source.is_symlink() and source.is_file()
+                and source.stat().st_size == 5722
+                and file_hash(source) == "da486cb8cd7c9d6dfcd78da2704e27688b43a8dd40c7fa58e5b4574f678aed32",
+                "reader_source_identity")
+        inputs = {
+            "Cargo.toml": "58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8",
+            "Cargo.lock": "b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426",
+            "rust-toolchain.toml": "887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167",
+            "Dockerfile": DOCKERFILE_HASH,
+            ".dockerignore": "4fbd9472316442bdd8b72e268feb1140701e87ac28dd02295c687b6d379eb093",
+            "tests/edition_transition_store_probe.rs": file_hash(source),
+        }
+        for relative, expected in inputs.items():
+            require(file_hash(self.args.product / relative) == expected, "reader_input_identity")
+        context = self.root / "reader-test"
+        context.mkdir(mode=0o700)
+        private_write(context / source.name, source.read_bytes())
+        # Main .dockerignore stays unchanged. This named context contains exactly one pinned file.
+        require(list(context.iterdir()) == [context / source.name], "reader_context_allowlist")
+        stage = b"""
+FROM build AS reader-build
+COPY --from=reader-test /edition_transition_store_probe.rs /build/tests/edition_transition_store_probe.rs
+RUN set -eu; test "$RIAUTH_EDITION" = platform; \
+    for file in /build/target/release/deps/edition_transition_store_probe-*; do \
+      test ! -L "$file"; if test -f "$file" && test -x "$file"; then exit 2; fi; \
+    done; \
+    CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_RELEASE_DEBUG=0 \
+      cargo test --release --locked --no-default-features --features platform,test-support --test edition_transition_store_probe --no-run; \
+    found=0; picked=; \
+    for file in /build/target/release/deps/edition_transition_store_probe-*; do \
+      test ! -L "$file"; \
+      if test -f "$file" && test -x "$file"; then found=$((found + 1)); picked="$file"; fi; \
+    done; \
+    test "$found" -eq 1; mkdir -m 0700 /reader-output; \
+    cp -- "$picked" /reader-output/riauth-store-probe; chmod 0755 /reader-output/riauth-store-probe
+
+FROM scratch AS reader-export
+COPY --from=reader-build /reader-output/riauth-store-probe /riauth-store-probe
+"""
+        recipe = self.root / "Dockerfile.reader"
+        private_write(recipe, self.recipe.read_bytes() + stage)
+        exported = self.root / "reader-export"
+        exported.mkdir(mode=0o700)
+        code, _, _ = self.docker("build-store-reader", "buildx", "build", "--builder", self.builder,
+            "--platform", self.selected["platform"], "--progress", "plain", "--file", recipe,
+            "--target", "reader-export", "--build-context", "reader-test=" + str(context),
+            "--build-arg", "RIAUTH_EDITION=platform",
+            "--output", "type=local,dest=" + str(exported), self.args.product,
+            timeout=1800)
+        require(code == 0 and list(exported.iterdir()) == [exported / "riauth-store-probe"],
+                "reader_build_or_export_failed")
+        binary = exported / "riauth-store-probe"
+        metadata = binary.lstat()
+        require(stat.S_ISREG(metadata.st_mode) and not binary.is_symlink()
+                and metadata.st_nlink == 1 and metadata.st_uid == os.getuid()
+                and 0 < metadata.st_size <= 128 * 1024**2, "reader_artifact_shape")
+        # Public source artifact; only the explicitly bound file is accessible to UID10001.
+        binary.chmod(0o755)
+        self.elf(binary, self.selected["elf_machine"])
+        self.reader = binary
+        self.reader_hash = file_hash(binary)
+        retained = self.evidence / ("local-store-reader-" + self.selected["architecture"] + ".bin")
+        private_write(retained, binary.read_bytes())
+        require(file_hash(retained) == self.reader_hash
+                and stat.S_IMODE(retained.stat().st_mode) == 0o600, "reader_retention_identity")
+        self.receipt["reader"] = {
+            "schema": "riauth.local-snapshot-reader/v1", "source": self.selected["source"],
+            "source_tree": self.selected["tree"], "inputs": inputs,
+            "architecture": self.selected["architecture"], "target": self.selected["target"],
+            "elf_machine": self.selected["elf_machine"], "features": ["platform", "test-support"],
+            "profile": "release", "locked": True, "default_features": False, "build_jobs": 1,
+            "incremental": 0, "debug": 0, "compile_no_run": True,
+            "test_target": "edition_transition_store_probe", "recipe_sha256": file_hash(recipe),
+            "binary_sha256": self.reader_hash, "binary_bytes": metadata.st_size,
+            "retained_artifact": retained.name, "native_transport_member": False,
+            "action": "snapshot", "verified_physical_observations": 0,
+        }
+        for relative, expected in inputs.items():
+            require(file_hash(self.args.product / relative) == expected, "reader_input_changed")
+        require(file_hash(context / source.name) == inputs["tests/edition_transition_store_probe.rs"],
+                "reader_context_changed")
+        self.save()
+
+
+    def config_refusals(self, fixture):
+        original = fixture["original_config"]
+        parsed = tomllib.loads(original.decode())
+        specifications = (
+            ("issuer", "meta/issuer", "Configured issuer does not match the initialized instance"),
+            ("policy", "meta/node_security", "Configured token lifetimes or password policy do not match the initialized instance"),
+            ("rate", "meta/node_security", "Configured HTTP rate limit for login"),
+        )
+        before = self.preservation_before(fixture)
+        for name, resource, reason in specifications:
+            text = original.decode()
+            wanted = json.loads(json.dumps(parsed))
+            if name == "issuer":
+                wanted["issuer"] = fixture["base"] + "/different"
+                text, count = re.subn(r'(?m)^issuer = "[^"\n]+"$',
+                    "issuer = " + json.dumps(wanted["issuer"]), text)
+            elif name == "policy":
+                wanted["session_ttl"] += 1
+                text, count = re.subn(r"(?m)^session_ttl = [0-9]+$",
+                    "session_ttl = " + str(wanted["session_ttl"]), text)
+            else:
+                wanted.setdefault("rate_limits", {})["login"] = RATE_DEFAULTS["login"] + 1
+                require("login" not in parsed.get("rate_limits", {}), "fresh_default_rate_expected")
+                if "rate_limits" not in parsed:
+                    text += "\n[rate_limits]\nlogin = 21\n"
+                    count = 1  # Empty maps are omitted by Config serialization.
+                else:
+                    text, count = re.subn(r"(?m)^\[rate_limits\]$", "[rate_limits]\nlogin = 21", text)
+            require(count == 1 and tomllib.loads(text) == wanted, "candidate_exact_one_field")
+            filename = "candidate-" + name + ".toml"
+            # Closed filenames above; exclusive creation as the same unprivileged owner.
+            self.shell(fixture, "umask 077; set -C; cat > /config/" + filename,
+                       input_data=text.encode())
+            plan_before = self.offline_hashes(fixture)
+            report = self.plan(fixture, "platform", config=filename, expected=5)
+            require(any(b["resource"] == resource and reason in b["reason"] for b in report["blockers"]),
+                    "specific_config_plan_blocker")
+            require(self.offline_hashes(fixture) == plan_before, "read_only_config_plan_changed_store")
+            self.direct_refusal(fixture, "essentials", config=filename, marker=reason)
+            self.preservation_after(fixture, before, "config_refusal_changed_original")
+        require(self.shell(fixture, "cat /config/riauth.toml") == original, "original_config_preserved")
+
+
+    def direct_refusal(self, fixture, edition, config="riauth.toml", marker=None):
+        require(fixture["app"] is None, "direct_refusal_requires_stopped_writer")
+        before = self.preservation_before(fixture, config)
+        code, out, _ = self.tool(self.images[edition], "/usr/local/bin/riauth",
+            ["--config", "/config/" + config, "--json", "serve"],
+            mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1]], timeout=20)
+        envelope = json.loads(out)
+        require(code == 2 and envelope["ok"] is False, "direct_open_refusal")
+        if marker is not None:
+            require(marker in envelope["error"]["message"], "specific_direct_refusal")
+        self.preservation_after(fixture, before, "refused_open_changed_store_or_config")
+
+
+    def logical_snapshot(self, fixture):
+        self.reader_offline(fixture)
+        require(file_hash(self.reader) == self.reader_hash, "reader_binary_changed")
+        before_physical = self.offline_hashes(fixture)
+        directory = "/data/.a09-reader-" + uuid.uuid4().hex
+        filename = directory + "/snapshot.json"
+        self.reader_io(fixture, "umask 077; mkdir -m 0700 " + directory
+                       + "; set -C; : > " + filename)
+        initial = self.reader_file_identity(fixture, filename, empty=True)
+        host_directory = self.root / ("logical-observation-" + uuid.uuid4().hex)
+        host_directory.mkdir(mode=0o700)
+        host_identity = host_directory.stat()
+        destination = host_directory / "snapshot.json"
+        require(not destination.exists() and not destination.is_symlink(), "reader_copy_destination_exists")
+        mount = "type=bind,src=" + str(self.reader) + ",dst=/cohort/riauth-store-probe,readonly"
+        name = self.create_container(self.images["platform"], "snapshot-reader", "/usr/bin/env",
+            ["-i", "PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/tmp", "LANG=C.UTF-8",
+             "LC_ALL=C.UTF-8", "RUST_BACKTRACE=0",
+             "RIAUTH_PROBE_CONFIG=/config/riauth.toml", "RIAUTH_PROBE_ACTION=snapshot",
+             "RIAUTH_PROBE_OUTPUT=" + filename, "RIAUTH_PROBE_AGREEMENT=/tmp/unused-agreement",
+             "/cohort/riauth-store-probe", "--exact", "isolated_store_probe", "--ignored",
+             "--test-threads=1"],
+            mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1], mount])
+        try:
+            result = self.docker("snapshot-reader", "container", "start", "--attach", "--interactive",
+                                 name, timeout=90)
+            state = self.confirm_container(name)["State"]
+            require(not state["Running"] and result[0] == state["ExitCode"] == 0,
+                    "snapshot_reader_failed")
+            # fs::write truncates the caller-created file; it must not replace its inode.
+            require(self.reader_file_identity(fixture, filename) == initial,
+                    "reader_output_identity_changed")
+            # No --follow-link; copy only the known regular file from the exited owner.
+            # Body is file-to-file, never CLI/stdout/public evidence; raw tool errors stay private.
+            code, _, _ = self.docker("copy-logical-snapshot", "container", "cp",
+                                    name + ":" + filename, destination, timeout=20)
+            require(code == 0 and self.reader_file_identity(fixture, filename) == initial,
+                    "reader_output_copy_failed")
+            parent = host_directory.lstat()
+            require(stat.S_ISDIR(parent.st_mode) and parent.st_uid == os.getuid()
+                    and stat.S_IMODE(parent.st_mode) == 0o700
+                    and (parent.st_dev, parent.st_ino) ==
+                    (host_identity.st_dev, host_identity.st_ino), "reader_copy_parent_changed")
+            observed = destination.lstat()
+            require(stat.S_ISREG(observed.st_mode) and observed.st_uid == os.getuid()
+                    and observed.st_gid == os.getgid()
+                    and stat.S_IMODE(observed.st_mode) == 0o600 and observed.st_nlink == 1
+                    and 0 < observed.st_size <= LOG_CAP, "private_reader_copy_shape")
+            fd = os.open(destination, os.O_RDONLY | os.O_NOFOLLOW)
+            try:
+                opened = os.fstat(fd)
+                require((opened.st_dev, opened.st_ino) == (observed.st_dev, observed.st_ino),
+                        "reader_copy_open_identity")
+                data = bytearray()
+                while block := os.read(fd, 65536):
+                    self.check_budget()
+                    data.extend(block)
+                    require(len(data) <= LOG_CAP, "reader_copy_input_cap")
+                final = os.fstat(fd)
+                current = destination.lstat()
+                parent_final = host_directory.lstat()
+                require(all(getattr(parent_final, field) == getattr(parent, field)
+                            for field in ("st_dev", "st_ino", "st_uid", "st_gid", "st_mode")),
+                        "reader_copy_parent_read_identity")
+                require(all(getattr(state, field) == getattr(observed, field)
+                            for state in (final, current) for field in
+                            ("st_dev", "st_ino", "st_uid", "st_gid", "st_mode", "st_nlink", "st_size"))
+                        and len(data) == observed.st_size, "reader_copy_read_identity")
+            finally:
+                os.close(fd)
+            value = self.parse_reader_snapshot(bytes(data))
+        finally:
+            self.remove_container(name, cleanup=True)
+        after_physical = self.offline_hashes(fixture)
+        self.receipt["reader"]["last_physical_observation"] = {
+            "config_equal": before_physical.splitlines()[0] == after_physical.splitlines()[0],
+            "key_equal": before_physical.splitlines()[1] == after_physical.splitlines()[1],
+            "redb_equal": before_physical.splitlines()[2] == after_physical.splitlines()[2],
+        }
+        require(after_physical == before_physical, "reader_changed_physical_state")
+        self.receipt["reader"]["verified_physical_observations"] += 1
+        return value
+
+
+    @staticmethod
+    def parse_reader_snapshot(data):
+        require(0 < len(data) <= LOG_CAP, "logical_snapshot_input_cap")
+
+        def pairs(items):
+            result = {}
+            for key, value in items:
+                require(key not in result, "logical_snapshot_duplicate_key")
+                result[key] = value
+            return result
+
+        def integer(text):
+            require(len(text) <= 20, "logical_snapshot_integer_cap")
+            return int(text)
+
+        def no_number(text):
+            raise Refusal("logical_snapshot_unsupported_number")
+
+        value = json.loads(data, object_pairs_hook=pairs, parse_int=integer,
+                           parse_float=no_number, parse_constant=no_number)
+        pending, visited = [(value, 0)], 0
+        while pending:
+            item, depth = pending.pop()
+            visited += 1
+            require(depth <= 32 and visited <= 100000, "logical_snapshot_structure_cap")
+            if type(item) is dict:
+                require(all(type(key) is str and len(key.encode("utf-8")) <= 4096 for key in item),
+                        "logical_snapshot_key_cap")
+                pending.extend((child, depth + 1) for child in item.values())
+            elif type(item) is list:
+                pending.extend((child, depth + 1) for child in item)
+            elif type(item) is str:
+                require(len(item.encode("utf-8")) <= 1024**2, "logical_snapshot_value_cap")
+            else:
+                require(item is None or type(item) in (int, bool), "logical_snapshot_value_type")
+        require(type(value) is dict and set(value) == {"row_hashes", "metadata", "counts"},
+                "logical_snapshot_schema")
+        rows, metadata, counts = value["row_hashes"], value["metadata"], value["counts"]
+        require(type(rows) is dict and 0 < len(rows) <= 100000
+                and all(type(v) is str and re.fullmatch(r"[A-Za-z0-9_-]{43}", v) for v in rows.values()),
+                "logical_snapshot_rows")
+        require(type(metadata) is dict and set(metadata) ==
+                {"issuer", "node_security", "version_activation", "edition_provenance", "revision"},
+                "logical_snapshot_metadata")
+        require(type(counts) is dict and set(counts) ==
+                {"identities", "credentials", "grants", "revocations"}
+                and all(type(v) is int and 0 <= v <= 1000000 for v in counts.values()),
+                "logical_snapshot_counts")
+        return value
+
+
+    def platform_refusal_fixture(self):
+        fixture = self.new_fixture("platform-state", "platform")
+        self.start_app(fixture, "platform")
+        session = self.root / "platform-state-admin.json"
+        try:
+            self.login(fixture, session, "admin", fixture["password"])
+            bearer = self.token(fixture, session)
+            status, body, _ = self.http(fixture["base"] + "/api/state/revision", token=bearer)
+            require(status == 200, "agent_revision_status")
+            revision = json.loads(body)["revision"]
+            status, _, _ = self.http(fixture["base"] + "/api/agents", method="POST", token=bearer,
+                data={"id": "a09-platform-state", "ttl": 3600,
+                      "permissions": [{"action": "user.offboard", "resource": "*"}]},
+                extra_headers={"If-Match": '"' + str(revision) + '"',
+                               "Idempotency-Key": "a09-agent-" + uuid.uuid4().hex})
+            require(status == 200, "platform_agent_status")
+        finally:
+            self.stop_app(fixture)
+        before = self.preservation_before(fixture)
+        self.direct_refusal(fixture, "essentials", marker="Platform")
+        plan_before = self.offline_hashes(fixture)
+        code, out, _ = self.maintenance(fixture, "platform", ["transition-preflight", "--target", "essentials"])
+        envelope = json.loads(out)
+        require(code == 5 and envelope["ok"] is False and envelope["data"]["ready"] is False
+                and any(b["resource"].startswith("agents/") and "Platform build" in b["reason"]
+                        for b in envelope["data"]["blockers"])
+                and any(b["resource"] == "meta/edition_provenance" for b in envelope["data"]["blockers"]),
+                "platform_state_downgrade_blockers")
+        require(self.offline_hashes(fixture) == plan_before, "read_only_preflight_changed_store")
+        self.preservation_after(fixture, before, "platform_refusal_changed_store")
+
+
+    def preservation_after(self, fixture, before, failure):
+        directory, config = before["directory"], before["config"]
+        require(re.fullmatch(r"/data/\.a09-preservation-[0-9a-f]{32}", directory) is not None
+                and config in {"riauth.toml", "candidate-issuer.toml", "candidate-policy.toml",
+                               "candidate-rate.toml"}, "preservation_closed_paths")
+        # No key/config values in transport: only three fixed cmp exit booleans.
+        script = ""
+        for source, name in (("/config/riauth.toml", "config"), ("/config/database.key", "key"),
+                             ("/config/" + config, "candidate")):
+            script += "if cmp -s " + source + " " + directory + "/" + name
+            script += "; then printf '1'; else printf '0'; fi; "
+        exact = self.reader_io(fixture, script)
+        require(re.fullmatch(rb"[01]{3}", exact) is not None, "preservation_cmp_shape")
+        physical = self.offline_hashes(fixture)
+        a, b = before["logical"], self.logical_snapshot(fixture)
+        rows_a, rows_b = a["row_hashes"], b["row_hashes"]
+        added, removed = len(rows_b.keys() - rows_a.keys()), len(rows_a.keys() - rows_b.keys())
+        changed = sum(rows_a[key] != rows_b[key] for key in rows_a.keys() & rows_b.keys())
+        fields_a, fields_b = before["physical"].splitlines(), physical.splitlines()
+        require(len(fields_a) == len(fields_b) == 3
+                and all(re.fullmatch(rb"[0-9a-f]{64}  /(?:config/riauth\.toml|config/database\.key|data/riauth\.redb)", v)
+                        for v in fields_a + fields_b), "preservation_physical_shape")
+        packet = {"schema": "riauth.offline-preservation/v1",
+            "config_equal": exact[0:1] == b"1", "key_equal": exact[1:2] == b"1",
+            "candidate_config_equal": exact[2:3] == b"1",
+            "physical_config_equal": fields_a[0] == fields_b[0],
+            "physical_key_equal": fields_a[1] == fields_b[1],
+            "physical_redb_equal": fields_a[2] == fields_b[2],
+            "row_hashes_equal": rows_a == rows_b,
+            "metadata_equal": json_bytes(a["metadata"]) == json_bytes(b["metadata"]),
+            "counts_equal": a["counts"] == b["counts"],
+            "added": added, "removed": removed, "changed": changed}
+        packets = self.receipt.setdefault("offline_preservation", [])
+        require(len(packets) < 32, "preservation_packet_cap")
+        packets.append(packet)
+        require(exact == b"111" and packet["physical_config_equal"] and packet["physical_key_equal"]
+                and packet["row_hashes_equal"] and packet["metadata_equal"] and packet["counts_equal"],
+                failure)
+
+
+    def preservation_before(self, fixture, config="riauth.toml"):
+        self.reader_offline(fixture)
+        require(config in {"riauth.toml", "candidate-issuer.toml", "candidate-policy.toml",
+                           "candidate-rate.toml"}, "refusal_closed_config")
+        directory = "/data/.a09-preservation-" + uuid.uuid4().hex
+        # Exact private byte copies; nothing from config/key is emitted to stdout.
+        script = "umask 077; mkdir -m 0700 " + directory + "; set -C; "
+        for source, name in (("/config/riauth.toml", "config"), ("/config/database.key", "key"),
+                             ("/config/" + config, "candidate")):
+            script += "test -f " + source + "; test ! -L " + source + "; cat " + source
+            script += " > " + directory + "/" + name + "; "
+        self.reader_io(fixture, script)
+        modes = self.reader_io(fixture, "stat -c '%u:%g:%a:%h:%F' "
+            + directory + "/config " + directory + "/key " + directory + "/candidate")
+        require(modes.splitlines() == [b"10001:10001:600:1:regular file"] * 3,
+                "private_preservation_copy_modes")
+        logical = self.logical_snapshot(fixture)
+        return {"directory": directory, "config": config, "logical": logical,
+                "physical": self.offline_hashes(fixture)}
+
+
+    def reader_file_identity(self, fixture, filename, empty=False):
+        require(re.fullmatch(r"/data/\.a09-reader-[0-9a-f]{32}/snapshot\.json", filename) is not None,
+                "reader_closed_output_path")
+        out = self.reader_io(fixture, "stat -c '%u:%g:%a:%i:%s:%h:%f' " + filename)
+        fields = out.strip().split(b":")
+        require(len(fields) == 7 and all(re.fullmatch(rb"[0-9]+", f) for f in fields[:6])
+                and re.fullmatch(rb"[0-9a-f]+", fields[6]) is not None, "reader_output_stat")
+        uid, gid, mode, inode, size, links = (int(f) for f in fields[:6])
+        require(uid == gid == 10001 and mode == 600 and inode > 0 and links == 1
+                and stat.S_ISREG(int(fields[6], 16)) and 0 <= size <= LOG_CAP
+                and ((size == 0) if empty else (size > 0)), "private_reader_output_shape")
+        return uid, gid, mode, inode, links
+
+
+    def reader_io(self, fixture, script):
+        self.reader_offline(fixture)
+        code, out, _ = self.tool(self.images["platform"], "/bin/sh", ["-ceu", script],
+            mounts=[fixture["mounts"][0] + ",readonly", fixture["mounts"][1]], timeout=20)
+        require(code == 0, "private_reader_io_failed")
+        return out
+
+
+    def reader_offline(self, fixture):
+        require(fixture["app"] is None, "logical_reader_requires_stopped_owner")
+        volumes = {fixture["config_volume"], fixture["data_volume"]}
+        for volume in volumes:
+            self.confirm_volume(volume)  # Existing owner/CreatedAt/Mountpoint identity.
+        for name in list(self.containers):
+            item = self.confirm_container(name)
+            if any(m["Type"] == "volume" and m["Name"] in volumes for m in item["Mounts"]):
+                require(not item["State"]["Running"], "logical_reader_competing_owned_process")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("controller", "product", "review", "root"):
+        parser.add_argument("--" + name, type=pathlib.Path, required=True)
+    args = parser.parse_args()
+    os.umask(0o077)
+    gate = None
+    failure = None
+
+    def interrupted(signum, frame):
+        raise Refusal("controller_signal")
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, interrupted)
+    try:
+        gate = Cohort(args)
+        gate.source_check()
+        gate.native_transport()
+        gate.daemon_setup()
+        gate.build_images()
+        gate.build_reader()
+        gate.fixture_gate()
+        # Recheck committed source and manifests after every product operation.
+        require(gate.git(args.product, "status", "--porcelain") == b"", "product_checkout_changed")
+        for relative, expected in gate.native["inputs"].items():
+            require(file_hash(args.product / relative) == expected, "product_input_changed")
+        gate.receipt["result"] = "passed"
+    except BaseException as error:
+        # Never format an external exception: it could contain a signed URL/token/reply.
+        failure = str(error) if isinstance(error, Refusal) else "unexpected_" + type(error).__name__
+        if gate is not None:
+            gate.receipt.update(result="failed_or_refused", failure=failure, failed_phase=gate.phase)
+    finally:
+        if gate is not None:
+            try:
+                gate.cleanup()
+            except BaseException:
+                gate.receipt["cleanup_errors"].append("private_cleanup_failed")
+                failure = failure or "private_cleanup_failed"
+            if gate.receipt["cleanup_errors"]:
+                gate.receipt["result"] = "failed_or_refused"
+                failure = failure or "owned_cleanup_failed"
+            try:
+                gate.save()
+            except BaseException:
+                failure = failure or "receipt_write_failed"
+    print(json.dumps({"result": "failed_or_refused" if failure else "passed",
+                      "failure": failure, "official_release": False}))
+    return 1 if failure else 0
+```
+
+### Archive C — complete derived reader Dockerfile (unexecuted)
+
+```dockerfile
+FROM rust:1.98.1-trixie@sha256:a8a5f0a1e5fe7dfe1d352591e4a1c7dd2c08fd70475cae872cf3458ba0df0546 AS build
+RUN apt-get update && apt-get install -y --no-install-recommends cmake pkg-config libssl-dev clang && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY src ./src
+COPY assets/riauth-mark.svg ./assets/riauth-mark.svg
+ARG RIAUTH_EDITION=essentials
+RUN case "$RIAUTH_EDITION" in essentials|platform) ;; *) exit 2;; esac \
+    && CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_RELEASE_DEBUG=0 cargo build --release --locked --no-default-features --features "$RIAUTH_EDITION" --bin riauth
+
+FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+LABEL org.opencontainers.image.source="https://github.com/Rhein-Industries/riAuth"
+ARG RIAUTH_EDITION=essentials
+ARG RIAUTH_COMMIT
+LABEL org.riauth.edition="$RIAUTH_EDITION"
+LABEL org.opencontainers.image.revision="$RIAUTH_COMMIT"
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3t64 && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 riauth && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin riauth \
+    && install -d -o 10001 -g 10001 -m 0700 /data
+COPY --from=build /build/target/release/riauth /usr/local/bin/riauth
+COPY LICENSE /usr/share/doc/riauth/LICENSE
+COPY THIRD_PARTY_NOTICES.md /usr/share/doc/riauth/THIRD_PARTY_NOTICES.md
+USER 10001:10001
+WORKDIR /data
+VOLUME ["/data"]
+EXPOSE 9000
+ENTRYPOINT ["riauth", "--config", "/data/riauth.toml"]
+CMD ["serve"]
+
+FROM build AS reader-build
+COPY --from=reader-test /edition_transition_store_probe.rs /build/tests/edition_transition_store_probe.rs
+RUN set -eu; test "$RIAUTH_EDITION" = platform;     for file in /build/target/release/deps/edition_transition_store_probe-*; do       test ! -L "$file"; if test -f "$file" && test -x "$file"; then exit 2; fi;     done;     CARGO_HOME=/build/cargo-home CARGO_TARGET_DIR=/build/target CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_PROFILE_RELEASE_DEBUG=0       cargo test --release --locked --no-default-features --features platform,test-support --test edition_transition_store_probe --no-run;     found=0; picked=;     for file in /build/target/release/deps/edition_transition_store_probe-*; do       test ! -L "$file";       if test -f "$file" && test -x "$file"; then found=$((found + 1)); picked="$file"; fi;     done;     test "$found" -eq 1; mkdir -m 0700 /reader-output;     cp -- "$picked" /reader-output/riauth-store-probe; chmod 0755 /reader-output/riauth-store-probe
+
+FROM scratch AS reader-export
+COPY --from=reader-build /reader-output/riauth-store-probe /riauth-store-probe
+```
+
+### Archive D — unchanged complete accepted probe (only snapshot is invoked)
+
+```rust
+//! Disposable native transition probe. Run only against an isolated test store.
+//! It uses the product Store API so encrypted values are decoded by riAuth.
+use riauth::{config::Config, crypto, store::Store};
+use serde_json::{Value, json};
+use std::{collections::BTreeMap, env, fs, path::PathBuf};
+
+fn path(name: &str) -> PathBuf {
+    env::var_os(name)
+        .map(Into::into)
+        .expect("probe path is required")
+}
+
+#[test]
+#[ignore = "disposable native evidence harness"]
+fn isolated_store_probe() {
+    let config = Config::load(&path("RIAUTH_PROBE_CONFIG")).unwrap();
+    let action = env::var("RIAUTH_PROBE_ACTION").unwrap();
+    let agreement_file = path("RIAUTH_PROBE_AGREEMENT");
+    let output = match action.as_str() {
+        "snapshot" => {
+            let snapshot = Store::inspect(&config, |_, tx| {
+                Ok(tx.expect("initialized store").snapshot().unwrap())
+            })
+            .unwrap();
+            let hashes: BTreeMap<_, _> = snapshot
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.clone(),
+                        crypto::digest(&serde_json::to_string(value).unwrap()),
+                    )
+                })
+                .collect();
+            json!({
+                "row_hashes": hashes,
+                "metadata": {
+                    "issuer": snapshot.get("meta/issuer"),
+                    "node_security": snapshot.get("meta/node_security"),
+                    "version_activation": snapshot.get("meta/version_activation"),
+                    "edition_provenance": snapshot.get("meta/edition_provenance"),
+                    "revision": snapshot.get("meta/revision"),
+                },
+                "counts": {
+                    "identities": snapshot.keys().filter(|key| key.starts_with("users/")).count(),
+                    "credentials": snapshot.keys().filter(|key| key.starts_with("credential_versions/") || key.starts_with("password_history/") || key.starts_with("meta/keys")).count(),
+                    "grants": snapshot.keys().filter(|key| key.starts_with("human_grants/")).count(),
+                    "revocations": snapshot.iter().filter(|(key, value)| key.starts_with("sessions/") && value["revoked"] == true).count(),
+                },
+            })
+        }
+        "fixture" => {
+            let store = Store::from_config(&config).unwrap();
+            let agreement: Value = store.get("meta", "node_security").unwrap().unwrap();
+            fs::write(&agreement_file, serde_json::to_vec(&agreement).unwrap()).unwrap();
+            let admin_id = store.list::<Value>("users").unwrap()[0].0.clone();
+            let sessions = store.list::<Value>("sessions").unwrap();
+            assert!(!sessions.is_empty(), "log in before fixture seeding");
+            store
+                .write(|tx| {
+                    tx.put(
+                        "human_grants",
+                        &admin_id,
+                        &json!([{"role":"auditor","scope":"audit/events","target_id":"events"}]),
+                    )?;
+                    let (id, mut session) = sessions[0].clone();
+                    session["revoked"] = json!(true);
+                    tx.put("sessions", &id, &session)
+                })
+                .unwrap();
+            json!({"fixture": "valid_auditor_grant_and_revoked_session"})
+        }
+        "restore-agreement" | "missing-agreement" | "old-agreement" | "new-agreement"
+        | "shared-drift" | "store-drift" | "remove-drift" => {
+            let store = Store::from_config(&config).unwrap();
+            store
+                .write(|tx| {
+                    match action.as_str() {
+                        "restore-agreement" => {
+                            let original: Value =
+                                serde_json::from_slice(&fs::read(&agreement_file).unwrap())
+                                    .unwrap();
+                            tx.put("meta", "node_security", &original)?;
+                        }
+                        "missing-agreement" => tx.delete("meta", "node_security")?,
+                        "old-agreement" | "new-agreement" | "shared-drift" => {
+                            let mut changed: Value =
+                                serde_json::from_slice(&fs::read(&agreement_file).unwrap())
+                                    .unwrap();
+                            match action.as_str() {
+                                "old-agreement" => changed["format"] = json!(1),
+                                "new-agreement" => changed["format"] = json!(4),
+                                _ => {
+                                    let active =
+                                        changed["active_capabilities"].as_array_mut().unwrap();
+                                    let before = active.len();
+                                    active.retain(|capability| capability != "identity.passkeys");
+                                    assert_eq!(active.len() + 1, before);
+                                }
+                            }
+                            tx.put("meta", "node_security", &changed)?;
+                        }
+                        "store-drift" => tx.put("meta", "plan_probe", &json!({"changed":true}))?,
+                        "remove-drift" => tx.delete("meta", "plan_probe")?,
+                        _ => unreachable!(),
+                    }
+                    Ok(())
+                })
+                .unwrap();
+            json!({"mutation": action})
+        }
+        _ => panic!("unsupported probe action"),
+    };
+    fs::write(
+        path("RIAUTH_PROBE_OUTPUT"),
+        serde_json::to_vec_pretty(&output).unwrap(),
+    )
+    .unwrap();
+}
+```
+
+### Workflow disposition — no diff, current immutable full body
+
+```yaml
+name: Check LOCAL native Linux container cohort
+
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Native Linux architecture for one LOCAL container cohort
+        required: true
+        type: choice
+        default: x86_64
+        options: [x86_64, arm64]
+
+permissions:
+  contents: read
+  actions: read
+
+# Deliberately retains the native artifact job's legacy serialization key.
+# Root also serializes this job against the separately owned shared-store job.
+concurrency:
+  group: riauth-local-artifacts-arm64
+  cancel-in-progress: false
+
+jobs:
+  native-container:
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONOPTIMIZE: '0'
+      ARCHITECTURE: ${{ inputs.architecture }}
+    steps:
+      - name: Establish private evidence and initial capacity
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import json, os, pathlib, platform, shutil
+          architecture = os.environ.get('ARCHITECTURE')
+          platforms = {
+              'x86_64': {'machine': 'x86_64', 'runner_arch': 'X64',
+                         'source': 'b619fe25269ccc150e473bbcde47cdb3623ef810',
+                         'review': '66c814a339665e6b3f8e6c22bc59d4f6f0aa224c'},
+              'arm64': {'machine': 'aarch64', 'runner_arch': 'ARM64',
+                        'source': '9a819317efb3a13fa27cd86f884be2be00898fc0',
+                        'review': 'b71b7b0041a549793233e8c7a81bbb61797e20f3'}}
+          if architecture not in platforms:
+              raise SystemExit('unsupported_native_architecture')
+          native = platforms[architecture]
+          if (platform.system(), platform.machine(), os.environ.get('RUNNER_ARCH'),
+              os.environ.get('RUNNER_ENVIRONMENT')) != ('Linux', native['machine'], native['runner_arch'], 'github-hosted'):
+              raise SystemExit('unsupported_native_host')
+          paths = ('/', os.environ['GITHUB_WORKSPACE'], os.environ['RUNNER_TEMP'], '/var/lib/docker')
+          free = {p: shutil.disk_usage(p).free for p in paths}
+          if min(free.values()) < 30 * 1024**3:
+              raise SystemExit('initial_capacity_below_30GiB')
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / ('riauth-container-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'])
+          root.mkdir(mode=0o700)
+          (root / 'evidence').mkdir(mode=0o700)
+          (root / 'evidence' / 'launch.json').write_text(json.dumps({'initial_free_bytes': free}) + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('A09_CONTAINER_ROOT=' + str(root) + '\n')
+              out.write('A09_PRODUCT_SOURCE=' + native['source'] + '\n')
+              out.write('A09_ROOT_REVIEW=' + native['review'] + '\n')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+        with:
+          path: controller
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+        with:
+          ref: ${{ env.A09_PRODUCT_SOURCE }}
+          path: product
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+        with:
+          ref: ${{ env.A09_ROOT_REVIEW }}
+          path: review
+          persist-credentials: false
+          fetch-depth: 1
+      - name: One bounded LOCAL container cohort
+        timeout-minutes: 125
+        env:
+          A09_GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 controller/scripts/check-local-container-cohort.py \
+            --controller "$GITHUB_WORKSPACE/controller" \
+            --product "$GITHUB_WORKSPACE/product" \
+            --review "$GITHUB_WORKSPACE/review" \
+            --root "$A09_CONTAINER_ROOT"
+      - name: Upload LOCAL evidence, including refusals and cleanup limits
+        timeout-minutes: 15
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: riauth-local-container-${{ inputs.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.A09_CONTAINER_ROOT }}/evidence/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+```
+
+### Future reviews/releases and actual checks in this design phase
+
+No compile/runtime command was run or released. This report alone is committed.
+Root must first review the exact helper diff/full bodies/reader recipe/artifact
+allowlist, then reserve source implementation and static validation separately.
+Only afterward may root serialize ONE selected b619/x86 hosted build+fixture
+invocation under the unchanged150min workflow budget and30GiB start/10GiB stop/
+8GiB floor/resource sampling. No local cache/native execution is substituted.
+A compile/build failure is evidence and needs separate correction/release.
+A reader-alone/transfer/output/logical preservation failure must stop the fixture;
+there is no automatic repeat or adoption, no component-only fallback.
+
+This append was constructed from immutable Git bytes in a stdlib static assembler,
+using ast.parse on candidate TEXT (never compile/eval/import), full zero-context
+forward/reversal, hashes and protected-node comparison. It wrote only this report.
+No candidate/helper/workflow/probe/source implementation was materialized.
+No private row/key/binary/protocol/archive body was inspected; no services/native/
+Cargo/SQL/HTTP/provider/network/dispatch/desktop/worker contact or runtime slot.
+Actual source design is unexecuted and does not prove container E-P-E or release.
+Root still owns independent review, original A09 interpretation, integration,
+runtime, publication and status; all previously closed rows remain closed.
+
+Static docs/whitespace, full report-prefix/changed-file checks and final source
+identity checks follow before this one immutable append-only handoff. Those
+checks cannot establish runtime support for BuildKit named context/local exporter,
+test dependencies/libssl linkage, Docker cp permissions, exact native reader
+execution or complete before/after logical equality; each remains a measured
+prerequisite of the next separately authorized hosted fixture.
+
+### Completed static checks and immutable handoff
+
+python3 scripts/check-docs.py exited0 (Markdown links/build-directory layout).
+git diff --check exited0. Static whole-file diff forward/inverse and ast.parse
+checks passed on unexecuted candidate TEXT. All48 existing unaffected Cohort
+method source spans AND ASTs matched baseline exactly. The full archived changed
+bodies include their decorators. Six literal reader input hashes matched both
+fixed Git product selections; the serial Dockerfile inverse and reader stage
+derivation were checked without evaluating the recipe.
+
+Fresh file-scope check found exactly this report modified, no staged source or
+untracked implementation. The entire37883-byte deceb report prefix matched its
+Git object. The entire299665-byte separate shared-users report and every own
+tracked helper/workflow/probe/Docker/manifests/toolchain byte remained unchanged
+from own HEAD (historical local files were NOT replaced by the published baseline).
+The report-only appendix archives a proposed candidate119193 bytes/SHA256
+1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67;
+workflow remains4573 bytes/9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4.
+
+No tests, cases, helper functions, reader/Docker/Cargo/native commands, source
+implementation, dispatch or providers ran. No runtime slot was taken/released.
+The reader's existence, dependency/build/export compatibility, output transfer,
+reader-alone physical preservation and complete refused-open logical preservation
+remain unmeasured prerequisites. Root-reported PG success remains separate from
+this container design; acceptance/status/integration/publication are root-owned.
