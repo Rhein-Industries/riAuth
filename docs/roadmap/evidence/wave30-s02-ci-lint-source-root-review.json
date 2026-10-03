@@ -1,0 +1,14 @@
+{
+  "actual_ci_run": 37096740915,
+  "actual_job": 111128393479,
+  "head": "efd01727f2f4d92fe10d721740146e9e40f639cf",
+  "log_bytes": 104212,
+  "log_sha256": "61b8556f0f9ffc37068e33fc8b8ae72b3daa8ce913d6b087513c5841125914d2",
+  "actual_failure": "clippy two fixture lints, tests skipped",
+  "old_fixture_sha256": "5b714a5ea4006163a08e5e3c0d9d7fc065c621e906495018d42b3bbf0640498c",
+  "new_fixture_sha256": "7360487b4f866f1d524eb8c25a154386d33203f7c4879734bfbd129f9473d404",
+  "whole_inverse": true,
+  "scope": "watchdog let chain and two bound tuple parameter/three callers only",
+  "no_oracle_change": true,
+  "corrected_runtime": false
+}

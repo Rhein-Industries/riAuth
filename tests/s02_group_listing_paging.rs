@@ -304,10 +304,10 @@ impl Drop for Watchdog {
             .lock()
             .unwrap_or_else(|_| std::process::exit(124)) = true;
         self.stop.1.notify_one();
-        if let Some(handle) = self.handle.take() {
-            if handle.join().is_err() {
-                std::process::exit(124);
-            }
+        if let Some(handle) = self.handle.take()
+            && handle.join().is_err()
+        {
+            std::process::exit(124);
         }
     }
 }
@@ -1025,8 +1025,7 @@ fn expected_audit(
     action: &str,
     target: &str,
     changes: Value,
-    start: u64,
-    end: u64,
+    (start, end): (u64, u64),
 ) -> (String, Value) {
     let added: Vec<_> = after
         .iter()
@@ -1110,8 +1109,7 @@ fn assert_member_effect(
         action,
         &format!("{name}/{uid}"),
         json!([{"resource":key,"before":old,"after":new}]),
-        start,
-        end,
+        (start, end),
     );
     expected.insert(audit_key, event);
     assert!(
@@ -1151,8 +1149,7 @@ fn assert_revoke_effect(
         "agent.revoke",
         "s02-scoped",
         json!([{"resource":key,"before":old_view,"after":new_view}]),
-        start,
-        end,
+        (start, end),
     );
     expected.insert(audit_key, event);
     assert!(
@@ -1272,8 +1269,7 @@ fn assert_parent_disable_effect(
         "user.update",
         &old_user.id,
         changes,
-        start,
-        end,
+        (start, end),
     );
     expected.insert(audit_key, event);
     assert!(
