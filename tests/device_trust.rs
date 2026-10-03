@@ -1782,8 +1782,7 @@ mod google {
         let account = write_account(account_dir.path(), &pkcs8, |_| {});
         let mut f = Fixture::new();
         let (private_pem, public_pem) = super::es256_pair();
-        f.core.config.device_trust =
-            Some(super::trust(f._dir.path(), &public_pem, "local-device"));
+        f.core.config.device_trust = Some(super::trust(f._dir.path(), &public_pem, "local-device"));
         f.client("app", false);
         f.client("plain", false);
         enable(&f, "app");
