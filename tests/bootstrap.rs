@@ -20,6 +20,7 @@ struct Fixture {
     url: String,
     origin: String,
     server: tokio::task::JoinHandle<()>,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -68,11 +69,15 @@ impl Fixture {
         assert!(!record.to_string().contains(&proof));
         assert!(record["proof_hash"].as_str().unwrap().len() == 43);
         let routes = router(setup.clone());
+        let (stop, stopped) = tokio::sync::oneshot::channel();
         let server = tokio::spawn(async move {
             axum::serve(
                 listener,
                 routes.into_make_service_with_connect_info::<std::net::SocketAddr>(),
             )
+            .with_graceful_shutdown(async move {
+                let _ = stopped.await;
+            })
             .await
             .unwrap();
         });
@@ -83,6 +88,7 @@ impl Fixture {
             url,
             origin,
             server,
+            stop: Some(stop),
             http: Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .timeout(Duration::from_secs(15))
@@ -866,11 +872,26 @@ async fn passkey_setup_requires_backup_and_one_concurrent_finish_then_both_keys_
         for key in ["browser_setup", "browser_setup_passkeys"] {
             assert!(f.setup.store.get::<Value>("meta", key).unwrap().is_none());
         }
+        assert!(
+            a.bytes().await.is_ok(),
+            "First finish response body incomplete"
+        );
+        assert!(
+            b.bytes().await.is_ok(),
+            "Second finish response body incomplete"
+        );
         // Open through the ordinary runtime after releasing the pending server/store.
         let config = f.setup.config.clone();
         let origin: url::Url = f.origin.parse().unwrap();
-        f.server.abort();
-        let _ = (&mut f.server).await;
+        assert!(
+            f.stop.take().unwrap().send(()).is_ok(),
+            "Bootstrap fixture shutdown signal not delivered"
+        );
+        let joined = tokio::time::timeout(Duration::from_secs(10), &mut f.server).await;
+        assert!(
+            matches!(joined, Ok(Ok(()))),
+            "Bootstrap fixture server did not shut down"
+        );
         let _dir = std::mem::replace(&mut f._dir, tempfile::TempDir::new().unwrap());
         drop(f);
         let core = Core::open(config).unwrap();
