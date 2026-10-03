@@ -11,6 +11,83 @@ use std::{fs, process::Command};
 use tempfile::TempDir;
 
 #[test]
+fn session_preflight_checks_later_pages_without_mutating_records() {
+    let dir = TempDir::new().unwrap();
+    let config = Config {
+        data_dir: dir.path().join("instance"),
+        ..Default::default()
+    };
+    let core = Core::initialize(
+        config.clone(),
+        NewUser {
+            username: "admin".into(),
+            password: "fixture-password-only".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    core.login("admin".into(), "fixture-password-only".into(), None)
+        .unwrap();
+    let template = core
+        .store
+        .list::<Value>("sessions")
+        .unwrap()
+        .pop()
+        .unwrap()
+        .1;
+    core.store
+        .write(|tx| {
+            for index in 0..600 {
+                let mut session = template.clone();
+                session["id"] = json!(format!("page-session-{index:04}"));
+                session["identity"]["amr"] = json!(["pwd"]);
+                tx.put("sessions", &format!("page-session-{index:04}"), &session)?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let before = core.store.read(|tx| tx.snapshot()).unwrap();
+    drop(core);
+    let shared = riauth::edition::preflight(&config, riauth::edition::Target::Essentials).unwrap();
+    assert!(
+        !shared["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["resource"].as_str().unwrap().starts_with("sessions/"))
+    );
+    assert_eq!(
+        Store::inspect(&config, |_, tx| tx.unwrap().snapshot()).unwrap(),
+        before
+    );
+
+    let store = Store::from_config(&config).unwrap();
+    store
+        .write(|tx| {
+            let mut session: Value = tx.get("sessions", "page-session-0599")?.unwrap();
+            session["identity"]["amr"] = json!(["cert"]);
+            tx.put("sessions", "page-session-0599", &session)
+        })
+        .unwrap();
+    let before = store.read(|tx| tx.snapshot()).unwrap();
+    drop(store);
+    let blocked = riauth::edition::preflight(&config, riauth::edition::Target::Essentials).unwrap();
+    assert!(
+        blocked["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|issue| issue["resource"] == "sessions/page-session-0599")
+    );
+    assert_eq!(
+        Store::inspect(&config, |_, tx| tx.unwrap().snapshot()).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn clean_platform_activation_blocks_essentials_preflight_without_mutation() {
     let dir = TempDir::new().unwrap();
     let config = Config {

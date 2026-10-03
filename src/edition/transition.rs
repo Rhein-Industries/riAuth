@@ -516,23 +516,31 @@ pub(super) fn current_store_blockers(
             ),
         }
     }
-    for (id, value) in tx.list::<Value>("sessions")? {
-        match serde_json::from_value::<crate::model::Session>(value) {
-            Ok(session) => {
-                if session.identity.amr.iter().any(|method| method == "cert")
-                    || (session.identity.source.is_none()
-                        && session.identity.amr.iter().any(|method| method == "x509"))
-                {
-                    issue!(
-                        format!("sessions/{id}"),
-                        "Stored certificate-authenticated session requires the Platform build"
-                    );
+    let mut after = None;
+    loop {
+        let page = tx.scan::<Value>("sessions", after.as_deref(), PAGE)?;
+        if page.is_empty() {
+            break;
+        }
+        after = page.last().map(|(key, _)| key.clone());
+        for (id, value) in page {
+            match serde_json::from_value::<crate::model::Session>(value) {
+                Ok(session) => {
+                    if session.identity.amr.iter().any(|method| method == "cert")
+                        || (session.identity.source.is_none()
+                            && session.identity.amr.iter().any(|method| method == "x509"))
+                    {
+                        issue!(
+                            format!("sessions/{id}"),
+                            "Stored certificate-authenticated session requires the Platform build"
+                        );
+                    }
                 }
+                Err(_) => issue!(
+                    format!("sessions/{id}"),
+                    format!("Stored session {id:?} is malformed")
+                ),
             }
-            Err(_) => issue!(
-                format!("sessions/{id}"),
-                format!("Stored session {id:?} is malformed")
-            ),
         }
     }
     for bucket in ["reconciliation_jobs", "reconciliation_schedules"] {
