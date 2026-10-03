@@ -8,6 +8,7 @@ temporary directory. Only hashes and redacted results leave that directory.
 """
 
 import argparse
+import base64
 import hashlib
 import importlib.util
 import json
@@ -192,6 +193,78 @@ def refusal_snapshot_counts(before, after):
     return result
 
 
+def refusal_admission_snapshots(before, lower_ns, upper_ns, elapsed_ns, limit):
+    # Derive complete expected records from BEFORE only; never interpret AFTER.
+    if (any(type(value) is not int for value in (lower_ns, upper_ns, elapsed_ns, limit))
+            or not 0 <= lower_ns <= upper_ns <= (2 ** 64 - 1) * 1_000_000_000
+            or not 0 <= elapsed_ns <= 5_000_000_000
+            or upper_ns - lower_ns > 6_000_000_000
+            or abs(upper_ns - lower_ns - elapsed_ns) > 250_000_000
+            or not 1 <= limit <= 100_000):
+        raise ValueError("refusal_admission_prerequisite")
+    refusal_snapshot_counts(before, before)  # Existing bounded, strict hex/duplicate parser.
+    rows = {}
+    for line in before.split(b"\n")[:-1]:
+        key_hex, value_hex = line.split(b"|", 1)
+        rows[bytes.fromhex(key_hex.decode("ascii"))] = value_hex
+
+    def pack(records):
+        raw = b"".join(key.hex().encode("ascii") + b"|" + records[key] + b"\n"
+                       for key in sorted(records))
+        if len(raw) > 8 * 1024 ** 2:
+            raise ValueError("refusal_admission_prerequisite")
+        return raw
+
+    if pack(rows) != before:
+        raise ValueError("refusal_admission_prerequisite")
+    rate_id = base64.urlsafe_b64encode(hashlib.sha256(b"127.0.0.1\x00general").digest()).rstrip(b"=")
+    rate_key = b"http_rates/" + rate_id
+    rate_hex = rows.get(rate_key)
+    if rate_hex is None:
+        raise ValueError("refusal_admission_prerequisite")
+    rate = re.fullmatch(rb"\[(0|[1-9][0-9]{0,19}),(0|[1-9][0-9]{0,9})\]",
+                        bytes.fromhex(rate_hex.decode("ascii")))
+    if rate is None:
+        raise ValueError("refusal_admission_prerequisite")
+    start, count = int(rate[1]), int(rate[2])
+    lower, upper = lower_ns // 1_000_000_000, upper_ns // 1_000_000_000
+    if not 0 <= start <= lower or not 1 <= count <= 2 ** 32 - 1:
+        raise ValueError("refusal_admission_prerequisite")
+    total = sum(key.startswith(b"http_rates/") for key in rows)
+    if (not 1 <= total <= 100_000
+            or rows.get(b"index_counts/http_rates") != str(total).encode("ascii").hex().encode("ascii")):
+        raise ValueError("refusal_admission_prerequisite")
+    index_id = base64.urlsafe_b64encode(hashlib.sha256(rate_id).digest()).rstrip(b"=")
+    id_hex = (b'"' + rate_id + b'"').hex().encode("ascii")
+
+    def expiry_key(at):
+        return (b"index_expiry_http_rates/"
+                + f"{min(at + 60, 2 ** 64 - 1):020}/".encode("ascii") + index_id)
+
+    old_expiry = expiry_key(start)
+    if (rows.get(old_expiry) != id_hex
+            or sum(key.startswith(b"index_expiry_http_rates/") and value == id_hex
+                   for key, value in rows.items()) != 1):
+        raise ValueError("refusal_admission_prerequisite")
+    seen = set()
+    for at in range(lower, upper + 1):  # At most seven independently bracketed Unix seconds.
+        next_start, prior_count = (start, count) if min(start + 60, 2 ** 64 - 1) > at else (at, 0)
+        if prior_count >= limit:  # Such a transaction returns 429, never the required 403.
+            continue
+        next_count = min(prior_count + 1, 2 ** 32 - 1)
+        if (next_start, next_count) in seen:
+            continue
+        seen.add((next_start, next_count))
+        new_expiry = expiry_key(next_start)
+        if new_expiry != old_expiry and new_expiry in rows:
+            raise ValueError("refusal_admission_prerequisite")
+        expected = rows.copy()
+        expected[rate_key] = f"[{next_start},{next_count}]".encode("ascii").hex().encode("ascii")
+        del expected[old_expiry]
+        expected[new_expiry] = id_hex
+        yield pack(expected)
+
+
 def shared_probe(server, config, base, scratch, revoked_token=None):
     session = scratch / f"delegate-{time.monotonic_ns()}.json"
     admin = scratch / f"admin-{time.monotonic_ns()}.json"
@@ -208,7 +281,17 @@ def shared_probe(server, config, base, scratch, revoked_token=None):
         matrix.require(authenticated_status(base, "/api/audit?limit=1", token) == 200,
                        "active auditor grant stopped authorizing audit read")
         # Collection reads filter visible users; creation is the administration boundary.
-        connection = config.parent / tomllib.loads(config.read_text())["postgres"]["connection_file"]
+        settings = tomllib.loads(config.read_text())
+        rates = settings.get("rate_limits", {})
+        limit = rates.get("general", 600) if type(rates) is dict else None
+        matrix.require(settings.get("database_key_file") is None
+                       and settings.get("trusted_proxies", []) == []
+                       and re.fullmatch(r"http://127\.0\.0\.1:([0-9]+)", base) is not None
+                       and settings.get("issuer") == base
+                       and settings.get("listen") == base.removeprefix("http://")
+                       and type(limit) is int and 1 <= limit <= 100_000,
+                       "unsupported user-create admission fixture")
+        connection = config.parent / settings["postgres"]["connection_file"]
         target = re.fullmatch(r"host=127\.0\.0\.1 port=([0-9]+) dbname=riauth_transition "
                               r"user=riauth_test sslmode=disable", connection.read_text().strip())
         matrix.require(target is not None and 0 < int(target[1]) <= 65535,
@@ -226,17 +309,24 @@ def shared_probe(server, config, base, scratch, revoked_token=None):
 
         revision = gate.remote(server, base, session, "revision")["revision"]
         before_refusal = refusal_rows()
+        lower_ns, tick = time.time_ns(), time.monotonic_ns()
         denied = gate.remote(server, base, session, "--if-revision", revision,
                              "--idempotency-key", os.urandom(16).hex(),
                              "user", "create", "shared-refused-user", "--password-stdin",
                              input="q08-refused-disposable-password\n", expected=4)
+        elapsed_ns, upper_ns = time.monotonic_ns() - tick, time.time_ns()
         matrix.require(denied["error"]["http_status"] == 403
                        and denied["error"]["code"] == "access_denied"
                        and denied["exit_code"] == 4,
                        "ordinary auditor gained user administration")
         after_refusal = refusal_rows()
         try:
-            matrix.require(after_refusal == before_refusal,
+            try:
+                admitted = any(after_refusal == expected for expected in refusal_admission_snapshots(
+                    before_refusal, lower_ns, upper_ns, elapsed_ns, limit))
+            except (ValueError, OverflowError):
+                admitted = False  # Unsupported admission evidence remains a full-snapshot failure.
+            matrix.require(admitted,
                            "refused user creation changed durable records")
         except AssertionError as error:
             if type(error) is AssertionError:
