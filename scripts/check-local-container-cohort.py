@@ -195,6 +195,8 @@ class Cohort:
     def __init__(self, args):
         self.selected = closed_platform(os.environ.get("ARCHITECTURE"))
         self.args = args
+        require(not args.prebuilt_x86 or self.selected["architecture"] == "x86_64",
+                "closed_prebuilt_architecture")
         self.root = args.root.resolve(strict=True)
         expected_root = pathlib.Path(os.environ["RUNNER_TEMP"]).resolve() / (
             "riauth-container-" + os.environ["GITHUB_RUN_ID"] + "-" + os.environ["GITHUB_RUN_ATTEMPT"])
@@ -209,6 +211,8 @@ class Cohort:
         self.cleanup_deadline = None
         self.phase = "source"
         self.owner = "a09-" + uuid.uuid4().hex
+        self.image_owner = self.owner
+        self.image_import_attempted = set()
         self.builder = self.owner + "-builder"
         self.builder_container = "buildx_buildkit_" + self.builder + "0"
         self.builder_volume = self.builder_container + "_state"
@@ -769,6 +773,11 @@ class Cohort:
         self.capacity(30 * GiB)
         self.receipt["daemon"] = {k: info[k] for k in
             ("OSType", "Architecture", "DockerRootDir", "ServerVersion", "OperatingSystem")}
+        if self.args.prebuilt_x86:
+            self.receipt.update(builds_this_run=False, builder_created_this_run=False)
+            self.receipt["limits"].append("dated b619 verified imports; not current/new builds")
+            self.save()
+            return
         self.absent("container", self.builder_container)
         self.absent("volume", self.builder_volume)
         code, out, _ = self.docker("builder-list", "buildx", "ls", "--format", "{{json .}}")
@@ -966,7 +975,7 @@ class Cohort:
                 and item["Config"]["Cmd"] == ["serve"]
                 and item["Config"]["WorkingDir"] == "/data"
                 and item["Config"]["Volumes"] == {"/data": {}}
-                and labels.get(OWNER_LABEL) == self.owner
+                and labels.get(OWNER_LABEL) == self.image_owner
                 and labels.get("org.riauth.edition") == edition
                 and labels.get("org.opencontainers.image.revision") == self.selected["source"]
                 and labels.get("org.opencontainers.image.source") == "https://github.com/" + REPOSITORY,
@@ -1067,7 +1076,7 @@ class Cohort:
                 and all(layer in hashes for layer in layers), "image_tar_config_layers")
         settings = json.loads(payloads[config])
         require(settings["os"] == "linux" and settings["architecture"] == self.selected["oci_arch"]
-                and settings["config"]["Labels"][OWNER_LABEL] == self.owner
+                and settings["config"]["Labels"][OWNER_LABEL] == self.image_owner
                 and settings["config"]["Labels"]["org.riauth.edition"] == edition
                 and settings["config"]["Labels"]["org.opencontainers.image.revision"] == self.selected["source"],
                 "saved_config_identity")
@@ -1110,7 +1119,7 @@ class Cohort:
                 and settings["architecture"] == self.selected["oci_arch"]
                 and settings["os"] == "linux" and type(settings["history"]) is list
                 and edition in {"essentials", "platform"}
-                and re.fullmatch(r"a09-[0-9a-f]{32}", self.owner) is not None,
+                and re.fullmatch(r"a09-[0-9a-f]{32}", self.image_owner) is not None,
                 "image_legacy_profile")
         rootfs = settings["rootfs"]
         require(type(rootfs) is dict and set(rootfs) == {"type", "diff_ids"}
@@ -1131,7 +1140,7 @@ class Cohort:
             "ExposedPorts": {"9000/tcp": {}},
             "Env": ["PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"],
             "ArgsEscaped": True,
-            "Labels": {OWNER_LABEL: self.owner, "org.riauth.edition": edition,
+            "Labels": {OWNER_LABEL: self.image_owner, "org.riauth.edition": edition,
                 "org.opencontainers.image.revision": self.selected["source"],
                 "org.opencontainers.image.source": "https://github.com/" + REPOSITORY},
         }
@@ -1331,6 +1340,254 @@ COPY --from=reader-build /reader-output/riauth-store-probe /riauth-store-probe
             require(file_hash(self.args.product / relative) == expected, "reader_input_changed")
         require(file_hash(context / source.name) == inputs["tests/edition_transition_store_probe.rs"],
                 "reader_context_changed")
+        self.save()
+
+
+    def import_prebuilt_x86(self):
+        """Import dated exact public products; never claim a build or old gate pass."""
+        self.phase = "prebuilt-transport"
+        require(self.args.prebuilt_x86 and self.selected["architecture"] == "x86_64",
+                "closed_prebuilt_architecture")
+        self.capacity(30 * GiB)
+        review = self.args.controller / "docs/roadmap/evidence/wave30-a09-reader-37087561409-root-review.json"
+        require(review.is_file() and not review.is_symlink() and review.stat().st_size == 5333
+                and file_hash(review) == "0cd61c168960c9220a0092219e6b18023ea7c06c62b30c193bf5ec6b047a86f2",
+                "prebuilt_root_receipt_identity")
+        reviewed = json.loads(review.read_bytes())
+        require(reviewed["run"] == 37087561409 and reviewed["job"] == 111100895046
+                and reviewed["controller"] == "3dab109446b2dd773f524601bf4737bf3861cbb6"
+                and reviewed["product"] == self.selected["source"]
+                and reviewed["helper_sha256"] == "1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67"
+                and reviewed["state"] == "ACTUAL_FAILURE_TRANSPORT_AND_CLEANUP_VERIFIED"
+                and reviewed["shared_full_gate"] == "not_run",
+                "prebuilt_root_receipt_scope")
+        expected = {
+            "id": 11262263011,
+            "name": "riauth-local-container-x86_64-37087561409-1",
+            "size_in_bytes": 115531946,
+            "digest": "sha256:78bb19d402870f934250e9dc53e99dc9f2008f18f96b4091a62cc14c1f8493b0",
+        }
+        require(reviewed["artifact"] == expected["id"]
+                and reviewed["artifact_bytes"] == expected["size_in_bytes"]
+                and reviewed["artifact_sha256"] == expected["digest"][7:],
+                "prebuilt_root_transport_pin")
+        run = self.github_json("/actions/runs/37087561409/attempts/1")
+        artifact = self.github_json("/actions/artifacts/11262263011")
+        require(run["id"] == 37087561409 and run["run_attempt"] == 1
+                and run["status"] == "completed" and run["conclusion"] == "failure"
+                and run["head_sha"] == reviewed["controller"]
+                and run["repository"]["full_name"] == REPOSITORY
+                and run["path"] == WORKFLOW, "prebuilt_run_identity")
+        require(all(artifact.get(k) == v for k, v in expected.items())
+                and artifact["expired"] is False
+                and artifact["workflow_run"]["id"] == 37087561409
+                and artifact["workflow_run"]["head_sha"] == reviewed["controller"],
+                "prebuilt_artifact_identity")
+        code, _, headers = self.http("https://api.github.com/repos/" + REPOSITORY
+            + "/actions/artifacts/11262263011/zip", token=os.environ["A09_GH_TOKEN"], cap=65536)
+        location = headers.get("Location") or headers.get("location")
+        require(code == 302 and type(location) is str, "prebuilt_artifact_redirect")
+        target = urllib.parse.urlsplit(location)
+        require(target.scheme == "https" and target.username is None and target.password is None
+                and target.port in (None, 443) and target.hostname is not None
+                and (target.hostname.endswith(".blob.core.windows.net")
+                     or target.hostname.endswith(".githubusercontent.com")),
+                "prebuilt_storage_origin")
+        outer = self.root / "prebuilt-x86.zip"
+        limit = min(time.monotonic() + 180, self.deadline)
+        opener = urllib.request.build_opener(NoRedirect())
+        with opener.open(location, timeout=15) as response, outer.open("xb") as out:
+            os.chmod(outer, 0o600)
+            require(response.status == 200, "prebuilt_storage_status")
+            count = 0
+            while True:
+                self.check_budget()
+                require(time.monotonic() < limit, "prebuilt_download_deadline")
+                block = response.read1(65536)
+                if not block:
+                    break
+                count += len(block)
+                require(count <= expected["size_in_bytes"] <= NATIVE_CAP, "prebuilt_compressed_cap")
+                out.write(block)
+        require(count == expected["size_in_bytes"]
+                and "sha256:" + file_hash(outer) == expected["digest"], "prebuilt_outer_zip_digest")
+        files = {
+            'container-cohort.json': (460868, 'e775e6916221f32919b92eb5cef3e4eda597f6cadf80294fd271cea79c4c535f'),
+            'launch.json': (163, '2b28472e1855b43d570fb6c9635362c8b200ff0421d1bb4fc45341e75bb1c3f5'),
+            'resources.jsonl': (285977, '992055f48887e025976dc6da575932d3f39bb87c7369e4ca5462a1c0daecaf41'),
+            'pull-pinned-buildkit.log': (1377, '9890229098928b6f2632b39b602b1c30fe4b50415e37ed511cddced3efb3a8df'),
+            'builder-create.log': (45, 'b1fc712b166650442c57186eedd84b400f14aa682cc34bbc6e7e145091b333ac'),
+            'builder-bootstrap.log': (1912, '75c361e51eb147fe1d16f52478fa8e625c10fc9abe97c1eb8c7689e768d85fc3'),
+            'build-essentials.log': (52344, 'f13f5f313165b2e006476650655f0997c5227c58286c1268b380ec8e6c344bb4'),
+            'build-platform.log': (39927, '023d95ab26fd3d73a50f2e52ccfd84c45cbf26e8492bcd0dad6d1afb9e29f041'),
+            'local-essentials-x86_64.docker.tar.gz': (48936063, 'd1c47ee3a3e17864b5f18aa99dd9bb5d2a6d8c0f5c9de9d4e052f3377a6b66a5'),
+            'local-platform-x86_64.docker.tar.gz': (53552130, '5a81a46ee436d1eb56614cdce7f572325a71dfc4bb8e5b5d43f2c0cb3c1d4347'),
+            'local-store-reader-x86_64.bin': (12199608, 'b6be98dddc96df4220e9423425ebb668a0dda0a7ac439dd7d7e73dc187e7b707'),
+        }
+        require(reviewed["hashes"] == {name: item[1] for name, item in files.items()},
+                "prebuilt_file_manifest_binding")
+        unpacked = self.root / "prebuilt-x86"
+        unpacked.mkdir(mode=0o700)
+        with zipfile.ZipFile(outer) as archive:
+            require(len(archive.infolist()) == len(files), "prebuilt_zip_member_count")
+            seen, expanded = set(), 0
+            for info in archive.infolist():
+                self.check_budget()
+                require(info.filename in files and info.filename not in seen
+                        and not info.is_dir() and not (info.flag_bits & 1)
+                        and stat.S_IFMT(info.external_attr >> 16) in (0, stat.S_IFREG),
+                        "prebuilt_zip_member")
+                seen.add(info.filename)
+                size, expected_hash = files[info.filename]
+                require(info.file_size == size, "prebuilt_zip_declared_size")
+                expanded += size
+                require(expanded <= NATIVE_CAP, "prebuilt_zip_expanded_cap")
+                destination = unpacked / info.filename
+                with archive.open(info) as incoming, destination.open("xb") as out:
+                    os.chmod(destination, 0o600)
+                    copied = 0
+                    while block := incoming.read(1024 * 1024):
+                        self.check_budget()
+                        copied += len(block)
+                        require(copied <= size, "prebuilt_zip_payload_cap")
+                        out.write(block)
+                    require(copied == size, "prebuilt_zip_payload_truncated")
+                require(file_hash(destination) == expected_hash, "prebuilt_zip_payload_identity")
+            require(seen == set(files), "prebuilt_zip_inventory")
+        old = json.loads((unpacked / "container-cohort.json").read_bytes())
+        require(old["schema"] == "riauth.local-container-cohort/v1"
+                and old["project"] == PROJECT and old["repository"] == REPOSITORY
+                and old["source"] == self.selected["source"] and old["source_tree"] == self.selected["tree"]
+                and old["controller"] == reviewed["controller"]
+                and old["root_review"] == self.selected["review"] and old["architecture"] == "x86_64"
+                and old["helper_sha256"] == reviewed["helper_sha256"]
+                and old["workflow_sha256"] == "9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4"
+                and old["result"] == "failed_or_refused" and old["failure"] == "unexpected_OSError"
+                and old["failed_phase"] == "fixture" and old["checks"] == []
+                and old["official_release"] is False and old["shared_full_gate"] == "not_run"
+                and old["native_input"]["artifact"] == self.native["artifact"]
+                and old["native_input"]["outer_zip_rehashed"] is True
+                and old["native_input"]["receipt_sha256"]
+                    == self.selected["receipt_hashes"][self.selected["native_receipt"]]
+                and old["recipe"] == self.receipt["recipe"], "prebuilt_dated_source_binding")
+        old_owner = "a09-73e32a2612c14f3f801f7b1cff3d8cd6"
+        image_ids = {
+            "essentials": "sha256:fc6ce9897850b8561f08b8dee9128f1bc1096f7053264086755ee6b0b0328b82",
+            "platform": "sha256:ae00ecffdb5245b37927d292da80776cf9e750098072f79d0b8716c5fb669f31",
+        }
+        require(old["owner"] == old_owner and set(old["images"]) == set(image_ids),
+                "prebuilt_content_owner_binding")
+        reader = old["reader"]
+        require(reader["schema"] == "riauth.local-snapshot-reader/v1"
+                and reader["source"] == self.selected["source"] and reader["source_tree"] == self.selected["tree"]
+                and reader["architecture"] == "x86_64" and reader["target"] == self.selected["target"]
+                and reader["elf_machine"] == 62 and reader["features"] == ["platform", "test-support"]
+                and reader["profile"] == "release" and reader["locked"] is True
+                and reader["default_features"] is False and reader["compile_no_run"] is True
+                and reader["build_jobs"] == 1 and reader["incremental"] == reader["debug"] == 0
+                and reader["test_target"] == "edition_transition_store_probe"
+                and reader["action"] == "snapshot" and reader["native_transport_member"] is False
+                and reader["retained_artifact"] == "local-store-reader-x86_64.bin"
+                and reader["recipe_sha256"] == "ba68e6ccb19b2421b250a75e01fa41844b772a3c892f99777f7d5e375ff8adc7"
+                and (reader["binary_bytes"], reader["binary_sha256"])
+                    == files[reader["retained_artifact"]], "prebuilt_reader_identity")
+        require(set(reader["inputs"]) == {".dockerignore", "Cargo.lock", "Cargo.toml",
+                    "Dockerfile", "rust-toolchain.toml", "tests/edition_transition_store_probe.rs"},
+                "prebuilt_reader_input_allowlist")
+        for relative, expected_hash in reader["inputs"].items():
+            source = self.args.product / relative
+            require(source.is_file() and not source.is_symlink()
+                    and file_hash(source) == expected_hash, "prebuilt_reader_source_binding")
+        binary = unpacked / reader["retained_artifact"]
+        metadata = binary.lstat()
+        require(stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
+                and metadata.st_uid == os.getuid() and stat.S_IMODE(metadata.st_mode) == 0o600
+                and (metadata.st_size, file_hash(binary)) == files[reader["retained_artifact"]],
+                "prebuilt_reader_private_shape")
+        self.elf(binary, 62)
+        binary.chmod(0o755)
+        self.reader, self.reader_hash = binary, reader["binary_sha256"]
+        private_write(self.evidence / reader["retained_artifact"], binary.read_bytes())
+        require(file_hash(self.evidence / reader["retained_artifact"]) == self.reader_hash,
+                "prebuilt_reader_retention_identity")
+        self.receipt["reader"] = {k: v for k, v in reader.items()
+            if k not in {"last_physical_observation", "verified_physical_observations"}}
+        origin = {"run": 37087561409, "job": 111100895046,
+                  "controller": reviewed["controller"], "artifact": expected,
+                  "root_receipt_sha256": file_hash(review)}
+        self.receipt["reader"].update(build_origin=origin, built_this_run=False,
+            imported_this_run=True, verified_physical_observations=0)
+        self.receipt["prebuilt_input"] = {**origin, "outer_zip_rehashed": True,
+            "historical_result": "failed_or_refused", "historical_failure": "unexpected_OSError",
+            "historical_reader_observations": 12, "historical_offline_packets": 7,
+            "historical_checks_credited_this_run": 0}
+        self.phase = "prebuilt-images"
+        self.capacity(30 * GiB)
+        require(self.receipt["daemon"]["ServerVersion"] == "28.0.4", "prebuilt_daemon_profile")
+        for edition, identifier in image_ids.items():
+            item = old["images"][edition]
+            require(item["id"] == identifier and item["tag"] == "riauth-local/" + old_owner + ":" + edition
+                    and item["os"] == "linux" and item["architecture"] == "amd64"
+                    and item["recipe"] == self.receipt["recipe"]
+                    and (item["archive_bytes"], item["archive_sha256"]) == files[item["archive"]]
+                    and item["labels"] == {OWNER_LABEL: old_owner, "org.riauth.edition": edition,
+                        "org.opencontainers.image.revision": self.selected["source"],
+                        "org.opencontainers.image.source": "https://github.com/" + REPOSITORY},
+                    "prebuilt_image_receipt_identity")
+            self.absent("image", item["tag"])
+            self.absent("image", identifier)
+        code, out, _ = self.docker("prebuilt-before-inventory", "image", "ls", "--quiet", "--no-trunc",
+            "--filter", "label=" + OWNER_LABEL + "=" + old_owner, timeout=20)
+        require(code == 0 and not out.strip(), "prebuilt_content_owner_preexists")
+        # Only image validation/cleanup uses this historical content owner.
+        # Container/volume/PID authority remains bound to the fresh self.owner.
+        self.image_owner = old_owner
+        self.tags = {edition: old["images"][edition]["tag"] for edition in image_ids}
+        self.receipt["planned_image_tags"] = dict(self.tags)
+        self.images = dict(image_ids)
+        self.receipt["prebuilt_imports"] = {
+            edition: {"id": identifier, "tag": self.tags[edition],
+                      "before_id_absent": True, "before_tag_absent": True,
+                      "load_attempted": False, "confirmed": False, "fresh_run_owner": self.owner}
+            for edition, identifier in image_ids.items()}
+        self.save()
+        for edition, identifier in image_ids.items():
+            item = old["images"][edition]
+            archive = unpacked / item["archive"]
+            self.validate_image_tar(archive, edition, identifier)
+        for edition, identifier in image_ids.items():
+            self.capacity(30 * GiB)
+            item = old["images"][edition]
+            archive = unpacked / item["archive"]
+            require(file_hash(archive) == item["archive_sha256"], "prebuilt_archive_changed")
+            self.image_import_attempted.add(edition)
+            self.receipt["prebuilt_imports"][edition]["load_attempted"] = True
+            self.save()  # Exact pending import identity survives a lost load response.
+            code, _, _ = self.docker("prebuilt-load-" + edition, "image", "load", "--input", archive,
+                                      timeout=300)
+            observed = self.image_identity(edition, self.tags[edition])
+            require(code == 0 and observed["Id"] == identifier
+                    and observed["RepoTags"] == [self.tags[edition]], "prebuilt_loaded_image_identity")
+            self.receipt["prebuilt_imports"][edition]["confirmed"] = True
+            self.receipt["images"][edition] = {
+                "id": identifier, "tag": self.tags[edition], "os": observed["Os"],
+                "architecture": observed["Architecture"], "labels": observed["Config"]["Labels"],
+                "recipe": self.receipt["recipe"], "build_origin": origin,
+                "built_this_run": False, "imported_this_run": True,
+                "archive": item["archive"], "archive_bytes": item["archive_bytes"],
+                "archive_sha256": item["archive_sha256"]}
+            private_write(self.evidence / item["archive"], archive.read_bytes())
+            require(file_hash(self.evidence / item["archive"]) == item["archive_sha256"],
+                    "prebuilt_archive_retention_identity")
+            self.inspect_product(edition, identifier)
+            require(self.receipt["images"][edition]["server_sha256"] == item["server_sha256"]
+                    and self.receipt["images"][edition]["capabilities"] == item["capabilities"],
+                    "prebuilt_runtime_product_binding")
+            self.save()
+        code, out, _ = self.docker("prebuilt-after-inventory", "image", "ls", "--quiet", "--no-trunc",
+            "--filter", "label=" + OWNER_LABEL + "=" + old_owner, timeout=20)
+        require(code == 0 and set(out.splitlines()) == {x.encode() for x in image_ids.values()},
+                "prebuilt_exact_import_inventory")
         self.save()
 
     def reader_offline(self, fixture):
@@ -1944,7 +2201,10 @@ COPY --from=reader-build /reader-output/riauth-store-probe /riauth-store-probe
                                           timeout=20, cleanup=True)
                 if code == 0:
                     item = json.loads(out)[0]
-                    require((item["Config"].get("Labels") or {}).get(OWNER_LABEL) == self.owner
+                    require((item["Config"].get("Labels") or {}).get(OWNER_LABEL) == self.image_owner
+                            and (not self.args.prebuilt_x86 or
+                                 (edition in self.image_import_attempted
+                                  and item["Id"] == self.images[edition]))
                             and item["Config"]["Labels"]["org.riauth.edition"] == edition
                             and item["Config"]["Labels"]["org.opencontainers.image.revision"] == self.selected["source"]
                             and item["RepoTags"] == [tag], "image_cleanup_identity")
@@ -1963,7 +2223,7 @@ COPY --from=reader-build /reader-output/riauth-store-probe /riauth-store-probe
                 self.receipt["docker_cleanup"] = "no_docker_resource_creation_attempted"
             else:
                 code, out, _ = self.docker("owned-image-inventory", "image", "ls", "--quiet", "--no-trunc",
-                    "--filter", "label=" + OWNER_LABEL + "=" + self.owner, timeout=20, cleanup=True)
+                    "--filter", "label=" + OWNER_LABEL + "=" + self.image_owner, timeout=20, cleanup=True)
                 require(code == 0 and not out.strip(), "owned_image_inventory_not_empty")
                 self.receipt["owned_image_inventory_empty"] = True
         except BaseException:
@@ -1998,6 +2258,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("controller", "product", "review", "root"):
         parser.add_argument("--" + name, type=pathlib.Path, required=True)
+    parser.add_argument("--prebuilt-x86", action="store_true")
     args = parser.parse_args()
     os.umask(0o077)
     gate = None
@@ -2013,8 +2274,11 @@ def main():
         gate.source_check()
         gate.native_transport()
         gate.daemon_setup()
-        gate.build_images()
-        gate.build_reader()
+        if args.prebuilt_x86:
+            gate.import_prebuilt_x86()
+        else:
+            gate.build_images()
+            gate.build_reader()
         gate.fixture_gate()
         # Recheck committed source and manifests after every product operation.
         require(gate.git(args.product, "status", "--porcelain") == b"", "product_checkout_changed")

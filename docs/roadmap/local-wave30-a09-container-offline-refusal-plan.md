@@ -3599,3 +3599,91 @@ other-worker contact, main/push/status or slot action occurred.
 All runtime stays **HELD** while the independently prepared S02/D01 gates run.
 Old actual FAILs and unknown causes remain; closed I02/I10/R05/W02/W05 and
 original A09 primary are unchanged.
+
+
+## Exact prebuilt x86 source materialization — 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`; existing WT
+`a1303b57-4a34-487e-9c63-a841f05b51a0`; reservation
+`wave30_A09_prebuilt_x86_source_materialization`. **SOURCE ONLY, UNEXECUTED**.
+The entire 216,289-byte `33bff929ec2087cfe1eb0021b563d8e09b010165` report,
+SHA256 `6792be92084fca37ce17aa50dd02602f1768c3ad1b95661eb73baec81d6099b0`,
+is preserved as the exact prefix of this appendix.
+
+Root review `planning/evidence/wave30-a09-prebuilt-replay-root-source-review.json`
+was located under the exact project orchestrator and read in full: 699 bytes,
+SHA256 `dee751f1d55bbf4b1d3e4ba44fc9e939e4b16ffeacfec9f43dc1e423dc003be6`.
+Its source-report, candidate hashes, 54-method witness and exception/finally
+claims match the archived inputs. It records runtime **HELD** and independent
+review **PENDING**; this phase changes neither disposition.
+
+Source commit **`e6120b2550e50d8f944161296cb195eb089baf98`** contains only:
+
+| File | Bytes / SHA256 | Git blob / mode |
+| --- | --- | --- |
+| `scripts/check-local-container-cohort.py` | 138,268 / `9f95975a70caf47c06b224226134649f552169714f9ebf3b54b4b55da98f5908` | `676e7033dda5f17bbc4b51ca186f081c372dd4ba` / `100644` |
+| `.github/workflows/check-local-container-cohort.yml` | 4,574 / `3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851` | `b23d5bbec2aade53d68a3af2848f2be3aeb0600a` / `100644` |
+
+The helper was generated strictly by applying the archived exact diff to the
+120,263-byte a9b baseline. The absent local workflow was exclusively created
+from the reviewed complete candidate, independently matched to application of
+its three-hunk delta to the exact published 4,573-byte 9af6 baseline. No
+alignment/merge, stale-file import, semantic/style adjustment or other source
+write was made. Source commit totals are +381/-8, including the 109-line new
+workflow; the report was still byte-identical when that commit was made.
+
+Actual static verification passed:
+
+- Complete helper/workflow SHA/length bindings and byte inverse; complete
+  normalized helper AST inverse; all 54 protected original method source
+  spans, ordering and ASTs; archived complete main; original main exception
+  handler, 22-line finite OSError diagnostic and finally remain exact.
+- `ast.parse` and in-memory `compile(..., "exec", dont_inherit=True)` accepted
+  baseline/candidate helper and the one inline workflow Python body. No
+  reviewed definition/module/function was evaluated/imported, and no bytecode
+  or harness file was materialized.
+- Installed Psych parsed YAML with duplicate-key checks and aliases refused.
+  Normalization yields exactly the three approved YAML scalar deltas.
+  Both `bash -n` run blocks passed; all **ten** GitHub context expressions and
+  their original field positions remain unchanged.
+- The root reader receipt in staged
+  `66064a6b4df4f925bde371e606be65a405e9337a` matches 5,333 bytes / SHA256
+  `0cd61c168960c9220a0092219e6b18023ea7c06c62b30c193bf5ec6b047a86f2`.
+  All seven native source-input hashes match their b619 Git objects.
+- `python3 scripts/check-docs.py`, `git diff --check` and staged whitespace
+  checks exited zero. Tracked/untracked scope checks confirmed only the two
+  source paths; source/disk modes and committed bytes match exactly.
+
+Two checking-script issues occurred before source writes: installed Ruby lacks
+`filter_map` (`NoMethodError`, exit1), and my exact context expectation omitted
+`env.A09_CONTAINER_ROOT` (`AssertionError`, exit1). The validator used supported
+`each_with_object` and the complete ten-expression witness; all static checks
+then passed. Candidate bytes were never altered to accommodate a checker.
+Initial review-file searches did not locate the file; a broad filename-only
+search was interrupted (130), and a pruned search found the exact file while
+reporting an unrelated permission error (2). Only the requested review body
+was read; this supplied no runtime or product failure evidence.
+
+Integration dependency: the sealed root reader receipt above is absent from
+this historical branch. It was verified through the staged66064 Git object
+and **not imported**, since ownership allows only the two source paths.
+Root must retain that exact receipt in the eventual published controller,
+together with the previously archived dated-native review/input bindings.
+All later artifact-expiry, x86 host/daemon28.0.4, 30/10/8GiB, image absence,
+pending import and cleanup checks remain prospective runtime requirements.
+
+This append is the only subsequent write and is committed separately after
+prefix/docs/whitespace/scope checks. Exact source text remains in the earlier
+archive; it is not duplicated here.
+
+Remote `37087561409/job111100895046` remains **FAILED**, with OSError
+site/errno/cause UNKNOWN and E-P-E/platform aggregate completion unproved.
+There is no port/TIME_WAIT fix, new fixture result, current-S02 build or
+official-artifact credit. No helper/diagnostic/case/harness/native/probe,
+Docker/Cargo/build/service, archive/binary extraction, network/query/download/
+dispatch, browser/Driver or deletion occurred. No new worker/task/worktree,
+alignment, main/push/status or other-worker contact was used. No runtime lane
+was acquired/released; D01 owns the current runtime. All replay runtime is
+**HELD** for independent findings, root final review/publication and an exact
+separate release. Original A09 primary and closed rows remain unchanged.
