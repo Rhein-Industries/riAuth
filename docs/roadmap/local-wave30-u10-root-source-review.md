@@ -92,3 +92,12 @@ in progress at observation; no aggregate all-green claim is made. The previous
 `1a517` No-tests-found failure remains failed. This focused result supplies no
 complete U10 journey, assistive-technology, physical authenticator or release
 acceptance. [Exact finite receipt](evidence/wave30-u10-37109601795-focused-ci-root-review.json).
+
+
+## 2026-10-03: completed CI at published758, exact snapshot only
+
+Run `37109601795` completed successfully at `758c43acf94395b439c9aea30055e69c708a8690`: check `111168254346`, audit `111168254169` and integration `111168254338` all succeeded. Root retained the complete check log (472406 bytes, SHA256 `c2b23cb0da412b5284cb7dbf27930a387a30007cd754a586dd87daae3be4291a`) and verified checkout, exact command/step boundary, all182 test summaries, named fixture blocks and terminal metadata. This is not a full semantic read of every log byte.
+
+The exact `cargo test --all-targets --features test-support,fuzzing --locked` step has 1330 passed, 0 failed, 182 ignored and 0 filtered across182 summaries. Later standalone checks are excluded from those totals. Background capacity and report attribution named tests passed; SCIM has24 passes in26.06 seconds; source_stage has24 passes in39.93 seconds. The earlier root-reviewed U10 missing-credentials Chromium case passed once in9.5 seconds with no retry. Counts/source/method limits are in the [completed root receipt](evidence/wave30-ci-37109601795-completed-root-review.json).
+
+This verifies only published758. The staged requiredOTP case, I07 retained-provider correction and I08 managed deadline/controller are not covered by this run. All182 ignored cases remain ignored. Earlier failed aggregate/selector/native receipts remain failed; these named passes do not prove a rare race, universal Linux repair, confidential real browser journey, physical authenticator, Windows/provider/tenant, signed release or whole-task acceptance. No status was changed and no root runtime rerun occurred.

@@ -1,0 +1,101 @@
+{
+  "schema": "riauth.wave30.completed-ci-root-review/v1",
+  "at": "2026-10-03T09:52:06.260396+00:00",
+  "metadata": {
+    "run": {
+      "id": 37109601795,
+      "head_sha": "758c43acf94395b439c9aea30055e69c708a8690",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "html_url": "https://github.com/Rhein-Industries/riAuth/actions/runs/37109601795",
+      "created_at": "2026-10-03T08:24:37Z",
+      "updated_at": "2026-10-03T09:48:37Z"
+    },
+    "jobs": [
+      {
+        "id": 111168254169,
+        "name": "audit",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-03T08:46:44Z",
+        "completed_at": "2026-10-03T08:49:32Z"
+      },
+      {
+        "id": 111168254338,
+        "name": "integration",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-03T08:46:43Z",
+        "completed_at": "2026-10-03T09:08:12Z"
+      },
+      {
+        "id": 111168254346,
+        "name": "check",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-03T08:46:43Z",
+        "completed_at": "2026-10-03T09:48:36Z"
+      }
+    ],
+    "check_log": {
+      "bytes": 472406,
+      "sha256": "c2b23cb0da412b5284cb7dbf27930a387a30007cd754a586dd87daae3be4291a",
+      "mode": "0600"
+    }
+  },
+  "source": "758c43acf94395b439c9aea30055e69c708a8690",
+  "review_coverage": "Root complete log hash, checkout and exact step boundary, all182 test summaries, complete SCIM/source_stage blocks and selected historical failing test names; not semantic read of every472406 logbyte",
+  "all_targets_step": {
+    "command": "cargo test --all-targets --features test-support,fuzzing --locked",
+    "first_line": 1289,
+    "next_step_line": 4216,
+    "summaries": 182,
+    "counts": {
+      "passed": 1330,
+      "failed": 0,
+      "ignored": 182,
+      "measured": 0,
+      "filtered_out": 0
+    }
+  },
+  "named_results": {
+    "background_capacity": "ok line1634",
+    "reports_attribution": "ok line3387",
+    "scim_oauth": {
+      "passed": 24,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 0,
+      "seconds": 26.06,
+      "lines": [
+        3520,
+        3548
+      ]
+    },
+    "source_stage": {
+      "passed": 24,
+      "failed": 0,
+      "ignored": 0,
+      "filtered_out": 0,
+      "seconds": 39.93,
+      "lines": [
+        3687,
+        3715
+      ]
+    },
+    "U10_missing_credentials": {
+      "source_review": "wave30-u10-37109601795-focused-ci-root-review.json",
+      "passed": 1,
+      "seconds": 9.5,
+      "retries": 0
+    }
+  },
+  "all_three_jobs_success": true,
+  "limitations": [
+    "Only exact758 snapshot credited; unpublished I07 provider binding/I08 managed deadline and new requiredOTP test are not verified by this run",
+    "Named SCIM/background/report pass is compile/regression evidence, no rare-race proof or universal Linux-fixed claim",
+    "Ignored182 stay ignored; no confidential real browser/Windows/tenant/physical/release-signing/full-task gate"
+  ],
+  "root_runtime_run": false
+}
