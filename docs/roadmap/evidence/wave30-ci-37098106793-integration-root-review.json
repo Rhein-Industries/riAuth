@@ -1,0 +1,43 @@
+{
+  "schema": "riauth.wave30.completed-integration-ci-root-review/v1",
+  "run": 37098106793,
+  "job": 111134191938,
+  "checkout": "143d99dbe43fefd6aeb3d274a0d974fd025292e0",
+  "job_conclusion": "success",
+  "aggregate_run_conclusion": "still in progress at review",
+  "raw_log_bytes": 265769,
+  "raw_log_sha256": "f1ea748ec8e652305b37e1e6dfb74ee31801f7cadbbdf3c715b8443984048afd",
+  "raw_log_mode": "0600",
+  "test_result_lines": [
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 177 filtered out; finished in 5.96s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 177 filtered out; finished in 5.55s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 177 filtered out; finished in 7.07s",
+    "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.79s",
+    "test result: ok. 91 passed; 0 failed; 0 ignored; 0 measured; 90 filtered out; finished in 202.89s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.10s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.99s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.40s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.86s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.98s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 3.10s"
+  ],
+  "fetch_note": "gh run view --job --log refused while whole run in progress; completed job logs fetched through jobs/logs API; first refusal wrote no capture",
+  "limits": "Only exact selected integration job and named outputs at143d; no all-targets/full-CI/latest-main or new physical/tenant proof",
+  "utc": "2026-10-03T05:58:04.661834+00:00",
+  "browser_summary_lines": [
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 177 filtered out; finished in 5.96s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 177 filtered out; finished in 5.55s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 177 filtered out; finished in 7.07s",
+    "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.79s",
+    "test result: ok. 91 passed; 0 failed; 0 ignored; 0 measured; 90 filtered out; finished in 202.89s",
+    "  9 passed (52.0s)",
+    "  2 skipped",
+    "  22 passed (6.5m)",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.10s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.99s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.40s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.86s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 17.98s",
+    "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 3.10s"
+  ]
+}
