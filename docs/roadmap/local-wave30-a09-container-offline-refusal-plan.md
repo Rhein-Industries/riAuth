@@ -2628,3 +2628,92 @@ Staged report-only scope, staged whitespace and disk/staged report equality
 are verified for the one appendix commit. Root owns any future source
 reservation and runtime; this report grants neither and assigns no
 unrecorded errno/site/cause or earlier benign-redb conclusion.
+
+
+## Source-only materialization of the finite OSError diagnostic — 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`; existing worktree
+`a1303b57-4a34-487e-9c63-a841f05b51a0`; reservation
+`wave30_A09_oserror_finite_diagnostic_materialization`. This appendix records
+materialization and static checks only. The diagnostic, helper and Cohort
+operations were not executed. The original A09 primary and all closed rows are
+unchanged; root owns integration, controller-pin selection and any later runtime
+decision. No runtime lane was acquired or released.
+
+The complete 158,081-byte report at
+`f7fe85242ae2a43917aa8dbc0b8f16b082586c4d` is the exact prefix of this append,
+SHA256 `550f49de326267dc249ff79452ac97a538331811e251ee12600d11125ca33550`.
+All earlier proposals, blocked designs and actual failures remain dated evidence.
+
+### Exact source and archive binding
+
+Fresh `git show` comparisons established that published
+`b1ea7b018e438597b87d634700fa2eeb53bfa8dc` and run controller
+`3dab109446b2dd773f524601bf4737bf3861cbb6` contain the same entire helper as
+the local clean baseline: 119,193 bytes, SHA256
+`1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67`,
+Git blob `1859d4d61a05565ec68dfe229f33e6111518a024`. No alignment, merge or
+whole-file import was performed.
+
+The prior report's exact 1,207-byte one-hunk archive was selected by SHA256
+`ffd365852d1425f0e4d13112912f5aa80a4fc23e48db1f7de402698e259863f3`.
+Its sole `@@ -2028,0 +2029,22 @@` insertion was applied as source data.
+The complete resulting `main` equals the archived 3,229-byte body, SHA256
+`c1b61ca0bd08a595655a438b93a0b9774114aef76246993293034d5c18ae5e8f`.
+
+Source commit **`f00756f318568b125b13b4391488eb4fc184fa9d`** changes only
+`scripts/check-local-container-cohort.py`, +22/-0 lines. The complete result is
+120,263 bytes, SHA256
+`a9b91ea849840daee8fe25791e6751e77ec355fdd9e628ced2e317f00c9e74dd`,
+Git blob `ff704ffd7ef70dc94fc0e64dec2e1341f8be91d4`, mode `100644`.
+It exactly matches the approved candidate; no design adjustment was made.
+
+### Actual static checks
+
+All checks below exited zero. Python treated the archived diff and helper as
+source data; it did not evaluate definitions or invoke any reviewed function.
+
+- Fresh clean-HEAD, whole baseline/source SHA and report-prefix comparisons,
+  plus exact single archive selection and complete candidate SHA/length checks.
+- Removing the 22 added lines restores the entire 119,193-byte baseline exactly.
+  Removing the single diagnostic `If` from the parsed candidate restores the
+  complete module AST with location attributes excluded.
+- The entire `Cohort` class and all **60** method source spans, method ordering
+  and method ASTs are byte/structure equivalent. Imports, other functions,
+  original exception handling, `finally`, cleanup, save, stdout and numeric exit
+  remain protected by the whole-file inverse.
+- `ast.parse` and `compile(source, filename, "exec", dont_inherit=True)` accepted
+  baseline and candidate. This was in-memory code-object compilation only:
+  no `exec`, module import, helper run, case evaluation or `.pyc` output.
+- Static allowlists cover the diagnostic's exact fixed strings and attributes.
+  The addition contains no raw formatting/output, dynamic attribute lookup or
+  file operation. The archive retains exact-builtin `OSError` admission, at
+  most 16 traceback nodes, code-identity labels and non-bool integer errno
+  `0..4095` or `None`, with optional projection failure caught by
+  `BaseException`.
+- `python3 scripts/check-docs.py`: Markdown links and build-directory layout
+  checked. `git diff --check` and `git diff --cached --check` passed.
+  `git diff --name-only` / `--numstat` established the sole helper +22/-0
+  change; the report was still byte-identical when the source commit was made.
+  No static-check failure or unexpected source mismatch occurred in this phase.
+
+The report append is the only subsequent file write. Its prefix and sole-doc
+scope are checked before the separate evidence commit; no helper/workflow,
+production, resource, observer, build-reuse or runtime changes accompany it.
+
+### Unexecuted limits and remaining ownership
+
+Remote `37087561409/job111100895046` remains **FAILED**:
+`fixture/unexpected_OSError`, zero completed aggregate checks and
+`shared_full_gate=not_run`. Its actual errno, site and cause remain unknown.
+This materialization assigns no retrospective port, TIME_WAIT, syscall or
+product explanation and does not recast reader preservation observations as a
+container/E-P-E/full-release pass.
+
+The new optional receipt packet is **UNEXECUTED**. No runtime, test, harness,
+native executable, Cargo, Docker, build, HTTP, provider, query, download or
+dispatch was performed; no new worker/task/worktree/shell or other-worker
+contact was used. No slot was taken. All next runtime remains **HELD** pending
+root's separate reviewed-controller and release decision. There was no workflow
+edit, and no new controller pin or capacity prerequisite was invented here.

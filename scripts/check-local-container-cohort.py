@@ -2026,6 +2026,28 @@ def main():
         failure = str(error) if isinstance(error, Refusal) else "unexpected_" + type(error).__name__
         if gate is not None:
             gate.receipt.update(result="failed_or_refused", failure=failure, failed_phase=gate.phase)
+            if type(error) is OSError:
+                try:
+                    sites = {
+                        Cohort.start_app.__code__: "start_app",
+                        Cohort.create_container.__code__: "container_create",
+                        Cohort.command.__code__: "owned_cli_transport",
+                    }
+                    node, site = error.__traceback__, "other"
+                    for _ in range(16):
+                        if node is None:
+                            break
+                        site = sites.get(node.tb_frame.f_code, "other")
+                        node = node.tb_next
+                    if node is not None:
+                        site = "other"
+                    number = error.errno
+                    gate.receipt["os_error"] = {
+                        "site": site,
+                        "errno": number if type(number) is int and 0 <= number <= 4095 else None,
+                    }
+                except BaseException:
+                    pass  # Optional projection cannot replace the original failure.
     finally:
         if gate is not None:
             try:

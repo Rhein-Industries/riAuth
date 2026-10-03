@@ -181,3 +181,15 @@ first failure, cleanup/evidence/result/exit and all guards remain exact.
 Source proposal120263 bytes/SHA
 `a9b91ea849840daee8fe25791e6751e77ec355fdd9e628ced2e317f00c9e74dd`
 is not a runtime correction or authorization to repeat the cohort.
+
+## 2026-10-03 — exact finite diagnostic staged, unexecuted
+
+Root read the full89-line `d1352c5` actual static appendix and exact source
+hunk at`f00756f318568b125b13b4391488eb4fc184fa9d`. Removing only its22
+lines independently reconstructs the full current119193-byte baseline;
+removing only its added If independently restores the entire module AST.
+Root staged exact120263-byte/a9b91e helper and report, preserving all60
+Cohort methods, first failure, output, cleanup and every guard. No new workflow,
+product, transport, build-reuse or runtime was introduced. The optional site/
+errno diagnostic remains UNEXECUTED;37087561409 still failed with unknown
+site/errno/cause. No next cohort dispatch is released by this source stage.
