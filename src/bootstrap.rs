@@ -601,7 +601,11 @@ async fn complete(
     let permit = app.permit().await?;
     let setup = app.setup.clone();
     let activation = app.clone();
-    let ip = peer.ip();
+    let ip = crate::api::rate_key(crate::api::proxy_client_ip(
+        peer.ip(),
+        &headers,
+        &app.setup.config.trusted_proxies,
+    )?);
     let result = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         setup.rate_limit(ip)?;
@@ -670,9 +674,14 @@ async fn passkey(
     let body = Zeroizing::new(body.to_vec());
     let started = Instant::now();
     let permit = app.permit().await?;
+    let ip = crate::api::rate_key(crate::api::proxy_client_ip(
+        peer.ip(),
+        &headers,
+        &app.setup.config.trusted_proxies,
+    )?);
     let result = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        app.setup.rate_limit(peer.ip())?;
+        app.setup.rate_limit(ip)?;
         let invalid = |_| Error::bad("Invalid setup request");
         match action.as_str() {
             "start" => {
