@@ -2717,3 +2717,885 @@ dispatch was performed; no new worker/task/worktree/shell or other-worker
 contact was used. No slot was taken. All next runtime remains **HELD** pending
 root's separate reviewed-controller and release decision. There was no workflow
 edit, and no new controller pin or capacity prerequisite was invented here.
+
+
+## Read-only source design: verified prebuilt x86 cohort replay — 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`; existing worktree
+`a1303b57-4a34-487e-9c63-a841f05b51a0`; reservation
+`wave30_A09_verified_prebuilt_cohort_replay_plan`. **DESIGN ONLY**. Only this
+report is appended. No candidate helper/workflow is materialized, imported or
+executed. No runtime lane is acquired/released. Root owns independent review,
+source reservation, controller publication/pin selection and any single later
+native x86 runtime release. ARM container evidence remains a distinct gate.
+
+The complete 163,146-byte report at
+`d1352c5653aa49b9f83e39b8903535ededea4d70` remains the exact prefix, SHA256
+`3f2ee6ba292a1a9f12ac1de4d39ea29c79a993bf6049ab05db85f8a466e33b2d`.
+Prior actual failures, unexecuted designs and the finite diagnostic materialization
+remain dated evidence. No merge/alignment or source import was done.
+
+### Finding and smallest supported seam
+
+A guarded reuse mode is source-defensible for the exact dated **b619 native x86**
+cohort. It requires a real import authority boundary; omitting build calls alone
+does not satisfy the existing loader/cleanup contract.
+
+The retained Docker configs and manifest tags embed
+`a09-73e32a2612c14f3f801f7b1cff3d8cd6`. Current `image_identity`,
+`validate_image_tar`, `expected_v28_legacy_members` and image cleanup bind that
+content to the newly generated `self.owner`. A fresh run cannot meet those
+equalities using the unmodified retained bytes. Retagging cannot change the
+embedded config label or the archived manifest; relabeling would change the
+image ID and cease to be exact artifact reuse. Setting `self.owner` to the old
+value would conflate image provenance with current container/volume authority.
+
+The single proposed mode is `--prebuilt-x86` in the existing helper. It
+introduces `image_owner` solely for image config/archive validation and image
+cleanup. It starts equal to the fresh `self.owner` in normal build mode.
+In replay mode it may become the one fixed historical content owner only after
+the complete source/transport proof and positive absence checks for **both**
+expected image IDs, **both** historical tags and the entire historical
+owner-label inventory. Fresh `self.owner`, UUID container/volume names,
+creation intervals, mounts, UID controls and PID/session identities remain
+unchanged. The two historical tags are permitted only as newly introduced
+import resources on this fresh, separately serialized native runner; no
+existing historical tag/image is adopted or deleted.
+
+One additive `import_prebuilt_x86` method supplies the transport, exact pending
+import records, reader binding, two image loads and existing runtime product
+inspection. Six existing Cohort methods receive narrowly scoped edits:
+`__init__`, `daemon_setup`, `image_identity`, `validate_image_tar`,
+`expected_v28_legacy_members` and `cleanup`. All **54 other existing methods**
+remain byte- and AST-equivalent, including source checking, the five-native
+transport, both original build methods, product inspection, every reader and
+preservation method, container/volume/process authority, all refusals, handoffs,
+snapshots and `fixture_gate`. The original default build path remains present;
+the proposed workflow selects the x86 import mode explicitly.
+
+The separate three-hunk workflow proposal limits its advertised choice to x86,
+describes the dated replay and supplies the one flag. Checkout/action pins,
+product/review mappings, GitHub permissions, serialization, host checks,
+resource prerequisites, timeouts, private paths and always-upload remain exact.
+No new workflow, helper, source writer, probe, Dockerfile or dependency is
+proposed. The archive below is the complete two-file prospective delta.
+
+### What was actually inspected
+
+I read the complete 120,263-byte current helper and the complete 109-line
+published workflow, all executable bodies included. Local `a9b91ea8…` helper
+bytes equal staged `66064a6b4df4f925bde371e606be65a405e9337a`; local workflow
+is **absent**, so its exact published Git object is used only as source data.
+I read the supplied sanitized run/job and artifact JSON in full and the fixed
+cohort receipt's provenance/image/reader/resource/cleanup fields. I read the
+complete accepted native root receipt and root reader review, and the complete
+b619 probe and Dockerfile. No ZIP/tar/native binary was opened, extracted,
+executed or rehashed here; no live API/registry/tool/version was queried.
+
+The supplied `run-api.json` is a CLI summary, not a raw run endpoint object;
+`artifact-api.json` wraps its single item in `artifacts`. The prospective
+future live metadata checks below use the actual API contract already used by
+the unchanged native transport. The known run/artifact/source facts come from
+the supplied summary/item, sealed cohort JSON and committed root receipt.
+No new run, job, artifact or controller-source ID is invented.
+
+Actual run `37087561409/job111100895046` remains **FAILED**, from
+`2026-10-03T01:49:43Z` to `02:42:28Z` for its bounded cohort step.
+Its source is b619, controller `3dab109446b2dd773f524601bf4737bf3861cbb6`,
+helper `1ac9e134…`; its workflow/helper source and resource-only recipes are
+bound below. The old receipt has `fixture/unexpected_OSError`, checks `[]`,
+`official_release=false` and `shared_full_gate=not_run`. Reader observations
+12 and seven complete offline preservation packets are historical partial
+evidence, not a prior E-P-E/platform or full-gate pass. Old errno/site/cause
+remain UNKNOWN; this import design contains no socket/port/TIME_WAIT correction.
+
+### Exact historical transport and source authority
+
+| Input | Exact dated binding |
+| --- | --- |
+| Product | `b619fe25269ccc150e473bbcde47cdb3623ef810` |
+| Product tree | `a627df2ce21a4d255b8c1914d4f543e32f40f4de` |
+| Root product/native review | `66c814a339665e6b3f8e6c22bc59d4f6f0aa224c` |
+| Old container workflow/controller | `3dab109446b2dd773f524601bf4737bf3861cbb6` |
+| Old workflow bytes | 4,573 bytes, SHA256 `9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4` |
+| Old container helper | 119,193 bytes, SHA256 `1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67` |
+| New diagnostic baseline | 120,263 bytes, SHA256 `a9b91ea849840daee8fe25791e6751e77ec355fdd9e628ced2e317f00c9e74dd` |
+| Old container artifact | `11262263011`, `riauth-local-container-x86_64-37087561409-1`, 115,531,946 bytes |
+| Complete container outer ZIP | SHA256 `78bb19d402870f934250e9dc53e99dc9f2008f18f96b4091a62cc14c1f8493b0` |
+| Old cohort JSON | 460,868 bytes, SHA256 `e775e6916221f32919b92eb5cef3e4eda597f6cadf80294fd271cea79c4c535f` |
+| Committed root reader review | `docs/roadmap/evidence/wave30-a09-reader-37087561409-root-review.json` at 66064; 5,333 bytes, SHA256 `0cd61c168960c9220a0092219e6b18023ea7c06c62b30c193bf5ec6b047a86f2` |
+| Original Dockerfile | SHA256 `458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb` |
+| Serial resource recipe | SHA256 `a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440`; exact prefix reversal to original |
+| Reader recipe | SHA256 `ba68e6ccb19b2421b250a75e01fa41844b772a3c892f99777f7d5e375ff8adc7`; original serial recipe plus exact reader stage |
+| Docker archive/parser profile | Actual prior Docker `28.0.4`; prospective fresh daemon must match exactly |
+| Reader artifact | `local-store-reader-x86_64.bin`; 12,199,608 bytes; SHA256 `b6be98dddc96df4220e9423425ebb668a0dda0a7ac439dd7d7e73dc187e7b707` |
+
+The two image archives, their config IDs and their copied server bytes are
+distinct from the five native archives' compiler outputs; the existing
+capability/version parity is re-executed in a future replay. This proposal does
+not falsely require or claim Docker/native server binary hash equality.
+
+| Edition | Container archive bytes / SHA256 | Config ID | Copied server SHA256 |
+| --- | --- | --- | --- |
+| Essentials | 48,936,063 / `d1c47ee3a3e17864b5f18aa99dd9bb5d2a6d8c0f5c9de9d4e052f3377a6b66a5` | `sha256:fc6ce9897850b8561f08b8dee9128f1bc1096f7053264086755ee6b0b0328b82` | `62a933b0f94401e15699ced6b3ae1e18f9a06e42993d50f0f438902fcfdce78c` |
+| Platform | 53,552,130 / `5a81a46ee436d1eb56614cdce7f572325a71dfc4bb8e5b5d43f2c0cb3c1d4347` | `sha256:ae00ecffdb5245b37927d292da80776cf9e750098072f79d0b8716c5fb669f31` | `a28827dffe27a2a42ec3fd44411ae5c343402c1a461582b17d236cb5de6dd668` |
+
+The existing `native_transport` is preserved in full. Its fixed source is
+b619, native run `37046857550` / job `110970324302` / attempt 1,
+workflow source `0d090169f20f61f7cb59b685dccb13203526539f`, artifact
+`11246575279` / `riauth-local-x86_64-37046857550-1`, 52,428,080 bytes,
+complete ZIP SHA256
+`7c1bcad0f78d90eb611ab76d67943a32a0d691cd5bbd9e5588512bdde635e2a0`.
+Native root receipt is 11,244 bytes, SHA256
+`ccf7c3fb6c0bd85816097c32a24a1c1b0a67b9597346d571cd68975a4680b1af`.
+The two transports require complete outer ZIP hashes before extraction. The
+original native transport keeps its exact member allowlist, all eleven finite
+native log pins, all seven committed source inputs,
+each three-member tar and each exact binary size/SHA/ELF62, plus the existing
+two capability bodies. No five-native artifacts are repackaged or newly built.
+
+| Native product | Archive bytes / SHA256 | Binary bytes / SHA256 |
+| --- | --- | --- |
+| essentials / riauth | 14976946 / `975253463d65629c676e1b60a8dcf37b30977d313c7b7958af86c00884feffff` | 43213608 / `fd1f3d44a96608bb244b6ddf5e278859168b599a77a14027a4fee4e2cfade380` |
+| platform / riauth | 19597581 / `2aa43e440dd0810d27c487ec8cabf6654782deecde7788f92ff1bffd2f5365a3` | 57221824 / `2081cc2441e4e592a80241f1720b194c23b1a4ccf4a04aa0985330d28f238e1b` |
+| essentials / riauth-maintenance | 6419716 / `bbe16ce2c0579bd72f0f5b4df4b49bcf30b90b63d82443aa0c0b98dce3f4a178` | 16534968 / `b3b4988b5eed0a647753be4a4c459e6ddcbf14e3bb7e85ce4bf1805c62a9e472` |
+| platform / riauth-maintenance | 7350363 / `b911daf1c08515c4a7eb35454e5cb7672e6fd6c465c8183d84cc35ded6c0a9f7` | 19029784 / `f95e1bd46cb08d35481c554747719bf4440c2e9fd8de8cd549712a8cab9aa5cd` |
+| client / riauthctl | 3737340 / `e71303ba722e4e68f3f0f681a55671c73b55201d5dc63f35a2d8607342a73b71` | 10494624 / `b3544a747ee0421df5dd0c44a8befa949ac16e3108fbd4db65617ccb4eef2a05` |
+
+
+All original native inputs remain source checked, including the two separate
+lockfiles, manifests, license/notices and artifact checker. The b619 notices
+are dated retained bytes; no refresh/current-license claim is borrowed. The
+reader's exact six source inputs are additionally rechecked:
+
+| Reader input at b619 | SHA256 |
+| --- | --- |
+| `.dockerignore` | `4fbd9472316442bdd8b72e268feb1140701e87ac28dd02295c687b6d379eb093` |
+| `Cargo.lock` | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| `Cargo.toml` | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| `Dockerfile` | `458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb` |
+| `rust-toolchain.toml` | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+| `tests/edition_transition_store_probe.rs` | `da486cb8cd7c9d6dfcd78da2704e27688b43a8dd40c7fa58e5b4574f678aed32` |
+
+
+### Future interface, bounded transport and ownership sequence
+
+Prospective sole workflow invocation, **NOT RUN**, uses the existing fresh
+root/controller/product/review checkouts and only this explicit x86 mode:
+
+```sh
+python3 controller/scripts/check-local-container-cohort.py --prebuilt-x86 \
+  --controller "$GITHUB_WORKSPACE/controller" \
+  --product "$GITHUB_WORKSPACE/product" \
+  --review "$GITHUB_WORKSPACE/review" \
+  --root "$A09_CONTAINER_ROOT"
+```
+
+
+No new controller commit SHA is selected here; root must publish/review exact
+candidate bytes and separately pin that controller before dispatch. The
+workflow still selects product b619 and review 66c814, never current S02
+production. A native Linux x86_64/GitHub-hosted/X64 runner and native Docker
+`28.0.4` daemon are hard prerequisites, not measured present/future readiness.
+
+Owned paths are all under the existing exclusive 0700
+`$RUNNER_TEMP/riauth-container-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT`:
+
+| Role | Prospective owned relative path |
+| --- | --- |
+| Existing five-native transport | `native.zip` / `native/`, unchanged |
+| Exact container input | `prebuilt-x86.zip`; exclusive 0600 download |
+| Private eleven-file extraction | `prebuilt-x86/`; 0700 directory, all entries initially exclusive 0600 regular files |
+| Executable private reader | `prebuilt-x86/local-store-reader-x86_64.bin`, SHA/shape/ELF62 checked before chmod0755 |
+| Public exact reused products retained for provenance | Existing `evidence/local-essentials-x86_64.docker.tar.gz`, `evidence/local-platform-x86_64.docker.tar.gz` and `evidence/local-store-reader-x86_64.bin`; exclusive 0600 exact-byte copies |
+| New outcome/resources | Existing `evidence/container-cohort.json` and `resources.jsonl` |
+
+The order is source proof → original five-native transport/capabilities →
+native daemon identity/capacity proof → container artifact metadata/full ZIP
+digest → guarded exact extraction/old receipt/reader/source proof → image
+absence proof → pending owned import records → two strict tar validations →
+one load per edition/product inspection → unchanged complete fixture →
+unchanged source-input postcheck and finally/cleanup/save.
+
+The new container transport is the existing authenticated GitHub-origin /
+unauthenticated signed-storage pattern, with no redirect follow or bearer
+forwarding to storage. Its 180-second streaming deadline, 15-second socket
+timeout, exact 115,531,946-byte compressed count and complete 64-hex digest
+precede **any** ZIP parsing. All eleven names, sizes and SHAs are literal source
+data tied to the sealed root review. Flat exact membership rejects paths,
+directories, duplicates, encryption and non-regular/link entries. Each
+declared size and copied byte count is exact; aggregate extraction remains
+under 512MiB. Fresh exclusive destination creation under the private root
+prevents symlink traversal. Any missing, extra, changed or expired input stops;
+there is no build fallback or weaker metadata-only transport.
+
+The full unmodified native transport still verifies its own exact outer ZIP
+before its guarded extraction. The reused reader remains the exact
+`platform,test-support` / locked / no-default-features / release / jobs1 /
+incremental0 / debug0 / compile-no-run historical artifact; its source,
+manifest/toolchain/Dockerfile/probe pins are checked against b619. It is not
+silently relabeled as newly compiled. The accepted complete `snapshot` action
+is the only reader invocation; all row hashes/keysets, metadata/counts,
+reader-alone three-physical-file equality, config/key/candidate exact-byte
+comparisons, output inode/owner/mode/no-follow bounds and stopped-owner guards
+are unchanged. No logical rows/config/key metadata become public artifacts.
+
+Before any image load, both archive names/bytes/SHAs and immutable config IDs
+are checked through the full outer manifest/old receipt. The existing strict
+saved-image validator still binds all manifest tags/config/layers, SHA-addressed
+blob names, known v28 legacy metadata, source/edition/owner labels and OCI
+descriptor relationships. The one historical `image_owner` is fixed and sealed
+by that full proof; it is not user supplied. Preflight must prove absence of
+the exact two IDs and tags and an empty historical-label inventory.
+
+After that proof, `prebuilt_imports` records exact IDs/tags plus positive
+before-absence and the fresh current `self.owner`. `load_attempted` is saved
+before the owned load call. Only that registered/attempted exact ID, with
+the exact expected config/edition/source/owner label and sole exact tag, is
+eligible for cleanup even if load loses its response. Pre-existing resources
+are refused before registration; a non-attempted/unexpected replacement is
+never deleted. Each actual load must return zero and yield the precise ID,
+single tag and complete image identity. Product-copy containers stay stopped,
+UID10001 and fresh-owner bound; actual server bytes must equal the retained
+hash, license/notices equal b619, and current capabilities equal both the
+native and recorded image bodies. Current versions must still match through
+the unchanged finite version checks.
+
+The post-import inventory must contain exactly the two registered image IDs.
+Original cleanup removes only those exact imported tags/IDs, verified fresh
+containers/volumes and bound owned process groups; it uses `--no-prune` and
+never performs a global image/cache deletion. The historical-owner inventory
+must be empty afterward. Layers/content-addressed pre-existing base/tool
+objects remain under the original retention policy. Cleanup failure, pending
+resources, nonempty inventory or unproved process-group reaping still prevents
+a pass. A fresh, exclusively serialized runner/daemon is a runtime prerequisite;
+this source phase supplies no evidence of any live inventory.
+
+Original 30GiB workflow/controller start and stage capacity checks, 10GiB
+monitor stop threshold ahead of the 8GiB floor, two-second samples, 7,200-second
+controller / 1,200-second fixture / 240-second cleanup bounds, finite child
+timeouts/caps and owned-group stop/wait/reap remain unchanged. The original
+150-minute workflow, 125-minute invocation and 15-minute always-upload bounds
+remain unchanged. Sampling remains a monitor, not a hard storage quota.
+
+### Outcome and artifact attribution
+
+No buildx builder, BuildKit pull or Cargo compilation is invoked in the
+selected replay branch. The fixed source-check recipe construction/receipt
+comparison remains a data/provenance check. `builds_this_run=false` and
+`builder_created_this_run=false` prevent borrowing a current build outcome.
+Every reused image/reader has `build_origin` referencing the actual failed
+37087561409 run, artifact ID/full ZIP digest and root receipt hash,
+`built_this_run=false` and `imported_this_run=true`. Current reader
+`verified_physical_observations` starts at **zero**; the old final physical
+observation is omitted from the current reader record. Current checks,
+offline preservation and resource/process/creation records come only from
+the new run. Historical 12/7 counts are explicitly marked historical with
+`historical_checks_credited_this_run=0`.
+
+Copies of the two public archives and reader preserve **exact** bytes; they are
+reused inputs, not newly built/current official release products. Existing
+always-upload retains finite redacted outcome/resources/cleanup/provenance and
+public product artifacts on every exit. The signed URL/CI token, CLI args,
+credentials, sessions, row/key/config content and original raw exception are
+not added to stdout/log/evidence. The original first failure, finite a9b
+OSError site/errno projection, finally/save/output/numeric exit and all
+refusal/context guards are unchanged.
+
+The unchanged `fixture_gate` must newly complete initial ordinary identity and
+scope, revoked sessions, issuer/policy/rate refusals, read-only plans,
+token-bound explicit E→P→E handoffs and postrestart equality, plus the isolated
+Platform agent/downgrade-refusal fixture before populating all eleven checks.
+No old observation is used to manufacture those outcomes. Even a future
+successful x86 LOCAL replay does not prove ARM containers, current S02
+production, PostgreSQL, every protocol/tenant or an official release.
+
+### Exact prospective source archives
+
+The following zero-context diffs are source DATA, not patch commands.
+They are independently forward-applied and reversed in memory; complete
+source identities are recorded before any prospective ownership is requested.
+
+| Archive / full file | Bytes | SHA256 |
+| --- | --- | --- |
+| Helper baseline | 120263 | `a9b91ea849840daee8fe25791e6751e77ec355fdd9e628ced2e317f00c9e74dd` |
+| Complete prospective helper | 138268 | `9f95975a70caf47c06b224226134649f552169714f9ebf3b54b4b55da98f5908` |
+| Complete helper diff | 19701 | `c56e540762ddb426a5b9354d4c9b4f1d0c0259ac3ac2fb9a5a47c02b2a6981f4` |
+| New import method source data | 17127 | `0ff882c18027849f7e09dc524e2f6fc7b6d06c678893333b137ed54e9bf72448` |
+| Workflow baseline | 4573 | `9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4` |
+| Complete prospective workflow | 4574 | `3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851` |
+| Complete workflow diff | 525 | `d1e2721981aa4d4b35e8515dcb68c4805870f3a77b10f6f6ec6b57d47c8207ea` |
+
+#### Complete helper delta
+
+```diff
+--- a/scripts/check-local-container-cohort.py
++++ b/scripts/check-local-container-cohort.py
+@@ -197,0 +198,2 @@
++        require(not args.prebuilt_x86 or self.selected["architecture"] == "x86_64",
++                "closed_prebuilt_architecture")
+@@ -211,0 +214,2 @@
++        self.image_owner = self.owner
++        self.image_import_attempted = set()
+@@ -771,0 +776,5 @@
++        if self.args.prebuilt_x86:
++            self.receipt.update(builds_this_run=False, builder_created_this_run=False)
++            self.receipt["limits"].append("dated b619 verified imports; not current/new builds")
++            self.save()
++            return
+@@ -969 +978 @@
+-                and labels.get(OWNER_LABEL) == self.owner
++                and labels.get(OWNER_LABEL) == self.image_owner
+@@ -1070 +1079 @@
+-                and settings["config"]["Labels"][OWNER_LABEL] == self.owner
++                and settings["config"]["Labels"][OWNER_LABEL] == self.image_owner
+@@ -1113 +1122 @@
+-                and re.fullmatch(r"a09-[0-9a-f]{32}", self.owner) is not None,
++                and re.fullmatch(r"a09-[0-9a-f]{32}", self.image_owner) is not None,
+@@ -1134 +1143 @@
+-            "Labels": {OWNER_LABEL: self.owner, "org.riauth.edition": edition,
++            "Labels": {OWNER_LABEL: self.image_owner, "org.riauth.edition": edition,
+@@ -1333,0 +1343,248 @@
++        self.save()
++
++
++    def import_prebuilt_x86(self):
++        """Import dated exact public products; never claim a build or old gate pass."""
++        self.phase = "prebuilt-transport"
++        require(self.args.prebuilt_x86 and self.selected["architecture"] == "x86_64",
++                "closed_prebuilt_architecture")
++        self.capacity(30 * GiB)
++        review = self.args.controller / "docs/roadmap/evidence/wave30-a09-reader-37087561409-root-review.json"
++        require(review.is_file() and not review.is_symlink() and review.stat().st_size == 5333
++                and file_hash(review) == "0cd61c168960c9220a0092219e6b18023ea7c06c62b30c193bf5ec6b047a86f2",
++                "prebuilt_root_receipt_identity")
++        reviewed = json.loads(review.read_bytes())
++        require(reviewed["run"] == 37087561409 and reviewed["job"] == 111100895046
++                and reviewed["controller"] == "3dab109446b2dd773f524601bf4737bf3861cbb6"
++                and reviewed["product"] == self.selected["source"]
++                and reviewed["helper_sha256"] == "1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67"
++                and reviewed["state"] == "ACTUAL_FAILURE_TRANSPORT_AND_CLEANUP_VERIFIED"
++                and reviewed["shared_full_gate"] == "not_run",
++                "prebuilt_root_receipt_scope")
++        expected = {
++            "id": 11262263011,
++            "name": "riauth-local-container-x86_64-37087561409-1",
++            "size_in_bytes": 115531946,
++            "digest": "sha256:78bb19d402870f934250e9dc53e99dc9f2008f18f96b4091a62cc14c1f8493b0",
++        }
++        require(reviewed["artifact"] == expected["id"]
++                and reviewed["artifact_bytes"] == expected["size_in_bytes"]
++                and reviewed["artifact_sha256"] == expected["digest"][7:],
++                "prebuilt_root_transport_pin")
++        run = self.github_json("/actions/runs/37087561409/attempts/1")
++        artifact = self.github_json("/actions/artifacts/11262263011")
++        require(run["id"] == 37087561409 and run["run_attempt"] == 1
++                and run["status"] == "completed" and run["conclusion"] == "failure"
++                and run["head_sha"] == reviewed["controller"]
++                and run["repository"]["full_name"] == REPOSITORY
++                and run["path"] == WORKFLOW, "prebuilt_run_identity")
++        require(all(artifact.get(k) == v for k, v in expected.items())
++                and artifact["expired"] is False
++                and artifact["workflow_run"]["id"] == 37087561409
++                and artifact["workflow_run"]["head_sha"] == reviewed["controller"],
++                "prebuilt_artifact_identity")
++        code, _, headers = self.http("https://api.github.com/repos/" + REPOSITORY
++            + "/actions/artifacts/11262263011/zip", token=os.environ["A09_GH_TOKEN"], cap=65536)
++        location = headers.get("Location") or headers.get("location")
++        require(code == 302 and type(location) is str, "prebuilt_artifact_redirect")
++        target = urllib.parse.urlsplit(location)
++        require(target.scheme == "https" and target.username is None and target.password is None
++                and target.port in (None, 443) and target.hostname is not None
++                and (target.hostname.endswith(".blob.core.windows.net")
++                     or target.hostname.endswith(".githubusercontent.com")),
++                "prebuilt_storage_origin")
++        outer = self.root / "prebuilt-x86.zip"
++        limit = min(time.monotonic() + 180, self.deadline)
++        opener = urllib.request.build_opener(NoRedirect())
++        with opener.open(location, timeout=15) as response, outer.open("xb") as out:
++            os.chmod(outer, 0o600)
++            require(response.status == 200, "prebuilt_storage_status")
++            count = 0
++            while True:
++                self.check_budget()
++                require(time.monotonic() < limit, "prebuilt_download_deadline")
++                block = response.read1(65536)
++                if not block:
++                    break
++                count += len(block)
++                require(count <= expected["size_in_bytes"] <= NATIVE_CAP, "prebuilt_compressed_cap")
++                out.write(block)
++        require(count == expected["size_in_bytes"]
++                and "sha256:" + file_hash(outer) == expected["digest"], "prebuilt_outer_zip_digest")
++        files = {
++            'container-cohort.json': (460868, 'e775e6916221f32919b92eb5cef3e4eda597f6cadf80294fd271cea79c4c535f'),
++            'launch.json': (163, '2b28472e1855b43d570fb6c9635362c8b200ff0421d1bb4fc45341e75bb1c3f5'),
++            'resources.jsonl': (285977, '992055f48887e025976dc6da575932d3f39bb87c7369e4ca5462a1c0daecaf41'),
++            'pull-pinned-buildkit.log': (1377, '9890229098928b6f2632b39b602b1c30fe4b50415e37ed511cddced3efb3a8df'),
++            'builder-create.log': (45, 'b1fc712b166650442c57186eedd84b400f14aa682cc34bbc6e7e145091b333ac'),
++            'builder-bootstrap.log': (1912, '75c361e51eb147fe1d16f52478fa8e625c10fc9abe97c1eb8c7689e768d85fc3'),
++            'build-essentials.log': (52344, 'f13f5f313165b2e006476650655f0997c5227c58286c1268b380ec8e6c344bb4'),
++            'build-platform.log': (39927, '023d95ab26fd3d73a50f2e52ccfd84c45cbf26e8492bcd0dad6d1afb9e29f041'),
++            'local-essentials-x86_64.docker.tar.gz': (48936063, 'd1c47ee3a3e17864b5f18aa99dd9bb5d2a6d8c0f5c9de9d4e052f3377a6b66a5'),
++            'local-platform-x86_64.docker.tar.gz': (53552130, '5a81a46ee436d1eb56614cdce7f572325a71dfc4bb8e5b5d43f2c0cb3c1d4347'),
++            'local-store-reader-x86_64.bin': (12199608, 'b6be98dddc96df4220e9423425ebb668a0dda0a7ac439dd7d7e73dc187e7b707'),
++        }
++        require(reviewed["hashes"] == {name: item[1] for name, item in files.items()},
++                "prebuilt_file_manifest_binding")
++        unpacked = self.root / "prebuilt-x86"
++        unpacked.mkdir(mode=0o700)
++        with zipfile.ZipFile(outer) as archive:
++            require(len(archive.infolist()) == len(files), "prebuilt_zip_member_count")
++            seen, expanded = set(), 0
++            for info in archive.infolist():
++                self.check_budget()
++                require(info.filename in files and info.filename not in seen
++                        and not info.is_dir() and not (info.flag_bits & 1)
++                        and stat.S_IFMT(info.external_attr >> 16) in (0, stat.S_IFREG),
++                        "prebuilt_zip_member")
++                seen.add(info.filename)
++                size, expected_hash = files[info.filename]
++                require(info.file_size == size, "prebuilt_zip_declared_size")
++                expanded += size
++                require(expanded <= NATIVE_CAP, "prebuilt_zip_expanded_cap")
++                destination = unpacked / info.filename
++                with archive.open(info) as incoming, destination.open("xb") as out:
++                    os.chmod(destination, 0o600)
++                    copied = 0
++                    while block := incoming.read(1024 * 1024):
++                        self.check_budget()
++                        copied += len(block)
++                        require(copied <= size, "prebuilt_zip_payload_cap")
++                        out.write(block)
++                    require(copied == size, "prebuilt_zip_payload_truncated")
++                require(file_hash(destination) == expected_hash, "prebuilt_zip_payload_identity")
++            require(seen == set(files), "prebuilt_zip_inventory")
++        old = json.loads((unpacked / "container-cohort.json").read_bytes())
++        require(old["schema"] == "riauth.local-container-cohort/v1"
++                and old["project"] == PROJECT and old["repository"] == REPOSITORY
++                and old["source"] == self.selected["source"] and old["source_tree"] == self.selected["tree"]
++                and old["controller"] == reviewed["controller"]
++                and old["root_review"] == self.selected["review"] and old["architecture"] == "x86_64"
++                and old["helper_sha256"] == reviewed["helper_sha256"]
++                and old["workflow_sha256"] == "9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4"
++                and old["result"] == "failed_or_refused" and old["failure"] == "unexpected_OSError"
++                and old["failed_phase"] == "fixture" and old["checks"] == []
++                and old["official_release"] is False and old["shared_full_gate"] == "not_run"
++                and old["native_input"]["artifact"] == self.native["artifact"]
++                and old["native_input"]["outer_zip_rehashed"] is True
++                and old["native_input"]["receipt_sha256"]
++                    == self.selected["receipt_hashes"][self.selected["native_receipt"]]
++                and old["recipe"] == self.receipt["recipe"], "prebuilt_dated_source_binding")
++        old_owner = "a09-73e32a2612c14f3f801f7b1cff3d8cd6"
++        image_ids = {
++            "essentials": "sha256:fc6ce9897850b8561f08b8dee9128f1bc1096f7053264086755ee6b0b0328b82",
++            "platform": "sha256:ae00ecffdb5245b37927d292da80776cf9e750098072f79d0b8716c5fb669f31",
++        }
++        require(old["owner"] == old_owner and set(old["images"]) == set(image_ids),
++                "prebuilt_content_owner_binding")
++        reader = old["reader"]
++        require(reader["schema"] == "riauth.local-snapshot-reader/v1"
++                and reader["source"] == self.selected["source"] and reader["source_tree"] == self.selected["tree"]
++                and reader["architecture"] == "x86_64" and reader["target"] == self.selected["target"]
++                and reader["elf_machine"] == 62 and reader["features"] == ["platform", "test-support"]
++                and reader["profile"] == "release" and reader["locked"] is True
++                and reader["default_features"] is False and reader["compile_no_run"] is True
++                and reader["build_jobs"] == 1 and reader["incremental"] == reader["debug"] == 0
++                and reader["test_target"] == "edition_transition_store_probe"
++                and reader["action"] == "snapshot" and reader["native_transport_member"] is False
++                and reader["retained_artifact"] == "local-store-reader-x86_64.bin"
++                and reader["recipe_sha256"] == "ba68e6ccb19b2421b250a75e01fa41844b772a3c892f99777f7d5e375ff8adc7"
++                and (reader["binary_bytes"], reader["binary_sha256"])
++                    == files[reader["retained_artifact"]], "prebuilt_reader_identity")
++        require(set(reader["inputs"]) == {".dockerignore", "Cargo.lock", "Cargo.toml",
++                    "Dockerfile", "rust-toolchain.toml", "tests/edition_transition_store_probe.rs"},
++                "prebuilt_reader_input_allowlist")
++        for relative, expected_hash in reader["inputs"].items():
++            source = self.args.product / relative
++            require(source.is_file() and not source.is_symlink()
++                    and file_hash(source) == expected_hash, "prebuilt_reader_source_binding")
++        binary = unpacked / reader["retained_artifact"]
++        metadata = binary.lstat()
++        require(stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1
++                and metadata.st_uid == os.getuid() and stat.S_IMODE(metadata.st_mode) == 0o600
++                and (metadata.st_size, file_hash(binary)) == files[reader["retained_artifact"]],
++                "prebuilt_reader_private_shape")
++        self.elf(binary, 62)
++        binary.chmod(0o755)
++        self.reader, self.reader_hash = binary, reader["binary_sha256"]
++        private_write(self.evidence / reader["retained_artifact"], binary.read_bytes())
++        require(file_hash(self.evidence / reader["retained_artifact"]) == self.reader_hash,
++                "prebuilt_reader_retention_identity")
++        self.receipt["reader"] = {k: v for k, v in reader.items()
++            if k not in {"last_physical_observation", "verified_physical_observations"}}
++        origin = {"run": 37087561409, "job": 111100895046,
++                  "controller": reviewed["controller"], "artifact": expected,
++                  "root_receipt_sha256": file_hash(review)}
++        self.receipt["reader"].update(build_origin=origin, built_this_run=False,
++            imported_this_run=True, verified_physical_observations=0)
++        self.receipt["prebuilt_input"] = {**origin, "outer_zip_rehashed": True,
++            "historical_result": "failed_or_refused", "historical_failure": "unexpected_OSError",
++            "historical_reader_observations": 12, "historical_offline_packets": 7,
++            "historical_checks_credited_this_run": 0}
++        self.phase = "prebuilt-images"
++        self.capacity(30 * GiB)
++        require(self.receipt["daemon"]["ServerVersion"] == "28.0.4", "prebuilt_daemon_profile")
++        for edition, identifier in image_ids.items():
++            item = old["images"][edition]
++            require(item["id"] == identifier and item["tag"] == "riauth-local/" + old_owner + ":" + edition
++                    and item["os"] == "linux" and item["architecture"] == "amd64"
++                    and item["recipe"] == self.receipt["recipe"]
++                    and (item["archive_bytes"], item["archive_sha256"]) == files[item["archive"]]
++                    and item["labels"] == {OWNER_LABEL: old_owner, "org.riauth.edition": edition,
++                        "org.opencontainers.image.revision": self.selected["source"],
++                        "org.opencontainers.image.source": "https://github.com/" + REPOSITORY},
++                    "prebuilt_image_receipt_identity")
++            self.absent("image", item["tag"])
++            self.absent("image", identifier)
++        code, out, _ = self.docker("prebuilt-before-inventory", "image", "ls", "--quiet", "--no-trunc",
++            "--filter", "label=" + OWNER_LABEL + "=" + old_owner, timeout=20)
++        require(code == 0 and not out.strip(), "prebuilt_content_owner_preexists")
++        # Only image validation/cleanup uses this historical content owner.
++        # Container/volume/PID authority remains bound to the fresh self.owner.
++        self.image_owner = old_owner
++        self.tags = {edition: old["images"][edition]["tag"] for edition in image_ids}
++        self.receipt["planned_image_tags"] = dict(self.tags)
++        self.images = dict(image_ids)
++        self.receipt["prebuilt_imports"] = {
++            edition: {"id": identifier, "tag": self.tags[edition],
++                      "before_id_absent": True, "before_tag_absent": True,
++                      "load_attempted": False, "confirmed": False, "fresh_run_owner": self.owner}
++            for edition, identifier in image_ids.items()}
++        self.save()
++        for edition, identifier in image_ids.items():
++            item = old["images"][edition]
++            archive = unpacked / item["archive"]
++            self.validate_image_tar(archive, edition, identifier)
++        for edition, identifier in image_ids.items():
++            self.capacity(30 * GiB)
++            item = old["images"][edition]
++            archive = unpacked / item["archive"]
++            require(file_hash(archive) == item["archive_sha256"], "prebuilt_archive_changed")
++            self.image_import_attempted.add(edition)
++            self.receipt["prebuilt_imports"][edition]["load_attempted"] = True
++            self.save()  # Exact pending import identity survives a lost load response.
++            code, _, _ = self.docker("prebuilt-load-" + edition, "image", "load", "--input", archive,
++                                      timeout=300)
++            observed = self.image_identity(edition, self.tags[edition])
++            require(code == 0 and observed["Id"] == identifier
++                    and observed["RepoTags"] == [self.tags[edition]], "prebuilt_loaded_image_identity")
++            self.receipt["prebuilt_imports"][edition]["confirmed"] = True
++            self.receipt["images"][edition] = {
++                "id": identifier, "tag": self.tags[edition], "os": observed["Os"],
++                "architecture": observed["Architecture"], "labels": observed["Config"]["Labels"],
++                "recipe": self.receipt["recipe"], "build_origin": origin,
++                "built_this_run": False, "imported_this_run": True,
++                "archive": item["archive"], "archive_bytes": item["archive_bytes"],
++                "archive_sha256": item["archive_sha256"]}
++            private_write(self.evidence / item["archive"], archive.read_bytes())
++            require(file_hash(self.evidence / item["archive"]) == item["archive_sha256"],
++                    "prebuilt_archive_retention_identity")
++            self.inspect_product(edition, identifier)
++            require(self.receipt["images"][edition]["server_sha256"] == item["server_sha256"]
++                    and self.receipt["images"][edition]["capabilities"] == item["capabilities"],
++                    "prebuilt_runtime_product_binding")
++            self.save()
++        code, out, _ = self.docker("prebuilt-after-inventory", "image", "ls", "--quiet", "--no-trunc",
++            "--filter", "label=" + OWNER_LABEL + "=" + old_owner, timeout=20)
++        require(code == 0 and set(out.splitlines()) == {x.encode() for x in image_ids.values()},
++                "prebuilt_exact_import_inventory")
+@@ -1947 +2204,4 @@
+-                    require((item["Config"].get("Labels") or {}).get(OWNER_LABEL) == self.owner
++                    require((item["Config"].get("Labels") or {}).get(OWNER_LABEL) == self.image_owner
++                            and (not self.args.prebuilt_x86 or
++                                 (edition in self.image_import_attempted
++                                  and item["Id"] == self.images[edition]))
+@@ -1966 +2226 @@
+-                    "--filter", "label=" + OWNER_LABEL + "=" + self.owner, timeout=20, cleanup=True)
++                    "--filter", "label=" + OWNER_LABEL + "=" + self.image_owner, timeout=20, cleanup=True)
+@@ -2000,0 +2261 @@
++    parser.add_argument("--prebuilt-x86", action="store_true")
+@@ -2016,2 +2277,5 @@
+-        gate.build_images()
+-        gate.build_reader()
++        if args.prebuilt_x86:
++            gate.import_prebuilt_x86()
++        else:
++            gate.build_images()
++            gate.build_reader()
+```
+
+#### Complete workflow delta
+
+```diff
+--- a/.github/workflows/check-local-container-cohort.yml
++++ b/.github/workflows/check-local-container-cohort.yml
+@@ -7 +7 @@
+-        description: Native Linux architecture for one LOCAL container cohort
++        description: Verified dated x86 LOCAL container fixture replay
+@@ -11 +11 @@
+-        options: [x86_64, arm64]
++        options: [x86_64]
+@@ -95 +95 @@
+-          python3 controller/scripts/check-local-container-cohort.py \
++          python3 controller/scripts/check-local-container-cohort.py --prebuilt-x86 \
+```
+
+#### Complete prospective main, including unchanged finite failure/finally
+
+```python
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("controller", "product", "review", "root"):
+        parser.add_argument("--" + name, type=pathlib.Path, required=True)
+    parser.add_argument("--prebuilt-x86", action="store_true")
+    args = parser.parse_args()
+    os.umask(0o077)
+    gate = None
+    failure = None
+
+    def interrupted(signum, frame):
+        raise Refusal("controller_signal")
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, interrupted)
+    try:
+        gate = Cohort(args)
+        gate.source_check()
+        gate.native_transport()
+        gate.daemon_setup()
+        if args.prebuilt_x86:
+            gate.import_prebuilt_x86()
+        else:
+            gate.build_images()
+            gate.build_reader()
+        gate.fixture_gate()
+        # Recheck committed source and manifests after every product operation.
+        require(gate.git(args.product, "status", "--porcelain") == b"", "product_checkout_changed")
+        for relative, expected in gate.native["inputs"].items():
+            require(file_hash(args.product / relative) == expected, "product_input_changed")
+        gate.receipt["result"] = "passed"
+    except BaseException as error:
+        # Never format an external exception: it could contain a signed URL/token/reply.
+        failure = str(error) if isinstance(error, Refusal) else "unexpected_" + type(error).__name__
+        if gate is not None:
+            gate.receipt.update(result="failed_or_refused", failure=failure, failed_phase=gate.phase)
+            if type(error) is OSError:
+                try:
+                    sites = {
+                        Cohort.start_app.__code__: "start_app",
+                        Cohort.create_container.__code__: "container_create",
+                        Cohort.command.__code__: "owned_cli_transport",
+                    }
+                    node, site = error.__traceback__, "other"
+                    for _ in range(16):
+                        if node is None:
+                            break
+                        site = sites.get(node.tb_frame.f_code, "other")
+                        node = node.tb_next
+                    if node is not None:
+                        site = "other"
+                    number = error.errno
+                    gate.receipt["os_error"] = {
+                        "site": site,
+                        "errno": number if type(number) is int and 0 <= number <= 4095 else None,
+                    }
+                except BaseException:
+                    pass  # Optional projection cannot replace the original failure.
+    finally:
+        if gate is not None:
+            try:
+                gate.cleanup()
+            except BaseException:
+                gate.receipt["cleanup_errors"].append("private_cleanup_failed")
+                failure = failure or "private_cleanup_failed"
+            if gate.receipt["cleanup_errors"]:
+                gate.receipt["result"] = "failed_or_refused"
+                failure = failure or "owned_cleanup_failed"
+            try:
+                gate.save()
+            except BaseException:
+                failure = failure or "receipt_write_failed"
+    print(json.dumps({"result": "failed_or_refused" if failure else "passed",
+                      "failure": failure, "official_release": False}))
+    return 1 if failure else 0
+```
+
+#### Complete prospective workflow
+
+```yaml
+name: Check LOCAL native Linux container cohort
+
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Verified dated x86 LOCAL container fixture replay
+        required: true
+        type: choice
+        default: x86_64
+        options: [x86_64]
+
+permissions:
+  contents: read
+  actions: read
+
+# Deliberately retains the native artifact job's legacy serialization key.
+# Root also serializes this job against the separately owned shared-store job.
+concurrency:
+  group: riauth-local-artifacts-arm64
+  cancel-in-progress: false
+
+jobs:
+  native-container:
+    runs-on: ${{ inputs.architecture == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONOPTIMIZE: '0'
+      ARCHITECTURE: ${{ inputs.architecture }}
+    steps:
+      - name: Establish private evidence and initial capacity
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import json, os, pathlib, platform, shutil
+          architecture = os.environ.get('ARCHITECTURE')
+          platforms = {
+              'x86_64': {'machine': 'x86_64', 'runner_arch': 'X64',
+                         'source': 'b619fe25269ccc150e473bbcde47cdb3623ef810',
+                         'review': '66c814a339665e6b3f8e6c22bc59d4f6f0aa224c'},
+              'arm64': {'machine': 'aarch64', 'runner_arch': 'ARM64',
+                        'source': '9a819317efb3a13fa27cd86f884be2be00898fc0',
+                        'review': 'b71b7b0041a549793233e8c7a81bbb61797e20f3'}}
+          if architecture not in platforms:
+              raise SystemExit('unsupported_native_architecture')
+          native = platforms[architecture]
+          if (platform.system(), platform.machine(), os.environ.get('RUNNER_ARCH'),
+              os.environ.get('RUNNER_ENVIRONMENT')) != ('Linux', native['machine'], native['runner_arch'], 'github-hosted'):
+              raise SystemExit('unsupported_native_host')
+          paths = ('/', os.environ['GITHUB_WORKSPACE'], os.environ['RUNNER_TEMP'], '/var/lib/docker')
+          free = {p: shutil.disk_usage(p).free for p in paths}
+          if min(free.values()) < 30 * 1024**3:
+              raise SystemExit('initial_capacity_below_30GiB')
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / ('riauth-container-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'])
+          root.mkdir(mode=0o700)
+          (root / 'evidence').mkdir(mode=0o700)
+          (root / 'evidence' / 'launch.json').write_text(json.dumps({'initial_free_bytes': free}) + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('A09_CONTAINER_ROOT=' + str(root) + '\n')
+              out.write('A09_PRODUCT_SOURCE=' + native['source'] + '\n')
+              out.write('A09_ROOT_REVIEW=' + native['review'] + '\n')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+        with:
+          path: controller
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+        with:
+          ref: ${{ env.A09_PRODUCT_SOURCE }}
+          path: product
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        timeout-minutes: 5
+        with:
+          ref: ${{ env.A09_ROOT_REVIEW }}
+          path: review
+          persist-credentials: false
+          fetch-depth: 1
+      - name: One bounded LOCAL container cohort
+        timeout-minutes: 125
+        env:
+          A09_GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 controller/scripts/check-local-container-cohort.py --prebuilt-x86 \
+            --controller "$GITHUB_WORKSPACE/controller" \
+            --product "$GITHUB_WORKSPACE/product" \
+            --review "$GITHUB_WORKSPACE/review" \
+            --root "$A09_CONTAINER_ROOT"
+      - name: Upload LOCAL evidence, including refusals and cleanup limits
+        timeout-minutes: 15
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: riauth-local-container-${{ inputs.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.A09_CONTAINER_ROOT }}/evidence/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+```
+
+
+### Actual static validation, errors and residual prerequisites
+
+- Fresh `pwd` / `git status --short` / HEAD/source-object checks established the
+  clean existing branch at d135 and no source alignment. No applicable
+  `AGENTS.md` was found in the worktree or checked parent paths.
+  `CONTRIBUTING.md` was read; broad build advice is superseded by this narrow
+  source-only reservation.
+- SHA/length comparisons established the full protected 163,146-byte report,
+  unchanged a9b helper equal to staged66064 and exact published workflow data.
+  An initial report SHA comparison literal accidentally omitted `79` and
+  raised a source-check `AssertionError` (exit1) before any file change.
+  The literal was corrected to the complete recorded digest and the check
+  passed. This is not a helper/runtime failure.
+- A metadata projection initially treated the supplied summary/wrapper as raw
+  API bodies and printed absent fields; their complete supplied documents
+  were then read and the wrapper/summary contract documented above.
+  An overlarge capability projection was truncated by tool output; its
+  provenance fields were re-read separately with bounded output. Neither
+  output was used to invent missing metadata or a runtime result.
+- `ast.parse` accepts the entire candidate helper. Exact anchored source-data
+  substitutions and an independent unified-diff parser prove complete
+  forward/inverse helper and workflow bytes. AST normalization of the
+  reconstructed baseline matches the entire original module.
+- All 54 unedited original method spans/order and method ASTs are exact.
+  All original main-handler and finally ASTs, including the complete 22-line
+  finite OSError projection, are unchanged. No candidate definition,
+  import, test case or harness was evaluated.
+- Dockerfile resource-prefix reversal and the accepted reader stage were
+  reconstructed strictly as AST constant/source data. Their SHA256s match
+  the sealed historical receipt. All six reader inputs were independently
+  compared with b619 Git objects. A separate Git/hash comparison also passed
+  for all seven original native source inputs. No compiler or native version
+  probe ran. `python3 scripts/check-docs.py` and `git diff --check` exited zero;
+  exact archived diff/main/workflow hashes and report-only +879/-0 scope passed.
+- The report diff must remain append-only with the entire d135 prefix intact.
+  Static docs/whitespace/source-scope and committed/disk-prefix checks are
+  recorded by the separate report commit's final validation. All helper,
+  workflow, product, probe, manifest and prior evidence bytes remain unchanged.
+
+**Recommendation:** root can reserve the exact two-file source import mode for
+independent implementation/review if it accepts the explicit artifact-content
+vs fresh-resource ownership contract. Materialization and runtime are **HELD**.
+Root must separately select/publish the exact new controller, retain both
+sealed receipts at their fixed paths, confirm the dated native/container
+artifacts still exist/unexpired, reserve one fresh native x86 hosted daemon
+with the exact 28.0.4 archive profile and 30GiB starting capacity, and review
+the exact preflight/pending import/cleanup guards before dispatch. Any failed
+input/profile/ownership check stops without adopting old objects or rebuilding.
+
+The concrete narrower blocker to a zero-guard-change/manual skip-build path is
+the old image-owner/tag binding and builder-coupled setup; there is no existing
+prebuilt reader/import interface to invoke. If root declines the bounded
+ownership seam, retain the original all-build/manual path. No generic cached
+image/tag or unverified local reader fallback is proposed.
+
+This phase ran no helper/function/VM/harness/native/Docker/Cargo/build/service,
+archive/binary extraction, live query/download/dispatch, HTTP/provider,
+browser/Driver, tool/version probe or deletion. No worker/task/worktree/shell,
+other-worker contact, main/push/status or slot action occurred.
+All runtime stays **HELD** while the independently prepared S02/D01 gates run.
+Old actual FAILs and unknown causes remain; closed I02/I10/R05/W02/W05 and
+original A09 primary are unchanged.

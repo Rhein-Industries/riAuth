@@ -193,3 +193,9 @@ Cohort methods, first failure, output, cleanup and every guard. No new workflow,
 product, transport, build-reuse or runtime was introduced. The optional site/
 errno diagnostic remains UNEXECUTED;37087561409 still failed with unknown
 site/errno/cause. No next cohort dispatch is released by this source stage.
+
+## Dated prebuilt x86 replay source proposal — 2026-10-03
+
+Root read the full 882-line `33bff929ec2087cfe1eb0021b563d8e09b010165` appendix, all proposed import-method/main/workflow code, and complete contexts of the six changed original methods. Independent whole-file diff application and reversal reproduce helper 138268 bytes/SHA-256 `9f95975a70caf47c06b224226134649f552169714f9ebf3b54b4b55da98f5908` and workflow 4574 bytes/SHA-256 `3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851`. All 54 protected fixture/transition methods and the finite error-handler/finally bodies remain byte/AST exact.
+
+The proposal authenticates the full dated outer ZIP before guarded extraction, binds exact image/reader/source identities, requires absence of the historical image IDs/tags/label inventory before import, and registers each pending load before execution. Historical image provenance is separate from fresh container/volume authority. Cleanup may remove only exact attempted imported images; no earlier checks or builds become current-run evidence. Root approved exact two-path SOURCE-ONLY materialization while a separate read-only review continues. No proposed helper/workflow was executed, no remote dispatch occurred, and the earlier OSError failure remains failed with unknown cause. Dated b619 artifacts do not establish current S02 products, ARM containers or an official release.
