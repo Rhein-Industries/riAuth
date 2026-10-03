@@ -397,3 +397,281 @@ layout checked; git diff --check exited0. An independent byte check confirmed
 the entire20118-byte e906 prefix, LF-only text, final LF, no trailing whitespace,
 the exact726-byte forward-diff hash above, this sole changed report and no new
 files. The current WT result is separate from the author's immutable exit1.
+
+
+## wave30_D01_complete_composition_independent_review — 2026-10-03
+
+### Disposition and scope
+
+Recommend **source acceptance only** of the exact corrected composition with
+SHA-256 `a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`.
+I found no concrete additional composition blocker after reading the entire
+module, all embedded bodies, and both literal changes. This recommendation
+requires neither a product edit nor a new source reservation. It does not
+release runtime or establish D01/D05 completion. The changed-projection memory
+review and any real journey remain separately owned and authorized by root.
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; existing Sol2 worktree
+`ed9ac424-59f4-4520-905b-919aea3521eb`, branch
+`roadmap/local-revisions-coordination-wave27`; review parent
+`f25f151d086d99f5d0f1619193c60b1a3540e5b9`.
+`runtime_run_by_this_review: false`. No runtime lane was taken or released.
+
+The report path was absent in this branch and filesystem. As explicitly
+reserved, I created only this path from the complete published
+`ffda21202dc60021fc955078bbc9e4585444a7d0` object, then appended this section.
+Its original 31,346 bytes / 399 LF characters have SHA-256
+`c602e6a1b4eebd2994e109557c6fdd3b815e699e0557b46d00e3da8c651385c2`.
+They equal the whole report at
+`99d740c126cfe1a28b28d629c026e87ddb3aba46` and remain unmodified here.
+Those dated authorship, findings, corrections, executions and limitations retain
+their original meaning. No other file or source history was imported.
+
+### Immutable bodies and exact construction
+
+The composition and correction are in the immutable
+`docs/roadmap/local-wave30-d01-user-browser-review.md` objects below, rather
+than the moving author worktree. That source report is absent in this branch;
+its Git objects were read without importing it:
+
+| Object or body | Exact identity and review |
+| --- | --- |
+| Full fence at `251a29c097fc8b9a1fc1dd083bab97060242bdf0` | Canonical uncorrected module: 113,395 bytes / 1,241 LF characters; SHA-256 `484bd441ef0f3db547d75f6138f2943b07a3ef090c30271a9cdc3d7914dda02e`. |
+| Literal correction at `b21135a5c804de6ef9308b305d47b5021af71092` | Only module lines 37 and 428 change: the entry suffix pin in the release validator and seed validator. Entire preceding 251a29c report remains a byte prefix of this object. |
+| Corrected entire module | 113,395 bytes / 1,241 LF characters; SHA-256 `a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`. |
+| Uncorrected preparation prefix | 79,694 bytes / 733 LF characters; SHA-256 `98c765d6f29992ad9a56148af9c2562e95c4be9cb273a84a59f5a3e02cd7bedf`. Exact prefix of the accepted 44d32 module. |
+| Corrected preparation prefix | Same byte and LF lengths; SHA-256 `52bdc1bec3f527996032045a6a466e39e326a40d6cae393e1264d0ca9f2bd11d`. Reversing the two pins restores every prefix byte. |
+| Complete projection suffix | 33,701 bytes / 508 LF characters; SHA-256 `505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f`. Exact suffix from `48288c1f10f24d47bb86b57edd0682014e9b64ee`, independently reviewed in `e04cb470dab863ebd1b59d57db13771bad428e8b`. |
+| Accepted preparation baseline | `44d32c824218512d4bac6aca073dde6d260bdf37`: whole 111,275-byte / 1,200-LF module, SHA-256 `dfd04b3d914cf332d5ceba13d0a587dc7db2ca26b82c71e453fe85b5f2a43d9d`. Its original suffix is 31,581 bytes with SHA-256 `d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d`. |
+
+Canonical fence extraction distinguished the single Markdown delimiter LF from
+the source by exact expected hash; no whitespace normalization was used for byte
+equality. I reconstructed the corrected module in memory from the entire
+251a29c fence, applying exactly those two full-line replacements. The exact
+502-byte / 8-LF forward and inverse diff fences were independently identified:
+`4afbcb5ef4fa85f1a8079206cc4e0d9536a53b4298f5fabc5fb0e89279f0a417`
+and `7c35ea8bdc9acd3a4d9f4f50d316fa814376b2cd63233c66846aea3994782db5`.
+
+I read all corrected module lines 1–1,241. The long literal rows were read as
+complete decoded source bodies, not treated as a body review merely because a
+hash matched. This covers the entire launcher/preparation prefix and entire
+projection suffix, including their failure and cleanup paths. I also read the
+complete original published report, the composition prose and full 149-line
+static checker, and the correction prose/diffs and complete 79-line checker.
+The archived checkers were read, not executed. Full body reads are distinct from
+the Git-object and hash comparisons above. No entire million-byte author report
+or unrelated source stack is claimed as semantically audited.
+
+### Forward, inverse and lexical checks actually performed
+
+Independent source-only Python programs read fixed Git objects and used the
+installed Node internal Acorn parser with `--expose-internals`. Parsed source
+was data; no candidate expression, function, tool operation or archived checker
+was evaluated. Python `ast.parse` likewise parsed embedded bodies without
+compiling, importing or running them.
+
+The complete corrected module parses as an ECMAScript module. Normalized AST
+comparison removes source-position metadata while retaining operators, literal
+values/raw spellings and structure. Its two changed binary comparisons are
+exactly `c.entry_source_sha256 ===` at line 37 and
+`s.entry_source_sha256 !==` at line 428. Restoring the old value/raw spelling at
+those two nodes reproduces the entire uncorrected AST. The corrected full AST
+also equals the concatenated preparation-prefix AST and projection-suffix AST.
+Reversing the pins and replacing the entire suffix with the accepted original
+suffix reproduces the complete accepted 44d32 AST and bytes.
+
+The module has 35 top-level function declarations in the same order; 33 retain
+identical complete AST bodies. Only `lReleaseValid` and `pSeedValid` change, at
+their one pin literal each. There are 109 distinct top-level bindings with no
+duplicate names. A separate scope walk covered function parameters/defaults,
+block/catch/loop scopes, binding patterns, lexical declarations and references;
+it found no duplicate declaration or unresolved reference outside the explicit
+host/builtin allowance. The manual read also checked initialization before the
+actual call sites. These are static checks, not proof of host availability,
+TypeScript typing, tool response shapes or execution.
+
+The launcher creates 25 seed keys; they exactly equal the seed validator's
+25-key list. The initial owned context contains 24 keys. Its phase, helper PID,
+readiness flags, public paths, positive distinct PIDs and bound handles satisfy
+the suffix's initial `prepared_entry` gate by source construction. Eleven tool
+method names are referenced: the two terminal operations and the nine existing
+RiWork Cua Driver operations. Enabled metadata exists for all eleven. Relevant
+Driver descriptors and the published blank-state contract were reviewed as
+contract context; no Driver method or fresh state call was made here.
+
+### Embedded source preservation and parsing
+
+All 15 named Python literals were decoded, compared and parsed. They contain
+nine distinct complete bodies; repeated bodies are byte-identical:
+
+| Body | Bytes; exact SHA-256; bindings |
+| --- | --- |
+| Controller command | 17,326; `5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0`; `L_CONTROLLER_TEMPLATE`. Full 225-line command read; only its shell delimiter was removed for Python AST parsing. |
+| Archive preflight | 3,505; `8054cc77d8c76a8ac78e388a86fe090d6353bb4ec039d3ac078ea86f74bcfa35`; `L_ARCHIVE_SOURCE`. |
+| Failed-launch readback | 2,551; `7156a5ce75e3eec855c72dd080b1e9df7f59602ede6337ee74fb737625ac4f7b`; `L_FAILED_READBACK`. |
+| Private carrier | 3,459; `e621f4bd9fded5d72ce9a7cee7c6ae5027c5032682ccfaec1d9ce9a39d99dea1`; `P_PRIVATE_CARRIER`. |
+| Clock | 114; `cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d`; `P_CLOCK`, `CLOCK`. |
+| Stop marker | 1,600; `5de5244440b134689bedfb1235e805c65a8b726e753cbdac1d0831ef1c83d071`; `L_STOP`, `P_STOP`, `STOP`. |
+| Completion readback | 4,424; `b7d3504245ae94a584b455fa65826fbaa7759ec7a50a7b81c2cf8284c9f9051f`; `P_READBACK`, `READBACK`. |
+| Prepared marker | 626; `13c6549e0328ad695769938cbc0be7eb47d7a10ea9f00c4d897655603437a949`; `MARKER`. |
+| Public receipt persistence | 805; `819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30`; `L_PERSIST`, `P_PERSIST`, `PERSIST`. |
+
+These comparisons use the literal values, not candidate evaluation. The
+controller command is `python3 -u -` with a heredoc; the other eight unique
+literals are Python source bodies passed by the surrounding code. Whole byte
+inverse already proves preservation of these bodies and all unchanged launcher,
+preparation and suffix code. Their parsing does not attest installed tools,
+helper artifacts, filesystem permissions or provider availability.
+
+### Reachable handoff, authority and privacy
+
+The corrected `entry_source_sha256` denotes the **projection suffix** 505b, not
+the full composition a270. Both validators now agree with the appended literal
+cell. The launcher copies this truthful release pin into the seed. It neither
+rewrites an actual release object nor upgrades runtime permission by deriving a
+new pin from executed source. No release/seed/input object was supplied or
+mutated during this review. The two stale “c5” comments retain their accepted
+bytes; the executable pins and complete appended body identify the new suffix.
+
+Source lines 22–39 require the exact 14-key release, fixed helper/controller/
+Driver-contract/entry pins, explicit runtime permission and six distinct public
+basenames. The archive preflight precedes the one controller launch. Its source
+checks freshness, ownership/mode/size, exact archived controller transformations
+and artifact pin before proceeding. Actual tool receipts are retained before
+comparisons. A gate is accepted only for that pending owned exec with exact
+fields, positive distinct guard/server PIDs and the bounded direct lab path.
+The 25-key seed at lines 217–231 is stored only after that observation.
+
+Preparation rejects a mismatched seed or pre-existing context/password/
+observation state (lines 407–443 and 717–724). It obtains one Driver-owned PID,
+then validates the entire bounded window list before choosing the unique blank
+window. An ambiguity is refused, rather than ranked by geometry or position.
+It binds the exact session/PID/window and validates the corresponding inert
+blank snapshot, tab/target and namespace before transferring a credential.
+The four required interfaces are fixed function bindings, not caller-supplied
+arbitrary hooks. Their callers and argument/result shapes agree in the source.
+Provider compatibility beyond the accepted observed blank contract remains
+unmeasured and fail-closed.
+
+The private reader is relative to a verified owned directory FD. It checks
+no-follow directory/file identities, regular file, owner, exact modes, one link,
+bounded size and unchanged name/FD metadata around the bounded read. The carrier
+runs once, retains numeric exit/session/size before parsing, validates an exact
+three-key packet and fixed ASCII alphabet, and calls only the synchronous sink.
+Its pending child remains an owned cleanup obligation; late output is discarded.
+The wrapper has a bounded alarm and fixed failure packet. Raw result/value
+references are cleared; the reader clears its bytearray. This is reference and
+buffer clearing in source, not a guarantee that immutable strings disappear
+from process memory or that a tool transport cannot retain its own data.
+
+The sink's one-use flag stores only the validated password. It creates the
+24-key prepared context and immediately enters the literal suffix in the same
+cell, without text/yield/model wait or an RP HTTP probe. The suffix revalidates
+owned handles, phase and distinct PIDs. It writes the prepared marker before
+readiness, and sets `browser_decision` only after successful entry observations.
+The complete initial module is not a replayable continuation wrapper: its seed/
+freshness gates refuse existing state. Later decisions use the exact suffix
+against that already owned context, as specified by the composition design.
+
+Password survives non-password decisions until actual password dispatch; it is
+then cleared, and suffix cleanup clears it before any await or idempotency
+return. Decision actions require a currently owned snapshot ref, clear that ref
+set before dispatch, and use the same bound session/target/tab. The public
+projection retains typed role/name/action/ref association from one snapshot,
+preserves duplicate ref multiplicity, and emits only the fixed twelve public
+role/name pairs. Arbitrary account text, OTP/password, raw URLs, query/header
+values, sender identity, private errors and snapshot prose are not projected.
+
+The projection is not an independent authorization engine: root must resolve
+ambiguity and pin the printed role/name/ref action and expected result before
+a continuation. The dispatcher validates freshness; it does not itself infer
+role/action authority from a bare ref. A confirmed or unverifiable dispatch
+never earns a page outcome or journey credit. The post-action snapshot and
+unchanged page predicates remain required; `protected_after` is a read-only
+snapshot of the callback-following page, not another RP request. These boundaries
+match the independently accepted projection review.
+
+### Failure, cleanup and timing boundaries
+
+The original first-failure latches remain first-only, with numeric observations
+retained before comparison. Controller diagnostics pass the existing closed
+site/class/function/line schema; malformed observations produce fixed labels.
+No exception text, repr, arbitrary type name, private path or protocol content
+is added to public output. Source preservation covers the helper/controller
+pins, request predicates, readiness and native continuation semantics; this
+review did not reread or execute an unrelated production stack.
+
+The launcher distinguishes a proved owned gate from missing ownership. Before
+that proof it does not guess a PID, lab or stop path; a joined command alone
+cannot prove child release. Preparation cleanup uses its actual owned browser
+PID/window/session, cooperative quit and checked ownership before fallback kill.
+Suffix cleanup retains the same bounded stop/join/readback sequence. All three
+retain unknown or unjoined ownership honestly. Release requires the canonical
+owned child exits, fresh PID/port/lab absence and Driver teardown checks, not
+just one numeric process exit. Public receipt files use exclusive creation and
+bounded fixed metadata. No existing receipt or private file was touched here.
+
+Controller preparation waits, helper observation, per-tool budgets, 16,384-char
+partial buffers, bounded join counts and the original start clock remain.
+Partial newline drain stays in the same cell and owned exec; active work refuses
+at 840 seconds, while cleanup joins retain the original inclusive 900-second
+boundary. Nothing resets the deadline to a new continuation or cleanup clock.
+Receipts are recorded before elapsed/result comparisons; final absence is
+observed separately from the failure timestamp. An awaited tool can overrun a
+budget before returning: these checks are cooperative observation boundaries,
+not hard cancellation guarantees. Output continues to state
+`whole_cleanup_within60_proven: false` and `journey_credit: false`.
+
+### Actual static checks and preparation corrections
+
+Actual successful checks in this slice were immutable Git reads; exact fence,
+prefix/suffix and forward/inverse hashes; whole byte and Acorn AST comparisons;
+lexical/reference and seed/context checks; all 15 Python literal AST parses;
+enabled tool-name metadata comparison; Markdown checker; scope and whitespace
+checks. The checks ran only review/parser programs. No archived parser/checker,
+composed source, helper, controller, collector, case or tool stub executed.
+
+Several review-program preparations failed and were corrected before the final
+static results. Ordinary `require('acorn')` could not resolve a module; the
+installed internal parser was used instead. A seed checker looked for a
+nonexistent `want` variable and raised `TypeError`; it was changed to select the
+one 25-element validator array. An initial command-prefix filter encountered a
+partial command string (`IndexError`) and later matched zero bodies, causing a
+count assertion to fail. These source literals are mostly Python bodies, and
+the controller wrapper includes `-u`. Final extraction selected the fifteen
+named literal bindings, removed only the controller shell delimiter and parsed
+all bodies, yielding nine distinct hashes. Zero-match outputs establish no
+embedded-body coverage. These are static checker corrections, not candidate
+runtime failures or repairs; no reviewed source byte changed.
+
+`python3 scripts/check-docs.py` passed on the clean parent before this report
+was created. Its first post-append run flagged this append's link to the source
+report, which exists in immutable objects but is absent in this branch; the
+independent local-link assertion also failed. I replaced only that new link
+with the exact immutable source path/pins above. The preserved published prefix
+was not edited and no other file was imported. Final documentation, explicit
+prefix/pin/link, staged scope and whitespace checks passed. No lint, build,
+test, benchmark, provider or runtime success follows from those checks.
+
+### Historical evidence and remaining gates
+
+The published descriptor-memory receipt credits the previously executed
+128/128 memory cases (50 observer, 78 legacy) only. It does not validate this
+composition, changed projection, preparation interface or real browser journey.
+The published blank Driver survey establishes its dated blank contract only;
+its resources were already cleaned. This slice made zero Driver calls and
+created no new browser handles. The separately released old-25 memory work is
+not observed or credited here.
+
+All prior failures retain their pins and meanings. In particular the c88
+prepared-180 unexpected failure's origin, sender, lost values, true first event,
+first cleanup clock and whole-60 result remain **UNKNOWN**. Source acceptance
+of a correction does not retrospectively attribute that failure. Earlier
+failed designs, legacy memory runs and the EOF review are preserved separately.
+
+The smallest next gate is root's review/release of the changed-projection memory
+composition, followed only by a separately authorized real fixture/journey when
+its prerequisites are established. There is no recommendation for an unrelated
+suite, provider campaign or mandatory new host gate. This append acquires no
+source ownership and changes no original task status, closed row, credential,
+receipt/header/PAM, held Group or shared-admission/paused-IO contract.

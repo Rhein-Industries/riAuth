@@ -264,3 +264,66 @@ duplicate/unresolved lexical bindings. Two unchanged entry hash validators
 still expect the old31581-byte suffix, so a truthful new505b source receipt
 would be refused. Root reserved only those two literal pin replacements in
 the proposed source archive; composition runtime remains held.
+
+
+## 2026-10-03 — exact composition source pins and failed memory controller
+
+Root fully read the b21135a appendix and all79 lines of its parser-only
+checker. Only two entry_source_sha256 equality literals changed in the
+complete113395-byte composition; root independently reconstructed the
+corrected SHA256a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e
+and complete inverse to the fully reviewed251a29 source. Entire33701-byte
+projection remains exact. Independent composition review is assigned; changed
+projection memory design and all real browser runtime remain held.
+
+The sole separately released old25 memory controller returned1 with
+owned_cleanup_unconfirmed. Root read the retained receipt and full closed
+child stdout: both EOF flags are true and the child reports25 completed cases,
+but numeric child exit/reap/group confirmation are false/null in that receipt.
+A later absence readback cannot convert this failed controller into a pass.
+Root source inspection also finds its packet validator caps assertion counts
+at50000 while this retained child reports230223. The closed_child_packet was
+null in the failed review; no accepted packet or full memory pass is claimed.
+Exact underlying cleanup exception/stage was not retained, so it remains
+unattributed. Source correction and any later runtime need separate review.
+
+An initial root read-only basename glob also matched a receipt file; attempting
+iterdir raised NotADirectoryError. The root reader was corrected to select file
+or directory by type before reading the retained evidence; no artifact or
+controller was changed. All historical real journey failures remain failed.
+
+
+## 2026-10-03 — complete composition acceptance and projection memory design
+
+Root fully read the 277-line new appendix at
+`74ac03f5695155ac3bcbfa0d3e429b21dd0c6639`. It independently accepts only
+the corrected113395-byte composition SHA256
+`a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`.
+The complete31346-byte published independent report prefix remains exact.
+No composed function, provider, Driver operation or journey was executed by
+that review. Its dated old25-not-observed statement is reviewer scope; root's
+separate failed actual515bbbc receipt remains failed and fully retained.
+
+Root fully read the new projection design prose, entire258-line diff, all696
+readable logic lines and31-line data assembly at
+`16032bdb992067889f56cd072df1ce0f1812ebc9`. Source-only JSON/base64 decoding
+independently reconstructed the full151979-byte payload SHA256
+`a5d564be3b8a27abaead1b85b7f87cf2e7a0fe755144e48429b4a505118f8697`,
+complete33701-byte candidate505b,32502-byte baseline7ab230,2405-byte diff,
+all five preserved Python collectors,36 unique cases and96 closed check labels.
+The three exact source edits reverse the entire candidate to the baseline.
+All25 prior cases remain and11 projection scenarios add typed public fields,
+same-result action association, OTP observation without action/value, both
+consent paths, multiplicity, malformed/disjoint/stale refs and private-field
+omission. The declared51 complete-cell invocations have not run.
+
+Source acceptance is conditional on the separately assigned independent memory
+review. The old controller's unconfirmed cleanup and insufficient assertion
+count bound remain prerequisites; no replacement controller or memory repeat
+is released here. No real confidential browser pass, private-sender diagnosis,
+whole-cleanup60 guarantee or D01/D05 completion follows from static review.
+
+An initial root read used a nonexistent guessed continuation-review path and
+Git returned128; no file was changed. Git's tracked path list supplied this
+actual root review path. Archive reconstruction and both append-prefix checks
+had already passed; the corrected source read completed before this note.

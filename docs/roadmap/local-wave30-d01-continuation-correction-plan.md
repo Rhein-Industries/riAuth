@@ -6468,3 +6468,172 @@ or changed to hide those baseline failures. The checked scope is only
 this report, with all 427496 original bytes intact. Source review of the
 corrected branch and any later runtime release remain root-owned; this
 append supplies no D01 completion or current memory-case pass.
+
+## One released old25 memory execution — actual failure
+
+Reservation `wave30_D01_old25_continuation_memory_once`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original D01
+`a96a1977-3210-4284-8f7d-645793369301`, supporting worktree
+`42bb51c6-c198-4adb-bd92-0a5222853231`; the release named existing shell
+`f1575610-c6f0-4dbf-9f33-d01ed057a194`. This appendix retains every byte
+of the 649834-byte e443 report, SHA-256
+`afff04fedb1dc87eddab804df0147ab00415013414c6446e72da92b44d0bb98d`,
+as its exact prefix. No source, controller, payload, case or assertion
+was corrected or retried.
+
+### Exact source and preflight
+
+One controller invocation used literal fence bytes from immutable
+`e4431d4f85eec7add72dec0183b9784917e451c3`: 209970 bytes, SHA-256
+`4c62dfc156a6b6ad5e4528d48124c926210f0abffdd2f6d8538bded788be090e`.
+Its unchanged 132725-byte payload remains SHA-256
+`46c19af829c546cf0f32f0a587db084dd00d304ea9d508c98ccda0b2a6028866`.
+The source was supplied unchanged on Python stdin; it was not imported,
+rewritten or materialized as a source file. The executed argv was exactly
+`python3 - d45b4dab3cdd8cf6`, with the nonce as the sole controller
+argument, and cwd
+`/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27`.
+The branch was clean at e443 before execution.
+
+The dedicated parent `deployment-private` was nonsymlink, mode 0700,
+UID 501. The exact controller-created basename
+`d01-continuation-memory-d45b4dab3cdd8cf6` and the three same-basename
+outer capture files were absent before launch. The resulting directory
+was separately verified nonsymlink/0700/UID 501. No basename substitution
+or evidence deletion occurred.
+
+The pinned Node file was a nonsymlink regular 50320-byte artifact at
+`/opt/homebrew/Cellar/node/26.7.0/bin/node`, SHA-256
+`1ef99ea25fe70c9b67e7efe768ef8ee22148d3cabc703db6131b57aeb617d040`.
+Only its metadata/content hash were checked before the released memory
+child. No version command or other Node run was performed. Initial
+preflight free space was 23109132288 bytes (21.5221 GiB); the immediate
+launch remeasurement was 23008948224 bytes, still above 8.5 GiB.
+The controller recorded minimum free space 23008927744 bytes and the
+launcher measured 23008870400 bytes after return, above its unchanged
+8-GiB floor.
+
+### Actual exit, complete closed return and retention order
+
+The invocation began at `2026-10-03T01:18:04Z`. The actual Python
+controller process exited **1**. Its elapsed time was 0.097682083 seconds;
+the outer capture measured 0.117742667 seconds. The controller's final
+record reports `within35: true`. Exactly one controller invocation
+and one Node-child spawn were recorded.
+
+The launcher directed complete controller stdout/stderr to exclusive
+0600 files, fsynced/closed them, then wrote and fsynced/closed the
+numeric-exit receipt and output byte/hash/mode metadata **before** my
+post-return comparison. The controller independently retained its raw
+child outputs and actual-exit/EOF receipt before its grading, following
+the unchanged reviewed source. No raw partial line or synthetic password
+was exposed through public output.
+
+This is the complete literal 366-byte controller stdout, including the
+final newline; SHA-256
+`ecc067bc862d5e5ad0eef3a11cfa8ef786a5c745bff0bc32cf9508059939fc0f`.
+Its first failure is `owned_cleanup_unconfirmed`.
+
+```json
+{"actual_product_or_driver":false,"child_exit":null,"child_failure":null,"child_reaped":false,"completed_cases":null,"elapsed_seconds":0.097682083,"first_failure":"owned_cleanup_unconfirmed","full_packet_retained_before_grade":true,"owned_group_empty":false,"result":"failed","review_closed":true,"schema":"riauth.d01-continuation-memory-return/v1","within35":true}
+```
+
+The controller recorded both output EOF flags true, uncapped output and
+`full_packet_retained_before_grade: true`. It retained a complete
+4880-byte, newline-terminated child output and zero child stderr bytes.
+Its `retained.json` records child PID 6921, `spawn_count: 1`,
+`child_exit: null`, `child_reaped: false` and
+`owned_group_empty: false`. The review record has
+`closed_child_packet: null`, `grade_before_final_clock: false`,
+and the same first failure. The controller's numeric child exit and
+successful reap therefore remain **unconfirmed**, even though the
+controller process has a captured numeric exit of 1.
+
+After controller return, separate signal-zero readbacks for exactly
+that recorded PID and group both raised `ProcessLookupError`: the child
+PID and owned group were absent. Those absence observations do not
+retroactively certify the controller's reap or a numeric child exit.
+No process was signaled or stopped by the evidence reader, and no
+other PID/group was examined. The cleanup failure's specific exception
+and cause were not retained by the controller and remain unknown.
+
+The immediate exit/absence message released the memory slot to root
+before any report append. It disclosed the null child exit/failed reap
+confirmation, subsequent PID/group absence and prohibition on retry.
+This is a failed memory verification, with no accepted controller pass.
+
+### Retained child claims and closed-packet limit
+
+Read-only evidence metadata shows the child output reports 25 attempted
+and 25 completed declared case names, zero unreached names, 32 cells,
+1588 privacy checks and null child `first_failure`. Its reported elapsed
+time is 45.852416 ms; planned rows and source identities equal the
+controller's immutable expected values. These are retained child claims,
+not an accepted result: the controller refused the packet and exposes
+`completed_cases: null`.
+
+The packet's integer `assertions_completed` is **230223**. The unchanged
+controller's lines 1949–1950 require both assertion/privacy counts to be
+true integers within 0–50000. That observed assertion count fails this
+closed-packet bound. An additional read-only packet evidence checker
+exited 1 at that assertion; a later metadata-only read recorded its
+type and value without changing or rerunning the controller. This
+explains a concrete packet-admission mismatch, not the earlier cleanup
+failure or its unknown cause. The fixed first-failure latch remains
+`owned_cleanup_unconfirmed`; no error was bypassed or converted to a
+pass. No counter, limit, source field, case or oracle was altered.
+
+### Exact retained file metadata
+
+Child evidence is under
+`deployment-private/d01-continuation-memory-d45b4dab3cdd8cf6/`.
+The three outer capture files are in its private parent with the same
+basename followed by `.controller.stdout`, `.controller.stderr`
+and `.controller-exit.json`. All seven files were verified regular,
+nonsymlink, mode 0600 and UID 501 after retention. The outer exit receipt
+records `numeric_exit: 1`, `invocations: 1` and
+`comparison_performed: false` at its save boundary.
+
+| File | Bytes | SHA-256 | Mode / UID |
+| --- | ---: | --- | --- |
+| `child.stderr` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | 0600 / 501 |
+| `child.stdout` | 4880 | `bf998399494d30c60a80afa538569586b92d3b120797f4e10e1b487f21e9d4ad` | 0600 / 501 |
+| `controller-exit.json` | 951 | `373ef7f4ef06b3124649ef0b1507bf0cfeb86a3b28a779024c71dda5de400515` | 0600 / 501 |
+| `controller.stderr` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | 0600 / 501 |
+| `controller.stdout` | 366 | `ecc067bc862d5e5ad0eef3a11cfa8ef786a5c745bff0bc32cf9508059939fc0f` | 0600 / 501 |
+| `retained.json` | 613 | `7b26073897a7028b79273e7bc03d7139410ec7edb2a7392094923b1ae3ad6e41` | 0600 / 501 |
+| `review.json` | 264 | `cf056e0417515b00b2cdd35d83dad1c35d8736c6601988a4d5ab59c1ed02b6fe` | 0600 / 501 |
+
+The 0700 directory and 0600 files remain private and were not deleted.
+Only this known memory-run evidence and its approved source/Node hash
+were read; no private credential, product artifact, helper, native
+binary, provider, network endpoint, Driver or browser was inspected.
+
+### Scope and remaining limits
+
+This one run covers only the old9f25 candidate/payload from e443. It
+does not execute or validate the later 33701 projection/preparation,
+Sol4 adapter, real fixture or collector, native/Driver controller transport,
+helper or browser journey. The payload's stubbed memory operations are not real
+tools. No Cargo, product/native process, service, network, desktop or
+browser action ran; no new worker/task/worktree/managed shell, source
+alignment, board/status change, main edit or push occurred.
+
+Earlier 18 stub passes, 128 helper-memory/78 guard evidence, actual c88
+failure and unknown Authorization sender/cause retain their recorded
+scope. They are not replaced by this failed execution. The prior
+source-only statements remain historical; this appendix records the
+one subsequent released execution and its actual failure. No D01
+completion, later-candidate validation or journey pass is inferred.
+All further correction, review and any future execution remain
+root-owned and unreleased.
+
+Post-append static checks exited 0 for sole-file scope, exact 649834-byte
+e443 prefix, all eight original fenced archives, unchanged controller
+identity, literal 366-byte return reconstruction and trailing whitespace.
+`git diff --check` exited 0. `python3 scripts/check-docs.py` exited 1 only
+for the same five existing private target-directory naming violations
+already recorded in the prefix, with no link failure. The capture launcher
+itself exited 0 after retaining the controller's actual exit of 1; that
+capture success is not a controller pass. These evidence/source checks
+execute no additional controller, Node, candidate or case.

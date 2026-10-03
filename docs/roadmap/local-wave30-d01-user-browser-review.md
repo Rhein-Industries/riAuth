@@ -14872,3 +14872,2309 @@ protected-prefix false link `missing SimpleNamespace(demo=d`; this phase
 did not repair or change that historical text. Only this report is modified;
 there are no new untracked files. These are static documentation/source
 checks, not a new test or runtime campaign.
+
+## 2026-10-03 — Complete exact source composition, blocked on entry-cell pin review
+
+Reservation `wave30_D01_complete_source_composition`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing WT7. APPEND ONLY to this
+report. This phase archives a complete, exact suffix composition and identifies
+one concrete compatibility blocker. It does not claim an approved compatible
+launcher or a runnable fixture. No source/helper/controller file is materialized.
+
+The entire preceding `44d32c824218512d4bac6aca073dde6d260bdf37` report remains
+the exact 1074063-byte prefix, SHA-256
+`b6c235997b3db79889e51432f7887e5189570dc8f16e3ccd611e26f9a6d6bb1d`.
+This phase fully read the accepted complete 508-line Sol3 cell and relevant
+report prose from immutable
+`48288c1f10f24d47bb86b57edd0682014e9b64ee:docs/roadmap/local-wave30-d01-browser-decision-projection-plan.md`.
+The report object is 60522 bytes, blob
+`f2176a1232e9b550c9a5b6a372df805ec102803e`, SHA-256
+`16f0e6c4b77469d3057489e73bb1bea93cfe2668b76171c244594827a75a8321`. Root supplied its accepted independent
+review `e04cb470`; that review body was not independently read in this
+phase and is not counted as a new body review or validation result.
+
+### Concrete blocker and separately unapplied minimum pin proposal
+
+The unchanged `lReleaseValid` compares `c.entry_source_sha256` with the
+old entire c5 cell hash `d7278780…` at composed line 37. The unchanged
+`pSeedValid` compares `s.entry_source_sha256` with that same old hash at
+line 428. The inserted entire Sol3 cell actually hashes to `505b1c0f…`.
+Both stale comparisons remain in the full archive below. Supplying the
+truthful new cell identity therefore refuses at launcher input validation
+before its fresh START/setup; supplying the old identity would misdescribe
+the executed cell. Neither is a compatible handoff.
+
+The minimum root-review proposal below changes only those two equality
+literals. It is NOT applied to the archived composition. Root would also
+supply the truthful Sol3 cell hash in the separately released future
+`d01_launcher_release.entry_source_sha256` input; the unchanged producer
+copies that field into the unchanged seed ABI. No persisted configuration,
+existing release input, source file or metadata is changed here.
+`entry_source_sha256` denotes the exact separately pinned suffix cell, as
+the old c5 pin did. It is not the enclosing module hash, controller payload
+hash or a guessed self-referential identity. The whole-module hash belongs
+in this archive's source manifest; no adjusted whole-module hash is claimed.
+
+```diff
+--- unadjusted-composed-module (UNAPPLIED)
++++ root-review-entry-cell-pin-proposal (UNAPPLIED)
+@@ -37,1 +37,1 @@
+-    c.entry_source_sha256==="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"&&
++    c.entry_source_sha256==="505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"&&
+@@ -428,1 +428,1 @@
+-     s.entry_source_sha256!=="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"||
++     s.entry_source_sha256!=="505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"||
+```
+
+Composition compatibility is STOPPED pending root review of this exact
+two-literal proposal. The archived unadjusted composition and static proofs
+remain useful review artifacts; parse success does not approve or bypass
+the source-identity gate. No other ABI or pin edit is proposed.
+
+### Exact source manifest and replacement boundary
+
+| Source span / object | Bytes | LF lines | SHA-256 |
+| --- | ---: | ---: | --- |
+| 44d32 report prefix | 1074063 | — | `b6c235997b3db79889e51432f7887e5189570dc8f16e3ccd611e26f9a6d6bb1d` |
+| 44d32 complete baseline | 111275 | 1200 | `dfd04b3d914cf332d5ceba13d0a587dc7db2ca26b82c71e453fe85b5f2a43d9d` |
+| unchanged launcher + concrete preparation | 79694 | 733 | `98c765d6f29992ad9a56148af9c2562e95c4be9cb273a84a59f5a3e02cd7bedf` |
+| entire replaced c5 suffix | 31581 | 467 | `d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d` |
+| 48288c1 Sol3 report | 60522 | — | `16f0e6c4b77469d3057489e73bb1bea93cfe2668b76171c244594827a75a8321` |
+| entire accepted Sol3 cell | 33701 | 508 | `505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f` |
+| unadjusted complete composition — PIN BLOCKED | 113395 | 1241 | `484bd441ef0f3db547d75f6138f2943b07a3ef090c30271a9cdc3d7914dda02e` |
+
+The baseline is exactly `prefix + oldSuffix`; the unadjusted archive is
+exactly `prefix + entireSol3Cell`. The prefix is 79694 bytes / 733 lines.
+The old suffix is exactly the final 31581 bytes / 467 lines, verified
+against its complete c5 hash. The inserted suffix is the entire exact
+33701 bytes / 508 lines accepted at 48288c1, including all 9f F2/F3/F4
+corrections and the public decision projector. This is neither a rewritten
+cell nor a selective transplant. The resulting size is 113395 bytes /
+1241 lines, exactly the assigned pre-pin-adjustment size.
+
+### Source compatibility trace and remaining review boundary
+
+| Seam | Actual source relationship |
+| --- | --- |
+| Launcher release / seed identity | The release schema retains 14 exact fields; producer retains 25 exact seed fields. The entry identity is copied directly from release to seed. Both validators retain the stale c5 literal, the blocker above. Controller-template `5eb6…`, helper `75bfb…`, four-interface `1c5ded…` and closed Driver receipt `b8145…` pins remain exact. |
+| Preparation / owned context | Successful exact PID/unique blank window/bind/inert-root/private-transfer proof stores the same 24-field owned context. The Sol3 context gate consumes those same required fields, distinct positive owned PIDs, exact target/tab/session and `prepared_entry` with helper null and readiness/listener flags false. No seed or context key/shape change is needed. |
+| Phase / readiness | Seed phase remains `browser_preparation`. Preparation stores `prepared_entry`; entry writes the existing marker, reads the same owned controller session, accepts only matching ready guard/server/lab and helper PID, then navigates/snapshots. The successful final poll changes phase to `browser_decision` only with first failure null. Continuation requires the same ready/listener proof. Failure latches and cleanup remain separate. |
+| Private password | The exact private carrier/sink stores the password once, without evidence output. The inserted Sol3 continuation retains it through username/click and clears it after the actual password action; inserted cleanup clears it before any cleanup await. No credential file was opened by this design phase. |
+| Accepted F2/F3/F4 | The entire Sol3 cell supplies the declared helper-exit-zero final protected-read allowance, password clear lifecycle and bounded partial-controller-line drain. No part was independently reimplemented. Their presence is source composition only, not executed behavior. |
+| Driver binding / refs | Prepared exact owned PID/window/target/tab flow into unchanged bound snapshot/action arguments. Unique blank preparation projection remains the 44d32 correction; cleanup retains every validated window. The new pure projector retains all matching action/ref associations from the SAME fresh successful snapshot. No ref ranking, geometry or automatic selection is added. |
+| Public decision / ambiguity | Twelve fixed role/name declarations produce deduplicated observed labels; action associations retain multiplicity through `flatMap`. Root must reject an ambiguous matching role/name/action association before submitting input, including duplicate matching refs, and use the latest snapshot. The composition never chooses the first association and adds no caller dispatch or input authorization. OTP has no actionable ref/value projection. |
+| Initial module / continuation | This full archive is the initial launcher + preparation + entry module. It is not replayable for continuation: the existing seed/context guards intentionally refuse another full launch. A future continuation uses the exact independently pinned Sol3 cell with the existing owned store and root-supplied next decision. No second launcher, preparation, rebind or listener is added. |
+| Protocol / resources | Controller, source/archive functions, private carrier, preparation cleanup, owned handles, pins, fixed 9000/3000 callback and all helper guards remain byte-exact. The 840 active / 900 inclusive / 180 preparation / 600 helper / 60 cleanup budgets and disk thresholds remain encoded exactly. No API/service substitute, new RP request, authentication acceptance or cleanup deadline guarantee is introduced. |
+
+This static trace found no additional structural seed/phase/binding ABI
+mismatch. It does not establish actual tool return compatibility, ownership,
+nonblank snapshot availability, timing, cryptographic verification or journey
+success. Source review and future root-selected meaningful validation remain
+required after the pin correction is separately approved. No root action
+selection protocol is silently implemented here.
+
+### Exact composition diff and inverse
+
+Forward: 5511 bytes / 111 lines,
+SHA-256 `fb0302b1cf5c9f15ff28cf6542022cec05a26aaa5cef1d44eb317c9db4c9e0aa`.
+These textual differences result solely from the entire suffix replacement.
+
+```diff
+--- 44d32-complete-candidate
++++ exact-sol3-suffix-composition-BLOCKED-PIN
+@@ -872,7 +872,9 @@
+       observation.helper_exit=typeof event.exit==="number"?event.exit:null;
+       retain();
+       if(event.exit!==0)latch("helper_failed",receivedWall);
+-      else if(!cleanupStarted&&record.protected_after_page!==true)
++      else if(!cleanupStarted&&record.protected_after_page!==true&&
++              !(own.phase==="browser_decision"&&
++                own.next_decision?.kind==="protected_after"))
+         latch("helper_completed_before_app_checkpoint",receivedWall);
+     }
+     if(event.fixture_finished===true) {
+@@ -922,6 +924,7 @@
+   retain();
+ }
+ async function cleanup() {
++  store("d01_fresh_password_input",null); // Clear before any cleanup await.
+   if(cleanupStarted)return;
+   cleanupStarted=true;record.cleanup_started=true;retain();
+   try {
+@@ -1056,6 +1059,7 @@
+   // Only provider refs and fixed public-label matches survive this raw snapshot.
+   own.fresh_refs=Array.isArray(s?.refs)?s.refs.filter(n=>typeof n.ref==="string"&&
+     /^p[0-9]+:[0-9]+$/.test(n.ref)).map(n=>n.ref):[];
++  own.public_decision=projectPublicDecision(result);
+   store("d01_immediate_owned_handles",own);
+   if(flags.error_match)return false;
+   if(!flags.status_ok||!flags.complete)return false;
+@@ -1148,7 +1152,7 @@
+       const s=r?.structuredContent;
+       return r?.isError!==true&&["confirmed","unverifiable"].includes(s?.effect);
+     }); // Dispatch alone never earns an application outcome or journey credit.
+-    store("d01_fresh_password_input",null);
++    if(spec.kind==="password")store("d01_fresh_password_input",null);
+     if(record.first_failure===null)
+       await checked("browser_snapshot",
+         ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+@@ -1161,20 +1165,56 @@
+     await cleanup();
+   }
+ }
++function projectPublicDecision(result) {
++  const s=result?.structuredContent,nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
++  const labels=[
++    ["heading","Local demo"],["heading","Sign in to continue to Local demo"],
++    ["heading","Local demo wants to use your riAuth account"],
++    ["heading","Continue to Local demo?"],["heading","Protected application access"],
++    ["button","Sign in"],["button","Allow"],["button","Continue"],
++    ["textbox","Username"],["textbox","Password"],
++    ["textbox","Authenticator or recovery code (if enabled)"],
++    ["statictext","Signed in. Protected application access is available."]
++  ];
++  const valid=result?.isError!==true&&s?.status==="ok"&&s?.snapshot?.complete===true&&
++    !nodes.some(n=>n.name==="Local demo could not complete this request.");
++  return {
++    observed:valid?labels.filter(([role,name])=>
++      nodes.some(n=>n.role===role&&n.name===name)).map(([role,name])=>({role,name})):[],
++    refs:valid&&Array.isArray(s?.refs)?s.refs.flatMap(n=>{
++      const pair=labels.find(([role,name])=>n?.role===role&&n.name===name),ref=n?.ref;
++      if(!pair||typeof ref!=="string"||!/^p[0-9]+:[0-9]+$/.test(ref))return [];
++      const [role,name]=pair;
++      const action=role==="button"?"click":
++        role==="textbox"&&["Username","Password"].includes(name)?"type":null;
++      if(action===null||!Array.isArray(n.actions)||!n.actions.includes(action))return [];
++      return [{role,name,action,ref}];
++    }):[]
++  };
++}
+ function publicPredicate(result,spec) {
+-  const nodes=result?.structuredContent?.content_refs;
+   // Root must pin one printed public expected label/role before that action.
+   // No raw field value, URL, subject, query or arbitrary regex predicate is allowed.
+-  const roles=["heading","button","statictext","textbox"];
+-  const labels=["Username","Password","Authenticator or recovery code","Sign in",
+-    "Local demo","Protected application access",
+-    "Signed in. Protected application access is available."];
+-  return Array.isArray(nodes)&&roles.includes(spec.expected_role)&&
+-    labels.includes(spec.expected_label)&&
+-    nodes.some(n=>n.role===spec.expected_role&&n.name===spec.expected_label);
++  return projectPublicDecision(result).observed.some(n=>
++    n.role===spec.expected_role&&n.name===spec.expected_label);
+ }
+ try {
+   if(own.phase==="prepared_entry")await entry();else await continuation();
++  // Do not carry unvalidated partial controller text across this cell boundary.
++  while(controllerBuffer.length>0&&record.first_failure===null) {
++    const beforePollWall=Date.now();
++    if(beforePollWall>=own.start_epoch_ms+840000) {
++      latch("browser_active_deadline",beforePollWall);break;
++    }
++    if(controllerJoined||!controllerPollAvailable) {
++      latch("controller_observation_invalid",beforePollWall);break;
++    }
++    await pollController(); // Same owned session; observer retains receipt first.
++    const afterPollWall=Date.now();
++    if(afterPollWall>=own.start_epoch_ms+840000)
++      latch("browser_active_deadline",afterPollWall);
++  }
++  if(record.first_failure!==null)await cleanup();
+ } catch {
+   latch("composed_decision_exception",Date.now());
+   await cleanup();
+@@ -1191,6 +1231,7 @@
+         "owned_readback_unavailable","owned_local_command_unjoined"].includes(v))});
+ } else {
+   text({result:"browser_decision_observed_only",page_flags:record.last_page_flags??null,
++    public_decision:own.public_decision??null,
+     journey_credit:false,cleanup_errors:record.cleanup_errors,
+     resource_release_proven:record.cleanup_started===true&&record.final_absence!==null&&
+       !record.cleanup_errors.some(v=>[
+```
+
+Inverse: 5511 bytes / 111 lines,
+SHA-256 `809b6b915735d870d36d67120e58b0dca40dda0b787e64d576311fd9ba33931e`.
+
+```diff
+--- exact-sol3-suffix-composition-BLOCKED-PIN
++++ 44d32-complete-candidate
+@@ -872,9 +872,7 @@
+       observation.helper_exit=typeof event.exit==="number"?event.exit:null;
+       retain();
+       if(event.exit!==0)latch("helper_failed",receivedWall);
+-      else if(!cleanupStarted&&record.protected_after_page!==true&&
+-              !(own.phase==="browser_decision"&&
+-                own.next_decision?.kind==="protected_after"))
++      else if(!cleanupStarted&&record.protected_after_page!==true)
+         latch("helper_completed_before_app_checkpoint",receivedWall);
+     }
+     if(event.fixture_finished===true) {
+@@ -924,7 +922,6 @@
+   retain();
+ }
+ async function cleanup() {
+-  store("d01_fresh_password_input",null); // Clear before any cleanup await.
+   if(cleanupStarted)return;
+   cleanupStarted=true;record.cleanup_started=true;retain();
+   try {
+@@ -1059,7 +1056,6 @@
+   // Only provider refs and fixed public-label matches survive this raw snapshot.
+   own.fresh_refs=Array.isArray(s?.refs)?s.refs.filter(n=>typeof n.ref==="string"&&
+     /^p[0-9]+:[0-9]+$/.test(n.ref)).map(n=>n.ref):[];
+-  own.public_decision=projectPublicDecision(result);
+   store("d01_immediate_owned_handles",own);
+   if(flags.error_match)return false;
+   if(!flags.status_ok||!flags.complete)return false;
+@@ -1152,7 +1148,7 @@
+       const s=r?.structuredContent;
+       return r?.isError!==true&&["confirmed","unverifiable"].includes(s?.effect);
+     }); // Dispatch alone never earns an application outcome or journey credit.
+-    if(spec.kind==="password")store("d01_fresh_password_input",null);
++    store("d01_fresh_password_input",null);
+     if(record.first_failure===null)
+       await checked("browser_snapshot",
+         ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+@@ -1165,56 +1161,20 @@
+     await cleanup();
+   }
+ }
+-function projectPublicDecision(result) {
+-  const s=result?.structuredContent,nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
+-  const labels=[
+-    ["heading","Local demo"],["heading","Sign in to continue to Local demo"],
+-    ["heading","Local demo wants to use your riAuth account"],
+-    ["heading","Continue to Local demo?"],["heading","Protected application access"],
+-    ["button","Sign in"],["button","Allow"],["button","Continue"],
+-    ["textbox","Username"],["textbox","Password"],
+-    ["textbox","Authenticator or recovery code (if enabled)"],
+-    ["statictext","Signed in. Protected application access is available."]
+-  ];
+-  const valid=result?.isError!==true&&s?.status==="ok"&&s?.snapshot?.complete===true&&
+-    !nodes.some(n=>n.name==="Local demo could not complete this request.");
+-  return {
+-    observed:valid?labels.filter(([role,name])=>
+-      nodes.some(n=>n.role===role&&n.name===name)).map(([role,name])=>({role,name})):[],
+-    refs:valid&&Array.isArray(s?.refs)?s.refs.flatMap(n=>{
+-      const pair=labels.find(([role,name])=>n?.role===role&&n.name===name),ref=n?.ref;
+-      if(!pair||typeof ref!=="string"||!/^p[0-9]+:[0-9]+$/.test(ref))return [];
+-      const [role,name]=pair;
+-      const action=role==="button"?"click":
+-        role==="textbox"&&["Username","Password"].includes(name)?"type":null;
+-      if(action===null||!Array.isArray(n.actions)||!n.actions.includes(action))return [];
+-      return [{role,name,action,ref}];
+-    }):[]
+-  };
+-}
+ function publicPredicate(result,spec) {
++  const nodes=result?.structuredContent?.content_refs;
+   // Root must pin one printed public expected label/role before that action.
+   // No raw field value, URL, subject, query or arbitrary regex predicate is allowed.
+-  return projectPublicDecision(result).observed.some(n=>
+-    n.role===spec.expected_role&&n.name===spec.expected_label);
++  const roles=["heading","button","statictext","textbox"];
++  const labels=["Username","Password","Authenticator or recovery code","Sign in",
++    "Local demo","Protected application access",
++    "Signed in. Protected application access is available."];
++  return Array.isArray(nodes)&&roles.includes(spec.expected_role)&&
++    labels.includes(spec.expected_label)&&
++    nodes.some(n=>n.role===spec.expected_role&&n.name===spec.expected_label);
+ }
+ try {
+   if(own.phase==="prepared_entry")await entry();else await continuation();
+-  // Do not carry unvalidated partial controller text across this cell boundary.
+-  while(controllerBuffer.length>0&&record.first_failure===null) {
+-    const beforePollWall=Date.now();
+-    if(beforePollWall>=own.start_epoch_ms+840000) {
+-      latch("browser_active_deadline",beforePollWall);break;
+-    }
+-    if(controllerJoined||!controllerPollAvailable) {
+-      latch("controller_observation_invalid",beforePollWall);break;
+-    }
+-    await pollController(); // Same owned session; observer retains receipt first.
+-    const afterPollWall=Date.now();
+-    if(afterPollWall>=own.start_epoch_ms+840000)
+-      latch("browser_active_deadline",afterPollWall);
+-  }
+-  if(record.first_failure!==null)await cleanup();
+ } catch {
+   latch("composed_decision_exception",Date.now());
+   await cleanup();
+@@ -1231,7 +1191,6 @@
+         "owned_readback_unavailable","owned_local_command_unjoined"].includes(v))});
+ } else {
+   text({result:"browser_decision_observed_only",page_flags:record.last_page_flags??null,
+-    public_decision:own.public_decision??null,
+     journey_credit:false,cleanup_errors:record.cleanup_errors,
+     resource_release_proven:record.cleanup_started===true&&record.final_absence!==null&&
+       !record.cleanup_errors.some(v=>[
+```
+
+### Complete unadjusted composed module — ARCHIVE ONLY, PIN BLOCKED
+
+This full module deliberately retains the old two entry-pin comparisons.
+It is not to be executed. Its future-only placeholders remain unchanged.
+
+```javascript
+// Future launcher SOURCE DESIGN ONLY. Root alone supplies a separately released input.
+const L_CONTROLLER_TEMPLATE="python3 -u - <<'PY'\nimport datetime,fcntl,hashlib,json,os,pathlib,pty,secrets,select,shutil,signal,stat,subprocess,sys,tempfile,termios,time,urllib.request\nROOT=pathlib.Path.cwd()\nSTART=float('__ROOT_RELEASED_START_ONCE__')\nACTIVE=START+840\nBIN=pathlib.Path('/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/target/d01-essentials-c01c39a/aarch64-apple-darwin/debug')\nPRIVATE=ROOT/'deployment-private'\nOUT=PRIVATE/'__ROOT_FRESH_OBSERVER_OUT_BASENAME__'\nPROVIDER_META=PRIVATE/'__ROOT_FRESH_OBSERVER_PROVIDER_BASENAME__'\nrecord={'schema':'riauth.d01-confidential-browser-outer/v1','result':'failed','failure_stage':None,'failure_tag':None,'request_invalid_reason':None,'preflow_authorization_refusals':None,'unexpected_failure_observation':None,'unexpected_observation_projection':'unavailable','commands':[],'artifacts':{},'cleanup':{},'owned_child_exits':[],'started_epoch':START,'active_seconds':840,'cleanup_seconds':60,'minimum_free_bytes':None,'disk_samples':0}\nlab=None;children=[];names={};server=None;helper=None;password=None;stage='preflight';resultfd=None;lastsample=0\ndef require(ok,tag):\n    if not ok:raise RuntimeError(tag)\ndef tick():\n    global lastsample\n    now=time.monotonic()\n    if now-lastsample>=1:\n        free=shutil.disk_usage(ROOT).free\n        record['disk_samples']+=1\n        record['minimum_free_bytes']=free if record['minimum_free_bytes'] is None else min(record['minimum_free_bytes'],free)\n        lastsample=now\n        require(free>=8.5*1024**3,'disk_margin')\n    require(time.time()<ACTIVE,'active_deadline')\ndef write_exclusive(path,value):\n    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    raw=(json.dumps(value,sort_keys=True,indent=2)+'\\n').encode('ascii')\n    with os.fdopen(fd,'wb') as f:\n        f.write(raw);f.flush();os.fsync(f.fileno())\n    return hashlib.sha256(raw).hexdigest()\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\ndef retain_observation():\n    # Sanitize even the nested helper_result field; never copy malformed details.\n    value=record['helper_result'].get('unexpected_failure_observation')\n    projected=finite_observation(value)\n    record['helper_result']['unexpected_failure_observation']=projected\n    if projected is None:\n        record['unexpected_observation_projection']='invalid'\n    elif record['unexpected_failure_observation'] is None:\n        record['unexpected_failure_observation']=projected\n        if record['unexpected_observation_projection']!='invalid':\n            record['unexpected_observation_projection']='valid'\ndef listeners(port):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    require(p.returncode in (0,1),'socket_observation_failed')\n    return set(int(v) for v in p.stdout.split())\ndef own(p,name):\n    children.append(p);names[p.pid]=name;return p\ndef stop_child(p):\n    if p.poll() is None:\n        for sig,wait in [(signal.SIGINT,8),(signal.SIGTERM,5),(signal.SIGKILL,2)]:\n            if p.poll() is not None:break\n            p.send_signal(sig)\n            try:p.wait(timeout=wait)\n            except subprocess.TimeoutExpired:pass\n    require(p.poll() is not None,'owned_child_reap_failed')\ndef controlling_tty():\n    os.setsid();fcntl.ioctl(0,termios.TIOCSCTTY,0)\ndef cli(name,args,prompts=0):\n    tick()\n    master,slave=pty.openpty()\n    p=own(subprocess.Popen(args,cwd=lab,env=environment,stdin=slave,stdout=slave,stderr=slave,preexec_fn=controlling_tty),name)\n    os.close(slave);seen=0;raw=b'';started=time.monotonic()\n    try:\n        while p.poll() is None:\n            tick();require(time.monotonic()-started<60,'cli_deadline')\n            if select.select([master],[],[],0.2)[0]:\n                try:chunk=os.read(master,4096)\n                except OSError:chunk=b''\n                raw+=chunk;require(len(raw)<=131072,'cli_output_limit')\n                for prompt in ([b'Password: ',b'Confirm password: '] if prompts==2 else [b'Password: ']):\n                    if seen<prompts and prompt in raw:\n                        require(prompt==([b'Password: ',b'Confirm password: '][seen] if prompts==2 else b'Password: '),'cli_prompt_order')\n                        os.write(master,password.encode()+b'\\n');seen+=1;raw=b''\n        while select.select([master],[],[],0)[0]:\n            try:\n                chunk=os.read(master,4096)\n                if not chunk:break\n                raw+=chunk\n            except OSError:break\n        code=p.wait()\n        record['commands'].append({'name':name,'exit':code,'password_prompts':seen})\n        require(code==0,'cli_nonzero');require(seen==prompts,'cli_prompt_missing')\n    finally:\n        raw=b'';os.close(master)\n        if p.poll() is None:stop_child(p)\ndef wait_listener(p,port):\n    deadline=time.monotonic()+30\n    while time.monotonic()<deadline:\n        tick();require(p.poll() is None,'owned_service_early_exit')\n        owners=listeners(port)\n        if owners:\n            require(owners=={p.pid},'listener_owner_mismatch');return\n        time.sleep(0.2)\n    raise RuntimeError('listener_deadline')\ntry:\n    tick()\n    require(PRIVATE.is_dir() and not PRIVATE.is_symlink() and stat.S_IMODE(PRIVATE.stat().st_mode)==0o700,'private_directory_invalid')\n    require(not OUT.exists() and not PROVIDER_META.exists(),'evidence_already_exists')\n    require(not listeners(9000) and not listeners(3000),'port_occupied');record['ports_preflight_empty']=True\n    pins={'riauth':'7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606','riauth-maintenance':'86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95','riauthctl':'bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf'}\n    for name,pin in pins.items():\n        tick()\n        with (BIN/name).open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()\n        record['artifacts'][name]=digest;require(digest==pin,'artifact_hash_mismatch')\n    helper_path=ROOT/'scripts/d01-confidential-browser-demo.py'\n    require(hashlib.sha256(helper_path.read_bytes()).hexdigest()=='75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1','helper_hash_mismatch')\n    verifier=subprocess.check_output(['git','show','9cefe7a56425bb73c17753e8766d92320b77da3b:scripts/recovery-drill-oidc.py'],timeout=5)\n    require(hashlib.sha256(verifier).hexdigest()=='f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d','verifier_hash_mismatch')\n    provider=pathlib.Path('/opt/homebrew/bin/openssl').resolve(strict=True)\n    with provider.open('rb') as f:provider_hash=hashlib.file_digest(f,'sha256').hexdigest()\n    require(provider_hash=='67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72','provider_hash_mismatch')\n    provider_env={k:v for k,v in os.environ.items() if k in {'PATH','HOME','TMPDIR','LANG','LC_ALL'}}\n    p=subprocess.Popen([str(provider),'version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=provider_env)\n    try:stdout,stderr=p.communicate(timeout=5);timeout=False\n    except subprocess.TimeoutExpired:\n        p.kill();stdout,stderr=p.communicate(timeout=2);timeout=True\n    provider_record={'sha256':provider_hash,'exit':p.returncode,'timeout':timeout,'stdout_ascii':stdout[:4096].decode('ascii',errors='backslashreplace'),'stderr_ascii':stderr[:4096].decode('ascii',errors='backslashreplace'),'stdout_bytes':len(stdout),'stderr_bytes':len(stderr),'environment_keys':sorted(provider_env)}\n    record['provider_metadata_sha256']=write_exclusive(PROVIDER_META,provider_record)\n    require(not timeout and p.returncode==0 and len(stdout)<=256 and len(stderr)<=4096 and stdout.decode('ascii').strip()=='OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)','provider_version_failed')\n    tick()\n    resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    lab=pathlib.Path(tempfile.mkdtemp(prefix='d01-confidential-browser-diagnostic.',dir=PRIVATE));os.chmod(lab,0o700)\n    for name in ('xdg','deployment-private','rp'):(lab/name).mkdir(mode=0o700)\n    (lab/'recovery-drill-oidc.py').write_bytes(verifier);os.chmod(lab/'recovery-drill-oidc.py',0o600);verifier=None\n    password=secrets.token_urlsafe(30)\n    fd=os.open(lab/'browser-password',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)\n    with os.fdopen(fd,'w') as f:f.write(password)\n    environment=dict(provider_env);environment['XDG_CONFIG_HOME']=str(lab/'xdg')\n    stage='init';cli('maintenance_init',[str(BIN/'riauth-maintenance'),'--config',str(lab/'riauth.toml'),'init','--issuer','http://localhost:9000','--listen','127.0.0.1:9000','--data-dir','data','--admin','admin'],2)\n    stage='serve'\n    server=own(subprocess.Popen([str(BIN/'riauth'),'--config',str(lab/'riauth.toml'),'serve'],cwd=lab,env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL),'server')\n    record['server_pid']=server.pid;wait_listener(server,9000);record['server_listener_owned']=True\n    stage='readyz'\n    with urllib.request.urlopen('http://127.0.0.1:9000/readyz',timeout=5) as response:\n        record['readyz_status']=response.status;response.read(4096)\n    require(record['readyz_status']==200,'readyz_failed')\n    stage='cli_login'\n    base=[str(BIN/'riauthctl'),'--server','http://localhost:9000']\n    cli('operator_login',base+['login','admin'],1)\n    stage='client_create';secretpath=lab/'deployment-private/local-demo-secret.json'\n    cli('confidential_client_create',base+['client','create','local-demo','--name','Local demo','--confidential','--redirect-uri','http://localhost:3000/callback','--scope','openid,profile','--secret-file',str(secretpath)])\n    require(stat.S_IMODE(secretpath.stat().st_mode)==0o600,'cli_secret_mode_invalid')\n    stage='discovery';cli('discovery',base+['discovery'])\n    stage='whoami';cli('whoami',base+['whoami'])\n    stage='browser_prepare'\n    prepare_deadline=time.monotonic()+180\n    prepare_marker=lab/'browser-prepared'\n    print(json.dumps({'browser_prepare_required':True,'guard_pid':os.getpid(),'server_pid':server.pid,'lab':str(lab)}),flush=True)\n    while not prepare_marker.exists():\n        tick();require(server.poll() is None,'idp_early_exit')\n        require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')\n        require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')\n        time.sleep(0.2)\n    tick();require(server.poll() is None,'idp_early_exit')\n    require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')\n    require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')\n    prepare_info=prepare_marker.lstat()\n    require(stat.S_ISREG(prepare_info.st_mode) and stat.S_IMODE(prepare_info.st_mode)==0o600 and prepare_info.st_uid==os.getuid() and prepare_info.st_nlink==1 and prepare_info.st_size==0,'browser_prepare_marker_invalid')\n    stage='rp_start'\n    helper=own(subprocess.Popen([sys.executable,'-B',str(helper_path),'--workspace',str(lab/'rp'),'--secret-file',str(secretpath),'--verifier-helper',str(lab/'recovery-drill-oidc.py'),'--openssl','/opt/homebrew/bin/openssl','--deadline-seconds','600','--evidence',str(lab/'rp-result.json')],cwd=ROOT,env=environment,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True),'helper')\n    record['helper_pid']=helper.pid;record['helper_invocations']=1\n    wait_listener(helper,3000);record['helper_listener_owned']=True\n    print(json.dumps({'fixture_ready':True,'guard_pid':os.getpid(),'server_pid':server.pid,'helper_pid':helper.pid,'lab':str(lab),'commands':record['commands'],'provider_metadata_sha256':record['provider_metadata_sha256'],'minimum_free_bytes':record['minimum_free_bytes']}),flush=True)\n    stage='browser_checkpoint';announced=False\n    while not (lab/'stop').exists():\n        tick();require(server.poll() is None,'idp_early_exit')\n        if helper.poll() is not None:\n            code=helper.wait()\n            if not announced:\n                record['helper_exit']=code;record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())\n                retain_observation()\n                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']\n                record['preflow_authorization_refusals']=record['helper_result']['preflow_authorization_refusals']\n                print(json.dumps({'helper_completed':True,'exit':code,'result':record['helper_result']['result'],'failure_tag':record['helper_result']['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'unexpected_failure_observation':record['unexpected_failure_observation'],'unexpected_observation_projection':record['unexpected_observation_projection']}),flush=True);announced=True\n            require(code==0,'rp_nonzero')\n        time.sleep(0.2)\n    if (lab/'ui-failure').exists():raise RuntimeError('browser_checkpoint_failed')\n    require(helper.poll()==0,'rp_checkpoint_incomplete');record['result']='passed'\nexcept Exception as error:\n    record['failure_stage']=stage\n    tags={'disk_margin','active_deadline','private_directory_invalid','evidence_already_exists','port_occupied','socket_observation_failed','artifact_hash_mismatch','helper_hash_mismatch','verifier_hash_mismatch','provider_hash_mismatch','provider_version_failed','cli_deadline','cli_output_limit','cli_prompt_order','cli_prompt_missing','cli_nonzero','owned_service_early_exit','listener_owner_mismatch','listener_deadline','readyz_failed','cli_secret_mode_invalid','idp_early_exit','rp_nonzero','browser_checkpoint_failed','rp_checkpoint_incomplete','browser_prepare_deadline','browser_prepare_marker_invalid'}\n    record['failure_tag']=str(error) if str(error) in tags else 'outer_unexpected_failure'\nfinally:\n    for p in reversed(children):\n        try:stop_child(p)\n        except Exception:record['cleanup']['child_reap_failure']=True\n        record['owned_child_exits'].append({'name':names[p.pid],'pid':p.pid,'exit':p.poll()})\n    record['cleanup']['owned_children_reaped']=all(p.poll() is not None for p in children)\n    if lab is not None:\n        if helper is not None:\n            record['helper_exit']=helper.poll()\n            if (lab/'rp-result.json').exists():\n                record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())\n                retain_observation()\n                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']\n                record['preflow_authorization_refusals']=record['helper_result']['preflow_authorization_refusals']\n        password=None;shutil.rmtree(lab);record['cleanup']['lab_removed']=not lab.exists()\n    else:record['cleanup']['lab_removed']=True\n    try:\n        record['cleanup']['port9000_absent']=not listeners(9000);record['cleanup']['port3000_absent']=not listeners(3000)\n    except Exception:record['cleanup']['socket_observation_failure']=True\n    record['completed_utc']=datetime.datetime.now(datetime.timezone.utc).isoformat();record['elapsed_seconds']=round(time.time()-START,3)\n    if resultfd is None and not OUT.exists():resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    if resultfd is not None:\n        with os.fdopen(resultfd,'wb') as f:\n            f.write((json.dumps(record,sort_keys=True,indent=2)+'\\n').encode('ascii'));f.flush();os.fsync(f.fileno())\n    print(json.dumps({'fixture_finished':True,'result':record['result'],'failure_stage':record['failure_stage'],'failure_tag':record['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'unexpected_failure_observation':record['unexpected_failure_observation'],'unexpected_observation_projection':record['unexpected_observation_projection'],'cleanup':record['cleanup'],'owned_child_exits':record['owned_child_exits'],'minimum_free_bytes':record['minimum_free_bytes'],'disk_samples':record['disk_samples'],'elapsed_seconds':record['elapsed_seconds']}),flush=True)\nsys.exit(0 if record['result']=='passed' else 1)\nPY";
+const L_ARCHIVE_SOURCE="import ast,hashlib,json,os,pathlib,re,shutil,stat,subprocess,sys,time\nc=json.loads(sys.argv[1])\ntry:\n    root=pathlib.Path.cwd();private=root/\"deployment-private\";info=private.lstat()\n    if not (stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.getuid()):\n        raise ValueError(\"fixed_preflight\")\n    free=shutil.disk_usage(root).free\n    if free<8.5*1024**3:raise ValueError(\"fixed_preflight\")\n    names=c[\"names\"]\n    if len(names)!=6 or len(set(names))!=6 or not all(type(v) is str and re.fullmatch(r\"[A-Za-z0-9._-]{1,123}\\.json\",v) for v in names):\n        raise ValueError(\"fixed_preflight\")\n    if any((private/v).exists() or (private/v).is_symlink() for v in names):\n        raise ValueError(\"fixed_preflight\")\n    for port in (9000,3000):\n        r=subprocess.run([\"/usr/sbin/lsof\",\"-nP\",\"-t\",\"-iTCP:\"+str(port),\"-sTCP:LISTEN\"],capture_output=True,timeout=3)\n        if r.returncode not in (0,1) or r.stdout.strip():raise ValueError(\"fixed_preflight\")\n    template=c[\"template\"];command=c[\"command\"];edits=c[\"edits\"]\n    if not (type(template) is str and type(command) is str and len(template.encode(\"ascii\"))<=65536 and len(command.encode(\"ascii\"))<=65536):\n        raise ValueError(\"fixed_source\")\n    if hashlib.sha256(template.encode(\"ascii\")).hexdigest()!=\"5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0\":\n        raise ValueError(\"fixed_source\")\n    if len(edits)!=3:raise ValueError(\"fixed_source\")\n    restored=command\n    for before,after in reversed(edits):\n        if restored.count(after)!=1:raise ValueError(\"fixed_source\")\n        restored=restored.replace(after,before,1)\n    if restored!=template:raise ValueError(\"fixed_source\")\n    body=lambda v:v.split(\"\\n\",1)[1].rsplit(\"\\nPY\",1)[0]\n    if ast.dump(ast.parse(body(restored)),include_attributes=False)!=ast.dump(ast.parse(body(template)),include_attributes=False):\n        raise ValueError(\"fixed_source\")\n    helper_fd=os.open(root/\"scripts/d01-confidential-browser-demo.py\",os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        helper_info=os.fstat(helper_fd)\n        if not stat.S_ISREG(helper_info.st_mode) or helper_info.st_size!=35749:\n            raise ValueError(\"fixed_source\")\n        with os.fdopen(helper_fd,\"rb\",closefd=False) as f:helper_source=f.read(35750)\n        if len(helper_source)!=35749 or hashlib.sha256(helper_source).hexdigest()!=\"75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1\":\n            raise ValueError(\"fixed_source\")\n        helper_source=None\n    finally:os.close(helper_fd)\n    digest=hashlib.sha256(command.encode(\"ascii\")).hexdigest()\n    record={\"schema\":\"riauth.d01-launcher-controller-source/v1\",\"template_sha256\":hashlib.sha256(template.encode(\"ascii\")).hexdigest(),\n        \"payload_sha256\":digest,\"start_epoch_ms\":c[\"start_epoch_ms\"],\"edits\":edits,\"command\":command}\n    fd=os.open(private/names[4],os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,\"w\",encoding=\"ascii\") as f:\n        f.write(json.dumps(record,sort_keys=True)+\"\\n\");f.flush();os.fsync(f.fileno())\n    print(json.dumps({\"schema\":\"riauth.d01-launcher-archive/v1\",\"payload_sha256\":digest,\n        \"start_epoch_ms\":c[\"start_epoch_ms\"],\"source_reversal_verified\":True,\n        \"private_directory_verified\":True,\"paths_preflight_absent\":True,\n        \"initial_free_bytes\":free,\"ports_preflight_empty\":True}))\nexcept BaseException:\n    print('{\"schema\":\"riauth.d01-launcher-archive/v1\",\"failed\":true}')\n    sys.exit(1)\n";
+const L_FAILED_READBACK="import json,os,pathlib,stat,subprocess,sys,time\nc=json.loads(sys.argv[1]);children=None;server=None;known=set(c[\"known_pids\"])\nouter=pathlib.Path(c[\"outer_out\"]);canonical=False\ntry:\n    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        info=os.fstat(fd)\n        if not (stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode)==0o600 and info.st_uid==os.getuid() and 0<info.st_size<=262144):\n            raise ValueError(\"fixed_record\")\n        raw=os.read(fd,262145)\n        if len(raw)!=info.st_size:raise ValueError(\"fixed_record\")\n        data=json.loads(raw);raw=None\n    finally:os.close(fd)\n    rows=data.get(\"owned_child_exits\")\n    allowed={\"whoami\",\"discovery\",\"confidential_client_create\",\"operator_login\",\"server\",\"maintenance_init\",\"helper\"}\n    if type(rows) is list and len(rows)<=7 and all(type(v) is dict and set(v)=={\"name\",\"pid\",\"exit\"} and v[\"name\"] in allowed and type(v[\"pid\"]) is int and v[\"pid\"]>0 and type(v[\"exit\"]) is int for v in rows) and len({v[\"pid\"] for v in rows})==len(rows) and len({v[\"name\"] for v in rows})==len(rows) and data.get(\"cleanup\",{}).get(\"owned_children_reaped\") is True:\n        children=[{k:v[k] for k in (\"name\",\"pid\",\"exit\")} for v in rows]\n        known.update(v[\"pid\"] for v in rows);canonical=True\n        server=next((v[\"pid\"] for v in rows if v[\"name\"]==\"server\"),None)\nexcept (OSError,ValueError,TypeError):pass\npid_absence={};ports={}\ntry:\n    if known:\n        r=subprocess.run([\"/bin/ps\",\"-p\",\",\".join(str(v) for v in sorted(known)),\"-o\",\"pid=\"],capture_output=True,timeout=3)\n        valid=r.returncode in (0,1) and all(v.isdigit() for v in r.stdout.split())\n        present={int(v) for v in r.stdout.split()} if valid else set()\n        pid_absence={str(v):(v not in present if valid else None) for v in sorted(known)}\n    for port in (9000,3000):\n        r=subprocess.run([\"/usr/sbin/lsof\",\"-nP\",\"-t\",\"-iTCP:\"+str(port),\"-sTCP:LISTEN\"],capture_output=True,timeout=3)\n        ports[str(port)]=not bool(r.stdout.strip()) if r.returncode in (0,1) else None\nexcept (OSError,subprocess.TimeoutExpired):\n    ports={\"9000\":None,\"3000\":None}\nlab_absent=None\nif c[\"lab\"] is not None:\n    try:pathlib.Path(c[\"lab\"]).lstat();lab_absent=False\n    except FileNotFoundError:lab_absent=True\n    except OSError:pass\nprint(json.dumps({\"clock\":{\"monotonic_ns\":str(time.monotonic_ns()),\"wall_epoch_ns\":str(time.time_ns())},\n    \"owned_child_exits\":children,\"canonical_children\":canonical,\"server_pid\":server,\n    \"owned_pids\":pid_absence,\"ports\":ports,\"lab_absent\":lab_absent}))\n";
+const L_STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+const L_PERSIST="import json,os,pathlib,sys\npath=pathlib.Path(sys.argv[1])\nrecord=json.loads(sys.argv[2])\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\ndef clocks(value):\n    if isinstance(value,dict):\n        for k,v in list(value.items()):\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\n                value[k]=int(v)\n            else:clocks(v)\n    elif isinstance(value,list):\n        for v in value:clocks(v)\nclocks(record)\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'w',encoding='ascii') as f:\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\n');f.flush();os.fsync(f.fileno())\nprint(json.dumps({'written_exclusive':True}))\n";
+const L_WORKSPACE="/Users/dominik/orca/projects/riAuth-public-preview-sol-management-wave30";
+const lRelease=load("d01_launcher_release");
+const lRecord={schema:"riauth.d01-owned-launcher/v1",first_failure:null,
+  first_observation_wall_ms:null,first_event_proven:false,whole_cleanup_within60_proven:false,
+  local_tool_receipts:[],cleanup_errors:[],controller_exit:null,owned_child_exits:null,
+  final_absence:null,resource_release_proven:false,journey_credit:false};
+const lRetain=()=>store("d01_launcher_observation_record",lRecord);
+const lLatch=(tag,wall)=>{if(lRecord.first_failure===null) {
+  lRecord.first_failure=tag;lRecord.first_observation_wall_ms=wall;lRetain();
+}};
+const lError=tag=>{if(!lRecord.cleanup_errors.includes(tag))lRecord.cleanup_errors.push(tag);lRetain();};
+const lExact=(v,keys)=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&
+  Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
+const lPositive=v=>Number.isSafeInteger(v)&&v>0;
+const lSq=s=>"'"+String(s).replace(/'/g,"'\\''")+"'";
+function lReleaseValid(c) {
+  const keys=["runtime_release","single_controller","session","outer_basename",
+    "provider_basename","event_basename","cleanup_basename","payload_basename",
+    "launcher_cleanup_basename","helper_sha256","controller_template_sha256",
+    "entry_source_sha256","driver_contract_receipt_sha256","driver_readonly_preflight_verified"];
+  return lExact(c,keys)&&c.runtime_release===true&&c.single_controller===true&&
+    c.driver_readonly_preflight_verified===true&&typeof c.session==="string"&&
+    /^[A-Za-z0-9_.-]{1,64}$/.test(c.session)&&
+    ["outer_basename","provider_basename","event_basename","cleanup_basename",
+     "payload_basename","launcher_cleanup_basename"].every(k=>
+       typeof c[k]==="string"&&/^[A-Za-z0-9._-]{1,123}\.json$/.test(c[k]))&&
+    new Set(["outer_basename","provider_basename","event_basename","cleanup_basename",
+      "payload_basename","launcher_cleanup_basename"].map(k=>c[k])).size===6&&
+    c.helper_sha256==="75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1"&&
+    c.controller_template_sha256==="5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0"&&
+    c.entry_source_sha256==="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"&&
+    c.driver_contract_receipt_sha256==="b8145f029796a2063dfe167f026fe299d85afcaedbec5a7abacbeb5bf1a5ea27";
+}
+let lStart=null,lExec=null,lJoined=false,lPolling=true,lGate=null,lBuffer="";
+let lPayloadSha=null,lArchivePending=null;
+const lPath=name=>L_WORKSPACE+"/deployment-private/"+name;
+async function lLocal(label,source,arg) {
+  const r=await tools.exec_command({cmd:"python3 -c "+lSq(source)+" "+lSq(JSON.stringify(arg)),
+    workdir:L_WORKSPACE,login:false,tty:false,yield_time_ms:10000,max_output_tokens:2000});
+  lRecord.local_tool_receipts.push({label,exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+    session_id:lPositive(r.session_id)?r.session_id:null});lRetain();
+  if(r.session_id!==undefined) {
+    if(label==="archive"&&lPositive(r.session_id))lArchivePending=r.session_id;
+    lError("owned_local_command_unjoined");throw Error("owned_collector_pending");
+  }
+  if(r.exit_code!==0||typeof r.output!=="string"||r.output.length>16384)
+    throw Error("owned_collector_unconfirmed");
+  return JSON.parse(r.output);
+}
+function lObserveController(r,received) {
+  const receipt={label:"controller",exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+    session_id:lPositive(r.session_id)?r.session_id:null,received_wall_ms:received};
+  lRecord.local_tool_receipts.push(receipt);lRetain(); // Numeric receipt before comparison.
+  if(r.exit_code!==undefined&&!Number.isInteger(r.exit_code))
+    lLatch("owned_exec_handle_unconfirmed",received);
+  if(typeof r.output!=="string")lLatch("controller_gate_unconfirmed",received);
+  if(Number.isInteger(r.exit_code)) {
+    lJoined=true;lRecord.controller_exit=r.exit_code;
+    lLatch("controller_completed_before_preparation",received);
+  } else if(r.session_id!==undefined&&r.session_id!==lExec)
+    lLatch("owned_exec_handle_unconfirmed",received);
+  lBuffer+=typeof r.output==="string"?r.output:"";
+  if(lBuffer.length>16384){lBuffer="";lLatch("controller_gate_unconfirmed",received);return;}
+  let cut;
+  while((cut=lBuffer.indexOf("\n"))>=0) {
+    const line=lBuffer.slice(0,cut);lBuffer=lBuffer.slice(cut+1);
+    if(!line.trim())continue;
+    let event=null;
+    try{event=JSON.parse(line);}catch{lLatch("controller_gate_unconfirmed",received);continue;}
+    const direct=typeof event?.lab==="string"&&
+      event.lab.startsWith(L_WORKSPACE+"/deployment-private/")&&
+      /^d01-confidential-browser-diagnostic\.[A-Za-z0-9._-]{1,80}$/.test(
+        event.lab.slice((L_WORKSPACE+"/deployment-private/").length));
+    if(lExact(event,["browser_prepare_required","guard_pid","server_pid","lab"])&&
+       event.browser_prepare_required===true&&lPositive(event.guard_pid)&&
+       lPositive(event.server_pid)&&event.guard_pid!==event.server_pid&&direct&&lGate===null) {
+      lGate={browser_prepare_required:true,guard_pid:event.guard_pid,
+        server_pid:event.server_pid,lab:event.lab};
+      lRecord.gate_received_wall_ms=received;lRetain();
+    } else lLatch("controller_gate_unconfirmed",received);
+    event=null;
+  }
+}
+async function lPoll() {
+  let r=null;
+  try {
+    r=await tools.write_stdin({session_id:lExec,chars:"",yield_time_ms:5000,max_output_tokens:2000});
+    const received=Date.now();lObserveController(r,received);
+  } catch {lPolling=false;lLatch("controller_observation_unavailable",Date.now());}
+  finally {r=null;}
+}
+async function lFailedJoinCleanup() {
+  lRecord.cleanup_started_wall_ms=Date.now();lRetain(); // First failure was already latched.
+  if(lGate!==null) {
+    try {
+      const r=await lLocal("stop",L_STOP,{lab:lGate.lab,
+        event_out:lPath(lRelease.event_basename),first_failure:lRecord.first_failure,
+        first_observation_wall_ms:lRecord.first_observation_wall_ms});
+      lRecord.first_clock=r.clock;lRecord.stop_state=r.marker_state;lRetain();
+      if(r.event_state!=="written")lError("observation_metadata_write_unconfirmed");
+      if(!["stop_requested","lab_absent"].includes(r.marker_state))lError("owned_stop_unconfirmed");
+    } catch {lError("owned_stop_unconfirmed");}
+  } else if(lExec!==null) {
+    // No validated lab/PID: no guessed marker or manual process signal.
+    // The unchanged controller's active/barrier deadlines remain the stop path.
+    lError("owned_stop_path_unknown");
+  }
+  for(let n=0;n<180&&lExec!==null&&!lJoined&&lPolling&&Date.now()<lStart+900000;n++)
+    await lPoll();
+  if(lExec!==null&&!lJoined)lError("child_reap_incomplete");
+  if(lArchivePending!==null) {
+    for(let n=0;n<6&&lArchivePending!==null&&Date.now()<lStart+900000;n++) {
+      let r=null;
+      try {
+        r=await tools.write_stdin({session_id:lArchivePending,chars:"",
+          yield_time_ms:5000,max_output_tokens:2000});
+        lRecord.local_tool_receipts.push({label:"archive_join",
+          exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+          session_id:lPositive(r.session_id)?r.session_id:null});lRetain();
+        if(Number.isInteger(r.exit_code))lArchivePending=null;
+      } catch {lError("archive_join_unconfirmed");break;}
+      finally {r=null;}
+    }
+  }
+  if(lExec!==null) {
+    try {
+      const r=await lLocal("failed_readback",L_FAILED_READBACK,{
+        outer_out:lPath(lRelease.outer_basename),
+        known_pids:lGate===null?[]:[lGate.guard_pid,lGate.server_pid],
+        lab:lGate===null?null:lGate.lab});
+      lRecord.final_clock=r.clock;lRecord.owned_child_exits=r.owned_child_exits;
+      lRecord.final_absence={owned_pids:r.owned_pids,ports:r.ports,lab:r.lab_absent,
+        driver_started:false,guard_ownership_known:lGate!==null};
+      lRetain(); // Fixed independent proof retained before release/budget comparison.
+      const known=lGate===null?[]:[lGate.guard_pid,lGate.server_pid];
+      lRecord.resource_release_proven=lGate!==null&&lJoined&&lArchivePending===null&&
+        r.canonical_children===true&&Array.isArray(r.owned_child_exits)&&
+        r.server_pid===lGate.server_pid&&known.every(pid=>r.owned_pids[String(pid)]===true)&&
+        r.owned_child_exits.every(v=>r.owned_pids[String(v.pid)]===true)&&
+        r.ports["9000"]===true&&r.ports["3000"]===true&&r.lab_absent===true&&
+        !lRecord.cleanup_errors.includes("owned_local_command_unjoined");
+      if(lRecord.first_clock) {
+        lRecord.latch_to_absence_ms=Number(
+          (BigInt(r.clock.monotonic_ns)-BigInt(lRecord.first_clock.monotonic_ns))/1000000n);
+        if(lRecord.latch_to_absence_ms>60000)lError("cleanup_budget_exceeded");
+      }
+      if(!lRecord.resource_release_proven)lError("owned_resource_absence_unproven");
+      lRetain();
+    } catch {lError("owned_readback_unavailable");}
+  }
+  lBuffer="";
+  // No Driver preparation was called here; no session/browser kill guarantee is assumed.
+  try {
+    const cmd="python3 -c "+lSq(L_PERSIST)+" "+lSq(lPath(lRelease.launcher_cleanup_basename))+
+      " "+lSq(JSON.stringify(lRecord));
+    const r=await tools.exec_command({cmd,workdir:L_WORKSPACE,login:false,tty:false,
+      yield_time_ms:10000,max_output_tokens:500});
+    lRecord.local_tool_receipts.push({label:"launcher_persist",
+      exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+      session_id:lPositive(r.session_id)?r.session_id:null});lRetain();
+    if(r.exit_code!==0||r.session_id!==undefined)lError("cleanup_metadata_write_unconfirmed");
+    if(r.session_id!==undefined){lRecord.resource_release_proven=false;lError("owned_local_command_unjoined");}
+  } catch {lError("cleanup_metadata_write_unconfirmed");}
+}
+if(!lReleaseValid(lRelease)||load("d01_preparation_seed")!==undefined&&load("d01_preparation_seed")!==null) {
+  lLatch("root_runtime_input_unconfirmed",Date.now());
+  text({proposal_refused:"root_runtime_input_unconfirmed",journey_credit:false,
+    resource_release_proven:false});exit();
+}
+lStart=Date.now(); // ONE fresh inclusive START; no reset or deadline extension.
+try {
+  const edits=[
+    ["START=float('__ROOT_RELEASED_START_ONCE__')","START=float('"+String(lStart/1000)+"')"],
+    ["__ROOT_FRESH_OBSERVER_OUT_BASENAME__",lRelease.outer_basename],
+    ["__ROOT_FRESH_OBSERVER_PROVIDER_BASENAME__",lRelease.provider_basename]
+  ];
+  let command=L_CONTROLLER_TEMPLATE;
+  for(const [before,after] of edits) {
+    if(command.split(before).length!==2)throw Error("controller_template_unconfirmed");
+    command=command.replace(before,after);
+  }
+  const names=["outer_basename","provider_basename","event_basename","cleanup_basename",
+    "payload_basename","launcher_cleanup_basename"].map(k=>lRelease[k]);
+  const archive=await lLocal("archive",L_ARCHIVE_SOURCE,{template:L_CONTROLLER_TEMPLATE,
+    command,edits,names,start_epoch_ms:lStart});
+  if(!lExact(archive,["schema","payload_sha256","start_epoch_ms","source_reversal_verified",
+     "private_directory_verified","paths_preflight_absent","initial_free_bytes","ports_preflight_empty"])||
+     archive.schema!=="riauth.d01-launcher-archive/v1"||
+     !/^[a-f0-9]{64}$/.test(archive.payload_sha256)||archive.start_epoch_ms!==lStart||
+     archive.source_reversal_verified!==true||archive.private_directory_verified!==true||
+     archive.paths_preflight_absent!==true||archive.ports_preflight_empty!==true||
+     !Number.isSafeInteger(archive.initial_free_bytes)||archive.initial_free_bytes<8.5*1024**3)
+    throw Error("controller_archive_unconfirmed");
+  lPayloadSha=archive.payload_sha256;lRecord.payload_sha256=lPayloadSha;lRetain();
+  let r=await tools.exec_command({cmd:command,workdir:L_WORKSPACE,login:false,tty:false,
+    yield_time_ms:1000,max_output_tokens:2000});
+  const received=Date.now(); // Receipt clock before all initial-handle comparisons.
+  lRecord.local_tool_receipts.push({label:"controller_initial",
+    exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+    session_id:lPositive(r.session_id)?r.session_id:null,received_wall_ms:received});lRetain();
+  if(lPositive(r.session_id))lExec=r.session_id;
+  if(lExec===null&&Number.isInteger(r.exit_code)){lJoined=true;lRecord.controller_exit=r.exit_code;}
+  if(lExec===null)lLatch("controller_pending_receipt_unconfirmed",received);
+  lObserveController(r,received);r=null;command=null;
+  for(let n=0;n<168&&lGate===null&&lRecord.first_failure===null&&Date.now()<lStart+840000;n++)
+    await lPoll();
+  if(lRecord.first_failure===null&&(lGate===null||lJoined||!lPositive(lExec)||Date.now()>=lStart+840000))
+    lLatch("controller_gate_unconfirmed",Date.now());
+  if(lRecord.first_failure===null) {
+    // EXACT25-field public seed. PIDs come only from the canonical owned command event.
+    const seed={
+      runtime_release:true,single_controller:true,fresh_paths_preflight:true,
+      start_epoch_ms:lStart,workspace:L_WORKSPACE,exec_session:lExec,
+      guard_pid:lGate.guard_pid,server_pid:lGate.server_pid,lab:lGate.lab,
+      outer_out:lPath(lRelease.outer_basename),event_out:lPath(lRelease.event_basename),
+      cleanup_out:lPath(lRelease.cleanup_basename),session:lRelease.session,
+      controller_template_sha256:lRelease.controller_template_sha256,
+      controller_payload_sha256:lPayloadSha,entry_source_sha256:lRelease.entry_source_sha256,
+      helper_source_sha256:lRelease.helper_sha256,gate_event:lGate,controller_pending:true,
+      interfaces_source_sha256:"1c5ded39f080bcc25a812facd1358acbbd6056f97e6166fd374c2d61a9342a95",phase:"browser_preparation",
+      driver_contract_receipt_sha256:lRelease.driver_contract_receipt_sha256,
+      payload_archive_out:lPath(lRelease.payload_basename),provider_out:lPath(lRelease.provider_basename),
+      launcher_receipt:{exec_session:lExec,exit:null,pending:true,
+        gate_received_wall_ms:lRecord.gate_received_wall_ms}
+    };
+    if(Object.keys(seed).length!==25)throw Error("seed_field_count_unconfirmed");
+    store("d01_preparation_seed",seed);lBuffer="";
+  }
+} catch {lLatch("owned_launcher_unconfirmed",Date.now());}
+if(lRecord.first_failure!==null) {
+  await lFailedJoinCleanup();
+  text({result:"owned_launcher_failed",first_failure:lRecord.first_failure,
+    cleanup_errors:lRecord.cleanup_errors,resource_release_proven:lRecord.resource_release_proven,
+    whole_cleanup_within60_proven:false,journey_credit:false});exit();
+}
+// Concrete preparation prefix and unchanged c5 follow without output/model wait.
+// D01 concrete preparation SOURCE DESIGN ONLY; no fixture execution authorization.
+const P_REQUIRED_INTERFACES=Object.freeze({
+  prepare_decoder:pDecodePrepare,bind_decoder:pDecodeBind,
+  snapshot_decoder:pDecodeSnapshot,private_transfer:pTransferPrivate
+});
+// Concrete success profile from the closed root survey; never parse text as proof.
+const P_PRIVATE_CARRIER="# Source proposal only: return through a separately reviewed private bridge.\n# No module entry point, print, logging, subprocess, environment or network.\nimport os,re,stat\n\ndef read_browser_password_private(lab):\n    if type(lab) is not str or not 1<=len(lab)<=4096 or \"\\x00\" in lab:\n        raise ValueError(\"private_input_refused\")\n    directory=os.open(lab,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)\n    fd=None;raw=None;value=None\n    try:\n        before_dir=os.fstat(directory)\n        named_dir=os.stat(lab,follow_symlinks=False)\n        if (named_dir.st_dev,named_dir.st_ino,named_dir.st_mode,named_dir.st_uid)!=(before_dir.st_dev,before_dir.st_ino,before_dir.st_mode,before_dir.st_uid):\n            raise ValueError(\"private_input_refused\")\n        if not (stat.S_ISDIR(before_dir.st_mode) and stat.S_IMODE(before_dir.st_mode)==0o700 and before_dir.st_uid==os.getuid()):\n            raise ValueError(\"private_input_refused\")\n        fd=os.open(\"browser-password\",os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)\n        before=os.fstat(fd)\n        if not (stat.S_ISREG(before.st_mode) and stat.S_IMODE(before.st_mode)==0o600 and before.st_uid==os.getuid() and before.st_nlink==1 and 30<=before.st_size<=128):\n            raise ValueError(\"private_input_refused\")\n        raw=bytearray()\n        while len(raw)<=128:\n            block=os.read(fd,129-len(raw))\n            if not block:break\n            raw.extend(block)\n            block=None\n        after=os.fstat(fd)\n        named=os.stat(\"browser-password\",dir_fd=directory,follow_symlinks=False)\n        after_dir=os.fstat(directory)\n        final_named_dir=os.stat(lab,follow_symlinks=False)\n        identity=lambda v:(v.st_dev,v.st_ino,v.st_mode,v.st_uid,v.st_nlink,v.st_size,v.st_mtime_ns,v.st_ctime_ns)\n        if identity(before)!=identity(after) or identity(after)!=identity(named) or not stat.S_ISREG(named.st_mode) or (after_dir.st_dev,after_dir.st_ino,after_dir.st_mode,after_dir.st_uid)!=(before_dir.st_dev,before_dir.st_ino,before_dir.st_mode,before_dir.st_uid) or (final_named_dir.st_dev,final_named_dir.st_ino,final_named_dir.st_mode,final_named_dir.st_uid)!=(before_dir.st_dev,before_dir.st_ino,before_dir.st_mode,before_dir.st_uid):\n            raise ValueError(\"private_input_refused\")\n        if len(raw)!=before.st_size or not 30<=len(raw)<=128:\n            raise ValueError(\"private_input_refused\")\n        value=raw.decode(\"ascii\")\n        if re.fullmatch(r\"[A-Za-z0-9_-]{30,128}\",value) is None:\n            raise ValueError(\"private_input_refused\")\n        return value\n    except (OSError,UnicodeError,ValueError):\n        value=None\n        raise ValueError(\"private_input_refused\") from None\n    finally:\n        if raw is not None:\n            for i in range(len(raw)):raw[i]=0\n        raw=None\n        if fd is not None:os.close(fd)\n        os.close(directory)\n\n# ONE private stdout carrier; consumed only inside functions.exec, never emitted.\nimport json,signal,sys\nsignal.alarm(5)\nvalue=None;packet=None\ntry:\n    value=read_browser_password_private(sys.argv[1])\n    packet={\"schema\":\"riauth.d01-private-input/v1\",\"bytes\":len(value),\"value\":value}\n    sys.stdout.write(json.dumps(packet,ensure_ascii=True,separators=(\",\",\":\"))+\"\\n\")\n    sys.stdout.flush()\nexcept BaseException:\n    sys.stdout.write('{\"schema\":\"riauth.d01-private-input/v1\",\"bytes\":0,\"failed\":true}\\n')\n    sys.stdout.flush()\n    sys.exit(1)\nfinally:\n    value=None;packet=None;signal.alarm(0)\n";
+let pPrivateSession=null,pPrivateJoined=true;
+function pStructured(result) {
+  if(result===null||typeof result!=="object"||Array.isArray(result)||
+     (result.isError!==undefined&&result.isError!==false)||
+     !Array.isArray(result.content)||result.content.some(v=>v?.type!=="text")||
+     result.structuredContent===null||typeof result.structuredContent!=="object"||
+     Array.isArray(result.structuredContent))throw Error("driver_shape_unconfirmed");
+  return result.structuredContent;
+}
+function pInertRoot(root,id) {
+  return pExact(root,["actions","frame","name","ref","role","states","value","visibility"])&&
+    Array.isArray(root.actions)&&root.actions.length===0&&root.frame==="main"&&
+    root.name===null&&root.value===null&&root.role==="rootwebarea"&&
+    root.visibility==="in_viewport"&&pExact(root.states,["focusable"])&&
+    root.states.focusable===true&&/^p[0-9]{1,10}:0$/.test(root.ref)&&
+    (id===undefined||root.ref===id+":0");
+}
+function pZeroOmitted(value) {
+  const keys=["budget","css_hidden","no_layout","offscreen","page_occluded",
+    "unknown","unprovable_frame"];
+  return pExact(value,keys)&&keys.every(k=>value[k]===0);
+}
+function pDecodePrepare(result) {
+  const s=pStructured(result);
+  const effects=["changed_preferences","closed_setup_page","copied_profile_data",
+    "created_profile","displayed_consent_prompt","enabled_remote_debugging",
+    "focused_setup_address_field","foregrounded_window","injected_global_input",
+    "launched_browser","opened_setup_page","restarted_browser","reused_driver_profile",
+    "used_bounded_pixel_fallback"];
+  if(!pExact(s,["action","attachment","endpoint_ownership","message","prepared",
+       "prepared_pid","side_effects","status"])||s.status!=="ok"||s.prepared!==true||
+     s.action!=="launched_isolated_browser"||s.attachment!==null||
+     !pPositive(s.prepared_pid)||
+     s.message!=="Launched a separate driver-owned isolated Chromium process; no existing browser process was modified or terminated."||
+     !pExact(s.endpoint_ownership,["detail","method","owner_pid"])||
+     s.endpoint_ownership.method!=="spawned_by_driver"||
+     s.endpoint_ownership.owner_pid!==s.prepared_pid||
+     s.endpoint_ownership.detail!=="driver-owned profile port file plus live loopback socket owner"||
+     !pExact(s.side_effects,effects)||
+     !effects.every(k=>s.side_effects[k]===(k==="created_profile"||k==="launched_browser")))
+    throw Error("prepared_owned_pid_unconfirmed");
+  return {success:true,owned_pid:s.prepared_pid,isolated_new:true,spawned_by_driver:true};
+}
+function pDecodeBind(result) {
+  const s=pStructured(result);
+  if(!pExact(s,["binding_quality","binding_route","endpoint_access_class",
+       "endpoint_transport","mode","mutation_allowed","native_title","status",
+       "tabs","target_id"])||s.status!=="ok"||s.mode!=="bind"||
+     s.binding_quality!=="exact"||s.binding_route!=="native_cdp_window"||
+     s.endpoint_access_class!=="driver_owned"||s.endpoint_transport!=="legacy_json_version"||
+     s.mutation_allowed!==true||s.native_title!=="about:blank"||
+     !pCapability(s.target_id)||!Array.isArray(s.tabs)||s.tabs.length!==1||
+     !pExact(s.tabs[0],["active","tab_id","title","url"])||
+     s.tabs[0].active!==true||!pCapability(s.tabs[0].tab_id)||
+     s.tabs[0].title!=="about:blank"||s.tabs[0].url!=="about:blank")
+    throw Error("prepared_binding_unconfirmed");
+  // PID/window association is the exact call's attestation, not invented return fields.
+  return {status:"ok",binding_quality:"exact",mutation_allowed:true,
+    endpoint_access_class:"driver_owned",pid:pBrowserPid,window_id:pWindowId,
+    target_id:s.target_id,tabs:[{tab_id:s.tabs[0].tab_id,active:true,url:"about:blank"}]};
+}
+function pDecodeSnapshot(result) {
+  const s=pStructured(result),snap=s.snapshot;
+  if(!pExact(s,["content_refs","mode","oopif","outline","page","refs","snapshot",
+       "status","tab_id","target_id"])||s.status!=="ok"||s.mode!=="snapshot"||
+     s.target_id!==pTargetId||s.tab_id!==pTabId||s.outline!==""||
+     !pExact(s.page,["title","url"])||s.page.title!=="about:blank"||
+     s.page.url!=="about:blank"||!pExact(s.oopif,["frames","status"])||
+     s.oopif.frames!==0||s.oopif.status!=="attached"||
+     !Array.isArray(s.refs)||s.refs.length!==0||
+     !pExact(snap,["complete","continuation","format","id","node_budget","omitted",
+       "scope","selected_nodes","total_nodes"])||snap.complete!==true||
+     snap.continuation!==null||snap.format!=="semantic_v2"||
+     typeof snap.id!=="string"||!/^p[0-9]{1,10}$/.test(snap.id)||
+     snap.node_budget!==300||snap.scope!=="viewport"||
+     snap.selected_nodes!==1||snap.total_nodes!==1||!pZeroOmitted(snap.omitted)||
+     !Array.isArray(s.content_refs)||s.content_refs.length!==1||
+     !pInertRoot(s.content_refs[0],snap.id))throw Error("prepared_snapshot_unconfirmed");
+  return {status:"ok",target_id:s.target_id,tab_id:s.tab_id,url:"about:blank",
+    complete:true,omitted:{budget:0,css_hidden:0,no_layout:0,offscreen:0,
+      page_occluded:0,unknown:0,unprovable_frame:0},continuation:null,refs:[],
+    content_refs:[{actions:[],frame:"main",name:null,ref:s.content_refs[0].ref,
+      role:"rootwebarea",states:{focusable:true},value:null,visibility:"in_viewport"}]};
+}
+async function pTransferPrivate(request) {
+  if(!pExact(request,["lab","name","maximum_bytes","sink"])||request.lab!==pSeed.lab||
+     request.name!=="browser-password"||request.maximum_bytes!==128||
+     typeof request.sink!=="function")throw Error("private_input_refused");
+  let result=null,raw=null,packet=null,value=null;
+  try {
+    result=await tools.exec_command({
+      cmd:"python3 -c "+pSq(P_PRIVATE_CARRIER)+" "+pSq(request.lab),
+      workdir:pSeed.workspace,login:false,tty:false,yield_time_ms:10000,
+      max_output_tokens:1000});
+    // Numeric child exit and bounded size are retained before any payload parsing.
+    const receipt={label:"private_read",exit:Number.isInteger(result.exit_code)?
+      result.exit_code:null,session_id:pPositive(result.session_id)?result.session_id:null,
+      stdout_characters:typeof result.output==="string"?result.output.length:null};
+    pRecord.local_tool_receipts.push(receipt);pKeep();
+    if(result.session_id!==undefined) {
+      if(pPositive(result.session_id)){pPrivateSession=result.session_id;pPrivateJoined=false;}
+      else pLabelError("owned_local_command_unjoined");
+      throw Error("private_child_pending");
+    }
+    if(result.exit_code!==0||typeof result.output!=="string"||
+       result.output.length>256||! /^[\x00-\x7f]*$/.test(result.output))
+      throw Error("private_input_refused");
+    raw=result.output;result=null;packet=JSON.parse(raw);raw=null;
+    if(!pExact(packet,["schema","bytes","value"])||
+       packet.schema!=="riauth.d01-private-input/v1"||
+       !Number.isSafeInteger(packet.bytes)||packet.bytes<30||packet.bytes>128||
+       typeof packet.value!=="string"||packet.value.length!==packet.bytes||
+       !/^[A-Za-z0-9_-]{30,128}$/.test(packet.value))throw Error("private_input_refused");
+    value=packet.value;packet=null;
+    request.sink(value);value=null;
+  } finally {
+    // No raw ToolResult/stdout/value escapes this function or survives the next await.
+    result=null;raw=null;packet=null;value=null;request=null;
+  }
+}
+
+const P_CLOCK="import json,time\nprint(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))\n";
+const P_STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+const P_READBACK="import json,os,pathlib,stat,subprocess,sys,time\nc=json.loads(sys.argv[1])\nchildren=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        info=os.fstat(fd)\n        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):\n            raise ValueError('fixed_outer_evidence_invalid')\n        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)\n        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')\n        data=json.loads(raw_bytes)\n    finally:os.close(fd)\n    outer_observation=finite_observation(data.get('unexpected_failure_observation'))\n    projection=data.get('unexpected_observation_projection')\n    if projection not in ('unavailable','valid','invalid'):projection='invalid'\n    if projection=='valid' and outer_observation is None:projection='invalid'\n    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0\n    if started:allowed.add('helper')\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\n        helper_pid=data['helper_pid'] if started else None\npids=list(c['owned_pids'])\nif helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))\n";
+const P_PERSIST="import json,os,pathlib,sys\npath=pathlib.Path(sys.argv[1])\nrecord=json.loads(sys.argv[2])\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\ndef clocks(value):\n    if isinstance(value,dict):\n        for k,v in list(value.items()):\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\n                value[k]=int(v)\n            else:clocks(v)\n    elif isinstance(value,list):\n        for v in value:clocks(v)\nclocks(record)\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'w',encoding='ascii') as f:\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\n');f.flush();os.fsync(f.fileno())\nprint(json.dumps({'written_exclusive':True}))\n";
+const pSeed=load("d01_preparation_seed");
+const pObsKey="d01_preparation_observation_record";
+const pContext=load("d01_immediate_owned_handles");
+const pRecord={
+  schema:"riauth.d01-preparation-adapter/v1",first_failure:null,
+  first_observation_wall_ms:null,first_event_proven:false,
+  whole_cleanup_within60_proven:false,journey_credit:false,
+  actions:[],local_tool_receipts:[],cleanup_errors:[],
+  prepare_invoked:false,prepare_owned:false,exact_bound:false,
+  private_input_proven:false,cleanup_started:false,controller_exit:null,
+  owned_child_exits:null,final_absence:null,release:"UNKNOWN"
+};
+const pKeep=()=>store(pObsKey,pRecord);
+const pLabelError=label=>{
+  if(!pRecord.cleanup_errors.includes(label))pRecord.cleanup_errors.push(label);
+  pKeep();
+};
+const pLatch=(label,wall)=>{
+  if(pRecord.first_failure===null) {
+    pRecord.first_failure=label;pRecord.first_observation_wall_ms=wall;pKeep();
+  }
+};
+const pExact=(v,keys)=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&
+  Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
+const pPositive=v=>Number.isSafeInteger(v)&&v>0;
+const pName=v=>typeof v==="string"&&/^[A-Za-z0-9_.-]{1,64}$/.test(v);
+const pCapability=v=>typeof v==="string"&&v.length>0&&v.length<=256&&
+  /^[A-Za-z0-9:_-]+$/.test(v);
+const pSq=s=>"'"+String(s).replace(/'/g,"'\\''")+"'";
+let pBrowserPid=null,pWindowId=null,pTargetId=null,pTabId=null;
+let pControllerJoined=false,pControllerPollAvailable=true,pWindowCount=null;
+let pSessionEnded=false,pFirstClock=null,pCleanupStarted=false;
+function pSeedValid(s) {
+  const keys=["runtime_release","single_controller","fresh_paths_preflight",
+    "start_epoch_ms","workspace","exec_session","guard_pid","server_pid",
+    "lab","outer_out","event_out","cleanup_out","session",
+    "controller_template_sha256","controller_payload_sha256","entry_source_sha256","helper_source_sha256",
+    "gate_event","controller_pending","interfaces_source_sha256","phase",
+    "driver_contract_receipt_sha256","payload_archive_out","provider_out","launcher_receipt"];
+  if(!pExact(s,keys)||s.runtime_release!==true||s.single_controller!==true||
+     s.fresh_paths_preflight!==true||s.controller_pending!==true||
+     !Number.isSafeInteger(s.start_epoch_ms)||!pPositive(s.exec_session)||
+     !pPositive(s.guard_pid)||!pPositive(s.server_pid)||s.guard_pid===s.server_pid||
+     s.workspace!=="/Users/dominik/orca/projects/riAuth-public-preview-sol-management-wave30"||
+     !pName(s.session)||
+     !["lab","outer_out","event_out","cleanup_out","payload_archive_out","provider_out"].every(k=>
+       typeof s[k]==="string"&&s[k].startsWith(s.workspace+"/deployment-private/")&&
+       /^[A-Za-z0-9._-]{1,128}$/.test(s[k].slice((s.workspace+"/deployment-private/").length))&&
+       ![".",".."].includes(s[k].slice((s.workspace+"/deployment-private/").length)))||
+     new Set([s.lab,s.outer_out,s.event_out,s.cleanup_out,s.payload_archive_out,s.provider_out]).size!==6||
+     !s.lab.slice((s.workspace+"/deployment-private/").length).startsWith("d01-confidential-browser-diagnostic.")||
+     s.controller_template_sha256!=="5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0"||
+     !/^[a-f0-9]{64}$/.test(s.controller_payload_sha256)||
+     s.entry_source_sha256!=="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"||
+     s.helper_source_sha256!=="75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1"||
+     s.phase!=="browser_preparation"||
+     s.driver_contract_receipt_sha256!=="b8145f029796a2063dfe167f026fe299d85afcaedbec5a7abacbeb5bf1a5ea27"||
+     s.interfaces_source_sha256!=="1c5ded39f080bcc25a812facd1358acbbd6056f97e6166fd374c2d61a9342a95"||
+     !pExact(s.launcher_receipt,["exec_session","exit","pending","gate_received_wall_ms"])||
+     s.launcher_receipt.exec_session!==s.exec_session||s.launcher_receipt.exit!==null||
+     s.launcher_receipt.pending!==true||
+     !Number.isSafeInteger(s.launcher_receipt.gate_received_wall_ms)||
+     s.launcher_receipt.gate_received_wall_ms<s.start_epoch_ms)
+    return false;
+  const e=s.gate_event;
+  return pExact(e,["browser_prepare_required","guard_pid","server_pid","lab"])&&
+    e.browser_prepare_required===true&&e.guard_pid===s.guard_pid&&
+    e.server_pid===s.server_pid&&e.lab===s.lab;
+}
+async function pLocal(label,source,arg) {
+  const r=await tools.exec_command({
+    cmd:"python3 -c "+pSq(source)+(arg===undefined?"":" "+pSq(JSON.stringify(arg))),
+    workdir:pSeed.workspace,yield_time_ms:10000,max_output_tokens:2000});
+  pRecord.local_tool_receipts.push({label,
+    exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+    session_id:pPositive(r.session_id)?r.session_id:null});pKeep();
+  if(r.session_id!==undefined) {
+    pLabelError("owned_local_command_unjoined");throw Error("local_pending");
+  }
+  if(r.exit_code!==0||typeof r.output!=="string"||r.output.length>16384)
+    throw Error("collector_unconfirmed");
+  return JSON.parse(r.output);
+}
+async function pDriver(label,allowed,operation) {
+  const action={label,start_wall_ms:Date.now(),end_wall_ms:null,
+    result_state:"pending",allowed_ms:allowed,elapsed_ms:null,over_budget:null};
+  pRecord.actions.push(action);pKeep();
+  let result=null,state="returned";
+  try{result=await operation();}catch{state="exception";}
+  action.end_wall_ms=Date.now();action.result_state=state;
+  action.elapsed_ms=action.end_wall_ms-action.start_wall_ms;
+  pKeep(); // Receipt/first failure before comparisons and subsequent await.
+  if(state==="exception") {
+    if(pCleanupStarted)pLabelError("driver_operation_unconfirmed");
+    else pLatch("driver_preparation_exception",action.end_wall_ms);
+  } else if(result?.isError===true) {
+    action.result_state="refused";
+    if(pCleanupStarted)pLabelError("driver_operation_unconfirmed");
+    else pLatch("driver_preparation_refused",action.end_wall_ms);
+  }
+  action.over_budget=action.elapsed_ms<0?null:action.elapsed_ms>allowed;
+  if(action.elapsed_ms<0)pLabelError("clock_invalid");
+  if(action.over_budget)pLabelError("driver_operation_over_budget");
+  if(!pCleanupStarted&&Date.now()>=pSeed.start_epoch_ms+840000)
+    pLatch("preparation_active_deadline",action.end_wall_ms);
+  return result;
+}
+function pWindows(result,requireBlank) {
+  const s=result?.structuredContent;
+  if(result?.isError===true||!s||!Array.isArray(s.windows)||s.windows.length>32)
+    return null;
+  if(!s.windows.every(w=>w!==null&&typeof w==="object"&&w.pid===pBrowserPid&&
+     pPositive(w.window_id)&&typeof w.title==="string"&&w.title.length<=512)||
+     new Set(s.windows.map(w=>w.window_id)).size!==s.windows.length)return null;
+  if(requireBlank) {
+    const blanks=s.windows.filter(w=>w.title==="about:blank");
+    if(blanks.length!==1)return null;
+    return blanks.map(w=>({pid:w.pid,window_id:w.window_id}));
+  }
+  return s.windows.map(w=>({pid:w.pid,window_id:w.window_id}));
+}
+function pPrepareProjection(value) {
+  return pExact(value,["success","owned_pid","isolated_new","spawned_by_driver"])&&
+    value.success===true&&value.isolated_new===true&&value.spawned_by_driver===true&&
+    pPositive(value.owned_pid)&&![pSeed.guard_pid,pSeed.server_pid].includes(value.owned_pid)
+    ?value.owned_pid:null;
+}
+function pBindProjection(value) {
+  return pExact(value,["status","binding_quality","mutation_allowed",
+      "endpoint_access_class","pid","window_id","target_id","tabs"])&&
+    value.status==="ok"&&value.binding_quality==="exact"&&value.mutation_allowed===true&&
+    value.endpoint_access_class==="driver_owned"&&value.pid===pBrowserPid&&
+    value.window_id===pWindowId&&pCapability(value.target_id)&&
+    Array.isArray(value.tabs)&&value.tabs.length===1&&
+    pExact(value.tabs[0],["tab_id","active","url"])&&
+    pCapability(value.tabs[0].tab_id)&&value.tabs[0].active===true&&
+    value.tabs[0].url==="about:blank"
+    ?{target_id:value.target_id,tab_id:value.tabs[0].tab_id}:null;
+}
+function pSnapshotProjection(value) {
+  return pExact(value,["status","target_id","tab_id","url","complete",
+      "omitted","continuation","refs","content_refs"])&&
+    value.status==="ok"&&value.target_id===pTargetId&&value.tab_id===pTabId&&
+    value.url==="about:blank"&&value.complete===true&&pZeroOmitted(value.omitted)&&
+    value.continuation===null&&Array.isArray(value.refs)&&value.refs.length===0&&
+    Array.isArray(value.content_refs)&&value.content_refs.length===1&&
+    pInertRoot(value.content_refs[0]);
+}
+async function pCleanup() {
+  if(pCleanupStarted)return;
+  pCleanupStarted=true;pRecord.cleanup_started=true;pKeep();
+  store("d01_fresh_password_input",null);
+  try {
+    const r=await pLocal("stop",P_STOP,{lab:pSeed.lab,event_out:pSeed.event_out,
+      first_failure:pRecord.first_failure,
+      first_observation_wall_ms:pRecord.first_observation_wall_ms});
+    pFirstClock=r.clock;pRecord.first_clock=r.clock;pRecord.stop_state=r.marker_state;pKeep();
+    if(r.event_state!=="written")pLabelError("observation_metadata_write_unconfirmed");
+    if(!["stop_requested","lab_absent"].includes(r.marker_state))
+      pLabelError("owned_stop_unconfirmed");
+  } catch {pLabelError("stop_or_clock_record_unavailable");}
+  // A known lifecycle is not proof of a launched process's ownership/absence.
+  if(pBrowserPid!==null) {
+    let cooperativeRefused=false,stillPresent=false;
+    if(pWindowId!==null) {
+      const q=await pDriver("cooperative_close",30000,()=>tools.mcp__cua_driver__hotkey({
+        session:pSeed.session,pid:pBrowserPid,window_id:pWindowId,
+        target:{kind:"window",pid:pBrowserPid,window_id:pWindowId},
+        delivery_mode:"background",keys:["cmd","q"]}));
+      const qs=q?.structuredContent;
+      cooperativeRefused=q?.isError!==true&&
+        ["refused","unverifiable"].includes(qs?.effect)&&
+        qs?.route==="synthetic_events"&&qs?.delivery?.mode==="background"&&
+        qs?.escalation?.reason==="delivery_failed"&&qs?.escalation?.target==="foreground";
+      // Only observed failed delivery qualifies; no foreground/repeated hotkey.
+      const w=await pDriver("cooperative_readback",5000,
+        ()=>tools.mcp__cua_driver__list_windows({pid:pBrowserPid}));
+      const rows=pWindows(w,false);stillPresent=rows!==null&&rows.length>0;
+    }
+    if(cooperativeRefused&&stillPresent)
+      await pDriver("kill_app",30000,()=>tools.mcp__cua_driver__kill_app({pid:pBrowserPid}));
+    else if(pWindowId===null||stillPresent)pLabelError("cooperative_close_unconfirmed");
+  }
+  if(pRecord.prepare_invoked) {
+    const ended=await pDriver("end_session",15000,
+      ()=>tools.mcp__cua_driver__end_session({session:pSeed.session}));
+    pSessionEnded=ended?.isError!==true&&pExact(ended?.structuredContent,["active","session"])&&
+      ended.structuredContent.active===false&&ended.structuredContent.session===pSeed.session;pKeep();
+    if(!pSessionEnded)pLabelError("session_end_unconfirmed");
+  } else {pSessionEnded=true;pKeep();} // No preparation call/lifecycle was initiated.
+  if(pBrowserPid!==null) {
+    const w=await pDriver("window_readback",5000,
+      ()=>tools.mcp__cua_driver__list_windows({pid:pBrowserPid}));
+    const rows=pWindows(w,false);pWindowCount=rows===null?null:rows.length;pKeep();
+  }
+  // A pending private carrier is owned by this exact returned exec handle, not a PID guess.
+  for(let n=0;n<6&&!pPrivateJoined&&Date.now()<pSeed.start_epoch_ms+900000;n++) {
+    let r=null;
+    try {
+      r=await tools.write_stdin({session_id:pPrivateSession,chars:"",
+        yield_time_ms:5000,max_output_tokens:1000});
+      pRecord.local_tool_receipts.push({label:"private_read_join",
+        exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+        session_id:pPositive(r.session_id)?r.session_id:null,
+        stdout_characters:typeof r.output==="string"?r.output.length:null});pKeep();
+      if(Number.isInteger(r.exit_code))pPrivateJoined=true;
+    } catch {pLabelError("private_child_join_unconfirmed");}
+    finally {r=null;} // Discard any late private stdout before the next await.
+  }
+  if(!pPrivateJoined)pLabelError("owned_local_command_unjoined");
+  for(let attempts=0;attempts<180&&!pControllerJoined&&pControllerPollAvailable&&
+        Date.now()<pSeed.start_epoch_ms+900000;attempts++) {
+    try {
+      let r=await tools.write_stdin({session_id:pSeed.exec_session,chars:"",
+        yield_time_ms:5000,max_output_tokens:2000});
+      pRecord.local_tool_receipts.push({label:"controller_join",
+        exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+        session_id:pPositive(r.session_id)?r.session_id:null});pKeep();
+      if(Number.isInteger(r.exit_code)) {
+        pControllerJoined=true;pRecord.controller_exit=r.exit_code;pKeep();
+      }
+      // Do not retain/print arbitrary controller output; canonical fixed readback below.
+      r=null;
+    } catch {pControllerPollAvailable=false;pLabelError("controller_join_unconfirmed");}
+  }
+  if(!pControllerJoined)pLabelError("child_reap_incomplete");
+  try {
+    const r=await pLocal("readback",P_READBACK,{
+      owned_pids:[pSeed.guard_pid,pSeed.server_pid,...(pBrowserPid===null?[]:[pBrowserPid])],
+      lab:pSeed.lab,outer_out:pSeed.outer_out,helper_pid:null,server_pid:pSeed.server_pid});
+    pRecord.owned_child_exits=r.owned_child_exits;
+    pRecord.final_absence={owned_pids:r.owned_pids,ports:r.ports,lab:r.lab_absent,
+      window_count:pWindowCount,session_ended:pSessionEnded,
+      browser_ownership_known:pBrowserPid!==null||!pRecord.prepare_invoked};
+    pRecord.final_clock=r.clock;pKeep(); // Evidence retained BEFORE comparisons.
+    const a=pRecord.final_absence;
+    const childCount=r.helper_pid===null?6:7;
+    const joined=pControllerJoined&&Array.isArray(r.owned_child_exits)&&
+      r.owned_child_exits.length===childCount;
+    const browserAbsent=!pRecord.prepare_invoked||
+      (pBrowserPid!==null&&a.owned_pids[String(pBrowserPid)]===true&&pWindowCount===0);
+    const known=[pSeed.guard_pid,pSeed.server_pid,...(pBrowserPid===null?[]:[pBrowserPid]),
+      ...(r.helper_pid===null?[]:[r.helper_pid])];
+    const absent=known.every(pid=>a.owned_pids[String(pid)]===true)&&
+      a.ports["9000"]===true&&a.ports["3000"]===true&&a.lab===true;
+    if(joined&&browserAbsent&&absent&&pSessionEnded&&
+       !pRecord.cleanup_errors.includes("owned_local_command_unjoined"))
+      pRecord.release="PROVEN";
+    else pLabelError("owned_resource_absence_unproven");
+    if(pFirstClock) {
+      pRecord.latch_to_absence_ms=Number(
+        (BigInt(r.clock.monotonic_ns)-BigInt(pFirstClock.monotonic_ns))/1000000n);
+      if(pRecord.latch_to_absence_ms>60000)pLabelError("cleanup_budget_exceeded");
+    }
+    pKeep();
+  } catch {pLabelError("owned_readback_unavailable");}
+  pLabelError("first_event_unproven");
+  try {
+    const cmd="python3 -c "+pSq(P_PERSIST)+" "+pSq(pSeed.cleanup_out)+" "+
+      pSq(JSON.stringify(pRecord));
+    const r=await tools.exec_command({cmd,workdir:pSeed.workspace,
+      yield_time_ms:10000,max_output_tokens:500});
+    pRecord.local_tool_receipts.push({label:"persist",
+      exit:Number.isInteger(r.exit_code)?r.exit_code:null,
+      session_id:pPositive(r.session_id)?r.session_id:null});pKeep();
+    if(r.exit_code!==0||r.session_id!==undefined)
+      pLabelError("cleanup_metadata_write_unconfirmed");
+    if(r.session_id!==undefined) {
+      pRecord.release="UNKNOWN";pLabelError("owned_local_command_unjoined");
+    }
+  } catch {pLabelError("cleanup_metadata_write_unconfirmed");}
+}
+async function pPrepareEntry() {
+  // Concrete decoded success profile plus internal transient ToolResult carrier.
+  // This remains source design; no runtime flag substitutes for source review.
+  if(Object.values(P_REQUIRED_INTERFACES).some(v=>typeof v!=="function")||
+     !/^[a-f0-9]{64}$/.test(pSeed.interfaces_source_sha256)) {
+    pLatch("preparation_source_prerequisite_missing",Date.now());return;
+  }
+  if(Date.now()>=pSeed.start_epoch_ms+840000) {
+    pLatch("preparation_active_deadline",Date.now());return;
+  }
+  let raw=null,projection=null;
+  try {
+    pRecord.prepare_invoked=true;pKeep();
+    raw=await pDriver("browser_prepare",30000,()=>tools.mcp__cua_driver__browser_prepare({
+      session:pSeed.session,allow_launch:true,profile:{mode:"isolated_new"}}));
+    if(pRecord.first_failure!==null)return;
+    projection=P_REQUIRED_INTERFACES.prepare_decoder(raw);
+    pBrowserPid=pPrepareProjection(projection);raw=null;projection=null;
+    if(pBrowserPid===null){pLatch("prepared_owned_pid_unconfirmed",Date.now());return;}
+    pRecord.prepare_owned=true;pKeep();
+    raw=await pDriver("prepare_windows",5000,
+      ()=>tools.mcp__cua_driver__list_windows({pid:pBrowserPid}));
+    if(pRecord.first_failure!==null)return;
+    const windows=pWindows(raw,true);raw=null;
+    if(windows===null){pLatch("prepared_window_ambiguous",Date.now());return;}
+    pWindowId=windows[0].window_id;
+    raw=await pDriver("prepare_bind",30000,()=>tools.mcp__cua_driver__get_browser_state({
+      session:pSeed.session,pid:pBrowserPid,window_id:pWindowId,
+      snapshot_format:"semantic_v2",include_screenshot:false}));
+    if(pRecord.first_failure!==null)return;
+    projection=P_REQUIRED_INTERFACES.bind_decoder(raw);raw=null;
+    const identity=pBindProjection(projection);projection=null;
+    if(identity===null){pLatch("prepared_binding_unconfirmed",Date.now());return;}
+    pTargetId=identity.target_id;pTabId=identity.tab_id;
+    raw=await pDriver("prepare_snapshot",30000,()=>tools.mcp__cua_driver__get_browser_state({
+      session:pSeed.session,target_id:pTargetId,tab_id:pTabId,
+      snapshot_format:"semantic_v2",include_screenshot:false}));
+    if(pRecord.first_failure!==null)return;
+    projection=P_REQUIRED_INTERFACES.snapshot_decoder(raw);raw=null;
+    const blank=pSnapshotProjection(projection);projection=null;
+    if(!blank){pLatch("prepared_snapshot_unconfirmed",Date.now());return;}
+    pRecord.exact_bound=true;pKeep();
+    // One bounded stdout carrier stays inside this functions.exec cell.
+    // pTransferPrivate checks numeric child receipt/size before parsing and clears raw
+    // ToolResult/value references; only this sink retains the validated secret.
+    let transferred=false;
+    await P_REQUIRED_INTERFACES.private_transfer({
+      lab:pSeed.lab,name:"browser-password",
+      maximum_bytes:128,sink:value=>{
+        if(transferred||typeof value!=="string"||!/^[A-Za-z0-9_-]{30,128}$/.test(value))
+          throw Error("private_input_refused");
+        store("d01_fresh_password_input",value);value=null;transferred=true;
+      }});
+    if(!transferred){pLatch("private_input_unconfirmed",Date.now());return;}
+    pRecord.private_input_proven=true;pKeep();
+    // Same cell immediately enters c5; no text/yield/model wait and no RP HTTP.
+    store("d01_immediate_owned_handles",{
+      runtime_release:true,driver_owned:true,exact_bound:true,single_controller:true,
+      fresh_paths_preflight:true,phase:"prepared_entry",prepared_gate:true,
+      fixture_ready:false,listener_pid_proof:false,helper_pid:null,
+      start_epoch_ms:pSeed.start_epoch_ms,workspace:pSeed.workspace,
+      guard_pid:pSeed.guard_pid,server_pid:pSeed.server_pid,
+      browser_pid:pBrowserPid,window_id:pWindowId,exec_session:pSeed.exec_session,
+      session:pSeed.session,target_id:pTargetId,tab_id:pTabId,
+      lab:pSeed.lab,outer_out:pSeed.outer_out,event_out:pSeed.event_out,
+      cleanup_out:pSeed.cleanup_out
+    });
+  } catch {pLatch("preparation_projection_or_private_transfer_exception",Date.now());}
+  finally {raw=null;projection=null;}
+}
+if(!pSeedValid(pSeed)||pContext!==undefined&&pContext!==null||
+   load("d01_fresh_password_input")!==undefined&&load("d01_fresh_password_input")!==null||
+   load(pObsKey)!==undefined&&load(pObsKey)!==null) {
+  // Ownership source unavailable: no guessed stop/PID/session and no release claim.
+  pLatch("preparation_seed_unconfirmed",Date.now());
+  text({proposal_refused:"preparation_seed_unconfirmed",resource_release_proven:false});
+  exit();
+}
+try{await pPrepareEntry();}catch{pLatch("preparation_adapter_exception",Date.now());}
+if(pRecord.first_failure!==null) {
+  await pCleanup();
+  text({result:"preparation_failed",first_failure:pRecord.first_failure,
+    cleanup_errors:pRecord.cleanup_errors,resource_release_proven:pRecord.release==="PROVEN",
+    whole_cleanup_within60_proven:false,journey_credit:false});
+  exit();
+}
+// Literal unchanged c5 entry cell begins next. Do not evaluate this design.
+// Prospective ONE functions.exec cell; NOT executed in this design phase.
+const CLOCK="import json,time\nprint(json.dumps({'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}))\n";
+const STOP="import json,os,pathlib,stat,sys,time\nc=json.loads(sys.argv[1])\nclock={'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())}\nrecord={'schema':'riauth.d01-first-observation/v1','first_failure':c['first_failure'],'first_observation_wall_ms':c['first_observation_wall_ms'],'first_event_proven':False,'clock':clock}\nevent_state='write_unconfirmed'\ntry:\n    fd=os.open(pathlib.Path(c['event_out']),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    with os.fdopen(fd,'w',encoding='ascii') as f:\n        f.write(json.dumps(record,sort_keys=True)+'\\n');f.flush();os.fsync(f.fileno())\n    event_state='written'\nexcept OSError:pass\n# Attempt clock persistence BEFORE marker/state/budget comparisons.\n# A metadata error does not prevent the original essential stop protocol.\nlab=pathlib.Path(c['lab']);marker_state='lab_absent'\ntry:\n    if lab.exists():\n        info=lab.lstat()\n        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)!=0o700 or info.st_uid!=os.getuid():\n            marker_state='ownership_unknown'\n        else:\n            marker_state='stop_requested'\n            for name in (('ui-failure','stop') if c['first_failure'] is not None else ('stop',)):\n                try:\n                    fd=os.open(lab/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n                    os.close(fd)\n                except FileNotFoundError:marker_state='lab_absent'\n                except FileExistsError:pass\nexcept OSError:marker_state='stop_unconfirmed'\nprint(json.dumps({'clock':clock,'event_state':event_state,'marker_state':marker_state}))\n";
+const READBACK="import json,os,pathlib,stat,subprocess,sys,time\nc=json.loads(sys.argv[1])\nchildren=None;helper_pid=c['helper_pid'];outer_observation=None;projection='unavailable'\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\nouter=pathlib.Path(c['outer_out'])\nif outer.is_file():\n    fd=os.open(outer,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)\n    try:\n        info=os.fstat(fd)\n        if not (stat.S_ISREG(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o600 and 0<info.st_size<=262144):\n            raise ValueError('fixed_outer_evidence_invalid')\n        with os.fdopen(fd,'rb',closefd=False) as source:raw_bytes=source.read(262145)\n        if not 0<len(raw_bytes)<=262144:raise ValueError('fixed_outer_evidence_invalid')\n        data=json.loads(raw_bytes)\n    finally:os.close(fd)\n    outer_observation=finite_observation(data.get('unexpected_failure_observation'))\n    projection=data.get('unexpected_observation_projection')\n    if projection not in ('unavailable','valid','invalid'):projection='invalid'\n    if projection=='valid' and outer_observation is None:projection='invalid'\n    allowed={'whoami','discovery','confidential_client_create','operator_login','server','maintenance_init'}\n    started=data.get('helper_invocations')==1 and type(data.get('helper_pid')) is int and data['helper_pid']>0\n    if started:allowed.add('helper')\n    raw=data.get('owned_child_exits')\n    if isinstance(raw,list) and len(raw)==len(allowed) and all(isinstance(v,dict) and v.get('name') in allowed and type(v.get('pid')) is int and v['pid']>0 and type(v.get('exit')) is int for v in raw) and {v['name'] for v in raw}==allowed and len({v['pid'] for v in raw})==len(allowed) and next(v['pid'] for v in raw if v['name']=='server')==c['server_pid'] and ((started and next(v['pid'] for v in raw if v['name']=='helper')==data['helper_pid'] and (helper_pid is None or helper_pid==data['helper_pid'])) or (not started and helper_pid is None and data.get('helper_invocations') is None and data.get('helper_pid') is None)):\n        children=[{k:v[k] for k in ('name','pid','exit')} for v in raw]\n        helper_pid=data['helper_pid'] if started else None\npids=list(c['owned_pids'])\nif helper_pid is not None and helper_pid not in pids:pids.append(helper_pid)\np=subprocess.run(['/bin/ps','-p',','.join(str(v) for v in pids),'-o','pid='],capture_output=True,timeout=3)\nps_known=p.returncode in (0,1) and all(v.isdigit() for v in p.stdout.split())\npresent=set(int(v) for v in p.stdout.split()) if ps_known else set()\nports={}\nfor port in (9000,3000):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    ports[str(port)]=not bool(p.stdout.strip()) if p.returncode in (0,1) else None\nprint(json.dumps({'clock':{'monotonic_ns':str(time.monotonic_ns()),'wall_epoch_ns':str(time.time_ns())},'owned_pids':{str(v):(v not in present if ps_known else None) for v in pids},'ports':ports,'lab_absent':not pathlib.Path(c['lab']).exists(),'owned_child_exits':children,'helper_pid':helper_pid,'unexpected_failure_observation':outer_observation,'unexpected_observation_projection':projection}))\n";
+const MARKER="import os,pathlib,stat,sys\nlab=pathlib.Path(sys.argv[1]);guard=int(sys.argv[2]);server=int(sys.argv[3])\nif guard<=0 or server<=0 or guard==server:raise ValueError('owned_context_invalid')\ninfo=lab.lstat()\nif not (stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode)==0o700 and info.st_uid==os.getuid()):raise ValueError('owned_context_invalid')\nos.kill(guard,0);os.kill(server,0)\nif (lab/'stop').exists() or (lab/'ui-failure').exists():raise ValueError('owned_context_invalid')\nfd=os.open(lab/'browser-prepared',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nos.close(fd)\nprint('{\"prepared_marker_written\":true}')\n";
+const PERSIST="import json,os,pathlib,sys\npath=pathlib.Path(sys.argv[1])\nrecord=json.loads(sys.argv[2])\n# Convert decimal strings directly to Python integers, avoiding JS Number rounding.\ndef clocks(value):\n    if isinstance(value,dict):\n        for k,v in list(value.items()):\n            if k in ('monotonic_ns','wall_epoch_ns') and isinstance(v,str):\n                assert v.isdecimal() and len(v)<=19 and 0<=int(v)<2**63\n                value[k]=int(v)\n            else:clocks(v)\n    elif isinstance(value,list):\n        for v in value:clocks(v)\nclocks(record)\nfd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\nwith os.fdopen(fd,'w',encoding='ascii') as f:\n    f.write(json.dumps(record,sort_keys=True,indent=2)+'\\n');f.flush();os.fsync(f.fileno())\nprint(json.dumps({'written_exclusive':True}))\n";
+const own=load("d01_immediate_owned_handles");
+const OBSKEY="d01_immediate_observation_record";
+if (!own || own.runtime_release!==true || own.driver_owned!==true ||
+    own.exact_bound!==true || own.single_controller!==true ||
+    !["prepared_entry","browser_decision"].includes(own.phase) ||
+    (own.phase==="prepared_entry"&&(own.prepared_gate!==true||own.helper_pid!==null||
+      own.fixture_ready===true||own.listener_pid_proof===true)) ||
+    (own.phase==="browser_decision"&&(own.fixture_ready!==true||own.listener_pid_proof!==true)) ||
+    own.fresh_paths_preflight!==true ||
+    !Number.isSafeInteger(own.start_epoch_ms) || typeof own.workspace!=="string" ||
+    new Set([own.guard_pid,own.server_pid,own.browser_pid,
+       ...(own.helper_pid===null?[]:[own.helper_pid])]).size!==(own.helper_pid===null?3:4) ||
+    ![own.guard_pid,own.server_pid,own.browser_pid,own.exec_session,
+       ...(own.helper_pid===null?[]:[own.helper_pid])]
+       .every(v=>Number.isSafeInteger(v)&&v>0) ||
+    ![own.session,own.target_id,own.tab_id,own.lab,own.outer_out,
+       own.event_out,own.cleanup_out].every(v=>typeof v==="string"&&v.length>0)) {
+  text({proposal_refused:"fresh_owned_context_required"});exit();
+}
+const prior=load(OBSKEY);
+if(own.closed===true||prior?.cleanup_started===true){
+  text({proposal_refused:"fixture_already_stopped",resource_release_proven:false});exit();
+}
+const record=prior??{
+  schema:"riauth.d01-immediate-observation-cleanup/v1",
+  first_failure:null,first_observation_wall_ms:null,
+  first_event_proven:false,whole_cleanup_within60_proven:false,
+  unexpected_failure_observation:null,diagnostic_errors:[],cleanup_started:false,
+  first_clock:null,observation_receipts:[],controller_observations:[],local_tool_receipts:[],actions:[],cleanup_errors:[],
+  final_absence:null,owned_child_exits:null,controller_exit:null,
+  first_observation_to_final_wall_ms:null,latch_to_absence_ms:null
+};
+const sq=s=>"'"+String(s).replace(/'/g,"'\\''")+"'";
+const retain=()=>store(OBSKEY,record);
+const cleanupError=label=>{
+  if(!record.cleanup_errors.includes(label))record.cleanup_errors.push(label);
+  retain();
+};
+const local=async(source,arg)=>{
+  const cmd="python3 -c "+sq(source)+(arg===undefined?"":" "+sq(JSON.stringify(arg)));
+  const r=await tools.exec_command({cmd,workdir:own.workspace,
+    yield_time_ms:10000,max_output_tokens:2000});
+  record.local_tool_receipts.push({
+    label:source===CLOCK?"clock":source===STOP?"stop":source===READBACK?"readback":"unknown",
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    session_id:typeof r.session_id==="number"?r.session_id:null
+  });retain(); // Numeric collector receipt BEFORE comparisons.
+  if(r.session_id!==undefined) {
+    cleanupError("owned_local_command_unjoined");throw new Error("local_pending");
+  }
+  if(r.exit_code!==0)throw new Error("local_failed");
+  return JSON.parse(r.output);
+};
+function finiteObservation(value) {
+  const exact=(v,keys)=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&
+    Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
+  if(!exact(value,["observed","diagnostic"])||typeof value.observed!=="boolean")return null;
+  const d=value.diagnostic;
+  if(d===null)return {observed:value.observed,diagnostic:null};
+  if(!value.observed||!exact(d,["site","exception_class","own_function","own_line"])||
+     !["handler","server","main"].includes(d.site)||
+     !["AttributeError","TypeError","ValueError","KeyError","OSError","BrokenPipeError",
+       "ConnectionResetError","TimeoutError","other"].includes(d.exception_class))return null;
+  const functions=["HeaderReader.readline","DemoServer.process_request","Demo.begin","Demo.callback",
+    "Demo.invoke","Handler.handle_one_request","Handler.send_error","Handler.get","Handler.reply","main"];
+  if(!((d.own_function===null&&d.own_line===null)||
+       (functions.includes(d.own_function)&&Number.isSafeInteger(d.own_line)&&
+        d.own_line>=1&&d.own_line<=1024)))return null;
+  return {observed:true,diagnostic:{site:d.site,exception_class:d.exception_class,
+    own_function:d.own_function,own_line:d.own_line}};
+}
+function diagnostic(value,projection) {
+  const projected=finiteObservation(value);
+  if(projection==="invalid"||!["valid","unavailable"].includes(projection)||
+     (projection==="valid"&&projected===null)) {
+    if(!record.diagnostic_errors.includes("observer_projection_invalid"))
+      record.diagnostic_errors.push("observer_projection_invalid");
+  }
+  if(projected!==null&&record.unexpected_failure_observation===null)
+    record.unexpected_failure_observation=projected;
+  retain(); // No raw diagnostic fallback and no first-failure or outcome mutation.
+}
+const ns=c=>BigInt(c.monotonic_ns);
+const getClock=()=>local(CLOCK);
+let controllerJoined=false;
+let controllerPollAvailable=true;
+let controllerBuffer="";
+let cleanupStarted=false;
+let lastSnapshotFlags=null;
+function latch(label,receivedWall) {
+  if(record.first_failure===null) {
+    record.first_failure=label;
+    record.first_observation_wall_ms=receivedWall;
+    retain(); // Synchronous first-failure/wall latch BEFORE any new await/output.
+  }
+}
+function observeController(r,receivedWall) {
+  const observation={received_wall_ms:receivedWall,
+    exit:typeof r.exit_code==="number"?r.exit_code:null,
+    helper_completed:false,helper_exit:null,fixture_finished:false};
+  // Complete numeric result projection is retained BEFORE comparisons.
+  record.controller_observations.push(observation);retain();
+  if(typeof r.exit_code==="number") {
+    controllerJoined=true;record.controller_exit=r.exit_code;retain();
+  }
+  controllerBuffer+=typeof r.output==="string"?r.output:"";
+  if(controllerBuffer.length>16384) {
+    latch("controller_observation_invalid",receivedWall);controllerBuffer="";return;
+  }
+  let cut;
+  while((cut=controllerBuffer.indexOf("\n"))>=0) {
+    const line=controllerBuffer.slice(0,cut);controllerBuffer=controllerBuffer.slice(cut+1);
+    if(!line.trim())continue;
+    let event;
+    try{event=JSON.parse(line);}catch{
+      latch("controller_observation_invalid",receivedWall);continue;
+    }
+    if(Object.hasOwn(event,"unexpected_failure_observation"))
+      diagnostic(event.unexpected_failure_observation,event.unexpected_observation_projection);
+    if(event.fixture_ready===true) {
+      if(event.guard_pid!==own.guard_pid||event.server_pid!==own.server_pid||
+         event.lab!==own.lab||!Number.isSafeInteger(event.helper_pid)||event.helper_pid<=0||
+         [own.guard_pid,own.server_pid,own.browser_pid].includes(event.helper_pid)||
+         (own.helper_pid!==null&&own.helper_pid!==event.helper_pid))
+        latch("fixture_ready_unconfirmed",receivedWall);
+      else {
+        own.helper_pid=event.helper_pid;own.fixture_ready=true;own.listener_pid_proof=true;
+        store("d01_immediate_owned_handles",own);
+      }
+    }
+    if(event.helper_completed===true) {
+      observation.helper_completed=true;
+      observation.helper_exit=typeof event.exit==="number"?event.exit:null;
+      retain();
+      if(event.exit!==0)latch("helper_failed",receivedWall);
+      else if(!cleanupStarted&&record.protected_after_page!==true&&
+              !(own.phase==="browser_decision"&&
+                own.next_decision?.kind==="protected_after"))
+        latch("helper_completed_before_app_checkpoint",receivedWall);
+    }
+    if(event.fixture_finished===true) {
+      observation.fixture_finished=true;retain();
+      if(!cleanupStarted)latch("controller_completed_before_app_checkpoint",receivedWall);
+    }
+  }
+  if(controllerJoined&&!cleanupStarted)
+    latch("controller_completed_before_app_checkpoint",receivedWall);
+}
+async function pollController() {
+  if(controllerJoined||!controllerPollAvailable)return;
+  try {
+    const r=await tools.write_stdin({session_id:own.exec_session,
+      chars:"",yield_time_ms:5000,max_output_tokens:2000});
+    const receivedWall=Date.now();
+    observeController(r,receivedWall);
+  } catch {
+    controllerPollAvailable=false;
+    latch("controller_observation_unavailable",Date.now());
+    if(cleanupStarted)cleanupError("controller_join_unconfirmed");
+  }
+}
+async function timedDriver(label,allocation,operation,project) {
+  let start=null,end=null,result=null,state="unknown";
+  try{start=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label,start_clock:start,end_clock:null,allowed_ms:allocation,
+    result_state:"unknown",elapsed_ms:null,over_budget:null};
+  record.actions.push(action);retain(); // Start retained BEFORE entering Driver call.
+  try {
+    result=await operation();
+    state=result?.isError===true?"refused":"returned";
+  } catch {state="exception";}
+  try{end=await getClock();}catch{cleanupError("clock_unavailable");}
+  action.end_clock=end;action.result_state=state;
+  retain(); // End/result retained BEFORE budget comparison.
+  if(start&&end) {
+    const d=ns(end)-ns(start);
+    if(d>=0n) {
+      action.elapsed_ms=Number(d/1000000n);
+      action.over_budget=action.elapsed_ms>allocation;
+    } else cleanupError("clock_invalid");
+  }
+  if(action.over_budget)cleanupError("driver_operation_over_budget");
+  if(state!=="returned")cleanupError("driver_operation_unconfirmed");
+  if(project)project(result,state);
+  retain();
+}
+async function cleanup() {
+  store("d01_fresh_password_input",null); // Clear before any cleanup await.
+  if(cleanupStarted)return;
+  cleanupStarted=true;record.cleanup_started=true;retain();
+  try {
+    const r=await local(STOP,{
+      lab:own.lab,event_out:own.event_out,
+      first_failure:record.first_failure,
+      first_observation_wall_ms:record.first_observation_wall_ms
+    });
+    record.first_clock=r.clock;record.stop_state=r.marker_state;retain();
+    if(r.event_state!=="written")cleanupError("observation_metadata_write_unconfirmed");
+    if(r.marker_state==="stop_unconfirmed")cleanupError("stop_unconfirmed");
+    if(r.marker_state==="ownership_unknown")cleanupError("ownership_unknown");
+  } catch {cleanupError("stop_or_clock_record_unavailable");}
+  // No outstanding Driver call exists here: all page calls above were awaited.
+  // Original stop protocol already causes the controller's owned-child finally.
+  await timedDriver("kill_app",30000,
+    ()=>tools.mcp__cua_driver__kill_app({pid:own.browser_pid}));
+  await timedDriver("end_session",15000,
+    ()=>tools.mcp__cua_driver__end_session({session:own.session}),(r,state)=>{
+      record.session_ended=state==="returned"&&
+        r?.structuredContent?.active===false&&r.structuredContent.session===own.session;
+      retain();
+    });
+  await timedDriver("list_windows",5000,
+    ()=>tools.mcp__cua_driver__list_windows({pid:own.browser_pid}),(r,state)=>{
+      const windows=r?.structuredContent?.windows;
+      record.window_count=state==="returned"&&Array.isArray(windows)?windows.length:null;
+      retain();
+    });
+  let readStart=null;
+  try{readStart=await getClock();}catch{cleanupError("clock_unavailable");}
+  const action={label:"owned_join_readback",start_clock:readStart,end_clock:null,
+    allowed_ms:null,elapsed_ms:null,over_budget:null,result_state:"unknown"};
+  record.actions.push(action);retain();
+  if(readStart&&record.first_clock) {
+    action.allowed_ms=Math.max(0,60000-Number((ns(readStart)-ns(record.first_clock))/1000000n));
+    retain();
+  }
+  // Continue essential join after60s if late; never claim that deadline enforced.
+  // Do not poll another exec session or send a manual process signal.
+  while(!controllerJoined&&controllerPollAvailable&&Date.now()<own.start_epoch_ms+900000) {
+    await pollController();
+    if(record.first_clock) {
+      try {
+        const c=await getClock();record.last_join_clock=c;retain();
+        if(ns(c)-ns(record.first_clock)>60000000000n)
+          cleanupError("cleanup_budget_exceeded");
+      } catch{cleanupError("clock_unavailable");}
+    }
+  }
+  if(!controllerJoined)cleanupError("child_reap_incomplete");
+  try {
+    const r=await local(READBACK,{
+      owned_pids:[own.guard_pid,own.server_pid,own.browser_pid,
+        ...(own.helper_pid===null?[]:[own.helper_pid])],
+      lab:own.lab,outer_out:own.outer_out,helper_pid:own.helper_pid,server_pid:own.server_pid
+    });
+    action.end_clock=r.clock;action.result_state="returned";
+    record.owned_child_exits=r.owned_child_exits;
+    diagnostic(r.unexpected_failure_observation,r.unexpected_observation_projection);
+    if(Number.isSafeInteger(r.helper_pid)&&r.helper_pid>0)own.helper_pid=r.helper_pid;
+    record.final_absence={owned_pids:r.owned_pids,ports:r.ports,
+      lab:r.lab_absent,window_count:record.window_count??null,
+      session_ended:record.session_ended===true};
+    record.first_observation_to_final_wall_ms=record.first_observation_wall_ms===null?null:
+      Date.now()-record.first_observation_wall_ms;
+    retain(); // Full fixed readback/exits/clock BEFORE comparisons.
+    if(readStart) {
+      action.elapsed_ms=Number((ns(r.clock)-ns(readStart))/1000000n);
+      action.over_budget=action.allowed_ms===null?null:action.elapsed_ms>action.allowed_ms;
+    }
+    if(record.first_clock)
+      record.latch_to_absence_ms=Number((ns(r.clock)-ns(record.first_clock))/1000000n);
+    if(action.over_budget)cleanupError("cleanup_budget_exceeded");
+    const a=record.final_absence;
+    if(!controllerJoined||!Array.isArray(record.owned_child_exits)||
+       record.owned_child_exits.length!==(own.helper_pid===null?6:7))
+      cleanupError("child_reap_incomplete");
+    if(!Object.values(a.owned_pids).every(v=>v===true)||
+       !Object.values(a.ports).every(v=>v===true)||a.lab!==true||
+       a.window_count!==0||a.session_ended!==true)
+      cleanupError("owned_resource_absence_unproven");
+  } catch {action.result_state="exception";cleanupError("owned_readback_unavailable");}
+  cleanupError("first_event_unproven");
+  record.whole_cleanup_within60_proven=false;retain();
+  // Exclusive new file only; existing outer/helper/provider evidence untouched.
+  try {
+    const cmd="python3 -c "+sq(PERSIST)+" "+sq(own.cleanup_out)+" "+sq(JSON.stringify(record));
+    const r=await tools.exec_command({cmd,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500});
+    record.local_tool_receipts.push({label:"persist",
+      exit:typeof r.exit_code==="number"?r.exit_code:null,
+      session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+    if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+    if(r.session_id!==undefined||r.exit_code!==0)
+      cleanupError("cleanup_metadata_write_unconfirmed");
+  } catch {cleanupError("cleanup_metadata_write_unconfirmed");}
+  controllerBuffer="";own.closed=true;store("d01_immediate_owned_handles",own);
+}
+async function checked(label,operation,predicate) {
+  if(record.first_failure!==null)return null;
+  if(Date.now()>=own.start_epoch_ms+840000) {
+    latch("browser_active_deadline",Date.now());await cleanup();return null;
+  }
+  let result,receivedWall;
+  try {
+    result=await operation();receivedWall=Date.now();
+    record.observation_receipts.push({kind:label,received_wall_ms:receivedWall});retain();
+    if(result?.isError===true)latch("browser_tool_refused",receivedWall);
+    else if(!predicate(result))latch("browser_decision_unconfirmed",receivedWall);
+  } catch {latch("browser_tool_or_decision_exception",Date.now());}
+  if(record.first_failure!==null)await cleanup();
+  return record.first_failure===null?result:null;
+}
+const snapshotArgs={session:own.session,target_id:own.target_id,tab_id:own.tab_id,
+  snapshot_format:"semantic_v2",include_screenshot:false};
+function page(result,kind) {
+  const s=result?.structuredContent,nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
+  const flags={
+    status_ok:result?.isError!==true&&s?.status==="ok",
+    complete:s?.snapshot?.complete===true,
+    heading_match:nodes.some(n=>n.role==="heading"&&n.name===
+      (kind==="protected_after"?"Protected application access":"Local demo")),
+    error_match:nodes.some(n=>n.name==="Local demo could not complete this request."),
+    required_text:nodes.some(n=>n.name===(kind==="protected_before"?"Sign in required.":
+      kind==="protected_after"?"Signed in. Protected application access is available.":
+      "Use Sign in to open this local application.")),
+    interactive_ref_present:Array.isArray(s?.refs)&&
+      s.refs.some(n=>Array.isArray(n.actions)&&n.actions.includes("click"))
+  };
+  record.last_page_flags={kind,...flags};retain();
+  // Only provider refs and fixed public-label matches survive this raw snapshot.
+  own.fresh_refs=Array.isArray(s?.refs)?s.refs.filter(n=>typeof n.ref==="string"&&
+    /^p[0-9]+:[0-9]+$/.test(n.ref)).map(n=>n.ref):[];
+  own.public_decision=projectPublicDecision(result);
+  store("d01_immediate_owned_handles",own);
+  if(flags.error_match)return false;
+  if(!flags.status_ok||!flags.complete)return false;
+  if(kind==="generic_checked") {
+    if(nodes.some(n=>n.role==="heading"&&n.name==="Protected application access")&&
+       nodes.some(n=>n.name==="Signed in. Protected application access is available."))
+      record.protected_after_page=true;
+    return true;
+  }
+  const ok=flags.heading_match&&flags.required_text&&
+    (kind!=="application"||flags.interactive_ref_present);
+  if(ok&&kind==="protected_after")record.protected_after_page=true;
+  return ok;
+}
+async function navigateAndSnapshot(url,kind) {
+  if(await checked("browser_navigation",
+      ()=>tools.mcp__cua_driver__browser_navigate({session:own.session,
+        target_id:own.target_id,tab_id:own.tab_id,url}),
+      r=>r?.isError!==true)) {
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,kind));
+  }
+}
+async function entry() {
+  // The exact Driver-owned blank handles already exist while the180s gate waits.
+  // There is no model yield, tool-description load or rebind after this marker.
+  const markerCommand="python3 -c "+sq(MARKER)+" "+sq(own.lab)+" "+
+    sq(own.guard_pid)+" "+sq(own.server_pid);
+  await checked("prepared_marker",
+    ()=>tools.exec_command({cmd:markerCommand,workdir:own.workspace,
+      yield_time_ms:10000,max_output_tokens:500}),r=>{
+      record.local_tool_receipts.push({label:"marker",
+        exit:typeof r.exit_code==="number"?r.exit_code:null,
+        session_id:typeof r.session_id==="number"?r.session_id:null});retain();
+      if(r.session_id!==undefined)cleanupError("owned_local_command_unjoined");
+      return r.exit_code===0&&r.session_id===undefined&&
+        JSON.parse(r.output).prepared_marker_written===true;
+    });
+  const readyDeadline=Date.now()+30000;
+  while(record.first_failure===null&&own.fixture_ready!==true&&Date.now()<readyDeadline)
+    await pollController();
+  if(record.first_failure===null&&own.fixture_ready!==true)
+    latch("fixture_ready_unconfirmed",Date.now());
+  if(record.first_failure!==null){await cleanup();return;}
+  await pollController(); // ONE immediate pre-navigation poll, no RP HTTP probe.
+  if(record.first_failure!==null){await cleanup();return;}
+  await navigateAndSnapshot("http://localhost:3000/protected","protected_before");
+  if(record.first_failure===null)await pollController();
+  if(record.first_failure!==null){await cleanup();return;}
+  await navigateAndSnapshot("http://localhost:3000/","application");
+  if(record.first_failure===null)await pollController(); // ONE post-entry poll.
+  if(record.first_failure===null) {
+    own.phase="browser_decision";
+    store("d01_immediate_owned_handles",own);
+  }
+  if(record.first_failure!==null)await cleanup();
+}
+async function continuation() {
+  const spec=own.next_decision;
+  const allowedKinds=["click","username","password","snapshot","protected_after"];
+  if(!spec||!allowedKinds.includes(spec.kind)) {
+    latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+  }
+  await pollController();
+  if(record.first_failure!==null){await cleanup();return;}
+  if(spec.kind==="protected_after") {
+    // Read the fresh callback-following protected page; do not send another RP request.
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),r=>page(r,"protected_after"));
+  } else if(spec.kind==="snapshot") {
+    await checked("browser_snapshot",
+      ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+      r=>page(r,"generic_checked")&&publicPredicate(r,spec));
+  } else {
+    if(typeof spec.ref!=="string"||!Array.isArray(own.fresh_refs)||
+       !own.fresh_refs.includes(spec.ref)) {
+      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+    }
+    own.fresh_refs=[];store("d01_immediate_owned_handles",own); // Single-use snapshot ref.
+    const args={session:own.session,target_id:own.target_id,tab_id:own.tab_id,ref:spec.ref};
+    const operation=spec.kind==="click"?
+      ()=>tools.mcp__cua_driver__browser_click({...args,input_route:"dom_event"}):
+      ()=>tools.mcp__cua_driver__browser_type({...args,replace:true,
+        text:spec.kind==="username"?"admin":load("d01_fresh_password_input")});
+    if(spec.kind==="password"&&(typeof load("d01_fresh_password_input")!=="string"||
+       !/^[A-Za-z0-9_-]{30,128}$/.test(load("d01_fresh_password_input")))) {
+      latch("browser_decision_unconfirmed",Date.now());await cleanup();return;
+    }
+    await checked("browser_input",operation,r=>{
+      const s=r?.structuredContent;
+      return r?.isError!==true&&["confirmed","unverifiable"].includes(s?.effect);
+    }); // Dispatch alone never earns an application outcome or journey credit.
+    if(spec.kind==="password")store("d01_fresh_password_input",null);
+    if(record.first_failure===null)
+      await checked("browser_snapshot",
+        ()=>tools.mcp__cua_driver__get_browser_state(snapshotArgs),
+        r=>page(r,"generic_checked")&&publicPredicate(r,spec));
+  }
+  if(record.first_failure===null)await pollController();
+  if(record.first_failure!==null)await cleanup();
+  else if(spec.kind==="protected_after") {
+    record.cleanup_requested_wall_ms=Date.now();retain();
+    await cleanup();
+  }
+}
+function projectPublicDecision(result) {
+  const s=result?.structuredContent,nodes=Array.isArray(s?.content_refs)?s.content_refs:[];
+  const labels=[
+    ["heading","Local demo"],["heading","Sign in to continue to Local demo"],
+    ["heading","Local demo wants to use your riAuth account"],
+    ["heading","Continue to Local demo?"],["heading","Protected application access"],
+    ["button","Sign in"],["button","Allow"],["button","Continue"],
+    ["textbox","Username"],["textbox","Password"],
+    ["textbox","Authenticator or recovery code (if enabled)"],
+    ["statictext","Signed in. Protected application access is available."]
+  ];
+  const valid=result?.isError!==true&&s?.status==="ok"&&s?.snapshot?.complete===true&&
+    !nodes.some(n=>n.name==="Local demo could not complete this request.");
+  return {
+    observed:valid?labels.filter(([role,name])=>
+      nodes.some(n=>n.role===role&&n.name===name)).map(([role,name])=>({role,name})):[],
+    refs:valid&&Array.isArray(s?.refs)?s.refs.flatMap(n=>{
+      const pair=labels.find(([role,name])=>n?.role===role&&n.name===name),ref=n?.ref;
+      if(!pair||typeof ref!=="string"||!/^p[0-9]+:[0-9]+$/.test(ref))return [];
+      const [role,name]=pair;
+      const action=role==="button"?"click":
+        role==="textbox"&&["Username","Password"].includes(name)?"type":null;
+      if(action===null||!Array.isArray(n.actions)||!n.actions.includes(action))return [];
+      return [{role,name,action,ref}];
+    }):[]
+  };
+}
+function publicPredicate(result,spec) {
+  // Root must pin one printed public expected label/role before that action.
+  // No raw field value, URL, subject, query or arbitrary regex predicate is allowed.
+  return projectPublicDecision(result).observed.some(n=>
+    n.role===spec.expected_role&&n.name===spec.expected_label);
+}
+try {
+  if(own.phase==="prepared_entry")await entry();else await continuation();
+  // Do not carry unvalidated partial controller text across this cell boundary.
+  while(controllerBuffer.length>0&&record.first_failure===null) {
+    const beforePollWall=Date.now();
+    if(beforePollWall>=own.start_epoch_ms+840000) {
+      latch("browser_active_deadline",beforePollWall);break;
+    }
+    if(controllerJoined||!controllerPollAvailable) {
+      latch("controller_observation_invalid",beforePollWall);break;
+    }
+    await pollController(); // Same owned session; observer retains receipt first.
+    const afterPollWall=Date.now();
+    if(afterPollWall>=own.start_epoch_ms+840000)
+      latch("browser_active_deadline",afterPollWall);
+  }
+  if(record.first_failure!==null)await cleanup();
+} catch {
+  latch("composed_decision_exception",Date.now());
+  await cleanup();
+}
+if(record.first_failure!==null) {
+  text({result:"failed",first_failure:record.first_failure,
+    unexpected_failure_observation:record.unexpected_failure_observation,
+    diagnostic_errors:record.diagnostic_errors,cleanup_errors:record.cleanup_errors,
+    final_absence:record.final_absence,controller_exit:record.controller_exit,
+    whole_cleanup_within60_proven:false,
+    resource_release_proven:record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v))});
+} else {
+  text({result:"browser_decision_observed_only",page_flags:record.last_page_flags??null,
+    public_decision:own.public_decision??null,
+    journey_credit:false,cleanup_errors:record.cleanup_errors,
+    resource_release_proven:record.cleanup_started===true&&record.final_absence!==null&&
+      !record.cleanup_errors.some(v=>[
+        "child_reap_incomplete","owned_resource_absence_unproven",
+        "owned_readback_unavailable","owned_local_command_unjoined"].includes(v)),
+    whole_cleanup_within60_proven:false});
+}
+
+```
+
+### Actual static proof, dependencies and embedded source identities
+
+Node `--check --input-type=module` parsed the complete module from stdin,
+exit 0. Acorn parsed the baseline, prefix, old suffix, exact Sol3 suffix
+and complete module, exit 0. Full byte inversion removed only the complete
+new suffix and restored the complete old suffix, reproducing the exact
+111275-byte baseline. Normalized complete AST inversion did the same at
+the top-level node boundary. All 21 complete prefix function spans remain
+byte-identical; total composed top-level functions are 35.
+
+The scoped static binding walker found 109 top-level bindings, zero
+duplicate lexical bindings and zero unresolved identifier references.
+It reports the explicit standard JS/runtime external dependencies and
+11 tool-method names below; it does not invoke or attest those tools.
+All 15 embedded Python source literals were parsed and compiled to code
+objects only. No code object, collector, controller, helper, private
+carrier or reviewed module function was executed or imported.
+
+Complete parser/proof checker: 7075 bytes /
+149 lines, SHA-256
+`2da203c4a51a388fe414f7602efe8941026a3abe46e0c2085aab9008b374b3b5`. Its input fields are the five source
+strings `base`, `prefix`, `oldSuffix`, `newSuffix`, `composed` as
+pinned above. AST manipulation, lexical source analysis and hashes below
+are static checks, not a VM or memory envelope.
+
+```javascript
+const fs=require("node:fs"),crypto=require("node:crypto");
+const acorn=require("internal/deps/acorn/acorn/dist/acorn");
+const input=JSON.parse(fs.readFileSync(0,"utf8"));
+const proof=(v,label)=>{if(!v)throw Error(label);};
+const sha=s=>crypto.createHash("sha256").update(s).digest("hex");
+function clean(v) {
+  if(typeof v==="bigint")return {ast_bigint_decimal:v.toString(10)};
+  if(Array.isArray(v))return v.map(clean);
+  if(v!==null&&typeof v==="object") {
+    const out={};
+    for(const [k,x] of Object.entries(v))
+      if(!["start","end","loc","range"].includes(k))out[k]=clean(x);
+    return out;
+  }
+  return v;
+}
+const parse=s=>acorn.parse(s,{ecmaVersion:"latest",sourceType:"module"});
+const prefixAst=parse(input.prefix),oldAst=parse(input.oldSuffix);
+const newAst=parse(input.newSuffix),baseAst=parse(input.base),fullAst=parse(input.composed);
+proof(input.base===input.prefix+input.oldSuffix,"baseline_boundary");
+proof(input.composed===input.prefix+input.newSuffix,"exact_complete_suffix_replacement");
+proof(input.composed.slice(0,-input.newSuffix.length)+input.oldSuffix===input.base,
+      "whole_byte_inverse");
+const json=v=>JSON.stringify(clean(v));
+proof(json(baseAst.body)===json([...prefixAst.body,...oldAst.body]),"baseline_ast_boundary");
+proof(json(fullAst.body)===json([...prefixAst.body,...newAst.body]),"composed_ast_boundary");
+const inverse={...fullAst,body:[...fullAst.body.slice(0,prefixAst.body.length),...oldAst.body]};
+proof(json(inverse)===json(baseAst),"whole_ast_inverse");
+const prefixFns=prefixAst.body.filter(n=>n.type==="FunctionDeclaration");
+const fullFns=fullAst.body.filter(n=>n.type==="FunctionDeclaration");
+for(const n of prefixFns) {
+  const matches=fullFns.filter(m=>m.id.name===n.id.name);
+  proof(matches.length===1,"prefix_function_identity");
+  const m=matches[0];
+  proof(input.prefix.slice(n.start,n.end)===input.composed.slice(m.start,m.end),
+        "prefix_function_byte_identity");
+}
+const scopes=[],references=[],duplicates=[];
+function scope(parent,isFunction=false) {
+  const s={parent,isFunction,bindings:new Set()};scopes.push(s);return s;
+}
+function bind(name,s) {
+  if(s.bindings.has(name))duplicates.push(name);
+  s.bindings.add(name);
+}
+function pattern(n,s) {
+  if(!n)return;
+  if(n.type==="Identifier")bind(n.name,s);
+  else if(n.type==="RestElement")pattern(n.argument,s);
+  else if(n.type==="AssignmentPattern"){pattern(n.left,s);visit(n.right,s);}
+  else if(n.type==="ArrayPattern")for(const x of n.elements)pattern(x,s);
+  else if(n.type==="ObjectPattern")for(const x of n.properties) {
+    if(x.type==="RestElement")pattern(x.argument,s);
+    else {if(x.computed)visit(x.key,s);pattern(x.value,s);}
+  } else throw Error("binding_pattern_unhandled");
+}
+function visit(n,s) {
+  if(!n||typeof n!=="object")return;
+  if(Array.isArray(n)){for(const x of n)visit(x,s);return;}
+  switch(n.type) {
+    case "Identifier":references.push({name:n.name,scope:s});return;
+    case "Literal":return;
+    case "Program":visit(n.body,s);return;
+    case "FunctionDeclaration":
+      bind(n.id.name,s);
+      // fall through: body and parameters have their own lexical scopes.
+    case "FunctionExpression":
+    case "ArrowFunctionExpression": {
+      const f=scope(s,true);
+      if(n.type==="FunctionExpression"&&n.id)bind(n.id.name,f);
+      for(const p of n.params)pattern(p,f);
+      visit(n.body,f);return;
+    }
+    case "BlockStatement":visit(n.body,scope(s));return;
+    case "VariableDeclaration": {
+      let target=s;
+      if(n.kind==="var")while(target.parent&&!target.isFunction)target=target.parent;
+      for(const d of n.declarations){pattern(d.id,target);visit(d.init,s);}return;
+    }
+    case "MemberExpression":
+      visit(n.object,s);if(n.computed)visit(n.property,s);return;
+    case "Property":
+      if(n.computed)visit(n.key,s);visit(n.value,s);return;
+    case "CatchClause": {
+      const c=scope(s);pattern(n.param,c);visit(n.body,c);return;
+    }
+    case "ForStatement":
+    case "ForInStatement":
+    case "ForOfStatement": {
+      const f=scope(s);
+      for(const k of ["init","test","update","left","right","body"])visit(n[k],f);
+      return;
+    }
+    case "BreakStatement":
+    case "ContinueStatement":return;
+    case "LabeledStatement":visit(n.body,s);return;
+    case "ClassDeclaration":
+    case "ClassExpression":
+    case "ImportDeclaration":
+    case "ExportNamedDeclaration":
+    case "ExportDefaultDeclaration":
+    case "ExportAllDeclaration":throw Error("unexpected_module_form");
+  }
+  for(const [k,x] of Object.entries(n))
+    if(!["type","start","end","loc","range"].includes(k)&&x&&typeof x==="object")visit(x,s);
+}
+const root=scope(null,true);visit(fullAst,root);
+const external=new Set(["tools","load","store","text","exit","Date","Object","Number",
+  "String","Set","Array","JSON","Error","BigInt","Math","undefined"]);
+const usedExternal=new Set(),unresolved=new Set();
+for(const r of references) {
+  let s=r.scope;
+  while(s&&!s.bindings.has(r.name))s=s.parent;
+  if(!s){if(external.has(r.name))usedExternal.add(r.name);else unresolved.add(r.name);}
+}
+proof(duplicates.length===0,"duplicate_lexical_binding");
+proof(unresolved.size===0,"unresolved_lexical_reference");
+const literalSources={};
+for(const n of fullAst.body)if(n.type==="VariableDeclaration")
+  for(const d of n.declarations)if(d.id.type==="Identifier"&&d.init?.type==="Literal"&&
+      typeof d.init.value==="string"&&
+      ["L_CONTROLLER_TEMPLATE","L_ARCHIVE_SOURCE","L_FAILED_READBACK","L_STOP","L_PERSIST",
+       "P_PRIVATE_READER","P_CLOCK","P_STOP","P_READBACK","P_PERSIST",
+       "CLOCK","STOP","READBACK","MARKER","PERSIST"].includes(d.id.name))
+    literalSources[d.id.name]=d.init.value;
+function collectPrivateLiteral(n) {
+  if(!n||typeof n!=="object")return;
+  if(Array.isArray(n)){for(const x of n)collectPrivateLiteral(x);return;}
+  if(n.type==="Literal"&&typeof n.value==="string"&&
+     sha(n.value)==="e621f4bd9fded5d72ce9a7cee7c6ae5027c5032682ccfaec1d9ce9a39d99dea1")
+    literalSources.PRIVATE_CARRIER=n.value;
+  for(const [k,v] of Object.entries(n))
+    if(!["start","end","loc","range"].includes(k)&&v&&typeof v==="object")
+      collectPrivateLiteral(v);
+}
+collectPrivateLiteral(fullAst);
+proof(Object.hasOwn(literalSources,"PRIVATE_CARRIER"),"private_carrier_identity");
+const methods=[...new Set([...input.composed.matchAll(/\btools\.([A-Za-z0-9_]+)/g)]
+  .map(m=>m[1]))].sort();
+process.stdout.write(JSON.stringify({
+  whole_byte_inverse:true,whole_ast_inverse:true,prefix_ast_nodes:prefixAst.body.length,
+  old_suffix_ast_nodes:oldAst.body.length,new_suffix_ast_nodes:newAst.body.length,
+  unchanged_prefix_function_count:prefixFns.length,total_composed_function_count:fullFns.length,
+  baseline_ast_sha256:sha(json(baseAst)),composed_ast_sha256:sha(json(fullAst)),
+  inverse_ast_sha256:sha(json(inverse)),top_level_binding_count:root.bindings.size,
+  duplicate_bindings:duplicates,unresolved_references:[...unresolved],
+  external_dependencies:[...usedExternal].sort(),tool_methods:methods,
+  candidate_evaluated:false,literal_sources:literalSources
+})+"\n");
+```
+
+Actual fixed static result (full diff/inverse are archived separately above):
+
+```json
+{
+  "acorn_exit": 0,
+  "base": {
+    "bytes": 111275,
+    "lines": 1200,
+    "sha256": "dfd04b3d914cf332d5ceba13d0a587dc7db2ca26b82c71e453fe85b5f2a43d9d"
+  },
+  "checker_identity": {
+    "bytes": 7075,
+    "lines": 149,
+    "sha256": "2da203c4a51a388fe414f7602efe8941026a3abe46e0c2085aab9008b374b3b5"
+  },
+  "compatibility": "BLOCKED_PENDING_ROOT_PIN_REVIEW",
+  "composed_unadjusted": {
+    "bytes": 113395,
+    "lines": 1241,
+    "sha256": "484bd441ef0f3db547d75f6138f2943b07a3ef090c30271a9cdc3d7914dda02e"
+  },
+  "diff_identity": {
+    "bytes": 5511,
+    "lines": 111,
+    "sha256": "fb0302b1cf5c9f15ff28cf6542022cec05a26aaa5cef1d44eb317c9db4c9e0aa"
+  },
+  "embedded_python": [
+    {
+      "bytes": 17326,
+      "name": "L_CONTROLLER_TEMPLATE",
+      "python_ast_and_code_object_only": true,
+      "sha256": "5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0"
+    },
+    {
+      "bytes": 3505,
+      "name": "L_ARCHIVE_SOURCE",
+      "python_ast_and_code_object_only": true,
+      "sha256": "8054cc77d8c76a8ac78e388a86fe090d6353bb4ec039d3ac078ea86f74bcfa35"
+    },
+    {
+      "bytes": 2551,
+      "name": "L_FAILED_READBACK",
+      "python_ast_and_code_object_only": true,
+      "sha256": "7156a5ce75e3eec855c72dd080b1e9df7f59602ede6337ee74fb737625ac4f7b"
+    },
+    {
+      "bytes": 1600,
+      "name": "L_STOP",
+      "python_ast_and_code_object_only": true,
+      "sha256": "5de5244440b134689bedfb1235e805c65a8b726e753cbdac1d0831ef1c83d071"
+    },
+    {
+      "bytes": 805,
+      "name": "L_PERSIST",
+      "python_ast_and_code_object_only": true,
+      "sha256": "819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30"
+    },
+    {
+      "bytes": 114,
+      "name": "P_CLOCK",
+      "python_ast_and_code_object_only": true,
+      "sha256": "cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d"
+    },
+    {
+      "bytes": 1600,
+      "name": "P_STOP",
+      "python_ast_and_code_object_only": true,
+      "sha256": "5de5244440b134689bedfb1235e805c65a8b726e753cbdac1d0831ef1c83d071"
+    },
+    {
+      "bytes": 4424,
+      "name": "P_READBACK",
+      "python_ast_and_code_object_only": true,
+      "sha256": "b7d3504245ae94a584b455fa65826fbaa7759ec7a50a7b81c2cf8284c9f9051f"
+    },
+    {
+      "bytes": 805,
+      "name": "P_PERSIST",
+      "python_ast_and_code_object_only": true,
+      "sha256": "819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30"
+    },
+    {
+      "bytes": 114,
+      "name": "CLOCK",
+      "python_ast_and_code_object_only": true,
+      "sha256": "cfb3f3154cb778388724728b6f7cb804bd7e142844ded7c044afc8dd3135ab4d"
+    },
+    {
+      "bytes": 1600,
+      "name": "STOP",
+      "python_ast_and_code_object_only": true,
+      "sha256": "5de5244440b134689bedfb1235e805c65a8b726e753cbdac1d0831ef1c83d071"
+    },
+    {
+      "bytes": 4424,
+      "name": "READBACK",
+      "python_ast_and_code_object_only": true,
+      "sha256": "b7d3504245ae94a584b455fa65826fbaa7759ec7a50a7b81c2cf8284c9f9051f"
+    },
+    {
+      "bytes": 626,
+      "name": "MARKER",
+      "python_ast_and_code_object_only": true,
+      "sha256": "13c6549e0328ad695769938cbc0be7eb47d7a10ea9f00c4d897655603437a949"
+    },
+    {
+      "bytes": 805,
+      "name": "PERSIST",
+      "python_ast_and_code_object_only": true,
+      "sha256": "819a7785625ce2f78a9cb03b5f242dbfa6728f9f507b242e3c048887ad01ea30"
+    },
+    {
+      "bytes": 3459,
+      "name": "PRIVATE_CARRIER",
+      "python_ast_and_code_object_only": true,
+      "sha256": "e621f4bd9fded5d72ce9a7cee7c6ae5027c5032682ccfaec1d9ce9a39d99dea1"
+    }
+  ],
+  "helper_470_unchanged": true,
+  "historical_metadata_count": 12,
+  "inverse_identity": {
+    "bytes": 5511,
+    "lines": 111,
+    "sha256": "809b6b915735d870d36d67120e58b0dca40dda0b787e64d576311fd9ba33931e"
+  },
+  "old_entry_pin_occurrences": 2,
+  "old_suffix": {
+    "bytes": 31581,
+    "lines": 467,
+    "sha256": "d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"
+  },
+  "prior_report_bytes": 1074063,
+  "prior_report_sha256": "b6c235997b3db79889e51432f7887e5189570dc8f16e3ccd611e26f9a6d6bb1d",
+  "proofs": {
+    "baseline_ast_sha256": "5b26f32ee26088e36df0d8182e251db5b17ab2e2a77ebc60e10e2f4f7156d081",
+    "candidate_evaluated": false,
+    "composed_ast_sha256": "462af711a7f05acc58975e3174ac0c0da0cc768606aefff2604f990836d3ff43",
+    "duplicate_bindings": [],
+    "external_dependencies": [
+      "Array",
+      "BigInt",
+      "Date",
+      "Error",
+      "JSON",
+      "Math",
+      "Number",
+      "Object",
+      "Set",
+      "String",
+      "exit",
+      "load",
+      "store",
+      "text",
+      "tools",
+      "undefined"
+    ],
+    "inverse_ast_sha256": "5b26f32ee26088e36df0d8182e251db5b17ab2e2a77ebc60e10e2f4f7156d081",
+    "new_suffix_ast_nodes": 39,
+    "old_suffix_ast_nodes": 38,
+    "prefix_ast_nodes": 67,
+    "tool_methods": [
+      "exec_command",
+      "mcp__cua_driver__browser_click",
+      "mcp__cua_driver__browser_navigate",
+      "mcp__cua_driver__browser_prepare",
+      "mcp__cua_driver__browser_type",
+      "mcp__cua_driver__end_session",
+      "mcp__cua_driver__get_browser_state",
+      "mcp__cua_driver__hotkey",
+      "mcp__cua_driver__kill_app",
+      "mcp__cua_driver__list_windows",
+      "write_stdin"
+    ],
+    "top_level_binding_count": 109,
+    "total_composed_function_count": 35,
+    "unchanged_prefix_function_count": 21,
+    "unresolved_references": [],
+    "whole_ast_inverse": true,
+    "whole_byte_inverse": true
+  },
+  "runtime_executions": 0,
+  "sol3_report_bytes": 60522,
+  "sol3_report_sha256": "16f0e6c4b77469d3057489e73bb1bea93cfe2668b76171c244594827a75a8321",
+  "sol3_suffix": {
+    "bytes": 33701,
+    "lines": 508,
+    "sha256": "505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"
+  },
+  "syntax_exit": 0,
+  "unchanged_prefix": {
+    "bytes": 79694,
+    "lines": 733,
+    "sha256": "98c765d6f29992ad9a56148af9c2562e95c4be9cb273a84a59f5a3e02cd7bedf"
+  }
+}
+```
+
+The local helper remains unchanged 470 / SHA-256
+`7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0`;
+there is no alignment with published descriptor helper 75 in this phase.
+All twelve historical deployment-private metadata files were rehashed by
+bytes only, with exact expected sizes/hashes and 0600 modes preserved.
+No contents were decoded or emitted. All historical failures, lost-value
+and reporting correction, unknown sender/cause, 61/76 failed memory run,
+dated 78-case result and later separately selected root memory results
+remain unchanged. Old memory proofs do NOT validate this complete composed
+module or the unique blank-window change.
+
+Initial selected-file discovery returned exit 1 because no requested
+AGENTS/instruction/browser-decision paths matched in this worktree; immutable
+Git object reads then supplied the exact accepted Sol3 source. This is a
+static file-discovery result, not a fixture/product/provider failure.
+
+No eval/VM/cases, reviewed functions, controller/helper/private-file reader,
+native/provider, CLI, Driver/browser/session/state, HTTP/network, Cargo,
+service or runtime fixture was invoked. No slot was acquired or released.
+No merge/alignment/main/push/status or worker contact occurred. Historical
+first-event/whole-60 cleanup UNKNOWN limits remain unchanged. D01/D05 gates
+and all future composition approval, independent review, validation and real
+journey release remain root-owned; original DONE rows stay closed.
+
+Final static report checks: independently applying the archived forward and
+inverse unified diffs in memory reconstructed their complete exact targets.
+The two proposed pin preimages were verified at lines 37/428 without applying
+the proposal. The unapplied pin diff is 527 bytes, SHA-256
+`8e2bbb2df31f583ad73480f5a3c46e498f6dc94e6c9d99e8b6491030e329f888`.
+The report re-extracted to the exact complete module hash above; the new
+appendix has no Markdown link-pattern matches. `git diff --check` passed.
+`python3 scripts/check-docs.py` exited 1 with the preserved historical
+`missing SimpleNamespace(demo=d` false link. No historical text was repaired.
+Only this report is modified, with no new untracked files. Compatibility
+remains blocked on root review of the unapplied entry-cell pin correction;
+none of these static results approves execution or earns journey credit.
+
+## 2026-10-03 — Approved two-literal entry-cell pin correction (source archive only)
+
+Reservation `wave30_D01_composed_entry_pin_source_correction`, project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing WT7. Root approved only
+the two equality literal corrections already proposed in the previous phase.
+This appendix preserves all 1224934 preceding report bytes from
+`251a29c097fc8b9a1fc1dd083bab97060242bdf0`, SHA-256
+`59ab11fc353b0794cc396e8eb38e84d19dbbc7b625c8466adb99ba1fc71253a1`.
+The previous pin-blocked composition and proposal remain dated history.
+
+The corrected complete source is concretely defined by the immutable full
+113395-byte module archived at that commit plus the exact two-hunk transform
+below. The base is extracted from its complete JavaScript fence by SHA-256
+`484bd441ef0f3db547d75f6138f2943b07a3ef090c30271a9cdc3d7914dda02e`.
+The source extractor considered each fence capture with and without its final
+delimiter LF, required exactly one hash match, and changed only the two unique
+full lines shown below. No whole-module duplicate or disk executable is needed.
+
+The `lReleaseValid` equality at line 37 and `pSeedValid` inequality at
+line 428 now pin the exact entire accepted Sol3 suffix hash
+`505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f`
+rather than the old c5 hash
+`d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d`.
+Their operators, operands, surrounding guards and all other validator code
+are unchanged. The full reconstructed corrected module is 113395 bytes /
+1241 lines with the exact root-expected SHA-256
+`a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e`.
+
+`entry_source_sha256` denotes the actual separately pinned 33701-byte
+suffix cell, not the whole module or controller payload and not a
+self-referential hash. No existing release input or seed was mutated.
+A future separately released root input must truthfully carry `505b…`;
+the producer still copies that field through the unchanged 25-field seed
+schema. This source-identity mismatch is resolved in the archived design.
+Runtime remains HELD pending independent composition review and a separately
+reserved meaningful memory proof for the changed projection/composition.
+
+### Exact forward transform and independent inverse
+
+The forward diff has exactly two hunks and two replaced lines. It preserves
+line count and byte length because both literals have 64 ASCII characters.
+
+```diff
+--- 251a29-unadjusted-complete-module
++++ approved-entry-pin-corrected-module
+@@ -37 +37 @@
+-    c.entry_source_sha256==="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"&&
++    c.entry_source_sha256==="505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"&&
+@@ -428 +428 @@
+-     s.entry_source_sha256!=="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"||
++     s.entry_source_sha256!=="505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"||
+```
+
+```diff
+--- approved-entry-pin-corrected-module
++++ 251a29-unadjusted-complete-module
+@@ -37 +37 @@
+-    c.entry_source_sha256==="505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"&&
++    c.entry_source_sha256==="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"&&
+@@ -428 +428 @@
+-     s.entry_source_sha256!=="505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"||
++     s.entry_source_sha256!=="d727878009b955e6c6e309ffa90fe30c3644089b4a0fb7ebbe4ebd7264fd3d9d"||
+```
+
+Both unified diffs were independently applied to the complete source strings
+in memory. Forward application reconstructed the exact root-expected complete
+module; inverse application reconstructed the exact complete immutable 251a29
+base. The unique full-line replacement inverse also restored that same base.
+These are static source/data operations, not reviewed module execution.
+
+### Exact corrected manifest
+
+| Source / transform | Bytes | LF lines | SHA-256 |
+| --- | ---: | ---: | --- |
+| Immutable 251a29 complete base | 113395 | 1241 | `484bd441ef0f3db547d75f6138f2943b07a3ef090c30271a9cdc3d7914dda02e` |
+| Corrected complete module | 113395 | 1241 | `a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e` |
+| Old launcher/preparation prefix | 79694 | 733 | `98c765d6f29992ad9a56148af9c2562e95c4be9cb273a84a59f5a3e02cd7bedf` |
+| Corrected launcher/preparation prefix | 79694 | 733 | `52bdc1bec3f527996032045a6a466e39e326a40d6cae393e1264d0ca9f2bd11d` |
+| Unchanged complete Sol3 suffix | 33701 | 508 | `505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f` |
+| Exact forward diff | 502 | 8 | `4afbcb5ef4fa85f1a8079206cc4e0d9536a53b4298f5fabc5fb0e89279f0a417` |
+| Exact inverse diff | 502 | 8 | `7c35ea8bdc9acd3a4d9f4f50d316fa814376b2cd63233c66846aea3994782db5` |
+| Parser-only checker | 3951 | 79 | `d087f821f730d5eb0c347faf446e959a808a27cc01492330af7cd932882f164e` |
+
+The unchanged entire suffix is the exact accepted source at
+`48288c1f10f24d47bb86b57edd0682014e9b64ee:docs/roadmap/local-wave30-d01-browser-decision-projection-plan.md`.
+Its 33701 bytes / 508 lines were compared byte-for-byte before and after this
+correction and independently hashed to `505b…`. The corrected prefix is
+79694 bytes / 733 lines. Reversing only the two approved literals restores
+every other prefix byte and the old prefix hash. The complete prefix/suffix
+boundary and ABI remain the previously archived composition.
+
+All 35 top-level functions remain in the same order. The 33 functions other
+than `lReleaseValid` and `pSeedValid` have byte-identical complete spans.
+Inside those two validators, only the declared literal AST nodes differ.
+Interfaces, seed producer, transient private carrier, window projection,
+binding, phase transitions, latches, ownership, archive/cleanup functions,
+deadlines, security/native/provider/controller pins and public ref
+multiplicity are protected by exact whole-byte and AST reversal. No helper
+alignment, source file materialization, source reimplementation or extra
+projection/dispatch guard was performed. Root still rejects ambiguous
+matching public refs before input.
+
+### Actual static AST/syntax checks and complete checker source
+
+Node `--check --input-type=module` parsed the complete reconstructed corrected
+module from stdin, exit 0. Acorn parsed both complete programs, exit 0.
+The parser checker located only the one `c.entry_source_sha256 ===` literal
+inside `lReleaseValid` and one `s.entry_source_sha256 !==` literal inside
+`pSeedValid`. It checked their exact old/new values and restored only those
+two literal nodes, including their raw literal spellings. Normalization
+removed only source position fields. The resulting entire AST equalled the
+immutable base AST. The checker also verified exact complete byte inversion,
+all 33 unchanged function spans and the unchanged complete Sol3 suffix.
+It did not evaluate a candidate function, VM, cell or case.
+
+The complete 79-line static checker used the inputs `base`, `candidate`,
+`edits`, `oldPin` and `newPin` pinned above. It is archived here for
+source review only; no helper, controller, collector or private-reader code
+was imported or run by it.
+
+```javascript
+const fs=require("node:fs"),crypto=require("node:crypto");
+const acorn=require("internal/deps/acorn/acorn/dist/acorn");
+const input=JSON.parse(fs.readFileSync(0,"utf8"));
+function proof(v,label){if(!v)throw Error(label);}
+function clean(v) {
+  if(typeof v==="bigint")return {ast_bigint_decimal:v.toString(10)};
+  if(Array.isArray(v))return v.map(clean);
+  if(v!==null&&typeof v==="object") {
+    const out={};
+    for(const [k,x] of Object.entries(v))
+      if(!["start","end","loc","range"].includes(k))out[k]=clean(x);
+    return out;
+  }
+  return v;
+}
+const sha=s=>crypto.createHash("sha256").update(s).digest("hex");
+const parse=s=>acorn.parse(s,{ecmaVersion:"latest",sourceType:"module"});
+const oldAst=parse(input.base),newAst=parse(input.candidate);
+const oldFns=oldAst.body.filter(n=>n.type==="FunctionDeclaration");
+const newFns=newAst.body.filter(n=>n.type==="FunctionDeclaration");
+const names=["lReleaseValid","pSeedValid"],operators=["===","!=="],objects=["c","s"];
+const inverse=clean(newAst);
+let changedLiterals=0,unchangedFunctions=0;
+function literals(n,object,operator,out) {
+  if(!n||typeof n!=="object")return;
+  if(Array.isArray(n)){for(const x of n)literals(x,object,operator,out);return;}
+  if(n.type==="BinaryExpression"&&n.operator===operator&&
+     n.left.type==="MemberExpression"&&n.left.computed===false&&
+     n.left.object.type==="Identifier"&&n.left.object.name===object&&
+     n.left.property.type==="Identifier"&&n.left.property.name==="entry_source_sha256")
+    out.push(n.right);
+  for(const [k,v] of Object.entries(n))
+    if(!["start","end","loc","range"].includes(k)&&v&&typeof v==="object")
+      literals(v,object,operator,out);
+}
+for(let i=0;i<names.length;i++) {
+  const oldFn=oldFns.find(n=>n.id.name===names[i]);
+  const newFn=newFns.find(n=>n.id.name===names[i]);
+  const inverseFn=inverse.body.find(n=>n.type==="FunctionDeclaration"&&n.id.name===names[i]);
+  proof(oldFn&&newFn&&inverseFn,"validator_present");
+  const oldNodes=[],newNodes=[],inverseNodes=[];
+  literals(oldFn,objects[i],operators[i],oldNodes);
+  literals(newFn,objects[i],operators[i],newNodes);
+  literals(inverseFn,objects[i],operators[i],inverseNodes);
+  proof(oldNodes.length===1&&newNodes.length===1&&inverseNodes.length===1,
+        "one_pin_literal_per_validator");
+  proof(oldNodes[0].type==="Literal"&&oldNodes[0].value===input.oldPin&&
+        newNodes[0].type==="Literal"&&newNodes[0].value===input.newPin,"exact_pin_values");
+  for(const k of Object.keys(inverseNodes[0]))delete inverseNodes[0][k];
+  Object.assign(inverseNodes[0],clean(oldNodes[0]));
+  changedLiterals++;
+}
+proof(JSON.stringify(inverse)===JSON.stringify(clean(oldAst)),"whole_ast_two_literal_inverse");
+proof(oldFns.length===35&&newFns.length===35,"function_count");
+for(let i=0;i<oldFns.length;i++) {
+  proof(oldFns[i].id.name===newFns[i].id.name,"function_order");
+  if(!names.includes(oldFns[i].id.name)) {
+    proof(input.base.slice(oldFns[i].start,oldFns[i].end)===
+          input.candidate.slice(newFns[i].start,newFns[i].end),"unchanged_function_body");
+    unchangedFunctions++;
+  }
+}
+let reversed=input.candidate;
+for(const [before,after] of input.edits) {
+  proof(input.base.split(before).length===2&&input.candidate.split(after).length===2,
+        "unique_exact_edit");
+  reversed=reversed.replace(after,before);
+}
+proof(reversed===input.base,"whole_byte_inverse");
+proof(input.candidate.slice(-33701)===input.base.slice(-33701),"entire_sol3_suffix_unchanged");
+process.stdout.write(JSON.stringify({
+  normalized_two_literal_ast_inverse:true,whole_byte_inverse:true,
+  changed_literal_count:changedLiterals,unchanged_other_functions:unchangedFunctions,
+  total_top_level_functions:newFns.length,entire_33701_byte_suffix_unchanged:true,
+  baseline_ast_sha256:sha(JSON.stringify(clean(oldAst))),
+  corrected_ast_sha256:sha(JSON.stringify(clean(newAst))),
+  inverse_ast_sha256:sha(JSON.stringify(inverse)),
+  candidate_evaluated:false
+})+"\n");
+```
+
+Actual fixed static receipt, with the two diff bodies archived separately:
+
+```json
+{
+  "acorn_exit": 0,
+  "baseline": {
+    "bytes": 113395,
+    "lines": 1241,
+    "sha256": "484bd441ef0f3db547d75f6138f2943b07a3ef090c30271a9cdc3d7914dda02e"
+  },
+  "checker_identity": {
+    "bytes": 3951,
+    "lines": 79,
+    "sha256": "d087f821f730d5eb0c347faf446e959a808a27cc01492330af7cd932882f164e"
+  },
+  "corrected": {
+    "bytes": 113395,
+    "lines": 1241,
+    "sha256": "a270153f635393085ccd553a2ba18c4ee66f844d17444013c19ed95c3201809e"
+  },
+  "corrected_prefix": {
+    "bytes": 79694,
+    "lines": 733,
+    "sha256": "52bdc1bec3f527996032045a6a466e39e326a40d6cae393e1264d0ca9f2bd11d"
+  },
+  "forward_diff_reconstruction": true,
+  "forward_identity": {
+    "bytes": 502,
+    "lines": 8,
+    "sha256": "4afbcb5ef4fa85f1a8079206cc4e0d9536a53b4298f5fabc5fb0e89279f0a417"
+  },
+  "inverse_diff_reconstruction": true,
+  "inverse_identity": {
+    "bytes": 502,
+    "lines": 8,
+    "sha256": "7c35ea8bdc9acd3a4d9f4f50d316fa814376b2cd63233c66846aea3994782db5"
+  },
+  "metadata_mode": "0600",
+  "old_prefix": {
+    "bytes": 79694,
+    "lines": 733,
+    "sha256": "98c765d6f29992ad9a56148af9c2562e95c4be9cb273a84a59f5a3e02cd7bedf"
+  },
+  "prior_report_bytes": 1224934,
+  "prior_report_sha256": "59ab11fc353b0794cc396e8eb38e84d19dbbc7b625c8466adb99ba1fc71253a1",
+  "proofs": {
+    "baseline_ast_sha256": "462af711a7f05acc58975e3174ac0c0da0cc768606aefff2604f990836d3ff43",
+    "candidate_evaluated": false,
+    "changed_literal_count": 2,
+    "corrected_ast_sha256": "a7eb385eda5d4913254dadca90527ba51647bc3ad18342f2d4c4f985c7d6a27e",
+    "entire_33701_byte_suffix_unchanged": true,
+    "inverse_ast_sha256": "462af711a7f05acc58975e3174ac0c0da0cc768606aefff2604f990836d3ff43",
+    "normalized_two_literal_ast_inverse": true,
+    "total_top_level_functions": 35,
+    "unchanged_other_functions": 33,
+    "whole_byte_inverse": true
+  },
+  "runtime_executions": 0,
+  "source_identity_compatibility": "APPROVED_PIN_MISMATCH_RESOLVED_STATIC_ONLY",
+  "syntax_exit": 0,
+  "unchanged_helper_470": true,
+  "unchanged_metadata_count": 12,
+  "unchanged_sol3_suffix": {
+    "bytes": 33701,
+    "lines": 508,
+    "sha256": "505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f"
+  }
+}
+```
+
+The previous scoped binding/dependency check belongs to its dated 251a29
+source phase. This phase changed no binding or reference AST node; it does
+not claim a rerun of that checker or borrow any old memory proof as new
+module validation. No dependency, runtime input schema or dispatch method
+was added.
+
+All twelve historical deployment-private metadata files were rehashed by
+bytes only, with exact expected sizes/hashes and 0600 modes preserved.
+No contents were decoded or emitted. The local helper remains unchanged
+470 / SHA-256
+`7fbc23e56dbc4999b94672ec4b29b0d33596c53b4d637ea99f850451bd63fbf0`.
+All prior failures, lost-value/reporting correction, UNKNOWN sender/cause,
+61/76 failed memory run, dated 78-case result and later selected root memory
+receipts remain exact and dated. None validates this corrected module.
+
+This phase executes only static source/parser/hash/report checks. No reviewed
+candidate/VM/case/controller/private carrier/provider/native/CLI/HTTP/network/
+Driver/browser/Cargo/service or runtime fixture was invoked; no resource slot
+was acquired or released. RiWork Cua.ai Driver-only preference remains for any
+separately authorized future desktop. No existing release input, helper,
+controller, guide, product, source file, test, task/WT or original gate status
+was changed. No alignment/merge/main/push/status or worker contact occurred.
+Historical first-event/whole-60 cleanup limitations remain UNKNOWN; D01/D05
+acceptance and future source composition review, memory validation and
+real-journey release remain root-owned.
+
+Final report checks for this phase: the serialized forward diff, inverse diff
+and complete static checker re-extracted to their exact manifest hashes.
+The new appendix has no Markdown link-pattern matches. Report mode remains
+0644 and `git diff --check` exited 0. `python3 scripts/check-docs.py` exited 1
+with the preserved historical `missing SimpleNamespace(demo=d` false link;
+this phase did not modify that prefix or repair the historical checker match.
+Only this report is modified, with no untracked files. The approved source-pin
+mismatch is resolved in the archive; runtime and original acceptance remain
+held for root-coordinated independent review and new meaningful validation.
