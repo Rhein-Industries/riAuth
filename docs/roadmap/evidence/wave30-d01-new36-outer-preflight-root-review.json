@@ -1,0 +1,74 @@
+{
+  "schema": "riauth.wave30-d01-new36-outer-preflight-root-review/v1",
+  "launcher_design_commit": "ecb7552978ed50e1afcdee53c83b04c2bad921c2",
+  "launcher_sha256": "40302bd5b6f10b1c3f7f2c0cebf4b7e7dd8d77810a71180fd98af23835babacb",
+  "controller_sha256": "d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a",
+  "nonce": "f18ba1c0174eaf5a",
+  "actual_tool_completion": {
+    "chunk_id": "a772b6",
+    "wall_time_seconds": 6.458e-06,
+    "exit_code": 1,
+    "original_token_count": 158,
+    "output": "{\"actual_product_or_driver\":false,\"complete_bounded_capture\":false,\"controller_exit\":null,\"controller_group_empty\":false,\"controller_reaped\":false,\"elapsed_seconds\":0.012147583,\"first_failure\":\"outer_preflight_failed\",\"independent_nested_ownership_proof\":false,\"nested_node_cleanup\":\"not_spawned\",\"result\":\"failed\",\"retained_before_grade\":false,\"review_closed\":false,\"schema\":\"riauth.d01-composed-outer-return/v1\",\"stderr_bytes\":0,\"stderr_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"stdout_bytes\":0,\"stdout_sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"within55\":true}\n"
+  },
+  "closed_return": {
+    "actual_product_or_driver": false,
+    "complete_bounded_capture": false,
+    "controller_exit": null,
+    "controller_group_empty": false,
+    "controller_reaped": false,
+    "elapsed_seconds": 0.012147583,
+    "first_failure": "outer_preflight_failed",
+    "independent_nested_ownership_proof": false,
+    "nested_node_cleanup": "not_spawned",
+    "result": "failed",
+    "retained_before_grade": false,
+    "review_closed": false,
+    "schema": "riauth.d01-composed-outer-return/v1",
+    "stderr_bytes": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 0,
+    "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "within55": true
+  },
+  "outer_capture_directory_created": false,
+  "inner_capture_directory_created": false,
+  "source_bound_controller_or_node_spawned": false,
+  "actual_memory_cases": 0,
+  "predicate_for_first_invocation": "unknown; not captured",
+  "separate_pinned_startup_diagnostic": {
+    "exit_code": 0,
+    "stdout": "{\"allowlisted_extra_keys\":[\"__CF_USER_TEXT_ENCODING\"],\"cwd_matches\":true,\"environment_equal\":false,\"environment_key_count\":4,\"executable_matches\":true,\"isolated\":1,\"no_site\":1,\"other_extra_key_count\":0,\"required_values_equal\":{\"LANG\":true,\"LC_ALL\":true,\"PATH\":true},\"root_resolves_equal\":true,\"schema\":\"riauth.d01-pinned-startup-diagnostic/v1\",\"uid501\":true}\n",
+    "stderr": "",
+    "elapsed_seconds": 0.028264416847378016,
+    "diagnostic_source_sha256": "69ced507a0e09440e339317977ab96d91b581e7b029083c1485709d70334d9fc",
+    "child_reaped": true,
+    "timeout": false,
+    "is_memory_retry": false
+  },
+  "diagnostic_result": {
+    "allowlisted_extra_keys": [
+      "__CF_USER_TEXT_ENCODING"
+    ],
+    "cwd_matches": true,
+    "environment_equal": false,
+    "environment_key_count": 4,
+    "executable_matches": true,
+    "isolated": 1,
+    "no_site": 1,
+    "other_extra_key_count": 0,
+    "required_values_equal": {
+      "LANG": true,
+      "LC_ALL": true,
+      "PATH": true
+    },
+    "root_resolves_equal": true,
+    "schema": "riauth.d01-pinned-startup-diagnostic/v1",
+    "uid501": true
+  },
+  "environment_diagnostic_limit": "fixed extra key name only, value not captured; no first-call predicate/native setter/loader cause attestation",
+  "validation_slot_released_before_report": true,
+  "runtime_retry_by_slice": false,
+  "task_status_changed": false,
+  "utc": "2026-10-03T03:11:39.185530+00:00"
+}

@@ -2889,3 +2889,36 @@ def main():
     return 0 if passed else 1
 if __name__=="__main__":sys.exit(main())
 ```
+
+## 2026-10-03 — exact new36 outer launch refused in preflight
+
+Root read the complete `ecb7552` launcher design, including all380 source
+lines and manifest. The staged launcher21320 bytes/SHA
+`40302bd5b6f10b1c3f7f2c0cebf4b7e7dd8d77810a71180fd98af23835babacb`
+and composed controller242290 bytes/SHA
+`d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a`
+were exact private0600 DATA. ONE separately released pinned CPython -I/-S
+outer invocation at fresh nonce`f18ba1c0174eaf5a` returned1,
+`outer_preflight_failed`, elapsed0.012147583s. No outer or inner evidence
+directory was created; the source-bound return reports `not_spawned`, no
+controller handle/status and no complete capture. Zero memory cases ran.
+Root retained the actual tool exit/full closed return before comparisons and
+released the unused validation lane immediately, before this report.
+
+A separately authorized single pinned-interpreter startup diagnostic, same
+imports/cwd/closed three-key environment, returned0 in0.028264417s, stderr0.
+Actual UID/cwd/root/executable/isolated/no_site matched; PATH/LANG/LC_ALL
+values matched. The observed environment had four keys, with only the fixed
+extra name `__CF_USER_TEXT_ENCODING`; unknown-extra-key count0. Its value
+was neither captured nor inferred. This proves a current conflict with the
+strict whole-environment predicate, not the unrecorded predicate/cause of
+the earlier call or an attested native loader/startup setter. Full actual
+outputs and source identities are retained in
+[evidence](evidence/wave30-d01-new36-outer-preflight-root-review.json).
+The diagnostic spawned no controller, Node, product or browser.
+
+The next reservation is source design only: one narrow launcher comparison
+for this fixed platform metadata key, preserving the caller/child closed
+three-key environment and refusing every other extra key. No correction or
+memory repeat is released here. Old25 failed cleanup/packet observations,
+all prior confidential-browser failures and current real-journey gap remain.
