@@ -1,0 +1,72 @@
+{
+  "observed_utc": "2026-10-03T06:09:08.069433+00:00",
+  "operation": "read-only release metadata; no asset download or tag/release mutation",
+  "repository": "Rhein-Industries/riAuth",
+  "release": {
+    "assets": [
+      {
+        "apiUrl": "https://api.github.com/repos/Rhein-Industries/riAuth/releases/assets/588886396",
+        "contentType": "application/json",
+        "createdAt": "2026-09-25T17:39:34Z",
+        "digest": "sha256:983d67dc4ba7b1797ecce2f68b687de9b7ddec68a1c7edf7829cae919b4f19f3",
+        "downloadCount": 2,
+        "id": "RA_kwDOUrhmj84jGbF8",
+        "label": "",
+        "name": "build-provenance.json",
+        "size": 544,
+        "state": "uploaded",
+        "updatedAt": "2026-09-25T17:39:34Z",
+        "url": "https://github.com/Rhein-Industries/riAuth/releases/download/untagged-fefc62cb2cdaa4772a0b/build-provenance.json"
+      },
+      {
+        "apiUrl": "https://api.github.com/repos/Rhein-Industries/riAuth/releases/assets/588886395",
+        "contentType": "application/x-gtar",
+        "createdAt": "2026-09-25T17:39:34Z",
+        "digest": "sha256:6b6cd2a39e17779c4a26747931f1e2c6f3f49aa82d63d6261314ab4a65ec4bab",
+        "downloadCount": 0,
+        "id": "RA_kwDOUrhmj84jGbF7",
+        "label": "",
+        "name": "riauth-linux-x86_64.docker.tar.gz",
+        "size": 47239556,
+        "state": "uploaded",
+        "updatedAt": "2026-09-25T17:39:35Z",
+        "url": "https://github.com/Rhein-Industries/riAuth/releases/download/untagged-fefc62cb2cdaa4772a0b/riauth-linux-x86_64.docker.tar.gz"
+      },
+      {
+        "apiUrl": "https://api.github.com/repos/Rhein-Industries/riAuth/releases/assets/588886403",
+        "contentType": "application/x-gtar",
+        "createdAt": "2026-09-25T17:39:34Z",
+        "digest": "sha256:bdff6289e307b760e7acb8a5789586c31897f6e504ad08f4a18bccbac7f41535",
+        "downloadCount": 0,
+        "id": "RA_kwDOUrhmj84jGbGD",
+        "label": "",
+        "name": "riauth-linux-x86_64.tar.gz",
+        "size": 15405710,
+        "state": "uploaded",
+        "updatedAt": "2026-09-25T17:39:35Z",
+        "url": "https://github.com/Rhein-Industries/riAuth/releases/download/untagged-fefc62cb2cdaa4772a0b/riauth-linux-x86_64.tar.gz"
+      },
+      {
+        "apiUrl": "https://api.github.com/repos/Rhein-Industries/riAuth/releases/assets/588886398",
+        "contentType": "application/octet-stream",
+        "createdAt": "2026-09-25T17:39:34Z",
+        "digest": "sha256:fb663f66fcae409cc9ca48d43230d880e4e8a071e2d01c4bcbc34c250b4dd782",
+        "downloadCount": 1,
+        "id": "RA_kwDOUrhmj84jGbF-",
+        "label": "",
+        "name": "SHA256SUMS",
+        "size": 281,
+        "state": "uploaded",
+        "updatedAt": "2026-09-25T17:39:34Z",
+        "url": "https://github.com/Rhein-Industries/riAuth/releases/download/untagged-fefc62cb2cdaa4772a0b/SHA256SUMS"
+      }
+    ],
+    "isDraft": true,
+    "isPrerelease": false,
+    "name": "riAuth v0.1.1",
+    "publishedAt": null,
+    "tagName": "v0.1.1",
+    "targetCommitish": "main"
+  },
+  "limits": "targetCommitish main is not an immutable product binding; four draft assets do not establish current 24-file cohort; no signing/bundle/native result inferred"
+}
