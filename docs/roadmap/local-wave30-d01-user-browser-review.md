@@ -20289,3 +20289,96 @@ def main():
 if __name__ == "__main__":
     raise SystemExit(main())
 ```
+
+
+## 2026-10-03 — ONE released timeout-memory verification: actual PASS, memory only
+
+Reservation `wave30_D01_timeout_memory_verification_once`, project891e7443-8dac-4c1b-897f-9e53cb59c7ee, existing WT7c85f5ef/shell7a798ec7 only. Root explicitly released ONE memory run after its reviewed ARM37101183416 terminal PASS/owned cleanup. Entry was clean `f605725b1262f1cb1d9c4ccc255169aee83daad8`. The complete1488800-byte prior D01 report prefix remains exact, SHA256 `ac7b088408854cf77303e10b01e114c9e4bc336ec2811b02217733a176fc47a3`. All dated proposals, earlier actual failures/unknowns/lost-value correction/61-of76 failure/old memory limits/unknown sender/cause/unproved whole60 remain preserved. This appendix supplies a new actual memory result; it does not rewrite old source-phase UNRUN observations or grant browser/journey acceptance.
+
+### Exact frozen reconstruction and bounded single invocation
+
+Read immutable `66d8082ea95d2c7dc232efa0661e8dc7438a92bd`, tree `b7a2070e60274037def6892fc31ee7477dbef507`, and reconstructed the complete Python fences as DATA. Unique exact128630-byte payload SHA256 `164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e` and7196-byte corrected supervisor SHA256 `10eaff2057fd1a715658ff32ebe30a2d8d0770ec9e372978fe654270f15cba57` matched BEFORE execution, including materialized readback. The current helper remained36884 bytes, SHA256 `37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406`, and its file was neither imported nor run as a module/main. No payload/case/supervisor/helper source changed. The old7132-byte/db8fb supervisor remains unrun; only the exact corrected supervisor was executed now. AST inspection confirmed its first main statement is `signal.signal(signal.SIGCHLD, signal.SIG_DFL)` before Popen. The installed-default path reached a real child spawn/communicate/status consumption; this does not assert universal protection against unseen independent reapers.
+
+Fresh own ignored directory `deployment-private/d01-timeout-memory-20261003-66d8082-once` was created exclusive0700. Source files `payload.py` and `supervisor.py` were exclusive0600 and fsynced; the result and outer receipt paths were absent before launch. Parent/child directory owner/mode/nofollow checks passed. No historical path was overwritten and no cache/artifact was deleted. Read-only free-space sample before setup was15748808704 bytes; this is an observation, not a reserved-capacity guarantee.
+
+The first setup-only preflight exited1 because `git check-ignore --quiet` rejects multiple pathnames. This happened before directory/file creation or supervisor spawn. Its actual Git diagnostic was “--quiet is only valid with a single pathname”. The read-only check was corrected to `git check-ignore -- <four prospective paths>` with complete returned-path equality, then succeeded. No payload/supervisor case was evaluated in that failed preflight, and it did not consume/repeat the single authorized invocation. This setup failure is retained rather than labeled as a memory/product failure.
+
+ONE outer `python3 -B` orchestration then invoked the exact supervisor using `[sys.executable, "-B", "deployment-private/d01-timeout-memory-20261003-66d8082-once/supervisor.py", "deployment-private/d01-timeout-memory-20261003-66d8082-once/result.redacted.json"]`. Its stdin was exactly the128630 payload bytes, unmodified. Source0600/regular/current-owner/nlink1/nofollow/hash readback was repeated before spawn; the outer receipt used a new exclusive0600 path. The outer Python also installed SIGCHLD default before spawning its owned supervisor. No helper/provider/metadata process was launched: only the supervisor and its ONE memory child.
+
+The immutable supervisor retained its unchanged30s active and35s total communicate/own-kill/join bounds. The outer orchestration had a50s monotonic deadline, at most45s normal wait and only the remaining deadline for exact own-supervisor kill/join on an outer timeout. No timeout/error/kill branch was taken. These source budgets are finite supervision policies, not hard OS scheduling assurances. The supervisor fsynced the full fixed-result receipt BEFORE its grading/print/return; the outer orchestration fsynced its complete invocation/exit/result record BEFORE outer grading/print/return. Actual numeric exits and complete fixed JSON therefore preceded the caller's success comparisons. There was exactly ONE supervisor invocation and ONE child; no correction/retry or36-case continuation/whole-composition run followed.
+
+### Actual result, resource release and retained records
+
+Actual memory result PASS:94/94 cases across13 groups,871 assertions,21 baseline and97 candidate request calls. First failure/failure class null, all groups reached. Memory child PID96790 exit0/reapedtrue; supervisor PID96788 exit0/reapedtrue; enclosing execution exit0. Supervisor measured0.066264s, outer measured0.090999s. Both stderr lengths0, timeout flagsfalse and failure fieldsnull. `journey_credit=false` and `whole60_proven=false` are actual fixed outputs, not omitted qualifications.
+
+VALIDATION RELEASE was sent in the first commentary after joined exit and BEFORE this appendix. Subsequent exact own-PID existence readbacks found both96788 and96790 absent; no signal other than existence query, unrelated process inspection or cleanup operation was used. New artifacts remain retained in the ignored private directory. No socket/listener/browser/session/lab fixture was created by this memory run. This release does not acquire/release Cargo or desktop; I07 remains HELD and no I07 test ran.
+
+| New retained own artifact | Complete bytes | SHA256 |
+| --- | --- | --- |
+| `payload.py` | 128630 | `164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e` |
+| `supervisor.py` | 7196 | `10eaff2057fd1a715658ff32ebe30a2d8d0770ec9e372978fe654270f15cba57` |
+| `result.redacted.json` | 1459 | `f9291a20eb3778bacc32f4a1cccff68b919e99714e6832e6f455d3c348c5da27` |
+| `outer.redacted.json` | 2347 | `d9fa068dc0690254f55bea0fa377c07b2b92056a19dfd19193547ded0db06a2b` |
+
+All four post-run artifacts passed regular/current-owner/nlink1/0600/nofollow and stable dev/inode/size/mtime read checks. Supervisor captured complete child stdout712 bytes, SHA256 `9770574df53444e6c50be10d30ff56616e6d3b08ce07f378eefec91797512855`; outer captured supervisor stdout104 bytes, SHA256 `1bbb472e2878af8b22e7e1d68135525aa8da9d1634483c97aefe6522f59ff038`. Both empty stderr hashes are `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`. Public evidence contains only the reviewed fixed fields/counts/source identities/owned PIDs; no synthetic private input, raw request/header/error, credential/token/protocol/query value is printed.
+
+Complete1459-byte retained supervisor receipt follows, unchanged:
+
+```json
+{
+  "child_exit": 0,
+  "child_pid": 96790,
+  "child_reaped": true,
+  "elapsed_seconds": 0.066264,
+  "fixed_result": {
+    "assertions": 871,
+    "baseline_requests": 21,
+    "baseline_sha256": "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1",
+    "candidate_requests": 97,
+    "candidate_sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+    "completed": 94,
+    "failure_class": null,
+    "first_failure": null,
+    "groups": {
+      "authorization_parity": 7,
+      "controller_interpretation": 4,
+      "discard_lifecycle": 1,
+      "eligible_counter": 4,
+      "exception_identity": 3,
+      "guard_parity": 12,
+      "halt_boundaries": 7,
+      "normal_after_discard": 3,
+      "observer_first_only": 4,
+      "operation_boundaries": 4,
+      "record_schema": 6,
+      "shutdown_failure": 1,
+      "strict_state": 38
+    },
+    "journey_credit": false,
+    "planned": 94,
+    "result": "passed",
+    "schema": "riauth.d01-timeout-memory/v1",
+    "whole60_proven": false
+  },
+  "payload_bytes": 128630,
+  "payload_sha256": "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e",
+  "schema": "riauth.d01-timeout-memory-outer/v1",
+  "stderr_bytes": 0,
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_bytes": 712,
+  "stdout_sha256": "9770574df53444e6c50be10d30ff56616e6d3b08ce07f378eefec91797512855",
+  "supervisor_failure": null,
+  "timeout": false
+}
+```
+
+### Coverage and limits
+
+These are the actual94-case memory counts for the reviewed timeout guard/lifecycle/state/counter/discard path: first3 partial initial-read TimeoutError streams discarded/no reuse/parse/dispatch/reply, fourth terminal; strict state/type/counter edges; exception identity; operation and Halt boundaries; subsequent normal guards; Authorization parity; first-only observer; record schema/startup/final-copy; controller diagnostic versus failure; shutdown failure. Controlled synthetic parser/read/write/dispatch/clock/disk/alarm/server sinks exercised the frozen selected bodies/slices. No helper module import/main, actual listener/TCP/browser read, native cryptography/provider verification, CLI/session/HTTP sign-in or physical-device action occurred. Memory outcomes do not establish real request sender/cause, real browser progress, cryptographic journey, GUI cleanup/whole60, or complete D01/D05/all-current-CI/release/HA acceptance. Old failed fixtures remain failed; old memory receipts do not substitute for the newly measured result. Real browser remains separately HELD pending root review/release.
+
+Only this existing D01 report is appended in Git. Current helper remains exact37d; no production/helper/controller/config/source/test/guide/D05 artifact changed. I07 formatted source `6ba2e95c42c271804d1715eb05380953b008130d` and evidence `f605725b1262f1cb1d9c4ccc255169aee83daad8` remain intact: test64683 bytes SHA256 `ee9c1676e8fb3aa6f6d2092a343e70bb0beae703d563d3e410ad611093e340dd`; I07 report53246 bytes SHA256 `9c6b2d1083c33d0ac2a6bf052961099611b77f9734072e1ca2fff5b9e741fc0d`. Whole-byte comparisons to startingf605 passed after release. No Cargo/native/provider/CLI product/network/socket/Driver/browser/compiler/build, source alignment, main/push/status or worker contact/new task/WT/shell activity occurred. RiWork Cua.ai Driver MCP remains the sole authorized future desktop provider. Authority/receipt/header/PAM/held Group/nonrenewed60s/paused IO and closed original rows stay unchanged. Root alone integration/publication/status/original gates.
+
+
+### Actual evidence-handoff static checks
+
+After the actual-result appendix: `python3 scripts/check-docs.py` exit0 (“Markdown links and build-directory layout checked”); `git diff --check` exit0. Only the existing D01 report was modified. The entire starting1488800-byte report prefix and current helper/I07 test/I07 report whole-byte equality passed. Final staged whitespace/scope/hygiene and immutable clean-tree proofs accompany this report-only commit handoff. These checks do not add a second memory invocation or expand runtime credit. Validation was already released before any report append; all historical private files/source/failures remain preserved.
