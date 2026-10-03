@@ -5626,3 +5626,16 @@ no source correction, alignment/merge/reset, main/accepted edit, push,
 status update, new worker/task/worktree/managed shell or worker contact
 occurred. Sole Cargo and validation lanes were released before this append;
 future runtime requires a separate root reservation.
+
+### Post-commit static reader receipt
+
+After actual-evidence commit `ea382fa04de9bae861018f14089dcfab171728f5`,
+one read-only final verification script exited1 at parse time: Python
+rejected a non-ASCII character in a bytes literal. None of that script's
+assertions executed and no file or process state was changed. Replacing
+only that reader literal with an encoded string allowed the static check
+to exit0: clean branch, sole-report commit, full266,010-byte earlier prefix
+and all358 selected source objects equal root8d66. This correction was to
+the transient evidence reader, not the retained supervisor or fixture; no
+Cargo/fixture rerun occurred. The complete283,082-byte ea382 report remains
+the exact prefix before this appended disclosure.
