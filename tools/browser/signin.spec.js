@@ -523,6 +523,60 @@ test('sign-in and consent work with the keyboard alone and pass axe', async ({ p
   expect((await callback(page, request)).get('code')).toBeTruthy();
 });
 
+test('empty interaction credentials identify missing fields without a request', async ({ page, browserName }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  const request = authorization(fixture.clients.consent, { prompt: 'consent' });
+  let posts = 0;
+  page.on('request', (r) => { if (r.method() === 'POST') posts += 1; });
+  await page.goto(request.url);
+  await screen(page, 'authenticate');
+  const username = page.locator('#signin-username');
+  const password = page.locator('#signin-password');
+  const otp = page.locator('#signin-otp');
+  const error = page.locator('#signin-error');
+  await tabTo(page, browserName, 'signin-username');
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(error).toHaveText('Enter your username and password.');
+  for (const field of [username, password]) {
+    await expect(field).toHaveAttribute('aria-invalid', 'true');
+    await expect(field).toHaveAttribute('aria-describedby', 'signin-error');
+  }
+  await expect(otp).not.toHaveAttribute('aria-invalid');
+  await expect(otp).toHaveAttribute('aria-describedby', 'signin-otp-hint');
+  expect(await fitsWidth(page)).toBe(true);
+  await axe(page);
+  expect(posts).toBe(0);
+  await tabTo(page, browserName, 'signin-username');
+  await page.keyboard.type('local-only-user');
+  await expect(username).not.toHaveAttribute('aria-invalid');
+  await expect(username).not.toHaveAttribute('aria-describedby');
+  await expect(password).toHaveAttribute('aria-invalid', 'true');
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(username).not.toHaveAttribute('aria-invalid');
+  await expect(password).toHaveAttribute('aria-describedby', 'signin-error');
+  expect(posts).toBe(0);
+  await tabTo(page, browserName, 'signin-password');
+  await page.keyboard.type('local-only-not-submitted');
+  await expect(password).not.toHaveAttribute('aria-invalid');
+  await expect(password).not.toHaveAttribute('aria-describedby');
+  await tabTo(page, browserName, 'signin-username');
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.press('Enter');
+  await expect(error).toBeFocused();
+  await expect(username).toHaveAttribute('aria-invalid', 'true');
+  await expect(username).toHaveAttribute('aria-describedby', 'signin-error');
+  await expect(password).not.toHaveAttribute('aria-invalid');
+  await expect(password).not.toHaveAttribute('aria-describedby');
+  await expect(otp).toHaveAttribute('aria-describedby', 'signin-otp-hint');
+  await screen(page, 'authenticate');
+  expect(await fitsWidth(page)).toBe(true);
+  expect(await page.evaluate((url) => fetch(url).then((r) => r.status), `${fixture.issuer}/api/portal`)).toBe(401);
+  expect(posts).toBe(0);
+});
+
 // Double-click-jacking: a cross-site page opens a popup over its own tab, moves that tab to
 // a riAuth decision screen and closes the popup on the first click of a double-click, so the
 // second click lands on the decision. The page is never framed, so frame-ancestors cannot

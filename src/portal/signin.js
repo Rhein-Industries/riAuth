@@ -64,7 +64,10 @@
   }
   function clearError(id) {
     $(id).hidden = true; $(id).replaceChildren();
-    if (id === "signin-error") for (const field of FIELDS) $(field).removeAttribute("aria-invalid");
+    if (id === "signin-error") {
+      for (const field of FIELDS) $(field).removeAttribute("aria-invalid");
+      for (const field of ["signin-username", "signin-password"]) $(field).removeAttribute("aria-describedby");
+    }
   }
   function showError(id, text, portal = false) {
     $(id).replaceChildren(text);
@@ -310,7 +313,12 @@
     event.preventDefault();
     if (acting) return;
     const username = $("signin-username").value.trim(), password = $("signin-password").value, otp = code($("signin-otp").value);
-    if (!username || ($("signin-password").required && !password)) { clearError("signin-error"); showError("signin-error", "Enter your username and password."); return; }
+    if (!username || ($("signin-password").required && !password)) {
+      clearError("signin-error");
+      if (!username) { $("signin-username").setAttribute("aria-invalid", "true"); $("signin-username").setAttribute("aria-describedby", "signin-error"); }
+      if ($("signin-password").required && !password) { $("signin-password").setAttribute("aria-invalid", "true"); $("signin-password").setAttribute("aria-describedby", "signin-error"); }
+      showError("signin-error", "Enter your username and password."); return;
+    }
     if ($("signin-otp").required && !otp) { clearError("signin-error"); showError("signin-error", state?.requirements?.configured_totp ? "Enter your current authenticator code." : "Enter your authenticator or recovery code, or sign in with a passkey."); return; }
     $("signin-password").value = "";
     act($("signin-submit"), "signin-error", async () => {
@@ -320,7 +328,10 @@
       return next;
     }, "Couldn't sign in. Try again.");
   });
-  for (const field of FIELDS) $(field).addEventListener("input", () => $(field).removeAttribute("aria-invalid"));
+  for (const field of FIELDS) $(field).addEventListener("input", () => {
+    $(field).removeAttribute("aria-invalid");
+    if (field !== "signin-otp") $(field).removeAttribute("aria-describedby");
+  });
   $("signin-passkey").addEventListener("click", () => {
     if (acting) return;
     const attempt = ++passkeyAttempt;
