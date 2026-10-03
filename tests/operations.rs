@@ -952,3 +952,162 @@ fn schema_migrated_restore_still_logs_in_the_same_user() {
             .is_err()
     );
 }
+
+fn group_v2_backup(seed: &GrantFixture) -> (serde_json::Value, String) {
+    let group = riauth::model::Group {
+        name: "archive-group".into(),
+        members: std::collections::BTreeSet::from([common::text(&seed.user, "id")]),
+    };
+    seed.fixture
+        .core
+        .store
+        .write(|tx| tx.put("groups", &group.name, &group))
+        .unwrap();
+    let key = riauth::crypto::random_token("");
+    let backup = seed.fixture.core.backup(&seed.fixture.admin, &key).unwrap();
+    assert_eq!(backup["api_version"], "riauth.backup/v2");
+    (backup, key)
+}
+
+fn v2_backup_parts(
+    backup: &serde_json::Value,
+    key: &str,
+) -> ([u8; 32], Vec<serde_json::Value>, serde_json::Value) {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let key: [u8; 32] = URL_SAFE_NO_PAD.decode(key).unwrap().try_into().unwrap();
+    let chunks = backup["chunks"].as_array().unwrap();
+    let records = chunks[..chunks.len() - 1]
+        .iter()
+        .enumerate()
+        .map(|(index, encoded)| {
+            let bytes = URL_SAFE_NO_PAD.decode(encoded.as_str().unwrap()).unwrap();
+            let aad = format!("riauth.backup/v2/records/{index}");
+            let plain = riauth::crypto::unseal(&key, aad.as_bytes(), &bytes).unwrap();
+            serde_json::from_slice(&plain).unwrap()
+        })
+        .collect();
+    let bytes = URL_SAFE_NO_PAD
+        .decode(chunks.last().unwrap().as_str().unwrap())
+        .unwrap();
+    let plain = riauth::crypto::unseal(&key, b"riauth.backup/v2/manifest", &bytes).unwrap();
+    let manifest = serde_json::from_slice(&plain).unwrap();
+    (key, records, manifest)
+}
+
+fn v2_backup_with_repeated_name(
+    backup: &serde_json::Value,
+    key: &str,
+    within_chunk: bool,
+) -> serde_json::Value {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let (key, pages, mut manifest) = v2_backup_parts(backup, key);
+    let mut records = serde_json::Map::new();
+    for page in pages {
+        records.extend(page["records"].as_object().unwrap().clone());
+    }
+    let name = "groups/archive-group";
+    let value = records.get(name).unwrap().clone();
+    let mut bodies = Vec::new();
+    if within_chunk {
+        let mut encoded_records = serde_json::to_string(&records).unwrap();
+        assert_eq!(encoded_records.pop(), Some('}'));
+        encoded_records.push(',');
+        encoded_records.push_str(&serde_json::to_string(name).unwrap());
+        encoded_records.push(':');
+        encoded_records.push_str(&serde_json::to_string(&value).unwrap());
+        encoded_records.push('}');
+        bodies.push(format!(
+            "{{\"kind\":\"records\",\"index\":0,\"records\":{encoded_records}}}"
+        ));
+        // Keep the map-entry count separate from the repeated serialized name.
+        manifest["record_count"] = serde_json::json!(records.len());
+    } else {
+        bodies.push(
+            serde_json::json!({"kind": "records", "index": 0, "records": records}).to_string(),
+        );
+        let repeated = std::collections::BTreeMap::from([(name, value)]);
+        bodies.push(
+            serde_json::json!({"kind": "records", "index": 1, "records": repeated}).to_string(),
+        );
+        manifest["record_count"] = serde_json::json!(records.len() + 1);
+    }
+    let mut chunks = Vec::new();
+    for (index, body) in bodies.iter().enumerate() {
+        let aad = format!("riauth.backup/v2/records/{index}");
+        let sealed = riauth::crypto::seal(&key, aad.as_bytes(), body.as_bytes()).unwrap();
+        chunks.push(URL_SAFE_NO_PAD.encode(sealed));
+    }
+    manifest["digests"] = serde_json::json!(
+        chunks
+            .iter()
+            .map(|chunk| riauth::crypto::digest(chunk))
+            .collect::<Vec<_>>()
+    );
+    let sealed = riauth::crypto::seal(
+        &key,
+        b"riauth.backup/v2/manifest",
+        &serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    chunks.push(URL_SAFE_NO_PAD.encode(sealed));
+    let mut result = backup.clone();
+    result["chunks"] = serde_json::json!(chunks);
+    result
+}
+
+#[test]
+fn chunked_backup_restores_group_and_source_digest() {
+    let seed = GrantFixture::new();
+    let (backup, key) = group_v2_backup(&seed);
+    let before = seed.fixture.snapshot().unwrap();
+    let group_name = "groups/archive-group";
+    let digest_name = "index_group_source_digests/archive-group";
+    assert!(before.contains_key(group_name));
+    assert!(before.contains_key(digest_name));
+    let (_, pages, _) = v2_backup_parts(&backup, &key);
+    for name in [group_name, digest_name] {
+        assert!(
+            pages
+                .iter()
+                .any(|page| page["records"].get(name) == before.get(name)),
+            "original record must be included in the authenticated archive"
+        );
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let (input, key_file) = write_backup(directory.path(), "group", &backup, &key);
+    let output = directory.path().join("restored");
+    riauth::operations::restore(&input, &key_file, &output, None).unwrap();
+    let restored = riauth::core::Core::open(
+        riauth::config::Config::load(&output.join("riauth.toml")).unwrap(),
+    )
+    .unwrap();
+    let after = restored.store.read(|tx| tx.snapshot()).unwrap();
+    for name in [group_name, digest_name] {
+        assert!(
+            after.get(name) == before.get(name),
+            "restored record changed"
+        );
+    }
+    seed.assert_restored(&restored, &before);
+}
+
+#[test]
+fn chunked_backup_refuses_authenticated_repeated_names() {
+    let seed = GrantFixture::new();
+    let (backup, key) = group_v2_backup(&seed);
+    let before = seed.fixture.snapshot().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    for (label, within_chunk) in [("within", true), ("across", false)] {
+        let repeated = v2_backup_with_repeated_name(&backup, &key, within_chunk);
+        let (input, key_file) = write_backup(directory.path(), label, &repeated, &key);
+        let output = directory.path().join(format!("{label}-restored"));
+        let error = riauth::operations::restore(&input, &key_file, &output, None).unwrap_err();
+        assert_eq!(error.code, "invalid_request");
+        assert_eq!(error.message, "Backup payload is invalid");
+        assert!(
+            !output.exists(),
+            "repeated names must not create restore output"
+        );
+        seed.fixture.assert_snapshot(&before);
+    }
+}
