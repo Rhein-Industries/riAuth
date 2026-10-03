@@ -46,3 +46,29 @@ Root read the complete independent U10 review, all three authored OTP hunks and 
 The required-empty-code predicate, exact messages, alert focus and return before POST remain unchanged. The OTP field gains invalid/error association for that refusal; error clear and OTP input restore its original hint. The additive keyboard/small-viewport/axe/no-POST/portal401 case checks clearing and hint restoration without submitting a valid factor or granting an application/session. Its3367-byte authored addition follows the entire unchanged current test file. Node syntax and exact whole-byte inverse checks passed; no JS or browser test ran.
 
 A separate source-only CI hunk selects exactly the two focused feedback titles through a closed suffix alternation, preserving file, Chromium, one worker, zero retries and all other workflow bytes. YAML parsing and27 shell syntax blocks passed. This selection and the new required-code case remain UNRUN. The earlier No-tests-found failure remains failed; no original U10, real assistive-reader, physical authenticator or complete user journey result is inferred. Original status/primary remain unchanged.
+
+
+## Completed check job at the original selector pin
+
+Root verified completed run `37106315679` at source
+`1a517a1a461b7017c353d37a5e498d2c7cfa7985`: check
+`111159428192` and audit succeeded; integration `111159428293` failed.
+The complete private check log is 472,396 bytes, SHA-256
+`ab6586595c4e009133d0b6c4a3c46de78faea78ed42a5e633dde296282ac97c5`.
+Checkout, exact command, step boundaries, summaries and selected named blocks
+were read; this does not claim every private-valued output line was read.
+
+Within `cargo test --all-targets --features test-support,fuzzing --locked`,
+182 summaries total 1,330 passed / 0 failed / 182 ignored / 0 filtered.
+Background-capacity and reports-attribution named tests passed. SCIM OAuth
+passed 24/24 in 20.79 seconds; source-stage passed 24/24 in 33.06 seconds.
+Other standalone commands outside that block are excluded from these counts.
+
+The integration selector still produced **No tests found** and exit 1; the
+new U10 focused case did not execute at this pin. The later published
+`758c43acf94395b439c9aea30055e69c708a8690` selector correction and the
+unpublished required-code source/closed-two-title selection remain separate.
+This is a successful check job within a failed aggregate run, with no rare-race,
+external-provider, release, whole journey or original U10 completion claim.
+
+[Finite root receipt](evidence/wave30-ci-37106315679-completed-check-root-review.json).
