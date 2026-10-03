@@ -91,6 +91,9 @@ pub struct DeviceVerification {
     pub session_id: String,
     #[serde(default)]
     pub epoch: u64,
+    /// Canonical provider kind that accepted the proof; legacy rows require re-verification.
+    #[serde(default)]
+    pub provider: Option<String>,
     pub verified_at: u64,
     pub expires_at: u64,
 }

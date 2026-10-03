@@ -247,6 +247,7 @@ impl Core {
                 user_id: user.id.clone(),
                 session_id: session.id.clone(),
                 epoch: user.epoch,
+                provider: Some(device_trust::ProviderKind::Local.identity().into()),
                 verified_at,
                 expires_at: (verified_at + config.freshness_ttl)
                     .min(proof_expires_at)
@@ -311,6 +312,11 @@ impl Core {
                 user_id: user.id.clone(),
                 session_id: session.id.clone(),
                 epoch: user.epoch,
+                provider: Some(
+                    device_trust::ProviderKind::GoogleVerifiedAccessV2
+                        .identity()
+                        .into(),
+                ),
                 verified_at,
                 expires_at: (verified_at + config.freshness_ttl).min(session.expires_at),
             };
