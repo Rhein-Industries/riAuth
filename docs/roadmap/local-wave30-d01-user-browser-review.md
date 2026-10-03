@@ -17688,3 +17688,2604 @@ Actual post-evidence checks: `python3 scripts/check-docs.py` exited0 and
 no staged/untracked paths, the complete1262232-byte prior prefix exact and the
 35749-byte helper SHA75bfb8a unchanged. These are report/scope checks, not
 additional fixture execution or a changed outcome.
+
+## 2026-10-03 — Exact bounded initial-read timeout source; memory design UNEXECUTED
+
+Project 891e7443-8dac-4c1b-897f-9e53cb59c7ee, original D01 support,
+existing WT7 7c85f5ef-3fac-4f72-aaed-08474d7fb454.
+Reservation wave30_D01_bounded_request_timeout_materialization.
+Root owns acceptance/integration/status; independent review is concurrent in
+a distinct WT, without contact. No slot acquired or released; all memory and
+real browser execution remain HELD pending separate explicit release.
+
+**Source implemented EXACTLY; memory UNRUN.** The helper is36884 bytes/777
+lines, SHA256 37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406.
+Source-only commit c62bebcd8b24e66f4c77b8eaae49a669b2d77165 has parent
+6202ee1d90368895223e649199849a13769d6b46 and ONLY four helper hunks:
+Demo integer init, initial-read-only exact TimeoutError catch, main record
+init and existing finally copy.21 lines added/one removed. No variant.
+
+Read FULL57359-byte/1083-line d0f4f39d7e7bb43e83c858f13a4f321031c07d25:
+docs/roadmap/local-wave30-d01-bounded-request-read-timeout-plan.md, including
+all777 candidate lines and patch. Plan SHA256
+a67d73dd8914c0570680a1ff57bd12bb39715d04c1726390b3d0df562055f198.
+Starting35749-byte helper SHA75bfb8a was exact before write. CONTRIBUTING read;
+no ancestor AGENTS file present. Root's source-only authorization overrides
+running the contribution runtime checklist in this phase.
+
+The catch classifies ONLY exact built-in TimeoutError from the original first
+request-line read, attempted/done exactlyFalse, pending/cookie/subject/failure
+exactlyNone and exact int0..3, excluding bool/int subclasses. Counts1–3 are
+handled discards: no parse/route/reply/observer, private value read, journey
+flag/status, retry or stream reuse. Close staysTrue. Buffered partial bytes
+are discarded with the connection, never normalized/accepted or called empty.
+Count4 sets request_timeout/done BEFORE the original observer. No fifth
+listener-loop continuation follows done. Nonexact state, subclass/other
+exception, header/body/reply fault and Halt retain original terminal paths.
+A budget Halt during unwind keeps its original tag precedence; global/pending/
+phase deadlines, max600, pending180 and request/response5 remain unchanged.
+
+Full whole-byte inverse recovered entire75bfb8a; independent whole-AST inverse
+removed ONLY those four mapped nodes and recovered the entire original AST.
+All32 protected function spans below stayed byte/AST-identical;35 original
+top-level functions/methods, no added function. Constants/imports, guard
+accepted/refused sets, Authorization counter, observer, provider/native/crypto,
+reply/cleanup and public output remain exact. The ONLY new record field is
+private int0..4 outside checks, initialized0 before Demo and copied finally.
+The complete exact source and zero-context diff are archived below.
+
+**Future binding prerequisite:** frozen a270 launcher/controller still pins
+75bfb8a. This source changes no controller/composition/release-input pin.
+A separately reserved exact helper-pin-only adoption is required before any
+future launch; immutable source cannot silently trust a mutable helper hash.
+No source alignment/artifact/verifier/provider refresh or execution occurred.
+
+The entire1280101-byte6202 report prefix is preserved, SHA256
+1f760dd124d89de82b73c5c26bac7162c5cfd078fc72fa524cabd5f51a7f6da0.
+Five actual a270 captures were bounded data-only rehashed: nofollow, regular,
+current-owner/nlink1/0600, stable inode/size/time, all exact prefix hashes.
+No contents parsed/printed or file modified. All12 historical metadata and
+older captures remain unchanged. Actual protected403-only/helper1/controller1
+checkpoint stays FAILED; no retrospective timeout count, sender/empty-traffic/
+browser-preconnect/cause attribution or claim this will fix that failure.
+Whole60 cleanup stays unproven; independent absence/release proof stays dated.
+
+### ONE future stdlib-only memory envelope — no execution credit
+
+Complete child source below embeds all frozen inputs as ASCII JSON literals.
+Manifest binds exact full payload, readable logic and proposed supervisor.
+A future caller reads it as DATA from this immutable report, not regenerated/
+substituted bodies. Source strings are public code, not runtime secrets.
+The payload has94 planned cases in13 finite groups, independently testing
+field/operation/lifecycle boundaries rather than Cartesian combinations.
+Executed cases0. Future assertions/request totals are measured, not invented.
+Source-derived full-pass request totals are21 baseline/97 candidate; the future
+child and supervisor compare actual counters only after all94 cases complete.
+Old78/36/128/18 passes do not validate this change or composed module.
+
+Future child extracts reviewed definitions/constants by AST into object-only
+server/handler shells. It imports no helper and executes no helper module main.
+Chosen original Demo/Handler/HeaderReader/server bodies, exact main record/
+loop/copy slices and actual Budget.limit/tick operate only against controlled
+memory parser/read/write/dispatch/close/clock/disk/alarm sinks. Native/setup/
+invoke/begin/callback/main/constructors remain uncalled definitions; begin is
+a synthetic sink. No provider/crypto/service/subprocess/socket/file/Driver.
+
+Unchanged installed CPython3.14 request-loop/finish bodies were read as source,
+hashed and embedded. Their future use closes synthetic streams and proves no
+failed-stream reentry with original shutdown/active clearing under sinks;
+it does not prove physical TCP/browser cleanup. Parser returns are controlled,
+not wire parsing. Body-present refusal is original Content-Length rejection;
+no invented body-read operation is caught by this helper change.
+
+Four fresh handlers share one Demo/absolute budget. Each simulated partial read
+then exact TimeoutError clears its stream; first3 live/no observer/reply,
+fourth terminal before observer, queued fifth unread. Strict independent
+False/None/bool/int/float/int-subclass/counter0..4 edges, Timeout subclass/
+other exception, header/parser/body-present/reply faults, Budget Halt at
+entry/read/context-exit/global/pending/phase and fourth-exit precedence are
+covered. A context-exit injected Halt is a controlled boundary oracle, not a
+claim to trigger a real signal at an exact instant. Normal original guards
+on new streams, original Authorization first4/empty/duplicate/postflow/
+malformed/reply fault, independent counters, later fatal/first-only observer/
+projection error, record startup0/final0..4 and shutdown-error-without-absence
+are covered. No synthetic rejected traffic earns journey credit.
+
+Controller tests extract actual pure finite_observation,retain_observation,
+require, exact code==0/rp_nonzero statement and its original three-statement
+Exception outcome from frozen17326-byte template. The exact helper final
+all-checks requirement separately rejects an incomplete synthetic check.
+Diagnostic alone changes neither result nor first_failure; nonzero keeps
+browser_checkpoint/rp_nonzero failed outcome; zero alone stays failed.
+These are actual Python slices. JS
+first-failure/phase/final-page requirements remain immutable source facts,
+not an executed JS/composed oracle or future browser pass.
+
+The child emits ONE complete closed fixed numeric/groups/hash/failure-class
+JSON BEFORE exit grading; private synthetic values are never output. First
+unexpected case stops, leaving future unreached groups incomplete. Alarm30s.
+Proposed supervisor owns only ONE created memory child handle, communicate30s
+plus remainder to35 for own kill/join, retains numeric exit/elapsed/hash/closed
+result in NEW exclusive0600 evidence BEFORE comparison. OS/spawn/scheduling
+is not a proven hard latency bound; actual late/missing join must remain
+failure. Future fresh evidence path is a separate root release input; none
+is launched here. Child has no subprocess/network/file cleanup or Driver.
+Supervisor is archived source only; no child/process/case/VM/stub ran now.
+
+### Actual static checks and retained construction failures
+
+AST parsing/in-memory compile yielded code objects ONLY, never executed.
+Whole byte/AST inverse,32 span proofs, four exact hunks, constants/imports,
+private finite schema/privacy and source-only scope passed. Docs checker,
+hygiene checker(1084 tracked files), source and cached whitespace exited0.
+
+First exact diff comparison exited1: Git appended function names to hunk
+headers. Normalizing ONLY those header suffixes recovered exact1486-byte
+plan patch SHA11f7af8c from1573-byte display; source unchanged. A design string
+transform refused a two-match keep_prior predicate BEFORE writing; narrowing
+its holder-initialization context fixed that construction. One archive-builder
+JS call had SyntaxError BEFORE evaluation/writing; its Python/prose fence
+delimiter was encoded safely. None was a case or helper runtime failure.
+All are preserved here, not hidden as successful execution.
+
+Frozen harness subscript-call spelling includes a space before parentheses
+to avoid the existing Markdown checker code false-positive. That is valid
+Python in this NEW design, not a normalization of frozen candidate/controller
+or old report. Full exact archive is authoritative, with no decode edits.
+Final report/static scope checks are recorded with its separate commit receipt.
+
+No native/version/provider/CLI/HTTP/socket/listener/Driver/browser/helper import/
+function/main/harness/case/VM/Cargo/compiler/runtime, deletion/alignment/
+controller/helper variant, main/push/status/new task/WT/worker or contact.
+RiWork Cua.ai Driver MCP preference remains. Real browser stays HELD; root
+alone original D01/D05 gates, closed rows unaffected. No universal/physical/
+tenant/installation/LDAP/SCIM/HA/release or full-journey acceptance claim.
+
+### Closed source and planned envelope manifest
+
+```json
+{
+  "candidate": {
+    "bytes": 36884,
+    "lines": 777,
+    "sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406"
+  },
+  "diff": {
+    "bytes": 1486,
+    "sha256": "11f7af8c63652869b4dcdbc446527c96aa7fda378ed9ba0f04af242cb001ca85"
+  },
+  "embedded_inputs": {
+    "BASELINE_SOURCE": {
+      "bytes": 35749,
+      "sha256": "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1"
+    },
+    "CANDIDATE_SOURCE": {
+      "bytes": 36884,
+      "sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406"
+    },
+    "CONTROLLER_PYTHON": {
+      "bytes": 17303,
+      "sha256": "ce8d3f7b5cc08ce114e7f60a69a498305dadcc51956c8824d362213b58fc0efa"
+    },
+    "STDLIB_FINISH": {
+      "bytes": 295,
+      "sha256": "0a7976091ee7e8f6faef00cd7b71ac44dcda15761fc1a7d6989129047afc9ceb"
+    },
+    "STDLIB_HANDLE": {
+      "bytes": 202,
+      "sha256": "e72d9be7bdfeae9f9afe05081cb070b104c2415cdbe2a1ea20e9c6e28be6653c"
+    }
+  },
+  "executed_cases": 0,
+  "harness_logic": {
+    "bytes": 34191,
+    "lines": 658,
+    "sha256": "5839fdb6e45d85b630da6e857440f28c74022ff073f34391e3847bca3e4a2cba"
+  },
+  "harness_payload": {
+    "bytes": 128630,
+    "lines": 667,
+    "sha256": "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e"
+  },
+  "immutable_plan": "d0f4f39d7e7bb43e83c858f13a4f321031c07d25",
+  "journey_credit": false,
+  "memory_supervisor": {
+    "bytes": 7132,
+    "lines": 146,
+    "sha256": "db8fb36ea4460ed862b3c627ba5083388f1901e725d33e77dc8e96a575b16d30"
+  },
+  "plan_bytes": 57359,
+  "plan_sha256": "a67d73dd8914c0570680a1ff57bd12bb39715d04c1726390b3d0df562055f198",
+  "planned_cases": 94,
+  "planned_groups": {
+    "authorization_parity": 7,
+    "controller_interpretation": 4,
+    "discard_lifecycle": 1,
+    "eligible_counter": 4,
+    "exception_identity": 3,
+    "guard_parity": 12,
+    "halt_boundaries": 7,
+    "normal_after_discard": 3,
+    "observer_first_only": 4,
+    "operation_boundaries": 4,
+    "record_schema": 6,
+    "shutdown_failure": 1,
+    "strict_state": 38
+  },
+  "planned_request_calls_if_complete": {
+    "baseline": 21,
+    "candidate": 97
+  },
+  "real_browser_released": false,
+  "reservation": "wave30_D01_bounded_request_timeout_materialization",
+  "source_commit": "c62bebcd8b24e66f4c77b8eaae49a669b2d77165",
+  "source_parent": "6202ee1d90368895223e649199849a13769d6b46",
+  "stdlib_source_reads": [
+    {
+      "file": "/opt/homebrew/opt/python@3.14/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py",
+      "file_sha256": "b917e19d333ae8aa1995063c9bddf5a15391f8f7caf32e41a22067824d643429",
+      "method": "BaseHTTPRequestHandler.handle",
+      "method_bytes": 226,
+      "method_sha256": "2f6ec5042f51c6943d0bded0c0d52265d2c866e291d76c57f82e9d9de70cc97f"
+    },
+    {
+      "file": "/opt/homebrew/opt/python@3.14/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py",
+      "file_sha256": "ecbbe1a633801460399a8f10b39007aa0e13cdbdad507e39414000f097b769b5",
+      "method": "StreamRequestHandler.finish",
+      "method_bytes": 335,
+      "method_sha256": "8c34f505ee78140fcbaf2a02e465e3d774ee0acfe25a88f368bf3b0049c83dd7"
+    }
+  ]
+}
+```
+
+### Protected32 function spans (static)
+
+```json
+[
+  {
+    "bytes": 136,
+    "function": "Failure.__init__",
+    "new_lines": [
+      70,
+      72
+    ],
+    "old_lines": [
+      70,
+      72
+    ],
+    "sha256": "d1b5e45b49256fd5b7ac1f93d9d72594661906bd01e552b6bdf0c542c00f499e"
+  },
+  {
+    "bytes": 101,
+    "function": "Halt.__init__",
+    "new_lines": [
+      78,
+      79
+    ],
+    "old_lines": [
+      78,
+      79
+    ],
+    "sha256": "b5488c1c7643d6325bca6e5e445bbf2fe372fe4f7f82a8e8a7e34d2abbc133fd"
+  },
+  {
+    "bytes": 78,
+    "function": "require",
+    "new_lines": [
+      82,
+      84
+    ],
+    "old_lines": [
+      82,
+      84
+    ],
+    "sha256": "51ea9bc4596460dda0ff02b03124dc4ea9fa78b704e6f38e6989d23dcc775392"
+  },
+  {
+    "bytes": 372,
+    "function": "private_directory",
+    "new_lines": [
+      87,
+      96
+    ],
+    "old_lines": [
+      87,
+      96
+    ],
+    "sha256": "4c2e42dc80614457b026ab7d008a93a641ac0471ae5e1549ab8d7f4f9d4ef08c"
+  },
+  {
+    "bytes": 563,
+    "function": "private_bytes",
+    "new_lines": [
+      99,
+      111
+    ],
+    "old_lines": [
+      99,
+      111
+    ],
+    "sha256": "e24cb5a2621ab8c62b703f511453623822f8d469440073c3369523df3c0fc572"
+  },
+  {
+    "bytes": 503,
+    "function": "load_verifier",
+    "new_lines": [
+      114,
+      125
+    ],
+    "old_lines": [
+      114,
+      125
+    ],
+    "sha256": "fc1af8a113f4e27ddc41f1f43f3e514f25d8aa454aced853dad5b251b2e37162"
+  },
+  {
+    "bytes": 1172,
+    "function": "client_secret",
+    "new_lines": [
+      128,
+      153
+    ],
+    "old_lines": [
+      128,
+      153
+    ],
+    "sha256": "fed0b5debeb1de233529e2e26f43fd86ee0fbff815474bac238055b64cb66b7d"
+  },
+  {
+    "bytes": 292,
+    "function": "Budget.__init__",
+    "new_lines": [
+      159,
+      165
+    ],
+    "old_lines": [
+      159,
+      165
+    ],
+    "sha256": "4651e42d4ed66f3b3e0ae91155f3613d56039468da39827bac7a40231f11edae"
+  },
+  {
+    "bytes": 465,
+    "function": "Budget.__enter__",
+    "new_lines": [
+      167,
+      175
+    ],
+    "old_lines": [
+      167,
+      175
+    ],
+    "sha256": "10898ef108b1772b6d11b38e307dc9cd50da154cc56f1a526f3a79bbcf494794"
+  },
+  {
+    "bytes": 74,
+    "function": "Budget.interrupt",
+    "new_lines": [
+      177,
+      178
+    ],
+    "old_lines": [
+      177,
+      178
+    ],
+    "sha256": "1cdd5a13340ac4df751222b4cf12bb72dc1188b063905f62944d27a1bdba8c25"
+  },
+  {
+    "bytes": 919,
+    "function": "Budget.tick",
+    "new_lines": [
+      180,
+      199
+    ],
+    "old_lines": [
+      180,
+      199
+    ],
+    "sha256": "5a29a5b670f3fc529b8545101fd2513c9f288e2dc8f66b66a8fbad2a7c9fa6b6"
+  },
+  {
+    "bytes": 523,
+    "function": "Budget.limit",
+    "new_lines": [
+      202,
+      214
+    ],
+    "old_lines": [
+      202,
+      214
+    ],
+    "sha256": "e40220befe6c87f8b8610316d4d62615cc8cefc721791ffc7de5994c7e0a7dcd"
+  },
+  {
+    "bytes": 234,
+    "function": "Budget.close",
+    "new_lines": [
+      216,
+      221
+    ],
+    "old_lines": [
+      216,
+      221
+    ],
+    "sha256": "33ab3551e289bc435d5705352204b6a23471c0804b36984bdcee65b28dc31dc2"
+  },
+  {
+    "bytes": 2299,
+    "function": "observe_unexpected_failure",
+    "new_lines": [
+      224,
+      268
+    ],
+    "old_lines": [
+      224,
+      268
+    ],
+    "sha256": "8964db06d0d9242b321937ab36400571d52ceec3c07c322313ad836b7ca7477a"
+  },
+  {
+    "bytes": 420,
+    "function": "Demo.invoke",
+    "new_lines": [
+      286,
+      295
+    ],
+    "old_lines": [
+      285,
+      294
+    ],
+    "sha256": "5eb84dfba43fe8918ac8fb140a749ba733614609a3f4875f1e17697c0192a16f"
+  },
+  {
+    "bytes": 1708,
+    "function": "Demo.setup",
+    "new_lines": [
+      297,
+      323
+    ],
+    "old_lines": [
+      296,
+      322
+    ],
+    "sha256": "026f039d11fc6632e96ea9a390323076c70bc9db6a92b9d2fc74e30143085882"
+  },
+  {
+    "bytes": 1089,
+    "function": "Demo.begin",
+    "new_lines": [
+      325,
+      342
+    ],
+    "old_lines": [
+      324,
+      341
+    ],
+    "sha256": "52dd032eb5917db52b5706237978855c85c4df0159306ff2ebed85cf46242dbc"
+  },
+  {
+    "bytes": 3077,
+    "function": "Demo.callback",
+    "new_lines": [
+      344,
+      392
+    ],
+    "old_lines": [
+      343,
+      391
+    ],
+    "sha256": "7d7850f38d185cb41b0506de3fac9a47763bbad976f20458e69190ce58a3f893"
+  },
+  {
+    "bytes": 206,
+    "function": "Demo.clear",
+    "new_lines": [
+      394,
+      398
+    ],
+    "old_lines": [
+      393,
+      397
+    ],
+    "sha256": "76b4bc0825c4aeab1ed26bce7dca8a48a6ffc00239d430147bf75194c03b16f6"
+  },
+  {
+    "bytes": 105,
+    "function": "HeaderReader.__init__",
+    "new_lines": [
+      402,
+      403
+    ],
+    "old_lines": [
+      401,
+      402
+    ],
+    "sha256": "a3790e422803c1a6e854dc5140d649e9684b51d42120a821d1eb7c879cf18a78"
+  },
+  {
+    "bytes": 337,
+    "function": "HeaderReader.readline",
+    "new_lines": [
+      405,
+      411
+    ],
+    "old_lines": [
+      404,
+      410
+    ],
+    "sha256": "bccf6856884f362c8410d59babb626dcd54df3d62f8c48aa8e2e0da10a987739"
+  },
+  {
+    "bytes": 156,
+    "function": "DemoServer.__init__",
+    "new_lines": [
+      415,
+      418
+    ],
+    "old_lines": [
+      414,
+      417
+    ],
+    "sha256": "1785bc5f9dda8fcd270cade0d15eb3d1e743bf7ff64f3d39b5cc45de28e76ecd"
+  },
+  {
+    "bytes": 233,
+    "function": "DemoServer.process_request",
+    "new_lines": [
+      420,
+      426
+    ],
+    "old_lines": [
+      419,
+      425
+    ],
+    "sha256": "25108b868f6360838a5f7c417f1e73cd5bb1e0a2ff16b23c9f376f3fae6bacfa"
+  },
+  {
+    "bytes": 268,
+    "function": "DemoServer.handle_error",
+    "new_lines": [
+      428,
+      433
+    ],
+    "old_lines": [
+      427,
+      432
+    ],
+    "sha256": "b711043d2d98b64348f17886167157f2356973e126157d4943f2ce86d98d85cd"
+  },
+  {
+    "bytes": 55,
+    "function": "Handler.log_message",
+    "new_lines": [
+      444,
+      445
+    ],
+    "old_lines": [
+      443,
+      444
+    ],
+    "sha256": "9415ff13ff560b931f0b90127684a9d5d724474b2fac6b73e924f06c3ad79508"
+  },
+  {
+    "bytes": 212,
+    "function": "Handler.record_request_reason",
+    "new_lines": [
+      447,
+      450
+    ],
+    "old_lines": [
+      446,
+      449
+    ],
+    "sha256": "2ef7e4da6a2af43b409156617025b354b62b275477a50b1f55f903bdd44def7b"
+  },
+  {
+    "bytes": 168,
+    "function": "Handler.require_request",
+    "new_lines": [
+      452,
+      455
+    ],
+    "old_lines": [
+      451,
+      454
+    ],
+    "sha256": "2508612100ee952ce5effcd92926aab49ba14bea0fbb39b9928fa500faa07aef"
+  },
+  {
+    "bytes": 263,
+    "function": "Handler.send_error",
+    "new_lines": [
+      457,
+      460
+    ],
+    "old_lines": [
+      456,
+      459
+    ],
+    "sha256": "a1b2185b6c15f1cd419e5a8ab9e81b2197a485f59b0fbf32a85bfc28e3c2ca69"
+  },
+  {
+    "bytes": 796,
+    "function": "Handler.cookies",
+    "new_lines": [
+      549,
+      564
+    ],
+    "old_lines": [
+      531,
+      546
+    ],
+    "sha256": "434eae12a7d07e26435a76a45cdeb653665a3d47d378ed2085f6b05ac0118f0b"
+  },
+  {
+    "bytes": 1573,
+    "function": "Handler.get",
+    "new_lines": [
+      566,
+      591
+    ],
+    "old_lines": [
+      548,
+      573
+    ],
+    "sha256": "2a4ca823f57c2756411742d6226e58cfc88b429edcbd96ceda95622d263d09d1"
+  },
+  {
+    "bytes": 1628,
+    "function": "Handler.reply",
+    "new_lines": [
+      593,
+      619
+    ],
+    "old_lines": [
+      575,
+      601
+    ],
+    "sha256": "fa0e0f51f0d900b7daec1b6568fc9c503aad4c2544ff4b3800c900de2c3f6c12"
+  },
+  {
+    "bytes": 73,
+    "function": "QuietParser.error",
+    "new_lines": [
+      623,
+      624
+    ],
+    "old_lines": [
+      605,
+      606
+    ],
+    "sha256": "5c71b29cba54c481fa57007063590223e8f2a8ed2b2e4564c03315adfa354351"
+  }
+]
+```
+
+### Exact four-hunk source diff
+
+```diff
+--- a/scripts/d01-confidential-browser-demo.py
++++ b/scripts/d01-confidential-browser-demo.py
+@@ -282,0 +283 @@
++        self.preflow_request_timeouts = 0
+@@ -468 +469,18 @@
+-                self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
++                try:
++                    self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
++                except TimeoutError as timeout:
++                    if not (type(timeout) is TimeoutError
++                            and demo.attempted is False and demo.pending is None
++                            and demo.cookie is None and demo.subject is None
++                            and demo.done is False and demo.failure is None
++                            and type(demo.preflow_request_timeouts) is int
++                            and 0 <= demo.preflow_request_timeouts < 4):
++                        raise
++                    demo.preflow_request_timeouts += 1
++                    if demo.preflow_request_timeouts == 4:
++                        demo.failure, demo.done = "request_timeout", True
++                        try:
++                            observe_unexpected_failure(demo.unexpected_failure_observation, "handler")
++                        except BaseException:
++                            pass
++                    return
+@@ -615,0 +634 @@
++              "preflow_request_timeouts": 0,
+@@ -709,0 +729 @@
++            record["preflow_request_timeouts"] = demo.preflow_request_timeouts
+```
+
+### Complete materialized candidate — source data
+
+```python
+#!/usr/bin/env python3
+"""One disposable confidential local-demo application; browser authentication only.
+
+Python 3.11+, POSIX alarms, the pinned recovery verifier and native OpenSSL are
+prerequisites. Import starts nothing. The external owner supplies a private lab,
+registers the printed client, drives the browser through RiWork Cua.ai Driver,
+and owns the IdP/browser lifecycle and the overall 15-minute cleanup deadline.
+This helper neither logs in to riAuth nor approves an authorization request.
+"""
+
+import argparse
+import contextlib
+import hashlib
+import http.server
+import json
+import os
+import re
+import secrets
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import time
+import types
+import urllib.parse
+from pathlib import Path
+
+
+ISSUER = "http://localhost:9000"
+CLIENT_ID = "local-demo"
+ORIGIN = "http://localhost:3000"
+AUTHORITY = "localhost:3000"
+CALLBACK = ORIGIN + "/callback"
+FLOW_COOKIE = "d01_demo_flow"
+APP_COOKIE = "d01_local_demo"
+VERIFIER_COMMIT = "9cefe7a56425bb73c17753e8766d92320b77da3b"
+VERIFIER_BLOB = "3be747d03146f1bcaa3ec012ee8d173b61fa737d"
+VERIFIER_SHA256 = "f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d"
+OPENSSL_SHA256 = "67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72"
+OPENSSL_VERSION = "OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)"
+MAX_FILE = 256 * 1024
+MAX_REQUEST_LINE = 8192
+MAX_HEADERS = 8192
+MAX_HEADER_LINE = 4096
+MAX_HEADER_COUNT = 32
+MAX_COOKIE = 4096
+REQUEST_INVALID_REASONS = {
+    "http_parse", "host", "authorization", "transfer_encoding", "expect",
+    "content_length", "target_scheme", "target_netloc", "target_fragment",
+    "method", "post_target", "origin", "content_type", "cookie_header_count",
+    "own_cookie_shape",
+}
+STOP_FREE_BYTES = 17 * 1024**3 // 2
+PENDING_SECONDS = 180
+FAILURE_TAGS = {
+    "arguments_invalid", "paths_invalid", "private_file_invalid",
+    "credential_invalid", "verifier_hash_mismatch", "verifier_import_failed",
+    "provider_failed", "discovery_failed", "listener_failed",
+    "request_invalid", "request_limit", "request_timeout", "response_timeout",
+    "flow_already_started", "callback_invalid", "callback_already_consumed",
+    "token_exchange_failed", "token_validation_failed", "userinfo_failed",
+    "protected_before_unobserved", "fixture_deadline", "pending_deadline",
+    "disk_margin", "disk_observation_failed", "interrupted", "cleanup_failed",
+    "evidence_write_failed", "unexpected_failure",
+}
+
+
+class Failure(Exception):
+    def __init__(self, tag):
+        self.tag = tag if tag in FAILURE_TAGS else "unexpected_failure"
+        super().__init__(self.tag)
+
+
+class Halt(BaseException):
+    """Pass through HTTP/verifier Exception handlers to owned finally cleanup."""
+
+    def __init__(self, tag):
+        self.tag = tag if tag in FAILURE_TAGS else "unexpected_failure"
+
+
+def require(condition, tag):
+    if not condition:
+        raise Failure(tag)
+
+
+def private_directory(path):
+    path = Path(os.path.abspath(path))
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                and stat.S_IMODE(info.st_mode) == 0o700, "paths_invalid")
+    finally:
+        os.close(fd)
+    return path
+
+
+def private_bytes(path, limit=MAX_FILE):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(fd)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+                and stat.S_IMODE(info.st_mode) == 0o600
+                and 0 < info.st_size <= limit, "private_file_invalid")
+        with os.fdopen(fd, "rb", closefd=False) as source:
+            raw = source.read(limit + 1)
+        require(0 < len(raw) <= limit, "private_file_invalid")
+        return raw
+    finally:
+        os.close(fd)
+
+
+def load_verifier(path):
+    raw = private_bytes(path)
+    require(hashlib.sha256(raw).hexdigest() == VERIFIER_SHA256,
+            "verifier_hash_mismatch")
+    # Execute precisely the verified bytes, without rereading or writing pycache.
+    module = types.ModuleType("d01_pinned_recovery_verifier")
+    module.__file__ = str(path)
+    try:
+        exec(compile(raw, str(path), "exec"), module.__dict__)
+    except Exception:
+        raise Failure("verifier_import_failed") from None
+    return module
+
+
+def client_secret(module, path):
+    try:
+        saved = module.json_object(private_bytes(path))
+    except Failure:
+        raise
+    except Exception:
+        raise Failure("credential_invalid") from None
+    client = saved.get("client")
+    require(isinstance(client, dict), "credential_invalid")
+    settings, scopes = client.get("settings"), client.get("scopes")
+    require(client.get("client_id") == CLIENT_ID
+            and client.get("confidential") is True
+            and client.get("service") is False and client.get("enabled") is True
+            and client.get("redirect_uris") == [CALLBACK]
+            and isinstance(scopes, list) and len(scopes) == 2
+            and all(isinstance(value, str) for value in scopes)
+            and set(scopes) == {"openid", "profile"}
+            and isinstance(settings, dict)
+            and settings.get("token_endpoint_auth_method") is None,
+            "credential_invalid")
+    secret = saved.get("client_secret")
+    require(isinstance(secret, str) and 0 < len(secret) <= 4096
+            and all(32 <= ord(value) <= 126 for value in secret),
+            "credential_invalid")
+    saved.clear()
+    return secret
+
+
+class Budget:
+    """One main-thread alarm bounds blocking work and samples free space."""
+
+    def __init__(self, lab, started, seconds):
+        self.lab, self.deadline = lab, started + seconds
+        self.phase_deadline = self.pending_deadline = None
+        self.phase_tag = "fixture_deadline"
+        self.minimum_free = None
+        self.samples = 0
+        self.previous = {}
+
+    def __enter__(self):
+        require(hasattr(signal, "setitimer") and hasattr(signal, "SIGALRM")
+                and signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0),
+                "arguments_invalid")
+        for name in (signal.SIGALRM, signal.SIGINT, signal.SIGTERM):
+            self.previous[name] = signal.getsignal(name)
+            signal.signal(name, self.tick if name == signal.SIGALRM else self.interrupt)
+        self.tick()
+        return self
+
+    def interrupt(self, signum, frame):
+        raise Halt("interrupted")
+
+    def tick(self, signum=None, frame=None):
+        try:
+            free = shutil.disk_usage(self.lab).free
+        except Exception:
+            raise Halt("disk_observation_failed") from None
+        self.samples += 1
+        self.minimum_free = free if self.minimum_free is None else min(self.minimum_free, free)
+        require_free = free >= STOP_FREE_BYTES
+        if not require_free:
+            raise Halt("disk_margin")
+        now = time.monotonic()
+        deadlines = [(self.deadline, "fixture_deadline")]
+        if self.phase_deadline is not None:
+            deadlines.append((self.phase_deadline, self.phase_tag))
+        if self.pending_deadline is not None:
+            deadlines.append((self.pending_deadline, "pending_deadline"))
+        deadline, tag = min(deadlines)
+        if now >= deadline:
+            raise Halt(tag)
+        signal.setitimer(signal.ITIMER_REAL, min(1.0, deadline - now))
+
+    @contextlib.contextmanager
+    def limit(self, seconds, tag):
+        old = self.phase_deadline, self.phase_tag
+        deadline = time.monotonic() + seconds
+        if old[0] is None or deadline < old[0]:
+            self.phase_deadline, self.phase_tag = deadline, tag
+        try:
+            self.tick()
+            yield
+        finally:
+            self.phase_deadline, self.phase_tag = old
+            # Do not replace an in-flight Halt with another alarm during unwinding.
+            if sys.exc_info()[0] is None:
+                self.tick()
+
+    def close(self):
+        if self.previous:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            for name, handler in self.previous.items():
+                signal.signal(name, handler)
+            self.previous.clear()
+
+
+def observe_unexpected_failure(holder, site):
+    """First-only finite private observation; never replace the original outcome."""
+    try:
+        if holder["observed"] or site not in ("handler", "server", "main"):
+            return
+        holder["observed"] = True
+        error = sys.exc_info()[1]
+        label = "other"
+        for kind, name in ((AttributeError, "AttributeError"),
+                           (TypeError, "TypeError"), (ValueError, "ValueError"),
+                           (KeyError, "KeyError"), (OSError, "OSError"),
+                           (BrokenPipeError, "BrokenPipeError"),
+                           (ConnectionResetError, "ConnectionResetError"),
+                           (TimeoutError, "TimeoutError")):
+            if type(error) is kind:
+                label = name
+                break
+        own_function = own_line = None
+        codes = (
+            (HeaderReader.readline.__code__, "HeaderReader.readline"),
+            (DemoServer.process_request.__code__, "DemoServer.process_request"),
+            (Demo.begin.__code__, "Demo.begin"),
+            (Demo.callback.__code__, "Demo.callback"),
+            (Demo.invoke.__code__, "Demo.invoke"),
+            (Handler.handle_one_request.__code__, "Handler.handle_one_request"),
+            (Handler.send_error.__code__, "Handler.send_error"),
+            (Handler.get.__code__, "Handler.get"),
+            (Handler.reply.__code__, "Handler.reply"),
+            (main.__code__, "main"),
+        )
+        trace = BaseException.__traceback__.__get__(error, BaseException) if isinstance(error, BaseException) else None
+        for _ in range(64):
+            if trace is None:
+                break
+            for code, name in codes:
+                if trace.tb_frame.f_code is code and type(trace.tb_lineno) is int and 1 <= trace.tb_lineno <= 1024:
+                    own_function, own_line = name, trace.tb_lineno
+            trace = trace.tb_next
+        if trace is not None:
+            own_function = own_line = None
+        holder["diagnostic"] = {"site": site, "exception_class": label,
+                                "own_function": own_function, "own_line": own_line}
+    except BaseException:
+        # Projection/storage failures retain the first latch and original handler.
+        pass
+
+
+class Demo:
+    def __init__(self, module, workspace, secret, budget, checks, statuses):
+        self.module, self.workspace, self.secret = module, workspace, secret
+        self.issuer, self.client_id = ISSUER, CLIENT_ID
+        self.budget, self.checks = budget, checks
+        self.statuses = statuses
+        self.stage = "setup"
+        self.pending = self.cookie = self.subject = None
+        self.attempted = self.done = False
+        self.failure = None
+        self.request_invalid_reason = None
+        self.preflow_authorization_refusals = 0
+        self.preflow_request_timeouts = 0
+        self.unexpected_failure_observation = {"observed": False, "diagnostic": None}
+
+    def invoke(self, stage, seconds, function, *args, **kwargs):
+        self.stage = stage
+        try:
+            with self.budget.limit(seconds, stage + "_failed"):
+                return function(*args, **kwargs)
+        except Failure:
+            raise
+        except Exception:
+            # Imported failures are never formatted or copied into the record.
+            raise Failure(stage + "_failed") from None
+
+    def setup(self, executable):
+        def provider():
+            self.openssl = Path(executable).resolve(strict=True)
+            info = self.openssl.stat()
+            require(str(Path(executable)) == "/opt/homebrew/bin/openssl"
+                    and stat.S_ISREG(info.st_mode) and 0 < info.st_size <= 32 * 1024 * 1024,
+                    "provider_failed")
+            with self.openssl.open("rb") as source:
+                require(hashlib.file_digest(source, "sha256").hexdigest() == OPENSSL_SHA256,
+                        "provider_failed")
+            self.openssl_environment = {key: value for key, value in os.environ.items()
+                                        if key in {"PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"}}
+            result = subprocess.run([str(self.openssl), "version"], capture_output=True,
+                                    timeout=5, env=self.openssl_environment)
+            require(result.returncode == 0
+                    and len(result.stdout) <= 256 and len(result.stderr) <= 4096
+                    and result.stdout.decode("ascii").strip() == OPENSSL_VERSION,
+                    "provider_failed")
+        self.invoke("provider", 5, provider)
+        self.checks["provider_identity_verified"] = True
+        document = self.invoke("discovery", 5,
+                               self.module.LocalRelyingParty.discovery, self)
+        methods = document.get("token_endpoint_auth_methods_supported")
+        require(isinstance(methods, list) and "client_secret_post" in methods
+                and all(isinstance(value, str) for value in methods), "discovery_failed")
+        self.discovery_document = document
+        self.checks["discovery_verified"] = True
+
+    def begin(self):
+        self.stage = "flow"
+        require(not self.attempted, "flow_already_started")
+        self.attempted = True
+        self.pending = {"state": secrets.token_urlsafe(32), "nonce": secrets.token_urlsafe(32),
+                        "verifier": secrets.token_urlsafe(48),
+                        "flow_cookie": secrets.token_urlsafe(32),
+                        "started_at": int(time.time())}
+        self.budget.pending_deadline = time.monotonic() + PENDING_SECONDS
+        self.budget.tick()
+        fields = {"response_type": "code", "client_id": CLIENT_ID,
+                  "redirect_uri": CALLBACK, "scope": "openid profile",
+                  "state": self.pending["state"], "nonce": self.pending["nonce"],
+                  "code_challenge": self.module.b64url(
+                      hashlib.sha256(self.pending["verifier"].encode("ascii")).digest()),
+                  "code_challenge_method": "S256"}
+        return (self.discovery_document["authorization_endpoint"] + "?"
+                + urllib.parse.urlencode(fields), self.pending["flow_cookie"])
+
+    def callback(self, query, flow_cookie):
+        self.stage = "callback"
+        require(self.pending is not None, "callback_already_consumed")
+        pending, self.pending = self.pending, None
+        self.budget.pending_deadline = None
+        raw = tokens = access = subject = code = form = None
+        try:
+            require(self.module.equal(flow_cookie, pending["flow_cookie"]), "callback_invalid")
+            try:
+                code = self.module.LocalRelyingParty.callback_fields(self, query, pending["state"])
+            except Exception:
+                raise Failure("callback_invalid") from None
+            self.checks["state_issuer_flow_cookie_verified"] = True
+            form = {"grant_type": "authorization_code", "client_id": CLIENT_ID,
+                    "client_secret": self.secret, "redirect_uri": CALLBACK,
+                    "code": code, "code_verifier": pending["verifier"]}
+            status, _, raw = self.invoke("token_exchange", 5, self.module.request,
+                                         self.discovery_document["token_endpoint"],
+                                         method="POST", form=form)
+            self.statuses["token_exchange"] = status
+            require(status == 200, "token_exchange_failed")
+            tokens = self.module.json_object(raw)
+            access, scope = tokens.get("access_token"), tokens.get("scope")
+            require(isinstance(access, str) and 0 < len(access) <= self.module.MAX_TOKEN
+                    and re.fullmatch(r"[A-Za-z0-9_.-]+", access) is not None
+                    and tokens.get("token_type") == "Bearer" and isinstance(scope, str)
+                    and set(scope.split()) == {"openid", "profile"}, "token_exchange_failed")
+            self.checks["confidential_s256_exchange_verified"] = True
+            # Keep the pinned implementation; cap combined JWKS/signature work
+            # at five real seconds as well as its existing socket/process caps.
+            subject = self.invoke("token_validation", 5,
+                                  self.module.LocalRelyingParty.verify_id_token,
+                                  self, tokens.get("id_token"), access, pending,
+                                  self.discovery_document)
+            self.checks["rs256_jwks_issuer_audience_nonce_time_access_hash_verified"] = True
+            status, _, raw = self.invoke("userinfo", 5, self.module.request,
+                                         self.discovery_document["userinfo_endpoint"], bearer=access)
+            self.statuses["userinfo"] = status
+            require(status == 200 and self.module.equal(self.module.json_object(raw).get("sub"), subject),
+                    "userinfo_failed")
+            self.checks["userinfo_subject_verified"] = True
+            self.cookie, self.subject = secrets.token_urlsafe(32), subject
+            return self.cookie
+        finally:
+            pending.clear()
+            if form is not None:
+                form.clear()
+            raw = tokens = access = subject = code = form = None
+            self.secret = None
+
+    def clear(self):
+        if self.pending is not None:
+            self.pending.clear()
+        self.pending = self.cookie = self.subject = self.secret = None
+        self.budget.pending_deadline = None
+
+
+class HeaderReader:
+    def __init__(self, source):
+        self.source, self.remaining, self.lines = source, MAX_HEADERS, 0
+
+    def readline(self, size=-1):
+        line = self.source.readline(min(MAX_HEADER_LINE + 1, self.remaining + 1))
+        self.remaining -= len(line)
+        self.lines += 1
+        require(len(line) <= MAX_HEADER_LINE and self.remaining >= 0
+                and self.lines <= MAX_HEADER_COUNT + 1, "request_limit")
+        return line
+
+
+class DemoServer(http.server.HTTPServer):
+    def __init__(self, demo):
+        self.demo, self.active = demo, None
+        super().__init__(("127.0.0.1", 3000), Handler)
+        self.timeout = 0.2
+
+    def process_request(self, request, address):
+        self.active = request
+        try:
+            self.finish_request(request, address)
+        finally:
+            self.shutdown_request(request)
+            self.active = None
+
+    def handle_error(self, request, address):
+        try:
+            observe_unexpected_failure(self.demo.unexpected_failure_observation, "server")
+        except BaseException:
+            pass
+        self.demo.failure, self.demo.done = "unexpected_failure", True
+
+
+class PreflowAuthorizationRefusal(Exception):
+    pass
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    timeout = 5
+    protocol_version = "HTTP/1.0"
+
+    def log_message(self, format, *args):
+        pass
+
+    def record_request_reason(self, reason):
+        demo = self.server.demo
+        if demo.request_invalid_reason is None and reason in REQUEST_INVALID_REASONS:
+            demo.request_invalid_reason = reason
+
+    def require_request(self, condition, reason):
+        if not condition:
+            self.record_request_reason(reason)
+            raise Failure("request_invalid")
+
+    def send_error(self, code, message=None, explain=None):
+        self.record_request_reason("http_parse")
+        self.server.demo.failure, self.server.demo.done = "request_invalid", True
+        self.reply(code, "Local demo could not complete this request.")
+
+    def handle_one_request(self):
+        demo = self.server.demo
+        self.requestline, self.request_version, self.command = "", "HTTP/1.0", None
+        self.close_connection = True
+        try:
+            demo.stage = "request"
+            with demo.budget.limit(5, "request_timeout"):
+                try:
+                    self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)
+                except TimeoutError as timeout:
+                    if not (type(timeout) is TimeoutError
+                            and demo.attempted is False and demo.pending is None
+                            and demo.cookie is None and demo.subject is None
+                            and demo.done is False and demo.failure is None
+                            and type(demo.preflow_request_timeouts) is int
+                            and 0 <= demo.preflow_request_timeouts < 4):
+                        raise
+                    demo.preflow_request_timeouts += 1
+                    if demo.preflow_request_timeouts == 4:
+                        demo.failure, demo.done = "request_timeout", True
+                        try:
+                            observe_unexpected_failure(demo.unexpected_failure_observation, "handler")
+                        except BaseException:
+                            pass
+                    return
+                if not self.raw_requestline:
+                    return
+                require(len(self.raw_requestline) <= MAX_REQUEST_LINE, "request_limit")
+                original, self.rfile = self.rfile, HeaderReader(self.rfile)
+                try:
+                    if not self.parse_request():
+                        return
+                finally:
+                    self.rfile = original
+                self.close_connection = True
+                self.require_request(self.headers.get_all("Host") == [AUTHORITY], "host")
+                if (self.headers.get_all("Authorization") is not None
+                        and demo.attempted is False and demo.pending is None
+                        and demo.cookie is None and demo.subject is None
+                        and demo.preflow_authorization_refusals < 4):
+                    self.record_request_reason("authorization")
+                    self.require_request(self.headers.get_all("Transfer-Encoding") is None, "transfer_encoding")
+                    self.require_request(self.headers.get_all("Expect") is None, "expect")
+                    self.require_request(self.headers.get_all("Content-Length") in (None, ["0"]), "content_length")
+                    target = urllib.parse.urlsplit(self.path)
+                    self.require_request(not target.scheme, "target_scheme")
+                    self.require_request(not target.netloc, "target_netloc")
+                    self.require_request(not target.fragment, "target_fragment")
+                    demo.preflow_authorization_refusals += 1
+                    raise PreflowAuthorizationRefusal
+                self.require_request(self.headers.get_all("Authorization") is None, "authorization")
+                self.require_request(self.headers.get_all("Transfer-Encoding") is None, "transfer_encoding")
+                self.require_request(self.headers.get_all("Expect") is None, "expect")
+                self.require_request(self.headers.get_all("Content-Length") in (None, ["0"]), "content_length")
+                target = urllib.parse.urlsplit(self.path)
+                self.require_request(not target.scheme, "target_scheme")
+                self.require_request(not target.netloc, "target_netloc")
+                self.require_request(not target.fragment, "target_fragment")
+            if self.command == "GET":
+                self.get(target)
+            elif self.command == "POST":
+                self.require_request(target.path == "/login" and not target.query, "post_target")
+                self.require_request(self.headers.get_all("Origin") == [ORIGIN], "origin")
+                self.require_request(self.headers.get_all("Content-Type") == ["application/x-www-form-urlencoded"], "content_type")
+                self.cookies()
+                location, cookie = demo.begin()
+                self.reply(303, "", location=location, cookie=(FLOW_COOKIE, cookie))
+                demo.statuses["authorization_redirect"] = 303
+                demo.checks["authorization_redirect_issued"] = True
+            else:
+                self.record_request_reason("method")
+                raise Failure("request_invalid")
+        except PreflowAuthorizationRefusal:
+            if demo.preflow_authorization_refusals == 4:
+                demo.failure, demo.done = "request_invalid", True
+            self.reply(403, "Local demo could not complete this request.")
+        except Failure as failure:
+            demo.failure, demo.done = failure.tag, True
+            self.reply(400, "Local demo could not complete this request.")
+        except Exception:
+            try:
+                observe_unexpected_failure(demo.unexpected_failure_observation, "handler")
+            except BaseException:
+                pass
+            demo.failure, demo.done = "unexpected_failure", True
+            self.reply(400, "Local demo could not complete this request.")
+
+    def cookies(self):
+        headers = self.headers.get_all("Cookie", [])
+        self.require_request(len(headers) <= 1, "cookie_header_count")
+        raw = headers[0] if headers else ""
+        require(len(raw) <= MAX_COOKIE, "request_limit")
+        pieces = raw.split(";") if raw else []
+        require(len(pieces) <= MAX_HEADER_COUNT, "request_limit")
+        own = {}
+        for piece in pieces:
+            name, separator, value = piece.strip().partition("=")
+            if name in (FLOW_COOKIE, APP_COOKIE):
+                self.require_request(separator and name not in own
+                                     and re.fullmatch(r"[A-Za-z0-9_-]{43}", value) is not None,
+                                     "own_cookie_shape")
+                own[name] = value
+        return own
+
+    def get(self, target):
+        demo, cookies = self.server.demo, self.cookies()
+        if target.path == "/callback":
+            cookie = demo.callback(target.query, cookies.get(FLOW_COOKIE))
+            self.reply(303, "", location="/protected", cookie=(APP_COOKIE, cookie), clear_flow=True)
+            demo.statuses["callback"] = 303
+        elif target.path == "/protected" and not target.query:
+            demo.stage = "protected"
+            authenticated = (demo.subject is not None and demo.cookie is not None
+                             and demo.module.equal(cookies.get(APP_COOKIE), demo.cookie))
+            self.reply(200 if authenticated else 403,
+                       "Signed in. Protected application access is available." if authenticated
+                       else "Sign in required.", protected=authenticated)
+            if authenticated:
+                demo.checks["protected_with_fresh_cookie_accepted"] = True
+                demo.statuses["protected_after"] = 200
+                if not demo.checks["protected_without_cookie_denied"]:
+                    demo.failure = "protected_before_unobserved"
+                demo.done = True
+            elif not demo.attempted and APP_COOKIE not in cookies:
+                demo.checks["protected_without_cookie_denied"] = True
+                demo.statuses["protected_before"] = 403
+        elif target.path == "/" and not target.query:
+            self.reply(200, "Use Sign in to open this local application.", start=True)
+        else:
+            self.reply(404, "This page is unavailable.")
+
+    def reply(self, status, text, *, location=None, cookie=None, clear_flow=False,
+              start=False, protected=False):
+        heading = "Protected application access" if protected else "Local demo"
+        form = ('<form method="post" action="/login"><button type="submit">Sign in</button></form>'
+                if start else "")
+        raw = ('<!doctype html><html lang="en"><meta charset="utf-8">'
+               '<title>Local demo</title><h1>' + heading + '</h1><p>' + text + '</p>'
+               + form + '</html>').encode("utf-8")
+        with self.server.demo.budget.limit(5, "response_timeout"):
+            self.send_response(status)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Connection", "close")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Security-Policy", "default-src 'none'; form-action 'self'; frame-ancestors 'none'")
+            if location is not None:
+                self.send_header("Location", location)
+            if cookie is not None:
+                self.send_header("Set-Cookie", cookie[0] + "=" + cookie[1]
+                                 + "; HttpOnly; SameSite=Lax; Path=/")
+            if clear_flow:
+                self.send_header("Set-Cookie", FLOW_COOKIE + "=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/")
+            self.end_headers()
+            self.wfile.write(raw)
+            self.wfile.flush()
+        self.close_connection = True
+
+
+class QuietParser(argparse.ArgumentParser):
+    def error(self, message):
+        raise Failure("arguments_invalid")
+
+
+def main():
+    started = time.monotonic()
+    budget = demo = server = evidence_fd = workspace = secret = None
+    stage = "arguments"
+    record = {"schema": "riauth.d01-confidential-browser/v1", "result": "failed",
+              "failure_stage": None, "failure_tag": None, "checks": {}, "cleanup": {},
+              "request_invalid_reason": None, "preflow_authorization_refusals": 0,
+              "preflow_request_timeouts": 0,
+              "unexpected_failure_observation": {"observed": False, "diagnostic": None},
+              "source": {"verifier_commit": VERIFIER_COMMIT, "verifier_blob": VERIFIER_BLOB,
+                         "verifier_expected_sha256": VERIFIER_SHA256},
+              "provider": None,
+              "http_statuses": {name: None for name in
+                                ("authorization_redirect", "callback", "token_exchange",
+                                 "userinfo", "protected_before", "protected_after")}}
+    try:
+        parser = QuietParser(add_help=False, allow_abbrev=False)
+        for name in ("workspace", "secret-file", "verifier-helper", "openssl", "evidence"):
+            parser.add_argument("--" + name, required=True)
+        parser.add_argument("--deadline-seconds", type=int, default=600)
+        args = parser.parse_args()
+        require(sys.version_info >= (3, 11) and 1 <= args.deadline_seconds <= 600,
+                "arguments_invalid")
+        stage = "paths"
+        workspace = private_directory(args.workspace)
+        lab = private_directory(workspace.parent)
+        require(not any(workspace.iterdir()), "paths_invalid")
+        secret_path, verifier_path, evidence_path = [Path(os.path.abspath(value)) for value in
+                                                   (args.secret_file, args.verifier_helper, args.evidence)]
+        require(private_directory(secret_path.parent).parent == lab
+                and verifier_path.parent == lab and evidence_path.parent == lab
+                and len({secret_path, verifier_path, evidence_path}) == 3, "paths_invalid")
+        budget = Budget(lab, started, args.deadline_seconds)
+        budget.__enter__()
+        evidence_fd = os.open(evidence_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        os.fchmod(evidence_fd, 0o600)
+        stage = "verifier"
+        module = load_verifier(verifier_path)
+        record["source"]["verifier_sha256"] = VERIFIER_SHA256
+        record["source"]["helper_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        stage = "credential"
+        secret = client_secret(module, secret_path)
+        for name in ("credential_private_validated", "provider_identity_verified", "discovery_verified",
+                     "protected_without_cookie_denied", "authorization_redirect_issued",
+                     "state_issuer_flow_cookie_verified", "confidential_s256_exchange_verified",
+                     "rs256_jwks_issuer_audience_nonce_time_access_hash_verified",
+                     "userinfo_subject_verified", "protected_with_fresh_cookie_accepted"):
+            record["checks"][name] = name == "credential_private_validated"
+        demo = Demo(module, workspace, secret, budget, record["checks"], record["http_statuses"])
+        record["unexpected_failure_observation"] = demo.unexpected_failure_observation
+        secret = None
+        demo.setup(args.openssl)
+        record["provider"] = {"sha256": OPENSSL_SHA256, "version": OPENSSL_VERSION}
+        demo.stage = "listener"
+        try:
+            server = DemoServer(demo)
+        except Exception:
+            raise Failure("listener_failed") from None
+        print(json.dumps({"ready": True, "port": 3000, "pid": os.getpid()}), flush=True)
+        while not demo.done:
+            budget.tick()
+            server.handle_request()
+        if demo.failure is not None:
+            raise Failure(demo.failure)
+        require(all(record["checks"].values()), "unexpected_failure")
+        record["result"] = "passed"
+    except (Failure, Halt) as failure:
+        record["failure_tag"] = failure.tag
+        record["failure_stage"] = demo.stage if demo is not None else stage
+    except KeyboardInterrupt:
+        record["failure_tag"], record["failure_stage"] = "interrupted", stage
+    except Exception:
+        try:
+            observe_unexpected_failure(record["unexpected_failure_observation"], "main")
+        except BaseException:
+            pass
+        record["failure_tag"] = "unexpected_failure"
+        record["failure_stage"] = demo.stage if demo is not None else stage
+    finally:
+        cleanup_failed = False
+        if budget is not None:
+            try:
+                budget.close()
+            except BaseException:
+                cleanup_failed = True
+            record["minimum_free_bytes"], record["disk_samples"] = budget.minimum_free, budget.samples
+        if server is not None:
+            try:
+                if server.active is not None:
+                    server.shutdown_request(server.active)
+                    server.active = None
+            except BaseException:
+                cleanup_failed = True
+            try:
+                server.server_close()
+            except BaseException:
+                cleanup_failed = True
+            record["cleanup"]["listener_closed"] = server.socket.fileno() == -1
+            record["cleanup"]["connection_closed"] = server.active is None
+        if demo is not None:
+            record["request_invalid_reason"] = demo.request_invalid_reason
+            record["preflow_authorization_refusals"] = demo.preflow_authorization_refusals
+            record["preflow_request_timeouts"] = demo.preflow_request_timeouts
+            try:
+                demo.clear()
+                record["cleanup"]["private_references_cleared"] = True
+            except BaseException:
+                cleanup_failed = True
+                record["cleanup"]["private_references_cleared"] = False
+        secret = None
+        try:
+            if workspace is not None:
+                record["cleanup"]["verifier_temporaries_removed"] = not any(workspace.iterdir())
+            if cleanup_failed or (record["result"] == "passed" and not all(record["cleanup"].values())):
+                raise Failure("cleanup_failed")
+        except BaseException:
+            record["result"] = "failed"
+            record["cleanup"]["failure_tag"] = "cleanup_failed"
+            if record["failure_tag"] is None:
+                record["failure_tag"], record["failure_stage"] = "cleanup_failed", "cleanup"
+        record["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    written = False
+    if evidence_fd is not None:
+        try:
+            with os.fdopen(evidence_fd, "wb") as output:
+                output.write((json.dumps(record, sort_keys=True) + "\n").encode("ascii"))
+                output.flush()
+                os.fsync(output.fileno())
+            written = True
+        except Exception:
+            record["result"] = "failed"
+            record["evidence_failure_tag"] = "evidence_write_failed"
+            if record["failure_tag"] is None:
+                record["failure_tag"], record["failure_stage"] = "evidence_write_failed", "evidence"
+        finally:
+            try:
+                os.close(evidence_fd)
+            except OSError:
+                pass
+    try:
+        print(json.dumps({"result": record["result"], "failure_tag": record["failure_tag"],
+                          "cleanup_failure_tag": record["cleanup"].get("failure_tag"),
+                          "evidence_failure_tag": record.get("evidence_failure_tag"),
+                          "evidence_written": written}), flush=True)
+    except Exception:
+        return 1
+    return 0 if record["result"] == "passed" and written else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+### Complete proposed memory child — UNEXECUTED
+
+```python
+# Exact frozen inputs for the proposed memory-only child; UNEXECUTED.
+BASELINE_SHA256 = "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1"
+CANDIDATE_SHA256 = "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406"
+BASELINE_SOURCE = "#!/usr/bin/env python3\n\"\"\"One disposable confidential local-demo application; browser authentication only.\n\nPython 3.11+, POSIX alarms, the pinned recovery verifier and native OpenSSL are\nprerequisites. Import starts nothing. The external owner supplies a private lab,\nregisters the printed client, drives the browser through RiWork Cua.ai Driver,\nand owns the IdP/browser lifecycle and the overall 15-minute cleanup deadline.\nThis helper neither logs in to riAuth nor approves an authorization request.\n\"\"\"\n\nimport argparse\nimport contextlib\nimport hashlib\nimport http.server\nimport json\nimport os\nimport re\nimport secrets\nimport shutil\nimport signal\nimport stat\nimport subprocess\nimport sys\nimport time\nimport types\nimport urllib.parse\nfrom pathlib import Path\n\n\nISSUER = \"http://localhost:9000\"\nCLIENT_ID = \"local-demo\"\nORIGIN = \"http://localhost:3000\"\nAUTHORITY = \"localhost:3000\"\nCALLBACK = ORIGIN + \"/callback\"\nFLOW_COOKIE = \"d01_demo_flow\"\nAPP_COOKIE = \"d01_local_demo\"\nVERIFIER_COMMIT = \"9cefe7a56425bb73c17753e8766d92320b77da3b\"\nVERIFIER_BLOB = \"3be747d03146f1bcaa3ec012ee8d173b61fa737d\"\nVERIFIER_SHA256 = \"f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d\"\nOPENSSL_SHA256 = \"67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72\"\nOPENSSL_VERSION = \"OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)\"\nMAX_FILE = 256 * 1024\nMAX_REQUEST_LINE = 8192\nMAX_HEADERS = 8192\nMAX_HEADER_LINE = 4096\nMAX_HEADER_COUNT = 32\nMAX_COOKIE = 4096\nREQUEST_INVALID_REASONS = {\n    \"http_parse\", \"host\", \"authorization\", \"transfer_encoding\", \"expect\",\n    \"content_length\", \"target_scheme\", \"target_netloc\", \"target_fragment\",\n    \"method\", \"post_target\", \"origin\", \"content_type\", \"cookie_header_count\",\n    \"own_cookie_shape\",\n}\nSTOP_FREE_BYTES = 17 * 1024**3 // 2\nPENDING_SECONDS = 180\nFAILURE_TAGS = {\n    \"arguments_invalid\", \"paths_invalid\", \"private_file_invalid\",\n    \"credential_invalid\", \"verifier_hash_mismatch\", \"verifier_import_failed\",\n    \"provider_failed\", \"discovery_failed\", \"listener_failed\",\n    \"request_invalid\", \"request_limit\", \"request_timeout\", \"response_timeout\",\n    \"flow_already_started\", \"callback_invalid\", \"callback_already_consumed\",\n    \"token_exchange_failed\", \"token_validation_failed\", \"userinfo_failed\",\n    \"protected_before_unobserved\", \"fixture_deadline\", \"pending_deadline\",\n    \"disk_margin\", \"disk_observation_failed\", \"interrupted\", \"cleanup_failed\",\n    \"evidence_write_failed\", \"unexpected_failure\",\n}\n\n\nclass Failure(Exception):\n    def __init__(self, tag):\n        self.tag = tag if tag in FAILURE_TAGS else \"unexpected_failure\"\n        super().__init__(self.tag)\n\n\nclass Halt(BaseException):\n    \"\"\"Pass through HTTP/verifier Exception handlers to owned finally cleanup.\"\"\"\n\n    def __init__(self, tag):\n        self.tag = tag if tag in FAILURE_TAGS else \"unexpected_failure\"\n\n\ndef require(condition, tag):\n    if not condition:\n        raise Failure(tag)\n\n\ndef private_directory(path):\n    path = Path(os.path.abspath(path))\n    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)\n    try:\n        info = os.fstat(fd)\n        require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()\n                and stat.S_IMODE(info.st_mode) == 0o700, \"paths_invalid\")\n    finally:\n        os.close(fd)\n    return path\n\n\ndef private_bytes(path, limit=MAX_FILE):\n    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)\n    try:\n        info = os.fstat(fd)\n        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()\n                and stat.S_IMODE(info.st_mode) == 0o600\n                and 0 < info.st_size <= limit, \"private_file_invalid\")\n        with os.fdopen(fd, \"rb\", closefd=False) as source:\n            raw = source.read(limit + 1)\n        require(0 < len(raw) <= limit, \"private_file_invalid\")\n        return raw\n    finally:\n        os.close(fd)\n\n\ndef load_verifier(path):\n    raw = private_bytes(path)\n    require(hashlib.sha256(raw).hexdigest() == VERIFIER_SHA256,\n            \"verifier_hash_mismatch\")\n    # Execute precisely the verified bytes, without rereading or writing pycache.\n    module = types.ModuleType(\"d01_pinned_recovery_verifier\")\n    module.__file__ = str(path)\n    try:\n        exec(compile(raw, str(path), \"exec\"), module.__dict__)\n    except Exception:\n        raise Failure(\"verifier_import_failed\") from None\n    return module\n\n\ndef client_secret(module, path):\n    try:\n        saved = module.json_object(private_bytes(path))\n    except Failure:\n        raise\n    except Exception:\n        raise Failure(\"credential_invalid\") from None\n    client = saved.get(\"client\")\n    require(isinstance(client, dict), \"credential_invalid\")\n    settings, scopes = client.get(\"settings\"), client.get(\"scopes\")\n    require(client.get(\"client_id\") == CLIENT_ID\n            and client.get(\"confidential\") is True\n            and client.get(\"service\") is False and client.get(\"enabled\") is True\n            and client.get(\"redirect_uris\") == [CALLBACK]\n            and isinstance(scopes, list) and len(scopes) == 2\n            and all(isinstance(value, str) for value in scopes)\n            and set(scopes) == {\"openid\", \"profile\"}\n            and isinstance(settings, dict)\n            and settings.get(\"token_endpoint_auth_method\") is None,\n            \"credential_invalid\")\n    secret = saved.get(\"client_secret\")\n    require(isinstance(secret, str) and 0 < len(secret) <= 4096\n            and all(32 <= ord(value) <= 126 for value in secret),\n            \"credential_invalid\")\n    saved.clear()\n    return secret\n\n\nclass Budget:\n    \"\"\"One main-thread alarm bounds blocking work and samples free space.\"\"\"\n\n    def __init__(self, lab, started, seconds):\n        self.lab, self.deadline = lab, started + seconds\n        self.phase_deadline = self.pending_deadline = None\n        self.phase_tag = \"fixture_deadline\"\n        self.minimum_free = None\n        self.samples = 0\n        self.previous = {}\n\n    def __enter__(self):\n        require(hasattr(signal, \"setitimer\") and hasattr(signal, \"SIGALRM\")\n                and signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0),\n                \"arguments_invalid\")\n        for name in (signal.SIGALRM, signal.SIGINT, signal.SIGTERM):\n            self.previous[name] = signal.getsignal(name)\n            signal.signal(name, self.tick if name == signal.SIGALRM else self.interrupt)\n        self.tick()\n        return self\n\n    def interrupt(self, signum, frame):\n        raise Halt(\"interrupted\")\n\n    def tick(self, signum=None, frame=None):\n        try:\n            free = shutil.disk_usage(self.lab).free\n        except Exception:\n            raise Halt(\"disk_observation_failed\") from None\n        self.samples += 1\n        self.minimum_free = free if self.minimum_free is None else min(self.minimum_free, free)\n        require_free = free >= STOP_FREE_BYTES\n        if not require_free:\n            raise Halt(\"disk_margin\")\n        now = time.monotonic()\n        deadlines = [(self.deadline, \"fixture_deadline\")]\n        if self.phase_deadline is not None:\n            deadlines.append((self.phase_deadline, self.phase_tag))\n        if self.pending_deadline is not None:\n            deadlines.append((self.pending_deadline, \"pending_deadline\"))\n        deadline, tag = min(deadlines)\n        if now >= deadline:\n            raise Halt(tag)\n        signal.setitimer(signal.ITIMER_REAL, min(1.0, deadline - now))\n\n    @contextlib.contextmanager\n    def limit(self, seconds, tag):\n        old = self.phase_deadline, self.phase_tag\n        deadline = time.monotonic() + seconds\n        if old[0] is None or deadline < old[0]:\n            self.phase_deadline, self.phase_tag = deadline, tag\n        try:\n            self.tick()\n            yield\n        finally:\n            self.phase_deadline, self.phase_tag = old\n            # Do not replace an in-flight Halt with another alarm during unwinding.\n            if sys.exc_info()[0] is None:\n                self.tick()\n\n    def close(self):\n        if self.previous:\n            signal.setitimer(signal.ITIMER_REAL, 0)\n            for name, handler in self.previous.items():\n                signal.signal(name, handler)\n            self.previous.clear()\n\n\ndef observe_unexpected_failure(holder, site):\n    \"\"\"First-only finite private observation; never replace the original outcome.\"\"\"\n    try:\n        if holder[\"observed\"] or site not in (\"handler\", \"server\", \"main\"):\n            return\n        holder[\"observed\"] = True\n        error = sys.exc_info()[1]\n        label = \"other\"\n        for kind, name in ((AttributeError, \"AttributeError\"),\n                           (TypeError, \"TypeError\"), (ValueError, \"ValueError\"),\n                           (KeyError, \"KeyError\"), (OSError, \"OSError\"),\n                           (BrokenPipeError, \"BrokenPipeError\"),\n                           (ConnectionResetError, \"ConnectionResetError\"),\n                           (TimeoutError, \"TimeoutError\")):\n            if type(error) is kind:\n                label = name\n                break\n        own_function = own_line = None\n        codes = (\n            (HeaderReader.readline.__code__, \"HeaderReader.readline\"),\n            (DemoServer.process_request.__code__, \"DemoServer.process_request\"),\n            (Demo.begin.__code__, \"Demo.begin\"),\n            (Demo.callback.__code__, \"Demo.callback\"),\n            (Demo.invoke.__code__, \"Demo.invoke\"),\n            (Handler.handle_one_request.__code__, \"Handler.handle_one_request\"),\n            (Handler.send_error.__code__, \"Handler.send_error\"),\n            (Handler.get.__code__, \"Handler.get\"),\n            (Handler.reply.__code__, \"Handler.reply\"),\n            (main.__code__, \"main\"),\n        )\n        trace = BaseException.__traceback__.__get__(error, BaseException) if isinstance(error, BaseException) else None\n        for _ in range(64):\n            if trace is None:\n                break\n            for code, name in codes:\n                if trace.tb_frame.f_code is code and type(trace.tb_lineno) is int and 1 <= trace.tb_lineno <= 1024:\n                    own_function, own_line = name, trace.tb_lineno\n            trace = trace.tb_next\n        if trace is not None:\n            own_function = own_line = None\n        holder[\"diagnostic\"] = {\"site\": site, \"exception_class\": label,\n                                \"own_function\": own_function, \"own_line\": own_line}\n    except BaseException:\n        # Projection/storage failures retain the first latch and original handler.\n        pass\n\n\nclass Demo:\n    def __init__(self, module, workspace, secret, budget, checks, statuses):\n        self.module, self.workspace, self.secret = module, workspace, secret\n        self.issuer, self.client_id = ISSUER, CLIENT_ID\n        self.budget, self.checks = budget, checks\n        self.statuses = statuses\n        self.stage = \"setup\"\n        self.pending = self.cookie = self.subject = None\n        self.attempted = self.done = False\n        self.failure = None\n        self.request_invalid_reason = None\n        self.preflow_authorization_refusals = 0\n        self.unexpected_failure_observation = {\"observed\": False, \"diagnostic\": None}\n\n    def invoke(self, stage, seconds, function, *args, **kwargs):\n        self.stage = stage\n        try:\n            with self.budget.limit(seconds, stage + \"_failed\"):\n                return function(*args, **kwargs)\n        except Failure:\n            raise\n        except Exception:\n            # Imported failures are never formatted or copied into the record.\n            raise Failure(stage + \"_failed\") from None\n\n    def setup(self, executable):\n        def provider():\n            self.openssl = Path(executable).resolve(strict=True)\n            info = self.openssl.stat()\n            require(str(Path(executable)) == \"/opt/homebrew/bin/openssl\"\n                    and stat.S_ISREG(info.st_mode) and 0 < info.st_size <= 32 * 1024 * 1024,\n                    \"provider_failed\")\n            with self.openssl.open(\"rb\") as source:\n                require(hashlib.file_digest(source, \"sha256\").hexdigest() == OPENSSL_SHA256,\n                        \"provider_failed\")\n            self.openssl_environment = {key: value for key, value in os.environ.items()\n                                        if key in {\"PATH\", \"HOME\", \"TMPDIR\", \"LANG\", \"LC_ALL\"}}\n            result = subprocess.run([str(self.openssl), \"version\"], capture_output=True,\n                                    timeout=5, env=self.openssl_environment)\n            require(result.returncode == 0\n                    and len(result.stdout) <= 256 and len(result.stderr) <= 4096\n                    and result.stdout.decode(\"ascii\").strip() == OPENSSL_VERSION,\n                    \"provider_failed\")\n        self.invoke(\"provider\", 5, provider)\n        self.checks[\"provider_identity_verified\"] = True\n        document = self.invoke(\"discovery\", 5,\n                               self.module.LocalRelyingParty.discovery, self)\n        methods = document.get(\"token_endpoint_auth_methods_supported\")\n        require(isinstance(methods, list) and \"client_secret_post\" in methods\n                and all(isinstance(value, str) for value in methods), \"discovery_failed\")\n        self.discovery_document = document\n        self.checks[\"discovery_verified\"] = True\n\n    def begin(self):\n        self.stage = \"flow\"\n        require(not self.attempted, \"flow_already_started\")\n        self.attempted = True\n        self.pending = {\"state\": secrets.token_urlsafe(32), \"nonce\": secrets.token_urlsafe(32),\n                        \"verifier\": secrets.token_urlsafe(48),\n                        \"flow_cookie\": secrets.token_urlsafe(32),\n                        \"started_at\": int(time.time())}\n        self.budget.pending_deadline = time.monotonic() + PENDING_SECONDS\n        self.budget.tick()\n        fields = {\"response_type\": \"code\", \"client_id\": CLIENT_ID,\n                  \"redirect_uri\": CALLBACK, \"scope\": \"openid profile\",\n                  \"state\": self.pending[\"state\"], \"nonce\": self.pending[\"nonce\"],\n                  \"code_challenge\": self.module.b64url(\n                      hashlib.sha256(self.pending[\"verifier\"].encode(\"ascii\")).digest()),\n                  \"code_challenge_method\": \"S256\"}\n        return (self.discovery_document[\"authorization_endpoint\"] + \"?\"\n                + urllib.parse.urlencode(fields), self.pending[\"flow_cookie\"])\n\n    def callback(self, query, flow_cookie):\n        self.stage = \"callback\"\n        require(self.pending is not None, \"callback_already_consumed\")\n        pending, self.pending = self.pending, None\n        self.budget.pending_deadline = None\n        raw = tokens = access = subject = code = form = None\n        try:\n            require(self.module.equal(flow_cookie, pending[\"flow_cookie\"]), \"callback_invalid\")\n            try:\n                code = self.module.LocalRelyingParty.callback_fields(self, query, pending[\"state\"])\n            except Exception:\n                raise Failure(\"callback_invalid\") from None\n            self.checks[\"state_issuer_flow_cookie_verified\"] = True\n            form = {\"grant_type\": \"authorization_code\", \"client_id\": CLIENT_ID,\n                    \"client_secret\": self.secret, \"redirect_uri\": CALLBACK,\n                    \"code\": code, \"code_verifier\": pending[\"verifier\"]}\n            status, _, raw = self.invoke(\"token_exchange\", 5, self.module.request,\n                                         self.discovery_document[\"token_endpoint\"],\n                                         method=\"POST\", form=form)\n            self.statuses[\"token_exchange\"] = status\n            require(status == 200, \"token_exchange_failed\")\n            tokens = self.module.json_object(raw)\n            access, scope = tokens.get(\"access_token\"), tokens.get(\"scope\")\n            require(isinstance(access, str) and 0 < len(access) <= self.module.MAX_TOKEN\n                    and re.fullmatch(r\"[A-Za-z0-9_.-]+\", access) is not None\n                    and tokens.get(\"token_type\") == \"Bearer\" and isinstance(scope, str)\n                    and set(scope.split()) == {\"openid\", \"profile\"}, \"token_exchange_failed\")\n            self.checks[\"confidential_s256_exchange_verified\"] = True\n            # Keep the pinned implementation; cap combined JWKS/signature work\n            # at five real seconds as well as its existing socket/process caps.\n            subject = self.invoke(\"token_validation\", 5,\n                                  self.module.LocalRelyingParty.verify_id_token,\n                                  self, tokens.get(\"id_token\"), access, pending,\n                                  self.discovery_document)\n            self.checks[\"rs256_jwks_issuer_audience_nonce_time_access_hash_verified\"] = True\n            status, _, raw = self.invoke(\"userinfo\", 5, self.module.request,\n                                         self.discovery_document[\"userinfo_endpoint\"], bearer=access)\n            self.statuses[\"userinfo\"] = status\n            require(status == 200 and self.module.equal(self.module.json_object(raw).get(\"sub\"), subject),\n                    \"userinfo_failed\")\n            self.checks[\"userinfo_subject_verified\"] = True\n            self.cookie, self.subject = secrets.token_urlsafe(32), subject\n            return self.cookie\n        finally:\n            pending.clear()\n            if form is not None:\n                form.clear()\n            raw = tokens = access = subject = code = form = None\n            self.secret = None\n\n    def clear(self):\n        if self.pending is not None:\n            self.pending.clear()\n        self.pending = self.cookie = self.subject = self.secret = None\n        self.budget.pending_deadline = None\n\n\nclass HeaderReader:\n    def __init__(self, source):\n        self.source, self.remaining, self.lines = source, MAX_HEADERS, 0\n\n    def readline(self, size=-1):\n        line = self.source.readline(min(MAX_HEADER_LINE + 1, self.remaining + 1))\n        self.remaining -= len(line)\n        self.lines += 1\n        require(len(line) <= MAX_HEADER_LINE and self.remaining >= 0\n                and self.lines <= MAX_HEADER_COUNT + 1, \"request_limit\")\n        return line\n\n\nclass DemoServer(http.server.HTTPServer):\n    def __init__(self, demo):\n        self.demo, self.active = demo, None\n        super().__init__((\"127.0.0.1\", 3000), Handler)\n        self.timeout = 0.2\n\n    def process_request(self, request, address):\n        self.active = request\n        try:\n            self.finish_request(request, address)\n        finally:\n            self.shutdown_request(request)\n            self.active = None\n\n    def handle_error(self, request, address):\n        try:\n            observe_unexpected_failure(self.demo.unexpected_failure_observation, \"server\")\n        except BaseException:\n            pass\n        self.demo.failure, self.demo.done = \"unexpected_failure\", True\n\n\nclass PreflowAuthorizationRefusal(Exception):\n    pass\n\n\nclass Handler(http.server.BaseHTTPRequestHandler):\n    timeout = 5\n    protocol_version = \"HTTP/1.0\"\n\n    def log_message(self, format, *args):\n        pass\n\n    def record_request_reason(self, reason):\n        demo = self.server.demo\n        if demo.request_invalid_reason is None and reason in REQUEST_INVALID_REASONS:\n            demo.request_invalid_reason = reason\n\n    def require_request(self, condition, reason):\n        if not condition:\n            self.record_request_reason(reason)\n            raise Failure(\"request_invalid\")\n\n    def send_error(self, code, message=None, explain=None):\n        self.record_request_reason(\"http_parse\")\n        self.server.demo.failure, self.server.demo.done = \"request_invalid\", True\n        self.reply(code, \"Local demo could not complete this request.\")\n\n    def handle_one_request(self):\n        demo = self.server.demo\n        self.requestline, self.request_version, self.command = \"\", \"HTTP/1.0\", None\n        self.close_connection = True\n        try:\n            demo.stage = \"request\"\n            with demo.budget.limit(5, \"request_timeout\"):\n                self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)\n                if not self.raw_requestline:\n                    return\n                require(len(self.raw_requestline) <= MAX_REQUEST_LINE, \"request_limit\")\n                original, self.rfile = self.rfile, HeaderReader(self.rfile)\n                try:\n                    if not self.parse_request():\n                        return\n                finally:\n                    self.rfile = original\n                self.close_connection = True\n                self.require_request(self.headers.get_all(\"Host\") == [AUTHORITY], \"host\")\n                if (self.headers.get_all(\"Authorization\") is not None\n                        and demo.attempted is False and demo.pending is None\n                        and demo.cookie is None and demo.subject is None\n                        and demo.preflow_authorization_refusals < 4):\n                    self.record_request_reason(\"authorization\")\n                    self.require_request(self.headers.get_all(\"Transfer-Encoding\") is None, \"transfer_encoding\")\n                    self.require_request(self.headers.get_all(\"Expect\") is None, \"expect\")\n                    self.require_request(self.headers.get_all(\"Content-Length\") in (None, [\"0\"]), \"content_length\")\n                    target = urllib.parse.urlsplit(self.path)\n                    self.require_request(not target.scheme, \"target_scheme\")\n                    self.require_request(not target.netloc, \"target_netloc\")\n                    self.require_request(not target.fragment, \"target_fragment\")\n                    demo.preflow_authorization_refusals += 1\n                    raise PreflowAuthorizationRefusal\n                self.require_request(self.headers.get_all(\"Authorization\") is None, \"authorization\")\n                self.require_request(self.headers.get_all(\"Transfer-Encoding\") is None, \"transfer_encoding\")\n                self.require_request(self.headers.get_all(\"Expect\") is None, \"expect\")\n                self.require_request(self.headers.get_all(\"Content-Length\") in (None, [\"0\"]), \"content_length\")\n                target = urllib.parse.urlsplit(self.path)\n                self.require_request(not target.scheme, \"target_scheme\")\n                self.require_request(not target.netloc, \"target_netloc\")\n                self.require_request(not target.fragment, \"target_fragment\")\n            if self.command == \"GET\":\n                self.get(target)\n            elif self.command == \"POST\":\n                self.require_request(target.path == \"/login\" and not target.query, \"post_target\")\n                self.require_request(self.headers.get_all(\"Origin\") == [ORIGIN], \"origin\")\n                self.require_request(self.headers.get_all(\"Content-Type\") == [\"application/x-www-form-urlencoded\"], \"content_type\")\n                self.cookies()\n                location, cookie = demo.begin()\n                self.reply(303, \"\", location=location, cookie=(FLOW_COOKIE, cookie))\n                demo.statuses[\"authorization_redirect\"] = 303\n                demo.checks[\"authorization_redirect_issued\"] = True\n            else:\n                self.record_request_reason(\"method\")\n                raise Failure(\"request_invalid\")\n        except PreflowAuthorizationRefusal:\n            if demo.preflow_authorization_refusals == 4:\n                demo.failure, demo.done = \"request_invalid\", True\n            self.reply(403, \"Local demo could not complete this request.\")\n        except Failure as failure:\n            demo.failure, demo.done = failure.tag, True\n            self.reply(400, \"Local demo could not complete this request.\")\n        except Exception:\n            try:\n                observe_unexpected_failure(demo.unexpected_failure_observation, \"handler\")\n            except BaseException:\n                pass\n            demo.failure, demo.done = \"unexpected_failure\", True\n            self.reply(400, \"Local demo could not complete this request.\")\n\n    def cookies(self):\n        headers = self.headers.get_all(\"Cookie\", [])\n        self.require_request(len(headers) <= 1, \"cookie_header_count\")\n        raw = headers[0] if headers else \"\"\n        require(len(raw) <= MAX_COOKIE, \"request_limit\")\n        pieces = raw.split(\";\") if raw else []\n        require(len(pieces) <= MAX_HEADER_COUNT, \"request_limit\")\n        own = {}\n        for piece in pieces:\n            name, separator, value = piece.strip().partition(\"=\")\n            if name in (FLOW_COOKIE, APP_COOKIE):\n                self.require_request(separator and name not in own\n                                     and re.fullmatch(r\"[A-Za-z0-9_-]{43}\", value) is not None,\n                                     \"own_cookie_shape\")\n                own[name] = value\n        return own\n\n    def get(self, target):\n        demo, cookies = self.server.demo, self.cookies()\n        if target.path == \"/callback\":\n            cookie = demo.callback(target.query, cookies.get(FLOW_COOKIE))\n            self.reply(303, \"\", location=\"/protected\", cookie=(APP_COOKIE, cookie), clear_flow=True)\n            demo.statuses[\"callback\"] = 303\n        elif target.path == \"/protected\" and not target.query:\n            demo.stage = \"protected\"\n            authenticated = (demo.subject is not None and demo.cookie is not None\n                             and demo.module.equal(cookies.get(APP_COOKIE), demo.cookie))\n            self.reply(200 if authenticated else 403,\n                       \"Signed in. Protected application access is available.\" if authenticated\n                       else \"Sign in required.\", protected=authenticated)\n            if authenticated:\n                demo.checks[\"protected_with_fresh_cookie_accepted\"] = True\n                demo.statuses[\"protected_after\"] = 200\n                if not demo.checks[\"protected_without_cookie_denied\"]:\n                    demo.failure = \"protected_before_unobserved\"\n                demo.done = True\n            elif not demo.attempted and APP_COOKIE not in cookies:\n                demo.checks[\"protected_without_cookie_denied\"] = True\n                demo.statuses[\"protected_before\"] = 403\n        elif target.path == \"/\" and not target.query:\n            self.reply(200, \"Use Sign in to open this local application.\", start=True)\n        else:\n            self.reply(404, \"This page is unavailable.\")\n\n    def reply(self, status, text, *, location=None, cookie=None, clear_flow=False,\n              start=False, protected=False):\n        heading = \"Protected application access\" if protected else \"Local demo\"\n        form = ('<form method=\"post\" action=\"/login\"><button type=\"submit\">Sign in</button></form>'\n                if start else \"\")\n        raw = ('<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">'\n               '<title>Local demo</title><h1>' + heading + '</h1><p>' + text + '</p>'\n               + form + '</html>').encode(\"utf-8\")\n        with self.server.demo.budget.limit(5, \"response_timeout\"):\n            self.send_response(status)\n            self.send_header(\"Content-Type\", \"text/html; charset=utf-8\")\n            self.send_header(\"Content-Length\", str(len(raw)))\n            self.send_header(\"Connection\", \"close\")\n            self.send_header(\"Cache-Control\", \"no-store\")\n            self.send_header(\"Referrer-Policy\", \"no-referrer\")\n            self.send_header(\"Content-Security-Policy\", \"default-src 'none'; form-action 'self'; frame-ancestors 'none'\")\n            if location is not None:\n                self.send_header(\"Location\", location)\n            if cookie is not None:\n                self.send_header(\"Set-Cookie\", cookie[0] + \"=\" + cookie[1]\n                                 + \"; HttpOnly; SameSite=Lax; Path=/\")\n            if clear_flow:\n                self.send_header(\"Set-Cookie\", FLOW_COOKIE + \"=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/\")\n            self.end_headers()\n            self.wfile.write(raw)\n            self.wfile.flush()\n        self.close_connection = True\n\n\nclass QuietParser(argparse.ArgumentParser):\n    def error(self, message):\n        raise Failure(\"arguments_invalid\")\n\n\ndef main():\n    started = time.monotonic()\n    budget = demo = server = evidence_fd = workspace = secret = None\n    stage = \"arguments\"\n    record = {\"schema\": \"riauth.d01-confidential-browser/v1\", \"result\": \"failed\",\n              \"failure_stage\": None, \"failure_tag\": None, \"checks\": {}, \"cleanup\": {},\n              \"request_invalid_reason\": None, \"preflow_authorization_refusals\": 0,\n              \"unexpected_failure_observation\": {\"observed\": False, \"diagnostic\": None},\n              \"source\": {\"verifier_commit\": VERIFIER_COMMIT, \"verifier_blob\": VERIFIER_BLOB,\n                         \"verifier_expected_sha256\": VERIFIER_SHA256},\n              \"provider\": None,\n              \"http_statuses\": {name: None for name in\n                                (\"authorization_redirect\", \"callback\", \"token_exchange\",\n                                 \"userinfo\", \"protected_before\", \"protected_after\")}}\n    try:\n        parser = QuietParser(add_help=False, allow_abbrev=False)\n        for name in (\"workspace\", \"secret-file\", \"verifier-helper\", \"openssl\", \"evidence\"):\n            parser.add_argument(\"--\" + name, required=True)\n        parser.add_argument(\"--deadline-seconds\", type=int, default=600)\n        args = parser.parse_args()\n        require(sys.version_info >= (3, 11) and 1 <= args.deadline_seconds <= 600,\n                \"arguments_invalid\")\n        stage = \"paths\"\n        workspace = private_directory(args.workspace)\n        lab = private_directory(workspace.parent)\n        require(not any(workspace.iterdir()), \"paths_invalid\")\n        secret_path, verifier_path, evidence_path = [Path(os.path.abspath(value)) for value in\n                                                   (args.secret_file, args.verifier_helper, args.evidence)]\n        require(private_directory(secret_path.parent).parent == lab\n                and verifier_path.parent == lab and evidence_path.parent == lab\n                and len({secret_path, verifier_path, evidence_path}) == 3, \"paths_invalid\")\n        budget = Budget(lab, started, args.deadline_seconds)\n        budget.__enter__()\n        evidence_fd = os.open(evidence_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)\n        os.fchmod(evidence_fd, 0o600)\n        stage = \"verifier\"\n        module = load_verifier(verifier_path)\n        record[\"source\"][\"verifier_sha256\"] = VERIFIER_SHA256\n        record[\"source\"][\"helper_sha256\"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()\n        stage = \"credential\"\n        secret = client_secret(module, secret_path)\n        for name in (\"credential_private_validated\", \"provider_identity_verified\", \"discovery_verified\",\n                     \"protected_without_cookie_denied\", \"authorization_redirect_issued\",\n                     \"state_issuer_flow_cookie_verified\", \"confidential_s256_exchange_verified\",\n                     \"rs256_jwks_issuer_audience_nonce_time_access_hash_verified\",\n                     \"userinfo_subject_verified\", \"protected_with_fresh_cookie_accepted\"):\n            record[\"checks\"][name] = name == \"credential_private_validated\"\n        demo = Demo(module, workspace, secret, budget, record[\"checks\"], record[\"http_statuses\"])\n        record[\"unexpected_failure_observation\"] = demo.unexpected_failure_observation\n        secret = None\n        demo.setup(args.openssl)\n        record[\"provider\"] = {\"sha256\": OPENSSL_SHA256, \"version\": OPENSSL_VERSION}\n        demo.stage = \"listener\"\n        try:\n            server = DemoServer(demo)\n        except Exception:\n            raise Failure(\"listener_failed\") from None\n        print(json.dumps({\"ready\": True, \"port\": 3000, \"pid\": os.getpid()}), flush=True)\n        while not demo.done:\n            budget.tick()\n            server.handle_request()\n        if demo.failure is not None:\n            raise Failure(demo.failure)\n        require(all(record[\"checks\"].values()), \"unexpected_failure\")\n        record[\"result\"] = \"passed\"\n    except (Failure, Halt) as failure:\n        record[\"failure_tag\"] = failure.tag\n        record[\"failure_stage\"] = demo.stage if demo is not None else stage\n    except KeyboardInterrupt:\n        record[\"failure_tag\"], record[\"failure_stage\"] = \"interrupted\", stage\n    except Exception:\n        try:\n            observe_unexpected_failure(record[\"unexpected_failure_observation\"], \"main\")\n        except BaseException:\n            pass\n        record[\"failure_tag\"] = \"unexpected_failure\"\n        record[\"failure_stage\"] = demo.stage if demo is not None else stage\n    finally:\n        cleanup_failed = False\n        if budget is not None:\n            try:\n                budget.close()\n            except BaseException:\n                cleanup_failed = True\n            record[\"minimum_free_bytes\"], record[\"disk_samples\"] = budget.minimum_free, budget.samples\n        if server is not None:\n            try:\n                if server.active is not None:\n                    server.shutdown_request(server.active)\n                    server.active = None\n            except BaseException:\n                cleanup_failed = True\n            try:\n                server.server_close()\n            except BaseException:\n                cleanup_failed = True\n            record[\"cleanup\"][\"listener_closed\"] = server.socket.fileno() == -1\n            record[\"cleanup\"][\"connection_closed\"] = server.active is None\n        if demo is not None:\n            record[\"request_invalid_reason\"] = demo.request_invalid_reason\n            record[\"preflow_authorization_refusals\"] = demo.preflow_authorization_refusals\n            try:\n                demo.clear()\n                record[\"cleanup\"][\"private_references_cleared\"] = True\n            except BaseException:\n                cleanup_failed = True\n                record[\"cleanup\"][\"private_references_cleared\"] = False\n        secret = None\n        try:\n            if workspace is not None:\n                record[\"cleanup\"][\"verifier_temporaries_removed\"] = not any(workspace.iterdir())\n            if cleanup_failed or (record[\"result\"] == \"passed\" and not all(record[\"cleanup\"].values())):\n                raise Failure(\"cleanup_failed\")\n        except BaseException:\n            record[\"result\"] = \"failed\"\n            record[\"cleanup\"][\"failure_tag\"] = \"cleanup_failed\"\n            if record[\"failure_tag\"] is None:\n                record[\"failure_tag\"], record[\"failure_stage\"] = \"cleanup_failed\", \"cleanup\"\n        record[\"elapsed_seconds\"] = round(time.monotonic() - started, 3)\n    written = False\n    if evidence_fd is not None:\n        try:\n            with os.fdopen(evidence_fd, \"wb\") as output:\n                output.write((json.dumps(record, sort_keys=True) + \"\\n\").encode(\"ascii\"))\n                output.flush()\n                os.fsync(output.fileno())\n            written = True\n        except Exception:\n            record[\"result\"] = \"failed\"\n            record[\"evidence_failure_tag\"] = \"evidence_write_failed\"\n            if record[\"failure_tag\"] is None:\n                record[\"failure_tag\"], record[\"failure_stage\"] = \"evidence_write_failed\", \"evidence\"\n        finally:\n            try:\n                os.close(evidence_fd)\n            except OSError:\n                pass\n    try:\n        print(json.dumps({\"result\": record[\"result\"], \"failure_tag\": record[\"failure_tag\"],\n                          \"cleanup_failure_tag\": record[\"cleanup\"].get(\"failure_tag\"),\n                          \"evidence_failure_tag\": record.get(\"evidence_failure_tag\"),\n                          \"evidence_written\": written}), flush=True)\n    except Exception:\n        return 1\n    return 0 if record[\"result\"] == \"passed\" and written else 1\n\n\nif __name__ == \"__main__\":\n    raise SystemExit(main())\n"
+CANDIDATE_SOURCE = "#!/usr/bin/env python3\n\"\"\"One disposable confidential local-demo application; browser authentication only.\n\nPython 3.11+, POSIX alarms, the pinned recovery verifier and native OpenSSL are\nprerequisites. Import starts nothing. The external owner supplies a private lab,\nregisters the printed client, drives the browser through RiWork Cua.ai Driver,\nand owns the IdP/browser lifecycle and the overall 15-minute cleanup deadline.\nThis helper neither logs in to riAuth nor approves an authorization request.\n\"\"\"\n\nimport argparse\nimport contextlib\nimport hashlib\nimport http.server\nimport json\nimport os\nimport re\nimport secrets\nimport shutil\nimport signal\nimport stat\nimport subprocess\nimport sys\nimport time\nimport types\nimport urllib.parse\nfrom pathlib import Path\n\n\nISSUER = \"http://localhost:9000\"\nCLIENT_ID = \"local-demo\"\nORIGIN = \"http://localhost:3000\"\nAUTHORITY = \"localhost:3000\"\nCALLBACK = ORIGIN + \"/callback\"\nFLOW_COOKIE = \"d01_demo_flow\"\nAPP_COOKIE = \"d01_local_demo\"\nVERIFIER_COMMIT = \"9cefe7a56425bb73c17753e8766d92320b77da3b\"\nVERIFIER_BLOB = \"3be747d03146f1bcaa3ec012ee8d173b61fa737d\"\nVERIFIER_SHA256 = \"f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d\"\nOPENSSL_SHA256 = \"67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72\"\nOPENSSL_VERSION = \"OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)\"\nMAX_FILE = 256 * 1024\nMAX_REQUEST_LINE = 8192\nMAX_HEADERS = 8192\nMAX_HEADER_LINE = 4096\nMAX_HEADER_COUNT = 32\nMAX_COOKIE = 4096\nREQUEST_INVALID_REASONS = {\n    \"http_parse\", \"host\", \"authorization\", \"transfer_encoding\", \"expect\",\n    \"content_length\", \"target_scheme\", \"target_netloc\", \"target_fragment\",\n    \"method\", \"post_target\", \"origin\", \"content_type\", \"cookie_header_count\",\n    \"own_cookie_shape\",\n}\nSTOP_FREE_BYTES = 17 * 1024**3 // 2\nPENDING_SECONDS = 180\nFAILURE_TAGS = {\n    \"arguments_invalid\", \"paths_invalid\", \"private_file_invalid\",\n    \"credential_invalid\", \"verifier_hash_mismatch\", \"verifier_import_failed\",\n    \"provider_failed\", \"discovery_failed\", \"listener_failed\",\n    \"request_invalid\", \"request_limit\", \"request_timeout\", \"response_timeout\",\n    \"flow_already_started\", \"callback_invalid\", \"callback_already_consumed\",\n    \"token_exchange_failed\", \"token_validation_failed\", \"userinfo_failed\",\n    \"protected_before_unobserved\", \"fixture_deadline\", \"pending_deadline\",\n    \"disk_margin\", \"disk_observation_failed\", \"interrupted\", \"cleanup_failed\",\n    \"evidence_write_failed\", \"unexpected_failure\",\n}\n\n\nclass Failure(Exception):\n    def __init__(self, tag):\n        self.tag = tag if tag in FAILURE_TAGS else \"unexpected_failure\"\n        super().__init__(self.tag)\n\n\nclass Halt(BaseException):\n    \"\"\"Pass through HTTP/verifier Exception handlers to owned finally cleanup.\"\"\"\n\n    def __init__(self, tag):\n        self.tag = tag if tag in FAILURE_TAGS else \"unexpected_failure\"\n\n\ndef require(condition, tag):\n    if not condition:\n        raise Failure(tag)\n\n\ndef private_directory(path):\n    path = Path(os.path.abspath(path))\n    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)\n    try:\n        info = os.fstat(fd)\n        require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()\n                and stat.S_IMODE(info.st_mode) == 0o700, \"paths_invalid\")\n    finally:\n        os.close(fd)\n    return path\n\n\ndef private_bytes(path, limit=MAX_FILE):\n    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)\n    try:\n        info = os.fstat(fd)\n        require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()\n                and stat.S_IMODE(info.st_mode) == 0o600\n                and 0 < info.st_size <= limit, \"private_file_invalid\")\n        with os.fdopen(fd, \"rb\", closefd=False) as source:\n            raw = source.read(limit + 1)\n        require(0 < len(raw) <= limit, \"private_file_invalid\")\n        return raw\n    finally:\n        os.close(fd)\n\n\ndef load_verifier(path):\n    raw = private_bytes(path)\n    require(hashlib.sha256(raw).hexdigest() == VERIFIER_SHA256,\n            \"verifier_hash_mismatch\")\n    # Execute precisely the verified bytes, without rereading or writing pycache.\n    module = types.ModuleType(\"d01_pinned_recovery_verifier\")\n    module.__file__ = str(path)\n    try:\n        exec(compile(raw, str(path), \"exec\"), module.__dict__)\n    except Exception:\n        raise Failure(\"verifier_import_failed\") from None\n    return module\n\n\ndef client_secret(module, path):\n    try:\n        saved = module.json_object(private_bytes(path))\n    except Failure:\n        raise\n    except Exception:\n        raise Failure(\"credential_invalid\") from None\n    client = saved.get(\"client\")\n    require(isinstance(client, dict), \"credential_invalid\")\n    settings, scopes = client.get(\"settings\"), client.get(\"scopes\")\n    require(client.get(\"client_id\") == CLIENT_ID\n            and client.get(\"confidential\") is True\n            and client.get(\"service\") is False and client.get(\"enabled\") is True\n            and client.get(\"redirect_uris\") == [CALLBACK]\n            and isinstance(scopes, list) and len(scopes) == 2\n            and all(isinstance(value, str) for value in scopes)\n            and set(scopes) == {\"openid\", \"profile\"}\n            and isinstance(settings, dict)\n            and settings.get(\"token_endpoint_auth_method\") is None,\n            \"credential_invalid\")\n    secret = saved.get(\"client_secret\")\n    require(isinstance(secret, str) and 0 < len(secret) <= 4096\n            and all(32 <= ord(value) <= 126 for value in secret),\n            \"credential_invalid\")\n    saved.clear()\n    return secret\n\n\nclass Budget:\n    \"\"\"One main-thread alarm bounds blocking work and samples free space.\"\"\"\n\n    def __init__(self, lab, started, seconds):\n        self.lab, self.deadline = lab, started + seconds\n        self.phase_deadline = self.pending_deadline = None\n        self.phase_tag = \"fixture_deadline\"\n        self.minimum_free = None\n        self.samples = 0\n        self.previous = {}\n\n    def __enter__(self):\n        require(hasattr(signal, \"setitimer\") and hasattr(signal, \"SIGALRM\")\n                and signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0),\n                \"arguments_invalid\")\n        for name in (signal.SIGALRM, signal.SIGINT, signal.SIGTERM):\n            self.previous[name] = signal.getsignal(name)\n            signal.signal(name, self.tick if name == signal.SIGALRM else self.interrupt)\n        self.tick()\n        return self\n\n    def interrupt(self, signum, frame):\n        raise Halt(\"interrupted\")\n\n    def tick(self, signum=None, frame=None):\n        try:\n            free = shutil.disk_usage(self.lab).free\n        except Exception:\n            raise Halt(\"disk_observation_failed\") from None\n        self.samples += 1\n        self.minimum_free = free if self.minimum_free is None else min(self.minimum_free, free)\n        require_free = free >= STOP_FREE_BYTES\n        if not require_free:\n            raise Halt(\"disk_margin\")\n        now = time.monotonic()\n        deadlines = [(self.deadline, \"fixture_deadline\")]\n        if self.phase_deadline is not None:\n            deadlines.append((self.phase_deadline, self.phase_tag))\n        if self.pending_deadline is not None:\n            deadlines.append((self.pending_deadline, \"pending_deadline\"))\n        deadline, tag = min(deadlines)\n        if now >= deadline:\n            raise Halt(tag)\n        signal.setitimer(signal.ITIMER_REAL, min(1.0, deadline - now))\n\n    @contextlib.contextmanager\n    def limit(self, seconds, tag):\n        old = self.phase_deadline, self.phase_tag\n        deadline = time.monotonic() + seconds\n        if old[0] is None or deadline < old[0]:\n            self.phase_deadline, self.phase_tag = deadline, tag\n        try:\n            self.tick()\n            yield\n        finally:\n            self.phase_deadline, self.phase_tag = old\n            # Do not replace an in-flight Halt with another alarm during unwinding.\n            if sys.exc_info()[0] is None:\n                self.tick()\n\n    def close(self):\n        if self.previous:\n            signal.setitimer(signal.ITIMER_REAL, 0)\n            for name, handler in self.previous.items():\n                signal.signal(name, handler)\n            self.previous.clear()\n\n\ndef observe_unexpected_failure(holder, site):\n    \"\"\"First-only finite private observation; never replace the original outcome.\"\"\"\n    try:\n        if holder[\"observed\"] or site not in (\"handler\", \"server\", \"main\"):\n            return\n        holder[\"observed\"] = True\n        error = sys.exc_info()[1]\n        label = \"other\"\n        for kind, name in ((AttributeError, \"AttributeError\"),\n                           (TypeError, \"TypeError\"), (ValueError, \"ValueError\"),\n                           (KeyError, \"KeyError\"), (OSError, \"OSError\"),\n                           (BrokenPipeError, \"BrokenPipeError\"),\n                           (ConnectionResetError, \"ConnectionResetError\"),\n                           (TimeoutError, \"TimeoutError\")):\n            if type(error) is kind:\n                label = name\n                break\n        own_function = own_line = None\n        codes = (\n            (HeaderReader.readline.__code__, \"HeaderReader.readline\"),\n            (DemoServer.process_request.__code__, \"DemoServer.process_request\"),\n            (Demo.begin.__code__, \"Demo.begin\"),\n            (Demo.callback.__code__, \"Demo.callback\"),\n            (Demo.invoke.__code__, \"Demo.invoke\"),\n            (Handler.handle_one_request.__code__, \"Handler.handle_one_request\"),\n            (Handler.send_error.__code__, \"Handler.send_error\"),\n            (Handler.get.__code__, \"Handler.get\"),\n            (Handler.reply.__code__, \"Handler.reply\"),\n            (main.__code__, \"main\"),\n        )\n        trace = BaseException.__traceback__.__get__(error, BaseException) if isinstance(error, BaseException) else None\n        for _ in range(64):\n            if trace is None:\n                break\n            for code, name in codes:\n                if trace.tb_frame.f_code is code and type(trace.tb_lineno) is int and 1 <= trace.tb_lineno <= 1024:\n                    own_function, own_line = name, trace.tb_lineno\n            trace = trace.tb_next\n        if trace is not None:\n            own_function = own_line = None\n        holder[\"diagnostic\"] = {\"site\": site, \"exception_class\": label,\n                                \"own_function\": own_function, \"own_line\": own_line}\n    except BaseException:\n        # Projection/storage failures retain the first latch and original handler.\n        pass\n\n\nclass Demo:\n    def __init__(self, module, workspace, secret, budget, checks, statuses):\n        self.module, self.workspace, self.secret = module, workspace, secret\n        self.issuer, self.client_id = ISSUER, CLIENT_ID\n        self.budget, self.checks = budget, checks\n        self.statuses = statuses\n        self.stage = \"setup\"\n        self.pending = self.cookie = self.subject = None\n        self.attempted = self.done = False\n        self.failure = None\n        self.request_invalid_reason = None\n        self.preflow_authorization_refusals = 0\n        self.preflow_request_timeouts = 0\n        self.unexpected_failure_observation = {\"observed\": False, \"diagnostic\": None}\n\n    def invoke(self, stage, seconds, function, *args, **kwargs):\n        self.stage = stage\n        try:\n            with self.budget.limit(seconds, stage + \"_failed\"):\n                return function(*args, **kwargs)\n        except Failure:\n            raise\n        except Exception:\n            # Imported failures are never formatted or copied into the record.\n            raise Failure(stage + \"_failed\") from None\n\n    def setup(self, executable):\n        def provider():\n            self.openssl = Path(executable).resolve(strict=True)\n            info = self.openssl.stat()\n            require(str(Path(executable)) == \"/opt/homebrew/bin/openssl\"\n                    and stat.S_ISREG(info.st_mode) and 0 < info.st_size <= 32 * 1024 * 1024,\n                    \"provider_failed\")\n            with self.openssl.open(\"rb\") as source:\n                require(hashlib.file_digest(source, \"sha256\").hexdigest() == OPENSSL_SHA256,\n                        \"provider_failed\")\n            self.openssl_environment = {key: value for key, value in os.environ.items()\n                                        if key in {\"PATH\", \"HOME\", \"TMPDIR\", \"LANG\", \"LC_ALL\"}}\n            result = subprocess.run([str(self.openssl), \"version\"], capture_output=True,\n                                    timeout=5, env=self.openssl_environment)\n            require(result.returncode == 0\n                    and len(result.stdout) <= 256 and len(result.stderr) <= 4096\n                    and result.stdout.decode(\"ascii\").strip() == OPENSSL_VERSION,\n                    \"provider_failed\")\n        self.invoke(\"provider\", 5, provider)\n        self.checks[\"provider_identity_verified\"] = True\n        document = self.invoke(\"discovery\", 5,\n                               self.module.LocalRelyingParty.discovery, self)\n        methods = document.get(\"token_endpoint_auth_methods_supported\")\n        require(isinstance(methods, list) and \"client_secret_post\" in methods\n                and all(isinstance(value, str) for value in methods), \"discovery_failed\")\n        self.discovery_document = document\n        self.checks[\"discovery_verified\"] = True\n\n    def begin(self):\n        self.stage = \"flow\"\n        require(not self.attempted, \"flow_already_started\")\n        self.attempted = True\n        self.pending = {\"state\": secrets.token_urlsafe(32), \"nonce\": secrets.token_urlsafe(32),\n                        \"verifier\": secrets.token_urlsafe(48),\n                        \"flow_cookie\": secrets.token_urlsafe(32),\n                        \"started_at\": int(time.time())}\n        self.budget.pending_deadline = time.monotonic() + PENDING_SECONDS\n        self.budget.tick()\n        fields = {\"response_type\": \"code\", \"client_id\": CLIENT_ID,\n                  \"redirect_uri\": CALLBACK, \"scope\": \"openid profile\",\n                  \"state\": self.pending[\"state\"], \"nonce\": self.pending[\"nonce\"],\n                  \"code_challenge\": self.module.b64url(\n                      hashlib.sha256(self.pending[\"verifier\"].encode(\"ascii\")).digest()),\n                  \"code_challenge_method\": \"S256\"}\n        return (self.discovery_document[\"authorization_endpoint\"] + \"?\"\n                + urllib.parse.urlencode(fields), self.pending[\"flow_cookie\"])\n\n    def callback(self, query, flow_cookie):\n        self.stage = \"callback\"\n        require(self.pending is not None, \"callback_already_consumed\")\n        pending, self.pending = self.pending, None\n        self.budget.pending_deadline = None\n        raw = tokens = access = subject = code = form = None\n        try:\n            require(self.module.equal(flow_cookie, pending[\"flow_cookie\"]), \"callback_invalid\")\n            try:\n                code = self.module.LocalRelyingParty.callback_fields(self, query, pending[\"state\"])\n            except Exception:\n                raise Failure(\"callback_invalid\") from None\n            self.checks[\"state_issuer_flow_cookie_verified\"] = True\n            form = {\"grant_type\": \"authorization_code\", \"client_id\": CLIENT_ID,\n                    \"client_secret\": self.secret, \"redirect_uri\": CALLBACK,\n                    \"code\": code, \"code_verifier\": pending[\"verifier\"]}\n            status, _, raw = self.invoke(\"token_exchange\", 5, self.module.request,\n                                         self.discovery_document[\"token_endpoint\"],\n                                         method=\"POST\", form=form)\n            self.statuses[\"token_exchange\"] = status\n            require(status == 200, \"token_exchange_failed\")\n            tokens = self.module.json_object(raw)\n            access, scope = tokens.get(\"access_token\"), tokens.get(\"scope\")\n            require(isinstance(access, str) and 0 < len(access) <= self.module.MAX_TOKEN\n                    and re.fullmatch(r\"[A-Za-z0-9_.-]+\", access) is not None\n                    and tokens.get(\"token_type\") == \"Bearer\" and isinstance(scope, str)\n                    and set(scope.split()) == {\"openid\", \"profile\"}, \"token_exchange_failed\")\n            self.checks[\"confidential_s256_exchange_verified\"] = True\n            # Keep the pinned implementation; cap combined JWKS/signature work\n            # at five real seconds as well as its existing socket/process caps.\n            subject = self.invoke(\"token_validation\", 5,\n                                  self.module.LocalRelyingParty.verify_id_token,\n                                  self, tokens.get(\"id_token\"), access, pending,\n                                  self.discovery_document)\n            self.checks[\"rs256_jwks_issuer_audience_nonce_time_access_hash_verified\"] = True\n            status, _, raw = self.invoke(\"userinfo\", 5, self.module.request,\n                                         self.discovery_document[\"userinfo_endpoint\"], bearer=access)\n            self.statuses[\"userinfo\"] = status\n            require(status == 200 and self.module.equal(self.module.json_object(raw).get(\"sub\"), subject),\n                    \"userinfo_failed\")\n            self.checks[\"userinfo_subject_verified\"] = True\n            self.cookie, self.subject = secrets.token_urlsafe(32), subject\n            return self.cookie\n        finally:\n            pending.clear()\n            if form is not None:\n                form.clear()\n            raw = tokens = access = subject = code = form = None\n            self.secret = None\n\n    def clear(self):\n        if self.pending is not None:\n            self.pending.clear()\n        self.pending = self.cookie = self.subject = self.secret = None\n        self.budget.pending_deadline = None\n\n\nclass HeaderReader:\n    def __init__(self, source):\n        self.source, self.remaining, self.lines = source, MAX_HEADERS, 0\n\n    def readline(self, size=-1):\n        line = self.source.readline(min(MAX_HEADER_LINE + 1, self.remaining + 1))\n        self.remaining -= len(line)\n        self.lines += 1\n        require(len(line) <= MAX_HEADER_LINE and self.remaining >= 0\n                and self.lines <= MAX_HEADER_COUNT + 1, \"request_limit\")\n        return line\n\n\nclass DemoServer(http.server.HTTPServer):\n    def __init__(self, demo):\n        self.demo, self.active = demo, None\n        super().__init__((\"127.0.0.1\", 3000), Handler)\n        self.timeout = 0.2\n\n    def process_request(self, request, address):\n        self.active = request\n        try:\n            self.finish_request(request, address)\n        finally:\n            self.shutdown_request(request)\n            self.active = None\n\n    def handle_error(self, request, address):\n        try:\n            observe_unexpected_failure(self.demo.unexpected_failure_observation, \"server\")\n        except BaseException:\n            pass\n        self.demo.failure, self.demo.done = \"unexpected_failure\", True\n\n\nclass PreflowAuthorizationRefusal(Exception):\n    pass\n\n\nclass Handler(http.server.BaseHTTPRequestHandler):\n    timeout = 5\n    protocol_version = \"HTTP/1.0\"\n\n    def log_message(self, format, *args):\n        pass\n\n    def record_request_reason(self, reason):\n        demo = self.server.demo\n        if demo.request_invalid_reason is None and reason in REQUEST_INVALID_REASONS:\n            demo.request_invalid_reason = reason\n\n    def require_request(self, condition, reason):\n        if not condition:\n            self.record_request_reason(reason)\n            raise Failure(\"request_invalid\")\n\n    def send_error(self, code, message=None, explain=None):\n        self.record_request_reason(\"http_parse\")\n        self.server.demo.failure, self.server.demo.done = \"request_invalid\", True\n        self.reply(code, \"Local demo could not complete this request.\")\n\n    def handle_one_request(self):\n        demo = self.server.demo\n        self.requestline, self.request_version, self.command = \"\", \"HTTP/1.0\", None\n        self.close_connection = True\n        try:\n            demo.stage = \"request\"\n            with demo.budget.limit(5, \"request_timeout\"):\n                try:\n                    self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE + 1)\n                except TimeoutError as timeout:\n                    if not (type(timeout) is TimeoutError\n                            and demo.attempted is False and demo.pending is None\n                            and demo.cookie is None and demo.subject is None\n                            and demo.done is False and demo.failure is None\n                            and type(demo.preflow_request_timeouts) is int\n                            and 0 <= demo.preflow_request_timeouts < 4):\n                        raise\n                    demo.preflow_request_timeouts += 1\n                    if demo.preflow_request_timeouts == 4:\n                        demo.failure, demo.done = \"request_timeout\", True\n                        try:\n                            observe_unexpected_failure(demo.unexpected_failure_observation, \"handler\")\n                        except BaseException:\n                            pass\n                    return\n                if not self.raw_requestline:\n                    return\n                require(len(self.raw_requestline) <= MAX_REQUEST_LINE, \"request_limit\")\n                original, self.rfile = self.rfile, HeaderReader(self.rfile)\n                try:\n                    if not self.parse_request():\n                        return\n                finally:\n                    self.rfile = original\n                self.close_connection = True\n                self.require_request(self.headers.get_all(\"Host\") == [AUTHORITY], \"host\")\n                if (self.headers.get_all(\"Authorization\") is not None\n                        and demo.attempted is False and demo.pending is None\n                        and demo.cookie is None and demo.subject is None\n                        and demo.preflow_authorization_refusals < 4):\n                    self.record_request_reason(\"authorization\")\n                    self.require_request(self.headers.get_all(\"Transfer-Encoding\") is None, \"transfer_encoding\")\n                    self.require_request(self.headers.get_all(\"Expect\") is None, \"expect\")\n                    self.require_request(self.headers.get_all(\"Content-Length\") in (None, [\"0\"]), \"content_length\")\n                    target = urllib.parse.urlsplit(self.path)\n                    self.require_request(not target.scheme, \"target_scheme\")\n                    self.require_request(not target.netloc, \"target_netloc\")\n                    self.require_request(not target.fragment, \"target_fragment\")\n                    demo.preflow_authorization_refusals += 1\n                    raise PreflowAuthorizationRefusal\n                self.require_request(self.headers.get_all(\"Authorization\") is None, \"authorization\")\n                self.require_request(self.headers.get_all(\"Transfer-Encoding\") is None, \"transfer_encoding\")\n                self.require_request(self.headers.get_all(\"Expect\") is None, \"expect\")\n                self.require_request(self.headers.get_all(\"Content-Length\") in (None, [\"0\"]), \"content_length\")\n                target = urllib.parse.urlsplit(self.path)\n                self.require_request(not target.scheme, \"target_scheme\")\n                self.require_request(not target.netloc, \"target_netloc\")\n                self.require_request(not target.fragment, \"target_fragment\")\n            if self.command == \"GET\":\n                self.get(target)\n            elif self.command == \"POST\":\n                self.require_request(target.path == \"/login\" and not target.query, \"post_target\")\n                self.require_request(self.headers.get_all(\"Origin\") == [ORIGIN], \"origin\")\n                self.require_request(self.headers.get_all(\"Content-Type\") == [\"application/x-www-form-urlencoded\"], \"content_type\")\n                self.cookies()\n                location, cookie = demo.begin()\n                self.reply(303, \"\", location=location, cookie=(FLOW_COOKIE, cookie))\n                demo.statuses[\"authorization_redirect\"] = 303\n                demo.checks[\"authorization_redirect_issued\"] = True\n            else:\n                self.record_request_reason(\"method\")\n                raise Failure(\"request_invalid\")\n        except PreflowAuthorizationRefusal:\n            if demo.preflow_authorization_refusals == 4:\n                demo.failure, demo.done = \"request_invalid\", True\n            self.reply(403, \"Local demo could not complete this request.\")\n        except Failure as failure:\n            demo.failure, demo.done = failure.tag, True\n            self.reply(400, \"Local demo could not complete this request.\")\n        except Exception:\n            try:\n                observe_unexpected_failure(demo.unexpected_failure_observation, \"handler\")\n            except BaseException:\n                pass\n            demo.failure, demo.done = \"unexpected_failure\", True\n            self.reply(400, \"Local demo could not complete this request.\")\n\n    def cookies(self):\n        headers = self.headers.get_all(\"Cookie\", [])\n        self.require_request(len(headers) <= 1, \"cookie_header_count\")\n        raw = headers[0] if headers else \"\"\n        require(len(raw) <= MAX_COOKIE, \"request_limit\")\n        pieces = raw.split(\";\") if raw else []\n        require(len(pieces) <= MAX_HEADER_COUNT, \"request_limit\")\n        own = {}\n        for piece in pieces:\n            name, separator, value = piece.strip().partition(\"=\")\n            if name in (FLOW_COOKIE, APP_COOKIE):\n                self.require_request(separator and name not in own\n                                     and re.fullmatch(r\"[A-Za-z0-9_-]{43}\", value) is not None,\n                                     \"own_cookie_shape\")\n                own[name] = value\n        return own\n\n    def get(self, target):\n        demo, cookies = self.server.demo, self.cookies()\n        if target.path == \"/callback\":\n            cookie = demo.callback(target.query, cookies.get(FLOW_COOKIE))\n            self.reply(303, \"\", location=\"/protected\", cookie=(APP_COOKIE, cookie), clear_flow=True)\n            demo.statuses[\"callback\"] = 303\n        elif target.path == \"/protected\" and not target.query:\n            demo.stage = \"protected\"\n            authenticated = (demo.subject is not None and demo.cookie is not None\n                             and demo.module.equal(cookies.get(APP_COOKIE), demo.cookie))\n            self.reply(200 if authenticated else 403,\n                       \"Signed in. Protected application access is available.\" if authenticated\n                       else \"Sign in required.\", protected=authenticated)\n            if authenticated:\n                demo.checks[\"protected_with_fresh_cookie_accepted\"] = True\n                demo.statuses[\"protected_after\"] = 200\n                if not demo.checks[\"protected_without_cookie_denied\"]:\n                    demo.failure = \"protected_before_unobserved\"\n                demo.done = True\n            elif not demo.attempted and APP_COOKIE not in cookies:\n                demo.checks[\"protected_without_cookie_denied\"] = True\n                demo.statuses[\"protected_before\"] = 403\n        elif target.path == \"/\" and not target.query:\n            self.reply(200, \"Use Sign in to open this local application.\", start=True)\n        else:\n            self.reply(404, \"This page is unavailable.\")\n\n    def reply(self, status, text, *, location=None, cookie=None, clear_flow=False,\n              start=False, protected=False):\n        heading = \"Protected application access\" if protected else \"Local demo\"\n        form = ('<form method=\"post\" action=\"/login\"><button type=\"submit\">Sign in</button></form>'\n                if start else \"\")\n        raw = ('<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">'\n               '<title>Local demo</title><h1>' + heading + '</h1><p>' + text + '</p>'\n               + form + '</html>').encode(\"utf-8\")\n        with self.server.demo.budget.limit(5, \"response_timeout\"):\n            self.send_response(status)\n            self.send_header(\"Content-Type\", \"text/html; charset=utf-8\")\n            self.send_header(\"Content-Length\", str(len(raw)))\n            self.send_header(\"Connection\", \"close\")\n            self.send_header(\"Cache-Control\", \"no-store\")\n            self.send_header(\"Referrer-Policy\", \"no-referrer\")\n            self.send_header(\"Content-Security-Policy\", \"default-src 'none'; form-action 'self'; frame-ancestors 'none'\")\n            if location is not None:\n                self.send_header(\"Location\", location)\n            if cookie is not None:\n                self.send_header(\"Set-Cookie\", cookie[0] + \"=\" + cookie[1]\n                                 + \"; HttpOnly; SameSite=Lax; Path=/\")\n            if clear_flow:\n                self.send_header(\"Set-Cookie\", FLOW_COOKIE + \"=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/\")\n            self.end_headers()\n            self.wfile.write(raw)\n            self.wfile.flush()\n        self.close_connection = True\n\n\nclass QuietParser(argparse.ArgumentParser):\n    def error(self, message):\n        raise Failure(\"arguments_invalid\")\n\n\ndef main():\n    started = time.monotonic()\n    budget = demo = server = evidence_fd = workspace = secret = None\n    stage = \"arguments\"\n    record = {\"schema\": \"riauth.d01-confidential-browser/v1\", \"result\": \"failed\",\n              \"failure_stage\": None, \"failure_tag\": None, \"checks\": {}, \"cleanup\": {},\n              \"request_invalid_reason\": None, \"preflow_authorization_refusals\": 0,\n              \"preflow_request_timeouts\": 0,\n              \"unexpected_failure_observation\": {\"observed\": False, \"diagnostic\": None},\n              \"source\": {\"verifier_commit\": VERIFIER_COMMIT, \"verifier_blob\": VERIFIER_BLOB,\n                         \"verifier_expected_sha256\": VERIFIER_SHA256},\n              \"provider\": None,\n              \"http_statuses\": {name: None for name in\n                                (\"authorization_redirect\", \"callback\", \"token_exchange\",\n                                 \"userinfo\", \"protected_before\", \"protected_after\")}}\n    try:\n        parser = QuietParser(add_help=False, allow_abbrev=False)\n        for name in (\"workspace\", \"secret-file\", \"verifier-helper\", \"openssl\", \"evidence\"):\n            parser.add_argument(\"--\" + name, required=True)\n        parser.add_argument(\"--deadline-seconds\", type=int, default=600)\n        args = parser.parse_args()\n        require(sys.version_info >= (3, 11) and 1 <= args.deadline_seconds <= 600,\n                \"arguments_invalid\")\n        stage = \"paths\"\n        workspace = private_directory(args.workspace)\n        lab = private_directory(workspace.parent)\n        require(not any(workspace.iterdir()), \"paths_invalid\")\n        secret_path, verifier_path, evidence_path = [Path(os.path.abspath(value)) for value in\n                                                   (args.secret_file, args.verifier_helper, args.evidence)]\n        require(private_directory(secret_path.parent).parent == lab\n                and verifier_path.parent == lab and evidence_path.parent == lab\n                and len({secret_path, verifier_path, evidence_path}) == 3, \"paths_invalid\")\n        budget = Budget(lab, started, args.deadline_seconds)\n        budget.__enter__()\n        evidence_fd = os.open(evidence_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)\n        os.fchmod(evidence_fd, 0o600)\n        stage = \"verifier\"\n        module = load_verifier(verifier_path)\n        record[\"source\"][\"verifier_sha256\"] = VERIFIER_SHA256\n        record[\"source\"][\"helper_sha256\"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()\n        stage = \"credential\"\n        secret = client_secret(module, secret_path)\n        for name in (\"credential_private_validated\", \"provider_identity_verified\", \"discovery_verified\",\n                     \"protected_without_cookie_denied\", \"authorization_redirect_issued\",\n                     \"state_issuer_flow_cookie_verified\", \"confidential_s256_exchange_verified\",\n                     \"rs256_jwks_issuer_audience_nonce_time_access_hash_verified\",\n                     \"userinfo_subject_verified\", \"protected_with_fresh_cookie_accepted\"):\n            record[\"checks\"][name] = name == \"credential_private_validated\"\n        demo = Demo(module, workspace, secret, budget, record[\"checks\"], record[\"http_statuses\"])\n        record[\"unexpected_failure_observation\"] = demo.unexpected_failure_observation\n        secret = None\n        demo.setup(args.openssl)\n        record[\"provider\"] = {\"sha256\": OPENSSL_SHA256, \"version\": OPENSSL_VERSION}\n        demo.stage = \"listener\"\n        try:\n            server = DemoServer(demo)\n        except Exception:\n            raise Failure(\"listener_failed\") from None\n        print(json.dumps({\"ready\": True, \"port\": 3000, \"pid\": os.getpid()}), flush=True)\n        while not demo.done:\n            budget.tick()\n            server.handle_request()\n        if demo.failure is not None:\n            raise Failure(demo.failure)\n        require(all(record[\"checks\"].values()), \"unexpected_failure\")\n        record[\"result\"] = \"passed\"\n    except (Failure, Halt) as failure:\n        record[\"failure_tag\"] = failure.tag\n        record[\"failure_stage\"] = demo.stage if demo is not None else stage\n    except KeyboardInterrupt:\n        record[\"failure_tag\"], record[\"failure_stage\"] = \"interrupted\", stage\n    except Exception:\n        try:\n            observe_unexpected_failure(record[\"unexpected_failure_observation\"], \"main\")\n        except BaseException:\n            pass\n        record[\"failure_tag\"] = \"unexpected_failure\"\n        record[\"failure_stage\"] = demo.stage if demo is not None else stage\n    finally:\n        cleanup_failed = False\n        if budget is not None:\n            try:\n                budget.close()\n            except BaseException:\n                cleanup_failed = True\n            record[\"minimum_free_bytes\"], record[\"disk_samples\"] = budget.minimum_free, budget.samples\n        if server is not None:\n            try:\n                if server.active is not None:\n                    server.shutdown_request(server.active)\n                    server.active = None\n            except BaseException:\n                cleanup_failed = True\n            try:\n                server.server_close()\n            except BaseException:\n                cleanup_failed = True\n            record[\"cleanup\"][\"listener_closed\"] = server.socket.fileno() == -1\n            record[\"cleanup\"][\"connection_closed\"] = server.active is None\n        if demo is not None:\n            record[\"request_invalid_reason\"] = demo.request_invalid_reason\n            record[\"preflow_authorization_refusals\"] = demo.preflow_authorization_refusals\n            record[\"preflow_request_timeouts\"] = demo.preflow_request_timeouts\n            try:\n                demo.clear()\n                record[\"cleanup\"][\"private_references_cleared\"] = True\n            except BaseException:\n                cleanup_failed = True\n                record[\"cleanup\"][\"private_references_cleared\"] = False\n        secret = None\n        try:\n            if workspace is not None:\n                record[\"cleanup\"][\"verifier_temporaries_removed\"] = not any(workspace.iterdir())\n            if cleanup_failed or (record[\"result\"] == \"passed\" and not all(record[\"cleanup\"].values())):\n                raise Failure(\"cleanup_failed\")\n        except BaseException:\n            record[\"result\"] = \"failed\"\n            record[\"cleanup\"][\"failure_tag\"] = \"cleanup_failed\"\n            if record[\"failure_tag\"] is None:\n                record[\"failure_tag\"], record[\"failure_stage\"] = \"cleanup_failed\", \"cleanup\"\n        record[\"elapsed_seconds\"] = round(time.monotonic() - started, 3)\n    written = False\n    if evidence_fd is not None:\n        try:\n            with os.fdopen(evidence_fd, \"wb\") as output:\n                output.write((json.dumps(record, sort_keys=True) + \"\\n\").encode(\"ascii\"))\n                output.flush()\n                os.fsync(output.fileno())\n            written = True\n        except Exception:\n            record[\"result\"] = \"failed\"\n            record[\"evidence_failure_tag\"] = \"evidence_write_failed\"\n            if record[\"failure_tag\"] is None:\n                record[\"failure_tag\"], record[\"failure_stage\"] = \"evidence_write_failed\", \"evidence\"\n        finally:\n            try:\n                os.close(evidence_fd)\n            except OSError:\n                pass\n    try:\n        print(json.dumps({\"result\": record[\"result\"], \"failure_tag\": record[\"failure_tag\"],\n                          \"cleanup_failure_tag\": record[\"cleanup\"].get(\"failure_tag\"),\n                          \"evidence_failure_tag\": record.get(\"evidence_failure_tag\"),\n                          \"evidence_written\": written}), flush=True)\n    except Exception:\n        return 1\n    return 0 if record[\"result\"] == \"passed\" and written else 1\n\n\nif __name__ == \"__main__\":\n    raise SystemExit(main())\n"
+STDLIB_HANDLE = "def handle(self):\n    \"\"\"Handle multiple requests if necessary.\"\"\"\n    self.close_connection = True\n\n    self.handle_one_request()\n    while not self.close_connection:\n        self.handle_one_request()\n"
+STDLIB_FINISH = "def finish(self):\n    if not self.wfile.closed:\n        try:\n            self.wfile.flush()\n        except socket.error:\n            # A final socket error may have occurred here, such as\n            # the local error ECONNABORTED.\n            pass\n    self.wfile.close()\n    self.rfile.close()\n"
+CONTROLLER_PYTHON = "import datetime,fcntl,hashlib,json,os,pathlib,pty,secrets,select,shutil,signal,stat,subprocess,sys,tempfile,termios,time,urllib.request\nROOT=pathlib.Path.cwd()\nSTART=float('__ROOT_RELEASED_START_ONCE__')\nACTIVE=START+840\nBIN=pathlib.Path('/Users/dominik/orca/projects/riAuth-public-preview-local-module-boundaries-wave27/target/d01-essentials-c01c39a/aarch64-apple-darwin/debug')\nPRIVATE=ROOT/'deployment-private'\nOUT=PRIVATE/'__ROOT_FRESH_OBSERVER_OUT_BASENAME__'\nPROVIDER_META=PRIVATE/'__ROOT_FRESH_OBSERVER_PROVIDER_BASENAME__'\nrecord={'schema':'riauth.d01-confidential-browser-outer/v1','result':'failed','failure_stage':None,'failure_tag':None,'request_invalid_reason':None,'preflow_authorization_refusals':None,'unexpected_failure_observation':None,'unexpected_observation_projection':'unavailable','commands':[],'artifacts':{},'cleanup':{},'owned_child_exits':[],'started_epoch':START,'active_seconds':840,'cleanup_seconds':60,'minimum_free_bytes':None,'disk_samples':0}\nlab=None;children=[];names={};server=None;helper=None;password=None;stage='preflight';resultfd=None;lastsample=0\ndef require(ok,tag):\n    if not ok:raise RuntimeError(tag)\ndef tick():\n    global lastsample\n    now=time.monotonic()\n    if now-lastsample>=1:\n        free=shutil.disk_usage(ROOT).free\n        record['disk_samples']+=1\n        record['minimum_free_bytes']=free if record['minimum_free_bytes'] is None else min(record['minimum_free_bytes'],free)\n        lastsample=now\n        require(free>=8.5*1024**3,'disk_margin')\n    require(time.time()<ACTIVE,'active_deadline')\ndef write_exclusive(path,value):\n    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    raw=(json.dumps(value,sort_keys=True,indent=2)+'\\n').encode('ascii')\n    with os.fdopen(fd,'wb') as f:\n        f.write(raw);f.flush();os.fsync(f.fileno())\n    return hashlib.sha256(raw).hexdigest()\ndef finite_observation(value):\n    if type(value) is not dict or set(value)!= {'observed','diagnostic'} or type(value['observed']) is not bool:\n        return None\n    diagnostic=value['diagnostic']\n    if diagnostic is None:\n        return {'observed':value['observed'],'diagnostic':None}\n    if not value['observed'] or type(diagnostic) is not dict or set(diagnostic)!= {'site','exception_class','own_function','own_line'}:\n        return None\n    sites=('handler','server','main')\n    kinds=('AttributeError','TypeError','ValueError','KeyError','OSError','BrokenPipeError','ConnectionResetError','TimeoutError','other')\n    functions=('HeaderReader.readline','DemoServer.process_request','Demo.begin','Demo.callback','Demo.invoke','Handler.handle_one_request','Handler.send_error','Handler.get','Handler.reply','main')\n    site,kind,function,line=(diagnostic[k] for k in ('site','exception_class','own_function','own_line'))\n    if type(site) is not str or site not in sites or type(kind) is not str or kind not in kinds:\n        return None\n    if not ((function is None and line is None) or (type(function) is str and function in functions and type(line) is int and 1<=line<=1024)):\n        return None\n    return {'observed':True,'diagnostic':{'site':site,'exception_class':kind,'own_function':function,'own_line':line}}\ndef retain_observation():\n    # Sanitize even the nested helper_result field; never copy malformed details.\n    value=record['helper_result'].get('unexpected_failure_observation')\n    projected=finite_observation(value)\n    record['helper_result']['unexpected_failure_observation']=projected\n    if projected is None:\n        record['unexpected_observation_projection']='invalid'\n    elif record['unexpected_failure_observation'] is None:\n        record['unexpected_failure_observation']=projected\n        if record['unexpected_observation_projection']!='invalid':\n            record['unexpected_observation_projection']='valid'\ndef listeners(port):\n    p=subprocess.run(['/usr/sbin/lsof','-nP','-t','-iTCP:'+str(port),'-sTCP:LISTEN'],capture_output=True,timeout=3)\n    require(p.returncode in (0,1),'socket_observation_failed')\n    return set(int(v) for v in p.stdout.split())\ndef own(p,name):\n    children.append(p);names[p.pid]=name;return p\ndef stop_child(p):\n    if p.poll() is None:\n        for sig,wait in [(signal.SIGINT,8),(signal.SIGTERM,5),(signal.SIGKILL,2)]:\n            if p.poll() is not None:break\n            p.send_signal(sig)\n            try:p.wait(timeout=wait)\n            except subprocess.TimeoutExpired:pass\n    require(p.poll() is not None,'owned_child_reap_failed')\ndef controlling_tty():\n    os.setsid();fcntl.ioctl(0,termios.TIOCSCTTY,0)\ndef cli(name,args,prompts=0):\n    tick()\n    master,slave=pty.openpty()\n    p=own(subprocess.Popen(args,cwd=lab,env=environment,stdin=slave,stdout=slave,stderr=slave,preexec_fn=controlling_tty),name)\n    os.close(slave);seen=0;raw=b'';started=time.monotonic()\n    try:\n        while p.poll() is None:\n            tick();require(time.monotonic()-started<60,'cli_deadline')\n            if select.select([master],[],[],0.2)[0]:\n                try:chunk=os.read(master,4096)\n                except OSError:chunk=b''\n                raw+=chunk;require(len(raw)<=131072,'cli_output_limit')\n                for prompt in ([b'Password: ',b'Confirm password: '] if prompts==2 else [b'Password: ']):\n                    if seen<prompts and prompt in raw:\n                        require(prompt==([b'Password: ',b'Confirm password: '][seen] if prompts==2 else b'Password: '),'cli_prompt_order')\n                        os.write(master,password.encode()+b'\\n');seen+=1;raw=b''\n        while select.select([master],[],[],0)[0]:\n            try:\n                chunk=os.read(master,4096)\n                if not chunk:break\n                raw+=chunk\n            except OSError:break\n        code=p.wait()\n        record['commands'].append({'name':name,'exit':code,'password_prompts':seen})\n        require(code==0,'cli_nonzero');require(seen==prompts,'cli_prompt_missing')\n    finally:\n        raw=b'';os.close(master)\n        if p.poll() is None:stop_child(p)\ndef wait_listener(p,port):\n    deadline=time.monotonic()+30\n    while time.monotonic()<deadline:\n        tick();require(p.poll() is None,'owned_service_early_exit')\n        owners=listeners(port)\n        if owners:\n            require(owners=={p.pid},'listener_owner_mismatch');return\n        time.sleep(0.2)\n    raise RuntimeError('listener_deadline')\ntry:\n    tick()\n    require(PRIVATE.is_dir() and not PRIVATE.is_symlink() and stat.S_IMODE(PRIVATE.stat().st_mode)==0o700,'private_directory_invalid')\n    require(not OUT.exists() and not PROVIDER_META.exists(),'evidence_already_exists')\n    require(not listeners(9000) and not listeners(3000),'port_occupied');record['ports_preflight_empty']=True\n    pins={'riauth':'7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606','riauth-maintenance':'86490c7f71de6b7ae9d4dabdf9060a8757100f3aedbdaa670284d9e1206a2a95','riauthctl':'bfbbb322f1a66d0ac9998beb9fb5838097cea0442cea3fd3a1d057fcb3f600cf'}\n    for name,pin in pins.items():\n        tick()\n        with (BIN/name).open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()\n        record['artifacts'][name]=digest;require(digest==pin,'artifact_hash_mismatch')\n    helper_path=ROOT/'scripts/d01-confidential-browser-demo.py'\n    require(hashlib.sha256(helper_path.read_bytes()).hexdigest()=='75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1','helper_hash_mismatch')\n    verifier=subprocess.check_output(['git','show','9cefe7a56425bb73c17753e8766d92320b77da3b:scripts/recovery-drill-oidc.py'],timeout=5)\n    require(hashlib.sha256(verifier).hexdigest()=='f6dd1aa0b71de4793c9b86ee799012bb31a8fc2d6182976094b44df6ef04de3d','verifier_hash_mismatch')\n    provider=pathlib.Path('/opt/homebrew/bin/openssl').resolve(strict=True)\n    with provider.open('rb') as f:provider_hash=hashlib.file_digest(f,'sha256').hexdigest()\n    require(provider_hash=='67a83dd6d6d747d50c5d296dffb23e32bae9a2c588c93ae2d77e4c607b455c72','provider_hash_mismatch')\n    provider_env={k:v for k,v in os.environ.items() if k in {'PATH','HOME','TMPDIR','LANG','LC_ALL'}}\n    p=subprocess.Popen([str(provider),'version'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=provider_env)\n    try:stdout,stderr=p.communicate(timeout=5);timeout=False\n    except subprocess.TimeoutExpired:\n        p.kill();stdout,stderr=p.communicate(timeout=2);timeout=True\n    provider_record={'sha256':provider_hash,'exit':p.returncode,'timeout':timeout,'stdout_ascii':stdout[:4096].decode('ascii',errors='backslashreplace'),'stderr_ascii':stderr[:4096].decode('ascii',errors='backslashreplace'),'stdout_bytes':len(stdout),'stderr_bytes':len(stderr),'environment_keys':sorted(provider_env)}\n    record['provider_metadata_sha256']=write_exclusive(PROVIDER_META,provider_record)\n    require(not timeout and p.returncode==0 and len(stdout)<=256 and len(stderr)<=4096 and stdout.decode('ascii').strip()=='OpenSSL 3.6.4 25 Aug 2026 (Library: OpenSSL 3.6.4 25 Aug 2026)','provider_version_failed')\n    tick()\n    resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    lab=pathlib.Path(tempfile.mkdtemp(prefix='d01-confidential-browser-diagnostic.',dir=PRIVATE));os.chmod(lab,0o700)\n    for name in ('xdg','deployment-private','rp'):(lab/name).mkdir(mode=0o700)\n    (lab/'recovery-drill-oidc.py').write_bytes(verifier);os.chmod(lab/'recovery-drill-oidc.py',0o600);verifier=None\n    password=secrets.token_urlsafe(30)\n    fd=os.open(lab/'browser-password',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)\n    with os.fdopen(fd,'w') as f:f.write(password)\n    environment=dict(provider_env);environment['XDG_CONFIG_HOME']=str(lab/'xdg')\n    stage='init';cli('maintenance_init',[str(BIN/'riauth-maintenance'),'--config',str(lab/'riauth.toml'),'init','--issuer','http://localhost:9000','--listen','127.0.0.1:9000','--data-dir','data','--admin','admin'],2)\n    stage='serve'\n    server=own(subprocess.Popen([str(BIN/'riauth'),'--config',str(lab/'riauth.toml'),'serve'],cwd=lab,env=environment,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL),'server')\n    record['server_pid']=server.pid;wait_listener(server,9000);record['server_listener_owned']=True\n    stage='readyz'\n    with urllib.request.urlopen('http://127.0.0.1:9000/readyz',timeout=5) as response:\n        record['readyz_status']=response.status;response.read(4096)\n    require(record['readyz_status']==200,'readyz_failed')\n    stage='cli_login'\n    base=[str(BIN/'riauthctl'),'--server','http://localhost:9000']\n    cli('operator_login',base+['login','admin'],1)\n    stage='client_create';secretpath=lab/'deployment-private/local-demo-secret.json'\n    cli('confidential_client_create',base+['client','create','local-demo','--name','Local demo','--confidential','--redirect-uri','http://localhost:3000/callback','--scope','openid,profile','--secret-file',str(secretpath)])\n    require(stat.S_IMODE(secretpath.stat().st_mode)==0o600,'cli_secret_mode_invalid')\n    stage='discovery';cli('discovery',base+['discovery'])\n    stage='whoami';cli('whoami',base+['whoami'])\n    stage='browser_prepare'\n    prepare_deadline=time.monotonic()+180\n    prepare_marker=lab/'browser-prepared'\n    print(json.dumps({'browser_prepare_required':True,'guard_pid':os.getpid(),'server_pid':server.pid,'lab':str(lab)}),flush=True)\n    while not prepare_marker.exists():\n        tick();require(server.poll() is None,'idp_early_exit')\n        require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')\n        require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')\n        time.sleep(0.2)\n    tick();require(server.poll() is None,'idp_early_exit')\n    require(not (lab/'ui-failure').exists() and not (lab/'stop').exists(),'browser_checkpoint_failed')\n    require(time.monotonic()<prepare_deadline,'browser_prepare_deadline')\n    prepare_info=prepare_marker.lstat()\n    require(stat.S_ISREG(prepare_info.st_mode) and stat.S_IMODE(prepare_info.st_mode)==0o600 and prepare_info.st_uid==os.getuid() and prepare_info.st_nlink==1 and prepare_info.st_size==0,'browser_prepare_marker_invalid')\n    stage='rp_start'\n    helper=own(subprocess.Popen([sys.executable,'-B',str(helper_path),'--workspace',str(lab/'rp'),'--secret-file',str(secretpath),'--verifier-helper',str(lab/'recovery-drill-oidc.py'),'--openssl','/opt/homebrew/bin/openssl','--deadline-seconds','600','--evidence',str(lab/'rp-result.json')],cwd=ROOT,env=environment,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True),'helper')\n    record['helper_pid']=helper.pid;record['helper_invocations']=1\n    wait_listener(helper,3000);record['helper_listener_owned']=True\n    print(json.dumps({'fixture_ready':True,'guard_pid':os.getpid(),'server_pid':server.pid,'helper_pid':helper.pid,'lab':str(lab),'commands':record['commands'],'provider_metadata_sha256':record['provider_metadata_sha256'],'minimum_free_bytes':record['minimum_free_bytes']}),flush=True)\n    stage='browser_checkpoint';announced=False\n    while not (lab/'stop').exists():\n        tick();require(server.poll() is None,'idp_early_exit')\n        if helper.poll() is not None:\n            code=helper.wait()\n            if not announced:\n                record['helper_exit']=code;record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())\n                retain_observation()\n                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']\n                record['preflow_authorization_refusals']=record['helper_result']['preflow_authorization_refusals']\n                print(json.dumps({'helper_completed':True,'exit':code,'result':record['helper_result']['result'],'failure_tag':record['helper_result']['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'unexpected_failure_observation':record['unexpected_failure_observation'],'unexpected_observation_projection':record['unexpected_observation_projection']}),flush=True);announced=True\n            require(code==0,'rp_nonzero')\n        time.sleep(0.2)\n    if (lab/'ui-failure').exists():raise RuntimeError('browser_checkpoint_failed')\n    require(helper.poll()==0,'rp_checkpoint_incomplete');record['result']='passed'\nexcept Exception as error:\n    record['failure_stage']=stage\n    tags={'disk_margin','active_deadline','private_directory_invalid','evidence_already_exists','port_occupied','socket_observation_failed','artifact_hash_mismatch','helper_hash_mismatch','verifier_hash_mismatch','provider_hash_mismatch','provider_version_failed','cli_deadline','cli_output_limit','cli_prompt_order','cli_prompt_missing','cli_nonzero','owned_service_early_exit','listener_owner_mismatch','listener_deadline','readyz_failed','cli_secret_mode_invalid','idp_early_exit','rp_nonzero','browser_checkpoint_failed','rp_checkpoint_incomplete','browser_prepare_deadline','browser_prepare_marker_invalid'}\n    record['failure_tag']=str(error) if str(error) in tags else 'outer_unexpected_failure'\nfinally:\n    for p in reversed(children):\n        try:stop_child(p)\n        except Exception:record['cleanup']['child_reap_failure']=True\n        record['owned_child_exits'].append({'name':names[p.pid],'pid':p.pid,'exit':p.poll()})\n    record['cleanup']['owned_children_reaped']=all(p.poll() is not None for p in children)\n    if lab is not None:\n        if helper is not None:\n            record['helper_exit']=helper.poll()\n            if (lab/'rp-result.json').exists():\n                record['helper_result']=json.loads((lab/'rp-result.json').read_bytes())\n                retain_observation()\n                record['request_invalid_reason']=record['helper_result']['request_invalid_reason']\n                record['preflow_authorization_refusals']=record['helper_result']['preflow_authorization_refusals']\n        password=None;shutil.rmtree(lab);record['cleanup']['lab_removed']=not lab.exists()\n    else:record['cleanup']['lab_removed']=True\n    try:\n        record['cleanup']['port9000_absent']=not listeners(9000);record['cleanup']['port3000_absent']=not listeners(3000)\n    except Exception:record['cleanup']['socket_observation_failure']=True\n    record['completed_utc']=datetime.datetime.now(datetime.timezone.utc).isoformat();record['elapsed_seconds']=round(time.time()-START,3)\n    if resultfd is None and not OUT.exists():resultfd=os.open(OUT,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)\n    if resultfd is not None:\n        with os.fdopen(resultfd,'wb') as f:\n            f.write((json.dumps(record,sort_keys=True,indent=2)+'\\n').encode('ascii'));f.flush();os.fsync(f.fileno())\n    print(json.dumps({'fixture_finished':True,'result':record['result'],'failure_stage':record['failure_stage'],'failure_tag':record['failure_tag'],'request_invalid_reason':record['request_invalid_reason'],'preflow_authorization_refusals':record['preflow_authorization_refusals'],'unexpected_failure_observation':record['unexpected_failure_observation'],'unexpected_observation_projection':record['unexpected_observation_projection'],'cleanup':record['cleanup'],'owned_child_exits':record['owned_child_exits'],'minimum_free_bytes':record['minimum_free_bytes'],'disk_samples':record['disk_samples'],'elapsed_seconds':record['elapsed_seconds']}),flush=True)\nsys.exit(0 if record['result']=='passed' else 1)"
+
+import ast
+import contextlib
+import copy
+import hashlib
+import json
+import signal
+import sys
+import types
+import urllib.parse
+
+EXPECTED_GROUPS = {
+    "discard_lifecycle": 1, "eligible_counter": 4, "strict_state": 38,
+    "exception_identity": 3, "operation_boundaries": 4, "halt_boundaries": 7,
+    "normal_after_discard": 3, "guard_parity": 12, "authorization_parity": 7,
+    "observer_first_only": 4, "record_schema": 6, "controller_interpretation": 4,
+    "shutdown_failure": 1,
+}
+PLANNED_CASES = 94
+RESULT = {
+    "schema": "riauth.d01-timeout-memory/v1", "result": "failed",
+    "planned": PLANNED_CASES, "completed": 0, "assertions": 0,
+    "groups": {name: 0 for name in EXPECTED_GROUPS},
+    "first_failure": None, "failure_class": None,
+    "baseline_requests": 0, "candidate_requests": 0,
+    "journey_credit": False, "whole60_proven": False,
+    "baseline_sha256": BASELINE_SHA256, "candidate_sha256": CANDIDATE_SHA256,
+}
+CURRENT_CASE = "startup"
+ALLOWED_FAILURE_CLASSES = ("CheckFailed", "AssertionError", "MemoryDeadline",
+                           "TypeError", "ValueError", "KeyError", "other")
+
+class CheckFailed(Exception):
+    pass
+
+class MemoryDeadline(BaseException):
+    pass
+
+def check(condition):
+    RESULT["assertions"] += 1
+    if not condition:
+        raise CheckFailed()
+
+def alarm(signum, frame):
+    raise MemoryDeadline()
+
+def functions(tree):
+    answer = {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            answer[node.name] = node
+        elif isinstance(node, ast.ClassDef):
+            for method in node.body:
+                if isinstance(method, ast.FunctionDef):
+                    answer[node.name + "." + method.name] = method
+    return answer
+
+def member(tree, classname, method):
+    return functions(tree)[classname + "." + method]
+
+def extract(source, label):
+    check(hashlib.sha256(source.encode("utf-8")).hexdigest()
+          == (BASELINE_SHA256 if label == "baseline" else CANDIDATE_SHA256))
+    tree = ast.parse(source)
+    selected = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            selected.append(copy.deepcopy(node))
+        elif isinstance(node, ast.FunctionDef) and node.name in {
+                "require", "observe_unexpected_failure"}:
+            selected.append(copy.deepcopy(node))
+        elif isinstance(node, ast.ClassDef) and node.name in {
+                "Failure", "Halt", "Budget", "Demo", "HeaderReader",
+                "DemoServer", "PreflowAuthorizationRefusal", "Handler"}:
+            clone = copy.deepcopy(node)
+            if clone.name in {"DemoServer", "Handler"}:
+                clone.bases = [ast.Name(id="object", ctx=ast.Load())]
+            selected.append(clone)
+    # Definitions only: no helper imports, top-level main guard, main, server
+    # constructor, setup, provider, crypto, callback or actual signal execution.
+    ns = {"__builtins__": __builtins__, "contextlib": contextlib, "sys": sys,
+          "urllib": types.SimpleNamespace(parse=urllib.parse), "re": __import__("re"),
+          "time": types.SimpleNamespace(monotonic=lambda: 100.0),
+          "signal": types.SimpleNamespace(ITIMER_REAL=0, setitimer=lambda *a: None),
+          "shutil": types.SimpleNamespace(
+              disk_usage=lambda lab: types.SimpleNamespace(free=17 * 1024**3)),
+          "main": lambda: None}
+    module = ast.fix_missing_locations(ast.Module(body=selected, type_ignores=[]))
+    exec(compile(module, label + "-selected-bodies", "exec"), ns)
+    # Install unchanged stdlib request-loop/finish bodies against memory sinks.
+    for snippet in (STDLIB_HANDLE, STDLIB_FINISH):
+        pure = {"socket": types.SimpleNamespace(error=OSError)}
+        exec(compile(ast.parse(snippet), "pinned-stdlib-memory", "exec"), pure)
+        for name in ("handle", "finish"):
+            if name in pure:
+                setattr(ns["Handler"], name, pure[name])
+    main = functions(tree)["main"]
+    seed = next(node for node in main.body if isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == "record"
+                        for target in node.targets))
+    copies = []
+    loop = None
+    for node in ast.walk(main):
+        if isinstance(node, ast.While):
+            if ast.dump(node.test, include_attributes=False) == ast.dump(
+                    ast.parse("not demo.done", mode="eval").body,
+                    include_attributes=False):
+                loop = copy.deepcopy(node)
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+            if (isinstance(target, ast.Subscript)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "record"
+                    and isinstance(target.slice, ast.Constant)
+                    and target.slice.value in {"request_invalid_reason",
+                        "preflow_authorization_refusals", "preflow_request_timeouts"}):
+                copies.append(copy.deepcopy(node))
+    check(loop is not None and len(copies) == (2 if label == "baseline" else 3))
+    wrappers = ast.parse(
+        "def seed_record():\n    pass\n"
+        "def copy_record(record, demo):\n    if demo is not None:\n        pass\n"
+        "def listener_loop(demo, budget, server):\n    pass\n")
+    wrappers.body[0].body = [copy.deepcopy(seed), ast.Return(ast.Name("record", ast.Load()))]
+    wrappers.body[1].body[0].body = copies
+    wrappers.body[2].body = [loop]
+    exec(compile(ast.fix_missing_locations(wrappers), "exact-main-slices", "exec"), ns)
+    original_observer = ns["observe_unexpected_failure"]
+    ns["observer_calls"] = []
+    def observer(holder, site):
+        demo = ns["current_demo"]
+        ns["observer_calls"].append((demo.failure, demo.done,
+                                    getattr(demo, "preflow_request_timeouts", None)))
+        original_observer(holder, site)
+    ns["observe_unexpected_failure"] = observer
+    ns["source_tree"], ns["label"] = tree, label
+    return ns
+
+class MemoryReader:
+    def __init__(self, events, partial=False):
+        self.events, self.reads = list(events), 0
+        self.buffered = b"synthetic-partial" if partial else b""
+        self.closed = False
+    def readline(self, size=-1):
+        check(not self.closed)
+        self.reads += 1
+        if not self.events:
+            raise CheckFailed()
+        event = self.events.pop(0)
+        if isinstance(event, BaseException):
+            raise event
+        return event
+    def close(self):
+        self.closed = True
+        self.buffered = b""
+        self.events.clear()
+
+class MemoryWriter:
+    def __init__(self, fault=None):
+        self.closed, self.fault, self.writes = False, fault, 0
+    def write(self, raw):
+        check(not self.closed)
+        self.writes += 1
+        if self.fault is not None:
+            raise self.fault
+        return len(raw)
+    def flush(self):
+        check(not self.closed)
+    def close(self):
+        self.closed = True
+
+class Headers:
+    def __init__(self, values):
+        self.values = values
+    def get_all(self, name, default=None):
+        return self.values.get(name, default)
+
+def demo_for(ns):
+    demo = object.__new__(ns["Demo"])
+    budget = types.SimpleNamespace(
+        lab=None, deadline=1000.0, pending_deadline=None, phase_deadline=None,
+        phase_tag="fixture_deadline", minimum_free=None, samples=0,
+        ticks=0, halt_at=None, halt_tag="fixture_deadline", exit_halt=None)
+    def tick(*args):
+        budget.ticks += 1
+        if budget.ticks == budget.halt_at:
+            raise ns["Halt"] (budget.halt_tag)
+        ns["Budget"].tick(budget)
+    budget.tick = tick
+    original_limit = types.MethodType(ns["Budget"].limit, budget)
+    @contextlib.contextmanager
+    def limit(seconds, tag):
+        with original_limit(seconds, tag):
+            try:
+                yield
+            finally:
+                if budget.exit_halt is not None:
+                    raise ns["Halt"] (budget.exit_halt)
+    budget.limit = limit
+    checks = {name: False for name in (
+        "protected_without_cookie_denied", "authorization_redirect_issued",
+        "state_issuer_flow_cookie_verified", "confidential_s256_exchange_verified",
+        "rs256_jwks_issuer_audience_nonce_time_access_hash_verified",
+        "userinfo_subject_verified", "protected_with_fresh_cookie_accepted")}
+    statuses = {name: None for name in ("authorization_redirect", "callback",
+                "token_exchange", "userinfo", "protected_before", "protected_after")}
+    ns["Demo"].__init__(demo, types.SimpleNamespace(equal=lambda a, b: a == b),
+                        None, "synthetic-only", budget, checks, statuses)
+    ns["current_demo"] = demo
+    ns["observer_calls"].clear()
+    return demo
+
+def flow_snapshot(demo):
+    return (demo.attempted, demo.pending, demo.cookie, demo.subject,
+            dict(demo.checks), dict(demo.statuses),
+            demo.preflow_authorization_refusals, demo.request_invalid_reason,
+            demo.budget.deadline, demo.budget.pending_deadline)
+
+def connection(ns, demo, *, error=None, partial=False, method="GET", path="/",
+               headers=None, parse_error=None, header_error=None,
+               cookie_error=None, reply_error=None, shutdown_error=None):
+    values = {"Host": [ns["AUTHORITY"]]} if headers is None else headers
+    reader = MemoryReader(
+        [error, b"never-reuse"] if error is not None
+        else [b"synthetic request", header_error or b"\r\n"], partial)
+    writer = MemoryWriter(reply_error)
+    state = types.SimpleNamespace(reader=reader, writer=writer, handler=None,
+        parses=0, dispatches=0, cookies=0, replies=[], headers=[], begins=0,
+        shutdowns=0, closed=False, shutdown_error=shutdown_error)
+    server = object.__new__(ns["DemoServer"])
+    server.demo, server.active = demo, None
+    def finish_request(request, address):
+        h = object.__new__(ns["Handler"])
+        state.handler = h
+        h.server, h.rfile, h.wfile = server, reader, writer
+        def parse_request():
+            state.parses += 1
+            if header_error is not None:
+                h.rfile.readline(1)
+            if parse_error is not None:
+                raise parse_error
+            h.command, h.path, h.headers = method, path, Headers(values)
+            return True
+        h.parse_request = parse_request
+        original_get, original_cookies = h.get, h.cookies
+        def get(target):
+            state.dispatches += 1
+            return original_get(target)
+        def cookies():
+            state.cookies += 1
+            if cookie_error is not None:
+                raise cookie_error
+            return original_cookies()
+        h.get, h.cookies = get, cookies
+        def begin():
+            state.begins += 1
+            return "http://localhost:9000/synthetic", "A" * 43
+        demo.begin = begin
+        h.send_response = lambda status: state.replies.append(status)
+        h.send_header = lambda name, value: state.headers.append((name, value))
+        h.end_headers = lambda: None
+        try:
+            h.handle()
+        finally:
+            h.finish()
+    def shutdown_request(request):
+        state.shutdowns += 1
+        if state.shutdown_error is not None:
+            raise state.shutdown_error
+        state.closed = True
+    server.finish_request, server.shutdown_request = finish_request, shutdown_request
+    state.server = server
+    return state
+
+def run_connection(ns, demo, state):
+    RESULT[ns["label"] + "_requests"] += 1
+    try:
+        state.server.process_request(state, None)
+    except ns["Halt"] as error:
+        return ("halt", error.tag)
+    except Exception:
+        state.server.handle_error(state, None)
+        return ("server_error", None)
+    return ("returned", None)
+
+def discarded(state):
+    check(state.reader.reads == 1 and state.reader.closed
+          and state.writer.closed and not state.reader.buffered
+          and not state.reader.events and state.closed and state.shutdowns == 1
+          and state.server.active is None and state.handler.close_connection is True)
+    check(state.parses == 0 and state.dispatches == 0 and state.cookies == 0
+          and not state.replies and not state.headers and state.begins == 0)
+
+def terminal(demo):
+    check(demo.done is True and demo.failure is not None)
+
+def case(group, name, function):
+    global CURRENT_CASE
+    CURRENT_CASE = group + "/" + name
+    function()
+    RESULT["groups"][group] += 1
+    RESULT["completed"] += 1
+
+def run_all():
+    global CURRENT_CASE
+    check(sum(EXPECTED_GROUPS.values()) == PLANNED_CASES)
+    old, new = extract(BASELINE_SOURCE, "baseline"), extract(CANDIDATE_SOURCE, "candidate")
+    def lifecycle():
+        d = demo_for(new)
+        initial = flow_snapshot(d)
+        queue = [connection(new, d, error=TimeoutError(), partial=True) for _ in range(4)]
+        unused = connection(new, d)
+        queue.append(unused)
+        accepted = []
+        def handle_request():
+            s = queue.pop(0)
+            accepted.append(s)
+            check(run_connection(new, d, s) == ("returned", None))
+            discarded(s)
+            n = len(accepted)
+            check(d.preflow_request_timeouts == n and flow_snapshot(d) == initial)
+            if n < 4:
+                check(d.done is False and d.failure is None and not new["observer_calls"])
+                check(d.unexpected_failure_observation == {"observed": False, "diagnostic": None})
+            else:
+                check(d.done is True and d.failure == "request_timeout")
+                check(new["observer_calls"] == [("request_timeout", True, 4)])
+        new["listener_loop"] (d, d.budget, types.SimpleNamespace(handle_request=handle_request))
+        check(len(accepted) == 4 and queue == [unused] and unused.reader.reads == 0)
+        check(d.unexpected_failure_observation["observed"] is True)
+    case("discard_lifecycle", "fresh_four_no_fifth", lifecycle)
+    for count in range(4):
+        def eligible(count=count):
+            d = demo_for(new);d.preflow_request_timeouts = count
+            s = connection(new, d, error=TimeoutError(), partial=True)
+            original = flow_snapshot(d)
+            check(run_connection(new, d, s) == ("returned", None));discarded(s)
+            check(d.preflow_request_timeouts == count + 1 and flow_snapshot(d) == original)
+            check(d.done is (count == 3))
+            check(d.failure == ("request_timeout" if count == 3 else None))
+        case("eligible_counter", str(count), eligible)
+    class IntChild(int):
+        pass
+    edges = [
+        ("attempted", True), ("attempted", 0), ("attempted", None),
+        ("pending", False), ("pending", True), ("pending", 0), ("pending", 1), ("pending", {}),
+        ("cookie", False), ("cookie", True), ("cookie", 0), ("cookie", 1), ("cookie", ""),
+        ("subject", False), ("subject", True), ("subject", 0), ("subject", 1), ("subject", ""),
+        ("done", True), ("done", 0), ("done", None),
+        ("failure", False), ("failure", True), ("failure", 0), ("failure", 1), ("failure", ""),
+        ("preflow_request_timeouts", False), ("preflow_request_timeouts", True),
+        ("preflow_request_timeouts", -1), ("preflow_request_timeouts", 4),
+        ("preflow_request_timeouts", 5), ("preflow_request_timeouts", 0.0),
+        ("preflow_request_timeouts", None), ("preflow_request_timeouts", ""),
+        ("preflow_request_timeouts", IntChild(0)),
+        ("attempted", 1), ("done", 1), ("failure", "earlier"),
+    ]
+    check(len(edges) == EXPECTED_GROUPS["strict_state"])
+    for index, (field, value) in enumerate(edges):
+        def strict(field=field, value=value):
+            d = demo_for(new);setattr(d, field, value)
+            previous = d.preflow_request_timeouts
+            s = connection(new, d, error=TimeoutError())
+            run_connection(new, d, s);terminal(d)
+            check(d.failure == "unexpected_failure" and d.preflow_request_timeouts is previous)
+            check(s.parses == 0 and s.dispatches == 0 and s.begins == 0 and s.replies == [400])
+            check(d.unexpected_failure_observation["observed"] is True)
+        case("strict_state", str(index), strict)
+    class TimeoutChild(TimeoutError):
+        pass
+    for name, kind in (("subclass", TimeoutChild), ("value_error", ValueError), ("os_error", OSError)):
+        def identity(kind=kind):
+            d = demo_for(new);s = connection(new, d, error=kind())
+            run_connection(new, d, s);terminal(d)
+            check(d.failure == "unexpected_failure" and d.preflow_request_timeouts == 0)
+            expected = "other" if kind is TimeoutChild else kind.__name__
+            check(d.unexpected_failure_observation["diagnostic"]["exception_class"] == expected)
+        case("exception_identity", name, identity)
+    for name in ("header", "parser", "body_present", "reply"):
+        def boundary(name=name):
+            d = demo_for(new)
+            kwargs = {}
+            if name == "header":kwargs["header_error"] = TimeoutError()
+            elif name == "parser":kwargs["parse_error"] = TimeoutError()
+            elif name == "body_present":kwargs["headers"] = {"Host": [new["AUTHORITY"]], "Content-Length": ["1"]}
+            else:kwargs["reply_error"] = TimeoutError()
+            s = connection(new, d, **kwargs);run_connection(new, d, s);terminal(d)
+            check(d.preflow_request_timeouts == 0)
+            check(d.failure == ("request_invalid" if name == "body_present" else "unexpected_failure"))
+            check(not any(d.checks.values()) and not any(d.statuses.values()))
+        case("operation_boundaries", name, boundary)
+    for name in ("entry", "read", "exit", "absolute", "pending", "phase", "fourth_exit"):
+        def halted(name=name):
+            d = demo_for(new);tag = "request_timeout"
+            if name == "entry":d.budget.halt_at = 1;d.budget.halt_tag = tag
+            elif name == "exit":d.budget.exit_halt = tag
+            elif name == "fourth_exit":
+                d.preflow_request_timeouts = 3;tag = "interrupted";d.budget.exit_halt = tag
+            elif name == "absolute":d.budget.deadline = 99;tag = "fixture_deadline"
+            elif name == "pending":d.budget.pending_deadline = 99;tag = "pending_deadline"
+            elif name == "phase":d.budget.phase_deadline = 99;d.budget.phase_tag = tag
+            error = new["Halt"] (tag) if name == "read" else TimeoutError()
+            s = connection(new, d, error=error, partial=True)
+            before_deadline, before_pending = d.budget.deadline, d.budget.pending_deadline
+            check(run_connection(new, d, s) == ("halt", tag))
+            check(d.budget.deadline == before_deadline and d.budget.pending_deadline == before_pending)
+            check(d.preflow_request_timeouts == (4 if name == "fourth_exit" else 1 if name == "exit" else 0))
+            check(not any(d.checks.values()))
+            if name == "fourth_exit":
+                terminal(d);check(d.failure == "request_timeout"
+                                  and new["observer_calls"] == [("request_timeout", True, 4)])
+            else:check(not new["observer_calls"])
+            check(s.closed and s.reader.closed and s.server.active is None)
+        case("halt_boundaries", name, halted)
+    for path in ("/", "/protected", "/missing"):
+        def normal(path=path):
+            d = demo_for(new)
+            refused = connection(new, d, error=TimeoutError(), partial=True)
+            run_connection(new, d, refused);discarded(refused)
+            check(not any(d.checks.values()) and not any(d.statuses.values()))
+            s = connection(new, d, path=path);run_connection(new, d, s)
+            check(s.parses == 1 and s.dispatches == 1 and s.cookies == 1 and s.begins == 0)
+            check(d.preflow_request_timeouts == 1 and d.done is False and d.failure is None)
+            check(s.replies == [{"/": 200, "/protected": 403, "/missing": 404}[path]])
+            check(d.checks["protected_without_cookie_denied"] is (path == "/protected"))
+        case("normal_after_discard", path, normal)
+    guard_inputs = [
+        {"headers": {"Host": ["bad"]}},
+        {"headers": {"Host": [new["AUTHORITY"], new["AUTHORITY"]]}},
+        {"headers": {"Host": [new["AUTHORITY"]], "Transfer-Encoding": ["chunked"]}},
+        {"headers": {"Host": [new["AUTHORITY"]], "Expect": ["100-continue"]}},
+        {"headers": {"Host": [new["AUTHORITY"]], "Content-Length": ["2"]}},
+        {"path": "http://localhost:3000/"},
+        {"path": "//other/"},
+        {"path": "/#fragment"},
+        {"method": "PUT"},
+        {"method": "POST", "path": "/wrong"},
+        {"method": "POST", "path": "/login", "headers": {"Host": [new["AUTHORITY"]], "Origin": ["bad"]}},
+        {"headers": {"Host": [new["AUTHORITY"]], "Cookie": ["d01_local_demo=bad"]}},
+    ]
+    def parity(kwargs, mutate=None):
+        outputs = []
+        for ns in (old, new):
+            d = demo_for(ns)
+            if mutate is not None:mutate(d)
+            s = connection(ns, d, **kwargs);run_connection(ns, d, s)
+            outputs.append((flow_snapshot(d), d.done, d.failure, s.replies,
+                            s.dispatches, s.cookies, s.begins, s.headers))
+            if ns is new:check(d.preflow_request_timeouts == 0)
+        check(outputs[0] == outputs[1])
+        return outputs[1]
+    for index, kwargs in enumerate(guard_inputs):
+        def guard(kwargs=kwargs):
+            out = parity(kwargs)
+            check(out[1] is True and out[2] == "request_invalid")
+        case("guard_parity", str(index), guard)
+    for name in ("first_four", "empty", "duplicate", "postflow", "bad_host", "reply_failure", "counter_independence"):
+        def authorization(name=name):
+            headers = {"Host": [new["AUTHORITY"]], "Authorization": ["synthetic"]}
+            kwargs = {"headers": headers}
+            mutate = None
+            if name == "empty":headers["Authorization"] = [""]
+            elif name == "duplicate":headers["Authorization"] = ["synthetic", "synthetic"]
+            elif name == "postflow":mutate = lambda d: setattr(d, "attempted", True)
+            elif name == "bad_host":headers["Host"] = ["bad"]
+            elif name == "reply_failure":kwargs["reply_error"] = TimeoutError()
+            if name == "counter_independence":
+                d = demo_for(new)
+                for index in range(2):
+                    s = connection(new, d, error=TimeoutError(), partial=True)
+                    run_connection(new, d, s);discarded(s)
+                    if index == 0:
+                        authorized = connection(new, d, **kwargs)
+                        run_connection(new, d, authorized)
+                        check(authorized.replies == [403] and authorized.begins == 0)
+                check(d.preflow_request_timeouts == 2
+                      and d.preflow_authorization_refusals == 1
+                      and d.request_invalid_reason == "authorization"
+                      and d.failure is None and d.done is False
+                      and not new["observer_calls"] and not any(d.checks.values()))
+            elif name == "first_four":
+                summaries = []
+                for ns in (old, new):
+                    d = demo_for(ns);initial = flow_snapshot(d)
+                    replies = []
+                    for count in range(1, 5):
+                        s = connection(ns, d, **kwargs);run_connection(ns, d, s)
+                        check(d.preflow_authorization_refusals == count and s.begins == 0 and s.dispatches == 0)
+                        check(s.replies == [403] and d.done is (count == 4))
+                        check(not any(d.checks.values()) and not any(d.statuses.values()))
+                        replies.extend(s.replies)
+                    summaries.append((d.done, d.failure, replies, d.request_invalid_reason))
+                    if ns is new:check(d.preflow_request_timeouts == 0)
+                check(summaries[0] == summaries[1])
+            else:
+                out = parity(kwargs, mutate)
+                if name in ("empty", "duplicate"):
+                    check(out[1] is False and out[2] is None and out[3] == [403])
+                else:check(out[1] is True and out[2] is not None)
+        case("authorization_parity", name, authorization)
+    for name in ("later_fatal", "keep_prior", "keep_prior_first_three", "projection_error"):
+        def first_only(name=name):
+            d = demo_for(new)
+            if name == "projection_error":
+                class BadProjection(dict):
+                    def __setitem__(self, key, value):
+                        if key == "diagnostic":raise new["Halt"] ("interrupted")
+                        return super().__setitem__(key, value)
+                d.unexpected_failure_observation = BadProjection(observed=False, diagnostic=None)
+                d.preflow_request_timeouts = 3
+            elif name in ("keep_prior", "keep_prior_first_three"):
+                d.unexpected_failure_observation = {"observed": True,
+                    "diagnostic": {"site": "main", "exception_class": "ValueError",
+                                  "own_function": None, "own_line": None}}
+                d.preflow_request_timeouts = 3 if name == "keep_prior" else 0
+            first = copy.deepcopy(dict(d.unexpected_failure_observation))
+            s = connection(new, d, error=TimeoutError())
+            run_connection(new, d, s)
+            if name == "later_fatal":
+                check(not d.unexpected_failure_observation["observed"] and not new["observer_calls"])
+                fatal = connection(new, d, error=ValueError());run_connection(new, d, fatal)
+                terminal(d)
+                check(d.failure == "unexpected_failure" and d.preflow_request_timeouts == 1)
+                check(d.unexpected_failure_observation["diagnostic"]["exception_class"] == "ValueError")
+            elif name == "keep_prior":
+                terminal(d);check(d.unexpected_failure_observation == first)
+            elif name == "keep_prior_first_three":
+                check(d.failure is None and d.done is False
+                      and d.preflow_request_timeouts == 1 and not new["observer_calls"])
+                fatal = connection(new, d, error=ValueError());run_connection(new, d, fatal)
+                terminal(d);check(d.failure == "unexpected_failure"
+                                  and d.unexpected_failure_observation == first)
+            else:
+                terminal(d);check(d.failure == "request_timeout"
+                    and d.unexpected_failure_observation["observed"] is True
+                    and d.unexpected_failure_observation["diagnostic"] is None)
+            check(not any(d.checks.values()) and not any(d.statuses.values()))
+        case("observer_first_only", name, first_only)
+    for count in (None, 0, 1, 2, 3, 4):
+        def record_case(count=count):
+            base, current = old["seed_record"] (), new["seed_record"] ()
+            check(set(current) == set(base) | {"preflow_request_timeouts"})
+            check(current["preflow_request_timeouts"] == 0
+                  and type(current["preflow_request_timeouts"]) is int)
+            demo = None if count is None else demo_for(new)
+            if demo is not None:
+                demo.preflow_request_timeouts = count
+                demo.preflow_authorization_refusals = 2
+                demo.request_invalid_reason = "authorization"
+            new["copy_record"] (current, demo)
+            check(current["preflow_request_timeouts"] == (0 if count is None else count)
+                  and type(current["preflow_request_timeouts"]) is int
+                  and 0 <= current["preflow_request_timeouts"] <= 4)
+            check(current["preflow_authorization_refusals"] == (0 if count is None else 2)
+                  and current["request_invalid_reason"] == (None if count is None else "authorization"))
+            check(current["checks"] == {} and current["result"] == "failed"
+                  and current["failure_tag"] is None)
+        case("record_schema", "startup" if count is None else str(count), record_case)
+    controller = {"__builtins__": __builtins__}
+    nodes = ast.parse(CONTROLLER_PYTHON)
+    selected = [copy.deepcopy(n) for n in nodes.body
+                if isinstance(n, ast.FunctionDef)
+                and n.name in {"finite_observation", "retain_observation", "require"}]
+    check(len(selected) == 3)
+    exec(compile(ast.Module(body=selected, type_ignores=[]), "controller-pure-slices", "exec"), controller)
+    outer_try = next(n for n in nodes.body if isinstance(n, ast.Try)
+                     and any(isinstance(h.type, ast.Name) and h.type.id == "Exception"
+                             and h.name == "error" for h in n.handlers))
+    outcome_handler = next(h for h in outer_try.handlers if h.name == "error")
+    check(len(outcome_handler.body) == 3)
+    final_checks = next(n for n in ast.walk(new["source_tree"])
+                        if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)
+                        and isinstance(n.value.func, ast.Name) and n.value.func.id == "require"
+                        and len(n.value.args) == 2
+                        and isinstance(n.value.args[1], ast.Constant)
+                        and n.value.args[1].value == "unexpected_failure"
+                        and isinstance(n.value.args[0], ast.Call)
+                        and isinstance(n.value.args[0].func, ast.Name)
+                        and n.value.args[0].func.id == "all")
+    check_node = next(n for n in ast.walk(nodes) if isinstance(n, ast.Expr)
+                     and isinstance(n.value, ast.Call)
+                     and isinstance(n.value.func, ast.Name) and n.value.func.id == "require"
+                     and len(n.value.args) == 2 and isinstance(n.value.args[1], ast.Constant)
+                     and n.value.args[1].value == "rp_nonzero")
+    for name in ("diagnostic_only", "nonzero", "zero_not_success", "invalid_projection"):
+        def controller_case(name=name):
+            observation = {"observed": True, "diagnostic": {
+                "site": "handler", "exception_class": "TimeoutError",
+                "own_function": "Handler.handle_one_request", "own_line": 470}}
+            if name == "invalid_projection":observation["diagnostic"]["own_line"] = True
+            record = {"result": "failed", "first_failure": None,
+                      "helper_result": {"unexpected_failure_observation": observation},
+                      "unexpected_failure_observation": None,
+                      "unexpected_observation_projection": None}
+            controller["record"] = record
+            controller["retain_observation"] ()
+            check(record["result"] == "failed" and record["first_failure"] is None)
+            check(record["unexpected_observation_projection"]
+                  == ("invalid" if name == "invalid_projection" else "valid"))
+            code = 1 if name == "nonzero" else 0
+            controller["code"] = code
+            failed = False
+            try:
+                exec(compile(ast.Module(body=[copy.deepcopy(check_node)], type_ignores=[]),
+                             "exact-nonzero-guard", "exec"), controller)
+            except RuntimeError as error:
+                failed = True
+                controller["error"], controller["stage"] = error, "browser_checkpoint"
+                exec(compile(ast.Module(body=copy.deepcopy(outcome_handler.body), type_ignores=[]),
+                             "exact-controller-failure-outcome", "exec"), controller)
+                check(record["failure_tag"] == "rp_nonzero"
+                      and record["failure_stage"] == "browser_checkpoint")
+            check(failed is (name == "nonzero"))
+            check(record["result"] == "failed" and record["first_failure"] is None)
+            new["record"] = new["seed_record"] ()
+            new["record"]["checks"] = {"synthetic_required_check": False}
+            refused = False
+            try:
+                exec(compile(ast.Module(body=[copy.deepcopy(final_checks)], type_ignores=[]),
+                             "exact-helper-final-checks", "exec"), new)
+            except new["Failure"] as error:
+                refused = error.tag == "unexpected_failure"
+            check(refused and new["record"]["result"] == "failed")
+            # This tests the actual Python projection/nonzero slices. The JS
+            # first-failure/phase/final-page rule stays an immutable source fact;
+            # no JS or composite runtime is simulated as a pass here.
+        case("controller_interpretation", name, controller_case)
+    def shutdown_failed():
+        d = demo_for(new)
+        s = connection(new, d, error=TimeoutError(), partial=True,
+                       shutdown_error=OSError())
+        check(run_connection(new, d, s) == ("server_error", None))
+        terminal(d);check(d.failure == "unexpected_failure"
+                          and d.preflow_request_timeouts == 1)
+        check(s.server.active is s and not s.closed and s.reader.closed
+              and not any(d.checks.values()) and not any(d.statuses.values()))
+    case("shutdown_failure", "original_terminal_no_absence_claim", shutdown_failed)
+    CURRENT_CASE = "aggregate_counts"
+    check(RESULT["completed"] == PLANNED_CASES and RESULT["groups"] == EXPECTED_GROUPS)
+    check(RESULT["baseline_requests"] == 21 and RESULT["candidate_requests"] == 97)
+
+def run():
+    global CURRENT_CASE
+    signal.signal(signal.SIGALRM, alarm)
+    signal.setitimer(signal.ITIMER_REAL, 30)
+    try:
+        run_all()
+        RESULT["result"] = "passed"
+    except BaseException as error:
+        RESULT["first_failure"] = CURRENT_CASE
+        name = type(error).__name__
+        RESULT["failure_class"] = name if name in ALLOWED_FAILURE_CLASSES else "other"
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+    # Complete fixed results are output before this child's exit is graded.
+    print(json.dumps(RESULT, sort_keys=True, separators=(",", ":")), flush=True)
+    return 0 if RESULT["result"] == "passed" else 1
+
+if __name__ == "__main__":
+    raise SystemExit(run())
+```
+
+### Complete proposed35s supervisor — UNEXECUTED
+
+```python
+#!/usr/bin/env python3
+"""Proposed once-only memory supervisor; never run in this source phase."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+import sys
+import time
+
+EXPECTED_PAYLOAD_SHA256 = "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e"
+EXPECTED_GROUPS = {
+    "discard_lifecycle": 1, "eligible_counter": 4, "strict_state": 38,
+    "exception_identity": 3, "operation_boundaries": 4, "halt_boundaries": 7,
+    "normal_after_discard": 3, "guard_parity": 12, "authorization_parity": 7,
+    "observer_first_only": 4, "record_schema": 6, "controller_interpretation": 4,
+    "shutdown_failure": 1,
+}
+BASELINE_SHA256 = "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1"
+CANDIDATE_SHA256 = "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406"
+RESULT_KEYS = {
+    "schema", "result", "planned", "completed", "assertions", "groups",
+    "first_failure", "failure_class", "baseline_requests", "candidate_requests",
+    "journey_credit", "whole60_proven", "baseline_sha256", "candidate_sha256",
+}
+
+def public_result(raw):
+    if len(raw) > 4096:
+        return None
+    try:
+        value = json.loads(raw.decode("ascii"))
+    except (ValueError, UnicodeError):
+        return None
+    if type(value) is not dict or set(value) != RESULT_KEYS:
+        return None
+    if (value["schema"] != "riauth.d01-timeout-memory/v1"
+            or value["result"] not in ("passed", "failed")
+            or value["baseline_sha256"] != BASELINE_SHA256
+            or value["candidate_sha256"] != CANDIDATE_SHA256
+            or value["journey_credit"] is not False
+            or value["whole60_proven"] is not False):
+        return None
+    if any(type(value[name]) is not int or not 0 <= value[name] <= 100000
+           for name in ("planned", "completed", "assertions", "baseline_requests", "candidate_requests")):
+        return None
+    groups = value["groups"]
+    if (type(groups) is not dict or set(groups) != set(EXPECTED_GROUPS)
+            or any(type(count) is not int or not 0 <= count <= EXPECTED_GROUPS[name]
+                   for name, count in groups.items())):
+        return None
+    failure = value["first_failure"]
+    if failure is not None:
+        if (type(failure) is not str or len(failure) > 80
+                or not failure.isascii()
+                or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789_/" for ch in failure)):
+            return None
+    if value["failure_class"] not in (None, "CheckFailed", "AssertionError", "MemoryDeadline",
+                                     "TypeError", "ValueError", "KeyError", "other"):
+        return None
+    return value
+
+def main():
+    # A future root release supplies one new absent own deployment-private path.
+    if len(sys.argv) != 2:
+        raise SystemExit(2)
+    path = Path(sys.argv[1])
+    parent = path.parent
+    directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(directory)
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o700 or path.name in ("", ".", "..")):
+            raise SystemExit(2)
+        fd = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o600, dir_fd=directory)
+        os.fchmod(fd, 0o600)
+    finally:
+        os.close(directory)
+    raw = sys.stdin.buffer.read(262145)
+    payload_hash = hashlib.sha256(raw).hexdigest()
+    record = {"schema": "riauth.d01-timeout-memory-outer/v1",
+              "payload_sha256": payload_hash, "payload_bytes": len(raw),
+              "child_pid": None, "child_exit": None, "child_reaped": False,
+              "timeout": False, "elapsed_seconds": None,
+              "stdout_bytes": 0, "stderr_bytes": 0,
+              "stdout_sha256": None, "stderr_sha256": None,
+              "fixed_result": None, "supervisor_failure": None}
+    started = time.monotonic()
+    child = None
+    out = err = b""
+    try:
+        if not 0 < len(raw) <= 262144 or payload_hash != EXPECTED_PAYLOAD_SHA256:
+            record["supervisor_failure"] = "payload_invalid"
+        else:
+            child = subprocess.Popen([sys.executable, "-B", "-c", raw.decode("ascii")],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+            record["child_pid"] = child.pid
+            try:
+                out, err = child.communicate(timeout=max(0.001, 30 - (time.monotonic() - started)))
+            except subprocess.TimeoutExpired:
+                record["timeout"] = True
+                child.kill()  # Only this supervisor's exact created child handle.
+                out, err = child.communicate(timeout=max(0.001, 35 - (time.monotonic() - started)))
+            record["child_exit"] = child.returncode
+            record["child_reaped"] = child.returncode is not None
+    except BaseException:
+        record["supervisor_failure"] = "supervisor_failed"
+        if child is not None and child.poll() is None:
+            try:
+                child.kill()
+                out, err = child.communicate(timeout=max(0.001, 35 - (time.monotonic() - started)))
+            except BaseException:
+                pass
+        if child is not None:
+            record["child_exit"] = child.poll()
+            record["child_reaped"] = child.returncode is not None
+    finally:
+        record["elapsed_seconds"] = round(time.monotonic() - started, 6)
+        record["stdout_bytes"], record["stderr_bytes"] = len(out), len(err)
+        record["stdout_sha256"] = hashlib.sha256(out).hexdigest()
+        record["stderr_sha256"] = hashlib.sha256(err).hexdigest()
+        record["fixed_result"] = public_result(out)
+        # Exclusive0600 complete fixed result, exit/elapsed/hash BEFORE grading.
+        with os.fdopen(fd, "wb") as evidence:
+            evidence.write((json.dumps(record, sort_keys=True, indent=2) + "\n").encode("ascii"))
+            evidence.flush()
+            os.fsync(evidence.fileno())
+    result = record["fixed_result"]
+    passed = (record["child_exit"] == 0 and record["child_reaped"] is True
+              and not record["timeout"] and record["supervisor_failure"] is None
+              and record["stderr_bytes"] == 0 and record["elapsed_seconds"] <= 35
+              and result is not None and result["result"] == "passed"
+              and result["planned"] == result["completed"] == 94
+              and result["groups"] == EXPECTED_GROUPS
+              and result["baseline_requests"] == 21 and result["candidate_requests"] == 97
+              and result["first_failure"] is None and result["failure_class"] is None)
+    print(json.dumps({"result": "passed" if passed else "failed",
+                     "child_exit": record["child_exit"], "child_reaped": record["child_reaped"],
+                     "completed": None if result is None else result["completed"],
+                     "evidence_retained": True}, sort_keys=True), flush=True)
+    return 0 if passed else 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+## 2026-10-03 — Supervisor real-child-status correction: source DESIGN ONLY
+
+Reservation wave30_D01_timeout_memory_supervisor_real_child_status, project
+891e7443-8dac-4c1b-897f-9e53cb59c7ee, existing WT7
+7c85f5ef-3fac-4f72-aaed-08474d7fb454, original D01/D05 support.
+Own scope is ONLY this append. Entry clean033e341 and the complete1475162-byte
+prior report prefix are preserved exactly; all old proposals stay dated UNRUN.
+No helper/controller/supervisor file is materialized or changed here.
+
+Root's FULL source review identified a prospective blocker: inherited
+SIGCHLD=SIG_IGN may auto-reap a child and allow Popen to substitute returncode0
+without a consumed real status. This is a source-derived planning defect,
+not an executed memory failure or proof of the signal disposition in any
+historical actual attempt. No retrospective sender/cause/status attribution.
+Read the complete public855-byte root blocker receipt at
+planning/evidence/wave30-d01-memory-supervisor-source-review-blocker.json
+under the explicitly named project orchestrator workspace. SHA256
+ e273bc23c3332e4720e0021d5fad15160c43fb8323ad02a7af70d48399be7e27.
+Its runtime remains held/no invocation; its exact old proposal pins match this
+archive. Read the entire old146-line supervisor. Its old7132-byte/db8fb source
+remains in the preserved prefix, unexecuted; it is not relabeled as a pass.
+
+The ONLY prospective additions are import signal, and
+signal.signal(signal.SIGCHLD, signal.SIG_DFL) as the first executable statement
+of main, before any file resource or Popen. A successful actual install is
+required to reach spawn; failure propagates immediately, without a catch,
+fallback or ignored result that could proceed. This is source sequencing,
+not an observed installation. No status-check or metadata child is introduced.
+The one original Popen and ordinary communicate/wait consumption/reaping paths
+remain exact. Future real child status/reaping still needs actual retained
+numeric evidence. All observed error/deadline/join failures remain failed;
+a parsed stdout success cannot override them. No universal wait-status
+assurance under unseen concurrent reapers or unrelated state is inferred.
+
+The exact two additions have whole-byte and independent whole-AST inverses to
+complete7132-byte/db8fb source. public_result is byte/AST-identical; removing
+only the first main statement makes the entire old main body identical.
+Imports/constants, return/result schemas, one child method, communicate/kill/
+join calls,30s active/35s total bounds and exclusive0600 private fsync-before-
+grade remain byte-exact outside those additions. No getsignal assertion,
+wrapper process, metadata subprocess or alternate wait method is invented.
+
+The complete128630-byte child payload164123 is unchanged, with94 planned
+cases/13 groups and21 baseline/97 candidate full-pass request counts.
+Executed cases0. No helper function, case, VM, child, signal call, module main
+or supervisor executed. Helper remains36884-byte/777-line37d32 and exactly
+matches published6a4066c/sourcec62. No payload/controller/composition pin,
+source alignment, native/provider hash or runtime release input changed.
+Root separately owns the remaining composed36-case adoption design.
+
+Actual checks here are data/source reads, AST parsing and code-object compile
+ONLY, exact two-addition diff, whole byte/AST inverse, other-function span,
+unchanged payload/helper/published-object equality and prior-prefix proof.
+Documentation/whitespace/scope checks accompany the report commit receipt.
+No historical private capture was opened or modified in this correction;
+all old source/evidence and unknown sender/cause, failed actual fixtures and
+unprovenwhole60 cleanup limits stay preserved. No runtime lane acquired or
+released. RiWork Cua.ai Driver MCP preference remains; no Driver/browser/native/
+provider/CLI/network/Cargo invocation, main/push/status/alignment/deletion,
+new task/WT/worker or contact. Root alone integration, acceptance and release.
+One later memory execution needs full immutable review plus exact NEW hash
+release; this appendix is design, not a retroactive execution outcome.
+
+### Exact corrected supervisor manifest and static proofs
+
+```json
+{
+  "corrected_supervisor": {
+    "bytes": 7196,
+    "executed": false,
+    "lines": 148,
+    "sha256": "10eaff2057fd1a715658ff32ebe30a2d8d0770ec9e372978fe654270f15cba57"
+  },
+  "exact_two_addition_diff": {
+    "bytes": 168,
+    "lines": 6,
+    "sha256": "6cb44acb546f455182caea206be44b267692ac88f45f55009522bf2863bd9b8f"
+  },
+  "helper_sha256": "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406",
+  "helper_source_commit": "c62bebcd8b24e66f4c77b8eaae49a669b2d77165",
+  "old_supervisor": {
+    "bytes": 7132,
+    "executed": false,
+    "lines": 146,
+    "sha256": "db8fb36ea4460ed862b3c627ba5083388f1901e725d33e77dc8e96a575b16d30"
+  },
+  "prior_report_bytes": 1475162,
+  "prior_report_commit": "033e3410d600430cd3264681873a9b2deb83ca65",
+  "prior_report_sha256": "456870a53c01ea1829d3725d007d8b22eb2fa71636effcd01c95ab4a41f351c8",
+  "protected_function": {
+    "bytes": 1592,
+    "name": "public_result",
+    "new_lines": [
+      29,
+      62
+    ],
+    "old_lines": [
+      28,
+      61
+    ],
+    "sha256": "3b116b705a24bbee1ac6604fdbd209d036e62c3b6ad25becda748ca43d2852e8"
+  },
+  "published_helper_source": "6a4066c72ac58225cd444a806032eef8515e646b",
+  "reservation": "wave30_D01_timeout_memory_supervisor_real_child_status",
+  "resource_acquired_or_released": false,
+  "static_proofs": {
+    "first_main_statement_is_SIGCHLD_default_install": true,
+    "main_remainder_bytes_and_AST_identical": true,
+    "one_original_Popen_unchanged": true,
+    "public_result_bytes_and_AST_identical": true,
+    "signal_install_not_caught_or_deferred": true,
+    "whole_AST_inverse": true,
+    "whole_byte_inverse": true
+  },
+  "unchanged_payload": {
+    "baseline_requests_if_complete": 21,
+    "bytes": 128630,
+    "candidate_requests_if_complete": 97,
+    "executed_cases": 0,
+    "groups": 13,
+    "planned_cases": 94,
+    "sha256": "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e"
+  }
+}
+```
+
+### Exact two-addition source diff (virtual archive names only)
+
+```diff
+--- a/archived-memory-supervisor.py
++++ b/archived-memory-supervisor.py
+@@ -6,0 +7 @@
++import signal
+@@ -63,0 +65 @@
++    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+```
+
+### Complete corrected supervisor — UNEXECUTED
+
+```python
+#!/usr/bin/env python3
+"""Proposed once-only memory supervisor; never run in this source phase."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+EXPECTED_PAYLOAD_SHA256 = "164123d1564084d872c219586f5553b085b9605d88fe10a46a7affe4c5e8401e"
+EXPECTED_GROUPS = {
+    "discard_lifecycle": 1, "eligible_counter": 4, "strict_state": 38,
+    "exception_identity": 3, "operation_boundaries": 4, "halt_boundaries": 7,
+    "normal_after_discard": 3, "guard_parity": 12, "authorization_parity": 7,
+    "observer_first_only": 4, "record_schema": 6, "controller_interpretation": 4,
+    "shutdown_failure": 1,
+}
+BASELINE_SHA256 = "75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1"
+CANDIDATE_SHA256 = "37d32db6fbd8c2c9b676f691d115ecfd1af893724144361971e86f73f573b406"
+RESULT_KEYS = {
+    "schema", "result", "planned", "completed", "assertions", "groups",
+    "first_failure", "failure_class", "baseline_requests", "candidate_requests",
+    "journey_credit", "whole60_proven", "baseline_sha256", "candidate_sha256",
+}
+
+def public_result(raw):
+    if len(raw) > 4096:
+        return None
+    try:
+        value = json.loads(raw.decode("ascii"))
+    except (ValueError, UnicodeError):
+        return None
+    if type(value) is not dict or set(value) != RESULT_KEYS:
+        return None
+    if (value["schema"] != "riauth.d01-timeout-memory/v1"
+            or value["result"] not in ("passed", "failed")
+            or value["baseline_sha256"] != BASELINE_SHA256
+            or value["candidate_sha256"] != CANDIDATE_SHA256
+            or value["journey_credit"] is not False
+            or value["whole60_proven"] is not False):
+        return None
+    if any(type(value[name]) is not int or not 0 <= value[name] <= 100000
+           for name in ("planned", "completed", "assertions", "baseline_requests", "candidate_requests")):
+        return None
+    groups = value["groups"]
+    if (type(groups) is not dict or set(groups) != set(EXPECTED_GROUPS)
+            or any(type(count) is not int or not 0 <= count <= EXPECTED_GROUPS[name]
+                   for name, count in groups.items())):
+        return None
+    failure = value["first_failure"]
+    if failure is not None:
+        if (type(failure) is not str or len(failure) > 80
+                or not failure.isascii()
+                or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789_/" for ch in failure)):
+            return None
+    if value["failure_class"] not in (None, "CheckFailed", "AssertionError", "MemoryDeadline",
+                                     "TypeError", "ValueError", "KeyError", "other"):
+        return None
+    return value
+
+def main():
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    # A future root release supplies one new absent own deployment-private path.
+    if len(sys.argv) != 2:
+        raise SystemExit(2)
+    path = Path(sys.argv[1])
+    parent = path.parent
+    directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(directory)
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o700 or path.name in ("", ".", "..")):
+            raise SystemExit(2)
+        fd = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                     0o600, dir_fd=directory)
+        os.fchmod(fd, 0o600)
+    finally:
+        os.close(directory)
+    raw = sys.stdin.buffer.read(262145)
+    payload_hash = hashlib.sha256(raw).hexdigest()
+    record = {"schema": "riauth.d01-timeout-memory-outer/v1",
+              "payload_sha256": payload_hash, "payload_bytes": len(raw),
+              "child_pid": None, "child_exit": None, "child_reaped": False,
+              "timeout": False, "elapsed_seconds": None,
+              "stdout_bytes": 0, "stderr_bytes": 0,
+              "stdout_sha256": None, "stderr_sha256": None,
+              "fixed_result": None, "supervisor_failure": None}
+    started = time.monotonic()
+    child = None
+    out = err = b""
+    try:
+        if not 0 < len(raw) <= 262144 or payload_hash != EXPECTED_PAYLOAD_SHA256:
+            record["supervisor_failure"] = "payload_invalid"
+        else:
+            child = subprocess.Popen([sys.executable, "-B", "-c", raw.decode("ascii")],
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+            record["child_pid"] = child.pid
+            try:
+                out, err = child.communicate(timeout=max(0.001, 30 - (time.monotonic() - started)))
+            except subprocess.TimeoutExpired:
+                record["timeout"] = True
+                child.kill()  # Only this supervisor's exact created child handle.
+                out, err = child.communicate(timeout=max(0.001, 35 - (time.monotonic() - started)))
+            record["child_exit"] = child.returncode
+            record["child_reaped"] = child.returncode is not None
+    except BaseException:
+        record["supervisor_failure"] = "supervisor_failed"
+        if child is not None and child.poll() is None:
+            try:
+                child.kill()
+                out, err = child.communicate(timeout=max(0.001, 35 - (time.monotonic() - started)))
+            except BaseException:
+                pass
+        if child is not None:
+            record["child_exit"] = child.poll()
+            record["child_reaped"] = child.returncode is not None
+    finally:
+        record["elapsed_seconds"] = round(time.monotonic() - started, 6)
+        record["stdout_bytes"], record["stderr_bytes"] = len(out), len(err)
+        record["stdout_sha256"] = hashlib.sha256(out).hexdigest()
+        record["stderr_sha256"] = hashlib.sha256(err).hexdigest()
+        record["fixed_result"] = public_result(out)
+        # Exclusive0600 complete fixed result, exit/elapsed/hash BEFORE grading.
+        with os.fdopen(fd, "wb") as evidence:
+            evidence.write((json.dumps(record, sort_keys=True, indent=2) + "\n").encode("ascii"))
+            evidence.flush()
+            os.fsync(evidence.fileno())
+    result = record["fixed_result"]
+    passed = (record["child_exit"] == 0 and record["child_reaped"] is True
+              and not record["timeout"] and record["supervisor_failure"] is None
+              and record["stderr_bytes"] == 0 and record["elapsed_seconds"] <= 35
+              and result is not None and result["result"] == "passed"
+              and result["planned"] == result["completed"] == 94
+              and result["groups"] == EXPECTED_GROUPS
+              and result["baseline_requests"] == 21 and result["candidate_requests"] == 97
+              and result["first_failure"] is None and result["failure_class"] is None)
+    print(json.dumps({"result": "passed" if passed else "failed",
+                     "child_exit": record["child_exit"], "child_reaped": record["child_reaped"],
+                     "completed": None if result is None else result["completed"],
+                     "evidence_retained": True}, sort_keys=True), flush=True)
+    return 0 if passed else 1
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```

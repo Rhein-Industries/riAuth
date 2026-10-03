@@ -4070,3 +4070,188 @@ worker/task/worktree/shell or other-worker contact was used. No runtime lane
 was acquired/released. **All runtime remains HELD** for root's separate
 immutable review/integration/publication and any one exact same-prebuilt
 hosted-cohort release. Closed rows and original A09 primary are unchanged.
+
+
+## Actual corrected prebuilt x86 replay receipt — 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`; original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, primaryf2 unchanged; existing WT
+`a1303b57-4a34-487e-9c63-a841f05b51a0` / assigned shellb471; reservation
+`wave30_A09_linux_bind_replay_actual_receipt`. **REPORT ONLY**. The complete
+245,480-byte report at `2bab8f3ff2c6e0b9911e336085dea1674c764d12`, SHA256
+`29160114f8ac9674767b2a55f717cbf8ae8df457755fe706795927c91719c913`,
+is preserved as this appendix's exact prefix, including every dated failure,
+unknown cause, source proposal, materialization and limit.
+
+Root's ONE separately authorized remote **37099059596 / job111134825816 /
+attempt1 completed SUCCESS**. Retained run API reports completed/success for
+both the run and native-container job; every reported workflow step succeeds.
+The fresh cohort records `result=passed`, controller
+`e17f723c211b9cba4c8f07257f3e40560325c223`, helper SHA256
+`6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221`
+and workflow SHA256
+`3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851`.
+Product remains dated `b619fe25269ccc150e473bbcde47cdb3623ef810` /
+tree `a627df2ce21a4d255b8c1914d4f543e32f40f4de`. **No runtime was performed
+in this reporting lane.** This is the helper author's receipt inspection;
+root retains independent artifact/runtime review authority.
+
+### Complete public inputs and transport attribution
+
+The four supplied public data files, root receipt, retained API/artifact
+metadata and entire 568-line job log were read. All listed input bodies were
+hashed locally. The log was first larger than the tool output allowance;
+bounded decoded ranges 1–190, 191–425 and 426–568 then covered every line.
+Only log presentation prefixes were removed for reading; the retained log
+bytes were neither rewritten nor shortened.
+
+| Public retained input | Bytes | SHA256 |
+| --- | ---: | --- |
+| `container-cohort.json` | 664,171 | `e2ae4ab255b8e75495485efa66c799a8d251710304261e404366f3537dbd3036` |
+| `launch.json` | 163 | `1f5cf77362ce17b87f4ec9a43a74f2f8ec91a1c879b1d8cd7741e8effd627daa` |
+| `resources.jsonl` | 8,099 | `6d57957d73c860686680ac134c7bdd82ce2497c02926e3afe29c6aa51dc1048d` |
+| `manifest.json` | 914 | `b94d49c90ef8ecda7e7bfeca6c33dae2d37427d27a383c2796565ff8b6418f22` |
+| `planning/evidence/wave30-a09-linux-bind-replay-actual-root-review.json` | 3,329 | `fa9de597e3a5b74e20a317097c9d0622db5c15880c94a6d802f87595345db1c8` |
+| `planning/evidence/wave30-a09-linux-bind-replay-api-latest.json` | 3,817 | `e4fb92dae8a315817f617600d4bca2dc1280019a21335ab4b854ec0403294fb2` |
+| `planning/evidence/wave30-a09-linux-bind-replay-artifact-api.json` | 752 | `5c299cbc74eb3b797a10e5831c36e6a156ff3ffa98809f86b8d0e1265ff5281b` |
+| `planning/evidence/wave30-a09-37099059596-job.log` | 94,553 | `e78e1416bf20ffbe5187fe6933999e4a65ec0f6befac4ca889d1efa78dc0986e` |
+
+Supplied cohort/launch/resources/manifest modes are 0600. Artifact API,
+workflow upload log and root review agree: artifact **11265212727**,
+`riauth-local-container-x86_64-37099059596-1`, **115,361,104 bytes**, outerZIP
+SHA256 **`4afb3c28549f918e032d201a1b58f86fd2660adaac4e0e7dc8764025d8735435`**,
+head/source binding to this new controller and exact run. Root performed the
+successful download and fullZIP hash verification before extraction, streamed
+and hashed all six members, then extracted only three publicJSON/JSONL
+members. That is root's retained transport observation; this phase neither
+opened/rehash-extracted the ZIP nor extracted/executed either image or reader.
+The supplied manifest is additional local observer metadata, not a seventh
+artifact member.
+
+The six exact member names and content identities are preserved. Alongside
+the three uploaded public files, historical Essentials archive `local-essentials-x86_64.docker.tar.gz`,
+48,936,063 bytes /
+`d1c47ee3a3e17864b5f18aa99dd9bb5d2a6d8c0f5c9de9d4e052f3377a6b66a5`,
+Platform archive `local-platform-x86_64.docker.tar.gz`,53,552,130 /
+`5a81a46ee436d1eb56614cdce7f572325a71dfc4bb8e5b5d43f2c0cb3c1d4347`,
+and reader `local-store-reader-x86_64.bin`,12,199,608 /
+`b6be98dddc96df4220e9423425ebb668a0dda0a7ac439dd7d7e73dc187e7b707`
+retain their original37087561409/productb619 provenance. Both fresh import
+records prove prior tag/ID absence, attempted loading and confirmed identity;
+load steps exit0. Copied servers/capabilities retain exact edition/source
+bindings. Builds-this-run and builder-created-this-run arefalse; daemon is
+Linux x86_64 Docker28.0.4. Old bytes were imported, not relabeled as newly built.
+
+### Eleven exact checks and fresh observations
+
+The new cohort's complete check vector equals root's receipt exactly:
+
+- `uid10001_copy_up_private_modes`
+- `encrypted_redb_key_configured`
+- `pinned_format3_startup_and_sixteen_rates`
+- `exact_discovery_and_jwks`
+- `all12_userview_fields_and_group_grant_subject`
+- `audit_events200_user_create403_client4`
+- `two_logout401_client3_across_handoffs`
+- `issuer_policy_loginrate_specific_offline_refusals`
+- `read_only_plan_exact_token_EPE`
+- `wrong_direct_build_refused`
+- `isolated_platform_agent_and_downgrade_refusal`
+
+This now credits the actual bounded x86 fixture's complete Essentials →
+Platform → Essentials identity/authorization/config comparison, the reviewed
+read-only plan/exact-token activation guards and isolated platform-state
+agent/downgrade refusal. It does not turn that redb/container fixture into the
+separate full shared-store gate.
+
+Independent local parsing of the new public documents verifies:
+
+- **18 FRESH** snapshot-reader steps and 18 copy-logical-snapshot steps each
+  exit0; reader `verified_physical_observations=18` and the last physical
+  config/key/redb flags are true. The unchanged source initializes/reset-imports
+  this counter to 0, incrementing only after each reader-alone complete physical
+  equality guard. Old 12 observations are not credited to this new total.
+- **10 FRESH** offline packets have exact complete logical row-hash/keyset,
+  metadata and count equality, original config/key/candidate byte equality,
+  physical config/key equality, added=removed=changed=0. **All 10 physical redb
+  equality flags are false.** All 10 packet booleans/counts were checked, with
+  no raw rows/config/key inspected. Complete logical preservation and physical
+  allocation/header identity remain separate measurements, not exclusions or
+  a retrospective explanation of any older failure.
+- **2,700 owned steps** were individually checked for child-reaped=true,
+  group-empty=true and output-recorded=false. Creation records contain 226
+  containers /four fresh volumes and four precredential 10001:10001:700 UID
+  probes. Four server-start and four owned-stop steps exit0; two image loads,
+  six product-copy steps and both native-capability steps exit0. Nonzero
+  command records are the intentional absent-object probes, public client3/4
+  refusals and tool2/5 direct/preflight refusals; these are not a failed gate.
+- Cleanup errors=[], remaining owned containers=0, volumes=0, CLIgroups=0,
+  pending-container/volume maps={}, owned image inventory empty. Every
+  attempted owned child is reaped with group empty. Root releases the remote
+  lane only after these checks; this lane acquires/releases no runtime slot.
+
+The passed **cohort JSON omits** `failure`, `failed_phase` and `os_error`;
+all three absence guards passed. They are not null placeholders. The runner's
+separate final stdout summary at 05:13:49 is
+`{"result":"passed","failure":null,"official_release":false}`;
+that fixed CLI envelope does not add a failure field to the retained cohort.
+The complete upload log reports six files and matches artifact size/digest/ID.
+The run/job API remains a terminal success observation, not a new query here.
+
+### Capacity and root checker corrections
+
+All 45 JSONL resource records were parsed. Launch free bytes are 92,410,806,272
+for all four initial host paths; actual sampled minima are:
+
+| Sampled path class | Minimum free bytes |
+| --- | ---: |
+| host | 91,356,917,760 |
+| private | 91,356,917,760 |
+| workspace | 91,356,893,184 |
+| docker_storage | 91,356,884,992 |
+
+Receipt maximum gap **2.001125501000004s** (user summary 2.001125501) is recorded
+at producer precision; JSONL's rounded maximum is 2.001s. Sample count/minima
+were independently recomputed and equal the root/cohort receipt. Sampling
+remains observation, not a hard quota or universal host margin guarantee.
+Original 30GiB start /10GiB stop /8GiB floor and process/fixture/job bounds
+were not edited. Resource last sample is elapsed 88.013s; the job log's bounded
+cohort step runs 05:12:19–05:13:49 and its persisted API conclusion is success.
+
+Root's receipt retains two **observer-checker** errors separately from the
+successful hosted execution: guessed two image-archive names caused an
+assertion only after download0/fullSHA valid and before extraction; root
+corrected the check to declared member names. A later `KeyError: failure`
+came from looking up a key absent in the passed cohort; root corrected the
+actual-success schema guard before releasing the lane. Neither corrected
+source or replayed the gate, weakened logical equality, altered an oracle,
+or fabricated a null failure field. These errors and all earlier actual gate
+FAILs remain preserved as distinct evidence.
+
+This lane's first static report-label checker exited1 because its lowercase-only
+regex omitted the exact uppercase EPE check. A case-complete label parser then
+matched all 11 unchanged labels and input hashes. No cohort/source/check vector
+was changed; this is an audit-script correction, not a runtime failure.
+
+### Report-only handoff and unchanged original gates
+
+Only this existing report appendix is written. The entire 2bab prefix and both
+local source hashes 6726/3cf are verified unchanged. Static public JSON/hash /
+count/cleanup/schema/source-scope checks pass. Actual
+`python3 scripts/check-docs.py` and `git diff --check` exit0, with staged
+whitespace/scope and preserved-prefix checks completing the report-only commit. No native/socket/helper/function/case/import,
+Docker/Cargo/service/runtime/provider/HTTP/PG/browser/Driver, archive extraction,
+query/download/dispatch, source/workflow edit, alignment/merge/deletion,
+new worker/task/worktree/shell, main/push/status or other-worker contact.
+No runtime lane is taken; S02's separate local runtime remains outside this
+receipt. All local source/history/private evidence is preserved.
+
+**shared_full_gate=not_run; official_release=false; no builds/new products.**
+There is no ARM-container, current-S02 product, registry/release/tenant/device
+or universal-edition claim. Old run37097066234 remains FAILED with measured
+start_app/errno98 but cause UNKNOWN; old run37087561409 remains FAILED with
+site/errno/cause UNKNOWN. This new success **does not infer TIME_WAIT or any
+old failure cause**, a Linux kernel identity or a separate synthetic socket
+proof. Root retains A09 integration/disposition; this report alone does not
+close the original task, and ARM-container source/runtime is separately
+root-owned. Original primaryf2 and all already closed rows remain unchanged.

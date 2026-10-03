@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       architecture:
-        description: Verified dated x86 LOCAL container fixture replay
+        description: LOCAL container cohort with x86 replay or native ARM build
         required: true
         type: choice
         default: x86_64
-        options: [x86_64]
+        options: [x86_64, arm64]
 
 permissions:
   contents: read
@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          python3 controller/scripts/check-local-container-cohort.py --prebuilt-x86 \
+          python3 controller/scripts/check-local-container-cohort.py ${{ inputs.architecture == 'x86_64' && '--prebuilt-x86' || '' }} \
             --controller "$GITHUB_WORKSPACE/controller" \
             --product "$GITHUB_WORKSPACE/product" \
             --review "$GITHUB_WORKSPACE/review" \

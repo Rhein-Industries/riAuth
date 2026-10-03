@@ -5360,3 +5360,282 @@ accepted file or old capture was edited; no merge/reset/alignment, push,
 board/status action, new worker/task/worktree/managed shell, external message
 or worker contact occurred. Original primary1e336a3d and finished rows remain
 unchanged; root owns next complete source/DATA review and runtime reservation.
+
+## 2026-10-03 — one lint-corrected filter: actual PASS and measured tradeoff
+
+Project **891e7443-8dac-4c1b-897f-9e53cb59c7ee**, original S02
+**fdda2152-73a0-4dce-9e5e-aff4b232a6fd**, supporting worktree
+**e1b4399a-8c0d-46b8-880c-a71a4ebf53e7**. Root released exactly one invocation
+under `wave30_S02_one_lint_corrected_supervisor_filter`. This appendix records
+that invocation; no second command, baseline, retry or correction was run.
+
+The authorized local filter **passed**: outer supervisor exit0, Cargo exit0,
+libtest **1 passed, 0 failed**, and **139 accepted records** comprising120
+samples,12 summaries and7 other records. The observed cost improvement is
+bounded native fetch batches. **Every paged p50 and p95 comparison was slower
+than its paired frozen control.** Latency was measured and retained, not an
+improvement gate. This result does not assert original S02 completion; root
+must assess the materialization/latency tradeoff against the original row.
+
+This is appended after the entire **266,010-byte /5,362-line** report at
+`536ab811c3cf396df5ceae6509e109164cec9b2c`, SHA-256
+`38765061c1077bd28c478f0f609af056d559c3799184e39f5d66f02f56f9a5fe`.
+All historical source-only/uncompiled statements remain dated observations.
+The failed local-v1 Cargo101 receipt and both attributed root CI failures
+remain failures; this invocation does not retrospectively repair them or
+claim their skipped all-target tests passed.
+
+### Actual source, preflight and single command
+
+Own clean HEAD was `536ab811c3cf396df5ceae6509e109164cec9b2c`, with fixture
+source `ec4316259b3cb04496e5467336ecebee15b92f2c`. All358 selected
+mode/object/path records matched root source
+`8d66b513e9e241aedc5e1d8d56f8084dc95de188`;357 protected non-fixture objects
+also matched the reviewed production74c1 source. No merge, alignment or
+unselected-file import occurred. The previously disclosed unselected
+`tests/cli.rs` difference was neither edited nor selected by this command.
+
+| Actual protected input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| [fixture](../../tests/s02_group_listing_paging.rs) | 60,276 | `7360487b4f866f1d524eb8c25a154386d33203f7c4879734bfbd129f9473d404` |
+| [Core](../../src/core.rs) | 57,913 | `686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea` |
+| Cargo.toml | 4,020 | `58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8` |
+| Cargo.lock | 109,243 | `b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426` |
+| rust-toolchain.toml | 86 | `887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167` |
+| target/.rustc_info.json | 1,966 | `7d6b9b4c5d7047c09e065993326b9e70aa2aaf59a3c99c0e42f5de4102edead5` |
+
+Independent fresh preflight at epoch ns **1791004904346585000** observed
+**16,639,238,144B (15.4965GiB)** free, clean source, matching selected cache
+and tool pins, no competing Cargo/rustc/rustdoc, preserved failed-v1 files,
+and absent fresh-v2 supervisor/log/observations/evidence/decision paths.
+All proposed byte identities matched actual files. The supervisor's later
+launch sample independently measured **16,636,358,656B** free. The4GiB
+additional-peak allowance remained a planning estimate, not a quota.
+
+Materialization used only the retained25,988-byte/3089723 supervisor and the
+root-reviewed five literal substitutions archived above. Binding design
+`planning/evidence/wave30-s02-lint-corrected-supervisor-binding-design.json`
+was1,757B, SHA-256
+`5dd96eb1b562a3b8dd91bb42cf0076408cbaa4fd21a85a24391e88babe157425`.
+The full inverse bytes/AST recovered3089723; all20 function/class bodies and
+all other AST nodes matched. Fresh exclusive0600 read-back was exactly
+**25,993B /535 lines**, SHA-256
+`835e110e354294fbab39704eeb735fdd3381f88a45aaef82526a3bdfb680c8b4`.
+No DATA, budget, grading, environment or source assertion was changed.
+
+Exactly this closed outer command was invoked once:
+
+```sh
+env -i HOME=/Users/dominik PATH=/usr/bin:/bin:/usr/sbin:/sbin LANG=C LC_ALL=C /opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/bin/python3.14 -I -S -B "$PWD/target/s02-group-list-owned-string-v2-supervisor.py"
+```
+
+Its pinned Cargo1.98.1 path was
+`/Users/dominik/.rustup/toolchains/1.98.1-aarch64-apple-darwin/bin/cargo`;
+the exact child arguments were:
+
+```text
+test --locked --features test-support --test s02_group_listing_paging group_listing_paging_preserves_snapshot_authority_and_measures_materialization -- --exact --ignored --test-threads=1 --nocapture
+```
+
+The reviewed closed environment retained `CARGO_NET_OFFLINE=true`, own
+`CARGO_TARGET_DIR="$PWD/target"`, jobs1, incremental0, dev/testdebug0, fixed
+HOME/toolchain/PATH/C locale and no inherited secret overrides. All pinned
+Python/Cargo/rustc/source/manifest/toolchain/cache hashes matched before and
+after; neither fingerprint JSON nor rustc_info was rebound during this run.
+This was the one test-support command, not Clippy, a broad suite, another
+feature set, a product CLI, a service or an external performance campaign.
+
+### Joined exit, saved receipts and immediate lane release
+
+Complete finite supervisor stdout, retained before comparison:
+
+```json
+{"cargo_exit":0,"cargo_signal":null,"first_failure":null,"group_absent":true,"leader_reaped":true,"minimum_available_bytes":16189808640,"prefinal_elapsed_seconds":132.50237583415583,"receipts_prefinal":true,"records":139,"samples":120,"stage":"cargo","summaries":12}
+```
+
+The outer consuming result was **exit0**. CargoPID/PGID **44999** had raw
+wait status0, numeric exit0, no signal, joined/reaped leader and pipeEOF.
+WNOWAIT observed `code=1,status=0` before the consuming wait. A fresh
+post-exit `ps` read found no exact-owned group members; probing only44999
+with signal0 produced `ProcessLookupError`. All **77 metadata children**
+were joined with numeric exit0. No TERM/KILL was needed, no unrelated
+process was signaled, and cleanup took **0.1328026670962572s**.
+
+**SOLE CARGO + VALIDATION LANE RELEASED** was sent with the explicit project
+ID after consuming/joining Cargo and independently proving group absence,
+before this report append. Desktop was not acquired; no further invocation
+is authorized or performed.
+
+Observed timings were compiler finish **5.21s**, libtest **126.20s**,
+saved evidence elapsed **132.43774637486786s**, decision pre-final elapsed
+**132.50226395903155s**, and final stdout pre-final elapsed
+**132.50237583415583s**. The final clock/actual parent exit remained separate
+from pre-final saved journals; no later result was substituted for them.
+Only `riauth` appeared in the parsed compilation-package records; there
+were no compiler error codes or panic locations.
+
+The2s monitor retained **65 disk samples and65 group samples**. Minimum free
+space was **16,189,808,640B (15.0779GiB)**; post-cleanup free space was
+**16,230,907,904B (15.1162GiB)**. The13GiB launch requirement,9GiB stop,
+8GiB floor,32MiB capture cap,1800s outer/1790s command/10s cleanup and
+300s fixture/10s thread limits were unchanged and no safety refusal fired.
+The405,450,752B difference between launch and post-cleanup shared free
+space is not an attributed own-allocation peak. There is no kernel IO-quota
+or unsampled resource-maximum claim.
+
+All five new private artifacts are regular, nonsymlink, nlink1, UID501,
+mode0600, retained under this own ignored target. Raw output stays private;
+this report contains only approved numeric/enum/boolean evidence.
+
+| Retained path relative to own worktree | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `target/s02-group-list-owned-string-v2-supervisor.py` | 25,993 | `835e110e354294fbab39704eeb735fdd3381f88a45aaef82526a3bdfb680c8b4` |
+| `target/s02-group-list-owned-string-v2.log` | 75,770 | `740c72eafa5d5e99b16d81a1e051b626dc316f2a8040570d5236474375774ddb` |
+| `target/s02-group-list-owned-string-v2-observations.json` | 72,117 | `2a7d4d5893b4f9d9600f3b49b1350dcc26df1336bd45203f94667d1f4877d7b9` |
+| `target/s02-group-list-owned-string-v2-evidence.json` | 22,908 | `e2425797bb6c92a7c209019d7229d13c036bf99d2a36aade0f5a2f1ec81bedf1` |
+| `target/s02-group-list-owned-string-v2-decision.json` | 681 | `25dc5259ff77cad2a43b3c0e40c816923d55fba105efd535265583e412f94553` |
+
+Capture received exactly75,770B, reachedEOF and closed completely. Its hash
+matches the evidence receipt. The actual supervisor retained/fsynced full
+capture and observations/evidence before decision grading; saved decision
+references the exact observation/evidence hashes and `candidate_pass=true`,
+`first_failure=null`. This is completion of the specified closed record and
+cost/security grade, not a positive latency grade or task-status change.
+
+### Actual native materialization and latency records
+
+All120 raw samples and12 summaries are retained in the observations file.
+Three pairs ran in ABBAAB order, with scoped/admin lanes, five warmups per
+lane/scope and ten measured samples per lane/scope. Both encrypted-redb
+lanes used identical closed seeds and independently constructed complete
+JSON expectations. The dataset contained513 Groups,128 members per Group
+and three authorized scoped Groups. Trusted synthetic identity/Group setup
+is fixture provenance, not tenant/import/writer-acceptance evidence.
+
+The following metrics held in every one of the three pairs and all samples:
+
+| Scope | Point reads, both lanes | Native point + scan value bytes, both lanes | Control scan calls / rows | Paged scan calls / rows | Fetches over128 rows, control / paged |
+| --- | ---: | ---: | --- | --- | --- |
+| scoped | 2 | 1,024,387 | 1 unbounded /513 | 5 bounded /513 | 1 /0 |
+| admin | 5 | 1,025,375 | 1 unbounded /513 | 5 bounded /513 | 1 /0 |
+
+Every paired sample matched point-read counts and native returned-value byte
+counts. All measured reads had **zero writer holds and zero commits** and
+reported `encrypted_at_rest=true`. Native row histograms matched one513-row
+control fetch versus paged128/128/128/128/1 fetches. This is the observed
+raw-fetch materialization metric. **Total rows and value bytes did not fall;
+scan calls increased from one to five.** No decoded-JSON peak, live
+allocation, heap, RSS, disk IO or CPU saving is measured or inferred.
+
+All twelve actual summary records are represented below without rounding;
+each lane summary has10 samples. Times are complete-call nanoseconds:
+
+| Pair | Scope | Control p50 ns | Paged p50 ns | Control p95 ns | Paged p95 ns |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 0 | scoped | 40,989,792 | 43,016,042 | 41,434,041 | 46,485,916 |
+| 0 | admin | 45,120,750 | 47,825,917 | 45,981,667 | 48,170,459 |
+| 1 | scoped | 41,275,125 | 42,980,917 | 43,292,584 | 45,902,375 |
+| 1 | admin | 45,819,458 | 47,776,625 | 47,261,541 | 48,549,625 |
+| 2 | scoped | 41,291,042 | 43,030,750 | 42,394,500 | 43,973,333 |
+| 2 | admin | 45,984,250 | 47,733,167 | 46,404,084 | 48,679,667 |
+
+Paged latency regressed in all six p50 and all six p95 comparisons. The
+measurement decision faithfully reported
+`scoped_latency_p50_lower_in_every_pair=false`, `latency_grade=false`,
+`heap_claim=false`, `rss_claim=false`. Passing the native fetch-batch gate
+does not establish speedup; these measurements must accompany any root
+acceptance decision. No baseline rerun, extra case or corrective source
+change was made in response to the slower timings.
+
+### Reached result, authority, writer and concurrency oracles
+
+The one passed ignored function executed its complete independent result
+and durable-state assertions: sizes0/1/128/129, admin/scoped/empty authority,
+invalid credentials, and stored key/name compatibility with actual storage
+ordering. Both lanes retained full JSON results, read-only full snapshots,
+and no Group scan on exact401/`invalid_token` authority refusal. The key/name
+compatibility and stable identity setup were explicitly trusted synthetic
+records, not evidence that normal writers accept arbitrary stored names.
+
+Outside measurement windows, actual public membership/revocation writers,
+denied membership and malformed write paths, audit/revision/full-snapshot
+expectations, unchanged membership retry and repeated-revocation conflict
+all passed. Ordered snapshot cases reported an exact old snapshot and a
+checked fresh request for both membership and revocation, with owned writer
+threads joined. Actual Core overlap reported eight attempts and observed
+call-interval overlap, accepting only the independently expected complete
+pre/post result. It did **not** inject a writer between actual Core pages.
+
+The expiry refusal used a canonical stored timestamp at real `now`; exact
+refusal/full-state assertions passed with `expiry_same_second_observed=true`.
+It did not wait out a natural TTL or force the clock. Public parent disable
+passed its exact complete snapshot/audit/revision/token-retirement oracle;
+unrelated authority survived. It does not claim runtime coverage for a
+legacy enabled child beneath a disabled parent that retained its token.
+
+The seven non-sample/non-summary records, projected directly from the
+retained closed observations without private values, are:
+
+```json
+[
+  {"buckets":[0,1,1,5,5,5,5,5],"heap_claim":false,"parser_refusal_cases":5,"rows":513,"rss_claim":false,"scan_count":5,"schema":"riauth.s02-telemetry-self-check/v1"},
+  {"fresh_request_checked":true,"old_snapshot_exact":true,"operation":"membership","schema":"riauth.s02-ordered-snapshot/v1","writer_joined":true},
+  {"fresh_request_checked":true,"old_snapshot_exact":true,"operation":"revoke","schema":"riauth.s02-ordered-snapshot/v1","writer_joined":true},
+  {"attempts":8,"between_page_injection":false,"complete_pre_or_post_oracles":true,"observed_call_interval_overlap":true,"schema":"riauth.s02-core-overlap/v1","writer_joined":true},
+  {"child_token_retired":true,"expiry_refusal_exact":true,"expiry_same_second_observed":true,"expiry_source":"trusted_canonical_stored_timestamp_at_real_now","legacy_enabled_child_with_disabled_parent_runtime_claim":false,"natural_ttl_elapsed_claim":false,"public_parent_disable_exact_snapshot":true,"schema":"riauth.s02-authority-boundaries/v1","unrelated_authority_preserved":true},
+  {"heap_claim":false,"latency_grade":false,"native_point_and_value_byte_equivalence":true,"observed_fetch_materialization_improved":true,"rss_claim":false,"schema":"riauth.s02-measurement-decision/v2","scoped_latency_p50_lower_in_every_pair":false},
+  {"all_owned_threads_joined":true,"cost_gate":"observed_raw_fetch_row_materialization","groups":513,"heap_claim":false,"latency_grade":false,"members_per_group":128,"order":"ABBAAB","pairs":3,"pg_claim":false,"private_fixture_directories_removed_and_checked":true,"rss_claim":false,"samples_per_lane_scope":10,"schema":"riauth.s02-group-list-result/v1","scoped_groups":3,"total_samples":120,"warmups_per_lane_scope":5}
+]
+```
+
+Counts are1 self-check,120 samples,2 ordered snapshots,1 Core overlap,
+1 authority boundary,12 summaries,1 measurement decision and1 final result:
+**139 total**. The final fixture record followed joined owned threads and
+checked private fixture-directory removal, with its final clock check
+remaining after the pre-final receipt. The complete libtest and outer
+supervisor exit0 provide the later completion evidence.
+
+### Preservation, verification and remaining disposition
+
+The five failed-v1 files under `target/s02-group-list-ba3cd18-v1` remain
+unchanged: supervisor25,988B/3089723, log3,597B/9f9aa0,
+observations55B/0ccfe4, evidence12,635B/1a3742 and decision158B/2203b6.
+Their full hashes are already retained above; current verification compares
+the actual files to those exact pins. No capture/cache/evidence file was
+deleted, overwritten or generalized into a passing receipt.
+
+Actual checks for this reservation comprise independent clean/source/cache/
+tool/capacity/path preflight; exact DATA composition/full byte and AST
+inverse; exclusive0600 materialization/read-back; the one supervised ignored
+Cargo command; capture/receipt/hash/schema/counter review; fresh exact-owned
+process-group absence; and report-prefix, source-object, docs-link, whitespace
+and sole-report staged-scope checks. No second typecheck, Clippy, Cargo
+target, external observer, provider/service, network query or browser ran.
+
+The local macOS/test-support encrypted-redb result supports bounded raw-fetch
+materialization under the tested equivalent result/security/writer/snapshot
+oracles, with the measured latency regression disclosed. It provides no
+Linux, PostgreSQL-performance, production-concurrency, tenant, release,
+all-green CI, heap/RSS or universal workload claim. Original S02 acceptance
+and board status remain root-owned; no DONE claim or broader next task is
+made. Original primary1e336a3d and all finished rows remain unchanged.
+
+Only this append-only report is changed for the actual-evidence commit.
+Production/test/helper/manifests and their reviewed assertions remain exact;
+no source correction, alignment/merge/reset, main/accepted edit, push,
+status update, new worker/task/worktree/managed shell or worker contact
+occurred. Sole Cargo and validation lanes were released before this append;
+future runtime requires a separate root reservation.
+
+### Post-commit static reader receipt
+
+After actual-evidence commit `ea382fa04de9bae861018f14089dcfab171728f5`,
+one read-only final verification script exited1 at parse time: Python
+rejected a non-ASCII character in a bytes literal. None of that script's
+assertions executed and no file or process state was changed. Replacing
+only that reader literal with an encoded string allowed the static check
+to exit0: clean branch, sole-report commit, full266,010-byte earlier prefix
+and all358 selected source objects equal root8d66. This correction was to
+the transient evidence reader, not the retained supervisor or fixture; no
+Cargo/fixture rerun occurred. The complete283,082-byte ea382 report remains
+the exact prefix before this appended disclosure.
