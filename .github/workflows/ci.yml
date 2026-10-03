@@ -15,6 +15,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  managed-device-host:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_GENERATE_ASPNET_CERTIFICATE: 'false'
+      DOTNET_SKIP_WORKLOAD_INTEGRITY_CHECK: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '9.0.200'
+      - name: Check managed device-host refusal and response deadlines
+        timeout-minutes: 5
+        run: dotnet run --project windows/RiAuth.DeviceHost/RiAuth.DeviceHost.csproj --configuration Debug --no-launch-profile -- selftest
+
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
