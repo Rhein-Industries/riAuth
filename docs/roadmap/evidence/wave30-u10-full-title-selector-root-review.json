@@ -1,0 +1,37 @@
+{
+  "schema": "riauth.root.u10-selector-review/v1",
+  "observed_at": "2026-10-03T08:19:14.143026+00:00",
+  "failed_source": "1a517a1a461b7017c353d37a5e498d2c7cfa7985",
+  "run_id": 37106315679,
+  "integration_job_id": 111159428293,
+  "raw_log": {
+    "bytes": 257387,
+    "sha256": "d9dc126d7d050e050f645cb07934ecea5f5fe0628f2cfe54ad4ae71733bedcd7",
+    "private_mode": "0600"
+  },
+  "actual": {
+    "setup_passed": 9,
+    "authenticator_passed": 22,
+    "authenticator_skipped": 2,
+    "focused_u10": "No tests found; no test executed",
+    "integration_conclusion": "failure"
+  },
+  "source_correction": "5ecf4710a403f7b59306b08ea9f67ae3f7475594",
+  "path": ".github/workflows/ci.yml",
+  "change": "Remove only beginning anchor from grep; retain ending anchor, file, Chromium, one worker and zero retries",
+  "old_sha256": "0f152ab75e490dd3f9f614714a776eaa7e2714fc518900b7f7ba8d7cb24a5949",
+  "new_sha256": "dccf9ac36234b38f2485ca6e2de3ef5f10ab2bea6b8ed4019bbd09df5c905366",
+  "full_byte_inverse": true,
+  "root_error": "Previous root static validation missed that Playwright grep matches the full project/file/describe/test title string.",
+  "primary_reference": "https://playwright.dev/docs/api/class-testconfig#test-config-grep",
+  "actual_static_checks": [
+    "Ruby Psych YAML parse",
+    "27 shell run blocks bash -n",
+    "exact whole-byte inverse",
+    "Python regex against documented prefixed title",
+    "Git whitespace"
+  ],
+  "runtime_after_correction": false,
+  "original_u10_completion": false,
+  "local_browser_or_cargo": false
+}
