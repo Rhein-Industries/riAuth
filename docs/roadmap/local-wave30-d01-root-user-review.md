@@ -117,3 +117,36 @@ Root then read all218 lines of independent `a770027d009172a96e4776aa5504500b6667
 ## Built-in traceback correction reviewed
 
 Root read the exact one-line source delta at `f4ef05d8428b235511e81277ba6b4b72d5ec08ba` and all93 lines of `a88c2ba82615190d477ebfbc7155cb7c4d5c4908`. Independent whole-byte replacement/AST/scope checks matched corrected helper35749 bytes/SHA `75bfb8a63d68aee6ee6b2e500959c0e7d80a6331f1c690022c4300134c7d34f1`. The descriptor bypasses subclass traceback dispatch without changing any other helper byte. Source review is accepted; execution is not credited. Root reserves only a descriptor-aware finite design retaining the old78 cases, native traceback/frame boundaries and a hostile accessor that must remain uncalled. The old de9 payload remains unexecuted, and the real fixture stays held.
+
+
+## Current continuation source and exact public action labels (2026-10-03)
+
+Root reread the complete 485-line archived 9f3a4a3 continuation candidate and
+accepted the full independent 1f90af6 review of its four changed spans. Those
+F2–F4 changes remain source-only; no memory or real Driver result is borrowed.
+Root also read the complete pinned c01 signin HTML and relevant signin JS
+label/consent handlers. The current candidate keeps only fresh ref strings in
+continuation state and emits page flags, without a fixed public role/name/ref
+association for the next source-bound action. Its public-label whitelist omits
+the exact OTP label `Authenticator or recovery code (if enabled)` and the
+configured Local demo consent headings with `Allow` or `Continue`.
+
+This is a concrete prospective continuation-source omission, not a cause of
+historical Authorization traffic or connection refusal. Root reserved a narrow
+report-only public decision-projection design: fresh snapshot-bound validated
+refs and fixed source-derived public role/name/action labels, no field values,
+private URL/query, user/subject, credential, token, header or error text. All
+private input/crypto/helper/refusal and cleanup paths remain protected. That
+candidate must undergo full and independent source review and changed-candidate
+memory verification before any separately released Driver journey.
+
+A generic whole historical report fence iterator initially found no unique
+controller with the expected hash. Extracting only the uniquely headed
+`Complete outer controller command` archive recovered exact 17,326-byte
+2e29c30 command SHA256
+`5eb6ab2d3d23b49fd431c41f1932082fe0c6779ad724ac77b7fded10926b26b0`.
+AST parsing only passed; no command or body ran. Its exact fixed client-create
+argv names local-demo `Local demo`, supporting the public-label derivation.
+The initial archive lookup failures made no writes/runtime changes and provide
+no earlier fresh reconstruction credit. The real confidential browser remains
+held and unpassed; D01/D05 status is unchanged.
