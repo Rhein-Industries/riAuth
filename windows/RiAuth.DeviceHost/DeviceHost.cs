@@ -89,6 +89,13 @@ internal sealed class DeviceApi(HttpClient http)
         string? idempotencyKey,
         CancellationToken cancellation)
     {
+        var timeout = http.Timeout;
+        if (timeout == Timeout.InfiniteTimeSpan || timeout <= TimeSpan.Zero)
+            throw new InvalidOperationException("riAuth request timeout must be finite and positive");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        deadline.CancelAfter(timeout);
+        cancellation = deadline.Token;
+
         using var request = new HttpRequestMessage(method, issuer.AbsoluteUri.TrimEnd('/') + path);
         if (bearer is not null)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);

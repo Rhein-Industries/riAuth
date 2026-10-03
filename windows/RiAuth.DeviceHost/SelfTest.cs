@@ -66,6 +66,8 @@ internal static class SelfTest
         Check(approvedSid == state.LocalSid && approved.Redeems == 1
             && approvedStore.Load()!.LastEpoch == 2,
             "only a redeemed, identity-bound assertion may release the pinned local SID");
+
+        await StalledResponseMustTimeOutAsync(issuer, state);
     }
 
     private static HttpResponseMessage Reply(HttpStatusCode code, string body) =>
@@ -103,6 +105,124 @@ internal static class SelfTest
             if (path.Contains("/tickets/redeem", StringComparison.Ordinal)) Redeems++;
             if (path.Contains("/offline/", StringComparison.Ordinal)) OfflineCalls++;
             return Task.FromResult(reply(request));
+        }
+    }
+
+    private static async Task StalledResponseMustTimeOutAsync(Uri issuer, DeviceState state)
+    {
+        var stream = new StalledResponseStream();
+        using var content = new ObservedStreamContent(stream);
+        var requests = 0;
+        var handler = new FakeHandler(request =>
+        {
+            requests++;
+            Check(request.RequestUri!.AbsolutePath.EndsWith("/login", StringComparison.Ordinal),
+                "stalled login must not dispatch another operation");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        });
+        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(1) };
+        var store = new ObservedStore(state);
+        var login = new DeviceHostClient(new DeviceApi(http), store)
+            .LoginAsync(issuer, "password", null, CancellationToken.None);
+        var refusal = ExpectFailure<OperationCanceledException>(login);
+        try
+        {
+            // This guard observes the outcome; it supplies no operation token.
+            await refusal.WaitAsync(TimeSpan.FromSeconds(5));
+            Check(stream.PrefixDelivered && stream.CancellationObserved,
+                "partial response content must observe the request deadline");
+            Check(requests == 1 && handler.Redeems == 0 && handler.OfflineCalls == 0
+                && store.Saves == 0 && store.Purges == 0 && store.Load() == state
+                && !login.IsCompletedSuccessfully,
+                "stalled content must not approve, redeem, use offline access or change device state");
+            // Check request-owned disposal before the fixture performs cleanup.
+            Check(content.Disposed && stream.Disposed,
+                "request failure must dispose its response content and stream");
+        }
+        finally
+        {
+            // Release an old uncancelled read only after the guard has failed.
+            // Observing that task must not replace the first test failure.
+            content.Dispose();
+            try { await refusal.WaitAsync(TimeSpan.FromSeconds(1)); }
+            catch (Exception) { }
+        }
+    }
+
+    private sealed class ObservedStore(DeviceState state) : IDeviceStateStore
+    {
+        private DeviceState? saved = state;
+        internal int Saves { get; private set; }
+        internal int Purges { get; private set; }
+        public DeviceState? Load() => saved;
+        public void Save(DeviceState value) { Saves++; saved = value; }
+        public void Purge() { Purges++; saved = null; }
+    }
+
+    private sealed class ObservedStreamContent(Stream stream) : StreamContent(stream)
+    {
+        internal bool Disposed { get; private set; }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) Disposed = true;
+            base.Dispose(disposing);
+        }
+    }
+
+    private sealed class StalledResponseStream : Stream
+    {
+        private readonly byte[] prefix = Encoding.UTF8.GetBytes("{\"signin_ticket\":");
+        private readonly TaskCompletionSource<bool> disposed =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int offset;
+        internal bool PrefixDelivered => offset == prefix.Length;
+        internal bool CancellationObserved { get; private set; }
+        internal bool Disposed { get; private set; }
+        public override bool CanRead => !Disposed;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+        public override void Flush() => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            if (Disposed) throw new ObjectDisposedException(nameof(StalledResponseStream));
+            cancellationToken.ThrowIfCancellationRequested();
+            if (buffer.IsEmpty) return 0;
+            if (!PrefixDelivered)
+            {
+                var count = Math.Min(buffer.Length, prefix.Length - offset);
+                prefix.AsMemory(offset, count).CopyTo(buffer);
+                offset += count;
+                return count;
+            }
+            try { await disposed.Task.WaitAsync(cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                CancellationObserved = true;
+                throw;
+            }
+            throw new IOException("Synthetic stalled response was disposed");
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                Disposed = true;
+                disposed.TrySetResult(true);
+            }
+            base.Dispose(disposing);
         }
     }
 }
