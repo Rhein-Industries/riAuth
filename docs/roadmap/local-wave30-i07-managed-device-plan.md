@@ -1688,3 +1688,495 @@ Root must read the full immutable candidate/diff and separately decide any exact
 Final static checks returned actual exit0 individually: report whitespace (`git diff --check`), Markdown/layout (`python3 scripts/check-docs.py`), complete archived forward/inverse AST/byte and ownership-order/scope checker, and staged tracked-file hygiene (`python3 scripts/check-repo-hygiene.py`,1143 files). The canonical diff has three hunks; the single standalone blank-context marker decodes exactly. Static ownership-order proof checked WNOWAIT options/strict observer assertions and poison latch, pre-spawn default-handler recheck, guarded nonzero sink, all signal calls before the irrevocable phase closure, sole matching actual waitpid/status-to-exit conversion and no forbidden Popen status/signaling calls. All five original top-level helper bodies and the complete whole-target grader are byte-exact.
 
 Read-only hash/mode/owner checks verified all eight original I07 negative-run private captures against their retained SHA256 witnesses: regular, own UID,0600 and byte-hash exact, including the original supervisor, full private raw panic output and original parser-miss grade. Their contents were not emitted or rewritten. This correction performs no live capacity/process/ownership/waitability/protocol/tool probe; the prior capacity/cache observations remain dated in the preserved64e4 prefix. Current WNOWAIT behavior, bounded cleanup and real exit remain UNEXECUTED prerequisites. No claim is made that static proof establishes an actual cleanup, whole target pass, device/provider provenance, browser journey or original-row closure.
+
+## 2026-10-03: final grading clock and disk corrections, SOURCE ONLY / UNRUN
+
+Root accepted the source findings F1 final-persistence clock and F2 final-disksample gate in immutable `02a86afb469b8e7a761691bef93b29ce5dfb9dcc:docs/roadmap/local-wave30-i07-whole-supervisor-independent-review.md`. That complete review body, all exact proposed hunks and limits were read as DATA. The prior20011-byte450 controller and ENTIRE176494-byte450 report remain dated and preserved as the complete prefix. This appendix composes exactly those two proposed hunks plus only root's additional post-public-output return predicate. No controller/file was materialized, imported, evaluated or executed. All older failed negative/parser/formatting/whitespace/private-capture histories and unknowns remain unchanged.
+
+### Exact source manifest
+
+```json
+{
+  "additional_post_output_guard_diff_bytes": 398,
+  "additional_post_output_guard_diff_sha256": "dd0f336c6dc87c8667b464ba733a59535393b0f834c9e59c833c04c855b2fe6c",
+  "blank_context_lines_encoded": 2,
+  "candidate_bytes": 20656,
+  "candidate_lines": 362,
+  "candidate_sha256": "f39bd0a6e6d2ebe6bb8195d55f79f6b900b15d4f0fd31d75b8883a376b7f0baa",
+  "canonical_diff_bytes": 3493,
+  "canonical_diff_hunks": 2,
+  "canonical_diff_sha256": "1dd3c6069e819d62bf5f982797ddc08d259a10fb4bc60ae7df737474218a3717",
+  "controller_evaluated": false,
+  "exact_two_review_hunks_bytes": 1140,
+  "exact_two_review_hunks_sha256": "fd8296a5a36a5c3622aa032281fc6a689758f13a8218684ecd46ee6d6c1bc016",
+  "independent_review_bytes": 22357,
+  "independent_review_commit": "02a86afb469b8e7a761691bef93b29ce5dfb9dcc",
+  "independent_review_path": "docs/roadmap/local-wave30-i07-whole-supervisor-independent-review.md",
+  "independent_review_sha256": "6c8d4234f5c52597aa1c7b01732c9fd0f3cab1a96fafed63f554eaef37600133",
+  "old_controller_bytes": 20011,
+  "old_controller_sha256": "7f880d6ac9324d08b3a9022346d42836bdaf3258adeba34474a56daa8744d236",
+  "prior_report_bytes": 176494,
+  "prior_report_commit": "4503633703efe617b72a2ffcbb080af76c82847e",
+  "prior_report_sha256": "eab3dd40d188eca385843f9af2555c2bf5027fa220968fe6f42f9486bc1941af",
+  "project": "891e7443-8dac-4c1b-897f-9e53cb59c7ee",
+  "protected_functions_byte_exact": 9,
+  "reservation": "wave30_I07_final_grade_clock_disk_correction",
+  "resource_acquired_or_released": false,
+  "runtime_leaf_created": false,
+  "two_hunk_candidate_bytes": 20622,
+  "two_hunk_candidate_sha256": "e636b01905550ed43ffae706036b34e9e35e7a91d7d7db2d86d757a19be26af8"
+}
+```
+
+The exact two immutable review hunks reconstruct20622B/362lines/SHA256 `e636b01905550ed43ffae706036b34e9e35e7a91d7d7db2d86d757a19be26af8`; no variant is substituted. The ONLY additional root-required change inserts `time.monotonic()-started<1800 and ` at the start of the final return predicate. That fresh clock call occurs after the unchanged bounded-schema public print returns and before any wrapper0 decision. It cannot renew START, authorize more work, mutate saved receipts or confer a hard syscall/output bound.
+
+F2 latches `disk_stop_threshold` only when the appended final sample is strictly below9GiB and no earlier stop_reason exists, before raw/status readback, actual-status fsync and grading. Equal9GiB remains the original accepted boundary. The original first reason is sticky and is not replaced by a later disk or deadline condition. No threshold, sampling cadence, disk quota/headroom promise or live capacity measurement is added. The latest shared capacity below12GiB is root-supplied/current-context evidence, not a new sample by this worker; launch/runtime remains HELD with no prune authorization. All earlier dated capacity samples remain dated.
+
+F1 samples `final_elapsed=time.monotonic()-started` immediately after the exclusive grade file and parent fsync return. The strict predicate is final_elapsed<1800. At or after1800, the in-memory/public grade is copied with whole_target_complete=False, whole_target_pass=False and classification=incomplete; `inclusive_deadline` is latched only if the prior stop_reason is still None. The earlier durable status/grade files are never rewritten. Public `grade_file_precedes_final_clock=True`, rounded final_elapsed_seconds and inclusive_deadline_met explicitly mark their before-final-clock observation role. Any future outer collector must retain bounded public terminal output AND actual numeric supervisor/Cargo statuses before grading; reading only the grade file cannot establish the terminal verdict.
+
+The public packet is a BEFORE-OUTPUT clock snapshot. If output returns after the limit, its previously constructed packet may still contain a passing earlier observation, but the additional fresh after-print comparison forces supervisor125. That final comparison is not itself output or another filesystem write. No new terminal-field timestamp is inferred from the public packet, and wrapper0 still means the preserved cleanup/controller condition rather than a whole14 PASS oracle. The actual numeric exit is mandatory. Print/fsync/OS calls are not cancellable or hard-bounded by these acceptance checks: they refuse late acceptance once control returns; they do not establish a hard kernel clock.
+
+The original `started=time.monotonic()` origin remains after all preflight, launch-source persistence and exclusive log open, before target Popen. The1800 interval is relative to that preserved clock, not whole interpreter startup/preflight/source persistence. The unchanged active1765/loop1790/final-reap1798 limits,12GiB launch/9GiB stop/8GiB floor/nominal2s sampling/16MiB log cap, single exact whole-device_trust command/features/warm target/source pins, SIGCHLD/WNOWAIT unreaped ownership, signal-phase closure before real waitpid status consumption, bounded drain/no later destructive signals, refusal/capture/error/private-file and fsync-before-grading rules remain byte-exact outside the two final seams and root's return predicate. The entire original whole14 grader through grade_id persistence remains byte-exact. Nine protected top-level/nested function bodies and every byte before the final sample are unchanged; no source/test/guide/D01/controller/helper/config or other report is edited.
+
+### Complete corrected final-clock/disk proposed supervisor (UNRUN)
+
+```python
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+ROOT = Path('/Users/dominik/orca/projects/riAuth-public-preview-sol-management-wave30')
+RUN = ROOT / 'deployment-private/i07-device-trust-whole-5c20ca-20261003-once'
+HEAD = '715f6e9c37cf3e6a92f13f284fa54e4cb6d8d0fd'
+REVIEW = '5c20ca13effb28501976aef69e50c6738ab560b6'
+FIXED = '5c20ca13effb28501976aef69e50c6738ab560b6'
+TEST_SHA = 'f5fc6b3d42f97bf7c4601d8228e713066af1e3a95eeee3aca60dfeeec4c7f5df'
+GIB = 1024 ** 3
+LOG_CAP = 16 * 1024 ** 2
+DISPLAY_COMMAND = 'env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust -- --test-threads=1'
+ARGV = ['env', 'CARGO_TARGET_DIR='+str(ROOT/'target/wave30-o06-readiness'), 'CARGO_BUILD_JOBS=1', 'CARGO_INCREMENTAL=0', 'CARGO_PROFILE_DEV_DEBUG=0', 'CARGO_PROFILE_TEST_DEBUG=0', 'cargo', 'test', '--locked', '--features', 'test-support', '--test', 'device_trust', '--', '--test-threads=1']
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def exclusive_json(name, obj):
+    data=(json.dumps(obj,sort_keys=True,indent=2)+'\n').encode('ascii')
+    assert len(data)<LOG_CAP
+    fd=os.open(RUN/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    try:
+        with os.fdopen(fd,'wb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        parent=os.open(RUN,os.O_RDONLY)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    except BaseException:
+        raise
+    return {'path':str((RUN/name).relative_to(ROOT)), 'bytes':len(data), 'sha256':digest(data), 'mode':'0600'}
+
+
+def read_git(args):
+    return subprocess.check_output(['git',*args],cwd=ROOT,timeout=5)
+
+
+def free_bytes():
+    v=os.statvfs(ROOT)
+    return v.f_bavail*v.f_frsize
+
+
+def group_absent(pgid):
+    try:
+        os.killpg(pgid,0)
+        return False
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+
+
+def main():
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
+    assert all(hasattr(os,name) for name in ('waitid','P_PID','WEXITED','WNOHANG','WNOWAIT','CLD_EXITED','CLD_KILLED','CLD_DUMPED','waitpid','waitstatus_to_exitcode'))
+    assert callable(os.waitid) and callable(os.waitpid) and callable(os.waitstatus_to_exitcode)
+    os.umask(0o077)
+    assert RUN.stat().st_uid==os.getuid() and stat.S_IMODE(RUN.stat().st_mode)==0o700
+    assert not RUN.is_symlink()
+    current_head=read_git(['rev-parse','HEAD']).decode().strip()
+    assert read_git(['merge-base',HEAD,current_head]).decode().strip()==HEAD
+    assert read_git(['rev-parse',HEAD+'^{tree}'])==read_git(['rev-parse',FIXED+'^{tree}'])
+    assert read_git(['status','--porcelain'])==b''
+    test=(ROOT/'tests/device_trust.rs').read_bytes()
+    fixed=read_git(['show',FIXED+':tests/device_trust.rs'])
+    assert digest(test)==TEST_SHA
+    assert read_git(['hash-object','tests/device_trust.rs']).decode().strip()=='54bc47d08b5562ed6d836df55144c93b5ac8dd2d'
+    assert test==read_git(['show',REVIEW+':tests/device_trust.rs'])
+    assert test==fixed
+    changed=set(read_git(['diff','--name-only',HEAD,current_head]).decode().splitlines())
+    assert changed<={'docs/roadmap/local-wave30-i07-managed-device-plan.md'}
+    report=(ROOT/'docs/roadmap/local-wave30-i07-managed-device-plan.md').read_bytes()
+    report_base=read_git(['show',FIXED+':docs/roadmap/local-wave30-i07-managed-device-plan.md'])
+    assert report[:len(report_base)]==report_base
+    inputs={}
+    for path in ['Cargo.toml','Cargo.lock','rust-toolchain.toml']:
+        data=(ROOT/path).read_bytes()
+        assert data==read_git(['show',REVIEW+':'+path])
+        inputs[path]={'bytes':len(data),'sha256':digest(data)}
+    target=ROOT/'target/wave30-o06-readiness'
+    assert target.is_dir() and not target.is_symlink() and target.stat().st_uid==os.getuid()
+    fingerprint_path=target/'debug/.fingerprint/riauth-0d65ce4b80b71950/lib-riauth.json'
+    fingerprint=fingerprint_path.read_bytes()
+    assert digest(fingerprint)=='ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10'
+    features=json.loads(fingerprint)['features']
+    assert features=='["default", "essentials", "platform", "test-support"]'
+    assert (target/'debug/deps/libriauth-0d65ce4b80b71950.rlib').is_file()
+    competitors={}
+    for name in ['cargo','rustc']:
+        observed=subprocess.run(['pgrep','-x',name],capture_output=True,timeout=3)
+        assert observed.returncode==1 and observed.stdout==b'' and observed.stderr==b''
+        competitors[name]={'returncode':observed.returncode,'count':0}
+    initial_free=free_bytes()
+    assert initial_free>=12*GIB
+    archive={'project':'891e7443-8dac-4c1b-897f-9e53cb59c7ee','reservation':'wave30_I07_whole_target_exact_preparation','source_head':current_head,'alignment_merge':HEAD,'accepted_source_pin':FIXED,'source_tree':read_git(['rev-parse','HEAD^{tree}']).decode().strip(),'reviewed_test_commit':REVIEW,'test_blob':'54bc47d08b5562ed6d836df55144c93b5ac8dd2d','test_sha256':TEST_SHA,'test_bytes':len(test),'accepted_test_sha256':digest(fixed),'accepted_test_equality':True,'report_baseline_sha256':digest(report_base),'current_report_sha256':digest(report),'expected_test_count':14,'tracked_production_manifests_toolchain_unchanged':True,'inputs':inputs,'command':DISPLAY_COMMAND,'argv':ARGV,'features':features,'warm_target_fingerprint_sha256':digest(fingerprint),'initial_free_bytes':initial_free,'minimum_launch_bytes':12*GIB,'owned_stop_bytes':9*GIB,'floor_bytes':8*GIB,'sample_interval_seconds':2,'inclusive_bound_seconds':1800,'active_stop_seconds':1765,'log_cap_bytes':LOG_CAP,'competitors':competitors,'supervisor_sha256':digest(Path(__file__).read_bytes()),'supervisor_pid':os.getpid(),'sigchld_default_before_spawn':signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL}
+    archive_id=exclusive_json('launch-source.redacted.json',archive)
+    launch_free=free_bytes()
+    assert launch_free>=12*GIB
+    log_path=RUN/'cargo-combined.private.log'
+    log_fd=os.open(log_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    started=time.monotonic()
+    samples=[{'elapsed_seconds':0.0,'free_bytes':launch_free}]
+    stop_reason=None
+    signals=[]
+    child=None
+    child_reaped=False
+    owned_group=False
+    group_gone=False
+    bytes_written=0
+    downloaded=False
+    log_capped=False
+    cleanup_errors=[]
+    carry=b''
+    sel=selectors.DefaultSelector()
+    stream_eof=False
+    first_stop=None
+    returncode=None
+    internal_failure=None
+    leader_exit_observed=False
+    leader_observation_failed=False
+    signal_phase_closed=False
+    child_wait_status=None
+    next_sample=started+2
+    term_at=None
+    kill_at=None
+
+    def sample_disk(now):
+        nonlocal next_sample,stop_reason
+        if now>=next_sample:
+            current_free=free_bytes()
+            samples.append({'elapsed_seconds':round(now-started,6),'free_bytes':current_free})
+            next_sample=now+2
+            if current_free<9*GIB and stop_reason is None:
+                stop_reason='disk_stop_threshold'
+
+    def observe_leader():
+        nonlocal leader_exit_observed,leader_observation_failed
+        try:
+            assert child is not None and owned_group and not child_reaped and not signal_phase_closed
+            assert not leader_observation_failed and child.returncode is None
+            assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
+            observed=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+            assert observed is None or (observed.si_pid==child.pid and observed.si_code in (os.CLD_EXITED,os.CLD_KILLED,os.CLD_DUMPED))
+        except BaseException:
+            leader_observation_failed=True
+            raise
+        if observed is not None:
+            leader_exit_observed=True
+        return observed is not None
+
+    def signal_group(sig):
+        nonlocal internal_failure
+        label='TERM' if sig==signal.SIGTERM else 'KILL'
+        event={'signal':label,'elapsed_seconds':round(time.monotonic()-started,6),'outcome':'ownership_refused','unreaped_leader_verified':False}
+        signals.append(event)
+        try:
+            assert sig in (signal.SIGTERM,signal.SIGKILL)
+            observe_leader()
+        except BaseException:
+            if internal_failure is None:
+                internal_failure='supervisor_internal_failure'
+            cleanup_errors.append('signal_ownership_unconfirmed')
+            return False
+        event['unreaped_leader_verified']=True
+        event['outcome']='attempting'
+        try:
+            os.killpg(child.pid,sig)
+            event['outcome']='sent'
+        except ProcessLookupError:
+            event['outcome']='group_absent'
+        except BaseException:
+            event['outcome']='unconfirmed'
+            if internal_failure is None:
+                internal_failure='supervisor_internal_failure'
+            cleanup_errors.append('term_failed' if sig==signal.SIGTERM else 'kill_failed')
+            return False
+        return True
+
+    def drain(timeout):
+        nonlocal stream_eof,bytes_written,log_capped,stop_reason,downloaded,carry
+        for key,_ in sel.select(timeout):
+            block=os.read(key.fileobj.fileno(),65536)
+            if not block:
+                sel.unregister(key.fileobj)
+                stream_eof=True
+                continue
+            remaining=LOG_CAP-bytes_written
+            saved=block[:max(0,remaining)]
+            log.write(saved)
+            bytes_written+=len(saved)
+            if len(saved)!=len(block):
+                log_capped=True
+                if stop_reason is None:
+                    stop_reason='log_cap'
+            scanned=(carry+block).lower()
+            if any(label in scanned for label in [b'downloading ',b'downloaded ',b'updating crates.io index',b'updating git repository',b'fetching ']):
+                downloaded=True
+                if stop_reason is None:
+                    stop_reason='unexpected_dependency_download'
+            carry=scanned[-128:]
+
+    with os.fdopen(log_fd,'wb') as log:
+        try:
+            assert signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL
+            child=subprocess.Popen(ARGV,cwd=ROOT,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            pgid=child.pid
+            owned_group=os.getpgid(child.pid)==pgid
+            assert owned_group
+            exclusive_json('owned-child.redacted.json',{'pid':child.pid,'pgid':pgid,'owned_group_verified':True,'elapsed_seconds':time.monotonic()-started})
+            os.set_blocking(child.stdout.fileno(),False)
+            sel.register(child.stdout,selectors.EVENT_READ)
+            while True:
+                now=time.monotonic()
+                sample_disk(now)
+                if now-started>=1765 and stop_reason is None:
+                    stop_reason='active_deadline'
+                ended=observe_leader()
+                if (stop_reason is not None or ended) and first_stop is None:
+                    first_stop=now
+                if first_stop is not None:
+                    if term_at is None:
+                        term_at=now
+                        if not signal_group(signal.SIGTERM):
+                            break
+                    elif now-term_at>=5 and kill_at is None:
+                        kill_at=now
+                        if not signal_group(signal.SIGKILL):
+                            break
+                    if kill_at is not None:
+                        break
+                if first_stop is not None and now-first_stop>=20:
+                    cleanup_errors.append('owned_cleanup_deadline')
+                    break
+                if now-started>=1790:
+                    cleanup_errors.append('outer_cleanup_deadline')
+                    break
+                drain(0.2)
+        except BaseException:
+            if internal_failure is None:
+                internal_failure='supervisor_internal_failure'
+        finally:
+            if child is not None:
+                if first_stop is None:
+                    first_stop=time.monotonic()
+                if owned_group and not leader_observation_failed:
+                    if term_at is None:
+                        term_at=time.monotonic()
+                        signal_group(signal.SIGTERM)
+                    if kill_at is None and not leader_observation_failed:
+                        grace_deadline=min(term_at+5,first_stop+20,started+1790)
+                        try:
+                            while time.monotonic()<grace_deadline:
+                                sample_disk(time.monotonic())
+                                drain(min(0.2,max(0.0,grace_deadline-time.monotonic())))
+                        except BaseException:
+                            if internal_failure is None:
+                                internal_failure='supervisor_internal_failure'
+                            cleanup_errors.append('cleanup_drain_failed')
+                        if not leader_observation_failed:
+                            kill_at=time.monotonic()
+                            signal_group(signal.SIGKILL)
+                else:
+                    cleanup_errors.append('owned_leader_unconfirmed')
+                # Close the signal phase before any consuming wait; never reopen it.
+                signal_phase_closed=True
+                reap_deadline=min(started+1798,time.monotonic()+5)
+                try:
+                    while True:
+                        sample_disk(time.monotonic())
+                        waited_pid,waited_status=os.waitpid(child.pid,os.WNOHANG)
+                        if waited_pid==child.pid:
+                            child_wait_status=waited_status
+                            child_reaped=True
+                            returncode=os.waitstatus_to_exitcode(waited_status)
+                            child.returncode=returncode
+                            break
+                        assert waited_pid==0
+                        remaining=reap_deadline-time.monotonic()
+                        if remaining<=0:
+                            cleanup_errors.append('final_reap_failed')
+                            break
+                        drain(min(0.2,remaining))
+                except BaseException:
+                    if internal_failure is None:
+                        internal_failure='supervisor_internal_failure'
+                    cleanup_errors.append('final_reap_failed')
+                try:
+                    while child_reaped and owned_group:
+                        group_gone=group_absent(child.pid)
+                        if group_gone and stream_eof:
+                            break
+                        remaining=reap_deadline-time.monotonic()
+                        if remaining<=0:
+                            break
+                        sample_disk(time.monotonic())
+                        drain(min(0.2,remaining))
+                    if child_reaped and owned_group:
+                        group_gone=group_absent(child.pid)
+                    if not group_gone:
+                        cleanup_errors.append('owned_group_remaining_or_unconfirmed')
+                    if not stream_eof:
+                        cleanup_errors.append('output_drain_incomplete')
+                except BaseException:
+                    if internal_failure is None:
+                        internal_failure='supervisor_internal_failure'
+                    cleanup_errors.append('final_absence_or_drain_failed')
+                try:
+                    child.stdout.close()
+                except BaseException:
+                    if internal_failure is None:
+                        internal_failure='supervisor_internal_failure'
+                    cleanup_errors.append('stdout_close_failed')
+            else:
+                signal_phase_closed=True
+            sel.close()
+            log.flush()
+            os.fsync(log.fileno())
+    samples.append({'elapsed_seconds':round(time.monotonic()-started,6),'free_bytes':free_bytes()})
+    if samples[-1]['free_bytes']<9*GIB and stop_reason is None:
+        stop_reason='disk_stop_threshold'
+    raw=log_path.read_bytes()
+    retained={'source_archive':archive_id,'source_head':current_head,'command':DISPLAY_COMMAND,'launch_free_bytes':launch_free,'disk_samples':samples,'disk_minimum_bytes':min(s['free_bytes'] for s in samples),'elapsed_seconds':round(time.monotonic()-started,6),'child_pid':None if child is None else child.pid,'child_pgid':None if child is None else child.pid,'owned_group_verified':owned_group,'child_returncode':returncode,'child_wait_status':child_wait_status,'child_reaped':child_reaped,'owned_group_absent':group_gone,'leader_exit_observed':leader_exit_observed,'leader_observation_failed':leader_observation_failed,'signal_phase_closed':signal_phase_closed,'signals':signals,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'unexpected_dependency_download_observed':downloaded,'log_capped':log_capped,'stream_eof':stream_eof,'log':{'path':str(log_path.relative_to(ROOT)),'bytes':len(raw),'sha256':digest(raw),'mode':'0600'},'output_retained_before_grade':True}
+    result_id=exclusive_json('actual-status.redacted.json',retained)
+    # Grading starts only after the complete bounded output and numeric status are fsynced.
+    counts_matches=re.findall(rb'test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out',raw)
+    counts_match=counts_matches[0] if len(counts_matches)==1 else None
+    counts=None if counts_match is None else {'passed':int(counts_match[1]),'failed':int(counts_match[2]),'ignored':int(counts_match[3]),'measured':int(counts_match[4]),'filtered_out':int(counts_match[5])}
+    panic_matches=re.findall(rb'panicked at (tests/device_trust\.rs):(\d{1,6}):(\d{1,6}):',raw)
+    panic_locations=[{'path':'tests/device_trust.rs','line':int(match[1]),'column':int(match[2])} for match in panic_matches[:14]]
+    unexpected_ok_panic_count=raw.count(b'called `Result::unwrap_err()` on an `Ok` value')
+    whole_target_complete=bool(counts and counts['passed']+counts['failed']==14 and counts['ignored']==0 and counts['measured']==0 and counts['filtered_out']==0 and child_reaped and group_gone and stream_eof and not log_capped and not downloaded and stop_reason is None and internal_failure is None and not cleanup_errors)
+    whole_target_pass=bool(whole_target_complete and returncode==0 and counts_match[0]==b'ok' and counts['passed']==14 and counts['failed']==0 and not panic_matches and unexpected_ok_panic_count==0)
+    classification='pass' if whole_target_pass else 'test_failure' if whole_target_complete and counts_match[0]==b'FAILED' and returncode==101 and counts['failed']>0 else 'incomplete'
+    grade={'actual_status':result_id,'test_counts':counts,'summary_count':len(counts_matches),'expected_test_count':14,'panic_locations':panic_locations,'panic_location_count':len(panic_matches),'panic_locations_capped':len(panic_matches)>14,'unexpected_ok_panic_count':unexpected_ok_panic_count,'whole_target_complete':whole_target_complete,'whole_target_pass':whole_target_pass,'whole_target_classification':classification,'resource_release_proven':bool(child_reaped and group_gone),'child_returncode':returncode,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'elapsed_seconds':retained['elapsed_seconds'],'disk_minimum_bytes':retained['disk_minimum_bytes'],'log_bytes':len(raw),'log_sha256':digest(raw),'source_archive':archive_id}
+    grade_id=exclusive_json('grade.redacted.json',grade)
+    final_elapsed=time.monotonic()-started
+    inclusive_deadline_met=final_elapsed<1800
+    if not inclusive_deadline_met:
+        if stop_reason is None:
+            stop_reason='inclusive_deadline'
+        grade=dict(grade,whole_target_complete=False,whole_target_pass=False,whole_target_classification='incomplete',stop_reason=stop_reason)
+    print(json.dumps({'grade':grade,'grade_file':grade_id,'grade_file_precedes_final_clock':True,'final_elapsed_seconds':round(final_elapsed,6),'inclusive_deadline_met':inclusive_deadline_met},sort_keys=True),flush=True)
+    return 0 if time.monotonic()-started<1800 and inclusive_deadline_met and child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+```
+
+### Exact two immutable review hunks (DATA)
+
+```diff
+--- 4503633-whole-supervisor.py (DATA)
++++ prospective-final-acceptance-supervisor.py (DATA)
+@@ -333,0 +334,2 @@
++    if samples[-1]['free_bytes']<9*GIB and stop_reason is None:
++        stop_reason='disk_stop_threshold'
+@@ -349,2 +351,8 @@
+-    print(json.dumps({'grade':grade,'grade_file':grade_id},sort_keys=True),flush=True)
+-    return 0 if child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
++    final_elapsed=time.monotonic()-started
++    inclusive_deadline_met=final_elapsed<1800
++    if not inclusive_deadline_met:
++        if stop_reason is None:
++            stop_reason='inclusive_deadline'
++        grade=dict(grade,whole_target_complete=False,whole_target_pass=False,whole_target_classification='incomplete',stop_reason=stop_reason)
++    print(json.dumps({'grade':grade,'grade_file':grade_id,'grade_file_precedes_final_clock':True,'final_elapsed_seconds':round(final_elapsed,6),'inclusive_deadline_met':inclusive_deadline_met},sort_keys=True),flush=True)
++    return 0 if inclusive_deadline_met and child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
+```
+
+### Exact additional root-required after-output clock hunk (DATA)
+
+```diff
+--- 02a86-final-clock-disk-supervisor.py
++++ root-post-output-clock-supervisor.py
+@@ -358 +358 @@
+-    return 0 if inclusive_deadline_met and child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
++    return 0 if time.monotonic()-started<1800 and inclusive_deadline_met and child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
+```
+
+### Complete canonical forward diff to450 (encoded blank context)
+
+```diff
+--- 4503633-unreaped-leader-supervisor.py
++++ final-clock-disk-supervisor.py
+@@ -331,6 +331,8 @@
+             log.flush()
+             os.fsync(log.fileno())
+     samples.append({'elapsed_seconds':round(time.monotonic()-started,6),'free_bytes':free_bytes()})
++    if samples[-1]['free_bytes']<9*GIB and stop_reason is None:
++        stop_reason='disk_stop_threshold'
+     raw=log_path.read_bytes()
+     retained={'source_archive':archive_id,'source_head':current_head,'command':DISPLAY_COMMAND,'launch_free_bytes':launch_free,'disk_samples':samples,'disk_minimum_bytes':min(s['free_bytes'] for s in samples),'elapsed_seconds':round(time.monotonic()-started,6),'child_pid':None if child is None else child.pid,'child_pgid':None if child is None else child.pid,'owned_group_verified':owned_group,'child_returncode':returncode,'child_wait_status':child_wait_status,'child_reaped':child_reaped,'owned_group_absent':group_gone,'leader_exit_observed':leader_exit_observed,'leader_observation_failed':leader_observation_failed,'signal_phase_closed':signal_phase_closed,'signals':signals,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'unexpected_dependency_download_observed':downloaded,'log_capped':log_capped,'stream_eof':stream_eof,'log':{'path':str(log_path.relative_to(ROOT)),'bytes':len(raw),'sha256':digest(raw),'mode':'0600'},'output_retained_before_grade':True}
+     result_id=exclusive_json('actual-status.redacted.json',retained)
+@@ -346,8 +348,14 @@
+     classification='pass' if whole_target_pass else 'test_failure' if whole_target_complete and counts_match[0]==b'FAILED' and returncode==101 and counts['failed']>0 else 'incomplete'
+     grade={'actual_status':result_id,'test_counts':counts,'summary_count':len(counts_matches),'expected_test_count':14,'panic_locations':panic_locations,'panic_location_count':len(panic_matches),'panic_locations_capped':len(panic_matches)>14,'unexpected_ok_panic_count':unexpected_ok_panic_count,'whole_target_complete':whole_target_complete,'whole_target_pass':whole_target_pass,'whole_target_classification':classification,'resource_release_proven':bool(child_reaped and group_gone),'child_returncode':returncode,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'elapsed_seconds':retained['elapsed_seconds'],'disk_minimum_bytes':retained['disk_minimum_bytes'],'log_bytes':len(raw),'log_sha256':digest(raw),'source_archive':archive_id}
+     grade_id=exclusive_json('grade.redacted.json',grade)
+-    print(json.dumps({'grade':grade,'grade_file':grade_id},sort_keys=True),flush=True)
+-    return 0 if child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
++    final_elapsed=time.monotonic()-started
++    inclusive_deadline_met=final_elapsed<1800
++    if not inclusive_deadline_met:
++        if stop_reason is None:
++            stop_reason='inclusive_deadline'
++        grade=dict(grade,whole_target_complete=False,whole_target_pass=False,whole_target_classification='incomplete',stop_reason=stop_reason)
++    print(json.dumps({'grade':grade,'grade_file':grade_id,'grade_file_precedes_final_clock':True,'final_elapsed_seconds':round(final_elapsed,6),'inclusive_deadline_met':inclusive_deadline_met},sort_keys=True),flush=True)
++    return 0 if time.monotonic()-started<1800 and inclusive_deadline_met and child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
+␠
+␠
+ if __name__ == '__main__':
+```
+
+Decode ONLY the2 complete standalone `␠` lines to exactly ONE ASCII space plus LF in the complete canonical diff. The decoded bytes/hash in the manifest are authoritative. Applying this diff to all20011 old bytes reconstructs the complete candidate; reversing it reconstructs the entire old controller byte-for-byte and its location-independent whole AST. An independent exact-splice inverse removes only the final-disk If and restores the final Print/Return span. The two review-hunk intermediate is also independently reversed to450; reversing the one additional root guard first restores precisely the published review's intermediate hash. No protected function/body/grader/source exclusions are used.
+
+Construction checks are static DATA checks only: complete candidate and both intermediates AST-parsed; forward/reverse diff reconstruction, exact-splice inverse and whole-AST inverse; all nine protected function spans and pre-final lifecycle bytes exact; whole14 grader/persistence bytes exact; final return AST contains a fresh clock comparison as the first predicate after Print. No candidate/function/case/VM/harness/helper/native/provider/wait/signal/probe/CLI/Cargo/compiler/test/browser/Driver/SDK/network or output-leaf action ran. The unchanged future leaf `deployment-private/i07-device-trust-whole-5c20ca-20261003-once` remains absent and no resource lane was acquired/released.
+
+The first construction checker returned exit1 at its own line68 with `AttributeError: 'Return' object has no attribute 'test'`: it attempted to inspect Return.test rather than Return.value.test. This was before any report write, and the entire450 prefix remained unchanged. Only the static checker was corrected to inspect the conditional expression; the reviewed candidate, two approved hunks and single root guard did not change. The corrected DATA construction/inverse/AST checks returned exit0. This is a retained static-check failure, not an executed supervisor/case/product failure.
+
+Root full immutable/independent review and an explicit separate release are still required before any exact whole14 invocation, even if this source is accepted. Original I07 primary/task/gate/status and all original-row acceptance remain root-owned. No current target discovery/result, device/provider provenance, D01 journey, deadline/cleanup runtime proof or original gate completion follows from this source correction.
+
+Final static receipt: actual isolated exit0 for report whitespace (`git diff --check`), Markdown/layout (`python3 scripts/check-docs.py`), and the independent DATA archive/AST/order/scope checker. Staged tracked-file hygiene (`python3 scripts/check-repo-hygiene.py`) returned actual exit0/1143 files. The checker independently normalized only the inserted final-disk If and the five terminal statements back to original Print/Return, matching the complete450 AST; verified both exact review hunks and intermediate hash, the single root guard and both directions of the complete canonical two-hunk diff; checked sticky reasons, final disk before status persistence, final clock immediately after grade persistence, packet before-output semantics and fresh return clock as the first after-print predicate. Nine protected function bodies, complete pre-final ownership/lifecycle bytes and the whole14 grader remain exact.
+
+Read-only SHA256/mode/owner checks verified all eight old I07 private captures remain regular/own UID/0600/hash-exact, including original negative output, old supervisor and original parser-miss grade. No raw capture content was emitted. The unchanged450 report prefix is176494 bytes/SHA256 `eab3dd40d188eca385843f9af2555c2bf5027fa220968fe6f42f9486bc1941af`; the sole changed tracked path is this report. No live capacity/process/waitability or other runtime probe was performed and no output leaf was created. The recorded first static checker failure remains above; no runtime PASS is inferred. Runtime stays HELD with no lane acquired/released.
