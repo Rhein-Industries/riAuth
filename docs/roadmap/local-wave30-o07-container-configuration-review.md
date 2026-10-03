@@ -362,3 +362,267 @@ Actual static checks:
 Two report patch attempts had mismatched context and were rejected without
 changing any file; corrected report-only patches succeeded. No failed product
 check, runtime correction, raw-log reread or acceptance-oracle change occurred.
+
+## Terminal receipt appendix: original O07 scope, 2026-10-03
+
+Reservation `wave30_O07_actual_container_scope_review`, project
+**891e7443-8dac-4c1b-897f-9e53cb59c7ee**, original O07
+**6c981199-62dd-464d-a12a-4ce4e27f428f**, existing supporting worktree e1.
+Only this appendix is added. The complete preceding report at
+**222076a2ba48aa4e5f16e2c702a30de2f472657b** remains byte-exact:
+**33360 bytes**, SHA-256
+`28c179c98eb686c45e008094264af96bcace48c43f2b9891bb876384ede11cd0`.
+Its running/unknown source-phase wording, conditional full-fixture requirement,
+printed health-command proposal and all earlier failure/attribution limits
+remain a dated record, not a retrospectively edited terminal verdict.
+
+**Independent recommendation: original O07 is a defensible local DONE
+candidate for root disposition.** The new actual receipt establishes the
+basic native Linux small-instance application mechanics that were missing
+from the older Desktop receipts. The already accepted real PostgreSQL
+multi-process/failover and recovery evidence, together with the corrected
+deployment/availability/recovery guides, addresses the original distributed
+setup and explicit database HA/recovery responsibilities. No concrete
+remaining local facet of that original outcome is established by this review.
+This recommendation does not mark a task, approve A09's full E-P-E gate,
+change the cohort's failed result or claim an executed Compose/TLS/deployed
+HA/release scenario. Root retains the final evidence and board decision.
+
+### Complete fixed evidence read and identities
+
+The complete immutable terminal receipt was read from Git object
+**39b9908302bb96e25222856cc501e370375588f9**, path
+`docs/roadmap/evidence/wave30-a09-container-37078338496-root-review.json`.
+It is **138240 bytes**, SHA-256
+`18a7da41a4e56579388715cd145389917b80ae47cbbfb2275b19b7251ccffbde`.
+It reports root review UTC `2026-10-03T00:08:00.206661+00:00`, run
+**37078338496**, job **111073123720**, terminal `completed/failure` and
+controller commit **7869b96453c13fdec5af35fd5cf661849d417f36**.
+
+Exactly the three permitted sanitized files beneath
+`/tmp/riauth-wave30-container-37078338496/fixed` were read in full:
+
+| Fixed sanitized file | Bytes | SHA-256 | Observed mode |
+| --- | ---: | --- | --- |
+| `container-cohort.json` | 121977 | `8049e4bfd8f4e51a75f41eb804448a8caac19b1e51b2bb5e488e301ac1511a8d` | 0600 |
+| `launch.json` | 163 | `fee571e4c072fb3c329e279576ebb82cc36b6d6727a6f64276ee47b0e7ea3526` | 0600 |
+| `resources.jsonl` | 146568 | `8394a073581f40722a5650cdf12754c9db52012468c4964b64ba2f9220d287da` | 0600 |
+
+Each was observed regular and nonsymlink, with exact receipt size/hash/mode.
+The complete parsed fixed cohort equals the receipt's entire `cohort` object.
+The receipt's terminal API/artifact/source-boundary/limits fields and the whole
+cohort's metadata, both complete image capability bodies, all301 step records
+and all822 resource rows were read. Large displays were reread in bounded,
+lossless compact forms: every capability state retains compiled/configured/
+enabled/runtime_ready/usable values; every step retains name, exit, elapsed,
+output-recording flag, optional log identity and both ownership booleans;
+every resource row retains time/phase/gap and all four counters. Repeated
+values were explicitly represented rather than assumed. The feature-state
+configured/enabled/runtime_ready/usable fields are null artifact metadata,
+not a claim that every compiled feature was configured or usable.
+
+The root receipt attributes verified transport to artifact **11258610583**,
+`riauth-local-container-x86_64-37078338496-1`, **102853462 bytes**, digest
+`sha256:c3c78b5e516f0625ed828e83648eb18ec77d23a943e45ff6c8cf713522c8ae6b`.
+This slice read that attribution only. It did not open, rehash, extract,
+download or query the raw ZIP, image tar, build logs or native products.
+
+Selected product remains **b619fe25269ccc150e473bbcde47cdb3623ef810**,
+tree `a627df2ce21a4d255b8c1914d4f543e32f40f4de`, review
+**66c814a339665e6b3f8e6c22bc59d4f6f0aa224c**. The helper/workflow hashes
+exactly match the source-phase pins above. The host receipt identifies native
+Linux X64, Ubuntu24.04.5 and Docker28.0.4. The private serial-resource Dockerfile
+variant retains exact reverse proof to the unchanged selected Dockerfile;
+derived SHA-256 is
+`a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440`.
+The older b619 native notices remain explicitly stale/retained, not regenerated
+or accepted as current release notices by this review.
+
+### Reached evidence, failed boundary and unreached work
+
+Actual terminal classification is `failed_or_refused`, phase **fixture**,
+reason **`refused_open_changed_store_or_config`**. Final `checks` is an empty
+array and `shared_full_gate` remains **`not_run`**. The failure cannot be
+relabeled as cohort PASS. Empty final checks also do not erase the earlier
+reached assertions: the fixed controller assigns the eleven final labels
+only after the entire fixture finishes. Reached assertions below are bounded
+source-to-terminal inferences from that exact sequential control flow and
+recorded numeric outcomes, not independent inspection of discarded private
+rows or credential material.
+
+| Stage | Actual bounded credit | Explicit limit |
+| --- | --- | --- |
+| Both image builds | Essentials step25 exit0,691.482s; Platform step29 exit0,874.222s. Both save commands exited0. | Locally built selected b619 products; no released/current-whole-main binary claim. Build-log bodies were not read in this slice. |
+| Save, strict archive validation and reload | Both editions reached validation, owned removal and load. Essentials ID `sha256:731591e499dbc5a250b89247822bb7feddd6e1c6968c56859aec1ed8132c40a0`; Platform ID `sha256:d15f4d1ec35f3d1bf601e154c7411c0a96318c6d14c7e2be862816d604c375d9`. | This is real image save/load credit from the terminal receipt and selected-source sequence, beyond the old build-free42 archive cases. No archive content was opened here. |
+| Product/capability parity | Both product-copy/capability/version sequences completed, with matching selected native products and edition capability contracts. Essentials server SHA-256 `62a933b0f94401e15699ced6b3ae1e18f9a06e42993d50f0f438902fcfdce78c`; Platform server SHA-256 `a28827dffe27a2a42ec3fd44411ae5c343402c1a461582b17d236cb5de6dd668`. | Artifact-level parity and compiled features; not configured Platform application execution, ARM execution or official release approval. |
+| Fresh UID/private copy-up | Both clean config/data volume probes observed UID/GID10001:10001, mode700, before credentials. | This selected native Linux mechanism succeeded. The prior Desktop UID0:0 refusal remains failed; host-bind/user-namespace/SELinux portability is not inferred. |
+| Public private initialization | Keygen/init and generated configuration checks, owner-only600 config/key/redb and700 directories completed before serving. Actual key-backed store opened. | Same public local maintenance writer as image initialization, not a separate raw store bootstrap; no new raw ciphertext/wrong-key/restore assertion. |
+| Owned runtime layout/readiness | UID10001 server starts with read-only root/config and writable private data volume; actual `/readyz`200 is required before the subsequent commands. Serve/start and owned stop completed. | Linux loopback random-port layout, not Caddy/TLS/9000, Compose health scheduling or exact host config bind execution. |
+| Initial ordinary-user snapshot | Durable ordinary delegate, group/member, canonical audit-events grant, all12 UserView/stable me fields, discovery/JWKS and audit access200 completed. Delegated user create returned403/riauthctl4 and the user list remained unchanged. | One initial Essentials application snapshot; no whole audit/revision/state-equality claim for every denial or every permission. |
+| Normal revocation | One saved delegate session was normally logged out and refused by whoami exit3/HTTP401; that same saved session was checked again in the initial snapshot. Recorded client exit3 occurs twice. | One logout lifecycle checked twice, not two distinct logout lifecycles or persistence across edition handoffs. |
+| First issuer candidate | Exact one-field candidate construction, plan exit5/read_only/readyfalse, `meta/issuer` blocker and specific issuer reason passed. Direct serve returned2/okfalse with the required issuer-refusal marker. | The later composite physical-file equality assertion failed. Logical rollback/no-domain-write credit is not supplied by that failed comparison. |
+| Cleanup | All301 recorded children were joined/reaped with empty owned groups. Cleanup errors[], remaining owned CLI groups/containers/volumes0; builder children removed, owned image inventory empty, pending creation maps empty. | These are accepted terminal observations, not new process or daemon queries by this review. CLI-group proof and daemon-resource cleanup remain separate. |
+
+The Essentials archive recorded by the receipt is48933284 bytes, SHA-256
+`26487fd77b0af69db3e7fb49eecbbe291f203d91cf72f9913a55edb46d348ec1`;
+the Platform archive is53552781 bytes, SHA-256
+`86b97616e6a8e10180281ce8f97e68427b2a65957487a5744fb571fe1fc8118c`.
+These identities are receipt attribution, not newly read image bytes.
+
+The failing assertion is fixed7869 `direct_refusal`1421–1431:
+`offline_hashes`1416–1419 compares the physical SHA-256 output for original
+`riauth.toml`, `database.key` and `riauth.redb` before/after the refused open.
+Actual component and raw hashes are **UNKNOWN/NOT_RECORDED**. Root explicitly
+records `product_defect_established:false`. Its supplied source witness is
+b619 `Store::open_with_key_raw`828, which commits a format transaction before
+Core's issuer check216. That makes physical byte equality a stronger oracle
+than absence of unsafe logical domain mutation; it does not identify which
+file changed in this invocation. This appendix neither diagnoses the native
+change nor claims the format transaction caused this specific failure. It
+does not assume safe logical rows, repair an oracle or reopen product writers.
+Sol5 owns the separate A09 logical-preservation diagnosis; no contact or
+duplicate diagnosis was performed.
+
+The second policy candidate, third rate candidate, subsequent direct
+wrong-edition refusals, E→P→E handoffs/reopen snapshots and isolated Platform
+agent/downgrade fixture were **unreached**. No later token/activation,
+preservation, second logout or Platform application result is attributed to
+this run. The earlier source-phase table's prospective all-file preservation
+and all-handoff observations therefore remain unestablished by this receipt.
+
+The native step exit distribution is244×0,52×1,2×3,1×4,1×5,1×2. Absence
+inspection exit1 records and expected public permission/revocation/plan/open
+refusals are not silently counted as successes or unexplained runtime crashes.
+The terminal failed comparison remains the one actual unexpected boundary.
+
+Resource readback matches the complete fixed JSONL:822 rows, with phases
+source1/native-transport2/builder-setup6/images806/fixture2/cleanup5; minimum
+host free85391912960 bytes and private/workspace/docker-storage free
+85391880192 bytes. First sample elapsed0.001s; last cleanup sample1642.25s;
+maximum rounded recorded gap2.023s (controller unrounded maximum
+2.0232125980000006s). These are sampled disk/time observations, not a memory
+peak, hard quota or exact final-return duration. Root's receipt states its
+validation lane released. This read-only support acquired no lane and releases
+none.
+
+### Necessary printed basics and the health CLI distinction
+
+The newly reached UID/private initialization/mount/open/serve/readiness,
+ordinary authority and owned cleanup checks are the necessary small-instance
+application mechanics missing from the two old Desktop attempts. They support
+a tested selected Linux application-container configuration even though the
+cohort does not itself render Compose. The original acceptance does not
+require every unrelated A09 handoff/refusal/Platform state test, a universal
+Compose/systemd/Caddy campaign or every external host/profile/tenant to pass.
+No such added gate is applied here.
+
+The exact printed image health command remains **unmeasured in this run**.
+The preceding single-command proposal is preserved. It is a useful optional
+coverage improvement, not a demonstrated broken basic mechanic: current
+b619/7869 `Status` dispatch is unauthenticated `GET /healthz`, which maps to
+the same readiness handler as the actual `/readyz`200. Explicit server/session
+arguments remove config/HOME/session lookup dependencies; this GET neither
+authenticates nor saves a session. Source compatibility does not become an
+actual container health CLI PASS or a scheduler interval/retry PASS.
+
+For narrowly relevant historical operator evidence, the accepted
+[D04 lockout report](local-wave30-d04-lockout-walkthrough.md) at immutable39b
+was reread only at its status/argv/provenance/actual outcome paragraphs:
+107–145,272–340,355–369 and625–631, with matching artifact references at50–57.
+Whole report identity is37397 bytes, SHA-256
+`b856a0f4e20facd130dc1e5b235ac07e654417fabdc76f209312e960803b1dbf`;
+this is not a new full D04 audit. It records actual `setup.status` exit0 after
+own-PID loopback listener identity in the one accepted32-command password-only
+checkpoint. Artifact was c01 Essentials native macOS-arm64 `riauth`, SHA-256
+`7abf745c10691a012a1918c83089168d0e0d88b42764dbf8ed538b90c828b606`;
+execution HEAD `e26857b7a0429fc530d40c83badedadebb65f092`. Its retained
+16502-byte private receipt identity is SHA-256
+`44ce6499604c79471c722d99b8c1e463465d112ecbffdad29ce6a771b2be9350`.
+That private receipt or binary was not reopened/executed now; these outcomes
+are attributed to the accepted published report. Its CLI includes explicit
+private session, JSON/noninteractive mode and5-second request timeout; it is
+not the byte-for-byte no-JSON printed Docker health invocation.
+
+The exact85-byte `Status` dispatch line, including newline, occurs once and
+is byte-equal at c01 **c01c39ab4e092423d5522bedc50fff87656d8c0a**, b619 and7869;
+SHA-256 `2d80844dec3e828dc7b800c3df92e02a683f185e91ae2a898b150cae0240eae4`.
+Whole b619/7869 CLI, local command dispatch, transport and readiness-probe
+blobs also match the hashes in the source-phase review. That establishes the
+selected dispatch/source bridge, not whole c01/current product equivalence or
+cross-OS execution credit. Historical actual native status, current source
+compatibility and new actual Linux readiness together support the basic
+operator-readiness path without manufacturing an exact container CLI result.
+
+### Original-row disposition separate from A09
+
+For O07, the evidence now covers a real small Linux Essentials configuration
+using private key-backed redb, plus separately accepted actual PostgreSQL
+shared-node/failover/recovery exercises and published configuration duties.
+The full guide and templates reviewed above state the single redb owner,
+private files, read-only runtime config, external proxy/files and external
+database operator's replication/durability/routing/promotion/fencing/PITR
+responsibilities. The accepted finite readiness diagnostics and stopped
+issuer plan/direct refusal identify failing components, retained serving
+fences and remedies. Nothing here grants verified remote completion,
+continuous health, nonrenewed-lease fencing of paused external I/O or recovery
+attestation from readiness alone.
+
+The already accepted PG and recovery witnesses above remain at their original
+pins and scopes: real local two-server PostgreSQL/fenced stop-before-promotion
+and outage/recovery; distinct encrypted restore and physical/PITR gate-closed
+results with named reconciliation limits. Their raw CI logs were not reread
+now and their historical measurements are not a current container HA/RTO
+measurement. External production TLS, two actual deployment hosts, synchronous
+standby/WAL policy and credential reconciliation are named operator inputs,
+not falsely completed by one small container or new required execution gates
+for publication of tested examples. No closed prerequisite/incident row is
+reopened.
+
+Accordingly, recommend original **O07 local DONE candidate** against its actual
+row, without requiring the cohort's whole eleven-check completion as an
+unrelated acceptance expansion. Keep the configuration-evidence description
+bounded to selected native Linux small application mechanics and the separately
+tested local PG/recovery responsibilities. Do not advertise executed exact
+Compose/TLS/released-image/current-ARM/deployed-HA behavior. The optional
+health CLI seam is not a new blocking defect. No additional O07 implementation
+or runtime reservation is proposed from this receipt.
+
+A09's full application E-P-E gate remains **failed/not_run**, with physical
+comparison/logical-preservation boundary under its independent assigned
+diagnosis. This recommendation neither accepts that gate nor predicts its
+eventual source correction/result. All Desktop failures, earlier image archive
+failure, accepted archive42 pass and this current failed cohort keep their
+own classifications. The source/report's credentials, route-specific header,
+PAM fallback, Group, authority/receipt/audit and60-second contracts remain
+unchanged. Original primary assignments, O07/A09 board status and integration
+are root-owned; this worker changes none.
+
+### Actual read-only checks and append discipline
+
+Complete receipt/three fixed-file identities, parsed root/fixed cohort equality,
+all301 child/group flags, all822 records/derived minima/first/last/gap/counts,
+image/source/helper/workflow pins and exact historical/current Status line
+comparisons passed. Initial oversized receipt/image output was reread fully
+in bounded forms. One initial resource compact-display assertion wrongly
+assumed three filesystem counters were equal; it stopped at row13, exit1.
+The corrected lossless display retained every unequal counter; complete
+readback and root-receipt consistency checks then exited0. This was a static
+reader failure, not a cohort result, source change or resource failure.
+
+The original33360-byte report prefix is checked byte-for-byte against222076a.
+Only an append to this reserved report is staged/committed; relative links,
+docs and whitespace are checked before commit, and committed scope/cleanliness
+are checked afterward in the explicit-project handoff. There is no runtime,
+slot, raw archive/log/native access, service, compiler, provider/network query,
+browser/Driver, source/helper/workflow/guide/other-report edit, alignment/merge,
+deletion, task/status action, worker contact, new worker/task/worktree/shell,
+main edit or push in this slice.
+
+Actual appendix checks before staging: `python3 scripts/check-docs.py` exited0,
+`Markdown links and build-directory layout checked`. The independent prefix/
+scope script exited0: exact33360-byte parent prefix preserved, sole existing
+report append, unchanged parent222076a and no untracked files. Fixed helper
+line-number inspection confirms the exact failed function/assertion above.
+Staged whitespace and final append-only scope are checked before the separate
+report commit; committed scope/clean status and exact report hash are supplied
+in the handoff.

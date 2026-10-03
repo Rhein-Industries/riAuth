@@ -137,3 +137,56 @@ archives the exact 5788-byte harness/SHA256
 This proves bounded synthetic oracle behavior, not a hosted PostgreSQL/E-P-E
 pass, private tuple identification, concurrent traffic or original A09 closure.
 Both earlier hosted failures remain failed and their opaque changed value unknown.
+
+## 2026-10-03 — actual native PostgreSQL E-P-E sample PASS
+
+ONE separately released manual run **37082572962**, job **111086077482**,
+finished SUCCESS on workflow `d644e2c617501aca8efd43f6350c72b788c19d4d`,
+validator `04f79568c98d518613e2acf5e9700ba6f0ca5c4f` and historical product
+`9a819317efb3a13fa27cd86f884be2be00898fc0`. The exact reviewed new helper
+SHA25632a2952e and unchanged four import hashes were verified before dispatch.
+Input ZIP remains11232871527/full fc2a83dd and the same five pinned ARM products;
+no rebuild or new official release artifact is claimed. Initial root read-only
+pre-dispatch guard accidentally prefixed scripts/ twice on product paths, failed
+before dispatch/reservation, then was corrected to distinguish product inputs
+from validator imports. ONE actual dispatch occurred.
+
+Root verified output artifact **11259328231**,
+`riauth-local-shared-arm64-37082572962-1`,19973bytes/full SHA256
+`2fb5052a1ee04d9aafbda4cfbad334ea34d7d3065f6468d44d9bc1a26e28a46b`
+before extracting only four fixed sanitized files. All four complete JSON/JSONL
+bodies and full terminal job API were read. The [complete root receipt](evidence/wave30-a09-native-pg-37082572962-root-review.json)
+retains all source/transport/file identities, actual phase results and cleanup.
+
+Focused helper exit0/20.219462s, controller0, first_failure null. Actual
+Essentials→Platform→Essentials switched active capabilities, coordinated edition
+and version metadata and preserved issuer/authentication, format3/all16effective
+rates,57upgrade/68downgrade non-transition rows. The ordinary shared identity,
+group/grant/audit-allowed/user-admin-denied/previous-logout and expiry sample
+passed through all three serves. Changed authentication/general-rate plan/start
+refusals and other-client refusal passed. The exact source's complete BEFORE-only
+admission expectation passed at each refused user mutation without excluding rows.
+Opaque prior failed record remains unidentified; neither old failure is rewritten.
+
+Cleanup failures[],remaining owned processes0,one fixture process reaped,
+fixture/private scratch removed, PostgreSQL no_live_owned_postgres; pidfile
+verification false remains explicit. Fourteen resource samples, minimum
+115571736576bytes/maxgap2.000553492s; no stop. Root released sole validation
+lane immediately after complete cleanup verification, before this appendix.
+No input archive/native binary/private SQL row was rerun by root.
+`full_shared_gate=not_certified` and `release_gate_result=false` remain unchanged: bounded
+plaintext native ARM PostgreSQL proof, not TLS/passkey/device/encrypted-redb/full
+packaged/release acceptance. A09 container logical-preservation seam remains open.
+
+## 2026-10-03 — terminal CI at7869
+
+Run37077762237 at `7869b96453c13fdec5af35fd5cf661849d417f36` has all three
+check/integration/audit jobs SUCCESS; check ended00:20:42UTC. Root read all API
+step conclusions and fetched ONE raw check log471257bytes/SHA256
+`054eab0b80aed274bd3b3171b309b5d85d716898c3ae3168322650defb30b8dc`.
+Its203Rust summaries all passed; zero failed summaries. Named background-capacity,
+reports attribution, I02browser transport and Entra diagnostic passes and docs
+checker0 are pinned in the [terminal receipt](evidence/wave30-ci-7869-terminal-root-review.json).
+No new full integration-log review or rare-race elimination is claimed. This
+source predates the04f PG expectation; whole later-source/release/D01 evidence is
+not borrowed. Prior failed CI/native/hosted records remain unchanged.
