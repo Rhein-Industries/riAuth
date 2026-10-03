@@ -110,3 +110,22 @@ The old unsafe fixture and F1 remain historical and unrun. No Cargo or
 fixture invocation is released by this report. Original S02 remains open.
 Root's first integration Python snippet had a non-ASCII bytes literal and was
 rejected before any writes. Corrected UTF-8 serialization changes no source.
+
+## 2026-10-03 — exact safe fixture and production traversal staged, unrun
+
+Root read the complete269-line `00a07b2` materialization appendix and all12
+formatter hunks, independently reconstructed approved60049-byte/a936 source
+from final60287-byte/9284a0, and forward recovered the final fixture.
+The original1715-line safe source was fully read and independently reviewed
+at5f1d674. Formatting only changes whitespace/trailing commas and the three
+disclosed brace normalizations. Historical unsafe F1 remains unrun/history.
+
+Root staged only the reviewed `74c1fb` Core reader hunk and final safe fixture
+from`ba3cd1837f798dd1a8d005ead842660fe7564a39`. Before applying, current
+Core was exactly the original parent; every other production/crates/manifest/
+toolchain/build-setting byte equaled the reviewed source. No stale source
+or unsafe fixture import occurred. Complete response/principal/same-Tx/error/
+writer/security/contracts remain the inspected originals. This source is
+UNCOMPILED/UNRUN; no Cargo or fixture/self-check was invoked by integration.
+Root still requires credible fresh capacity/cache and bounded owned outer
+supervision before ONE separately released named ignored command.

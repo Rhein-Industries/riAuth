@@ -3443,3 +3443,272 @@ all earlier failures/pins/evidence, primary assignment, completed rows and
 protected contracts remain unchanged. No code, test, manifest, helper, existing
 guide/other report, runtime, service, worker, desktop/provider, network, branch
 alignment, main, push or board change occurred.
+
+## Approved safe fixture materialization — 2026-10-03
+
+Project **891e7443-8dac-4c1b-897f-9e53cb59c7ee**, original S02
+**fdda2152-73a0-4dce-9e5e-aff4b232a6fd**, same supporting worktree
+**e1b4399a-8c0d-46b8-880c-a71a4ebf53e7** and branch. Original primary
+`1e336a3d-bb03-4057-a6a3-df2b057b2af3` remains unchanged. Reservation:
+**`wave30_S02_safe_fixture_materialization`**. User/root authorized only this
+fixture and this append-only report after their full source reviews. The root
+attributed the independent review to5f1d674; I did not query/contact its worker
+or reclassify that review as my own runtime evidence.
+
+**Source-only commit `ba3cd1837f798dd1a8d005ead842660fe7564a39`** contains
+only `tests/s02_group_listing_paging.rs`. No production, manifest, dependency,
+crate, lint policy or other source path changed. The entire02b report prefix is
+preserved: **159,464 bytes**, SHA-256
+`1fc39d4b93a92b82bc4269e8506c7d2eda8fc1a0a4c8129350bb63f77fc69e7a`.
+Every dated prior appendix, first unsafe source and its **historical F1
+unsafe-forbid contradiction** remain in source/report history. This section
+supersedes only the earlier “not materialized” status.
+
+**UNCOMPILED / UNRUN.** No Cargo/rustc/typecheck, fixture/self-check/measurement,
+concurrency, benchmark, service, provider/native/artifact, browser/desktop,
+network query or runtime occurred. No slot was requested/acquired/released.
+Removing the source of F1 is not a claim that the fixture now compiles or passes
+any security/performance/cleanup gate.
+
+### Exact materialization and allowed formatter transformation
+
+Read the approved fence and42-hunk diff from immutable
+`02b1e38bc2919ccb7c99711bcb304f3f050e9ba8`, rather than generating a new
+fixture design or changing oracles. Asserted clean own branch and exact old
+fixture/Core/report pins, then wrote the **exact60,049-byte fence**, SHA-256
+`a93636a21a4a5cae53b2a5b844e8e5534e10fc0b1941cc43927f75b720cf63d6`.
+That exact initial write was read back and matched. The complete42-hunk
+forward/inverse matched old55,835B/b340155 and the approved fence.
+
+`rustfmt --edition 2024 --check tests/s02_group_listing_paging.rs` then
+returned **exit1 for formatting differences**, having parsed the input.
+This was not a compiler/typecheck or runtime failure. Applied only
+`rustfmt --edition 2024 tests/s02_group_listing_paging.rs`; the subsequent
+same explicit-file `--check` returned **exit0**. No Cargo fmt/all-target command
+or unrelated path formatting was used.
+
+The final committed fixture is **60,287 bytes /1,734 lines**, SHA-256
+`9284a0be0a482a4b16f214d49ce3613e1c29d9868f494eb2fff676dde477e444`.
+It is **not byte-identical to the approved unformatted fence**. The exact
+formatter-only diff below is **3,428 bytes**, SHA-256
+`23723447a90723227981fe4ecda7cb3f78b5b3b41e8a8f0b204ac9db16cb5cc0`,
+with12 hunks. Besides line breaks/indentation and format-trailing commas,
+rustfmt added two braces around the existing match-arm boolean expressions
+and removed one brace pair around the single-expression p50 closure.
+The expression operands/order, labels, literal JSON, calls/arguments,
+operations, inputs, oracles, caps and deadlines were not revised.
+
+Actual static whole-file reconstruction:
+
+1. Final60,287B/9284a0 → inverse of the12-hunk formatter diff →
+   exact60,049B/a936 approved fence.
+2. Exact approved fence → inverse of its42-hunk diff →
+   **entire55,835B/b340155 old fixture** from02b/74c1.
+3. Both forward patches also recover the exact approved/final bytes.
+
+A lexical text verifier compared the whole approved/final source after
+reversing only those **three exact formatter brace transformations** and
+normalizing trailing format commas/whitespace. Tokens, comments and literal
+content matched. It is a static text proof, **not** a Rust AST/typecheck or
+unsafe-policy compiler result. An initial verifier assertion returned exit1
+because it normalized only the two match arms and omitted the p50 closure
+brace removal. Reading the full formatter diff identified that missing
+normalization; the corrected verifier passed. No Rust source or oracle was
+changed to make that proof pass.
+
+Exact formatter-only diff, approved fence to final committed fixture:
+
+```diff
+--- a/tests/s02_group_listing_paging.rs
++++ b/tests/s02_group_listing_paging.rs
+@@ -697 +697,3 @@
+-            after.checked_sub(before).expect("native counter went backwards")
++            after
++                .checked_sub(before)
++                .expect("native counter went backwards")
+@@ -974,6 +976,10 @@
+-                    Lane::Control => row.native.fetches_over_128() == 1
+-                        && row.native.unbounded == 1
+-                        && row.native.unbounded_rows == 513,
+-                    Lane::Paged => row.native.fetches_over_128() == 0
+-                        && row.native.bounded == 5
+-                        && row.native.bounded_rows == 513,
++                    Lane::Control => {
++                        row.native.fetches_over_128() == 1
++                            && row.native.unbounded == 1
++                            && row.native.unbounded_rows == 513
++                    }
++                    Lane::Paged => {
++                        row.native.fetches_over_128() == 0
++                            && row.native.bounded == 5
++                            && row.native.bounded_rows == 513
++                    }
+@@ -983,3 +989 @@
+-                let p50 = |lane| {
+-                    percentile(select(lane).map(|row| row.elapsed_ns).collect(), 1, 2)
+-                };
++                let p50 = |lane| percentile(select(lane).map(|row| row.elapsed_ns).collect(), 1, 2);
+@@ -1163,5 +1167 @@
+-fn authority_agent(
+-    fixture: &Fixture,
+-    id: &str,
+-    parent: Option<String>,
+-) -> Zeroizing<String> {
++fn authority_agent(fixture: &Fixture, id: &str, parent: Option<String>) -> Zeroizing<String> {
+@@ -1189,3 +1189 @@
+-        user.totp_secret.is_none()
+-            && user.totp_pending.is_none()
+-            && user.recovery_codes.is_empty(),
++        user.totp_secret.is_none() && user.totp_pending.is_none() && user.recovery_codes.is_empty(),
+@@ -1194 +1192,4 @@
+-    let mut view = require(serde_json::to_value(UserView::from(user)), "expected User view");
++    let mut view = require(
++        serde_json::to_value(UserView::from(user)),
++        "expected User view",
++    );
+@@ -1217 +1218,4 @@
+-    assert!(old_user.enabled && !old_user.admin, "enabled non-admin parent");
++    assert!(
++        old_user.enabled && !old_user.admin,
++        "enabled non-admin parent"
++    );
+@@ -1246 +1250,4 @@
+-    for key in ["provisioning_user_generation/all", "user_listing_generation/all"] {
++    for key in [
++        "provisioning_user_generation/all",
++        "user_listing_generation/all",
++    ] {
+@@ -1272 +1279,4 @@
+-    assert!(expected == *after, "complete public parent-disable snapshot");
++    assert!(
++        expected == *after,
++        "complete public parent-disable snapshot"
++    );
+@@ -1293 +1303,4 @@
+-    assert!(record.enabled && record.parent_user.is_none(), "isolated expiry fixture");
++    assert!(
++        record.enabled && record.parent_user.is_none(),
++        "isolated expiry fixture"
++    );
+@@ -1297 +1310,4 @@
+-        fixture.core.store.write(|tx| tx.put("agents", &record.id, &record)),
++        fixture
++            .core
++            .store
++            .write(|tx| tx.put("agents", &record.id, &record)),
+@@ -1303 +1319,4 @@
+-    assert!(crypto::now() >= boundary, "real clock moved before expiry boundary");
++    assert!(
++        crypto::now() >= boundary,
++        "real clock moved before expiry boundary"
++    );
+```
+
+### Protected byte identities and scope
+
+The following whole function bodies match **old fixture → approved fence →
+final formatted fixture** byte for byte, including literal frozen control,
+independent complete result, exact authority refusals/full snapshots, rollback,
+normal writer/audit/revision effects and both concurrency distinctions:
+
+| Whole protected function | Bytes | SHA-256 |
+| --- | --- | --- |
+| `list_groups` | 448 | `8c3e2a22db02f3a1d60ef164a88679c9fcfa782a6de29209ec67697ea8bf1c03` |
+| `expected` | 594 | `67214ddf287266cb6c8f7af0e365dd35cb3959bb9e926be5b1712b8fde01d92f` |
+| `checked_read` | 531 | `baf79b08d22576c15c73d73927e51065c56c57ccaadbade7e9419ae1689718e0` |
+| `refused_read` | 782 | `f67813385cffa53421c1d454dea983b0ac79331d98c420fd660fde420e15376c` |
+| `denied_member_write` | 581 | `ff62942ad582f59f7f5fb8751a4c109e0c3a7fb608e8de37a8ba43f36bb11c99` |
+| `malformed_write_refusal` | 868 | `f29bd5154b6dc867881bac4aa1a92e39b899fda8893b867d1214e9c7f9c65f2f` |
+| `source_digest` | 274 | `a6130f8f77c59c5ba13cdd966422668de1ce5748045a0ca6a30f0eaeb5e2e270` |
+| `expected_audit` | 1,107 | `fde6d3025636f1e7c2c0798feae47d23f47b55dc7411013d720bc2e2b04892b1` |
+| `admin_id` | 107 | `fd1b5b4e2ef3c9c28c0bf4ecb8e7a3675b7b5c0155f233c77510b3ff9a13e375` |
+| `advance_revision` | 222 | `1e414a910ee1e9e96a7cc1bb89efc4677ba8482c58163fee437cf2857124c8bc` |
+| `assert_member_effect` | 2,019 | `63aabbfb1ba94bb811f289359af99a10bf27796aea366a7ee6b5e2b399f3988a` |
+| `assert_revoke_effect` | 1,184 | `798e169bbfb68744a34ba185462f07acfd508e094c7e9e0458ff3153af5476e0` |
+| `finish_snapshot` | 722 | `1ecaebd9938a21b8b32c2f8b6e2da1d72288e53c31bffc47b088edb06d5d847a` |
+| `ordered_interleaving` | 3,477 | `3fc03a748678a3f897e20bade55b41fdac894afd7f5fd19e922dbdb5a57efe03` |
+| `core_overlap` | 2,321 | `8c46c73c5f2482faaea8d31bb2f3af9671276aca0bdc8e391a21c8b6ffcb2c10` |
+
+Approved `telemetry_self_check`, `measure`, `emit` and `percentile` bodies
+also match the final formatted source byte for byte. These are definition
+identities only; none was invoked. The formatter's change to `summaries` is
+limited to the exact brace/p50 formatting shown above, not a cost/speed gate
+change. The newly approved expiry/parent cases are materialized exactly plus
+the disclosed formatter changes; they were not expanded into a legacy-parent,
+natural elapsed-TTL or external-profile claim.
+
+The whole `src/core.rs` remains exactly the74c1 reader source:
+**57,913 bytes**, SHA-256
+`686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea`.
+The frozen old method remains literal448B/8c3e2a22. Principal-first/sameTx,
+stored-name permissions, actual key cursor, complete JSON/order/errors and
+zero writer/schema/member/API change remain the accepted production behavior.
+All other source/manifests/toolchain paths stayed unchanged relative to own02b
+HEAD; there was no alignment/merge or claim of new current-main equivalence.
+
+The materialized measurement is exactly the accepted **native raw-fetch
+record-frequency** design: existing safe `Sizes::render` bucket/count/sum
+observations and strict finite schema, independent observer self-consistency
+definitions, every120 raw row and twelve summaries, equal native points and
+encoded value-byte work, full administrator/scoped/empty outcomes, and actual
+elapsed ns/p50/p95. The asserted cost is observed fetch-batch materialization,
+not inferred heap/RSS/total IO/speed. Latency regression remains visible and
+does not become a speedup claim. No global allocator, raw pointer/unsafe block,
+allow/override, dependency or external observer was added.
+
+The expiry case is a declared canonical timestamp compatibility seed at
+real now, preserving enabled/hash/token-map and the exact whole snapshot;
+normal parent disable performs public atomic child retirement with a complete
+expected durable effect map. Source/runtime distinctions for equality timing,
+natural TTL and legacy surviving-child fallback remain exactly those in the
+approved design. Unrelated authority, membership, audit, receipt-secret,
+route-header, PAM, Group and shared60s contracts are untouched.
+
+### Actual static checks and remaining held work
+
+Actual passed checks:
+
+- Exact approved initial materialization hash and readback; original whole
+  frozen Core control and protected function identities.
+- 12-hunk formatter forward/inverse plus whole42-hunk approved inverse, and
+  exact source-token comparison with the disclosed three brace normalizations.
+- One ignored named test, no unsafe/global allocator/allow/raw allocation
+  symbols, and actual Core byte equality to74c1.
+- Explicit-file rustfmt parse/format followed by `--check` exit0; Git
+  whitespace and exact staged source-only scope checks.
+- Complete02b report-prefix identity, documentation links and report-only
+  staged scope/whitespace checks before the separate report commit.
+
+The first formatting check exit1 and first lexical-verifier assertion exit1
+are preserved above as **static preparation outcomes**. Historical F1 is not
+erased or mislabeled as an executed Cargo result. Parser/text checks cannot
+establish typing, allocation safety, observer correctness, durable transition/
+snapshot/concurrency outcomes or actual performance.
+
+The single exact future ignored command remains **HELD**:
+
+```sh
+env CARGO_TARGET_DIR="$PWD/target" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 \
+  CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 \
+  cargo test --locked --features test-support --test s02_group_listing_paging \
+  group_listing_paging_preserves_snapshot_authority_and_measures_materialization \
+  -- --exact --ignored --test-threads=1 --nocapture
+```
+
+Root must review these immutable final source/format bytes, then separately
+coordinate exact current-production alignment, credible fresh cache/capacity
+and bounded outer supervision before any release. Own private target/jobs1/
+incremental0/dev+testdebug0, proposed13GiB start/4GiB planning allowance/
+9GiB stop/8GiB floor/1800s envelope and unchanged300s fixture policy remain
+proposals, not newly measured prerequisites or runtime evidence. No target/lab
+directory was created and no cleanup/deletion occurred in this phase.
+
+There is no known additional static blocker in the authorized materialization;
+**typecheck, native observer/self-check, measured cost/latency, security/writer/
+concurrency, deadline and private cleanup results remain unknown**. No original
+S02 completion or task/board action is claimed. Root owns the next reservation,
+review, integration/main/push/status; original primary and all completed rows
+remain unchanged. The A09 terminal failure/cleanup attribution is root-owned
+and supplied by the user; it grants no S02 runtime credit or slot. No extra
+worker/task/worktree/managed shell, contact, UI provider or external message
+was used.
