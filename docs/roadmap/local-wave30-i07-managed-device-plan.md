@@ -532,3 +532,449 @@ Future prerequisites remain root full source/independent review and an explicit 
 ### Actual documentation-report checks
 
 After the coordination/cache appendix was written: `python3 scripts/check-docs.py` exit0; `git diff --check` exit0; complete a140 report-prefix, committed guide equality/verbatim whole-byte inverse to758c43a, exact guide/report-only scope and unchanged code/test/D01/manifest/toolchain checks passed. Final read-only capacity sample at 2026-10-03T08:32:56.569058+00:00 was16526512128 bytes/15.391514GiB; it is unreserved and must be sampled again before any separately approved launch. No resource slot was acquired/released, no runtime executed, and no new pass or gate disposition is supplied. Final staged whitespace/prefix/scope/clean proofs accompany the immutable report handoff.
+
+
+## 2026-10-03: exact accepted-tree alignment and whole-target supervisor preparation, UNRUN
+
+Reservation `wave30_I07_whole_target_exact_preparation`. The entire89006-byte41b/fixed5c I07 report prefix remains byte-exact, SHA256 `a8bf6f8eb4ae8c45787d3e3c370683a1299a59e1d32926a55594762759271f1e`. The original negative failure, initial panic-parser miss/separate correction, all formatting/static lookup failures, documentation absence/coordination and all prior raw/private captures remain dated and unchanged. Root has not released runtime.
+
+ONE authorized history-preserving merge: `715f6e9c37cf3e6a92f13f284fa54e4cb6d8d0fd`, parents `41b4ec68d70b30c9c891aa098e05443c283b4209` and EXACT fixed accepted unpublished `5c20ca13effb28501976aef69e50c6738ab560b6`. Automatic merge had ZERO conflicts and required no resolution or source edit. Merge tree `75ffffe23b4d24f7b09256c3670a44ab693b1120` equals the ENTIRE fixed accepted tree. Complete recursive NUL-delimited Git tree entries matched all paths/modes/blobs, including every src/crates/script/test/manifest/toolchain/build configuration/guide and report. The own I07/D01/D05/A09 report complete prefixes were also compared directly. Working tree was clean after the merge. No reset/rebase/stale copy/import or main/push/status operation occurred. Alignment carries accepted workflow/source changes exactly; it does not independently validate their bodies or runtime.
+
+### Exact controller manifest and allowed adaptation
+
+Original root-reviewed negative supervisor was read fully AS DATA from its retained exclusive0600 private file; complete14537-byte SHA256 `d2ef5042864f3d5f85248edb894a7472e497048ae18045fe3e58de2079e8ac70` matched. The candidate below is concrete complete executable source archived ONLY in this report, NOT a materialized controller/runtime file. Neither original nor candidate was imported, evaluated, executed or case-tested. Only stdlib AST parsing, source hashing and text/AST reconstruction were performed.
+
+Manifest:
+
+```json
+{
+  "candidate_bytes": 15555,
+  "candidate_lines": 258,
+  "candidate_not_imported_or_evaluated": true,
+  "candidate_sha256": "e88102b020534c334d6452cd8b2a2edb45e4c54fd6a395d82ff5416cd4e275bc",
+  "child_loop_drain_cleanup_caps_deadlines_exact_except_retained_source_pin": true,
+  "declared_transform_count": 8,
+  "diff_bytes": 12460,
+  "diff_sha256": "335f4ec5880e0c1a15c68cab1dfd2c1079be13620b4a579b03c805e88bb9a265",
+  "five_helper_functions_byte_exact": true,
+  "no_runtime_file_materialized": true,
+  "original_bytes": 14537,
+  "original_sha256": "d2ef5042864f3d5f85248edb894a7472e497048ae18045fe3e58de2079e8ac70",
+  "runtime_leaf_absent": "deployment-private/i07-device-trust-whole-5c20ca-20261003-once",
+  "sigchld_first_main_statement_exact": true,
+  "transforms": [
+    "new fixed absent private evidence leaf",
+    "alignment/source pins",
+    "display whole-target command",
+    "argv whole-target command",
+    "accepted source equality and report-only descendant preflight",
+    "truthful accepted-source report and whole-target archive metadata",
+    "truthful current retained source head",
+    "single-summary whole-target numeric grade and fixed panic locations"
+  ],
+  "whole_ast_inverse": true,
+  "whole_byte_inverse": true
+}
+```
+
+The eight exact text transforms affect ONLY the fixed private output leaf; source/accepted-test/report pins and truthful equality metadata; removal of the test name/--exact from the displayed command and argv; and whole-target numeric grading. `HEAD` denotes immutable merge715f, whose entire tree equals fixed5c; it does NOT guess a self-referential future report commit. Future launch requires that exact merge as ancestor, clean tracked state, fixed current accepted test blob/hash/bytes, and only the I07 report changed since that merge. The complete fixed89006-byte historical report prefix must remain exact. These checks pin every other tracked path/mode/blob to the accepted merge via the report-only tree diff; they do not allow other production, test, buildconfig or guide deltas. Actual current launch HEAD/report hash are retained truthfully only if later execution is separately released.
+
+The old fixed544 whole-addition check is not falsely reused on the new74157-byte candidate test. Preflight now requires exact fixed5c test equality/blob `54bc47d08b5562ed6d836df55144c93b5ac8dd2d`/SHA256 `f5fc6b3d42f97bf7c4601d8228e713066af1e3a95eeee3aca60dfeeec4c7f5df`; earlier full544 byte inverses remain dated above. The canonical current test/source/report pins and accepted manifest bytes must match before Popen. No product or test code is altered by this controller preparation.
+
+### Exact complete proposed controller (UNRUN)
+
+```python
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import selectors
+import signal
+import stat
+import subprocess
+import sys
+import time
+
+ROOT = Path('/Users/dominik/orca/projects/riAuth-public-preview-sol-management-wave30')
+RUN = ROOT / 'deployment-private/i07-device-trust-whole-5c20ca-20261003-once'
+HEAD = '715f6e9c37cf3e6a92f13f284fa54e4cb6d8d0fd'
+REVIEW = '5c20ca13effb28501976aef69e50c6738ab560b6'
+FIXED = '5c20ca13effb28501976aef69e50c6738ab560b6'
+TEST_SHA = 'f5fc6b3d42f97bf7c4601d8228e713066af1e3a95eeee3aca60dfeeec4c7f5df'
+GIB = 1024 ** 3
+LOG_CAP = 16 * 1024 ** 2
+DISPLAY_COMMAND = 'env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust -- --test-threads=1'
+ARGV = ['env', 'CARGO_TARGET_DIR='+str(ROOT/'target/wave30-o06-readiness'), 'CARGO_BUILD_JOBS=1', 'CARGO_INCREMENTAL=0', 'CARGO_PROFILE_DEV_DEBUG=0', 'CARGO_PROFILE_TEST_DEBUG=0', 'cargo', 'test', '--locked', '--features', 'test-support', '--test', 'device_trust', '--', '--test-threads=1']
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def exclusive_json(name, obj):
+    data=(json.dumps(obj,sort_keys=True,indent=2)+'\n').encode('ascii')
+    assert len(data)<LOG_CAP
+    fd=os.open(RUN/name,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    try:
+        with os.fdopen(fd,'wb') as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        parent=os.open(RUN,os.O_RDONLY)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    except BaseException:
+        raise
+    return {'path':str((RUN/name).relative_to(ROOT)), 'bytes':len(data), 'sha256':digest(data), 'mode':'0600'}
+
+
+def read_git(args):
+    return subprocess.check_output(['git',*args],cwd=ROOT,timeout=5)
+
+
+def free_bytes():
+    v=os.statvfs(ROOT)
+    return v.f_bavail*v.f_frsize
+
+
+def group_absent(pgid):
+    try:
+        os.killpg(pgid,0)
+        return False
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+
+
+def main():
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    os.umask(0o077)
+    assert RUN.stat().st_uid==os.getuid() and stat.S_IMODE(RUN.stat().st_mode)==0o700
+    assert not RUN.is_symlink()
+    current_head=read_git(['rev-parse','HEAD']).decode().strip()
+    assert read_git(['merge-base',HEAD,current_head]).decode().strip()==HEAD
+    assert read_git(['rev-parse',HEAD+'^{tree}'])==read_git(['rev-parse',FIXED+'^{tree}'])
+    assert read_git(['status','--porcelain'])==b''
+    test=(ROOT/'tests/device_trust.rs').read_bytes()
+    fixed=read_git(['show',FIXED+':tests/device_trust.rs'])
+    assert digest(test)==TEST_SHA
+    assert read_git(['hash-object','tests/device_trust.rs']).decode().strip()=='54bc47d08b5562ed6d836df55144c93b5ac8dd2d'
+    assert test==read_git(['show',REVIEW+':tests/device_trust.rs'])
+    assert test==fixed
+    changed=set(read_git(['diff','--name-only',HEAD,current_head]).decode().splitlines())
+    assert changed<={'docs/roadmap/local-wave30-i07-managed-device-plan.md'}
+    report=(ROOT/'docs/roadmap/local-wave30-i07-managed-device-plan.md').read_bytes()
+    report_base=read_git(['show',FIXED+':docs/roadmap/local-wave30-i07-managed-device-plan.md'])
+    assert report[:len(report_base)]==report_base
+    inputs={}
+    for path in ['Cargo.toml','Cargo.lock','rust-toolchain.toml']:
+        data=(ROOT/path).read_bytes()
+        assert data==read_git(['show',REVIEW+':'+path])
+        inputs[path]={'bytes':len(data),'sha256':digest(data)}
+    target=ROOT/'target/wave30-o06-readiness'
+    assert target.is_dir() and not target.is_symlink() and target.stat().st_uid==os.getuid()
+    fingerprint_path=target/'debug/.fingerprint/riauth-0d65ce4b80b71950/lib-riauth.json'
+    fingerprint=fingerprint_path.read_bytes()
+    assert digest(fingerprint)=='ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10'
+    features=json.loads(fingerprint)['features']
+    assert features=='["default", "essentials", "platform", "test-support"]'
+    assert (target/'debug/deps/libriauth-0d65ce4b80b71950.rlib').is_file()
+    competitors={}
+    for name in ['cargo','rustc']:
+        observed=subprocess.run(['pgrep','-x',name],capture_output=True,timeout=3)
+        assert observed.returncode==1 and observed.stdout==b'' and observed.stderr==b''
+        competitors[name]={'returncode':observed.returncode,'count':0}
+    initial_free=free_bytes()
+    assert initial_free>=12*GIB
+    archive={'project':'891e7443-8dac-4c1b-897f-9e53cb59c7ee','reservation':'wave30_I07_whole_target_exact_preparation','source_head':current_head,'alignment_merge':HEAD,'accepted_source_pin':FIXED,'source_tree':read_git(['rev-parse','HEAD^{tree}']).decode().strip(),'reviewed_test_commit':REVIEW,'test_blob':'54bc47d08b5562ed6d836df55144c93b5ac8dd2d','test_sha256':TEST_SHA,'test_bytes':len(test),'accepted_test_sha256':digest(fixed),'accepted_test_equality':True,'report_baseline_sha256':digest(report_base),'current_report_sha256':digest(report),'expected_test_count':14,'tracked_production_manifests_toolchain_unchanged':True,'inputs':inputs,'command':DISPLAY_COMMAND,'argv':ARGV,'features':features,'warm_target_fingerprint_sha256':digest(fingerprint),'initial_free_bytes':initial_free,'minimum_launch_bytes':12*GIB,'owned_stop_bytes':9*GIB,'floor_bytes':8*GIB,'sample_interval_seconds':2,'inclusive_bound_seconds':1800,'active_stop_seconds':1765,'log_cap_bytes':LOG_CAP,'competitors':competitors,'supervisor_sha256':digest(Path(__file__).read_bytes()),'supervisor_pid':os.getpid(),'sigchld_default_before_spawn':signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL}
+    archive_id=exclusive_json('launch-source.redacted.json',archive)
+    launch_free=free_bytes()
+    assert launch_free>=12*GIB
+    log_path=RUN/'cargo-combined.private.log'
+    log_fd=os.open(log_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    started=time.monotonic()
+    samples=[{'elapsed_seconds':0.0,'free_bytes':launch_free}]
+    stop_reason=None
+    signals=[]
+    child=None
+    child_reaped=False
+    owned_group=False
+    group_gone=False
+    bytes_written=0
+    downloaded=False
+    log_capped=False
+    cleanup_errors=[]
+    carry=b''
+    sel=selectors.DefaultSelector()
+    stream_eof=False
+    first_stop=None
+    returncode=None
+    internal_failure=None
+    with os.fdopen(log_fd,'wb') as log:
+        try:
+            child=subprocess.Popen(ARGV,cwd=ROOT,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
+            pgid=child.pid
+            owned_group=os.getpgid(child.pid)==pgid
+            assert owned_group
+            exclusive_json('owned-child.redacted.json',{'pid':child.pid,'pgid':pgid,'owned_group_verified':True,'elapsed_seconds':time.monotonic()-started})
+            os.set_blocking(child.stdout.fileno(),False)
+            sel.register(child.stdout,selectors.EVENT_READ)
+            next_sample=started+2
+            term_at=None
+            kill_at=None
+            while True:
+                now=time.monotonic()
+                if now>=next_sample:
+                    current_free=free_bytes()
+                    samples.append({'elapsed_seconds':round(now-started,6),'free_bytes':current_free})
+                    next_sample=now+2
+                    if current_free<9*GIB and stop_reason is None:
+                        stop_reason='disk_stop_threshold'
+                if now-started>=1765 and stop_reason is None:
+                    stop_reason='active_deadline'
+                observed=child.poll()
+                if observed is not None:
+                    returncode=observed
+                    child_reaped=True
+                if stop_reason is not None and first_stop is None:
+                    first_stop=now
+                if child_reaped and not group_absent(pgid) and stop_reason is None:
+                    stop_reason='owned_group_remained_after_child_exit'
+                    first_stop=now
+                if stop_reason is not None and not group_absent(pgid):
+                    if term_at is None:
+                        os.killpg(pgid,signal.SIGTERM)
+                        term_at=now
+                        signals.append({'signal':'TERM','elapsed_seconds':round(now-started,6)})
+                    elif now-term_at>=5 and kill_at is None:
+                        os.killpg(pgid,signal.SIGKILL)
+                        kill_at=now
+                        signals.append({'signal':'KILL','elapsed_seconds':round(now-started,6)})
+                if child_reaped and group_absent(pgid) and stream_eof:
+                    group_gone=True
+                    break
+                if first_stop is not None and now-first_stop>=20:
+                    cleanup_errors.append('owned_cleanup_deadline')
+                    break
+                if now-started>=1790:
+                    cleanup_errors.append('outer_cleanup_deadline')
+                    break
+                for key,_ in sel.select(0.2):
+                    block=os.read(key.fileobj.fileno(),65536)
+                    if not block:
+                        sel.unregister(key.fileobj)
+                        stream_eof=True
+                        continue
+                    remaining=LOG_CAP-bytes_written
+                    saved=block[:max(0,remaining)]
+                    log.write(saved)
+                    bytes_written+=len(saved)
+                    if len(saved)!=len(block):
+                        log_capped=True
+                        if stop_reason is None:
+                            stop_reason='log_cap'
+                    scanned=(carry+block).lower()
+                    if any(label in scanned for label in [b'downloading ',b'downloaded ',b'updating crates.io index',b'updating git repository',b'fetching ']):
+                        downloaded=True
+                        if stop_reason is None:
+                            stop_reason='unexpected_dependency_download'
+                    carry=scanned[-128:]
+        except BaseException:
+            internal_failure='supervisor_internal_failure'
+        finally:
+            if child is not None and owned_group:
+                if not group_absent(child.pid):
+                    try:
+                        os.killpg(child.pid,signal.SIGTERM)
+                        signals.append({'signal':'TERM','elapsed_seconds':round(time.monotonic()-started,6)})
+                    except ProcessLookupError:
+                        pass
+                    except BaseException:
+                        cleanup_errors.append('term_failed')
+                    try:
+                        child.wait(timeout=min(5,max(0.01,1798-(time.monotonic()-started))))
+                        child_reaped=True
+                    except subprocess.TimeoutExpired:
+                        pass
+                    except BaseException:
+                        cleanup_errors.append('wait_failed')
+                    if not group_absent(child.pid):
+                        try:
+                            os.killpg(child.pid,signal.SIGKILL)
+                            signals.append({'signal':'KILL','elapsed_seconds':round(time.monotonic()-started,6)})
+                        except ProcessLookupError:
+                            pass
+                        except BaseException:
+                            cleanup_errors.append('kill_failed')
+                try:
+                    returncode=child.wait(timeout=min(5,max(0.01,1798-(time.monotonic()-started))))
+                    child_reaped=True
+                except BaseException:
+                    cleanup_errors.append('final_reap_failed')
+                group_gone=group_absent(child.pid)
+                child.stdout.close()
+            sel.close()
+            log.flush()
+            os.fsync(log.fileno())
+    samples.append({'elapsed_seconds':round(time.monotonic()-started,6),'free_bytes':free_bytes()})
+    raw=log_path.read_bytes()
+    retained={'source_archive':archive_id,'source_head':current_head,'command':DISPLAY_COMMAND,'launch_free_bytes':launch_free,'disk_samples':samples,'disk_minimum_bytes':min(s['free_bytes'] for s in samples),'elapsed_seconds':round(time.monotonic()-started,6),'child_pid':None if child is None else child.pid,'child_pgid':None if child is None else child.pid,'owned_group_verified':owned_group,'child_returncode':returncode,'child_reaped':child_reaped,'owned_group_absent':group_gone,'signals':signals,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'unexpected_dependency_download_observed':downloaded,'log_capped':log_capped,'stream_eof':stream_eof,'log':{'path':str(log_path.relative_to(ROOT)),'bytes':len(raw),'sha256':digest(raw),'mode':'0600'},'output_retained_before_grade':True}
+    result_id=exclusive_json('actual-status.redacted.json',retained)
+    # Grading starts only after the complete bounded output and numeric status are fsynced.
+    counts_matches=re.findall(rb'test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out',raw)
+    counts_match=counts_matches[0] if len(counts_matches)==1 else None
+    counts=None if counts_match is None else {'passed':int(counts_match[1]),'failed':int(counts_match[2]),'ignored':int(counts_match[3]),'measured':int(counts_match[4]),'filtered_out':int(counts_match[5])}
+    panic_matches=re.findall(rb'panicked at (tests/device_trust\.rs):(\d{1,6}):(\d{1,6}):',raw)
+    panic_locations=[{'path':'tests/device_trust.rs','line':int(match[1]),'column':int(match[2])} for match in panic_matches[:14]]
+    unexpected_ok_panic_count=raw.count(b'called `Result::unwrap_err()` on an `Ok` value')
+    whole_target_complete=bool(counts and counts['passed']+counts['failed']==14 and counts['ignored']==0 and counts['measured']==0 and counts['filtered_out']==0 and child_reaped and group_gone and stream_eof and not log_capped and not downloaded and stop_reason is None and internal_failure is None and not cleanup_errors)
+    whole_target_pass=bool(whole_target_complete and returncode==0 and counts_match[0]==b'ok' and counts['passed']==14 and counts['failed']==0 and not panic_matches and unexpected_ok_panic_count==0)
+    classification='pass' if whole_target_pass else 'test_failure' if whole_target_complete and counts_match[0]==b'FAILED' and returncode==101 and counts['failed']>0 else 'incomplete'
+    grade={'actual_status':result_id,'test_counts':counts,'summary_count':len(counts_matches),'expected_test_count':14,'panic_locations':panic_locations,'panic_location_count':len(panic_matches),'panic_locations_capped':len(panic_matches)>14,'unexpected_ok_panic_count':unexpected_ok_panic_count,'whole_target_complete':whole_target_complete,'whole_target_pass':whole_target_pass,'whole_target_classification':classification,'resource_release_proven':bool(child_reaped and group_gone),'child_returncode':returncode,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'elapsed_seconds':retained['elapsed_seconds'],'disk_minimum_bytes':retained['disk_minimum_bytes'],'log_bytes':len(raw),'log_sha256':digest(raw),'source_archive':archive_id}
+    grade_id=exclusive_json('grade.redacted.json',grade)
+    print(json.dumps({'grade':grade,'grade_file':grade_id},sort_keys=True),flush=True)
+    return 0 if child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+```
+
+### Exact forward diff; its inverse restores all original bytes/AST
+
+```diff
+--- original-negative-supervisor.py
++++ proposed-whole-target-supervisor.py
+@@ -11,15 +11,15 @@
+ import time
+␠
+ ROOT = Path('/Users/dominik/orca/projects/riAuth-public-preview-sol-management-wave30')
+-RUN = Path(__file__).resolve().parent
+-HEAD = 'be6d4afe932bf03454d6b0dedfa482c8a2e33b4f'
+-REVIEW = '6ba2e95c42c271804d1715eb05380953b008130d'
+-FIXED = '544d1340b80cd3e040dc13142cdcbc1d75fea4cb'
+-TEST_SHA = 'ee9c1676e8fb3aa6f6d2092a343e70bb0beae703d563d3e410ad611093e340dd'
++RUN = ROOT / 'deployment-private/i07-device-trust-whole-5c20ca-20261003-once'
++HEAD = '715f6e9c37cf3e6a92f13f284fa54e4cb6d8d0fd'
++REVIEW = '5c20ca13effb28501976aef69e50c6738ab560b6'
++FIXED = '5c20ca13effb28501976aef69e50c6738ab560b6'
++TEST_SHA = 'f5fc6b3d42f97bf7c4601d8228e713066af1e3a95eeee3aca60dfeeec4c7f5df'
+ GIB = 1024 ** 3
+ LOG_CAP = 16 * 1024 ** 2
+-DISPLAY_COMMAND = 'env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust google::retained_local_proof_requires_reverification_after_provider_change -- --exact --test-threads=1'
+-ARGV = ['env', 'CARGO_TARGET_DIR='+str(ROOT/'target/wave30-o06-readiness'), 'CARGO_BUILD_JOBS=1', 'CARGO_INCREMENTAL=0', 'CARGO_PROFILE_DEV_DEBUG=0', 'CARGO_PROFILE_TEST_DEBUG=0', 'cargo', 'test', '--locked', '--features', 'test-support', '--test', 'device_trust', 'google::retained_local_proof_requires_reverification_after_provider_change', '--', '--exact', '--test-threads=1']
++DISPLAY_COMMAND = 'env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust -- --test-threads=1'
++ARGV = ['env', 'CARGO_TARGET_DIR='+str(ROOT/'target/wave30-o06-readiness'), 'CARGO_BUILD_JOBS=1', 'CARGO_INCREMENTAL=0', 'CARGO_PROFILE_DEV_DEBUG=0', 'CARGO_PROFILE_TEST_DEBUG=0', 'cargo', 'test', '--locked', '--features', 'test-support', '--test', 'device_trust', '--', '--test-threads=1']
+␠
+␠
+ def digest(data):
+@@ -69,16 +69,21 @@
+     os.umask(0o077)
+     assert RUN.stat().st_uid==os.getuid() and stat.S_IMODE(RUN.stat().st_mode)==0o700
+     assert not RUN.is_symlink()
+-    assert read_git(['rev-parse','HEAD']).decode().strip()==HEAD
++    current_head=read_git(['rev-parse','HEAD']).decode().strip()
++    assert read_git(['merge-base',HEAD,current_head]).decode().strip()==HEAD
++    assert read_git(['rev-parse',HEAD+'^{tree}'])==read_git(['rev-parse',FIXED+'^{tree}'])
+     assert read_git(['status','--porcelain'])==b''
+     test=(ROOT/'tests/device_trust.rs').read_bytes()
+     fixed=read_git(['show',FIXED+':tests/device_trust.rs'])
+     assert digest(test)==TEST_SHA
+-    assert read_git(['hash-object','tests/device_trust.rs']).decode().strip()=='5c9d9401961033805745335ac353309237e9ba65'
++    assert read_git(['hash-object','tests/device_trust.rs']).decode().strip()=='54bc47d08b5562ed6d836df55144c93b5ac8dd2d'
+     assert test==read_git(['show',REVIEW+':tests/device_trust.rs'])
+-    assert test[:len(fixed)-2]+test[-2:]==fixed
+-    changed=set(read_git(['diff','--name-only',REVIEW,'HEAD']).decode().splitlines())
+-    assert changed=={'docs/roadmap/local-wave30-d01-user-browser-review.md','docs/roadmap/local-wave30-i07-managed-device-plan.md'}
++    assert test==fixed
++    changed=set(read_git(['diff','--name-only',HEAD,current_head]).decode().splitlines())
++    assert changed<={'docs/roadmap/local-wave30-i07-managed-device-plan.md'}
++    report=(ROOT/'docs/roadmap/local-wave30-i07-managed-device-plan.md').read_bytes()
++    report_base=read_git(['show',FIXED+':docs/roadmap/local-wave30-i07-managed-device-plan.md'])
++    assert report[:len(report_base)]==report_base
+     inputs={}
+     for path in ['Cargo.toml','Cargo.lock','rust-toolchain.toml']:
+         data=(ROOT/path).read_bytes()
+@@ -99,7 +104,7 @@
+         competitors[name]={'returncode':observed.returncode,'count':0}
+     initial_free=free_bytes()
+     assert initial_free>=12*GIB
+-    archive={'project':'891e7443-8dac-4c1b-897f-9e53cb59c7ee','reservation':'wave30_I07_provider_transition_negative_once','source_head':HEAD,'source_tree':read_git(['rev-parse','HEAD^{tree}']).decode().strip(),'reviewed_test_commit':REVIEW,'test_blob':'5c9d9401961033805745335ac353309237e9ba65','test_sha256':TEST_SHA,'test_bytes':len(test),'fixed544_test_sha256':digest(fixed),'whole_test_reversal':True,'tracked_production_manifests_toolchain_unchanged':True,'inputs':inputs,'command':DISPLAY_COMMAND,'argv':ARGV,'features':features,'warm_target_fingerprint_sha256':digest(fingerprint),'initial_free_bytes':initial_free,'minimum_launch_bytes':12*GIB,'owned_stop_bytes':9*GIB,'floor_bytes':8*GIB,'sample_interval_seconds':2,'inclusive_bound_seconds':1800,'active_stop_seconds':1765,'log_cap_bytes':LOG_CAP,'competitors':competitors,'supervisor_sha256':digest(Path(__file__).read_bytes()),'supervisor_pid':os.getpid(),'sigchld_default_before_spawn':signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL}
++    archive={'project':'891e7443-8dac-4c1b-897f-9e53cb59c7ee','reservation':'wave30_I07_whole_target_exact_preparation','source_head':current_head,'alignment_merge':HEAD,'accepted_source_pin':FIXED,'source_tree':read_git(['rev-parse','HEAD^{tree}']).decode().strip(),'reviewed_test_commit':REVIEW,'test_blob':'54bc47d08b5562ed6d836df55144c93b5ac8dd2d','test_sha256':TEST_SHA,'test_bytes':len(test),'accepted_test_sha256':digest(fixed),'accepted_test_equality':True,'report_baseline_sha256':digest(report_base),'current_report_sha256':digest(report),'expected_test_count':14,'tracked_production_manifests_toolchain_unchanged':True,'inputs':inputs,'command':DISPLAY_COMMAND,'argv':ARGV,'features':features,'warm_target_fingerprint_sha256':digest(fingerprint),'initial_free_bytes':initial_free,'minimum_launch_bytes':12*GIB,'owned_stop_bytes':9*GIB,'floor_bytes':8*GIB,'sample_interval_seconds':2,'inclusive_bound_seconds':1800,'active_stop_seconds':1765,'log_cap_bytes':LOG_CAP,'competitors':competitors,'supervisor_sha256':digest(Path(__file__).read_bytes()),'supervisor_pid':os.getpid(),'sigchld_default_before_spawn':signal.getsignal(signal.SIGCHLD)==signal.SIG_DFL}
+     archive_id=exclusive_json('launch-source.redacted.json',archive)
+     launch_free=free_bytes()
+     assert launch_free>=12*GIB
+@@ -231,14 +236,19 @@
+             os.fsync(log.fileno())
+     samples.append({'elapsed_seconds':round(time.monotonic()-started,6),'free_bytes':free_bytes()})
+     raw=log_path.read_bytes()
+-    retained={'source_archive':archive_id,'source_head':HEAD,'command':DISPLAY_COMMAND,'launch_free_bytes':launch_free,'disk_samples':samples,'disk_minimum_bytes':min(s['free_bytes'] for s in samples),'elapsed_seconds':round(time.monotonic()-started,6),'child_pid':None if child is None else child.pid,'child_pgid':None if child is None else child.pid,'owned_group_verified':owned_group,'child_returncode':returncode,'child_reaped':child_reaped,'owned_group_absent':group_gone,'signals':signals,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'unexpected_dependency_download_observed':downloaded,'log_capped':log_capped,'stream_eof':stream_eof,'log':{'path':str(log_path.relative_to(ROOT)),'bytes':len(raw),'sha256':digest(raw),'mode':'0600'},'output_retained_before_grade':True}
++    retained={'source_archive':archive_id,'source_head':current_head,'command':DISPLAY_COMMAND,'launch_free_bytes':launch_free,'disk_samples':samples,'disk_minimum_bytes':min(s['free_bytes'] for s in samples),'elapsed_seconds':round(time.monotonic()-started,6),'child_pid':None if child is None else child.pid,'child_pgid':None if child is None else child.pid,'owned_group_verified':owned_group,'child_returncode':returncode,'child_reaped':child_reaped,'owned_group_absent':group_gone,'signals':signals,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'unexpected_dependency_download_observed':downloaded,'log_capped':log_capped,'stream_eof':stream_eof,'log':{'path':str(log_path.relative_to(ROOT)),'bytes':len(raw),'sha256':digest(raw),'mode':'0600'},'output_retained_before_grade':True}
+     result_id=exclusive_json('actual-status.redacted.json',retained)
+     # Grading starts only after the complete bounded output and numeric status are fsynced.
+-    counts_match=re.search(rb'test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out',raw)
+-    panic_match=re.search(rb"thread 'google::retained_local_proof_requires_reverification_after_provider_change' panicked at (tests/device_trust\.rs):(\d+):(\d+):",raw)
+-    oracle=bool(panic_match and int(panic_match[2])==1821 and b'called `Result::unwrap_err()` on an `Ok` value' in raw)
+-    counts=None if counts_match is None else {'passed':int(counts_match[2]),'failed':int(counts_match[3]),'ignored':int(counts_match[4]),'measured':int(counts_match[5]),'filtered_out':int(counts_match[6])}
+-    grade={'actual_status':result_id,'test_counts':counts,'panic_path':None if panic_match is None else 'tests/device_trust.rs','panic_line':None if panic_match is None else int(panic_match[2]),'panic_column':None if panic_match is None else int(panic_match[3]),'expected_oracle_reached':oracle or bool(counts and counts['passed']==1 and counts['failed']==0),'expected_unwrap_err_received_ok':oracle,'strict_error_assertion_reached':bool(counts and counts['passed']==1 and counts['failed']==0),'unprotected_control_reached':bool(counts and counts['passed']==1 and counts['failed']==0),'resource_release_proven':bool(child_reaped and group_gone),'child_returncode':returncode,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'elapsed_seconds':retained['elapsed_seconds'],'disk_minimum_bytes':retained['disk_minimum_bytes'],'log_bytes':len(raw),'log_sha256':digest(raw),'source_archive':archive_id}
++    counts_matches=re.findall(rb'test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out',raw)
++    counts_match=counts_matches[0] if len(counts_matches)==1 else None
++    counts=None if counts_match is None else {'passed':int(counts_match[1]),'failed':int(counts_match[2]),'ignored':int(counts_match[3]),'measured':int(counts_match[4]),'filtered_out':int(counts_match[5])}
++    panic_matches=re.findall(rb'panicked at (tests/device_trust\.rs):(\d{1,6}):(\d{1,6}):',raw)
++    panic_locations=[{'path':'tests/device_trust.rs','line':int(match[1]),'column':int(match[2])} for match in panic_matches[:14]]
++    unexpected_ok_panic_count=raw.count(b'called `Result::unwrap_err()` on an `Ok` value')
++    whole_target_complete=bool(counts and counts['passed']+counts['failed']==14 and counts['ignored']==0 and counts['measured']==0 and counts['filtered_out']==0 and child_reaped and group_gone and stream_eof and not log_capped and not downloaded and stop_reason is None and internal_failure is None and not cleanup_errors)
++    whole_target_pass=bool(whole_target_complete and returncode==0 and counts_match[0]==b'ok' and counts['passed']==14 and counts['failed']==0 and not panic_matches and unexpected_ok_panic_count==0)
++    classification='pass' if whole_target_pass else 'test_failure' if whole_target_complete and counts_match[0]==b'FAILED' and returncode==101 and counts['failed']>0 else 'incomplete'
++    grade={'actual_status':result_id,'test_counts':counts,'summary_count':len(counts_matches),'expected_test_count':14,'panic_locations':panic_locations,'panic_location_count':len(panic_matches),'panic_locations_capped':len(panic_matches)>14,'unexpected_ok_panic_count':unexpected_ok_panic_count,'whole_target_complete':whole_target_complete,'whole_target_pass':whole_target_pass,'whole_target_classification':classification,'resource_release_proven':bool(child_reaped and group_gone),'child_returncode':returncode,'stop_reason':stop_reason,'internal_failure':internal_failure,'cleanup_errors':cleanup_errors,'elapsed_seconds':retained['elapsed_seconds'],'disk_minimum_bytes':retained['disk_minimum_bytes'],'log_bytes':len(raw),'log_sha256':digest(raw),'source_archive':archive_id}
+     grade_id=exclusive_json('grade.redacted.json',grade)
+     print(json.dumps({'grade':grade,'grade_file':grade_id},sort_keys=True),flush=True)
+     return 0 if child_reaped and group_gone and internal_failure is None and not cleanup_errors else 125
+```
+
+The three standalone `␠` lines in this diff archive each encode exactly ONE ASCII space followed by LF (U+0020 U+000A), the unified-diff blank-context marker. Decode only those three complete lines before applying or inverting the diff. The decoded canonical diff is exactly12460 bytes, SHA256 `335f4ec5880e0c1a15c68cab1dfd2c1079be13620b4a579b03c805e88bb9a265`; the executable candidate archive is unchanged. This explicit rendering avoids report trailing whitespace while retaining every canonical diff byte.
+
+Apply the decoded canonical diff once to the hash-checked complete original source to reconstruct the candidate. Reversing these exact hunks restores ALL14537 original bytes and its complete location-independent AST; no unchanged body/snapshot exclusions are used. All FIVE helper functions (`digest`, `exclusive_json`, `read_git`, `free_bytes`, `group_absent`) are byte-exact. SIGCHLD-default installation remains the first main statement before ANY Popen. The complete child-loop/read/drain/TERM/KILL/reap/final-status retention source span remains byte-exact, except the declared current-head metadata substitution. Thresholds12GiB/9GiB/8GiB, nominal2s sampling,16MiB log cap,1765s active stop/1790s loop cleanup limit/1798s bounded final waits inside the declared1800s budget are unchanged. No clock reset, retry, fallback, cold target, guard or output-cap widening is added. This is a source preservation proof, not fresh timeout/cleanup enforcement or runtime validation.
+
+All runtime paths would be beneath the declared NEW `deployment-private/i07-device-trust-whole-5c20ca-20261003-once`, verified ABSENT during preparation. It was NOT created. A later root release must authorize private0700 creation, exclusive0600 supervisor/source/archive/log/child/status/grade files there and the exact candidate hash. Existing eight negative-run files and all older outputs remain separate. The original exclusive file helpers and numeric owned PID/PGID/readbacks are unchanged. No arbitrary exception, response, key/ID, panic value or body is exposed publicly.
+
+The whole-target classifier requires exactlyONE fixed test-summary match,14 executed passed+failed, zero ignored/measured/filtered, complete EOF/nontruncated retained output, no download/stop/internal/cleanup failure and joined absent ownership. A pass additionally requires actual Cargo0, summaryok,14 passed/0 failed and zero fixed panic/unwrap-error-on-Ok signals. FAILED summary plus Cargo101/nonzero failed count yields only fixed `test_failure`; anything partial/inconsistent is `incomplete`. Fixed target panic path/line/column and finite counts are public; raw unexpected-Ok response debug data remains only in capped0600 private output. No strict error/plain journey assertions are retroactively credited from a failed/partial run, and resource release remains separate from a passing test result. Source-defined14 is an expectation, not observed discovery.
+
+The single command remains `env CARGO_TARGET_DIR="$PWD/target/wave30-o06-readiness" CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo test --locked --features test-support --test device_trust -- --test-threads=1`. Display and expanded env argv differ from the negative command ONLY by removing the name and --exact. Root must fully review this immutable source before any separately released ONE invocation. Sole validation/Cargo runtime remains HELD/free and unused by this phase; no native/provider/keygen/version/compiler/Cargo/test/browser/Driver/D01 store/real-fixture action ran, no output leaf or child/process group was created, and no slot was acquired/released. Root alone owns original gate/status/integration/publication/runtime decisions.
+
+### Fresh read-only prerequisites and static check disclosure
+
+At `2026-10-03T08:54:45.245184+00:00`, free capacity was14808350720 bytes (13.791351GiB), above the proposed12GiB launch minimum. It is a shared observation and is not reserved. Exact-name cargo and rustc observations each returned exit1/count0; no process arguments/environment or unrelated process signals were read or used. Root must recheck capacity, absence of competing Cargo/rustc and source/cache identity at any future separately released launch; stop instead of lowering thresholds, downloading unexpectedly, pruning or duplicating a cold target.
+
+The existing owned `target/wave30-o06-readiness` cache was read as metadata only. `.rustc_info.json` is1965 bytes/SHA256 `27df402be20083ab5b4835c05762e2b77beed67288686dd8fda9193b24cdd7c4`; the library fingerprint is3611 bytes/SHA256 `ac6f00d7f80260b8f443564cbbdd8e64f91d91aa42f8d001c0a23e13778f1c10`, and the device_trust fingerprint is4019 bytes/SHA256 `f078dcd7d024389e415d7624eac3f0cedd05994bc36619bfd551a526795c4ee7`. Both record features `["default", "essentials", "platform", "test-support"]`, rustc identity17329007180185699724, compile_kind0 and empty rustflags; library/test profile identities are12672335563272108896/11094973624911973823. This is an existing same-feature warm-cache prerequisite, not a build/discovery/result on corrected source. No compiler or toolchain-version invocation occurred.
+
+The first report whitespace check emitted three trailing-whitespace diagnostics at then-lines854,872,873, all the canonical diff's blank context lines. The compound shell's exit0 came from its later static Python check and did NOT establish that the whitespace command passed; its individual numeric exit was not separately retained. Those three archive-rendering lines are now explicitly encoded as described above; the candidate, decoded canonical diff and original report prefix remain exact. The failure is preserved here, rather than treated as a source or runtime result. `python3 scripts/check-docs.py` already returned actual exit0. Final isolated whitespace/docs/scope/hash/inverse checks follow this rendering correction and remain static-only.
+
+Final isolated checks after the rendering correction returned actual exit0 individually: `git diff --check`, `python3 scripts/check-docs.py`, and the static alignment/scope/source/archive checker. The latter verified both merge parents and the complete equal accepted tree, the only changed report path, the whole prior89006-byte prefix, candidate15555B/258lines, decoded four-hunk diff12460B, exact forward/reverse whole-source bytes and AST, all five unchanged helper function bodies, SIGCHLD-default as the first main statement, six current source/guide/helper witnesses and the absent future runtime leaf. Candidate/controller/harness/product code was not imported or evaluated; no child or runtime output was created. These checks establish source preparation only, not compilation, discovered test count or a target result.
+
+Fresh final read-only prerequisite sample (unreserved; no process arguments/environment or signals):
+
+```json
+{
+  "capacity_reserved": false,
+  "exact_name_observations": {
+    "cargo": {
+      "exact_name_count": 0,
+      "exit": 1
+    },
+    "rustc": {
+      "exact_name_count": 0,
+      "exit": 1
+    }
+  },
+  "free_bytes": 13581897728,
+  "free_gib": 12.649128,
+  "launch_12gib_met_at_sample": true,
+  "runtime_released": false,
+  "utc": "2026-10-03T09:02:22.736836+00:00"
+}
+```
