@@ -65,3 +65,101 @@ no original A09 completion or official-release conclusion is asserted here.
 A root workflow read initially guessed an absent container-artifacts filename;
 the tracked list identified check-local-container-cohort.yml, whose entire
 109 lines were then read. That read error made no source/runtime change.
+
+
+## 2026-10-03 — one actual complete-reader cohort, failed fixture
+
+Root dispatched only run37087561409/job111100895046/attempt1. Workflow and
+helper source3dab109446b2dd773f524601bf4737bf3861cbb6, product
+b619fe25269ccc150e473bbcde47cdb3623ef810 and helper119193-byte SHA256
+1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67
+remain distinct. Job ran01:49:37–02:42:31UTC and concluded FAILURE.
+The bounded cohort step failed; always-upload and job cleanup completed.
+No automatic repeat or source correction followed. Original A09 remains open.
+
+GitHub's artifact11262263011 is
+riauth-local-container-x86_64-37087561409-1,115531946 bytes, full transport
+SHA25678bb19d402870f934250e9dc53e99dc9f2008f18f96b4091a62cc14c1f8493b0.
+Root downloaded it once, checked exact API size/digest BEFORE guarded ZIP
+extraction, and retained the original ZIP plus API records. Eleven safe
+relative regular members total115530414 bytes. No container/image/archive
+member or product/reader executable was executed here. Binary/image hashes
+and ELF metadata were inspected by file read only.
+
+Actual receipt container-cohort.json is460868 bytes, SHA256
+e775e6916221f32919b92eb5cef3e4eda597f6cadf80294fd271cea79c4c535f.
+It reports failed_phase=fixture, failure=unexpected_OSError, checks=[],
+shared_full_gate=not_run and official_release=false. It records no errno,
+operation-specific exception site or traceback. The specific native/host
+condition is UNKNOWN; the generic exception cannot establish a product
+defect, occupied port, TIME_WAIT cause or successful E-P-E completion.
+
+### Actual bounded prefix and reader preservation
+
+Both LOCAL native x86 images built/saved/reloaded. Essentials build846.153s
+and Platform1108.151s exited0. Archive Essentials48936063 bytes hashes to
+d1c47ee3a3e17864b5f18aa99dd9bb5d2a6d8c0f5c9de9d4e052f3377a6b66a5;
+Platform53552130 bytes hashes to
+5a81a46ee436d1eb56614cdce7f572325a71dfc4bb8e5b5d43f2c0cb3c1d4347.
+Exact image/source/feature metadata remains attributed to the real run.
+These are LOCAL products with the retained b619 stale-notices limit, not
+new official assets or release acceptance.
+
+The isolated locked release no-run reader build exited0 in1090.526s.
+Retained local-store-reader-x86_64.bin is12199608 bytes, SHA256
+b6be98dddc96df4220e9423425ebb668a0dda0a7ac439dd7d7e73dc187e7b707.
+Root independently checked native64-bit little-endian ELF machine62 and all
+six recorded product/probe input hashes at exactb619. Its profile/features
+remain release,platform+test-support,no default, jobs1/incremental0/debug0.
+The actual reader ran12 times successfully. Every return passed the unchanged
+config/key/redb BEFORE/AFTER equality guard; receipt counter12 and last
+physical observation alltrue are actual local reader evidence. No mutable
+probe arm was used or inferred.
+
+Seven recorded offline-preservation packets each have added0/removed0/changed0,
+full row-hash/metadata/count equality and exact original/candidate config/key
+inputs. Each has physical_config_equal=true,physical_key_equal=true and
+physical_redb_equal=false. That byte difference is explicitly diagnostic
+after complete logical/input equality and reader preservation. It does not
+retroactively diagnose the prior37078338496 opaque composite failure.
+
+The source/ordered prefix and actual records support initial Essentials
+ordinary identity/group/grant/scoped-authorization/logout observations and
+issuer/policy/login-rate refused-open preservation, plus wrong-direct-build
+refusal. Only one server-start record exists. The subsequent Platform/returned
+Essentials identity snapshots, second logout preservation and separate
+Platform-state downgrade fixture have no completed gate receipt. No all11
+checks or full shared-gate result is borrowed from their source definitions.
+A read-only source diagnosis is separately reserved before any correction.
+
+### Cleanup, capacity, actual review limits
+
+All1802 CLI step records say owned_child_reaped=true and owned_group_empty=true.
+Actual deliberate refusal/absence exits remain, rather than being relabeled
+as allEXIT0. There are149 recorded created containers and two fixture volumes.
+Cleanup_errors=[], remaining_owned_containers/volumes/cli_groups all0, both
+pending maps empty, owned-image inventory empty and builder_children_removed
+true. Root released the sole validation lane after terminal state, transport
+verification and those complete cleanup checks, before this report append.
+No local resource, cleanup signal, cache prune or alternate runtime was used.
+All next runtimes still require an exact source-reviewed root reservation.
+
+Resource JSONL285977 bytes has SHA256
+992055f48887e025976dc6da575932d3f39bb87c7369e4ca5462a1c0daecaf41.
+Root parsed all1583 rows and checked four identical actual minima84826279936
+bytes, above30GiB start/10GiB stop/8GiB floor. Last elapsed3164.445s. Receipt
+maxgap2.001190951999888s is retained; JSONL encodes gaps rounded3, max2.001s.
+Sampling is not a hard quota. Root's initial exact floating-point comparison
+between unrounded receipt and rounded JSONL failed; reading the unchanged
+serialization and comparing its exact declared rounding passed. No source,
+receipt or resource row was changed, and no second cohort ran.
+
+Root checked closed duplicate-free receipt JSON, all resource rows, all
+archive/binary/input/build-log hashes and every owned-step cleanup flag.
+The initially combined large display was truncated; critical full packet,
+resource and cleanup fields were reread in bounded output. Full creation and
+step tables were parsed as DATA; no retained command or helper body executed.
+The [root machine-readable review](evidence/wave30-a09-reader-37087561409-root-review.json)
+records exact transport/hash/failure/cleanup and review-check limits. This is
+a failed local cohort with useful prefix evidence, not A09 completion, a
+Linux-fixed claim, whole release proof or a retry authorization.
