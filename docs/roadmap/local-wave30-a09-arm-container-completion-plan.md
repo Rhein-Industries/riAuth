@@ -574,3 +574,124 @@ main, workflow command, probe, compiler, Docker or protocol was executed.
 Runtime remains HELD. This source plan does not acquire/release a runtime slot,
 authorize any dispatch, close A09, reopen closed rows, or alter primary assignments.
 Root owns source reservation, integration, publication, release and status.
+
+## wave30_A09_arm_container_workflow_materialization — source applied
+
+Dated source-only appendix, 2026-10-03. Project
+`891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, existing WTed9/shell0164;
+primaryf2 is unchanged. Root approved materialization of the exact candidate
+under this reservation. This appendix preserves every byte of the entire
+`5bc54e491fb89926f44762d0b835243636494f97` report prefix: **35471 bytes /
+576 lines / SHA-256
+07a4c43b131a0c2c00193731819b76dfe2970a8129740592275a21dbb8c546d4**.
+The root message's earlier 573-line description does not change those actual
+committed prefix bytes or any historical observation.
+
+### Immutable source result and integration context
+
+Workflow-only commit:
+**`398d202d1c05570360997a5bae57467513c82dcb`**,
+parent `5bc54e491fb89926f44762d0b835243636494f97`.
+It materializes only `.github/workflows/check-local-container-cohort.yml`,
+mode100644, **4640 bytes / 109 lines / SHA-256
+63887b4f57c959ce5256865c2befc7cc568b95e9eb7d10eff0909cf3dc6747b8**.
+Its bytes equal the approved full YAML fence above.
+
+The own branch predates both the workflow and helper: Git tree inspection and
+filesystem reads established both absent before materialization. Consequently
+the source commit is a **109-line file addition against this branch**, not a
+three-line Git diff against its parent. No branch alignment, history import,
+helper import or other file materialization occurred. The local helper remains
+absent; this branch is not claimed to be a runnable container-validation checkout.
+
+The authoritative integration comparison is the existing workflow at root's
+fixed published **`6a4066c72ac58225cd444a806032eef8515e646b`**:
+4574 bytes / 109 lines / SHA-256
+`3cf3d01fa751e418673b79dabed4e3edc7f44dd0a395d3fb2b58e98585743851`.
+Against that whole file, commit398d's workflow differs **only** in the three
+approved lines7,11,95, exactly as the full diff above. Root must reconcile this
+addition against its already present workflow using that three-substitution
+mapping; this report does not present the absent-file parent as the published
+baseline. Complete forward substitution, full inverse and exact candidate
+equality passed before the file was written.
+
+The published helper at6a4066 is already **138392 bytes / 2337 lines / SHA-256
+6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221**.
+Full Git-object equality to the completely reviewed
+`77a9785fbde5c27c06c690d6c15964761d72552c` helper and AST parsing passed.
+That is published source identity, not another helper body execution or a
+new source change. This reservation changes none of its 61 methods, inputs,
+diagnostics, recipes, authority/refusal/receipt contracts or cleanup paths.
+
+### Behavior and unchanged contracts
+
+Manual choices are now exactly x86_64 and arm64; default remains x86_64.
+The existing runner expression selects ubuntu-24.04-arm only for ARM.
+The fixed expression emits --prebuilt-x86 only for x64, preserving its original
+rendered command; for ARM it emits nothing, reaching the existing ordinary
+builder/native-artifact/image/reader path. The existing closed preflight,
+native host/daemon/ELF183, exact product9a/tree/reviewb71/native transport,
+reader source/input, UID/config/security and creation-identity guards remain.
+
+All action/tool/product pins, manual read permissions, legacy serialization,
+private jobs1/inc0/debug0, original locks/build recipes, finite process/command/
+transport/upload bounds, failure upload and cleanup remain unchanged.
+The existing measured30GiB start/10GiB stop with8GiB safety floor and intended2s
+sampling retains the original sampling-versus-hard-quota limitation.
+No new ARM archive, reader hash, tool availability, capacity or outcome is
+credited. No currentS02, official-release or whole-A09 result is inferred.
+
+### Checks actually performed for this materialization
+
+All checks were static/data operations; no workflow block was executed.
+
+- Before mutation, published workflow3cf and original approved report prefix
+  identities matched; own HEAD/status were5bc/clean. Current CONTRIBUTING.md
+  was read; ancestor and relevant repository AGENTS.md checks found no file.
+- The one materialization checker exited0 on its first invocation:
+  two Psych document parses, five Bash --noprofile --norc -n parses
+  (old/new preflight, old helper command, both rendered candidate commands),
+  three Python AST parses (two preflight bodies plus full published helper).
+  Neither Bash source nor Python candidate/helper body was executed.
+- After restoring only description/options/helper-run data, parsed YAML was
+  wholly equal to the published baseline. All three literal spans occurred
+  once; whole-byte inverse restored the exact4574-byte baseline. The4640-byte
+  candidate equaled the approved report fence and expected SHA. Published
+  helper bytes equaled reviewed77a and expected6726; no helper was imported.
+- Baseline docs checker exited0; baseline tracked hygiene exited0 (957 files).
+  With the workflow staged, docs and tracked hygiene exited0 (958 files), and
+  git diff --cached --check exited0. Source commit scope was exactly the
+  workflow; its parent, stored blob, original report prefix and clean status
+  were independently checked after commit.
+- There were **no new parser/assertion or candidate corrections** in this
+  materialization. The original plan's YAML-colon/checker-needle/indentation
+  corrections and EOF fix remain historical in the untouched prefix.
+  Initial rg lookup did not include hidden .github files and was not evidence
+  of their absence; subsequent Git tree and filesystem checks established
+  actual absence without broadening the write scope.
+- Report append checks compare the full35471-byte prefix, immutable source
+  commit and candidate hash, enforce report-only evidence scope, and rerun
+  docs/hygiene/whitespace checks. Their exact final outcomes accompany this
+  separate report commit in the handoff.
+
+### Separately dated root runtime context; ARM still held
+
+The latest user/root update reports **x64 preceding run37099059596 SUCCESS** and
+already released, with root-reported **11 checks,18 readers,10 packets,
+2700 owned steps and zero remaining owned resources**. These are supplied
+root observations and labels; this session did not query the run, download or
+rehash its receipt, execute its fixture, or reinterpret them as ARM results.
+This new context does not rewrite the original plan's37097066234 errno98 failure,
+its separately held retry observation at that earlier date, or older unknown
+OSError/private-row failures.
+
+**All dispatch/download/tool setup/build/native/Docker/Cargo/runner/browser
+runtime remains HELD for this worker and this ARM source reservation.**
+The current fact that the preceding x64 invocation has exited is one sequencing
+prerequisite, not a new release. Root alone reviews/integrates/publishes this
+source and separately releases exactly one manual architecture=arm64 invocation
+under the existing exclusive lane and all original input/resource/cleanup guards.
+The future command above remains prospective; no dispatch or new runtime ID
+was generated here. Primary assignments, board/status/main and other workers
+were untouched.
