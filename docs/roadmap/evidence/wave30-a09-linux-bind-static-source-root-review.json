@@ -1,0 +1,12 @@
+{
+  "utc": "2026-10-03T04:57:52.019245+00:00",
+  "primary_source": "https://raw.githubusercontent.com/torvalds/linux/v6.8/net/ipv4/inet_connection_sock.c",
+  "source_bytes": 42070,
+  "source_sha256": "f5a183a1e55ac0a2b3b949478ea68b625891ff61d09dc5f7a27c5c57aa488470",
+  "body": "static bool inet_bind_conflict(const struct sock *sk, struct sock *sk2,\n\t\t\t       kuid_t sk_uid, bool relax,\n\t\t\t       bool reuseport_cb_ok, bool reuseport_ok)\n{\n\tint bound_dev_if2;\n\n\tif (sk == sk2)\n\t\treturn false;\n\n\tbound_dev_if2 = READ_ONCE(sk2->sk_bound_dev_if);\n\n\tif (!sk->sk_bound_dev_if || !bound_dev_if2 ||\n\t    sk->sk_bound_dev_if == bound_dev_if2) {\n\t\tif (sk->sk_reuse && sk2->sk_reuse &&\n\t\t    sk2->sk_state != TCP_LISTEN) {\n\t\t\tif (!relax || (!reuseport_ok && sk->sk_reuseport &&\n\t\t\t\t       sk2->sk_reuseport && reuseport_cb_ok &&\n\t\t\t\t       (sk2->sk_state == TCP_TIME_WAIT ||\n\t\t\t\t\tuid_eq(sk_uid, sock_i_uid(sk2)))))\n\t\t\t\treturn true;\n\t\t} else if (!reuseport_ok || !sk->sk_reuseport ||\n\t\t\t   !sk2->sk_reuseport || !reuseport_cb_ok ||\n\t\t\t   (sk2->sk_state != TCP_TIME_WAIT &&\n\t\t\t    !uid_eq(sk_uid, sock_i_uid(sk2)))) {\n\t\t\treturn true;\n\t\t}\n\t}\n\treturn false;\n}\n\n",
+  "inference": "SO_REUSEADDR with no SO_REUSEPORT does not bypass same-address TCP_LISTEN conflict; matches pinned Tokio/Mio socket intent. Actual errno98 live-listener-versus-closed-state cause remains unknown.",
+  "documentation": "https://man7.org/linux/man-pages/man7/socket.7.html",
+  "kernel_of_actual_runner": "not recorded; Linux v6.8 is pinned source witness, not runtime identity",
+  "socket_runtime": false,
+  "source_edit": false
+}
