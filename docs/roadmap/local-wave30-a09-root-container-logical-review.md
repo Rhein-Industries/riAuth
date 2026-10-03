@@ -163,3 +163,21 @@ The [root machine-readable review](evidence/wave30-a09-reader-37087561409-root-r
 records exact transport/hash/failure/cleanup and review-check limits. This is
 a failed local cohort with useful prefix evidence, not A09 completion, a
 Linux-fixed claim, whole release proof or a retry authorization.
+
+## 2026-10-03 — actual failure source diagnosis and diagnostic-only seam
+
+Root read all479 lines of`f7fe852`, including the exact22-line proposed
+diagnostic and complete proposed main. Actual12 reader observations/seven
+logical packets/cleanup remain credited only to37087561409; the unlocated
+OSError and missing E-P-E/Platform gates remain failed/unproved. Generic last
+tool records support a restart region, not an errno, port/TIME_WAIT, or product
+cause. Old container failures retain their unknown changed component/cause.
+
+Root accepts only the smallest future source diagnostic: optional fixed
+innermost owned-code site and bounded exact integer errno in the existing
+exception catch. Unknown/external/clipped leaf remains other; no outer frame
+borrows its label, no exception text/path/locals/protocol is emitted. Original
+first failure, cleanup/evidence/result/exit and all guards remain exact.
+Source proposal120263 bytes/SHA
+`a9b91ea849840daee8fe25791e6751e77ec355fdd9e628ced2e317f00c9e74dd`
+is not a runtime correction or authorization to repeat the cohort.

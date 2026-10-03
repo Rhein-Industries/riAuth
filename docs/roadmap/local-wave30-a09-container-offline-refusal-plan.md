@@ -2149,3 +2149,482 @@ unmeasured. The source change neither resolves the prior observed physical
 failure nor proves container E-P-E/shared/release/tenant behavior. Root alone
 publishes, reserves runtime and interprets original A09/status. Closed
 I02/I10/R05/W02/W05 rows remain closed.
+
+
+## Dated actual reader run failure and finite source diagnosis, 2026-10-03
+
+Reservation: wave30_A09_logical_reader_actual_failure_source_diagnosis.
+Project891e7443-8dac-4c1b-897f-9e53cb59c7ee; original A09
+506e3979-a590-4af3-8fa8-ee90d3a517f2; existing Sol5 WT
+a1303b57-4a34-487e-9c63-a841f05b51a0 only.
+Entry HEAD41aefd04d37b5f638dadc93b0b21e5399e95dde6 was clean.
+APPEND ONLY: entire0747 report130495bytes/SHA256
+7e6d331b48a12c7ad3c71b6a4e51b395d36c17a813cb47fc3feda069f05eb515
+is preserved exactly, including every earlier UNKNOWN failure, source plan,
+materialization and static result. The separate D01 review also remains exact.
+
+I authored the logical-reader source slice. This appendix is later
+actual/source diagnosis by that author, not independent self-verification,
+a new execution, a reader replay or a container-gate pass. Root dispatched
+ONE remote run and separately verified retained evidence/cleanup. This
+session only read its authorized sanitized documents/logs and pinned Git
+source. No runtime slot was taken or released here.
+
+### Actual terminal failure and provenance
+
+Root's run37087561409/job111100895046 is completed FAILURE, one attempt:
+workflow/controller3dab109446b2dd773f524601bf4737bf3861cbb6;
+productb619fe25269ccc150e473bbcde47cdb3623ef810;
+product treea627df2ce21a4d255b8c1914d4f543e32f40f4de;
+helper119193bytes/SHA256
+1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67.
+
+Actual container-cohort.json schema riauth.local-container-cohort/v1 says
+result failed_or_refused, failed_phase fixture, failure unexpected_OSError,
+checks=[], shared_full_gate=not_run and official_release=false.
+No errno, source site, traceback, failed request or raw exception is retained.
+Those values remain UNKNOWN. Empty checks means the all-or-nothing end-of-
+fixture checklist was not awarded; it does not erase reached assertions.
+
+The supplied run API identifies native-container job111100895046, started
+2026-10-03T01:49:37Z and completed02:42:31Z. The bounded cohort step failed;
+always-upload and job cleanup completed successfully. Artifact metadata
+identifies11262263011, name riauth-local-container-x86_64-37087561409-1,
+115531946bytes, digest
+78bb19d402870f934250e9dc53e99dc9f2008f18f96b4091a62cc14c1f8493b0,
+workflow_run.head_sha3dab109446b2dd773f524601bf4737bf3861cbb6.
+Root verified that COMPLETE outer ZIP digest before guarded extraction.
+I did not open/re-hash/extract the ZIP, image archives or native binary;
+outer/archive/binary identities below are attributed to the supplied
+root-verified metadata and cohort receipt, not a new transport check.
+
+| Permitted supplied document/log | Bytes | Recomputed SHA256 |
+| --- | ---: | --- |
+| run-api.json | 3611 | d031a2c86012dcb94a9f4611edaab28bb9ddfcfc909fcc8f2bc16cc74869098e |
+| artifact-api.json | 928 | 56c37e2fe93ce4bc58ca3fdc6fb627238d006c60f22388ad1232c442b413c5bf |
+| container-cohort.json | 460868 | e775e6916221f32919b92eb5cef3e4eda597f6cadf80294fd271cea79c4c535f |
+| launch.json | 163 | 2b28472e1855b43d570fb6c9635362c8b200ff0421d1bb4fc45341e75bb1c3f5 |
+| resources.jsonl | 285977 | 992055f48887e025976dc6da575932d3f39bb87c7369e4ca5462a1c0daecaf41 |
+| build-essentials.log | 52344 | f13f5f313165b2e006476650655f0997c5227c58286c1268b380ec8e6c344bb4 |
+| build-platform.log | 39927 | 023d95ab26fd3d73a50f2e52ccfd84c45cbf26e8492bcd0dad6d1afb9e29f041 |
+| builder-create.log | 45 | b1fc712b166650442c57186eedd84b400f14aa682cc34bbc6e7e145091b333ac |
+| builder-bootstrap.log | 1912 | 75c361e51eb147fe1d16f52478fa8e625c10fc9abe97c1eb8c7689e768d85fc3 |
+| pull-pinned-buildkit.log | 1377 | 9890229098928b6f2632b39b602b1c30fe4b50415e37ed511cddced3efb3a8df |
+
+The cohort/resources/launch/build logs are supplied mode0600; API metadata
+copies are0644. This report contains only their public identities, finite
+counts/bools and fixed source witnesses, no credentials/config/key/store
+contents, opaque logical hashes/keys or exception/request/path output.
+No supplied evidence file was changed.
+
+Pinned run helper Git blob1859d4d61a05565ec68dfe229f33e6111518a024 equals
+the existing own helper byte-for-byte. Workflow at3dab is4573bytes/SHA256
+9af6d1d40543bd9604d7105730b97cec9c665d0f197548e50ba9a87eeb6007d4,
+Git bloba396823938a014cdd2c2ad67a08cae19f58c8a8b.
+Native input receipt is
+ccf7c3fb6c0bd85816097c32a24a1c1b0a67b9597346d571cd68975a4680b1af
+from root review66c814a339665e6b3f8e6c22bc59d4f6f0aa224c.
+It binds native run37046857550/job110970324302/artifact11246575279,
+52428080bytes/SHA256
+7c1bcad0f78d90eb611ab76d67943a32a0d691cd5bbd9e5588512bdde635e2a0.
+The cohort records outer_zip_rehashed=true for that imported native input;
+this is historical actual transport, not performed by this appendix.
+
+BuildKit source pin receipt
+4d263888b2bdc5a2eb922b29c85535e8321dc2cba7c246b5b6b355cef57e57b0
+binds reference
+docker.io/moby/buildkit@sha256:98cc6a3fc46220d00f8224ae483f3274fc874e9be8d7dd1e2e2c5481209228b5
+and recorded actual config ID
+27933730df224df80c41f4e5a9b33fa78831a79fd31903df3bb7deb49363422f.
+These are public build-tool identities, not a new pull/version/tool probe.
+
+### Image, reader and exact build-input evidence
+
+Both image build commands exited0: Essentials846.153s and Platform1108.151s.
+Logs retain release completion, export/import and the exact serial environment:
+CARGO_BUILD_JOBS=1, CARGO_INCREMENTAL=0, dev/test/release debug0,
+locked/no-default-features and the selected edition. Essentials records
+three dead-code warnings plus their summary; Platform records no warning.
+The logs do not diagnose the later fixture OSError.
+
+| Actual retained public source artifact, receipt attribution | Bytes | SHA256 |
+| --- | ---: | --- |
+| local-essentials-x86_64.docker.tar.gz | 48936063 | d1c47ee3a3e17864b5f18aa99dd9bb5d2a6d8c0f5c9de9d4e052f3377a6b66a5 |
+| local-platform-x86_64.docker.tar.gz | 53552130 | 5a81a46ee436d1eb56614cdce7f572325a71dfc4bb8e5b5d43f2c0cb3c1d4347 |
+| local-store-reader-x86_64.bin | 12199608 | b6be98dddc96df4220e9423425ebb668a0dda0a7ac439dd7d7e73dc187e7b707 |
+
+Image IDs are fc6ce9897850b8561f08b8dee9128f1bc1096f7053264086755ee6b0b0328b82
+(Essentials) and ae00ecffdb5245b37927d292da80776cf9e750098072f79d0b8716c5fb669f31
+(Platform), sha256-prefixed in the actual record. Recorded server binary
+digests are62a933b0f94401e15699ced6b3ae1e18f9a06e42993d50f0f438902fcfdce78c
+and a28827dffe27a2a42ec3fd44411ae5c343402c1a461582b17d236cb5de6dd668.
+Reader is a separate retained artifact, not a member of the imported native
+five-product archive. None of those binary/archive bodies was inspected here.
+
+Reader build-store-reader step106 exited0 in1090.526s. Provenance records
+release, locked, no default features, platform+test-support, jobs1,
+incremental0/debug0, compile_no_run=true, exact test target
+edition_transition_store_probe, x86_64-unknown-linux-gnu/ELF62.
+Private serial Docker recipe hash is
+a55e90aa4da02870996c9dc755bbbbc80e0a1658674b0ab3f5fb141450a07440;
+reader recipe is
+ba68e6ccb19b2421b250a75e01fa41844b772a3c892f99777f7d5e375ff8adc7.
+The original Dockerfile reversal remains recorded true.
+
+I re-hashed these exact b619 Git inputs against reader receipt values:
+
+| Product input | Bytes | SHA256 |
+| --- | ---: | --- |
+| Cargo.toml | 4020 | 58e5ef824ed96290179c9f76fea208dc37173caeee21b6ce8d37f8a6dd1abcb8 |
+| Cargo.lock | 109243 | b5c9d11c001244b8017303ce8c20516e02946483845eee40720b0910758d4426 |
+| rust-toolchain.toml | 86 | 887f9be066a15585a2c583578e84b0fcb541126d81546276bad3d2ff00d61167 |
+| Dockerfile | 1512 | 458ebb247170c6d4af2ff45b22e5a36e0a5380612140a43448d2ddcebc5d83cb |
+| .dockerignore | 794 | 4fbd9472316442bdd8b72e268feb1140701e87ac28dd02295c687b6d379eb093 |
+| tests/edition_transition_store_probe.rs | 5722 | da486cb8cd7c9d6dfcd78da2704e27688b43a8dd40c7fa58e5b4574f678aed32 |
+
+The complete accepted probe was read as source. Its unchanged snapshot
+arm calls Store::inspect and collects EVERY snapshot key with its serialized
+value digest; complete metadata and count projections are additive.
+No shared() filter, mutation action, format2 substitution or raw logical
+record was used by the fixed invocation. This confirms interface/source
+binding, not a fresh executable probe. The receipt explicitly retains
+the earlier b619 stale-notices limitation; no source/notice regeneration
+or release claim is introduced.
+
+### Reached reader and ordinary fixture assertions only
+
+Reader records verified_physical_observations=12. All twelve snapshot-reader
+steps exit0, and each corresponding copy-logical-snapshot exits0.
+The source increments that counter only AFTER complete private parsing
+AND equality of the reader-alone config/key/redb physical hashes.
+Its last physical observation has all three equality flags true.
+This is actual compatibility/reader-alone preservation evidence for this
+one fixture/build; it is not proof of every future reader invocation.
+
+All seven offline-preservation packets have:
+config_equal/key_equal/candidate_config_equal=true;
+physical_config_equal/physical_key_equal=true;
+row_hashes_equal/metadata_equal/counts_equal=true;
+added=removed=changed=0; physical_redb_equal=false.
+The complete logical key/fingerprint maps, metadata/counts and exact
+original config/key/candidate byte copies are compared in memory.
+No key, digest or value is retained in the public packet. Physical redb
+change is reported separately and is NOT silently called harmless.
+
+Source order explains these seven completed packets without borrowing a
+past gate. config_refusals takes one outer baseline reader, then for each
+issuer/policy/login-rate candidate performs a direct-refusal before/after
+reader and one aggregate after observation: ten reader observations,
+six preservation packets. The following wrong direct Platform open adds
+two readers and packet7. The packet booleans are actual; their assignment
+to named source positions is the source-order trace, not a stored per-packet
+site field. No packet from the later platform-state fixture exists.
+
+| Reached local assertion family | Exact source/evidence basis and limit |
+| --- | --- |
+| Initial private UID10001/encrypted store setup | Two UID probes; subsequent initial server-start and ordinary operations reached. New fixture code checks config/key/data private modes and encrypted redb config before start. |
+| Ordinary identity and scoped authority | Initial snapshot completed before offline observations: all12 UserView fields, user/me equality, local group membership, exact auditor audit/events grant, discovery/JWKS and audit200 checks. Public user-create has actual client exit4 plus normal HTTP403 envelope and unchanged complete user list. This is initial Essentials only. |
+| Logout refusal | revoke_copy precedes baseline snapshot. Two recorded base-client exits3 and the reached revoked() calls assert public HTTP401 as well. They are initial-session checks, not two completed cross-handoff logouts. |
+| Specific offline issuer/policy/login-rate refusal | Three container-tool exits5 match blocked PLAN calls; three of the four exits2 match direct wrong-config opens. Specific resource/reason, direct marker and read-only PLAN physical guards precede each complete preservation packet. |
+| Wrong direct Platform open before activation | Fourth container-tool exit2 and packet7 follow the unchanged Configured active capabilities marker check. This is a refusal, not Platform login. |
+| E-P-E identity/session/grant equality and second logout | UNPROVEN. There is only one server-start and initial base-client sequence. No Platform snapshot or returned Essentials snapshot completes. |
+| Isolated platform-agent and downgrade fixture | UNREACHED/UNPROVEN: only two volume creation records and two UID probes exist. No second platform-state fixture was created. |
+| shared/full gate, whole release or tenant behavior | not_run/false remain explicit. No borrowed PG shared-gate credit or all-target/release/tenant claim. |
+
+The initial snapshot output remains private/unretained. Credits above are
+limited to guards that must have returned normally before the later
+recorded readers; they are not a new inspection of user/session values.
+The aggregate11-item checks list is assigned ONLY at the very end of
+fixture_gate, so its empty actual value is correct for this terminal failure.
+
+### Source-backed potential boundary, still no measured errno/cause
+
+The sole recorded server-start is step179. Initial base-client steps181–204
+precede all twelve reader calls. Last snapshot-reader is1668; last copy
+is1683. The twelve reader indices are277/436/561/666/815/940/
+1045/1194/1319/1424/1543/1668. Every one exits0.
+
+After final reader cleanup/physical observation, seven ordinary tool cycles
+finish: last container-tool indices1705/1715/1725/1735/1745/1755/1765.
+The first matches final offline physical hashing; the next six fit the
+unchanged handoff flow's pre-PLAN physical hash, PLAN, post-PLAN physical
+hash, activation, original config read and final config/key physical hash.
+Those generic steps retain no command arguments/envelope bodies; that
+mapping is source-derived, not a newly measured transition label/token.
+
+Step1770 is the final fixture absence-daemon-check exit0. Step1771 begins
+cleanup's recover-builder-inspect. No second server-start, extra owned
+container/volume cohort or Platform base-client operation is recorded.
+This supports a narrow candidate region around the first Platform restart,
+after the handoff tool sequence and before its recorded server start.
+It does NOT retain the exact point where the OSError arose or prove the
+first handoff's full post-start acceptance.
+
+In the unchanged source, start_app first requires no active writer and
+constructs/binds/closes a temporary loopback socket at the fixture port.
+It then creates an owned server container, whose first absence command
+may attempt a Popen before any new step can be appended. command records
+a step only after successful child creation and its finally cleanup.
+Thus an OSError in the in-process loopback probe OR before the next CLI
+child is registered can lack a step. Fixed ownership/source/environment
+operations can also raise an OSError; no site field excludes them.
+
+This is an observation gap, not proof of TIME_WAIT, competing port,
+EADDRINUSE, memory/FD exhaustion, Docker defect, filesystem failure or a
+production authorization/storage defect. Main's existing catch deliberately
+withholds external exception text and records only unexpected_OSError.
+Errno, syscall, address, private path and cause remain UNKNOWN.
+No guard should be bypassed or relaxed to make the restart appear passed.
+
+The actual current physical_redb=false packets establish this run's
+physical-vs-complete-logical distinction. They do not identify the
+changed component/cause in earlier container failures; those previous
+UNKNOWN measurements remain as recorded.
+
+### ONE prospective finite diagnostic hunk — SOURCE DATA ONLY
+
+I propose ONLY an optional two-field os_error packet in main's EXISTING
+unexpected failure catch. The original failure/failed_phase assignment
+occurs first. The original finally, cleanup, save, public result and
+numeric exit remain byte-exact. No new IO/request, probe, sleep, retry,
+port change, time forcing, reader exclusion or weakened assertion occurs.
+
+For exact builtin OSError only, a bounded16-frame walk selects the
+INNERMOST frame's code-object identity from a closed three-body map.
+It emits only start_app/container_create/owned_cli_transport/other.
+Unknown external/owned frames and clipped traces remain other; an outer
+known frame cannot lend its label to an unknown leaf. No filename,
+co_name, tb_lineno, stack, frame locals, error message or repr is emitted.
+The site means an innermost owned function boundary, NOT an exact syscall,
+port-conflict diagnosis or proof of a product defect.
+
+errno accepts only exact int (bool excluded),0..4095; every other value
+becomes null. The optional packet contains exactly site/errno and is
+well below256 bytes. Projection failure is caught without replacing the
+first failure or preventing cleanup. The packet would be retained in the
+existing capped cohort JSON via the existing save/always-upload path;
+stdout remains the original fixed summary. No evidence file is added.
+
+This deliberately supplies a finite diagnostic rather than a guessed
+fixture correction. A later observed site/errno would still need root
+source interpretation and separately owned corrective authority.
+Absence/fallback of the packet remains an unlocated failure, not success.
+
+Exact prospective source identities, all UNEXECUTED and unmaterialized:
+
+| DATA unit | Bytes | SHA256 |
+| --- | ---: | --- |
+| Current complete helper baseline | 119193 | 1ac9e1342f51decd49da5d6039d4067347825271059fea58cb08cecde887be67 |
+| Prospective complete helper | 120263 | a9b91ea849840daee8fe25791e6751e77ec355fdd9e628ced2e317f00c9e74dd |
+| One zero-context additive hunk | 1207 | ffd365852d1425f0e4d13112912f5aa80a4fc23e48db1f7de402698e259863f3 |
+| Complete prospective main body | 3229 | c1b61ca0bd08a595655a438b93a0b9774114aef76246993293034d5c18ae5e8f |
+
+The original single update-line anchor is unique. Removing the22 added
+lines reconstructs the ENTIRE119193-byte baseline; static AST removal of
+that one added If restores the ENTIRE module AST. Every Cohort method,
+reader, original refusal/PLAN/handoff/config/key comparison, import,
+source pin, product authority and ownership/resource/cleanup body is
+byte-identical. No candidate function was invoked.
+
+The current4573-byte workflow invokes the controller-checkout helper and
+records its actual hash; it has no fixed imported-helper digest requiring
+substitution. No workflow hunk is proposed. A future publication/dispatch
+would still need root's exact new controller/source pin and independent
+review; current3dab runtime provenance remains dated. This appendix does
+not materialize even this diagnostic helper.
+
+#### Archive: exact proposed one-hunk diff DATA
+
+```diff
+--- a/scripts/check-local-container-cohort.py
++++ b/scripts/check-local-container-cohort.py
+@@ -2028,0 +2029,22 @@
++            if type(error) is OSError:
++                try:
++                    sites = {
++                        Cohort.start_app.__code__: "start_app",
++                        Cohort.create_container.__code__: "container_create",
++                        Cohort.command.__code__: "owned_cli_transport",
++                    }
++                    node, site = error.__traceback__, "other"
++                    for _ in range(16):
++                        if node is None:
++                            break
++                        site = sites.get(node.tb_frame.f_code, "other")
++                        node = node.tb_next
++                    if node is not None:
++                        site = "other"
++                    number = error.errno
++                    gate.receipt["os_error"] = {
++                        "site": site,
++                        "errno": number if type(number) is int and 0 <= number <= 4095 else None,
++                    }
++                except BaseException:
++                    pass  # Optional projection cannot replace the original failure.
+```
+
+#### Archive: complete proposed main body DATA
+
+```python
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ("controller", "product", "review", "root"):
+        parser.add_argument("--" + name, type=pathlib.Path, required=True)
+    args = parser.parse_args()
+    os.umask(0o077)
+    gate = None
+    failure = None
+
+    def interrupted(signum, frame):
+        raise Refusal("controller_signal")
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, interrupted)
+    try:
+        gate = Cohort(args)
+        gate.source_check()
+        gate.native_transport()
+        gate.daemon_setup()
+        gate.build_images()
+        gate.build_reader()
+        gate.fixture_gate()
+        # Recheck committed source and manifests after every product operation.
+        require(gate.git(args.product, "status", "--porcelain") == b"", "product_checkout_changed")
+        for relative, expected in gate.native["inputs"].items():
+            require(file_hash(args.product / relative) == expected, "product_input_changed")
+        gate.receipt["result"] = "passed"
+    except BaseException as error:
+        # Never format an external exception: it could contain a signed URL/token/reply.
+        failure = str(error) if isinstance(error, Refusal) else "unexpected_" + type(error).__name__
+        if gate is not None:
+            gate.receipt.update(result="failed_or_refused", failure=failure, failed_phase=gate.phase)
+            if type(error) is OSError:
+                try:
+                    sites = {
+                        Cohort.start_app.__code__: "start_app",
+                        Cohort.create_container.__code__: "container_create",
+                        Cohort.command.__code__: "owned_cli_transport",
+                    }
+                    node, site = error.__traceback__, "other"
+                    for _ in range(16):
+                        if node is None:
+                            break
+                        site = sites.get(node.tb_frame.f_code, "other")
+                        node = node.tb_next
+                    if node is not None:
+                        site = "other"
+                    number = error.errno
+                    gate.receipt["os_error"] = {
+                        "site": site,
+                        "errno": number if type(number) is int and 0 <= number <= 4095 else None,
+                    }
+                except BaseException:
+                    pass  # Optional projection cannot replace the original failure.
+    finally:
+        if gate is not None:
+            try:
+                gate.cleanup()
+            except BaseException:
+                gate.receipt["cleanup_errors"].append("private_cleanup_failed")
+                failure = failure or "private_cleanup_failed"
+            if gate.receipt["cleanup_errors"]:
+                gate.receipt["result"] = "failed_or_refused"
+                failure = failure or "owned_cleanup_failed"
+            try:
+                gate.save()
+            except BaseException:
+                failure = failure or "receipt_write_failed"
+    print(json.dumps({"result": "failed_or_refused" if failure else "passed",
+                      "failure": failure, "official_release": False}))
+    return 1 if failure else 0
+```
+
+
+### Capacity, bounds and exact owned cleanup evidence
+
+Actual resources.jsonl has1583 complete samples. Minimum free bytes for
+host/private/workspace/Docker storage is84826279936 at every minimum summary;
+maximum unrounded receipt gap2.001190951999888s (JSONL rounded max2.001s).
+Initial launch free is92410744832 for all four measured filesystems.
+These are root-run measurements, not this host's present capacity or a hard
+quota. The last sample elapsed3164.445s is not a retained final post-save
+controller clock; sum of command elapsed3158.116s is not total wall time.
+
+Phase sample counts: source1/native-transport1/builder-setup4/images1002/
+reader-build546/fixture25/cleanup4. The source budget remains30GiB start,
+10GiB sampled stop before mandatory8GiB floor,7200s controller/1200s
+fixture/240s cleanup,1800s reader build,90s snapshot reader/20s private
+IO,45s readiness, finite HTTP/read/CLI bounds and150min workflow.
+Neither sampling nor successfully observed high capacity is an all-host
+resource guarantee.
+
+All1802 recorded CLI steps have actual integer exit, owned_child_reaped=true
+and owned_group_empty=true. Exit distribution is0:1480,1:312,2:4,3:2,4:1,5:3.
+Nonzero names are exactly expected absence inspections (container300,
+volume6,image6), initial logout401/client3 twice, denied create403/client4
+once, three blocked config PLANs and four direct-open refusals.
+This does not manufacture a numeric exit/PID for the unrecorded OSError
+operation; the cohort itself remains failed.
+
+Cleanup_errors=[], remaining_owned_cli_groups/containers/volumes=0,
+pending_owned_containers/volumes={} and owned_image_inventory_empty=true;
+builder_children_removed=true.149 container creation records and2 volumes
+were tracked in this single run. Root released the lane only AFTER its
+retained cleanup/absence checks. I performed no current signal, process
+query, container deletion, cache pruning or lane release.
+
+### Actual local static checks, errors and held boundaries
+
+Allowed actions were Git source/status reads, source/data hash and JSON
+parsing of only supplied API/cohort/resource/build documents, complete
+reader/fixture/guards/transport/cleanup/main source inspection and static
+Python AST/data diff construction. No AGENTS.md was found. Existing local
+guidance and the user's narrow scope control this report-only append.
+
+Actual document/resource counts, modes and hashes were recomputed; cohort
+log-byte/hash fields match the supplied public build logs. All six b619
+reader inputs and executed helper/workflow source identities match Git.
+Reader/schema/packet and all1802 finite step data were read as DATA, without
+opening native/ZIP/image/private snapshot/key/row bodies or making a query.
+Full log bytes were read; command, warnings, completion, export/import and
+public provenance witnesses were inspected. Native/reader/archive hashes
+remain receipt/root attribution, not an independent executable check.
+
+One initial AST assertion compared a textual ast.dump spelling with an
+explicit empty keywords list that this parser omits. It exited1 before
+any source/case execution or file mutation. Structural node checks and
+whole normalized module inverse then passed without changing the proposed
+22-line diagnostic. This is a static checker representation error, not a
+runtime failure. One combined read's output was truncated by a large
+capability inventory; focused reads then recovered relevant ownership,
+tool, image/log/provenance spans. No evidence was discarded or altered.
+
+The report-aware docs/whitespace/prefix/source-only checks accompany the
+separate appendix commit. No helper/workflow/product/test source is edited,
+no alignment/merge/reset/import, native/version/CC/Cargo/build/test/probe,
+VM/Node/memory harness, Docker/PG/SQL/HTTP/provider/query/download/dispatch,
+browser/Driver, new worker/task/WT/shell, contact, deletion, main/push or
+status action occurred. Source/runtime remains HELD pending root reservation.
+All prior actual failures/UNKNOWN causes and I02/I10/R05/W02/W05 DONE remain
+unchanged; root alone owns A09 integration, publication and disposition.
+
+
+### Final report-only static receipt
+
+Actual python3 scripts/check-docs.py exited0, Markdown links and
+build-directory layout checked. git diff --check exited0.
+Complete0747 prefix130495bytes remained byte-exact; only this report was
+modified, with no staged/untracked source or candidate file. Mode0644,
+final LF and new-append trailing whitespace checks passed.
+
+Exact archived one-hunk application/reversal reproduced the full
+120263/a9b91 prospective helper and restored119193/1ac9; removing ONLY the
+added If restored the whole normalized module AST. Archived diff/main
+hashes and all5 actual public log-byte/digest records passed. Other D01
+report and the existing119193-byte helper remained exact. No proposed
+function, snapshot, controller or diagnostic was executed.
+
+Staged report-only scope, staged whitespace and disk/staged report equality
+are verified for the one appendix commit. Root owns any future source
+reservation and runtime; this report grants neither and assigns no
+unrecorded errno/site/cause or earlier benign-redb conclusion.
