@@ -227,3 +227,173 @@ Markdown links and build-directory layout checked; git diff --check exited0.
 An independent byte/scope check confirmed LF-only text, final LF, no trailing
 whitespace, no tracked-file change and exactly this one new report. The current
 worktree docs result is separate from the immutable author's recorded exit1.
+
+
+## 2026-10-03 — Independent review of the unique blank-window correction
+
+Reservation: wave30_D01_unique_blank_window_independent_review, project
+891e7443-8dac-4c1b-897f-9e53cb59c7ee, existing WT
+f2e8500e-2e56-47e3-b60e-9f81bbc8cff2. Entry parent is
+e906e75112ec7313a749cdc3f122e778cf6f2152. This phase appends only this report.
+The complete20118-byte e906 prefix, SHA256
+b66047cd443b139fe7244e4aae785ceb9ca3468acb6ed9b18c4cc32246f512aa,
+remains exact, including the original F1 finding, prospective compact variant,
+static checker failures/corrections and source-only limits.
+
+Source acceptance: Sol4's immutable44d32c824218512d4bac6aca073dde6d260bdf37
+correction resolves F1. The corrected branch selects exactly one literal
+about:blank title only after every existing owner, row-cap, positive-ID,
+unique-ID and bounded-title check has passed. The unchanged false branch
+projects all validated owned windows for cleanup. No further concrete blocker
+was found in this authorized delta. This accepts the source correction, not
+preparation execution, a browser journey, unrelated projection work or runtime.
+
+Read the complete correction appendix from user-browser report line13306:
+its finding/provenance, both16-line diffs, corrected branch and callers,
+complete83-line author static checker, retained result and limitations.
+The preceding full ff18 source was read for e906. This phase independently
+compared the entire corrected source against it, parsed both full programs,
+reversed the sole branch edit and checked all33 other top-level function
+declarations by source range. Thus the earlier body review covers every
+unchanged byte; acceptance is not based only on a declared hash or function count.
+The author checker was read, not executed; the independent checks below used
+a separately written parser/comparison tool without evaluating either candidate.
+
+| Immutable source/archive | Bytes / lines | SHA256 |
+| --- | --- | --- |
+| Full44d32c user-browser report | 1074063 /14803 | b6c235997b3db79889e51432f7887e5189570dc8f16e3ccd611e26f9a6d6bb1d |
+| Preserved ff18b723 report prefix | 949008 /13304 | 9d99eeb9503db9246b02cf03f0c49f77e110866d1d0d3cfd0635b72ac6bc9732 |
+| ff18b723 original candidate | 111182 /1197 | 94ca708e5d1bf8ff01b87ae105250cc562d95e219e11a50e65bbeff226982f2b |
+| Canonical44d32c candidate, fence at13411 | 111275 /1200 | dfd04b3d914cf332d5ceba13d0a587dc7db2ca26b82c71e453fe85b5f2a43d9d |
+| Archived forward diff, fence at13361 | 726 /16 | d0cdf11049f806797f18022ed38ea6de1b76dda3576d19c71a194adc3e2aa741 |
+| Archived inverse diff, fence at13383 | 726 /16 | 8d68cfd81eec4a88c3d1a45f99f024026fe16f6e3153af883b35a5c46356ddb7 |
+
+Both report objects use docs/roadmap/local-wave30-d01-user-browser-review.md.
+The entire949008-byte ff18 report is an exact prefix of44d32c. The canonical
+candidate consists of the1200 source lines ending with the already present LF
+after the final closing brace. The following empty Markdown separator line
+is not candidate source. An initial general fence inventory included that
+separator; canonical extraction excluded exactly that observed separator,
+asserted the boundary and added no LF or other byte. It produced the declared
+111275-byte hash and matches the independently reconstructed source exactly.
+
+The accepted source is the explicit requireBlank branch in44d32c, not the
+different compact prospective variant in the dated e906 prefix. Its only
+difference from ff18 is the following archived edit, which adds93bytes and
+three lines. No new source file has been materialized here.
+
+```diff
+--- ff18-concrete-candidate
++++ unique-blank-projection-candidate
+@@ -486,8 +486,11 @@
+   if(!s.windows.every(w=>w!==null&&typeof w==="object"&&w.pid===pBrowserPid&&
+      pPositive(w.window_id)&&typeof w.title==="string"&&w.title.length<=512)||
+      new Set(s.windows.map(w=>w.window_id)).size!==s.windows.length)return null;
+-  if(requireBlank&&(s.windows.length!==1||s.windows[0].title!=="about:blank"))
+-    return null;
++  if(requireBlank) {
++    const blanks=s.windows.filter(w=>w.title==="about:blank");
++    if(blanks.length!==1)return null;
++    return blanks.map(w=>({pid:w.pid,window_id:w.window_id}));
++  }
+   return s.windows.map(w=>({pid:w.pid,window_id:w.window_id}));
+ }
+ function pPrepareProjection(value) {
+```
+
+Independent full-source and AST proof:
+
+- The exact old two-line branch occurs once; the exact new five-line branch
+  occurs once. Forward replacement reproduces the complete canonical corrected
+  candidate, and inverse replacement reproduces the entire ff18 candidate.
+  Every byte before and after the branch is identical. Independently applying
+  both archived unified diffs, including all context lines, gives the same results.
+- Acorn parsed both complete programs, exit0. Both retain34 top-level function
+  declarations in the same order. All33 declarations other than pWindows have
+  byte-identical source ranges. All top-level string literals also match.
+- pWindows still has five top-level statements. Statements0,1,2 and4 are
+  AST-identical: result extraction, initial shape/cap refusal, complete owner/
+  ID/title/uniqueness refusal, and the original all-window cleanup return.
+  Only statement3 changes, to an if(requireBlank) with no else and exactly
+  three body statements: fixed-title filter, exact-one refusal and projection.
+- Restoring only statement3 to the original AST gives complete whole-program
+  normalized AST equality. Normalization excludes source positions and
+  preserves BigInt literal values as explicit decimal data. Original and
+  reversed AST SHA256:
+  ba23e634f3be23cc12e66cb1c99abe7189b387ab04487a602998256bf03b2676.
+  Corrected AST SHA256:
+  5b26f32ee26088e36df0d8182e251db5b17ab2e2a77ebc60e10e2f4f7156d081.
+  These independently computed values agree with the author's static receipt.
+- The entire41004-byte242-line launcher and31581-byte467-line c5 suffix are
+  byte exact. All four interfaces, the private carrier and seed producer,
+  controller/source pins, private transfer handling, collectors, latches,
+  deadlines and cleanup bodies remain unchanged. Fourteen unchanged embedded
+  Python literals and the separate223-line controller body parsed without
+  executing or importing their code.
+
+Corrected-candidate witness spans and logical consequences, not executed cases:
+
+| Witness / input condition | Source consequence |
+| --- | --- |
+| pWindows482–488: tool error, missing/non-array windows, more than32 rows, invalid row/PID/ID/title or any duplicate window ID | Null before selection, for either caller mode. An invalid auxiliary row cannot be bypassed by a valid blank match. |
+| pWindows489–493: requireBlank=true and zero exact about:blank titles | Null; no substitute title, rank, index fallback or geometry. |
+| Same branch: two or more exact blank titles with otherwise valid unique IDs | Null; ambiguity is still refused. |
+| Same branch: one exact blank title plus validated auxiliary windows | Only that blank's existing pid/window_id pair is projected. No title or arbitrary extra row field is copied. |
+| pWindows494: requireBlank=false | Original all-window projection, preserving validated owned auxiliary windows. A valid empty array still returns an empty array. |
+| pPrepareEntry670–675 | Null still latches prepared_window_ambiguous. The sole returned match supplies the exact existing PID/window bind; windows[0] now refers to a proven unique match, not ranked selection. |
+| pCleanup550–556 and566 onward | Cleanup still calls pWindows(false), detects any remaining owned windows and retains its exact-PID escalation and final-empty-window checks. Filtering does not hide auxiliary windows from cleanup or turn an unknown owner/result into absence. |
+
+Reread the full pinned public root blank contract at
+8a2c4a192d04a43cd930141506a5215cca343542:
+docs/roadmap/evidence/wave30-d01-root-blank-driver-contract.json,
+3893bytes/SHA256
+b8145f029796a2063dfe167f026fe299d85afcaedbec5a7abacbeb5bf1a5ea27.
+It records the Driver-spawned PID, selected about:blank window, exact native
+binding and inert blank snapshot. After unverifiable synthetic/background
+cooperative close, it records eleven remaining PID windows, root's exact
+owned-PID kill, named-session end, empty final window list and PID absence.
+That body supports retaining all validated owned windows in the cleanup branch.
+
+The44d32c prose additionally attributes an initial ten-window count to root.
+The pinned contract itself does not contain the initial raw window array;
+I have not independently observed or queried that array. Source acceptance
+does not depend on treating the author's attributed count as fresh evidence:
+the corrected predicate handles a unique validated blank among auxiliary
+windows, while the old predicate necessarily rejects that arrangement.
+Historical receipt IDs are not future ownership handles. The closed survey,
+root's reported parser/inverse exit0 and this independent parser result are
+separate inputs; none is an adapter or candidate execution.
+
+This phase leaves the full900s inclusive/840s active/180s preparation/60s
+cleanup allocation and sampled8.5GiB stop/intended8GiB floor exactly as in
+ff18. Pre-gate PID/lab/process-group ownership and release-UNKNOWN boundaries,
+private output/reference clearing and actual child-join requirements retain
+their original limits. It does not repair or test those separate seams.
+The Sol6 adaptation and my separate public-decision projection are still not
+composed into this corrected candidate. Old memory results and real browser
+failures remain dated; no changed memory case, private bridge or browser journey
+ran. Historical cause, sender and true first cleanup start remain UNKNOWN.
+Primary and closed-row decisions remain root-owned and unchanged.
+
+Actual checks: the independent full-source/Acorn/AST/diff/literal proof exited0
+on its first validation invocation in this phase; canonical extraction added
+no LF. The recorded root parser exit0 was supplied evidence and was not
+reinterpreted as candidate execution. Current WT documentation, whitespace,
+prefix and one-file scope results follow after this append. The author44d32c
+report still records its protected-prefix check-docs exit1 for the previously
+described SimpleNamespace(demo=d target; this review does not rewrite that
+prefix, change the checker or call it a checker defect.
+
+No candidate VM/eval, case, reviewed function, launcher/controller/private
+transfer, Driver/browser, native/product/Cargo, HTTP/network, external query,
+secret-file read or runtime occurred. No slot was acquired or released.
+This source acceptance creates no runtime authorization. Root alone reviews
+and integrates the report, reserves any source follow-up and releases any
+subsequent focused validation or fixture.
+
+Append-only WT documentation/whitespace/prefix/scope results:
+python3 scripts/check-docs.py exited0 with Markdown links and build-directory
+layout checked; git diff --check exited0. An independent byte check confirmed
+the entire20118-byte e906 prefix, LF-only text, final LF, no trailing whitespace,
+the exact726-byte forward-diff hash above, this sole changed report and no new
+files. The current WT result is separate from the author's immutable exit1.

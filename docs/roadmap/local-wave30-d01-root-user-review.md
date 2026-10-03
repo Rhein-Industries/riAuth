@@ -220,3 +220,26 @@ separately. Encoded data were not evaluated. The five historical metadata files,
 old failures, unknown senders, and unpassed confidential browser journey remain
 unchanged. Root reserved a source-only composition with the exact reviewed
 projection; no new action, runtime or completion is authorized by this note.
+
+
+## 2026-10-03 — independent correction acceptance; exact memory source still held
+
+Root fully read all170 new lines of `99d740c126cfe1a28b28d629c026e87ddb3aba46`.
+The unique blank-window source correction is independently accepted, with
+all owned cleanup windows retained and ambiguity still refused. Its actual
+prepare/bridge/Driver behavior remains unexecuted.
+
+Root fully read all292 lines of `88b57b1923db8bc84773f983b622fb93d5e3d976`.
+It independently identifies the same normal-EOF blocker and accepts only the
+bounded source coverage of the declared25-case old9f harness. Root fully read
+the correction prose and68-line checker at
+`e4431d4f85eec7add72dec0183b9784917e451c3`, checked the entire corrected
+209970-byte controller SHA256
+`4c62dfc156a6b6ad5e4528d48124c926210f0abffdd2f6d8538bded788be090e`
+against the previously fully reviewed source, and parsed it without execution.
+Only the22-byte normal-EOF flag assignment differs; all payload bytes, cases,
+receipt-before-grade/final clock/caps/owned-group policies remain exact.
+Changed-delta independent review is separately assigned. No child/VM/case,
+private input or browser runtime has run; runtime release stays held pending
+that acceptance and fresh prerequisite checks. Later public projection and
+preparation composition are not validated by this old9f harness.
