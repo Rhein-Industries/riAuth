@@ -336,3 +336,232 @@ shell, board mutation, main edit, merge or push occurred. RiWork Cua.ai Driver
 remains the sole desktop provider if a future authorized scope needs one.
 All accepted receipt-secret/header/PAM/permission/review/removal/audit/credential/
 Group and60-second contracts and already closed original rows are preserved.
+
+## Actual native ARM disposition appendix — 2026-10-03
+
+Project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, original A09
+`506e3979-a590-4af3-8fa8-ee90d3a517f2`, same supporting WT/branch. This
+follow-up reserves only an append to this independent report. The entire
+`f64b4b9aab4a6e19e9a07bf1ec04b7a4a3c1444c` prefix remains byte-exact:
+**24,371 bytes / 338 lines**, SHA-256
+`308c1df644c6f63a0836f28a5f319280177c50ecf79fe62d5b7d05ae380f0ee4`.
+Its earlier ACTIVE/unknown observations remain dated observations. The new
+terminal evidence below does not rewrite them or any historical failure.
+
+**Independent recommendation: original local A09 DONE is now defensible.**
+The specific native ARM container facet identified in the preceding review has
+passed its reserved cohort, with verified terminal evidence and cleanup.
+Together with the retained native x64/ARM archives, x64 encrypted-redb/container
+pass and ARM PostgreSQL format3 pass, this supplies produced and tested Linux
+x86-64/ARM64 server, client, container and maintenance artifacts and observed
+shared identity/authorization/configuration behavior at the exact pins. I found
+no remaining concrete local A09 implementation/evidence blocker in this scope.
+This is an independent original-row recommendation; root alone accepts the
+disposition and changes statuses. No board action occurred here.
+
+### Exact new input provenance and read scope
+
+I read the full supplied root receipt at
+`/Users/dominik/.local/share/riwork/orchestrators/projects/891e7443-8dac-4c1b-897f-9e53cb59c7ee/planning/evidence/wave30-a09-arm-container-37101183416-root-review.json`:
+10,575 bytes, SHA-256
+`933bb1368d30ea9ba21e42728b1141420302ab581755fb968c1859f2c50d3e28`.
+I independently read/hashed and decoded the complete three sanitized evidence
+files supplied under `/tmp/riauth-root-a09-37101183416`:
+
+| Evidence | Bytes | SHA-256 |
+| --- | ---: | --- |
+| container-cohort.json | 667,025 | `48338cb11ecdab5184966e70152442349411a96ab5ea182aa052ab642f142523` |
+| resources.jsonl | 308,967 | `cbaca945d6e14feef899122b2f5d54bdca2af23b62d284b05de084ee453c3a0e` |
+| launch.json | 167 | `b60d78ac7770232e8e8bd5ff53ac145997656c22cc7bf774ac92305186810477` |
+
+The complete JSON documents were initially parsed with duplicate-key refusal;
+all 2,726 step records and all 1,672 resource records were inspected through
+bounded structural/count/predicate projections. I read the entire root receipt
+body and each of the ten complete preservation packets. This is data review,
+not 2,726 individual command replays, inspection of raw private rows, or review
+of every capability definition. No raw reply, session, key, password or low-
+entropy secret hash was printed or added to this report.
+
+| Role | Exact pin / attribution |
+| --- | --- |
+| Successful native ARM terminal | Run `37101183416`, job `111140870511`, attempt1; successful terminal attribution supplied by root and consistent with the complete result/cleanup records. No new API/job-log query here. |
+| Cohort controller | `544d1340b80cd3e040dc13142cdcbc1d75fea4cb`; GitHub run/workflow SHA, repository and branch metadata agree in the actual JSON. |
+| Built product | `9a819317efb3a13fa27cd86f884be2be00898fc0`, tree `1528b61ba463d9262d6252d54174748a176f313b`; reviewed by `b71b7b0041a549793233e8c7a81bbb61797e20f3`. |
+| Reviewed helper | 138,392 bytes, SHA-256 `6726dfd945445873214e934aa1f20815dc99ab24660b2205a45fd43c1486f221`. |
+| Reviewed workflow | 4,640 bytes, SHA-256 `63887b4f57c959ce5256865c2befc7cc568b95e9eb7d10eff0909cf3dc6747b8`. |
+| New output transport | Artifact `11267885639`, `riauth-local-container-arm64-37101183416-1`,112,643,167 bytes, SHA-256 `82693c5e8b90118e9e927c62605fec387da71bca2cc5869dfd89e0413b466501`. |
+
+Whole-byte Git comparisons independently reconfirmed helper/workflow equality
+between the actual controller544d and the preceding review's fixed publication
+`a6d361600a03713fc1b687f367e9db84efe43463`. Their full previously reviewed facet
+bodies therefore apply without a new source substitution. Static AST parsing
+passed; no module import or function invocation occurred. Product9a, controller
+544d and publicationa6 remain separate roles, not interchangeable builds.
+
+Root's full receipt records independent rehashing of the new outer ZIP and all
+eleven declared members. It records extraction of only these three evidence
+JSON/JSONL files, with no image/reader artifact execution by root. This review
+rehashes only the supplied three files and receipt, not the outer ZIP or other
+eight members. The earlier native ARM input still records
+`root_outer_zip_rehashed:false`; the cohort helper's
+`native_input.outer_zip_rehashed:true` is its own transport observation, not a
+retroactive root rehash of that older native ZIP.
+
+### Actual architecture, production and control evidence
+
+The actual daemon is Linux/aarch64, Ubuntu24.04.5 LTS, Docker28.0.4. Both images
+are OCI arm64 with exact product9a source labels, their respective edition and
+fresh owner binding. Capability projections give aarch64/Linux,0.1.1 and
+features `[essentials]` / `[essentials, platform]`. The exact native source,
+transport and parity checks precede these outputs in the unchanged controller;
+the label0.1.1 alone is not provenance or latest-source equivalence.
+
+| ARM image | ID | Retained archive / copied server SHA-256 |
+| --- | --- | --- |
+| Essentials | `sha256:1ecfdb745204bd1a4462a51f6fd8946ea91c4adc84642a413cec81fbac13ffd3` | Archive48,610,393 bytes, `08eb887ec14f647f6e21e9ae6837ff5567ebce91d03c2850355920509c830757`; server `94b1288287b81759cd14c57a3de09a62a3a8a63ccefe3e72af61237741a21a10`. |
+| Platform | `sha256:de68f52d81a8bccac43e506f50b1435caced55d3e42ccab4fa21bcb3407ea207` | Archive52,992,508 bytes, `030e0d64f20af0b26cf3e4dceeb115d8e42f45473d38785af95ebdb5d50fdd92`; server `5b34e091a6c999a066d1020251e01a11a952e8317e8cf5e41d782508f08c1894`. |
+
+The bounded jobs1/inc0/debug0 resource-only Dockerfile recipe records exact
+reversal to the unchanged original recipe. This was the ordinary ARM build path,
+not the x64 prebuilt branch. Essentials build exited0 in921.138s, Platform build
+exited0 in1169.203s, each save/load exited0, and the bound store-reader build
+exited0 in1148.163s. The reader is9,966,472 bytes, SHA-256
+`6f3254ef47cae40b11f8b90f8b400efe69b102dd562e0916bee9e506e0f7d469`,
+ELF183, target `aarch64-unknown-linux-gnu`, release/platform,test-support with
+exact product9a source/manifests/probe pins. No compilation or binary inspection
+was repeated here; these are recorded run/root observations.
+
+All four volume probes actually report UID/GID10001,mode0700 before credentials.
+The full cohort records226 container and4 volume creation identities. The
+unchanged nonroot/read-only/security/mount/private600 predicates guarded keygen,
+init, maintenance, reader, configuration and live servers; successful source-
+bound execution and all eleven checks provide actual control evidence rather
+than merely a rendered template. Four server-start and four owned-container-
+stop records each have numeric exit0. No successful root/permission fallback
+or altered topology is inferred.
+
+### Application and failure assertions actually reached
+
+The actual checks array exactly matches the eleven previously reviewed literals,
+with no duplicates or substituted result names:
+
+| Check / source facet | Actual accepted observation |
+| --- | --- |
+| uid10001_copy_up_private_modes; encrypted_redb_key_configured | Private owned volumes/config/key/redb initialized through the matching maintenance executable. |
+| pinned_format3_startup_and_sixteen_rates | Successful enforced format3 startup with the complete effective map; no individual mutation of all16 categories claimed. |
+| exact_discovery_and_jwks; all12_userview_fields_and_group_grant_subject | Complete ordinary-user/group/grant/discovery/JWKS snapshot equality through E→P→E at one identity store. |
+| audit_events200_user_create403_client4 | Real ordinary auditor read allowed; user creation denied with HTTP403/client4 and unchanged visible users. |
+| two_logout401_client3_across_handoffs | Two explicitly logged-out credentials remain refused after the edition handoffs. No full-TTL expiry claim. |
+| issuer_policy_loginrate_specific_offline_refusals | Exact issuer/session-policy/login-rate candidate blockers and direct refusals, with full logical/config/key preservation. |
+| read_only_plan_exact_token_EPE; wrong_direct_build_refused | Read-only exact plan/token followed by explicit offline activation; wrong direct edition opens refuse. |
+| isolated_platform_agent_and_downgrade_refusal | Separate retained Platform agent state blocks Essentials/downgrade rather than being silently dropped. |
+
+There are18 successful, guarded snapshot-reader observations. The reader's last
+physical self-observation reports config/key/redb equality true; that field is
+not the ten refused-open preservation packets. Every one of those ten packets
+instead reports **physical_redb_equal:false**, but all exact config/key/candidate
+byte predicates, full row-hash equality, metadata equality and count equality
+are true, with added/changed/removed all0. The recorded logical noninterference
+is the accepted refusal oracle. Physical byte inequality is not rewritten as
+equality, nor interpreted as unsafe logical mutation.
+
+Every step records a numeric exit, `owned_child_reaped:true` and
+`owned_group_empty:true`. Their complete counts are:
+
+| Exit | Count | Source-bound role |
+| ---: | ---: | --- |
+| 0 | 2,237 | Successful transport, setup, build, application and cleanup commands. |
+| 1 | 470 | 454 container,10 volume and6 image absence checks. |
+| 2 | 6 | Product-tool direct refusal boundary. |
+| 3 | 6 | Base-client authentication refusal. |
+| 4 | 3 | Base-client authorization refusal. |
+| 5 | 4 | Maintenance-tool plan/preflight refusal. |
+
+Total2,726 is joined, not “all exits0.” The nonzero name/exit pairs agree with
+the unchanged fixed refusal/absence predicates and the successful actual cohort.
+The root terminal PASS is not an assertion that every operation succeeded.
+No private failure envelope or token is needed in public evidence.
+
+### Resource and cleanup cross-checks
+
+All1,672 resource records were parsed, sample count and every per-path minimum
+recomputed, and elapsed order checked. The minimum on host/private/workspace/
+Docker storage is **108,513,771,520 bytes**. Launch metadata separately records
+115,879,952,384 bytes on each initial path. The final resource sample elapsed is
+3342.556s; it is a sample timestamp, not a newly measured parent wall time.
+
+The full-precision receipt/controller maximum gap is2.004374746999929s. JSONL
+stores rounded gap values whose maximum is2.004s. Their difference is within
+the documented0.0005 rounding tolerance. Root's initial exact-gap assertion
+failed and was corrected without any evidence/cohort change; that correction
+remains disclosed. This is sampled capacity, not a hard quota, kernel-IO bound
+or guarantee about a stalled final filesystem write. The reviewed30GiB start/
+10GiB stop/8GiB floor,7200s controller/1200s fixture and command/process cleanup
+limits are unchanged; no deadline or threshold was weakened for this pass.
+
+The actual complete receipt and cohort agree: cleanup errors empty; remaining
+owned CLI groups, containers and volumes all0; pending container/volume maps
+empty; owned image inventory empty; builder children removed. All2,726 direct
+children are joined and their groups empty. Daemon ownership/creation identities
+and cleanup are separate from those CLI group proofs. No prune or shared-cache
+deletion is credited. These are terminal evidence observations, not a new live
+process/daemon inspection by this supporting review.
+
+### Original A09 versus remaining release gates
+
+The original row was reread in full from the same dated project export; its
+244,354-byte/SHA0b38ca identity and05:51:05Z mtime are unchanged. Its outcome and
+exact shared-distribution wording remain as quoted in the original prefix.
+The later source-identical ARM actual evidence satisfies the previously named
+local architecture/identity/authorization/configuration facet. No source defect
+or still-missing local A09 facet is demonstrated by these supplied observations.
+No extra universal campaign, mandatory every-interface/device/tenant matrix or
+additional latest-source build is proposed as a substitute for original scope.
+
+The recommendation preserves all of these remaining responsibilities:
+
+- **Q08:** select and verify the exact intended shipped source/artifact cohort,
+  both editions/backends/architectures/exclusions/config rejection and the
+  corresponding supported-platform release checks. Dated9a/b619 LOCAL products
+  are not an official current24-file release or a6 build.
+- **Q10:** exact installed artifact/schema/upgrade/restore/recovery/rollback
+  acceptance remains separate. This E→P→E sample is no installed recovery gate.
+- **Q11:** selected release signatures, dependency inventories/provenance,
+  release-policy identity and honestly scoped independent review remain separate.
+  No signature, attestation trust root, official tag/key/release or external
+  assessor is invented. b619's stale historical notices are retained, not fixed
+  retroactively or regenerated by this review.
+
+Actual fields remain **official_release:false** and
+**shared_full_gate:not_run**. The PG receipt's full_shared_gate:not_certified and
+release_gate_result:false also remain exact. Successful samples do not establish
+universal client/protocol/browser/tenant compatibility, physical USB support,
+HTTPS/passkey/recovery certification or minimum-libc/all-OS support. Required
+downstream release claims are not waived. All earlier failed UID/archive/native/
+private-boundary/physical-comparison/bind receipts retain their historical
+outcomes and unknown causes; this new pass supplies no retrospective diagnosis.
+
+### Checks and unchanged scope for this append
+
+All independently performed checks here are static/data operations: full receipt
+and three-file identity; strict complete JSON decoding; selected provenance,
+architecture/edition/image/reader pins; all step exit/group/reap predicates;
+eleven exact check names; four UID probes; ten full logical packets; complete
+resource count/minima/rounding comparison; cleanup/pending-map predicates;
+helper/workflow whole-byte reuse plus AST; full original row reread; and complete
+f64b prefix equality. Those checks passed with exit0. No prerequisite or data
+comparison failure occurred in this append phase. Root's historical display/
+rounding corrections and the preceding audit's authoring/read failures are
+preserved instead of being presented as new cohort failures.
+
+Final docs/links/UTF-8/whitespace and append-only scope checks passed with exit0;
+tracked-file hygiene passed (1,056 files). The full f64b prefix and previous
+Q08/Q11/S02 reports are unchanged. Staged scope and separate commit cleanliness
+are verified for handoff. The supporting
+worktree has no product/helper/workflow/test/guide or other report change. No
+archive was opened/extracted, no artifact executed, and no query/download,
+provider/service/native/Cargo/compiler/browser/desktop/worker contact occurred.
+No slot was acquired or released; root's stated lane releases are context, not
+this report's actions. No task/worktree/shell creation, merge/reset/main/push or
+status mutation occurred. Primaryf2 and all closed original rows/contracts are
+unchanged. Root exclusively publishes and owns original A09 disposition.
