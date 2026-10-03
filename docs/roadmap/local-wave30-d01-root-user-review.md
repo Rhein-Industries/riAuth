@@ -2961,3 +2961,9 @@ consuming-reap plus proven group absence. Live/unknown/other errors must still
 fail, and no fake wait or post-reap delivered signal is allowed. This report
 implements no such correction and releases no repeat. First old515 native
 cause remains UNKNOWN; all earlier failures stay failed and unchanged.
+
+## Terminal-child cleanup source and composed input review — 2026-10-03
+
+Root read the complete 512-line `effd43bf00c56c19ba965e1c52e0d01d50ca343f` appendix, shared 78-line function and both callers. Independent whole-byte/AST inverses reproduce d29 controller and 8a4 outer; every other function stays exact. The six-line branch defers only exact errno 1 PermissionError after validated terminal WNOWAIT of the original unreaped child. Actual consuming status and group absence remain required; live/unknown/other-error cases, nonzero exit, incomplete evidence and prior failures still refuse. No kernel cause is inferred.
+
+Root separately reviewed and bound outer SOURCE_BYTES=242593 and SOURCE_SHA=4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f. Controller DATA is 242593 bytes, SHA-256 `4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f`; composed outer DATA is 21684 bytes, SHA-256 `72ff2cbe0a9478fa172c74b5d8e34cfad16e5dd57d67e4c3e50077038a165dcf`. Apart from the shared insertion, only these two existing outer assignments change. Exact previous DATA files were preserved in exclusive private 0600 backups, and active legacy filenames were deliberately retained with new full hash/size binding. All native pins, closed caller environment, timing/IO/resource limits, Node payload and 36 cases remain unchanged. AST parse/in-memory compilation passed without executing the resulting code objects. This source staging alone creates no child, product or browser result.

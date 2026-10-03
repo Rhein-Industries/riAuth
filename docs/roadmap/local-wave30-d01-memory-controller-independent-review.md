@@ -2025,3 +2025,515 @@ AST-node inverses matched. Entire 82139-byte ecb prefix and report-only scope
 matched. Documentation links/build layout, whitespace and scope checks exited
 0, with no link or build-layout errors. No executable/private DATA file was
 changed and no reviewed runtime was invoked.
+
+## 2026-10-03 terminal-child signal permission deferral — SOURCE DESIGN ONLY
+
+Reservation `wave30_D01_terminal_signal_permission_cleanup_design` owns only
+this appendix. The complete `ab8d7e7325bc961a0d538950456dc1b909f193b3` prefix is
+preserved: 116152 bytes, 2027 lines, SHA-256
+`d515a32069e3824859534ca391dbd0af966e01d78811afaf3b0c348c3c2a1302`.
+The new actual whole envelope remains **FAILED**. Old515's native cause/child
+exit and the first generic preflight failure's exact cause remain UNKNOWN.
+
+### Actual failed run and approved closed evidence
+
+Root separately released nonce `fd49b9cead44f00b` with outer 8a4 and unchanged
+controller d29. The complete public project-orchestrator receipts were read:
+
+| planning/evidence receipt | Bytes | SHA-256 |
+| --- | ---: | --- |
+| wave30-d01-new36-env-outer-fd49b9c-tool.json | 801 | `abb3a7110efe2a9fa7ae958410ce3c272a7ec7a3a5883df88299b44f42abedd2` |
+| wave30-d01-new36-env-cleanup-root-verification.json | 4822 | `afae835c42ed0784e316b84534212701e82524ec976542ef7523feae9b113458` |
+
+Tool/outer exit is **1**, elapsed 0.197602042. The captured controller exit is
+**1**; complete capture, reaped and direct group empty are true. Outer's
+first failure is `owned_cleanup_unconfirmed`, with diagnostic
+`signal_owned_group` / errno 1 / identity 2, WNOWAIT code 1/status 1 and
+real consuming-reap code 1/status 1. The closed controller return is also
+failed, despite inner Node's actual exit **0**, reaped/group empty true,
+WNOWAIT code 1/status 0 and consuming-reap code 1/status 0. Its first
+failure is the same signal permission diagnostic. Event code 1 and exit
+status are separate recorded fields; Node did not exit 1.
+
+The packet records 36 completed cases, 51 cells, 311714 assertions,
+2294 privacy checks, no child case failure and no unreached cases.
+That is actual packet evidence inside a **FAILED whole envelope**, not a
+whole-memory acceptance or a browser/product result. Both provisional
+reviews have grade_before_final_clock false. The original diagnostic records
+errno and event/status fields, not an exception class, delivered signal,
+kernel policy or OS-defect cause; none is retrospectively inferred.
+
+Root's verification records group absence for original PIDs/groups 31721 and
+31722, whole_envelope_pass false and release at
+2026-10-03T03:24:45.281923+00:00. Root also supplied fresh exact ps absence.
+These are root's retained/supplied observations; this source phase did not
+query a PID, group or native process. Root released the lane on actual
+consuming status and absence proof before this report, not on a retry or
+another nonzero signal.
+
+Only the six explicitly approved closed metadata/packet files in the exact
+nonce's two directories were read. Directories were UID 501/mode 0700;
+files were regular nonsymlinks, UID 501/mode 0600. No other private capture,
+credential, log or source-directory inventory was read. Their byte/hash pins:
+
+```json
+{
+  "d01-composed-outer-fd49b9cead44f00b/retained.json": {
+    "bytes": 2375,
+    "sha256": "c9bd2a1e4e4a5924afc50b8aa5df211a24dcaa8380c1d0d0626d6ae7467e8037",
+    "mode": "0600",
+    "uid": 501
+  },
+  "d01-composed-outer-fd49b9cead44f00b/review.json": {
+    "bytes": 305,
+    "sha256": "1d8ce26bd1b00fabd5ba178c6bb7409e06b0b6669b4e7667c0ebbc61177b8e67",
+    "mode": "0600",
+    "uid": 501
+  },
+  "d01-composed-outer-fd49b9cead44f00b/controller.stdout": {
+    "bytes": 359,
+    "sha256": "27a9b954dedb3a0716704adef11b3c2aaedc9d9c727aad83bca1b686c8f505db",
+    "mode": "0600",
+    "uid": 501
+  },
+  "d01-continuation-memory-fd49b9cead44f00b/retained.json": {
+    "bytes": 748,
+    "sha256": "0030115fd975abc7e5771fb03a4b584aa056a278f515002e195546cd3cdfe8a5",
+    "mode": "0600",
+    "uid": 501
+  },
+  "d01-continuation-memory-fd49b9cead44f00b/review.json": {
+    "bytes": 7116,
+    "sha256": "0a89e9fadafad045a9ea9632b056ef425eaa5f0f998cbc4baf205e680e8fcd79",
+    "mode": "0600",
+    "uid": 501
+  },
+  "d01-continuation-memory-fd49b9cead44f00b/child.stdout": {
+    "bytes": 6862,
+    "sha256": "7bd435978f008a4a904e3c2d00dc2b0e49a6a1323874d080dd56ba436d78bbe3",
+    "mode": "0600",
+    "uid": 501
+  }
+}
+```
+
+The complete original Node packet below is 6862 bytes including its existing
+final LF, SHA-256
+`7bd435978f008a4a904e3c2d00dc2b0e49a6a1323874d080dd56ba436d78bbe3`.
+The packet's successful case observations do not override either failed
+envelope or claim the new cleanup proposal passed.
+
+```json
+{"schema":"riauth.d01-continuation-memory/v1","source":{"candidate_sha256":"505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f","candidate_bytes":33701,"baseline_sha256":"7ab23019e838512a84600d4069fef2e419b9bb7f07ff5aaa2c7477af956f9ca8","baseline_bytes":32502,"diff_sha256":"b6f884994720949a44bfb417ff68de56e71e04f04d7357686ffc71452a873ed2","logic_sha256":"6ae4fd802a5515aade80b0b46cffe38030d9b4a46db427b32ed47fb9e20e583c","full_inverse":true},"planned":[{"name":"phase_entry_then_continuation","group":"phase_binding"},{"name":"password_survives_until_password_dispatch","group":"secret_lifetime"},{"name":"missing_password_refuses_without_input","group":"secret_lifetime"},{"name":"unowned_context_refuses_without_operations","group":"phase_binding"},{"name":"undeclared_ref_refuses_input","group":"phase_binding"},{"name":"stale_ref_cannot_cross_cells","group":"phase_binding"},{"name":"invalid_kind_repeated_cleanup_clears_before_await","group":"secret_lifetime"},{"name":"helper_zero_final_snapshot_then_cleanup","group":"helper_handoff"},{"name":"helper_zero_missing_page_still_fails","group":"helper_handoff"},{"name":"helper_nonzero_final_still_refuses","group":"helper_handoff"},{"name":"helper_zero_other_kind_still_refuses","group":"helper_handoff"},{"name":"helper_zero_prepared_phase_still_refuses","group":"helper_handoff"},{"name":"partial_line_drains_before_output_and_next_cell","group":"partial_framing"},{"name":"partial_exact_cap_is_accepted","group":"partial_framing"},{"name":"partial_over_cap_refuses","group":"partial_framing"},{"name":"partial_joined_controller_refuses","group":"partial_framing"},{"name":"partial_unavailable_controller_refuses","group":"partial_framing"},{"name":"partial_deadline_prevents_extra_poll","group":"partial_framing"},{"name":"partial_completed_late_still_refuses","group":"partial_framing"},{"name":"retained_start_budget_refuses_next_cell","group":"phase_binding"},{"name":"inclusive_cleanup_deadline_does_not_invent_join","group":"cleanup_latch"},{"name":"first_page_failure_survives_later_helper_error","group":"cleanup_latch"},{"name":"missing_absence_proof_prevents_release","group":"cleanup_latch"},{"name":"cleanup_exception_is_private","group":"cleanup_latch"},{"name":"pending_metadata_command_prevents_release","group":"cleanup_latch"},{"name":"projection_exact_pairs_and_private_field_omission","group":"public_projection"},{"name":"projection_otp_observed_without_action_or_value","group":"public_projection"},{"name":"projection_required_consent_allow_roundtrip","group":"public_projection"},{"name":"projection_optional_consent_continue_roundtrip","group":"public_projection"},{"name":"projection_role_and_label_rejections","group":"public_projection"},{"name":"projection_incomplete_and_error_rejections","group":"public_projection"},{"name":"projection_missing_or_wrong_advertised_action","group":"public_projection"},{"name":"projection_malformed_refs","group":"public_projection"},{"name":"projection_disjoint_rows_do_not_infer_association","group":"public_projection"},{"name":"projection_duplicate_actions_preserve_multiplicity","group":"public_projection"},{"name":"projection_latest_success_replaces_previous_snapshot","group":"public_projection"}],"attempted":["phase_entry_then_continuation","password_survives_until_password_dispatch","missing_password_refuses_without_input","unowned_context_refuses_without_operations","undeclared_ref_refuses_input","stale_ref_cannot_cross_cells","invalid_kind_repeated_cleanup_clears_before_await","helper_zero_final_snapshot_then_cleanup","helper_zero_missing_page_still_fails","helper_nonzero_final_still_refuses","helper_zero_other_kind_still_refuses","helper_zero_prepared_phase_still_refuses","partial_line_drains_before_output_and_next_cell","partial_exact_cap_is_accepted","partial_over_cap_refuses","partial_joined_controller_refuses","partial_unavailable_controller_refuses","partial_deadline_prevents_extra_poll","partial_completed_late_still_refuses","retained_start_budget_refuses_next_cell","inclusive_cleanup_deadline_does_not_invent_join","first_page_failure_survives_later_helper_error","missing_absence_proof_prevents_release","cleanup_exception_is_private","pending_metadata_command_prevents_release","projection_exact_pairs_and_private_field_omission","projection_otp_observed_without_action_or_value","projection_required_consent_allow_roundtrip","projection_optional_consent_continue_roundtrip","projection_role_and_label_rejections","projection_incomplete_and_error_rejections","projection_missing_or_wrong_advertised_action","projection_malformed_refs","projection_disjoint_rows_do_not_infer_association","projection_duplicate_actions_preserve_multiplicity","projection_latest_success_replaces_previous_snapshot"],"completed":["phase_entry_then_continuation","password_survives_until_password_dispatch","missing_password_refuses_without_input","unowned_context_refuses_without_operations","undeclared_ref_refuses_input","stale_ref_cannot_cross_cells","invalid_kind_repeated_cleanup_clears_before_await","helper_zero_final_snapshot_then_cleanup","helper_zero_missing_page_still_fails","helper_nonzero_final_still_refuses","helper_zero_other_kind_still_refuses","helper_zero_prepared_phase_still_refuses","partial_line_drains_before_output_and_next_cell","partial_exact_cap_is_accepted","partial_over_cap_refuses","partial_joined_controller_refuses","partial_unavailable_controller_refuses","partial_deadline_prevents_extra_poll","partial_completed_late_still_refuses","retained_start_budget_refuses_next_cell","inclusive_cleanup_deadline_does_not_invent_join","first_page_failure_survives_later_helper_error","missing_absence_proof_prevents_release","cleanup_exception_is_private","pending_metadata_command_prevents_release","projection_exact_pairs_and_private_field_omission","projection_otp_observed_without_action_or_value","projection_required_consent_allow_roundtrip","projection_optional_consent_continue_roundtrip","projection_role_and_label_rejections","projection_incomplete_and_error_rejections","projection_missing_or_wrong_advertised_action","projection_malformed_refs","projection_disjoint_rows_do_not_infer_association","projection_duplicate_actions_preserve_multiplicity","projection_latest_success_replaces_previous_snapshot"],"completed_groups":{"phase_binding":5,"secret_lifetime":3,"helper_handoff":5,"partial_framing":7,"cleanup_latch":5,"public_projection":11},"cells":51,"stub_counts":{"collector_marker":2,"controller_poll":107,"navigate":2,"snapshot":41,"type":2,"click":4,"collector_stop":27,"collector_clock":213,"kill":27,"end_session":27,"windows":27,"collector_readback":27,"collector_persist":27},"assertions_completed":311714,"privacy_checks_completed":2294,"first_failure":null,"unreached":[],"elapsed_ms":59.467375,"full_candidate_only":true,"actual_tools_or_product":false}
+```
+
+### Smallest shared hunk and sufficiency boundary
+
+Both original staged sources were read fully as DATA via O_NOFOLLOW,
+verified regular UID-501/mode-0600 and matched their immutable originals:
+controller d29 from `560525a07eea0a696ffeb36599308795348dab47`,
+`docs/roadmap/local-wave30-d01-root-user-review.md` final Python fence;
+outer 8a4 from immutable ab8's candidate fence in this report.
+Their group_cleanup bodies match all 3773 bytes / 72 lines / SHA-256
+`de0d06fd97cf4a15bb4a0443bdce42e9e27c4ea7cdfc3ab6ee9d80b796201231`.
+
+Insert only the following six lines after the existing ProcessLookupError
+pass around the pre-reap SIGKILL attempt. Addition: 303 bytes, SHA-256
+`0671bad33042dc7708d25f22dd1e8332193adbe15496f5a8addc6e4727717453`.
+
+```python
+        except PermissionError as error:
+            number=error.errno
+            if type(number) is not int or number!=1 or not terminal(observation):raise
+            if diagnostic["stage"] is None:
+                diagnostic["stage"]="signal_owned_group"
+                diagnostic["errno"]=number
+```
+
+Only PermissionError, strict type-int/nonbool errno 1, and the original
+already validated terminal WNOWAIT event permit deferral. The captured
+number is read once. No permission exception is generally ignored.
+The unchanged preceding flow checked eligible PID/cached returncode,
+installed default SIGCHLD guard, exact original child/event/PID/signo/code/
+status types, and the ownership guard before this signal attempt.
+The only observations reaching the branch were made with WNOWAIT;
+a live-path None cannot satisfy terminal. No new group search, ownership
+transfer, reaper, fallback or delivery authority is introduced.
+
+The branch records the original fixed stage/errno without latching that
+one observation as a final cleanup failure. It neither sets code/reaped/
+empty nor claims that a signal was delivered. Those results still come
+only from the unchanged consuming waitid and group-absence block. The
+diagnostic may now describe a deferred observation; stage/errno alone is
+not a success verdict. If a later reap/absence operation fails, first
+failure is latched by the unchanged code and result flags remain refusing,
+even though the first diagnostic remains the earlier permission observation.
+
+Both complete caller bodies were read: controller main refuses nonzero/
+unknown child status, incomplete/capped output, invalid/source-mismatched
+packet, child failure, missing counts, unreaped/nonempty cleanup, evidence
+failure and final deadline; outer main additionally retains actual status
+before comparisons and requires the exact closed zero-exit passing return.
+Neither caller accepts merely a present child, diagnostic or WNOWAIT event.
+Any preexisting first failure stays latched; this branch never clears it.
+
+Counterexamples were assessed by source paths, not executed:
+
+- Live/unknown event, wrong PID/nonterminal event or cached returncode refusal
+  cannot take the new terminal-only deferral; original ownership/refusal
+  paths remain. A live child that exits between observation and the signal
+  still has None here and conservatively fails.
+- Permission errno 13, any other errno, bool True, float/string 1 or missing
+  errno rethrows to the original failure path. Other exception classes
+  retain the original outer catch.
+- ECHILD, no consuming result before deadline, wrong consuming event/PID or
+  another reap failure leaves status unknown/reaped false and fails. There
+  is no Popen.wait fallback or synthesized zero.
+- A surviving group member after leader reap, or a permission/unknown result
+  from signal-zero query, leaves empty false and fails. The terminal leader
+  alone cannot prove all group members gone.
+- A real nonzero child result remains nonzero and both callers fail; an
+  existing capture/packet/deadline failure remains first even if cleanup
+  subsequently proves reaped and empty.
+- After reap only the existing zero-signal existence query remains. A reused
+  PID/group cannot authorize a new nonzero signal; presence or uncertainty
+  refuses instead of triggering discovery/delivery.
+
+Under the existing fresh single-reaper/waitable-child premise, I found no
+new authority/refusal bypass in this six-line branch. This is conditional
+source sufficiency, not execution or an exact host/kernel attestation.
+General current Python docs explain that WNOWAIT preserves waitability for
+later status retrieval, and PermissionError spans more than EPERM, so the
+numeric restriction matters.
+[Python waitid/WNOWAIT documentation](https://docs.python.org/3.14/library/os.html#os.WNOWAIT),
+[Python PermissionError documentation](https://docs.python.org/3.14/builtins/exceptions.html#PermissionError).
+Those pages currently identify 3.14.8; they support general API reasoning,
+not the installed 3.14.6 native instruction mapping or an errno cause.
+The ec88 interpreter/build/loader and no-foreign-reaper assumptions remain.
+
+### Complete changed function DATA
+
+Candidate shared body: 4076 bytes, 78 lines, SHA-256
+`c6c97888c986a89d7ac2b608f6bd0ebcb000279c90b1e1022a822b0c4e2fe75a`.
+It preserves every original byte outside the six-line insertion.
+
+```python
+def group_cleanup(child):
+    # Only the exact unreaped Popen child can authorize a nonzero group signal.
+    reaped=False;empty=False;code=None;owned=False;stage="child_identity"
+    diagnostic={"stage":None,"errno":None,"identity":0,
+                "waitid_code":None,"waitid_status":None,
+                "reap_code":None,"reap_status":None}
+    def failed(at,error=None,label="owned_cleanup_unconfirmed"):
+        if diagnostic["stage"] is None:
+            diagnostic["stage"]=at
+            number=getattr(error,"errno",None)
+            diagnostic["errno"]=number if true_int(number,1,4095) else None
+        latch(label)
+    def terminal(info):
+        return (info is not None and type(info.si_pid) is int and info.si_pid==child.pid and
+                type(info.si_signo) is int and info.si_signo==signal.SIGCHLD and
+                type(info.si_code) is int and
+                info.si_code in (os.CLD_EXITED,os.CLD_KILLED,os.CLD_DUMPED) and
+                true_int(info.si_status,0,255) and
+                (info.si_code==os.CLD_EXITED or info.si_status>0))
+    eligible=true_int(child.pid,1,2147483647) and child.returncode is None
+    try:
+        if not eligible:raise ValueError("child_identity")
+        stage="signal_disposition"
+        if signal.getsignal(signal.SIGCHLD)!=signal.SIG_DFL:
+            raise ValueError("signal_disposition")
+        stage="waitid_identity"
+        observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+        if observation is None:
+            stage="live_group_identity"
+            try:
+                owned=os.getpgid(child.pid)==child.pid
+                if owned:diagnostic["identity"]=1
+            except ProcessLookupError:
+                stage="exited_group_identity"
+                observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT)
+        if observation is not None:
+            if not terminal(observation):raise ValueError("waitid_identity")
+            owned=True;diagnostic["identity"]=2
+            diagnostic["waitid_code"]=observation.si_code
+            diagnostic["waitid_status"]=observation.si_status
+        if not owned or child.returncode is not None:raise ValueError("group_identity")
+        stage="signal_owned_group"
+        try:os.killpg(child.pid,signal.SIGKILL)
+        except ProcessLookupError:pass
+        except PermissionError as error:
+            number=error.errno
+            if type(number) is not int or number!=1 or not terminal(observation):raise
+            if diagnostic["stage"] is None:
+                diagnostic["stage"]="signal_owned_group"
+                diagnostic["errno"]=number
+    except Exception as error:
+        failed(stage,error)
+    # Reap this exact child even after identity/signal refusal; never signal here.
+    if eligible:
+        stage="reap_owned_child"
+        try:
+            while time.monotonic_ns()<OUTER_DEADLINE:
+                observation=os.waitid(os.P_PID,child.pid,os.WEXITED|os.WNOHANG)
+                if observation is not None:
+                    if not terminal(observation):raise ValueError("reap_identity")
+                    code=(observation.si_status if observation.si_code==os.CLD_EXITED
+                          else -observation.si_status)
+                    child.returncode=code;reaped=True
+                    diagnostic["reap_code"]=observation.si_code
+                    diagnostic["reap_status"]=observation.si_status
+                    break
+                remaining=(OUTER_DEADLINE-time.monotonic_ns())/1e9
+                if remaining>0:time.sleep(min(.005,remaining))
+            if not reaped:failed("reap_deadline")
+        except Exception as error:
+            failed(stage,error)
+    if owned and reaped:
+        # Signal zero is only an existence query; no signal is delivered after reap.
+        try:os.killpg(child.pid,0)
+        except ProcessLookupError:empty=True
+        except Exception as error:failed("group_absence",error)
+        if not empty:failed("group_absence",label="owned_group_not_empty")
+    return code,reaped,empty,diagnostic
+```
+
+### Reconstructible full-module candidates and exact diffs
+
+No 242-KB embedded source is duplicated. Apply the one exact module hunk
+to the named immutable original and require the complete resulting hash.
+These are shared-cleanup-only variants, with every original input/native
+pin, environment, assignment, case/data binding and control preserved.
+
+```json
+{
+  "controller": {
+    "original_bytes": 242290,
+    "original_lines": 2451,
+    "original_sha256": "d29c5c015cfa6f7b2ae3a88fea221e7da7bc3699e03f1dfba4f29e29e2c5778a",
+    "candidate_bytes": 242593,
+    "candidate_lines": 2457,
+    "candidate_sha256": "4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f",
+    "diff_bytes": 669,
+    "diff_sha256": "d288d814ebdabc6a184f6506cd39b6f168cc1808f42b955ae1d75c33f2a2ae1c",
+    "unchanged_assignment_count": 16,
+    "whole_byte_inverse": true,
+    "whole_ast_inverse": true
+  },
+  "outer": {
+    "original_bytes": 21381,
+    "original_lines": 380,
+    "original_sha256": "8a4da1306765f331f18b4fd56cb71dff03395f40fb2246475be5e47b035e1e1b",
+    "candidate_bytes": 21684,
+    "candidate_lines": 386,
+    "candidate_sha256": "9942573e2a96960fe878057d9d833e7333f86d6294f4103adefacfe8eb9a070b",
+    "diff_bytes": 657,
+    "diff_sha256": "3a1249ca87efbc0ba21890f409e80c9978dcb7fa1b61df60d04d69fb35cbe840",
+    "unchanged_assignment_count": 20,
+    "whole_byte_inverse": true,
+    "whole_ast_inverse": true
+  }
+}
+```
+
+Controller exact diff:
+
+```diff
+--- controller-original.py
++++ controller-DESIGN-terminal-eperm.py
+@@ -2286,6 +2286,12 @@
+         stage="signal_owned_group"
+         try:os.killpg(child.pid,signal.SIGKILL)
+         except ProcessLookupError:pass
++        except PermissionError as error:
++            number=error.errno
++            if type(number) is not int or number!=1 or not terminal(observation):raise
++            if diagnostic["stage"] is None:
++                diagnostic["stage"]="signal_owned_group"
++                diagnostic["errno"]=number
+     except Exception as error:
+         failed(stage,error)
+     # Reap this exact child even after identity/signal refusal; never signal here.
+```
+
+Outer exact diff:
+
+```diff
+--- outer-original.py
++++ outer-DESIGN-terminal-eperm.py
+@@ -123,6 +123,12 @@
+         stage="signal_owned_group"
+         try:os.killpg(child.pid,signal.SIGKILL)
+         except ProcessLookupError:pass
++        except PermissionError as error:
++            number=error.errno
++            if type(number) is not int or number!=1 or not terminal(observation):raise
++            if diagnostic["stage"] is None:
++                diagnostic["stage"]="signal_owned_group"
++                diagnostic["errno"]=number
+     except Exception as error:
+         failed(stage,error)
+     # Reap this exact child even after identity/signal refusal; never signal here.
+```
+
+Full-byte inverse removes the one exact 303-byte insertion and restores
+each entire original module hash. The sole added AST node is the second
+ExceptHandler on the existing inner killpg Try, after ProcessLookupError.
+It matches the exact six-line branch AST and contains no latch call.
+Removing that handler reproduces both complete module ASTs, excluding
+locations. All eleven other controller functions and ten other outer
+functions retain exact full spans/ASTs, including both unchanged caller
+main bodies. Their preserved identities are:
+
+```json
+{
+  "controller": {
+    "latch": {
+      "bytes": 88,
+      "sha256": "957eba18cdfb5d25bd5ee510141c74c9f942978d4540086d9db62b1f4f0fbec9"
+    },
+    "within": {
+      "bytes": 62,
+      "sha256": "0b2b1be269404c27b4b554272d3cf5aaf20c481563e6407467ff7dc736cebfd9"
+    },
+    "assemble_payload": {
+      "bytes": 240,
+      "sha256": "8978fe5175b1b6f74e8733b7dba8d0706e9d020fad959dc3cd88bed37a95e60b"
+    },
+    "regular_node": {
+      "bytes": 511,
+      "sha256": "d29f5a1303626b60e8e7c061a86ebdc56fef40d17ce87df77f3feb8c4d907aa9"
+    },
+    "private_directory": {
+      "bytes": 532,
+      "sha256": "12296c9587b151b2d998c6f174cb3579b4580ac210cae840e5a208c781a3eabc"
+    },
+    "save": {
+      "bytes": 342,
+      "sha256": "ae13bed122b92c6c27e1a63f828c87bc4ce4477b6079836513b36d547f631900"
+    },
+    "encode": {
+      "bytes": 125,
+      "sha256": "89ce1b76ca343fda5622acb07b3fce0d0ce63242704cf3b9c53b09c1ca0ac68e"
+    },
+    "duplicate_free": {
+      "bytes": 173,
+      "sha256": "3134f45bbdba498f6684c83430ebfe93793174940b606f45cd1d1c0f8844a64b"
+    },
+    "true_int": {
+      "bytes": 81,
+      "sha256": "646a375f4d50ebd66ab07b30ecf5c325b6027601ecc27d022ee50f2c5249bf04"
+    },
+    "closed_packet": {
+      "bytes": 3772,
+      "sha256": "bcd1ae35c59bd0c48a4866a922aa21f98b8b0845134767428468e21abd5eef77"
+    },
+    "main": {
+      "bytes": 8497,
+      "sha256": "d0f1b32db1ea73595e8c58612850fbb0690fabdc772eccc8ad012e0190541461"
+    }
+  },
+  "outer": {
+    "latch": {
+      "bytes": 88,
+      "sha256": "957eba18cdfb5d25bd5ee510141c74c9f942978d4540086d9db62b1f4f0fbec9"
+    },
+    "private_directory": {
+      "bytes": 532,
+      "sha256": "12296c9587b151b2d998c6f174cb3579b4580ac210cae840e5a208c781a3eabc"
+    },
+    "save": {
+      "bytes": 342,
+      "sha256": "ae13bed122b92c6c27e1a63f828c87bc4ce4477b6079836513b36d547f631900"
+    },
+    "encode": {
+      "bytes": 125,
+      "sha256": "89ce1b76ca343fda5622acb07b3fce0d0ce63242704cf3b9c53b09c1ca0ac68e"
+    },
+    "duplicate_free": {
+      "bytes": 173,
+      "sha256": "3134f45bbdba498f6684c83430ebfe93793174940b606f45cd1d1c0f8844a64b"
+    },
+    "true_int": {
+      "bytes": 81,
+      "sha256": "646a375f4d50ebd66ab07b30ecf5c325b6027601ecc27d022ee50f2c5249bf04"
+    },
+    "pinned_file": {
+      "bytes": 1228,
+      "sha256": "b9860dcbdd16a6ace5ccc082c7520a733947112b50484665ece4227240a7dfd0"
+    },
+    "directory_sync": {
+      "bytes": 286,
+      "sha256": "739e063a7283f01457ab73c8a4f0461a297a31e171fe5760eb30ce1d00c2d18c"
+    },
+    "accepted_return": {
+      "bytes": 1182,
+      "sha256": "c1ed36f6f66c9ee3e241c710717371ae329c8b4d033bc846ccd81effab34b6e6"
+    },
+    "main": {
+      "bytes": 11205,
+      "sha256": "e721fff658e5f3b2dfbc506806be597859a07dbe1c56f251052f7817b44f2485"
+    }
+  }
+}
+```
+
+Controller's sixteen and outer's twenty top-level assignments are exact.
+The whole-module inverse also protects imports, entrypoint, SIGCHLD setter,
+reap guards, timing/IO/resource caps, schemas, first-failure/evidence order,
+51-cell/36-case payload code and actual-status-returning logic. The
+Node payload remains 151979 bytes / a5d564; no case/function code within
+that payload was changed or evaluated. No nonzero post-reap signal,
+errno-wide exception handler, merely-presence acceptance or assertion
+relaxation is added.
+
+### Concrete paired-runtime binding blocker — not silently changed
+
+This reservation keeps outer SOURCE_BYTES **242290** and SOURCE_SHA **d29c5**
+exact. The proposed controller is now **242593** bytes / SHA-256
+`4ff0525f366d9847f40b5d4abf140b6e1e07fc9167353d93c0302a8fa0fc218f`.
+The shared-hunk-only outer consequently cannot consume that changed controller:
+its unchanged pinned_file size/hash guard must refuse before child creation.
+Running that outer with old d29 instead would retain old d29's cleanup
+behavior and cannot validate the proposed pair.
+
+This is a certain composition blocker, not an ownership failure or permission
+to weaken the source pin. A later separately reviewed root DATA-binding seam
+must bind SOURCE_BYTES to 242593 and SOURCE_SHA to the complete 4ff0525f
+candidate, with explicitly staged matching input bytes; all native/build pins
+and other controls can remain unchanged. These two values are stated as
+future prerequisites only, not included in either candidate/diff above.
+No third source hunk, private file change or runnable composed pair is
+authorized or claimed here. Root must resolve that binding gate before
+reserving any new ONE paired invocation.
+
+### Actual static checks and preserved limits
+
+Immutable/private source DATA reads, complete approved receipts/closed captures,
+candidate AST parsing, exact six-line handler-shape checks, both whole-byte
+and complete normalized-AST inverses, preserved function spans and all
+36 assignment spans/ASTs exited 0. Source variants have hashes as above;
+private originals were not rewritten. No proposed helper/handler/controller/
+launcher/harness/case was called, imported or executed; ordinary Git/Python
+static tools and the two official primary documentation pages were used.
+No reviewed process/signal/group query, native/version probe or diagnostic
+repeat occurred; no runtime/Node/VM/Cargo/Driver/provider/browser/service
+operation was performed.
+No other worker was contacted, cache deleted or source alignment performed.
+
+The actual corrected-environment envelope stays FAILED, with actual Node
+packet counts retained rather than treated as overall acceptance. Old515's
+native cause/child exit, old generic preflight's exact cause, historical sender
+and true cleanup-start remain UNKNOWN. All other original row/security/fixture
+gates remain unchanged. This append acquired, used and released no validation
+slot. Runtime remains **HELD**; root owns both body reviews, the separate
+source-pin binding decision, integration/publication, any future single
+invocation, actual evidence, cleanup release and statuses.
+
+Final actual appendix checks: canonical fences reproduced the six-line
+303-byte insertion, 4076-byte function, both exact module diffs/candidate
+hashes and complete byte/AST inverses. The original 6862-byte actual Node
+packet hash and entire 116152-byte ab8 prefix matched. Documentation links/
+build layout, whitespace and report-only scope checks exited 0 without
+errors. The paired source-pin blocker remains explicit; no private DATA
+writer or reviewed runtime was invoked.
