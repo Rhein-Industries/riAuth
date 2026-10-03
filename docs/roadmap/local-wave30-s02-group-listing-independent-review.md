@@ -344,3 +344,349 @@ task/worktree/shell, board/status mutation, main edit or push occurred here.
 Only this report is committed; root owns integration/publication/disposition.
 Receipt-secret, route headers, PAM, review/removal/audit, held Group and shared
 nonrenewed60-second admission/paused-IO contracts remain protected.
+
+## wave30_S02_safe_native_materialization_independent_review
+
+### Dated disposition and exact reservation
+
+2026-10-03, project `891e7443-8dac-4c1b-897f-9e53cb59c7ee`, existing Sol2
+worktree `ed9ac424-59f4-4520-905b-919aea3521eb`, clean starting parent
+`4dcf8773e3989809e026b1fae7d235ff3eedc36e`. This reservation appends only this
+report. Its entire previous 25,015-byte / 346-LF prefix is preserved, SHA-256
+`6cc6952f2a670386b4f41a713049366494b083326201ed56c582da640c0f96cb`.
+
+**Recommend source acceptance of the exact safe design, with runtime still
+HELD.** I found no concrete new compile-policy, type-use, authorization,
+snapshot or runtime-oracle blocker by source inspection. The design removes
+the allocator/probe conflict without changing `unsafe_code = "forbid"`, any
+manifest, dependency, production method or security predicate. The previous
+F1 remains accurate for the committed unsafe fixture at74c1fb; this design has
+not replaced that source file or compiled anything. Source acceptance here
+means accepting the proposed replacement for a separately reserved next step.
+
+The measurable quantity is **the number of raw records in each fetched row
+batch**, observed by existing native storage telemetry. It can establish a
+bounded materialization improvement with complete results and equivalent
+authority if the named fixture actually passes. It does not establish live
+heap, peak decoded/output memory, RSS, fewer total rows/bytes/scans, throughput
+or a latency improvement. The design explicitly retains latency results and a
+false-capable comparison, and does not grade latency as a pass requirement.
+No S02 completion or board change follows from this review.
+
+I reread the original S02 outcome, goal and completion gate in the accepted
+parent plan: reduce unnecessary scans and whole-dataset materialization while
+preserving consistent results; remove measured bottlenecks without removing
+correctness guarantees; improve performance under equivalent security
+settings while concurrency still proves identity invariants. The dated task
+observation there is historical, not a fresh board query. Root has accepted
+assessment of the narrower fetched-row-batch measure without live-heap
+inference. The actual measurement and concurrency/security outcomes remain
+unverified; the original goal is not replaced with a report-only gate or a new
+mandatory broad campaign.
+
+`runtime_run_by_this_review: false`; proposed fixture **UNMATERIALIZED,
+UNCOMPILED, UNRUN**. No candidate function, telemetry self-check, allocator,
+test or benchmark executed. No runtime slot was acquired, released or queried.
+
+### Complete design reads and immutable reconstruction
+
+Reviewed DESIGN commit `02b1e38bc2919ccb7c99711bcb304f3f050e9ba8`, whose sole
+changed path is `docs/roadmap/local-wave30-s02-index-pagination-plan.md`.
+Its parent is `d6b5545ba1d7827fadb098846da7f2bfdfa02b10`; the whole prior
+45,580-byte report is its exact prefix, SHA-256
+`eadea67eb08175ba194b0b0621093fe4947bba45f89786bb3c48442a5d61e503`.
+The design appends 2,880 lines and does not edit its actual Core, fixture,
+build inputs or earlier report bytes.
+
+| Object reconstructed in memory | Exact identity |
+| --- | --- |
+| Complete design report | 159,464 bytes / 3,445 LF; blob `28c9ce5b506be80873c402e65dbfc594f8bf7e97`; SHA-256 `1fc39d4b93a92b82bc4269e8506c7d2eda8fc1a0a4c8129350bb63f77fc69e7a`. |
+| Complete safe Rust fence, report783–2497 | 60,049 bytes / 1,715 LF; SHA-256 `a93636a21a4a5cae53b2a5b844e8e5534e10fc0b1941cc43927f75b720cf63d6`. |
+| Complete zero-context diff fence, report2503–3392 | 36,823 bytes / 890 LF / 42 hunks; SHA-256 `b124564d9e35a0bec61cc66852baccac9daac954f42c0bbeb99714101a756135`. |
+| Original committed fixture at74c1fb | 55,835 bytes / 1,641 LF; SHA-256 `b340155ed571b3b0195c40a141239f5337585356e4e7d8582dd5801162500f42`. |
+| Unchanged production Core at74c1fb and the design commit | 57,913 bytes / 1,414 LF; SHA-256 `686e7e732f256e7b435ab69991b71fb26d7467214877d2e0f0c840741446caea`. |
+
+Full body reading covered every safe-fixture line in consecutive ranges
+1–290,291–580,581–870,871–1160,1161–1450,1451–1715. I read all 890 diff lines,
+the new prose567–781 and static/held-command tail3395–3445, as well as the
+earlier implementation appendix311–565 and original acceptance. The original
+1,641-line fixture and 309-line accepted plan were fully read for the preserved
+earlier review. A blob/hash lookup is not counted as a body read.
+
+A reviewer-owned, data-only unified-diff parser checked each hunk's old/new
+line counts and literal removed lines. Applying all42 hunks in memory restores
+the exact safe fence; reversing all42 restores the entire original55,835-byte
+fixture. No candidate file was written. Whole-file equality is stronger than
+accepting a few intended hunks or trusting the prose.
+
+The whole frozen method is still the exact parent production body, 448 bytes
+without its trailing LF / SHA-256
+`8c3e2a22db02f3a1d60ef164a88679c9fcfa782a6de29209ec67697ea8bf1c03`.
+Including that LF gives449 bytes /
+`3e3c0d28943e72391d0087a4d0b8b46fe12fad5d1f918d2e751bd05e3eae012c`.
+The original fixture, safe fence and parent Core match in both representations.
+Replacing the complete paging method with that frozen body restores the entire
+57,266-byte parent Core, preserving the earlier whole-Core inverse proof.
+
+Byte comparisons independently confirmed27 unchanged top-level functions:
+`require`, `core_ok`, `snapshot`, `same_snapshot`, `token`, the three name/id
+constructors, `expected`, `close_dir`, `private_dir`, `fixture_root`, `populate`,
+`checked_read`, `refused_read`, both denied/malformed writer checks,
+`percentile`, `source_digest`, `expected_audit`, `admin_id`, `advance_revision`,
+the member/revoke full-state oracles, `finish_snapshot`, `ordered_interleaving`
+and `core_overlap`. Complete larger preserved segments are:
+
+| Segment | Bytes / SHA-256 |
+| --- | --- |
+| Frozen struct/implementation | 605 / `eadb41e53019975d5e13d63fbb4d172f06a5422ab8455f7efcb63394951496d0`. |
+| Lane declaration/implementation | 455 / `99bcb7e310d636dc924000bb154469d1d372820eb32998543c94a0559951b72d`. |
+| Budget/watchdog/owned worker/helpers through before User id constructor | 4,218 / `f5c4feb81f8d159fb00d2125bc9962fa0f846bf8b6e1a12e6399e9c90ff676d0`. |
+| Credentials/Fixture/Seed through before populate | 7,547 / `b12511e4d500fb3f5cf211f3872d14619068ea5654340c73dda9b2f3a06e6a2c`. |
+
+These are literal source comparisons, not a Rust AST or compiler result. The
+design's actual `src/core.rs`, `src/store.rs`, `src/telemetry.rs`, `Cargo.toml`,
+`Cargo.lock`, `rust-toolchain.toml` and original test all match74c1fb. The
+complete safe fence contains no `unsafe`, global allocator, raw probe,
+HeapWindow/HeapSample, allow override or RUSTFLAGS token. `tomllib` confirms
+the unchanged package forbid policy; exactly one test and one ignore attribute
+remain. No allocator workaround is added through a helper, dependency or new
+crate; existing dependency internals were not newly audited.
+
+### Native telemetry contract and complete data comparisons
+
+I reread `Sizes`, `render_buckets` and `Reads` in immutable
+`src/telemetry.rs`, plus the complete forward scan, `raw_scan_base` and
+`raw_scan_fetch` bodies in `src/store.rs`. The existing ROWS bounds are exactly
+`[0,1,16,128,1024,8192,65536]`; render with the fixed name and empty labels
+produces seven finite cumulative buckets, +Inf, count and sum:10 lines.
+Observe increments count, total rows and all applicable cumulative buckets.
+`Reads::scan` selects bounded versus unbounded by the actual requested limit.
+`raw_scan_base` records the **actual fetched vector length** and stored value
+bytes after the backend fetch and before typed decryption/decoding. Redb's
+forward range iterator actually takes the requested limit; `Tx::list` supplies
+`usize::MAX`, while the production paging method supplies128. No observer
+estimates this population from the returned authorized JSON or a timer.
+
+The new parser, safe-fixture45–144, is source-consistent with that public API:
+4096-byte/10-line bounds; exact fixed names and eight unique bucket slots;
+canonical u64 text; duplicate/missing/unknown fields refused; monotone
+cumulative buckets; +Inf=count; render count/sum checked against the native
+accessors. Delta uses checked subtraction for every bucket, count, row total
+and other native counter. It does not accept a reset as apparent improvement.
+Public `Sizes::render/observe/count/sum` signatures and the new Rust type uses
+match by source; no forbidden private field access or new Debug requirement
+was introduced. This is not a compiled typing claim.
+
+The proposed self-check145–187 uses a separate safe `Sizes` object. Its literal
+five observations `[128,128,128,128,1]` require count5/sum513 and cumulative
+`[0,1,1,5,5,5,5,5]`. Its five parser negatives are duplicate bucket,
+non-number, noncanonical number, inconsistent count and missing count. None
+executed here. Reviewer arithmetic on declared data, independently of the
+candidate functions, gave the following complete expected populations:
+
+| Groups | Frozen fetched sizes / cumulative buckets | Paged fetched sizes / cumulative buckets |
+| --- | --- | --- |
+| 0 | `[0]` / `[1,1,1,1,1,1,1,1]` | `[0]` / `[1,1,1,1,1,1,1,1]` |
+| 1 | `[1]` / `[0,1,1,1,1,1,1,1]` | `[1]` / `[0,1,1,1,1,1,1,1]` |
+| 128 | `[128]` / `[0,0,0,1,1,1,1,1]` | `[128,0]` / `[1,1,1,2,2,2,2,2]` |
+| 129 | `[129]` / `[0,0,0,0,1,1,1,1]` | `[128,1]` / `[0,1,1,2,2,2,2,2]` |
+| 513 | `[513]` / `[0,0,0,0,1,1,1,1]` | `[128,128,128,128,1]` / `[0,1,1,5,5,5,5,5]` |
+
+The +Inf slot is the last entry. Empty final fetches at exact page multiples
+are real scan observations, not dropped samples. In `Counters::assert_read`
+712–754, count/sum and all eight frequency deltas must equal these expected
+data, and the opposite scan family must be empty. Every reader must have zero
+writer holds/commits. For513 rows, native count5/sum513, all five at most128,
+exactly one at most1 and none zero also force four128-row batches and one1-row
+batch; the sum prevents a different smaller population being credited.
+
+The measured decision941–1004 checks every sample's actual frequencies, not
+only the design's arithmetic: frozen one fetch above128 with513 total rows;
+paged zero fetches above128, five fetches and the same513 total rows. Native
+point counts and point-plus-scan stored value bytes must match across both
+lanes and every sample in each scope/pair. Stored value-byte equality excludes
+backend page IO, keys, allocation overhead, network bytes and total resident
+memory; none is asserted to improve. Paged scan count deliberately rises1→5.
+
+This can support **bounded raw-fetch row materialization** on the declared
+local encrypted-redb dataset, with the maximum fetched record population
+513→128 if actually observed. Source shows that this vector feeds one decoded
+page, but the histogram is not a live-heap instrument. A large single Group is
+still large; the full admin output retains all513 Groups. No row-count bound
+is presented as a byte cap, peak decoded/output allocation or RSS proof.
+
+### Comparison, results and latency preservation
+
+The original encrypted closed seed, same agreed configuration/credentials,
+full initial snapshot and startup settlement remain byte-identical. Each lane
+gets its own copied closed database; Core/Store handles are never copied.
+The shared encryption key stays live until all copies close. Only data_dir is
+normalized when checking complete configuration equivalence. Both controls
+use the live principal and Store; no authority/scan substitute was copied.
+
+The sole fixture still declares three AB/BA/AB pairs, two scopes, two lanes,
+five warmups and ten retained measurements per lane/scope:60 warmups and120
+samples. This arithmetic is declaration evidence, not120 actual observations.
+`measure`888–933 times the complete list call with Instant; returned JSON
+stays alive through the native-after observation. Render/parser/counter
+snapshots, equality checks, output, summaries and result drop are outside that
+timer. Actual record and equality oracles remain outside the timer without
+being omitted. Native telemetry inside the production fetch remains present
+in both lanes. No concurrent writer or shared-Store background task is started
+in the measured copies; relaxed histogram snapshots require that quiet
+condition, and inconsistent/backwards observations fail instead of being
+normalized. The watchdog does not access a Store.
+
+Each numeric sample precedes grading, and observations are retained in the
+preallocated120-entry vector. Twelve pair/scope/lane summaries retain ten
+samples each, nearest-rank p50/p95 elapsed nanoseconds and median native
+fetches above128. The separate scoped-p50 comparison can be false; all raw
+timings and both scopes remain visible. `latency_grade:false`, `heap_claim:false`
+and `rss_claim:false` are truthful. Materialization acceptance does not turn a
+latency regression into speed improvement or statistical/general throughput
+evidence. If this narrower cost improves but latency worsens, root must retain
+both outcomes when interpreting the original gate.
+
+### Expiry and normal parent disable: exact durable effects
+
+I read the full added authority code1160–1361 and checked its callers and
+effects against immutable principal/Agent models; normal create/update_user
+and management writer; shared identity prepare/transition; User generations;
+credential/audit redaction; agent retirement; logout/windows/SSF/downstream
+branches; SCIM transition and workflow account-run sealing. The following
+context identities supplement the full-body versus selected-body distinction:
+
+| Immutable context at74c1fb, equal at the design commit | Git blob / SHA-256 |
+| --- | --- |
+| `src/identity/agent_credentials.rs` | `7dff935aa86389fbaee000246e7da24e7185e75b` / `00b5a94006008c9133663b2fe19869fa9b14904f13363507bce7fffe0103df95`. |
+| `src/identity/logout_queue.rs` | `83678e6b32a131612d2e9ef1cad479fd22afc7a1` / `b20fd1c606bc52666383feb8d294702e3ab67dfca2db8fe6b8e98dbce619beb1`. |
+| `src/identity/signals.rs` | `d151eef2409f29579a202f2269c6aa2cd62e3b0e` / `c658aa600257eb816122654e30d70167830cc394446debc4309ab721848fa8f9`. |
+| `src/identity/downstream.rs` | `79640cb1cec0a0ff6b9b7a922dcb996d735da026` / `76ea7d3ed5151f6184dabc2a49e5028153cbb9a2e19418a11fa71c2a7b5d129b`. |
+| `src/identity/windows_credentials.rs` | `63607f30471c2ac64f68fb3ad71187a9448ed4a2` / `999518427de03cf6223c02911473d466e799baaf384521f944c27733a447fc88`. |
+| `src/assembly.rs` | `14f11d06e424cbb022a996d7b52205ad555b2742` / `eedcee9a4c6197cebefd6badfd150d89ab292bfbfbe8bb1b4034cae2a2eb4f3a`. |
+| `src/assembly/scim_runtime.rs` | `cd5cf20402e04719d3e6dd6e0d61a87b5f990aee` / `9cd66862c726c11db78a44a714a1b8ae0c9a1ef2012e82f1a802718170a43c55`. |
+| `src/workflow/executor/version.rs` | `4c203dd5d6ab59a8dbf0567eb34ee55669a1e219` / `23cdda785d1957165b1e9f7394ffceb8752ace5ea43403a79c9335817ddd3697`. |
+
+Whole Agent-credential, logout-queue, signals, windows-credential and shared
+identity modules were read. For the larger management/Store/assembly/SCIM/
+downstream/workflow files, the named relevant complete bodies/branches were
+read; their full-file hashes do not mean every unrelated body was audited.
+
+Expiry: public creation and both positive reader results precede a declared
+trusted canonical `Tx::put`, setting only expires_at to captured real now.
+No agent index/transition mutates other durable values for that write. The
+expected whole map retains enabled/hash/token mapping and every other record;
+there is no audit/revision omission because this trusted Store write does not
+call the Core audit writer. Both readers then require exact401 invalid_token,
+zero Group scans/writes and full-map equality. The live predicate uses
+`expires_at > now`; the test checks now>=boundary and reports whether it
+observed the same second. This is not natural TTL elapse, a clock override or
+a promise that wall time cannot jump backwards between reads.
+
+Parent: public create resolves the exact enabled non-admin parent by username;
+the stored parent binding is the stable User id. Positive scoped reads precede
+normal public update_user with enabled=false. Management increments epoch;
+shared prepare_record preserves at least old+1. Under this exact patch, no
+second epoch bump is requested. User index maintenance increments provisioning
+and listing generations once each. The identity transition deletes any grants,
+retires each parent-owned token, disables the child, and considers windows,
+logout, SSF and downstream effects in the same writer. The seed creates none
+of those target User's grants/devices/RP sessions/links/jobs/streams; the SCIM
+record set and account-run index are also absent. Their inspected empty paths
+introduce no additional durable record. The administrator's own session and
+all Groups remain unchanged. Group membership is not removed on User disable.
+
+The expected entire map1205–1273 therefore includes exactly User enabled=false
+and epoch+1, child enabled=false, exact child token-map deletion, both generation
+increments, revision+1, and one audit. Audit changes sort Agent before User.
+The expected UserView uses the fixed public projection, redacts
+password_available, and stamps unchanged password/pairwise_seed credentials;
+the factor-free seed has no TOTP/recovery material. Agent credentials are
+redacted with unchanged token hash, and user.update has no agent-parent audit
+detail. Audit UUID/time alone come from the observed added event, with the
+existing canonical key/schema/real-interval checks. All other expected values
+are constructed from the prior state and intended effects; no collection or
+record is excluded and unexpected effects fail the whole map.
+
+Both fresh child requests must refuse401 before scans with no durable effects;
+the unrelated unparented scoped credential must still return the entire exact
+three-Group result in both lanes. This tests **normal atomic retirement**. Its
+refusal occurs at the deleted mapping and does not isolate a legacy enabled,
+unexpired child whose disabled/missing parent survives beside it. That fallback
+remains source-reviewed via parent_active, not claimed as executed coverage.
+No reinsertion of a retired token or weakening of writers is proposed.
+
+### Preserved security, interleaving, guards and remaining gate
+
+The exact frozen method still uses live `Core::principal` in the same Store
+read transaction as the scan. The paged body still traverses every ordered
+storage key, authorizes each stored Group.name and emits the full ordered
+Value array. No early authorized-count stop, rank/name cursor, global Group
+format redesign, decode-error suppression or new writer is introduced. The
+key/name mismatch case and complete expected arrays remain unchanged. Each
+page uses the original Tx; malformed/decryption errors propagate. The existing
+malformed writer check proves transactional decode refusal/rollback, not
+execution against an already corrupted persisted database.
+
+The unchanged ordered interleavings commit normal membership removal or agent
+revocation after the first page of a held read Tx. Same-Tx later pages and its
+captured principal must return the entire old result; the exact writer/audit/
+revision/index snapshot and fresh request then prove the new state. Retried
+membership removal has no effects, repeated revocation conflicts, and all
+fresh authority refusals are exact. The separate public Core overlap case
+retains eight full old-or-new comparisons and an honest interval-overlap
+boolean. It does not guarantee between-page injection in the unhooked public
+method; the ordered lower-level proof is separately identified. No PostgreSQL
+runtime or remote peer inference is made.
+
+All original budgets, bounded channel waits, joined owned writers, watchdog,
+private target identity, closed seed copies and explicit cleanup bodies are
+byte-preserved. One extra isolated authority copy makes17 proposed success
+directories, none created here. All copies close before the shared key's
+directory; all owned workers are joined before the final finite receipt/check.
+The300s watchdog/cooperative checks still need the separately reserved outer
+supervisor for stalled IO/stdout and exit/unwind cleanup. These are source
+guards, not executed cleanup, capacity or hard kernel IO guarantees. There is
+no test clock, sleep, retry increase, raw admission deletion or meter bypass.
+
+Actual checks in this review were immutable body/line/identity reads, full
+42-hunk forward/reverse data reconstruction, protected-body and whole-Core
+inverse comparisons, unchanged context/build-input comparisons, declared
+histogram/case/sample arithmetic, tomllib policy inspection, source searches,
+documentation/layout and Git whitespace/scope/prefix checks. The original
+package source was never passed to a compiler/parser/typecheck. Function
+comparisons use textual declaration/closing-line boundaries, not a full Rust
+AST. No candidate or archived checker was invoked.
+
+Static-check limitations/corrections are retained: exploratory Git reads of
+nonexistent `src/redaction.rs` and `src/assembly/scim.rs` returned path errors;
+actual redaction in Store and `src/assembly/scim_runtime.rs` were then read.
+A combined output was truncated; the affected management writer ranges were
+reread separately in full. One reviewer hash assertion mistakenly applied the
+old448-byte frozen identity to a449-byte extraction including its trailing LF;
+it failed before data arithmetic. Removing only that delimiter from the hash
+boundary restored the exact prior448-byte identity, and the complete equality/
+inverse/data checks passed. No candidate bytes changed, and none of these
+static preparation mistakes is a compiler, telemetry, oracle or runtime failure.
+
+No new concrete correction hunk is requested. Root may accept the exact safe
+design, reserve its source materialization, and only then separately release
+the already proposed single named ignored fixture with the unchanged forbid,
+private target/jobs1/incremental0/debug0/free-space/outer-supervision contracts.
+This review releases no command. Actual compilation,120 valid native samples,
+bounded-cost reduction, full result/state/authority/concurrency checks,
+latency values and owned cleanup remain required evidence, not inferred passes.
+The narrower observed fetched-row population can supply this bounded
+materialization facet of the original performance gate; root owns final
+interpretation using the actual quantitative and security results. It cannot
+supply the superseded live-allocation metric or erase a reported regression.
+
+All earlier actual failures, historical S01/Q02/PG/Q09/S04 results, this report's
+original F1 and precise limits remain unchanged. No artifact/private-evidence
+read, Cargo/rustc/rustfmt/test/benchmark, native/allocator/candidate function,
+HTTP/provider/service/Driver/browser/network/query/cleanup operation, source
+or manifest edit, merge/alignment, new worker/task/worktree/shell, worker
+contact, board/status/main edit or push occurred. Only this report append is
+committed. Receipt-secret, optional/required route headers, PAM, live authority,
+review/receipt/removal/audit, held Group, shared nonrenewed60-second admissions
+and paused-IO limitations remain unchanged; root owns integration and status.
