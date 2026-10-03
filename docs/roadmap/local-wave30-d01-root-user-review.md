@@ -150,3 +150,29 @@ argv names local-demo `Local demo`, supporting the public-label derivation.
 The initial archive lookup failures made no writes/runtime changes and provide
 no earlier fresh reconstruction credit. The real confidential browser remains
 held and unpassed; D01/D05 status is unchanged.
+
+## 2026-10-03 — fixed public projection and concrete preparation source review
+
+Root fully read all 767 lines of 48288c1 and the complete 508-line candidate.
+The exact parser-only checker independently passed normalized whole-AST inverse,
+eleven unchanged old functions, five exact collectors and the closed twelve
+public role/name pairs. Candidate SHA256
+`505b1c0fec96e248dc67db46379bd801fa06a2678462aa094fb2fc1bc5ea398f`.
+No candidate/VM/case or Driver runtime was evaluated. Independent review remains
+pending; same-snapshot typed role/name/action/ref projection is not new action
+authorization or evidence of a journey.
+
+Root read the ff18b72 new launcher/preparation functions and decoded private
+carrier/archive/readback bodies. The complete c5 tail remains protected by
+source comparison. The report-only author appendix is preserved after the
+complete current published prefix, including its publication-only link encoding.
+Full new candidate 111182 bytes/SHA256
+`94ca708e5d1bf8ff01b87ae105250cc562d95e219e11a50e65bbeff226982f2b`
+is unexecuted. Concrete source blocker: pWindows(requireBlank) still requires
+exactly one returned native window; the actual root blank survey had ten with
+one unique about:blank. This contradicts its prose and refuses that observed
+shape before binding. Root reserved only a source-design correction selecting
+the unique exact blank title under the proven PID, keeping finite unique IDs
+and all cleanup windows. No rank/geometry fallback or browser retry is released.
+Independent ff18 review remains separately pending. All original failed journeys
+and unknown senders/cause/first-event limits remain unchanged.

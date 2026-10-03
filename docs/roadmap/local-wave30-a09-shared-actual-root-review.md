@@ -110,3 +110,30 @@ only one changed http_rates record, not its opaque key/value or tuple. No older
 failure is retrospectively assigned. An independent source review is active;
 helper/workflow implementation and all runtime remain held. The old 89-case
 memory pass does not validate this new generator.
+
+## 2026-10-03 — exact BEFORE-derived admission expectation
+
+Root fully read the f607693 source proposal and independent 571822b review.
+No concrete source defect was found. Source-only commit
+`04f79568c98d518613e2acf5e9700ba6f0ca5c4f` applies exactly the six helper
+hunks and sole fixed workflow digest; full candidate hashes and reverse patch
+checks passed. The helper is 31339 bytes/SHA256
+`32a2952e3b4c3ff2ab73a747238862d3446c31bf4896c869bc9efacb1ba8fe49`;
+workflow SHA256 `cddca77a2f75bf02c8ceff0a1a16e792636bc5a09bd68b5ead8494e6ca1bb9fc`.
+No captured record is excluded. Expected complete snapshots are derived from
+BEFORE and the bounded call clock, never an AFTER-selected row.
+
+ONE root stdlib-only synthetic validation passed all 28 declared cases. It
+executes only the exact AST-extracted strict parser and generator, with manual
+complete expected snapshots for current/reset/boundary windows and malformed,
+collision, protected-change and timing refusals. Source module imports/main,
+SQL/HTTP/CLI/provider/browser/Cargo and real services were not invoked.
+Child exit 0, stderr empty, 1126 stdout bytes, elapsed 0.027817 seconds;
+reaped, no timeout. Numeric exit and complete stdout were fsynced before grading.
+The temporary memory lane was released immediately before this appendix.
+The [complete source/result receipt](evidence/wave30-a09-admission-memory-root.json)
+archives the exact 5788-byte harness/SHA256
+`6b07b72382c0e13b005b515bb11f9e1bb89055bfa98e6d9b9a6fab209bf652bb`.
+This proves bounded synthetic oracle behavior, not a hosted PostgreSQL/E-P-E
+pass, private tuple identification, concurrent traffic or original A09 closure.
+Both earlier hosted failures remain failed and their opaque changed value unknown.
