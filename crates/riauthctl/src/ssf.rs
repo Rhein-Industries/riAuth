@@ -74,7 +74,14 @@ pub(crate) async fn run(
             let listed = remote
                 .authenticated(Method::GET, ROUTE, None::<&()>)
                 .await?;
-            if !listed.is_array() || carries(&listed, None) {
+            if !listed.is_object()
+                || !listed.get("streams").is_some_and(Value::is_array)
+                || !listed.get("inbound_push_url").is_some_and(Value::is_string)
+                || !listed
+                    .get("inbound_content_type")
+                    .is_some_and(Value::is_string)
+                || carries(&listed, None)
+            {
                 bail!("SSF stream list response is malformed");
             }
             Ok(listed)
