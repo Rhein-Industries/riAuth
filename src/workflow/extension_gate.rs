@@ -1339,18 +1339,38 @@ impl Drop for GuestProcess {
 
 #[cfg(feature = "platform")]
 fn guest_workdir() -> Result<std::path::PathBuf, Denial> {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(1);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let path = std::env::temp_dir().join(format!("riauth-guest-{}-{n}", std::process::id()));
-    let mut builder = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
+    guest_workdir_in(&std::env::temp_dir(), || {
+        use rand::TryRng;
+        let mut nonce = [0u8; 16];
+        rand::rngs::SysRng
+            .try_fill_bytes(&mut nonce)
+            .map_err(|_| Denial::Failed)?;
+        Ok(nonce)
+    })
+}
+
+#[cfg(feature = "platform")]
+fn guest_workdir_in(
+    root: &std::path::Path,
+    mut next_nonce: impl FnMut() -> Result<[u8; 16], Denial>,
+) -> Result<std::path::PathBuf, Denial> {
+    const ATTEMPTS: usize = 8;
+    for _ in 0..ATTEMPTS {
+        let nonce = next_nonce()?;
+        let path = root.join(format!("riauth-guest-{:032x}", u128::from_be_bytes(nonce)));
+        let mut builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        match builder.create(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err(Denial::Failed),
+        }
     }
-    builder.create(&path).map_err(|_| Denial::Failed)?;
-    Ok(path)
+    Err(Denial::Failed)
 }
 
 #[cfg(feature = "platform")]
@@ -3484,6 +3504,199 @@ mod tests {
             execute(&bound, &GuestFacts::default(), &BTreeSet::new(), bounds()).unwrap_err(),
             Denial::Malformed
         );
+    }
+
+    #[cfg(feature = "platform")]
+    #[test]
+    fn guest_workdir_retries_collisions_without_claiming_existing_paths() {
+        use std::fs;
+        use std::path::Path;
+
+        fn names(root: &Path) -> BTreeSet<std::ffi::OsString> {
+            fs::read_dir(root)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect()
+        }
+
+        fn assert_private_directory(path: &Path) {
+            let metadata = fs::symlink_metadata(path).unwrap();
+            assert!(metadata.is_dir());
+            assert!(!metadata.file_type().is_symlink());
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::{MetadataExt, PermissionsExt};
+                assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+                assert_eq!(
+                    metadata.uid(),
+                    fs::metadata(path.parent().unwrap()).unwrap().uid()
+                );
+            }
+        }
+
+        #[cfg(unix)]
+        fn identity(path: &Path) -> (u64, u64, u32, u32) {
+            use std::os::unix::fs::MetadataExt;
+            let metadata = fs::symlink_metadata(path).unwrap();
+            (
+                metadata.dev(),
+                metadata.ino(),
+                metadata.mode(),
+                metadata.uid(),
+            )
+        }
+
+        let fixture = tempfile::Builder::new()
+            .prefix("riauth-guest-workdir-test-")
+            .tempdir()
+            .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(fixture.path()).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+        }
+
+        let root = fixture.path().join("directory");
+        fs::create_dir(&root).unwrap();
+        let collision = root.join("riauth-guest-01010101010101010101010101010101");
+        fs::create_dir(&collision).unwrap();
+        fs::write(
+            collision.join("marker"),
+            b"directory remains owned by fixture",
+        )
+        .unwrap();
+        let before = names(&root);
+        #[cfg(unix)]
+        let collision_identity = identity(&collision);
+        let mut draws = 0;
+        let owned = guest_workdir_in(&root, || {
+            draws += 1;
+            assert!(draws <= 2);
+            Ok([draws; 16])
+        })
+        .unwrap();
+        assert_eq!(draws, 2);
+        assert_eq!(
+            owned,
+            root.join("riauth-guest-02020202020202020202020202020202")
+        );
+        assert_private_directory(&owned);
+        assert!(names(&owned).is_empty());
+        fs::remove_dir(&owned).unwrap();
+        assert!(!owned.exists());
+        assert_eq!(names(&root), before);
+        assert_eq!(
+            fs::read(collision.join("marker")).unwrap(),
+            b"directory remains owned by fixture"
+        );
+        #[cfg(unix)]
+        assert_eq!(identity(&collision), collision_identity);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let root = fixture.path().join("symlink");
+            fs::create_dir(&root).unwrap();
+            let target = fixture.path().join("symlink-target");
+            fs::create_dir(&target).unwrap();
+            fs::write(target.join("marker"), b"target remains owned by fixture").unwrap();
+            let collision = root.join("riauth-guest-03030303030303030303030303030303");
+            symlink(&target, &collision).unwrap();
+            let before = names(&root);
+            let collision_identity = identity(&collision);
+            let target_identity = identity(&target);
+            let mut draws = 0;
+            let owned = guest_workdir_in(&root, || {
+                draws += 1;
+                assert!(draws <= 2);
+                Ok([draws + 2; 16])
+            })
+            .unwrap();
+            assert_eq!(draws, 2);
+            assert_eq!(
+                owned,
+                root.join("riauth-guest-04040404040404040404040404040404")
+            );
+            assert_private_directory(&owned);
+            assert!(names(&owned).is_empty());
+            fs::remove_dir(&owned).unwrap();
+            assert!(!owned.exists());
+            assert_eq!(names(&root), before);
+            assert_eq!(fs::read_link(&collision).unwrap(), target);
+            assert_eq!(identity(&collision), collision_identity);
+            assert_eq!(identity(&target), target_identity);
+            assert_eq!(
+                fs::read(target.join("marker")).unwrap(),
+                b"target remains owned by fixture"
+            );
+        }
+
+        let root = fixture.path().join("exhaustion");
+        fs::create_dir(&root).unwrap();
+        let collisions: Vec<_> = (1u8..=8)
+            .map(|n| {
+                let path = root.join(format!("riauth-guest-{}", format!("{n:02x}").repeat(16)));
+                fs::create_dir(&path).unwrap();
+                fs::write(path.join("marker"), [n]).unwrap();
+                path
+            })
+            .collect();
+        let before = names(&root);
+        #[cfg(unix)]
+        let collision_identities: Vec<_> = collisions.iter().map(|p| identity(p)).collect();
+        let mut draws = 0;
+        assert_eq!(
+            guest_workdir_in(&root, || {
+                draws += 1;
+                assert!(draws <= 8, "no ninth allocation attempt");
+                Ok([draws; 16])
+            }),
+            Err(Denial::Failed)
+        );
+        assert_eq!(draws, 8);
+        assert_eq!(names(&root), before);
+        for (index, collision) in collisions.iter().enumerate() {
+            assert_eq!(
+                fs::read(collision.join("marker")).unwrap(),
+                [index as u8 + 1]
+            );
+            #[cfg(unix)]
+            assert_eq!(identity(collision), collision_identities[index]);
+        }
+
+        let root = fixture.path().join("entropy");
+        fs::create_dir(&root).unwrap();
+        let mut draws = 0;
+        assert_eq!(
+            guest_workdir_in(&root, || {
+                draws += 1;
+                Err(Denial::Failed)
+            }),
+            Err(Denial::Failed)
+        );
+        assert_eq!(draws, 1);
+        assert!(names(&root).is_empty());
+
+        let before = names(fixture.path());
+        let missing = fixture.path().join("missing-parent");
+        let mut draws = 0;
+        assert_eq!(
+            guest_workdir_in(&missing, || {
+                draws += 1;
+                Ok([9; 16])
+            }),
+            Err(Denial::Failed)
+        );
+        assert_eq!(draws, 1);
+        assert!(!missing.exists());
+        assert_eq!(names(fixture.path()), before);
+
+        let fixture_path = fixture.path().to_owned();
+        drop(fixture);
+        assert!(!fixture_path.exists());
     }
 
     #[cfg(not(feature = "platform"))]
