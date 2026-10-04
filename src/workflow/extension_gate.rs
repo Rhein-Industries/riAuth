@@ -3553,6 +3553,7 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(fixture.path(), fs::Permissions::from_mode(0o700)).unwrap();
             assert_eq!(
                 fs::metadata(fixture.path()).unwrap().permissions().mode() & 0o777,
                 0o700
