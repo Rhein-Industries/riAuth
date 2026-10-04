@@ -188,6 +188,8 @@ pub(crate) fn consume(
         saml_session: identity.saml_session.as_ref().map(|session| SourceSession {
             subject: session.subject.clone(),
             index: session.index.clone(),
+            expires_at: session.expires_at,
+            expiry_verified: true,
         }),
     };
     // Existing explicit links only: a workflow cannot create or reattach an account.
@@ -207,8 +209,10 @@ pub(crate) fn authorization_identity(
     tx: &Tx<'_>,
     session: &Session,
     evidence: &SourceEvidence,
+    receipt_expires_at: u64,
 ) -> Result<SourceIdentity> {
     let source = enabled(tx, evidence.source.as_str())?;
+    let mut authorization_expires_at = None;
     if source.saml.is_some() {
         let verified = evidence
             .saml_session
@@ -223,6 +227,12 @@ pub(crate) fn authorization_identity(
         let upstream = storage
             .upstream_session(&session.id)?
             .ok_or_else(Error::forbidden)?;
+        let verified_expiry = if verified.expiry_verified {
+            verified.expires_at
+        } else {
+            // The legacy receipt bound is a conservative ceiling, not a new lease.
+            Some(receipt_expires_at.min(verified.expires_at.unwrap_or(u64::MAX)))
+        };
         if existing.id != evidence.source.as_str()
             || existing.fingerprint != evidence.fingerprint
             || existing.link != evidence.link
@@ -230,9 +240,11 @@ pub(crate) fn authorization_identity(
             || upstream.subject != verified.subject
             || upstream.index != verified.index
             || upstream.expires_at.is_some_and(|expiry| expiry <= now())
+            || verified_expiry.is_some_and(|expiry| expiry <= now())
         {
             return Err(Error::forbidden());
         }
+        authorization_expires_at = upstream.expires_at.into_iter().chain(verified_expiry).min();
     } else if evidence.saml_session.is_some() {
         return Err(Error::forbidden());
     }
@@ -240,6 +252,7 @@ pub(crate) fn authorization_identity(
         id: evidence.source.as_str().to_owned(),
         fingerprint: evidence.fingerprint.clone(),
         link: evidence.link.clone(),
+        authorization_expires_at,
         pin_retired: false,
     })
 }

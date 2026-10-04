@@ -82,6 +82,7 @@ fn bind_test_source_session(
         id: source.id.clone(),
         fingerprint: source.fingerprint().unwrap(),
         link: link_id.into(),
+        authorization_expires_at: None,
         pin_retired: false,
     });
     let identity = session.identity.clone();

@@ -88,6 +88,11 @@ pub(crate) struct SourceEvidence {
 pub(crate) struct SourceSession {
     pub subject: Option<String>,
     pub index: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<u64>,
+    // Older receipts never recorded whether the signed optional bound was absent.
+    #[serde(default)]
+    pub expiry_verified: bool,
 }
 
 /// Account and request facts read by the trusted store for this run. The path

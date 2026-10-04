@@ -1013,6 +1013,12 @@ impl Core {
                             None,
                         )?,
                     );
+                    let source_deadline = session
+                        .identity
+                        .source
+                        .as_ref()
+                        .and_then(|source| source.authorization_expires_at)
+                        .unwrap_or(u64::MAX);
                     let grant = Code {
                         resource: request.resource.clone(),
                         dpop_jkt: request.dpop_jkt,
@@ -1024,7 +1030,8 @@ impl Core {
                         challenge: request.code_challenge,
                         scopes,
                         nonce: request.nonce,
-                        expires_at: now() + client.settings.code_ttl.unwrap_or(120),
+                        expires_at: (now() + client.settings.code_ttl.unwrap_or(120))
+                            .min(source_deadline),
                         issued_family: None,
                     };
                     tx.put("codes", &digest(&code), &grant)?;
@@ -1503,8 +1510,13 @@ impl Core {
         let offline = identity.is_some()
             && scopes.contains("offline_access")
             && crate::provider::grant_enabled(client, "refresh_token");
+        let source_deadline = identity
+            .as_ref()
+            .and_then(|identity| identity.source.as_ref())
+            .and_then(|source| source.authorization_expires_at)
+            .unwrap_or(u64::MAX);
         let family = Family {
-            expires_at: at
+            expires_at: (at
                 + if offline {
                     client
                         .settings
@@ -1515,7 +1527,8 @@ impl Core {
                         .settings
                         .access_token_ttl
                         .unwrap_or(self.config.access_token_ttl)
-                },
+                })
+            .min(source_deadline),
             revoked: false,
         };
         let family_id = crypto::id();
