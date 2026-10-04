@@ -144,6 +144,9 @@ internal static class Program
             {
                 status = "failed", case_name = currentCase, passed,
                 native_code = error is Win32Exception native ? (int?)native.NativeErrorCode : null,
+                managed_kind = error switch { IOException => "io", UnauthorizedAccessException => "access",
+                    InvalidOperationException => "assertion", _ => (string?)null },
+                managed_hresult = error.HResult,
                 native_stage = FirstLifecycleNativeStage(error),
                 lifecycle_save = currentCase == "create_load_save_purge"
                     ? lifecycleSaveOperation : null,
