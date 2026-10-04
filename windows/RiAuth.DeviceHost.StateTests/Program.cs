@@ -6,6 +6,7 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text.Json;
+using Microsoft.Win32.SafeHandles;
 using RiAuth.DeviceHost;
 
 namespace RiAuth.DeviceHost.StateTests;
@@ -22,6 +23,97 @@ internal static class Program
     [DllImport("kernel32.dll", EntryPoint = "CreateHardLinkW", ExactSpelling = true,
         CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int CreateHardLink(string name, string existing, IntPtr attributes);
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct Luid
+    {
+        internal uint Low;
+        internal int High;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct TokenPrivileges
+    {
+        internal uint Count;
+        internal Luid Privilege;
+        internal uint Attributes;
+    }
+
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern int OpenProcessToken(IntPtr process, uint access,
+        out SafeAccessTokenHandle token);
+
+    [DllImport("advapi32.dll", ExactSpelling = true, CharSet = CharSet.Unicode,
+        SetLastError = true)]
+    private static extern int LookupPrivilegeValueW(string? system, string name, out Luid privilege);
+
+    [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
+    private static extern int AdjustTokenPrivileges(SafeAccessTokenHandle token, int disableAll,
+        ref TokenPrivileges requested, uint bufferLength, out TokenPrivileges previous,
+        out uint returnLength);
+
+    private static void ReturnedPrivilege(TokenPrivileges previous, uint length, Luid privilege)
+    {
+        Require(previous.Count <= 1 && length == 4 + 12 * previous.Count,
+            "bounded privilege result");
+        if (previous.Count == 1)
+            Require(previous.Privilege.Low == privilege.Low && previous.Privilege.High == privilege.High
+                && (previous.Attributes & ~0x80000003u) == 0, "exact returned privilege");
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void WithRestorePrivilege(Action body)
+    {
+        Require(Marshal.SizeOf<Luid>() == 8
+            && Marshal.OffsetOf<Luid>(nameof(Luid.Low)).ToInt32() == 0
+            && Marshal.OffsetOf<Luid>(nameof(Luid.High)).ToInt32() == 4
+            && Marshal.SizeOf<TokenPrivileges>() == 16
+            && Marshal.OffsetOf<TokenPrivileges>(nameof(TokenPrivileges.Count)).ToInt32() == 0
+            && Marshal.OffsetOf<TokenPrivileges>(nameof(TokenPrivileges.Privilege)).ToInt32() == 4
+            && Marshal.OffsetOf<TokenPrivileges>(nameof(TokenPrivileges.Attributes)).ToInt32() == 12,
+            "privilege native layouts");
+        // TOKEN_QUERY | TOKEN_ADJUST_PRIVILEGES; only an existing privilege can be enabled.
+        var opened = OpenProcessToken(GetCurrentProcess(), 0x28, out var token);
+        var openError = Marshal.GetLastWin32Error();
+        using (token)
+        {
+            if (opened == 0) throw new Win32Exception(openError);
+            Require(!token.IsInvalid && !token.IsClosed, "owned privilege token");
+            var found = LookupPrivilegeValueW(null, "SeRestorePrivilege", out var privilege);
+            var lookupError = Marshal.GetLastWin32Error();
+            if (found == 0) throw new Win32Exception(lookupError);
+            var requested = new TokenPrivileges { Count = 1, Privilege = privilege, Attributes = 2 };
+            var enabled = AdjustTokenPrivileges(token, 0, ref requested, 16, out var previous,
+                out var previousLength);
+            var enableError = Marshal.GetLastWin32Error();
+            if (enabled == 0) throw new Win32Exception(enableError);
+            try
+            {
+                ReturnedPrivilege(previous, previousLength, privilege);
+                // BOOL success may still report ERROR_NOT_ALL_ASSIGNED (1300).
+                // No nonzero error is accepted and no fixture exists at this point.
+                if (enableError != 0) throw new Win32Exception(enableError);
+                body();
+            }
+            finally
+            {
+                // Never pass a malformed count/foreign LUID to the fixed native buffer.
+                ReturnedPrivilege(previous, previousLength, privilege);
+                var restore = previous;
+                var restored = AdjustTokenPrivileges(token, 0, ref restore, 16, out var duringRestore,
+                    out var restoreLength);
+                var restoreError = Marshal.GetLastWin32Error();
+                if (restored == 0 || restoreError != 0) throw new Win32Exception(restoreError);
+                ReturnedPrivilege(duringRestore, restoreLength, privilege);
+                Require(duringRestore.Count == previous.Count
+                    && (previous.Count == 0 || duringRestore.Attributes == (previous.Attributes | 2)),
+                    "exact privilege restoration result");
+            }
+        }
+    }
 
     private static int Main(string[] args)
     {
@@ -82,14 +174,14 @@ internal static class Program
         }
         // Assigning SY ownership requires the native test actor's owner-assignment
         // privilege. Absence is a real refusal/failure, never a success or repair.
-        Case("system_owner_preserved", () =>
+        Case("system_owner_preserved", () => WithRestorePrivilege(() =>
         {
             using var fixture = new Fixture();
             WinSecurity.TestSetMetadata(fixture.StatePath, "O:SYG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)");
             var before = fixture.Snapshot();
             Require(fixture.Store.Load() == fixture.State, "system owner load");
             Require(before.Same(fixture.Snapshot()), "system owner unchanged");
-        });
+        }));
         Case("hardlink_refusal", () =>
         {
             using var fixture = new Fixture();
