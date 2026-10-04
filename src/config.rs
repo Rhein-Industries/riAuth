@@ -9,6 +9,51 @@ use std::{
 };
 use url::Url;
 
+/// Native admission retained only in this process; no serialized or caller-set form.
+#[derive(Clone)]
+pub(crate) struct ExtensionAdmission {
+    documents: std::sync::Arc<BTreeMap<String, String>>,
+}
+
+impl std::fmt::Debug for ExtensionAdmission {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ExtensionAdmission { .. }")
+    }
+}
+
+impl ExtensionAdmission {
+    fn bounded(documents: &BTreeMap<String, String>) -> bool {
+        if documents.len() > 16 {
+            return false;
+        }
+        let mut total = 0usize;
+        for (key, document) in documents {
+            if key.is_empty()
+                || key.len() > 64
+                || document.is_empty()
+                || document.len() > crate::workflow::extension_gate::MAX_MANIFEST_BYTES
+            {
+                return false;
+            }
+            let Some(next) = total
+                .checked_add(key.len())
+                .and_then(|bytes| bytes.checked_add(document.len()))
+            else {
+                return false;
+            };
+            if next > 16 * (64 + crate::workflow::extension_gate::MAX_MANIFEST_BYTES) {
+                return false;
+            }
+            total = next;
+        }
+        true
+    }
+
+    pub(crate) fn matches(&self, documents: &BTreeMap<String, String>) -> bool {
+        Self::bounded(documents) && self.documents.as_ref() == documents
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -547,6 +592,27 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<()> {
+        self.validate_with_extension_admission().map(|_| ())
+    }
+
+    pub(crate) fn validate_with_extension_admission(&self) -> Result<ExtensionAdmission> {
+        self.validate_extension_mode(None)
+    }
+
+    pub(crate) fn validate_reusing_extension_admission(
+        &self,
+        admission: &ExtensionAdmission,
+    ) -> Result<()> {
+        self.validate_extension_mode(Some(admission)).map(|_| ())
+    }
+
+    fn validate_extension_mode(
+        &self,
+        retained: Option<&ExtensionAdmission>,
+    ) -> Result<ExtensionAdmission> {
+        if retained.is_some_and(|admission| !admission.matches(&self.workflow_extensions)) {
+            bail!("Workflow extension configuration requires fresh startup validation");
+        }
         crate::edition::validate_config(self)?;
         crate::capability::validate_config(self)?;
         let ldap = listener_ids(&self.ldap_listeners);
@@ -651,11 +717,26 @@ impl Config {
         if self.workflow_extensions.len() > 16 {
             bail!("Configure at most 16 workflow extensions");
         }
-        let extensions =
-            crate::workflow::extension_gate::stage_registration(&self.workflow_extensions)
-                .map_err(|denial| {
-                    anyhow::anyhow!("Workflow extension was rejected ({})", denial.as_str())
-                })?;
+        let extensions = match retained {
+            None => crate::workflow::extension_gate::stage_registration(&self.workflow_extensions),
+            Some(_) => {
+                #[cfg(feature = "platform")]
+                {
+                    crate::workflow::extension_gate::stage_binding(&self.workflow_extensions)
+                }
+                #[cfg(not(feature = "platform"))]
+                {
+                    if self.workflow_extensions.is_empty() {
+                        Ok(BTreeMap::new())
+                    } else {
+                        Err(crate::workflow::extension_gate::Denial::ExternalRuntimeRequired)
+                    }
+                }
+            }
+        }
+        .map_err(|denial| {
+            anyhow::anyhow!("Workflow extension was rejected ({})", denial.as_str())
+        })?;
         for (name, configured) in &self.workflows {
             let id = crate::workflow::Id::new(name.clone())
                 .map_err(|_| anyhow::anyhow!("Invalid workflow configuration key"))?;
@@ -814,7 +895,15 @@ impl Config {
         if self.password_history > 24 {
             bail!("password_history must be from 0 through 24");
         }
-        Ok(())
+        if let Some(admission) = retained {
+            return Ok(admission.clone());
+        }
+        if !ExtensionAdmission::bounded(&self.workflow_extensions) {
+            bail!("Workflow extension configuration exceeds admission proof bounds");
+        }
+        Ok(ExtensionAdmission {
+            documents: std::sync::Arc::new(self.workflow_extensions.clone()),
+        })
     }
     pub fn load(path: &Path) -> Result<Self> {
         Self::load_with_validation(path, true)
@@ -1262,6 +1351,146 @@ mod tests {
         assert_eq!(
             loaded.device_trust.unwrap().service_account_file.unwrap(),
             dir.path().join("verified-access.json")
+        );
+    }
+
+    #[test]
+    fn retained_extension_admission_exact_map_and_bounds() {
+        let config = Config::default();
+        let proof = config.validate_with_extension_admission().unwrap();
+        assert!(proof.matches(&config.workflow_extensions));
+        assert_eq!(format!("{proof:?}"), "ExtensionAdmission { .. }");
+        let mut changed = config.clone();
+        changed
+            .workflow_extensions
+            .insert("risk-check".into(), "{}".into());
+        assert!(!proof.matches(&changed.workflow_extensions));
+        assert!(
+            !serde_json::to_value(&config)
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("extension_admission")
+        );
+
+        // This exercises only bounds, not native admission or token construction.
+        let mut documents: BTreeMap<_, _> = (0..16)
+            .map(|index| {
+                (
+                    format!("stage-{index}"),
+                    " ".repeat(crate::workflow::extension_gate::MAX_MANIFEST_BYTES),
+                )
+            })
+            .collect();
+        assert!(ExtensionAdmission::bounded(&documents));
+        documents.insert("stage-extra".into(), "{}".into());
+        assert!(!ExtensionAdmission::bounded(&documents));
+        documents.remove("stage-extra");
+        documents.get_mut("stage-0").unwrap().push(' ');
+        assert!(!ExtensionAdmission::bounded(&documents));
+        documents.insert("stage-0".into(), "{}".into());
+        let document = documents.remove("stage-1").unwrap();
+        documents.insert("k".repeat(64), document.clone());
+        assert!(ExtensionAdmission::bounded(&documents));
+        documents.remove(&"k".repeat(64));
+        documents.insert("k".repeat(65), document);
+        assert!(!ExtensionAdmission::bounded(&documents));
+        for (key, document) in [("", "{}"), ("stage", "")] {
+            assert!(!ExtensionAdmission::bounded(&BTreeMap::from([(
+                key.to_owned(),
+                document.to_owned()
+            )])));
+        }
+    }
+
+    #[test]
+    fn retained_extension_admission_reuse_preserves_late_validation() {
+        let config = Config::default();
+        let proof = config.validate_with_extension_admission().unwrap();
+        config.validate_reusing_extension_admission(&proof).unwrap();
+        let mut changed = config.clone();
+        changed.password_history = 25;
+        let original = changed.validate().unwrap_err().to_string();
+        assert_eq!(
+            changed
+                .validate_with_extension_admission()
+                .unwrap_err()
+                .to_string(),
+            original
+        );
+        assert_eq!(
+            changed
+                .validate_reusing_extension_admission(&proof)
+                .unwrap_err()
+                .to_string(),
+            original
+        );
+        changed.password_history = config.password_history;
+        changed
+            .workflow_extensions
+            .insert("risk-check".into(), "{}".into());
+        let calls = crate::workflow::extension_gate::configured_admission_calls_for_test();
+        let error = changed
+            .validate_reusing_extension_admission(&proof)
+            .unwrap_err();
+        assert!(error.to_string().contains("fresh startup validation"));
+        assert_eq!(
+            crate::workflow::extension_gate::configured_admission_calls_for_test(),
+            calls
+        );
+    }
+
+    #[cfg(all(feature = "platform", target_os = "macos"))]
+    #[test]
+    fn retained_extension_admission_requires_native_success_and_full_map() {
+        use crate::workflow::extension_gate::{self, fixture};
+        let mut config = Config::default();
+        for name in ["risk-check", "parked-check"] {
+            let document = fixture::document(&fixture::allow(), |value| {
+                value["stage"] = serde_json::json!(name);
+            });
+            config
+                .workflow_extensions
+                .insert(name.into(), String::from_utf8(document).unwrap());
+        }
+        let before = extension_gate::configured_admission_calls_for_test();
+        let proof = config.validate_with_extension_admission().unwrap();
+        let after = extension_gate::configured_admission_calls_for_test();
+        assert_eq!(after.0 - before.0, 2);
+        assert!(proof.matches(&config.workflow_extensions));
+        assert!(!proof.matches(&BTreeMap::from([(
+            "risk-check".into(),
+            config.workflow_extensions["risk-check"].clone()
+        )])));
+        let mut changed = config.clone();
+        changed
+            .workflow_extensions
+            .get_mut("parked-check")
+            .unwrap()
+            .push(' ');
+        assert!(!proof.matches(&changed.workflow_extensions));
+        let calls = extension_gate::configured_admission_calls_for_test();
+        config.validate_reusing_extension_admission(&proof).unwrap();
+        assert_eq!(extension_gate::configured_admission_calls_for_test(), calls);
+        // Neither native-rejected documents nor a failure after admission yield a proof.
+        changed = config.clone();
+        changed.workflow_extensions.insert(
+            "risk-check".into(),
+            String::from_utf8(fixture::document(
+                &fixture::allow_with_invalid_tail(1),
+                |_| {},
+            ))
+            .unwrap(),
+        );
+        assert!(changed.validate_with_extension_admission().is_err());
+        changed = config;
+        changed.password_history = 25;
+        assert!(
+            changed
+                .validate_with_extension_admission()
+                .unwrap_err()
+                .to_string()
+                .contains("password_history")
         );
     }
 }

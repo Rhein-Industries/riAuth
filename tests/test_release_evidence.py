@@ -215,5 +215,258 @@ class ReleaseEvidenceAudit(unittest.TestCase):
                 evidence.audit(root)
 
 
+import ast
+import runpy
+from unittest import mock
+
+
+class SourceContractData(unittest.TestCase):
+    def texts(self):
+        return {relative: (ROOT / relative).read_text() for relative in evidence.SOURCE_CONTRACTS}
+
+    def changed_function(self, text, name, before, after):
+        selected = [node for node in ast.parse(text).body
+                    if isinstance(node, ast.FunctionDef) and node.name == name]
+        self.assertEqual(len(selected), 1)
+        body = ast.get_source_segment(text, selected[0])
+        self.assertIn(before, body)
+        return text.replace(body, body.replace(before, after, 1), 1)
+
+    def test_canonical_contracts_allow_comments_and_whitespace(self):
+        for relative, text in self.texts().items():
+            with self.subTest(relative=relative):
+                evidence.recognize_source_contract(text, relative)
+                evidence.recognize_source_contract("\n# source formatting\n" + text + "\n# end\n", relative)
+
+    def test_changed_graphs_and_referenced_constants_refuse(self):
+        texts = self.texts()
+        producer = "scripts/spdx_sbom.py"
+        changed = self.changed_function(texts[producer], "linux_graphs",
+                                        '"lock": "server"', '"lock": "client"')
+        candidates = [
+            (producer, changed),
+            (producer, texts[producer].replace('"x86_64": "x86_64-unknown-linux-gnu"',
+                                               '"x86_64": "other-target"', 1)),
+            ("scripts/check-installed-release-gate.py",
+             texts["scripts/check-installed-release-gate.py"].replace(
+                 'EDITIONS = ("essentials", "platform")', 'EDITIONS = ("essentials",)', 1)),
+            ("scripts/check-release-attestation.py",
+             texts["scripts/check-release-attestation.py"].replace(
+                 'ACTION_SHA = "1e69f48acb82d1966a394da916b4c1698aa569d6"',
+                 'ACTION_SHA = "0000000000000000000000000000000000000000"', 1)),
+        ]
+        for relative, text in candidates:
+            with self.subTest(relative=relative):
+                self.assertNotEqual(text, texts[relative])
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(text, relative)
+
+    def test_selected_decorators_and_defaults_refuse(self):
+        relative = "scripts/spdx_sbom.py"
+        text = self.texts()[relative]
+        for header in ("@staticmethod\ndef linux_graphs(arch):", "def linux_graphs(arch=None):"):
+            with self.subTest(header=header):
+                changed = text.replace("def linux_graphs(arch):", header, 1)
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(changed, relative)
+
+    def test_duplicate_alias_augmented_and_conditional_bindings_refuse(self):
+        relative = "scripts/spdx_sbom.py"
+        text = self.texts()[relative]
+        declarations = (
+            "linux_graphs = None\n",
+            "LINUX_TARGETS += {}\n",
+            "import math as linux_graphs\n",
+            "from math import floor as linux_graphs\n",
+            "def linux_graphs(arch):\n    pass\n",
+            "if True:\n    def linux_graphs(arch):\n        pass\n",
+        )
+        for declaration in declarations:
+            with self.subTest(declaration=declaration):
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(text + "\n" + declaration, relative)
+
+    def test_relevant_writes_in_other_bodies_refuse(self):
+        relative = "scripts/spdx_sbom.py"
+        text = self.texts()[relative]
+        bodies = (
+            "global linux_graphs\n    linux_graphs = None\n    return payload",
+            "import math as linux_graphs\n    return payload",
+            "if False:\n        def linux_graphs(arch):\n            pass\n    return payload",
+            "LINUX_TARGETS['additional'] = 'other'\n    return payload",
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                changed = self.changed_function(text, "sha256_bytes",
+                                                "return hashlib.sha256(payload).hexdigest()", body)
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(changed, relative)
+
+    def test_unrecognized_declarations_and_loader_ownership_refuse(self):
+        texts = self.texts()
+        relative = "scripts/check-installed-release-gate.py"
+        candidates = (
+            texts[relative] + "\nDECLARED_NOTE = object()\n",
+            texts[relative] + "\nclass AdditionalDeclaration:\n    pass\n",
+            texts[relative] + "\nif True:\n    pass\n",
+            texts[relative].replace(' / "spdx_sbom.py"', ' / "other_document.py"', 1),
+        )
+        for text in candidates:
+            with self.subTest(text_length=len(text)):
+                self.assertNotEqual(text, texts[relative])
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(text, relative)
+
+    def test_owned_workflow_policy_keeps_permissions_actions_and_subjects(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        result = evidence.require_release_workflow(workflow)
+        self.assertFalse(result["signed_artifact"])
+        self.assertEqual(result["action"], "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2")
+        candidates = (
+            workflow.replace("id-token: write", "id-token: read", 1),
+            workflow.replace("actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6", "actions/attest@other", 1),
+            workflow.replace("all-subjects.txt", "different-subjects.txt", 1),
+            workflow + "\npackages: write\n",
+        )
+        for text in candidates:
+            with self.subTest(text_length=len(text)):
+                self.assertNotEqual(text, workflow)
+                with self.assertRaises(evidence.AuditError):
+                    evidence.require_release_workflow(text)
+
+    def test_source_read_and_parse_are_bounded(self):
+        relative = "scripts/spdx_sbom.py"
+        with self.assertRaises(evidence.AuditError):
+            evidence.recognize_source_contract("x" * (evidence.MAX_SOURCE_BYTES + 1), relative)
+        with self.assertRaises(evidence.AuditError):
+            evidence.recognize_source_contract("def incomplete(", relative)
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            path = root / "source.py"
+            path.write_bytes(b"x" * (evidence.MAX_SOURCE_BYTES + 1))
+            with self.assertRaises(evidence.AuditError):
+                evidence.read_text(root, path.name)
+            path.unlink()
+            path.mkdir()
+            with self.assertRaises(evidence.AuditError):
+                evidence.read_text(root, path.name)
+
+    def test_source_ast_normalizes_only_empty_type_parameters(self):
+        import copy
+
+        absent = ast.parse(
+            'def ordinary():\n    return "type_params=[]"\n'
+            'async def asynchronous():\n    return "type_params=[]"\n'
+            'class Declaration:\n    note = "type_params=[]"\n'
+        )
+        for node in absent.body:
+            if "type_params" not in node._fields:
+                node._fields = (*node._fields, "type_params")
+            if hasattr(node, "type_params"):
+                delattr(node, "type_params")
+        empty = copy.deepcopy(absent)
+        for node in empty.body:
+            node.type_params = []
+        before = ast.dump(empty, include_attributes=True)
+        self.assertEqual(evidence.source_ast_dump(absent), evidence.source_ast_dump(empty))
+        self.assertEqual(evidence.source_declarations_sha256(absent),
+                         evidence.source_declarations_sha256(empty))
+        self.assertEqual(ast.dump(empty, include_attributes=True), before)
+        self.assertTrue(all(not hasattr(node, "type_params") for node in absent.body))
+        self.assertTrue(all(node.type_params == [] for node in empty.body))
+        for index in range(len(empty.body)):
+            with self.subTest(node_type=type(empty.body[index]).__name__):
+                nonempty = copy.deepcopy(empty)
+                nonempty.body[index].type_params = [ast.Name(id="T", ctx=ast.Load())]
+                self.assertNotEqual(evidence.source_ast_dump(nonempty),
+                                    evidence.source_ast_dump(empty))
+                self.assertNotEqual(evidence.source_declarations_sha256(nonempty),
+                                    evidence.source_declarations_sha256(empty))
+                self.assertEqual(len(nonempty.body[index].type_params), 1)
+        literal = ast.Constant(value="type_params=[]")
+        self.assertEqual(evidence.source_ast_dump(literal),
+                         ast.dump(literal, include_attributes=False))
+        self.assertEqual(literal.value, "type_params=[]")
+        self.assertEqual([node.value for node in ast.walk(empty)
+                          if isinstance(node, ast.Constant)], ["type_params=[]"] * 3)
+
+    def test_source_ast_dump_keeps_empty_fields_and_nonempty_declarations(self):
+        empty = ast.parse('def ordinary():\n    return "type_params=[]"\n')
+        dumped = evidence.source_ast_dump(empty)
+        for field in ("posonlyargs=[]", "args=[]", "kwonlyargs=[]",
+                      "kw_defaults=[]", "defaults=[]", "decorator_list=[]"):
+            with self.subTest(field=field):
+                self.assertIn(field, dumped)
+        self.assertIn("Constant(value='type_params=[]')", dumped)
+        nonempty = ast.parse(
+            '@marker\ndef ordinary(argument, *, option="type_params=[]"):\n'
+            '    return argument\n'
+        )
+        before = ast.dump(nonempty, include_attributes=True)
+        nonempty_dumped = evidence.source_ast_dump(nonempty)
+        self.assertIn("args=[arg(arg='argument')]", nonempty_dumped)
+        self.assertIn("kwonlyargs=[arg(arg='option')]", nonempty_dumped)
+        self.assertIn("kw_defaults=[Constant(value='type_params=[]')]", nonempty_dumped)
+        self.assertIn("decorator_list=[Name(id='marker', ctx=Load())]", nonempty_dumped)
+        self.assertNotEqual(dumped, nonempty_dumped)
+        self.assertEqual(ast.dump(nonempty, include_attributes=True), before)
+
+    def test_source_read_requires_native_capabilities_before_open(self):
+        import types
+
+        path = pathlib.Path("source.py")
+        missing = object()
+        for capability in ("O_NOFOLLOW", "O_NONBLOCK"):
+            for value in (missing, None, 0, True, "1"):
+                with self.subTest(capability=capability, unavailable=value is missing):
+                    opened = mock.Mock()
+                    capabilities = {"O_NOFOLLOW": 1, "O_NONBLOCK": 2, "open": opened}
+                    if value is missing:
+                        del capabilities[capability]
+                    else:
+                        capabilities[capability] = value
+                    native = types.SimpleNamespace(**capabilities)
+                    with mock.patch.object(evidence, "os", native), \
+                            mock.patch.object(pathlib.Path, "lstat") as inspected:
+                        with self.assertRaisesRegex(evidence.AuditError,
+                                                    "^source read protections unavailable$"):
+                            evidence.source_bytes(path, path.name)
+                        opened.assert_not_called()
+                        inspected.assert_not_called()
+
+    def test_report_hashes_the_validated_byte_buffers(self):
+        import hashlib
+
+        validated = {relative: (ROOT / relative).read_bytes() for relative in evidence.AUDITED}
+        validated["SECURITY.md"] += "\r\n<!-- UTF-8 fixture: café -->\r\n".encode("utf-8")
+        later = {relative: payload + b"\n" for relative, payload in validated.items()}
+        with mock.patch.object(evidence, "read_text",
+                               side_effect=lambda root, relative: validated[relative].decode("utf-8")) as reads, \
+                mock.patch.object(evidence, "digest",
+                                  side_effect=lambda path: hashlib.sha256(
+                                      later[path.relative_to(ROOT).as_posix()]).hexdigest()) as rereads, \
+                mock.patch.object(evidence, "worktree_state", return_value={"commit": None, "dirty": None}):
+            report = evidence.audit(ROOT)
+        self.assertEqual(reads.call_args_list, [mock.call(ROOT, relative) for relative in evidence.AUDITED])
+        rereads.assert_not_called()
+        self.assertEqual(set(report["files"]), set(evidence.AUDITED))
+        for relative in evidence.AUDITED:
+            with self.subTest(relative=relative):
+                self.assertEqual(report["files"][relative], hashlib.sha256(validated[relative]).hexdigest())
+                self.assertNotEqual(report["files"][relative], hashlib.sha256(later[relative]).hexdigest())
+
+    def test_inspected_contracts_never_use_execution_or_module_loading(self):
+        texts = self.texts()
+        refused = AssertionError("unexpected execution or module loading")
+        with mock.patch("importlib.util.spec_from_file_location", side_effect=refused), \
+                mock.patch("builtins.exec", side_effect=refused), \
+                mock.patch("builtins.eval", side_effect=refused), \
+                mock.patch("runpy.run_path", side_effect=refused):
+            for relative, text in texts.items():
+                evidence.recognize_source_contract(text, relative)
+            evidence.require_package_contract(texts)
+            evidence.require_release_workflow((ROOT / ".github/workflows/release.yml").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

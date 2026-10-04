@@ -281,6 +281,105 @@ function Read-SignedBundle {
     }
 }
 
+function Assert-StateAdmission {
+    param(
+        [Parameter(Mandatory = $true)] $Bundle,
+        [Parameter(Mandatory = $true)][string] $ExpectedThumbprint
+    )
+
+    # Keep the exact verified candidate closed to writes/deletion until joined.
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    Assert-NoReparsePoint -LiteralPath $Bundle.Host
+    $payload = [IO.File]::Open($Bundle.Host, [IO.FileMode]::Open,
+        [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $process = $null
+    $stdoutTask = $null
+    $stderrTask = $null
+    $started = $false
+    try {
+        $actual = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($payload))
+        if ($actual -cne $Bundle.HostSha256) { throw 'State preparation candidate hash mismatch.' }
+        Assert-SignedBy -LiteralPath $Bundle.Host -ExpectedThumbprint $ExpectedThumbprint
+        if ($clock.ElapsedMilliseconds -ge 15000) { throw 'State preparation deadline exceeded.' }
+        $start = [Diagnostics.ProcessStartInfo]::new()
+        $start.Environment.Clear()
+        $start.Environment['SystemRoot'] = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+        $start.FileName = $Bundle.Host
+        $start.UseShellExecute = $false
+        $start.CreateNoWindow = $true
+        $start.RedirectStandardInput = $true
+        $start.RedirectStandardOutput = $true
+        $start.RedirectStandardError = $true
+        $start.ArgumentList.Add('prepare-state')
+        $process = [Diagnostics.Process]::new()
+        $process.StartInfo = $start
+        if (-not $process.Start()) { throw 'State preparation did not start.' }
+        $started = $true
+        $process.StandardInput.Close()
+        $stdout = [Text.StringBuilder]::new()
+        $stderr = [Text.StringBuilder]::new()
+        $stdoutBuffer = [char[]]::new(128)
+        $stderrBuffer = [char[]]::new(128)
+        $stdoutTask = $process.StandardOutput.ReadAsync($stdoutBuffer, 0, 128)
+        $stderrTask = $process.StandardError.ReadAsync($stderrBuffer, 0, 128)
+        $stdoutEnd = $false
+        $stderrEnd = $false
+        while (-not ($process.HasExited -and $stdoutEnd -and $stderrEnd)) {
+            if ($clock.ElapsedMilliseconds -ge 15000) { throw 'State preparation deadline exceeded.' }
+            if (-not $stdoutEnd -and $stdoutTask.IsCompleted) {
+                $count = $stdoutTask.GetAwaiter().GetResult()
+                if ($count -eq 0) { $stdoutEnd = $true } else {
+                    if ($stdout.Length + $count -gt 1024) { throw 'State preparation output limit exceeded.' }
+                    $null = $stdout.Append($stdoutBuffer, 0, $count)
+                    $stdoutTask = $process.StandardOutput.ReadAsync($stdoutBuffer, 0, 128)
+                }
+            }
+            if (-not $stderrEnd -and $stderrTask.IsCompleted) {
+                $count = $stderrTask.GetAwaiter().GetResult()
+                if ($count -eq 0) { $stderrEnd = $true } else {
+                    if ($stderr.Length + $count -gt 1024) { throw 'State preparation output limit exceeded.' }
+                    $null = $stderr.Append($stderrBuffer, 0, $count)
+                    $stderrTask = $process.StandardError.ReadAsync($stderrBuffer, 0, 128)
+                }
+            }
+            [Threading.Thread]::Sleep(10)
+        }
+        if (-not $process.WaitForExit(0) -or $clock.ElapsedMilliseconds -ge 15000) {
+            throw 'State preparation deadline exceeded.'
+        }
+        if ($process.ExitCode -ne 0 -or $stderr.Length -ne 0 -or
+            $stdout.ToString() -cne "RIAUTH-STATE-READY-V1`n") {
+            throw 'State preparation refused; no installation changes were made.'
+        }
+    } finally {
+        $cleanup = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            if ($started) {
+                if (-not $process.HasExited) { $process.Kill($true) }
+                $remaining = [Math]::Max(0, 5000 - [int]$cleanup.ElapsedMilliseconds)
+                if (-not $process.WaitForExit($remaining)) { throw 'State preparation cleanup did not join.' }
+                # Closing our pipes cancels a pending bounded read on refusal.
+                $process.StandardOutput.Dispose()
+                $process.StandardError.Dispose()
+                foreach ($task in @($stdoutTask, $stderrTask)) {
+                    if ($null -ne $task) {
+                        while (-not $task.IsCompleted -and $cleanup.ElapsedMilliseconds -lt 5000) {
+                            [Threading.Thread]::Sleep(10)
+                        }
+                        if (-not $task.IsCompleted) { throw 'State preparation capture did not join.' }
+                        # Observe faults without ever printing child output.
+                        try { $null = $task.GetAwaiter().GetResult() } catch { }
+                    }
+                }
+                if ($cleanup.ElapsedMilliseconds -ge 5000) { throw 'State preparation cleanup deadline exceeded.' }
+            }
+        } finally {
+            if ($null -ne $process) { $process.Dispose() }
+            $payload.Dispose()
+        }
+    }
+}
+
 function Get-PinnedSigner {
     param([Parameter(Mandatory = $true)][string] $RegistryKey)
     if (-not (Test-Path -LiteralPath $RegistryKey)) {
@@ -1189,6 +1288,7 @@ try {
         }
         $pin = Normalize-Thumbprint $SignerThumbprint
         $bundle = Read-SignedBundle -Directory $BundlePath -ExpectedThumbprint $pin -ExpectedProviderClsid $providerClsid
+        Assert-StateAdmission -Bundle $bundle -ExpectedThumbprint $pin
         New-Item -ItemType Directory -Path $installParent -Force | Out-Null
         Assert-NoReparsePoint -LiteralPath $installParent
         $stageDirectory = Join-Path $installParent ("DeviceHost.stage.$([guid]::NewGuid().ToString('N'))")
@@ -1251,6 +1351,7 @@ try {
     } elseif ($Action -eq 'Update') {
         $pin = Get-PinnedSigner -RegistryKey $registryKey
         $bundle = Read-SignedBundle -Directory $BundlePath -ExpectedThumbprint $pin -ExpectedProviderClsid $providerClsid
+        Assert-StateAdmission -Bundle $bundle -ExpectedThumbprint $pin
         $pendingUpdate = Read-PendingUpdate -RegistryKey $registryKey
         if ($null -ne $pendingUpdate) {
             Complete-PendingUpdate -Update $pendingUpdate -Bundle $bundle -ExpectedThumbprint $pin

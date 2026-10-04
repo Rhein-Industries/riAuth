@@ -45,6 +45,30 @@ pub(super) fn command(program: &Path) -> Result<Command, Denial> {
     }
 }
 
+/// Check only supported-host program/backend metadata; never launch or probe.
+pub(super) fn configured_available(program: &Path) -> Result<(), Denial> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for path in [program, Path::new("/usr/bin/sandbox-exec")] {
+            let path = path.canonicalize().map_err(|_| Denial::Failed)?;
+            if path.to_str().is_none() {
+                return Err(Denial::Failed);
+            }
+            let metadata = path.metadata().map_err(|_| Denial::Failed)?;
+            if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+                return Err(Denial::Failed);
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = program;
+        Err(Denial::ExternalRuntimeRequired)
+    }
+}
+
 pub(super) fn check_entry() -> Result<(), Denial> {
     #[cfg(target_os = "macos")]
     {
@@ -106,4 +130,24 @@ fn check_descriptors() -> Result<(), Denial> {
         }
     }
     Ok(())
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn configured_availability_rejects_missing_nonregular_and_nonexecutable_programs() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            configured_available(&dir.path().join("missing")),
+            Err(Denial::Failed)
+        );
+        assert_eq!(configured_available(dir.path()), Err(Denial::Failed));
+        let file = dir.path().join("guest");
+        std::fs::write(&file, b"metadata-only fixture, never executed").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(configured_available(&file), Err(Denial::Failed));
+    }
 }

@@ -16,6 +16,13 @@ internal static class Program
                 Console.WriteLine("selftest passed");
                 return 0;
             }
+            if (args.Length > 0 && args[0] == "prepare-state")
+            {
+                if (args.Length != 1) throw new ArgumentException("prepare-state takes no arguments");
+                new WindowsStateStore().Prepare();
+                Console.Out.Write("RIAUTH-STATE-READY-V1\n");
+                return 0;
+            }
             if (args.Length == 0) throw new ArgumentException(Usage());
             var command = args[0];
             var options = Options.Parse(args.Skip(1).ToArray());

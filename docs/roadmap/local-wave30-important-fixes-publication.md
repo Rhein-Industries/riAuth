@@ -203,3 +203,42 @@ extension capability admission, release-source inspection, external tenants and
 the confidential browser checkpoint remain separate checks. The security review
 remains open, with Entra tenant testing deferred and original task statuses
 unchanged.
+
+
+## Startup handoffs, source inspection and Windows state preparation
+
+2026-10-04. Startup now carries an opaque admission proof for the exact configured
+extension documents. Capability reporting checks that proof and current graph
+without repeating native manifest admission. Actual extension execution still
+performs its original isolated validation. Windows state operations admit the
+original owner, protected permissions and held file identity before reading or
+decrypting content; installation checks the verified candidate's metadata-only
+preparation command before changing payloads or registration.
+
+Focused locked offline checks passed all nine new admission contracts, the
+existing capability and bootstrap checks, and the Essentials reporting check.
+Two added storage fixtures initially omitted their required local directory;
+their setup was corrected without changing production guards or assertions.
+The signed federation deadline lifecycle and five existing source-workflow
+contracts passed after the internal verification representation was boxed.
+All-target lint with warnings denied passed after one equivalent map-presence
+assertion was corrected. The failed checks remain recorded separately.
+
+The release source inspector reads bounded source data and validates static
+contracts without importing the inspected producers. Its full 27-test suite and
+actual CLI passed on installed Python 3.12, 3.13 and 3.14, with identical reported
+file hashes. The original policy and prior tests remain intact.
+
+The Windows host and native test project typechecked with the installed
+9.0.200 SDK using offline package sources and private build output. Four
+installer-order checks passed on Python 3.12. Initial test linkage and definite
+assignment errors were corrected; the local Python 3.14 XML loader failure was
+not treated as product evidence. Hosted Windows native state tests are a
+separate gate. Ordinary-token, physical credential-provider, signed installation,
+external tenant and confidential browser results are not established here.
+Entra remains mocked pending tenant testing; original task statuses are unchanged.
+
+The native SYSTEM-owner fixture now enables only its existing test-process
+restore privilege around that case and restores the saved state in finally.
+The updated native project typechecked offline with zero warnings or errors.
+Production does not acquire this privilege. Hosted execution remains pending.

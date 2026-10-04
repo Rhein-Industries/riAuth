@@ -64,6 +64,7 @@ pub struct Bootstrap {
     pub config: Config,
     pub store: Store,
     instance: String,
+    runtime: Arc<crate::capability::RuntimeStatus>,
 }
 
 fn local(config: &Config) -> Result<()> {
@@ -139,7 +140,23 @@ impl Bootstrap {
     }
 
     pub fn open(config: Config) -> Result<Self> {
-        local(&config)?;
+        let admission = config
+            .validate_with_extension_admission()
+            .map_err(Error::internal)?;
+        let runtime = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
+            admission,
+        ));
+        Self::open_admitted(config, runtime)
+    }
+
+    fn open_admitted(
+        config: Config,
+        runtime: Arc<crate::capability::RuntimeStatus>,
+    ) -> Result<Self> {
+        runtime.require_extension_admission(&config.workflow_extensions)?;
+        if !config.listen.ip().is_loopback() {
+            return Err(Error::bad("Browser setup requires a loopback listener"));
+        }
         if config.postgres.is_none() && !config.data_dir.join("riauth.redb").is_file() {
             return Err(Error::missing(
                 "No pending setup; run riauth prepare-setup or riauth init",
@@ -156,6 +173,7 @@ impl Bootstrap {
             config,
             store,
             instance: pending.instance,
+            runtime,
         })
     }
 
@@ -191,9 +209,13 @@ impl Bootstrap {
         // Reject invalid ownership before expensive password/key work. Recheck all
         // dependencies and the deadline under the writer after that work finishes.
         self.store.read(|tx| self.verify(tx, &proof))?;
-        Core::initialize_store(self.config.clone(), self.store.clone(), input, |tx| {
-            self.verify(tx, &proof)
-        })
+        Core::initialize_store(
+            self.config.clone(),
+            self.store.clone(),
+            self.runtime.clone(),
+            input,
+            |tx| self.verify(tx, &proof),
+        )
     }
 
     fn passkey_start(&self, proof: String, account: NewPasskeyAdmin) -> Result<Value> {
@@ -284,26 +306,33 @@ impl Bootstrap {
             if !pending.enrollment.has_primary() {
                 return Err(invalid_ceremony());
             }
+            self.runtime
+                .require_extension_admission(&self.config.workflow_extensions)?;
             // Claim the response once, including invalid responses and disconnected
             // callers. This spends only the ceremony, never the ownership proof.
             tx.delete("meta", PASSKEY_RECORD)?;
             Ok(pending)
         })?;
-        Core::initialize_with_administrator(self.config.clone(), self.store.clone(), |tx| {
-            self.verify(tx, &proof)?;
-            self.verify_passkey_binding(&pending, &proof)?;
-            let user = pending
-                .enrollment
-                .finish(&self.config.issuer, tx, response)?;
-            // Credential verification can cross the deadline; check at commit too.
-            // This serialized writer now contains our own user, so uninitialized
-            // was checked before those writes; ownership must still be current.
-            self.verify_ownership(tx, &proof)?;
-            if pending.expires_at <= crypto::now() {
-                return Err(invalid_ceremony());
-            }
-            Ok(user)
-        })
+        Core::initialize_with_administrator(
+            self.config.clone(),
+            self.store.clone(),
+            self.runtime.clone(),
+            |tx| {
+                self.verify(tx, &proof)?;
+                self.verify_passkey_binding(&pending, &proof)?;
+                let user = pending
+                    .enrollment
+                    .finish(&self.config.issuer, tx, response)?;
+                // Credential verification can cross the deadline; check at commit too.
+                // This serialized writer now contains our own user, so uninitialized
+                // was checked before those writes; ownership must still be current.
+                self.verify_ownership(tx, &proof)?;
+                if pending.expires_at <= crypto::now() {
+                    return Err(invalid_ceremony());
+                }
+                Ok(user)
+            },
+        )
     }
 
     fn passkey_cancel(&self, proof: String, ceremony: String) -> Result<Value> {
@@ -350,7 +379,10 @@ fn invalid_ceremony() -> Error {
 }
 
 pub async fn serve(config: Config) -> anyhow::Result<()> {
-    config.validate()?;
+    let admission = config.validate_with_extension_admission()?;
+    let runtime = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
+        admission,
+    ));
     // Inspect once and release the backend before opening the selected runtime.
     let selected = config.clone();
     let initialized = tokio::task::spawn_blocking(move || -> Result<bool> {
@@ -366,10 +398,12 @@ pub async fn serve(config: Config) -> anyhow::Result<()> {
         crate::process_role::reject_uninitialized_worker(config.process.role)?;
     }
     if initialized {
-        let core = tokio::task::spawn_blocking(move || Core::open(config)).await??;
+        let core =
+            tokio::task::spawn_blocking(move || Core::open_admitted(config, runtime)).await??;
         crate::api::serve(core).await
     } else {
-        let setup = tokio::task::spawn_blocking(move || Bootstrap::open(config)).await??;
+        let setup = tokio::task::spawn_blocking(move || Bootstrap::open_admitted(config, runtime))
+            .await??;
         crate::api::serve_bootstrap(setup).await
     }
 }
@@ -401,7 +435,11 @@ impl SetupApp {
             if app.setup.store.get::<u32>("meta", "schema")?.is_some() {
                 // Another PostgreSQL node or offline initializer may have won. Read
                 // authoritative storage rather than relying on this process's memory.
-                let core = Core::open_store(app.setup.config.clone(), app.setup.store.clone())?;
+                let core = Core::open_store(
+                    app.setup.config.clone(),
+                    app.setup.store.clone(),
+                    app.setup.runtime.clone(),
+                )?;
                 app.activate(core)?;
             }
             Ok(())
@@ -847,6 +885,7 @@ mod tests {
             let result = Core::initialize_store(
                 config,
                 setup.store.clone(),
+                setup.runtime.clone(),
                 NewUser {
                     username: "owner".into(),
                     password: "deadline-test-password".into(),
@@ -874,5 +913,120 @@ mod tests {
             assert!(setup.store.list::<Value>("audit").unwrap().is_empty());
             assert!(setup.store.get::<Value>("meta", RECORD).unwrap().is_some());
         });
+    }
+
+    #[test]
+    fn passkey_proof_mismatch_preserves_ownership_precedence_and_ceremony() {
+        use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+        fn response(
+            issuer: &str,
+            key: &mut WebauthnAuthenticator<SoftPasskey>,
+            start: &Value,
+        ) -> Value {
+            let mut options = start["public_key"].clone();
+            options["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
+            serde_json::to_value(
+                key.do_registration(
+                    issuer.parse().unwrap(),
+                    serde_json::from_value(options).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config {
+            issuer: "http://localhost:9000".into(),
+            data_dir: dir.path().join("data"),
+            ..Default::default()
+        };
+        let file = dir.path().join("proof");
+        Bootstrap::prepare(config.clone(), &file, 300).unwrap();
+        let proof = std::fs::read_to_string(file).unwrap();
+        let mut setup = Bootstrap::open(config).unwrap();
+        let started = setup
+            .passkey_start(
+                proof.clone(),
+                NewPasskeyAdmin {
+                    username: "owner".into(),
+                    display_name: "Owner".into(),
+                    email: None,
+                    primary_name: "Primary key".into(),
+                    backup_name: "Backup key".into(),
+                },
+            )
+            .unwrap();
+        let mut primary = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let primary_response = response(&setup.config.issuer, &mut primary, &started);
+        let ceremony = started["ceremony"].as_str().unwrap().to_owned();
+        setup
+            .config
+            .workflow_extensions
+            .insert("unadmitted".into(), "{}".into());
+        let before = setup.store.read(|tx| tx.snapshot()).unwrap();
+        let error = setup
+            .passkey_finish(
+                "wrong-proof".into(),
+                ceremony.clone(),
+                serde_json::from_value(primary_response.clone()).unwrap(),
+            )
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "invalid_setup_proof");
+        let error = setup
+            .passkey_finish(
+                proof.clone(),
+                ceremony.clone(),
+                serde_json::from_value(primary_response.clone()).unwrap(),
+            )
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "invalid_setup_ceremony");
+        assert_eq!(setup.store.read(|tx| tx.snapshot()).unwrap(), before);
+        setup.config.workflow_extensions.clear();
+        let second = setup
+            .passkey_first(
+                proof.clone(),
+                ceremony,
+                serde_json::from_value(primary_response).unwrap(),
+            )
+            .unwrap();
+        let mut backup = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut backup_response = response(&setup.config.issuer, &mut backup, &second);
+        backup_response["response"]["attestationObject"] = json!("AA");
+        let ceremony = second["ceremony"].as_str().unwrap().to_owned();
+        setup
+            .config
+            .workflow_extensions
+            .insert("unadmitted".into(), "{}".into());
+        let before = setup.store.read(|tx| tx.snapshot()).unwrap();
+        let calls = crate::workflow::extension_gate::configured_admission_calls_for_test();
+        let error = setup
+            .passkey_finish(
+                proof.clone(),
+                ceremony.clone(),
+                serde_json::from_value(backup_response.clone()).unwrap(),
+            )
+            .err()
+            .unwrap();
+        assert!(error.message.contains("fresh startup validation"));
+        assert_eq!(setup.store.read(|tx| tx.snapshot()).unwrap(), before);
+        assert_eq!(
+            crate::workflow::extension_gate::configured_admission_calls_for_test(),
+            calls
+        );
+        setup.config.workflow_extensions.clear();
+        let error = setup
+            .passkey_finish(
+                proof,
+                ceremony,
+                serde_json::from_value(backup_response).unwrap(),
+            )
+            .err()
+            .unwrap();
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        let mut expected = before;
+        assert!(expected.remove(&format!("meta/{PASSKEY_RECORD}")).is_some());
+        assert_eq!(setup.store.read(|tx| tx.snapshot()).unwrap(), expected);
     }
 }

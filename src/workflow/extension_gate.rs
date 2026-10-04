@@ -365,8 +365,22 @@ pub fn runtime_linked() -> bool {
     RUNTIME_LINKED
 }
 
+// Per-calling-thread observations for the focused capability regressions.
+// These count entry calls, not subprocesses or external runtime readiness.
+#[cfg(test)]
+std::thread_local! {
+    static CONFIGURED_ADMISSION_CALLS: std::cell::Cell<(u64, u64)> = const {
+        std::cell::Cell::new((0, 0))
+    };
+}
+
+#[cfg(test)]
+pub(crate) fn configured_admission_calls_for_test() -> (u64, u64) {
+    CONFIGURED_ADMISSION_CALLS.with(std::cell::Cell::get)
+}
+
 /// Check every configured manifest, including Wasmi validation on Platform.
-/// The map key is the stage id. Configuration and capability use this path.
+/// The map key is the stage id. Initial configuration uses this native admission path.
 pub(crate) fn stage_registration(
     documents: &BTreeMap<String, String>,
 ) -> Result<BTreeMap<Id, Checked>, Denial> {
@@ -435,6 +449,11 @@ pub(crate) fn covers(checked: &Checked, definition: &Definition) -> bool {
 /// at or after the deadline is [`Denial::Elapsed`] and is not admitted.
 /// [`execute`] compiles again inside the step deadline.
 pub fn check(document: &[u8]) -> Result<Checked, Denial> {
+    #[cfg(test)]
+    CONFIGURED_ADMISSION_CALLS.with(|calls| {
+        let (native, metadata) = calls.get();
+        calls.set((native.saturating_add(1), metadata));
+    });
     let checked = decode_manifest(document)?;
     #[cfg(feature = "platform")]
     {
@@ -1047,6 +1066,22 @@ fn resolve_guest_program() -> Result<std::path::PathBuf, Denial> {
         return Err(Denial::Failed);
     }
     Ok(guest_program(&current).to_path_buf())
+}
+
+/// Metadata eligibility for configured reporting, not current native readiness.
+#[cfg(feature = "platform")]
+pub(crate) fn configured_runtime_available() -> bool {
+    #[cfg(test)]
+    CONFIGURED_ADMISSION_CALLS.with(|calls| {
+        let (native, metadata) = calls.get();
+        calls.set((native, metadata.saturating_add(1)));
+    });
+    if !RUNTIME_LINKED || !cfg!(target_os = "macos") {
+        return false;
+    }
+    resolve_guest_program()
+        .and_then(|program| isolation::configured_available(&program))
+        .is_ok()
 }
 
 #[cfg(all(feature = "platform", test))]

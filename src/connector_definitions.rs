@@ -1401,7 +1401,16 @@ fn refuse(error: Error) -> Error {
 /// row is a configuration that was already merged and is a no-op. The merged
 /// configuration passes the same `Config::validate` gates, including edition
 /// and capability rules.
-pub(crate) fn merge(mut config: Config, store: &Store) -> Result<(Config, Loaded)> {
+pub(crate) fn merge(
+    mut config: Config,
+    store: &Store,
+    admission: &crate::config::ExtensionAdmission,
+) -> Result<(Config, Loaded)> {
+    if !admission.matches(&config.workflow_extensions) {
+        return Err(Error::bad(
+            "Workflow extension configuration requires fresh startup validation",
+        ));
+    }
     let Some(directory) = config.connector_secret_dir.clone() else {
         return Ok((config, Loaded::default()));
     };
@@ -1475,7 +1484,7 @@ pub(crate) fn merge(mut config: Config, store: &Store) -> Result<(Config, Loaded
     configured.extend(stored);
     check_set(&configured).map_err(refuse)?;
     config
-        .validate()
+        .validate_reusing_extension_admission(admission)
         .map_err(|error| refuse(Error::bad(error.to_string())))?;
     Ok((config, loaded))
 }
@@ -1634,6 +1643,76 @@ impl Manifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn connector_merge_requires_exact_proof_and_retains_final_validation() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret_dir = dir.path().join("secrets");
+        crate::config::private_dir(&secret_dir.join("scim")).unwrap();
+        crate::config::write_private(
+            &secret_dir.join("scim/token"),
+            b"synthetic-connector-token",
+            false,
+        )
+        .unwrap();
+        let config = Config {
+            data_dir: dir.path().join("data"),
+            connector_secret_dir: Some(secret_dir),
+            connector_credentials: BTreeMap::from([(
+                "scim/token".into(),
+                "https://scim.example.test".into(),
+            )]),
+            ..Default::default()
+        };
+        let proof = config.validate_with_extension_admission().unwrap();
+        std::fs::create_dir(&config.data_dir).unwrap();
+        let store = Store::from_config(&config).unwrap();
+        let definition = json!({"url":"https://scim.example.test/", "token_file":"scim/token", "groups":["staff"]});
+        let row = StoredDefinition {
+            format: FORMAT.into(),
+            kind: Kind::Scim,
+            id: "payroll".into(),
+            revision: 1,
+            digest: definition_digest(Kind::Scim, &definition),
+            definition,
+            updated_at: crate::crypto::now(),
+            updated_by: "operator".into(),
+        };
+        store
+            .write(|tx| tx.put(BUCKET, &key(Kind::Scim, "payroll"), &row))
+            .unwrap();
+        let before = store.read(|tx| tx.snapshot()).unwrap();
+        let calls = crate::workflow::extension_gate::configured_admission_calls_for_test();
+        let (merged, loaded) = merge(config.clone(), &store, &proof).unwrap();
+        assert!(loaded.contains(Kind::Scim, "payroll"));
+        assert_eq!(
+            merged.scim_targets["payroll"].token_file.as_ref().unwrap(),
+            &config
+                .connector_secret_dir
+                .as_ref()
+                .unwrap()
+                .join("scim/token")
+        );
+        assert_eq!(merged.workflow_extensions, config.workflow_extensions);
+        let mut changed = config.clone();
+        changed.password_history = 25;
+        let error = merge(changed, &store, &proof).unwrap_err();
+        assert!(error.message.contains("password_history"));
+        for directory in [None, config.connector_secret_dir.clone()] {
+            let mut changed = config.clone();
+            changed.connector_secret_dir = directory;
+            changed
+                .workflow_extensions
+                .insert("unadmitted".into(), "{}".into());
+            let error = merge(changed, &store, &proof).unwrap_err();
+            assert!(error.message.contains("fresh startup validation"));
+        }
+        assert_eq!(
+            crate::workflow::extension_gate::configured_admission_calls_for_test(),
+            calls
+        );
+        assert_eq!(store.read(|tx| tx.snapshot()).unwrap(), before);
+    }
 
     fn origin_of(text: &str) -> String {
         origin(&Url::parse(text).unwrap()).unwrap()

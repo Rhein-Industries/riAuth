@@ -41,6 +41,27 @@ The server cannot return an old device secret. A lost secret requires remote
 revocation and enrollment. A riAuth user disable also revokes enrolled devices;
 reenabling the user does not restore those device credentials.
 
+## State storage admission refuses
+
+A metadata refusal leaves the original object in place. Do not change ownership
+or permissions merely to make it pass, copy its contents into a newly protected
+file, or retry enrollment against an uncertain issuer. Confirm and revoke the
+intended device through a trusted riAuth administrator session first. A trusted
+Windows administrator must investigate and explicitly remove or recreate the
+rejected state objects before fresh enrollment or installation; the host does
+not automatically migrate or delete them. Keep an ordinary Windows sign-in
+method available during this recovery.
+
+Current Administrators/SYSTEM ownership, a restricted DACL and machine DPAPI
+cannot establish how older state was enrolled or whether its permissions were
+previously changed. When that history is uncertain, revoke and re-enroll rather
+than treating present metadata as historical authentication. Replacement uses
+an admitted restricted directory and held file handles; it is not
+compare-and-swap against a malicious administrator. If publication succeeds
+but its final check fails, the host reports failure and retains the published
+file rather than deleting it to simulate rollback. Investigate that state
+before continuing.
+
 ## Uninstall or repair a failed update
 
 1. Revoke the device remotely and clear local state as above. The installer

@@ -2383,7 +2383,7 @@ fn saml_source_workflow_authorizations_retain_signed_session_deadline() {
         let redirect = url::Url::parse(completed.authorization_response.as_ref().unwrap()).unwrap();
         let fields: std::collections::BTreeMap<_, _> =
             redirect.query_pairs().into_owned().collect();
-        assert!(fields.get("error").is_none());
+        assert!(!fields.contains_key("error"));
         assert_eq!(fields["state"], state);
         exchange.code = Some(fields["code"].clone());
         let stored: Code = f
