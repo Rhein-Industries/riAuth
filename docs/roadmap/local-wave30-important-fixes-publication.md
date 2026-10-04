@@ -237,3 +237,8 @@ not treated as product evidence. Hosted Windows native state tests are a
 separate gate. Ordinary-token, physical credential-provider, signed installation,
 external tenant and confidential browser results are not established here.
 Entra remains mocked pending tenant testing; original task statuses are unchanged.
+
+The native SYSTEM-owner fixture now enables only its existing test-process
+restore privilege around that case and restores the saved state in finally.
+The updated native project typechecked offline with zero warnings or errors.
+Production does not acquire this privilege. Hosted execution remains pending.
