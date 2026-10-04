@@ -4737,11 +4737,7 @@ fn offboarding_views_scope_targets_and_attestations_without_changing_history() {
                     assert!(target["dismissal"].is_null());
                 }
             }
-            assert!(
-                one["result"]["local"]["account_disabled"]
-                    .as_bool()
-                    .unwrap()
-            );
+            assert_eq!(one["result"]["local"]["account"], "disabled");
         };
     assert_views(&no_target, &[], 3, false, "pending");
     for token in [&target_only, &wrong_user] {
