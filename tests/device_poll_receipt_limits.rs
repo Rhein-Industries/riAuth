@@ -769,10 +769,32 @@ fn restored_pending_device_poll_receipts_are_invalidated_with_their_proofs() {
         riauth::recovery::classify(BUCKET),
         Some(riauth::recovery::Class::Invalidated)
     );
+    assert_eq!(
+        riauth::recovery::classify("receipts"),
+        Some(riauth::recovery::Class::Retained)
+    );
+    let management = json!({
+        "fingerprint": "recovery-management-control",
+        "permissions": [],
+        "result": {"ok": true},
+        "expires_at": now() + 86400
+    });
+    f.core
+        .store
+        .write(|tx| tx.put("receipts", "recovery-management-control", &management))
+        .unwrap();
     let recovery = riauth::recovery::invalidate_restored(&f.core.store).unwrap();
     assert_eq!(recovery.invalidated[BUCKET], 1);
     assert!(f.core.store.list::<Value>(BUCKET).unwrap().is_empty());
     assert!(f.core.store.list::<Device>("devices").unwrap().is_empty());
+    assert_eq!(
+        f.core
+            .store
+            .get::<Value>("receipts", "recovery-management-control")
+            .unwrap()
+            .unwrap(),
+        management
+    );
     let before = f.snapshot().unwrap();
     assert_eq!(
         refusal(keyed(&f.core, request("app", &code, None), "first", 1)).code,
