@@ -1665,6 +1665,7 @@ mod tests {
             ..Default::default()
         };
         let proof = config.validate_with_extension_admission().unwrap();
+        std::fs::create_dir(&config.data_dir).unwrap();
         let store = Store::from_config(&config).unwrap();
         let definition = json!({"url":"https://scim.example.test/", "token_file":"scim/token", "groups":["staff"]});
         let row = StoredDefinition {
