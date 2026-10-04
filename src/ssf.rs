@@ -616,11 +616,16 @@ fn clear_owner(delivery: &mut Delivery) {
 /// the sender. The lease lives in `next_attempt` as well, 60 seconds ahead.
 pub(crate) fn claim_deliveries(
     tx: &impl SsfTx,
+    limit: usize,
+    excluded: &BTreeSet<String>,
 ) -> Result<Vec<(Delivery, SigningKey, Option<String>)>> {
     let mut ready = Vec::new();
     for (id, mut delivery) in tx.due_deliveries(now(), 32)? {
-        if ready.len() == 16 {
+        if ready.len() == limit.min(16) {
             break;
+        }
+        if excluded.contains(&delivery.id) {
+            continue;
         }
         if delivery.delivered_at.is_some() || delivery.stopped || delivery.next_attempt > now() {
             continue;
