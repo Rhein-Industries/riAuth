@@ -8,6 +8,7 @@ pub mod self_service;
 #[cfg(feature = "platform")]
 pub(crate) mod source_stage;
 pub mod sources;
+pub mod theme;
 
 use crate::{
     error::{Error, Result},

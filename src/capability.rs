@@ -29,6 +29,7 @@ type ListenerStates<T> = Mutex<BTreeMap<String, Vec<(T, Weak<AtomicBool>)>>>;
 #[derive(Default)]
 pub(crate) struct RuntimeStatus {
     extension_admission: Option<crate::config::ExtensionAdmission>,
+    pub(crate) frontend: std::sync::Arc<crate::portal::theme::Theme>,
     #[cfg(feature = "platform")]
     ldap: ListenerStates<crate::ldap_server::Listener>,
     #[cfg(feature = "platform")]
@@ -38,6 +39,11 @@ pub(crate) struct RuntimeStatus {
 }
 
 impl RuntimeStatus {
+    pub(crate) fn with_frontend(mut self, config: &Config) -> Result<Self> {
+        self.frontend = std::sync::Arc::new(crate::portal::theme::Theme::load(&config.frontend)?);
+        Ok(self)
+    }
+
     pub(crate) fn from_extension_admission(admission: crate::config::ExtensionAdmission) -> Self {
         Self {
             extension_admission: Some(admission),

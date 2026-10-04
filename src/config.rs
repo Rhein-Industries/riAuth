@@ -60,6 +60,12 @@ pub struct Config {
     /// Serve the embedded browser pages and assets. API and OIDC routes remain available.
     #[serde(default = "default_browser_ui")]
     pub browser_ui: bool,
+    /// Optional trusted frontend files; never supplied by an HTTP request.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::portal::theme::Frontend::is_default"
+    )]
+    pub frontend: crate::portal::theme::Frontend,
     /// Duties for this process. Omitted means the integrated one-process server.
     #[serde(
         default,
@@ -489,6 +495,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             browser_ui: default_browser_ui(),
+            frontend: Default::default(),
             process: crate::process_role::ProcessSelection::default(),
             capabilities: CapabilityActivation::default(),
             proxy_listeners: Default::default(),
@@ -875,6 +882,7 @@ impl Config {
             bail!("storage_allocation_budget.bytes must be positive");
         }
         self.backup.validate()?;
+        self.frontend.validate()?;
         let url = validate_server_url(&self.issuer)?;
         if self.tls_cert_file.is_some() != self.tls_key_file.is_some()
             || self.tls_cert_file.is_some() && url.scheme() != "https"
@@ -922,6 +930,11 @@ impl Config {
         )?;
         if validate {
             value.validate()?;
+        }
+        if let Some(dir) = value.frontend.theme_dir.as_mut()
+            && dir.is_relative()
+        {
+            *dir = path.parent().unwrap_or(Path::new(".")).join(&*dir);
         }
         if value.data_dir.is_relative() {
             value.data_dir = path

@@ -333,21 +333,11 @@ pub fn browser_routes() -> Router<App> {
         .route("/admin/", get(page))
         .route(
             "/portal/assets/admin.css",
-            get(|| async {
-                (
-                    [("content-type", "text/css; charset=utf-8")],
-                    include_str!("admin.css"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/admin.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("admin.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
 }
 
@@ -473,7 +463,7 @@ fn access_routes() -> Router<App> {
 }
 
 async fn page(State(app): State<App>) -> Response {
-    portal_html(include_str!("admin.html"), &app, true)
+    portal_html(app.core.runtime.frontend.page("admin.html"), &app, true)
 }
 
 /// A read carries the portal header, which a cross-site page cannot add without a CORS

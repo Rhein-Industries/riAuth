@@ -31,26 +31,20 @@ pub fn browser_routes() -> Router<App> {
         .route("/access/review/", get(page))
         .route(
             "/portal/assets/access-review.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("access-review.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/access-review.css",
-            get(|| async {
-                (
-                    [("content-type", "text/css; charset=utf-8")],
-                    include_str!("access-review.css"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
 }
 
 async fn page(State(app): State<App>) -> Response {
-    portal_html(include_str!("access-review.html"), &app, true)
+    portal_html(
+        app.core.runtime.frontend.page("access-review.html"),
+        &app,
+        true,
+    )
 }
 
 /// The custom header forces a CORS preflight for cross-site reads. The

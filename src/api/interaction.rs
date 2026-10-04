@@ -48,12 +48,7 @@ pub(super) fn routes() -> Router<App> {
 pub(super) fn browser_routes() -> Router<App> {
     Router::new().route(
         "/portal/assets/signin.js",
-        get(|| async {
-            (
-                [("content-type", "text/javascript; charset=utf-8")],
-                include_str!("../portal/signin.js"),
-            )
-        }),
+        get(crate::portal::theme::builtin),
     )
 }
 
@@ -92,7 +87,11 @@ pub(super) fn interaction_page(app: &App, code: &str, command: &str, sso: bool) 
         )
             .into_response();
     }
-    let html = include_str!("../portal/signin.html")
+    let html = app
+        .core
+        .runtime
+        .frontend
+        .page("signin.html")
         .replace("__CODE__", &escape(code))
         .replace("__COMMAND__", &escape(command));
     let mut response = portal_html(&html, app, false);

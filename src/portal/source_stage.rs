@@ -249,7 +249,11 @@ async fn page(
         if context.ready {
             return local_handoff(&page, &context.paths.continuation);
         }
-        let template = include_str!("source-stage.html")
+        let template = page
+            .core
+            .runtime
+            .frontend
+            .page("source-stage.html")
             .replace("__AUTHORIZATION__", &escape(&authorization))
             .replace("__STAGE__", &escape(&stage))
             .replace("__RESUME__", &escape(&context.paths.resume))
@@ -345,9 +349,5 @@ async fn cancel(
 
 async fn script(State(app): State<App>) -> Result<Response> {
     enabled(&app)?;
-    Ok((
-        [("content-type", "text/javascript; charset=utf-8")],
-        include_str!("source-stage.js"),
-    )
-        .into_response())
+    Ok(app.core.runtime.frontend.builtin("source-stage.js"))
 }

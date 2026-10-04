@@ -101,6 +101,7 @@ impl Bootstrap {
                 "Setup expiry must be between 1 and 3600 seconds",
             ));
         }
+        crate::portal::theme::Theme::load(&config.frontend)?;
         crate::config::private_dir(&config.data_dir).map_err(Error::internal)?;
         let store = Store::from_config(&config)?;
         let proof = Zeroizing::new(crypto::random_token(PREFIX));
@@ -143,9 +144,10 @@ impl Bootstrap {
         let admission = config
             .validate_with_extension_admission()
             .map_err(Error::internal)?;
-        let runtime = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
-            admission,
-        ));
+        let runtime = Arc::new(
+            crate::capability::RuntimeStatus::from_extension_admission(admission)
+                .with_frontend(&config)?,
+        );
         Self::open_admitted(config, runtime)
     }
 
@@ -154,6 +156,7 @@ impl Bootstrap {
         runtime: Arc<crate::capability::RuntimeStatus>,
     ) -> Result<Self> {
         runtime.require_extension_admission(&config.workflow_extensions)?;
+        runtime.frontend.require_config(&config.frontend)?;
         if !config.listen.ip().is_loopback() {
             return Err(Error::bad("Browser setup requires a loopback listener"));
         }
@@ -308,6 +311,9 @@ impl Bootstrap {
             }
             self.runtime
                 .require_extension_admission(&self.config.workflow_extensions)?;
+            self.runtime
+                .frontend
+                .require_config(&self.config.frontend)?;
             // Claim the response once, including invalid responses and disconnected
             // callers. This spends only the ceremony, never the ownership proof.
             tx.delete("meta", PASSKEY_RECORD)?;
@@ -380,9 +386,10 @@ fn invalid_ceremony() -> Error {
 
 pub async fn serve(config: Config) -> anyhow::Result<()> {
     let admission = config.validate_with_extension_admission()?;
-    let runtime = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
-        admission,
-    ));
+    let runtime = Arc::new(
+        crate::capability::RuntimeStatus::from_extension_admission(admission)
+            .with_frontend(&config)?,
+    );
     // Inspect once and release the backend before opening the selected runtime.
     let selected = config.clone();
     let initialized = tokio::task::spawn_blocking(move || -> Result<bool> {
@@ -496,40 +503,18 @@ pub(crate) fn router_with_signal(
             .route(&format!("{base}/setup"), get(page))
             .route(&format!("{base}/setup/"), get(page))
             .route(
+                &format!("{base}/portal/theme-assets/{{*key}}"),
+                get(setup_additional),
+            )
+            .route(
                 &format!("{base}/portal/assets/setup.js"),
-                get(|| async {
-                    (
-                        [("content-type", "text/javascript; charset=utf-8")],
-                        include_str!("portal/setup.js"),
-                    )
-                }),
+                get(setup_builtin),
             )
-            .route(
-                &format!("{base}/portal/assets/auth.js"),
-                get(|| async {
-                    (
-                        [("content-type", "text/javascript; charset=utf-8")],
-                        include_str!("portal/auth.js"),
-                    )
-                }),
-            )
-            .route(
-                &format!("{base}/portal/assets/app.css"),
-                get(|| async {
-                    (
-                        [("content-type", "text/css; charset=utf-8")],
-                        include_str!("portal/app.css"),
-                    )
-                }),
-            )
+            .route(&format!("{base}/portal/assets/auth.js"), get(setup_builtin))
+            .route(&format!("{base}/portal/assets/app.css"), get(setup_builtin))
             .route(
                 &format!("{base}/portal/assets/riauth-mark.svg"),
-                get(|| async {
-                    (
-                        [("content-type", "image/svg+xml; charset=utf-8")],
-                        include_str!("../assets/riauth-mark.svg"),
-                    )
-                }),
+                get(setup_builtin),
             )
     } else {
         routes
@@ -568,7 +553,7 @@ async fn protect(State(app): State<SetupApp>, req: Request, next: Next) -> Respo
     headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     headers.entry("content-security-policy").or_insert(HeaderValue::from_static(
-        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"));
+        "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"));
     response
 }
 
@@ -602,7 +587,32 @@ async fn page(State(app): State<SetupApp>) -> Response {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('\'', "&#39;");
-    Html(include_str!("portal/setup.html").replace("__BASE__", &base)).into_response()
+    Html(
+        app.setup
+            .runtime
+            .frontend
+            .page("setup.html")
+            .replace("__BASE__", &base),
+    )
+    .into_response()
+}
+
+async fn setup_builtin(State(app): State<SetupApp>, uri: axum::http::Uri) -> Response {
+    app.setup
+        .runtime
+        .frontend
+        .builtin(uri.path().rsplit('/').next().unwrap_or_default())
+}
+
+async fn setup_additional(
+    State(app): State<SetupApp>,
+    axum::extract::Path(key): axum::extract::Path<String>,
+    uri: axum::http::Uri,
+) -> Response {
+    if uri.path().contains('%') {
+        return Error::missing("Frontend asset not found").into_response();
+    }
+    app.setup.runtime.frontend.additional(&key)
 }
 
 #[derive(Deserialize)]

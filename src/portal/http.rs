@@ -71,6 +71,10 @@ pub fn routes() -> Router<App> {
 
 pub fn browser_routes() -> Router<App> {
     let routes = Router::new()
+        .route(
+            "/portal/theme-assets/{*key}",
+            get(crate::portal::theme::additional),
+        )
         .route("/apps", get(page))
         .route("/apps/", get(page))
         .route("/apps/launch", get(launch))
@@ -78,123 +82,49 @@ pub fn browser_routes() -> Router<App> {
         .route("/device/", get(device_page))
         .route(
             "/portal/assets/device.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("device.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route("/account/accept", get(account_page))
         .route("/account/verify", get(account_page))
         .route("/account/reset", get(account_page))
-        .route(
-            "/portal/assets/app.css",
-            get(|| async {
-                (
-                    [("content-type", "text/css; charset=utf-8")],
-                    include_str!("app.css"),
-                )
-            }),
-        )
+        .route("/portal/assets/app.css", get(crate::portal::theme::builtin))
         .route(
             "/portal/assets/riauth-mark.svg",
-            get(|| async {
-                (
-                    [("content-type", "image/svg+xml; charset=utf-8")],
-                    include_str!("../../assets/riauth-mark.svg"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
-        .route(
-            "/portal/assets/app.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("app.js"),
-                )
-            }),
-        )
+        .route("/portal/assets/app.js", get(crate::portal::theme::builtin))
         .route(
             "/portal/assets/grant-review.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("grant-review.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/membership-review.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("membership-review.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/client-creation-review.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("client-creation-review.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/client-policy-review.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("client-policy-review.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/client-status-review.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("client-status-review.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/client-endpoint-review.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("client-endpoint-review.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
-        .route(
-            "/portal/assets/auth.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("auth.js"),
-                )
-            }),
-        )
+        .route("/portal/assets/auth.js", get(crate::portal::theme::builtin))
         .route(
             "/portal/assets/account.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("account.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/capabilities.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("capabilities.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .merge(super::self_service::http::browser_routes())
         .merge(super::sources::browser_routes());
@@ -208,24 +138,8 @@ fn event_map_routes() -> Router<App> {
     Router::new()
         .route("/events", get(events_page))
         .route("/events/", get(events_page))
-        .route(
-            "/portal/assets/map.css",
-            get(|| async {
-                (
-                    [("content-type", "text/css; charset=utf-8")],
-                    include_str!("map.css"),
-                )
-            }),
-        )
-        .route(
-            "/portal/assets/map.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("map.js"),
-                )
-            }),
-        )
+        .route("/portal/assets/map.css", get(crate::portal::theme::builtin))
+        .route("/portal/assets/map.js", get(crate::portal::theme::builtin))
 }
 
 pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -246,7 +160,7 @@ pub async fn root(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 pub async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
-    let mut response = portal_html(include_str!("index.html"), &app, true);
+    let mut response = portal_html(app.core.runtime.frontend.page("apps.html"), &app, true);
     if crate::api::sso_cookie(&app, &headers).is_none() {
         placeholder_sso(&app, &mut response);
     }
@@ -254,7 +168,7 @@ pub async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 async fn device_page(State(app): State<App>, headers: HeaderMap) -> Response {
-    let mut response = portal_html(include_str!("device.html"), &app, true);
+    let mut response = portal_html(app.core.runtime.frontend.page("device.html"), &app, true);
     if sso_cookie(&app, &headers).is_none() {
         placeholder_sso(&app, &mut response);
     }
@@ -264,7 +178,7 @@ async fn device_page(State(app): State<App>, headers: HeaderMap) -> Response {
 /// Opening an email link only serves the page. Its one-time proof stays in the
 /// fragment, which is never sent with this GET, and is spent only by a user POST.
 async fn account_page(State(app): State<App>) -> Response {
-    portal_html(include_str!("account.html"), &app, true)
+    portal_html(app.core.runtime.frontend.page("account.html"), &app, true)
 }
 
 #[derive(Deserialize)]
@@ -386,7 +300,7 @@ pub(crate) fn placeholder_sso(app: &App, response: &mut Response) {
 
 #[cfg(feature = "platform")]
 async fn events_page(State(app): State<App>) -> Response {
-    portal_html(include_str!("events.html"), &app, true)
+    portal_html(app.core.runtime.frontend.page("events.html"), &app, true)
 }
 
 /// Portal pages isolate their browsing context with COOP. Interaction pages pass
@@ -395,7 +309,7 @@ pub(crate) fn portal_html(template: &str, app: &App, coop: bool) -> Response {
     let html = template.replace("__BASE__", &escape(&app.core.cookie_path()));
     let mut response = Html(html).into_response();
     let headers = response.headers_mut();
-    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"));
+    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"));
     headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     headers.insert(
@@ -446,7 +360,7 @@ pub(crate) fn standalone_page_at(
     reply.headers_mut().insert(
         "content-security-policy",
         HeaderValue::from_static(
-            "default-src 'none'; style-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+            "default-src 'none'; style-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'",
         ),
     );
     reply.extensions_mut().insert(BrowserError);
