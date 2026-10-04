@@ -356,6 +356,7 @@ jobs:
               env = dict(os.environ, DOCKER_CONFIG=private)
               env.pop('GH_TOKEN', None)
               def run(args, stdin=None, seconds=300):
+                  assert time.monotonic() < deadline, 'publication_deadline'
                   with tempfile.TemporaryFile(dir=private) as out:
                       child = subprocess.Popen(args, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                                                stdout=out, stderr=out, env=env, start_new_session=True)
@@ -412,6 +413,7 @@ jobs:
                       assert checked['repository']['full_name'] == checked['head_repository']['full_name'] == 'Rhein-Industries/riAuth'
                       assert checked['head_sha'] == source and checked['event'] in ('push', 'workflow_dispatch')
                       assert checked['status'] in ('queued', 'in_progress', 'completed')
+                      assert time.monotonic() < deadline, 'ci_terminal_response_deadline'
                       if checked['status'] == 'completed':
                           assert checked['conclusion'] == 'success', 'ci_failed_publication_refused'
                           record['ci_verification'] = {'run_id': checked['id'], 'attempt': checked['run_attempt'],
