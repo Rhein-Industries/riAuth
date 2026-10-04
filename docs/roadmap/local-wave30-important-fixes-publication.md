@@ -110,3 +110,32 @@ publication. Further source findings remain under review, and the security
 review as a whole is not declared complete. Original task statuses and deferred
 Entra tenant validation remain unchanged. Fresh hosted CI for the follow-up
 source must be assessed separately from these local results.
+
+
+## Further verified local corrections
+
+2026-10-04. Published source `6beae62881a7b2000cb101253b03505b841c12ff`
+passed all four jobs in CI run `37151021506`: check, integration, managed device
+host and dependency audit. That run applies to its exact source.
+
+The next reviewed batch scopes both offboarding target representations and full
+operator attestations to current read authority, bounds LDAP search work and
+post-decode import-page retention, accepts the server's SSF inventory envelope,
+restores authentic v2 Group backups while rejecting duplicate archive records,
+and allocates default optional SAML helper output in an exclusive private
+temporary directory. Caller-selected helper paths remain caller-owned.
+
+Local locked offline verification passed 14 selected LDAP unit regressions,
+17 operations tests, all 32 offboarding tests, and 23 standalone client tests.
+Three allocation-only shell tests passed without invoking a compiler or SAML
+peer. The first new offboarding fixture expected the wrong local-result field
+and failed; its corrected exact public-field expectation passed before the
+whole target passed. That failed receipt remains retained. New LDAP fixture
+formatting was corrected after the first format check. Final server/client
+formatting, repository documentation, tracked-file hygiene and whitespace
+checks passed.
+
+These results do not establish a new external LDAP run, Docker preflight,
+Windows installation or confidential browser checkpoint. Further queue,
+protocol and local tooling findings remain under review. The audit is open,
+and original task statuses and deferred tenant/device gates remain unchanged.
