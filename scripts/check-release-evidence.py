@@ -12,6 +12,7 @@ import argparse
 import ast
 import copy
 import hashlib
+import inspect
 import json
 import os
 import pathlib
@@ -30,37 +31,37 @@ MAX_SOURCE_DEPTH = 128
 SOURCE_CONTRACTS = {
     "scripts/spdx_sbom.py": {
         "functions": {
-            "linux_graphs": "7986f53360cbb2c2cdf6e019e8f6988c0c6b67e8b8c91e6697851cb3c32fd92d",
-            "linux_spdx_names": "b00b4fa14bbbaad6888d214c3a9885bfd02093b30cc7ac396ff908ce11c709af"
+            "linux_graphs": "62c78c739b601205ac7950fef5a81fd3b6af3eabf3508017953cd2a8cfcd94ca",
+            "linux_spdx_names": "4101b935efa4aee88b095378b3adb7cefc63a237782531bb6eaf7809063f714c"
         },
         "bindings": {
             "LINUX_TARGETS": "0b9558092d70f2f9c1fe07a087d50b0fc17ab98f4e4480bff8508be2ae8508ba",
-            "SpdxError": "5817bf49f895972033a201a33859d2cdece7184572530b0fa59e39dae1e397bc"
+            "SpdxError": "a76c42a8775627c5b6856d674263dfc30b04b0f95bfdb37532cd2079631263bb"
         },
-        "declarations_sha256": "0f63ebba15b8030dc1546172fe8c815b86d156f17c6deb51fb29f877a3b10570"
+        "declarations_sha256": "4dd26aea753a2973e227fff1bff4a6114ec2710973247913ada6ba2c3a53e6d0"
     },
     "scripts/check-installed-release-gate.py": {
         "functions": {
-            "_package_documents": "6a7617ed1f2345096a76c89cea8be63af74fcc4d32f766b3ae95e90c33e468f3",
-            "expected_names": "9c2737f8a517448633f01ecef10ef5b3aca16c6fddd9be8fb7f23dbc18cfdfed"
+            "_package_documents": "c1622ae977a8f52dc4539a6c1ae4c0e9626ff2cc0f99e2edfd93d5ab89d79dbe",
+            "expected_names": "c285fea9eaee2d5b45accdb6b4e298e67152c0e309bdcdccf0ff8241e9c9daff"
         },
         "bindings": {
             "pathlib": "fd65a776d7fef693633776fffe83ef87a35c5cd3d1c6f522b4bb47ab2568a1e1",
             "importlib": "866a97c0a29d398dc2bf8a74409548dccd9bb5221f4bf0f58ad1a37ef83e5260",
             "EDITIONS": "0c0c081b5d2157eea6266260c3f3f8bcb0e3d88a14958f3cb16df42a02d383df",
-            "package_documents": "13e9449dc999c2e6d3558d782275d5ebcdefa92768c653aed0b36ae7be08ff80"
+            "package_documents": "f61ad47aaee354faeb76d632d9bdc6af37d4659229f591541120883a3f93a51b"
         },
-        "declarations_sha256": "cef0838689339108f483d4fb68c40ee2f92d9ef9c932e1021f3532f4b48808e6"
+        "declarations_sha256": "19c2a947facb5460c60201ac5bcf27062d16c3e8a936e958d946bfb66697b0b0"
     },
     "scripts/check-release-attestation.py": {
         "functions": {
-            "require": "8ca5cf38c66da3849c86e05f961121e2166eab26f4947ed9de9df76cf63e91c7",
-            "workflow_producer_hits": "41b1e2a212e1fe4ba36545d2af47a34e946ffae7b9dc4a5932d4c3896616661c",
-            "require_release_workflow": "75a370a3a80789dd57c6b56da46f2f6f2a1a9c6d89f8dcbcf8a71754096e2858"
+            "require": "17455206cd1189919470aecc2963643d195cef8e82fbf46b6deb9c2ad02fc8ad",
+            "workflow_producer_hits": "d8ae004b186020c7a403fd2cb820ca425282da85c46925178d880f8ac3f14462",
+            "require_release_workflow": "7cca1c076f227812d9177315232b219f2611da440dce54986391eb4ddacc175f"
         },
         "bindings": {
             "re": "6b81b4ca19c88ec507aad63f1f49291209368a9490113655a68e994c91d092c1",
-            "AttestationError": "3e48732a0d2334ac46bce4aff2c5178580ea3ca487cdbbcd27de943ea49530db",
+            "AttestationError": "7139504770cebe7378a4b7259a3d0d8bbf7a14024e842063a19d51b0e0d9c4dc",
             "REPOSITORY": "e65e3090a05381ee2a971d3728ca5a6eda2bd87b3b7b4180cc7deecf816e8ad9",
             "WORKFLOW": "2783fc0f88de22aff1d41ff3d3fc88a7554c0b1d3fdc2bbd7b216d622791aec5",
             "ACTION_SHA": "5e88555d534e54e9e64a6a3a375c434b9627821f8e8fd8792d87a6fcc1689dc7",
@@ -71,7 +72,7 @@ SOURCE_CONTRACTS = {
             "PRODUCER_PATTERNS": "e92ca9bd4cbfcb27192f907e36fdc997f00b2468cd24a33f5d71c2ad2e50e10c",
             "OUTPUT_MARKERS": "f3ed2acb358b6096f203b4156475a32a51e4d70ce45ffe56b70872c1b0bccb75"
         },
-        "declarations_sha256": "f92b74377a839f6e882c64d71ff3bc16e7ca220bcbabf98d05e2e78c18ec7e4a"
+        "declarations_sha256": "a8b00976f2d08a75144738bfb923d2dcf37e5f99ad3ff5dd94ce277cff3e98e9"
     }
 }
 
@@ -205,6 +206,11 @@ def require(condition, message):
 
 
 def source_bytes(path, relative):
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    nonblock = getattr(os, "O_NONBLOCK", None)
+    require(type(nofollow) is int and nofollow != 0
+            and type(nonblock) is int and nonblock != 0,
+            "source read protections unavailable")
     try:
         before = path.lstat()
     except FileNotFoundError as error:
@@ -215,7 +221,7 @@ def source_bytes(path, relative):
             f"nonregular source {relative}")
     require(before.st_size <= MAX_SOURCE_BYTES, f"source size limit {relative}")
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        descriptor = os.open(path, os.O_RDONLY | nofollow | nonblock)
         with os.fdopen(descriptor, "rb") as stream:
             opened = os.fstat(stream.fileno())
             require(stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1,
@@ -341,7 +347,10 @@ def source_ast_dump(node):
         parameters = getattr(item, "type_params", None)
         if type(parameters) is list and not parameters:
             delattr(item, "type_params")
-    return ast.dump(normalized, include_attributes=False)
+    options = {"include_attributes": False}
+    if "show_empty" in inspect.signature(ast.dump).parameters:
+        options["show_empty"] = True
+    return ast.dump(normalized, **options)
 
 
 def source_declarations_sha256(tree):

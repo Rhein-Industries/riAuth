@@ -390,6 +390,50 @@ class SourceContractData(unittest.TestCase):
         self.assertEqual([node.value for node in ast.walk(empty)
                           if isinstance(node, ast.Constant)], ["type_params=[]"] * 3)
 
+    def test_source_ast_dump_keeps_empty_fields_and_nonempty_declarations(self):
+        empty = ast.parse('def ordinary():\n    return "type_params=[]"\n')
+        dumped = evidence.source_ast_dump(empty)
+        for field in ("posonlyargs=[]", "args=[]", "kwonlyargs=[]",
+                      "kw_defaults=[]", "defaults=[]", "decorator_list=[]"):
+            with self.subTest(field=field):
+                self.assertIn(field, dumped)
+        self.assertIn("Constant(value='type_params=[]')", dumped)
+        nonempty = ast.parse(
+            '@marker\ndef ordinary(argument, *, option="type_params=[]"):\n'
+            '    return argument\n'
+        )
+        before = ast.dump(nonempty, include_attributes=True)
+        nonempty_dumped = evidence.source_ast_dump(nonempty)
+        self.assertIn("args=[arg(arg='argument')]", nonempty_dumped)
+        self.assertIn("kwonlyargs=[arg(arg='option')]", nonempty_dumped)
+        self.assertIn("kw_defaults=[Constant(value='type_params=[]')]", nonempty_dumped)
+        self.assertIn("decorator_list=[Name(id='marker', ctx=Load())]", nonempty_dumped)
+        self.assertNotEqual(dumped, nonempty_dumped)
+        self.assertEqual(ast.dump(nonempty, include_attributes=True), before)
+
+    def test_source_read_requires_native_capabilities_before_open(self):
+        import types
+
+        path = pathlib.Path("source.py")
+        missing = object()
+        for capability in ("O_NOFOLLOW", "O_NONBLOCK"):
+            for value in (missing, None, 0, True, "1"):
+                with self.subTest(capability=capability, unavailable=value is missing):
+                    opened = mock.Mock()
+                    capabilities = {"O_NOFOLLOW": 1, "O_NONBLOCK": 2, "open": opened}
+                    if value is missing:
+                        del capabilities[capability]
+                    else:
+                        capabilities[capability] = value
+                    native = types.SimpleNamespace(**capabilities)
+                    with mock.patch.object(evidence, "os", native), \
+                            mock.patch.object(pathlib.Path, "lstat") as inspected:
+                        with self.assertRaisesRegex(evidence.AuditError,
+                                                    "^source read protections unavailable$"):
+                            evidence.source_bytes(path, path.name)
+                        opened.assert_not_called()
+                        inspected.assert_not_called()
+
     def test_inspected_contracts_never_use_execution_or_module_loading(self):
         texts = self.texts()
         refused = AssertionError("unexpected execution or module loading")
