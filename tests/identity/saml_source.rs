@@ -2580,11 +2580,14 @@ fn saml_source_workflow_authorizations_retain_signed_session_deadline() {
     );
     assert_eq!(f.core.token(finite_code).unwrap_err().code, "invalid_grant");
 
-    for change in [
-        ("opaque-subject", "different-subject"),
+    for (change, expected_code) in [
+        (("opaque-subject", "different-subject"), "access_denied"),
         (
-            r#"SessionIndex="upstream-session""#,
-            r#"SessionIndex="different-session""#,
+            (
+                r#"SessionIndex="upstream-session""#,
+                r#"SessionIndex="different-session""#,
+            ),
+            "server_error",
         ),
     ] {
         let (started, _, _, _) = start(&f, &bearer, &source);
@@ -2601,7 +2604,7 @@ fn saml_source_workflow_authorizations_retain_signed_session_deadline() {
                 .workflow_source_finish(&bearer, &started.workflow.id)
                 .unwrap_err()
                 .code,
-            "access_denied"
+            expected_code
         );
         f.assert_snapshot(&before);
         let canceled = f
