@@ -58,7 +58,8 @@ class Fixture:
                         "edition": args.edition, "architecture": args.architecture,
                         "version": VERSION, "source_sha": args.source_sha,
                         "workflow_sha": args.workflow_sha, "checked_ci_run_id": args.ci_run,
-                        "checks": [], "failure": None, "cleanup": []}
+                        "checks": [], "failure": None, "cleanup": [],
+                        "unexpected_exception": None, "helper_failure_line": None}
 
     def capacity(self):
         require(min(shutil.disk_usage(p).free for p in
@@ -218,6 +219,7 @@ class Fixture:
         code, _ = self.docker("container", "start", name)
         require(code == 0, "server_start")
         item = self.owned_container(name)
+        require(item["State"]["Running"], "server_exited")
         require(item["Config"]["User"] == "10001:10001" and item["HostConfig"]["ReadonlyRootfs"]
                 and not item["HostConfig"]["Privileged"] and "ALL" in item["HostConfig"]["CapDrop"]
                 and "no-new-privileges:true" in item["HostConfig"]["SecurityOpt"], "server_controls")
@@ -289,6 +291,7 @@ class Fixture:
         theme = self.private / "theme"
         (theme / "assets").mkdir(parents=True, mode=0o755)
         theme.chmod(0o755)
+        (theme / "assets").chmod(0o755)
         css = b"/* publication readonly theme */\n:root { --publication-smoke: 1; }\n"
         (theme / "assets" / "app.css").write_bytes(css)
         (theme / "assets" / "app.css").chmod(0o644)
@@ -367,8 +370,20 @@ def main():
             fixture.run()
         except Refusal as error:
             fixture.receipt["failure"] = error.args[0]
-        except BaseException:
+        except BaseException as error:
             fixture.receipt["failure"] = "unexpected_smoke_failure"
+            classes = {KeyError: "key_error", TypeError: "type_error", ValueError: "value_error",
+                       json.JSONDecodeError: "json_decode_error", BrokenPipeError: "broken_pipe",
+                       PermissionError: "permission_error", FileNotFoundError: "file_not_found",
+                       FileExistsError: "file_exists", OSError: "os_error", TimeoutError: "timeout"}
+            fixture.receipt["unexpected_exception"] = classes.get(type(error), "unclassified")
+            trace = error.__traceback__
+            for _ in range(64):
+                if trace is None:
+                    break
+                if trace.tb_frame.f_code.co_filename == __file__ and 1 <= trace.tb_lineno <= 10000:
+                    fixture.receipt["helper_failure_line"] = trace.tb_lineno
+                trace = trace.tb_next
         finally:
             fixture.cleanup()
         fixture.receipt["ok"] = fixture.receipt["failure"] is None and not fixture.receipt["cleanup"]
