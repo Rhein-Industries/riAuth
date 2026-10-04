@@ -82,6 +82,26 @@ order against a numeric version is unknown; migration requires the audited
 `-AllowDowngrade -RecoveryReason` path. The script does not
 disable Windows system credential providers or install a service.
 
+State storage supports Windows x64 on local NTFS with persistent ACLs and the
+standard OS-managed ProgramData directory directly below a volume root. Root
+and ProgramData keep their normal Windows permissions. Existing `RiAuth` and
+`DeviceHost` directories and `device.json` must retain an Administrators or
+SYSTEM owner and a protected DACL granting full control only to those two
+principals. Reparse points, linked state files, unsupported storage layouts and
+other existing metadata are refused before state content is read or decrypted;
+the host does not repair their ownership or permissions. Newly created state
+objects receive the restricted descriptor at creation. This boundary assumes
+OS-managed ancestors; custom ancestors writable by ordinary users and hostile
+Administrators/SYSTEM are outside it.
+
+Install and update run the signature- and hash-verified candidate's
+`prepare-state` command before changing payloads or registration, including
+update recovery and an already-installed result. That command checks metadata
+without reading a secret or contacting riAuth. An older host without this
+command cannot bypass preparation. The bundle-only `Verify` action stays a
+signature/hash check. Native Windows state tests remain separate from portable
+compilation and from credential-provider/LSA testing.
+
 ## Device lifecycle
 
 Run the installed executable as Administrator or SYSTEM. The management bearer
