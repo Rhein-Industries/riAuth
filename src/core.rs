@@ -1454,6 +1454,7 @@ mod retained_extension_admission_tests {
             data_dir: dir.path().join("data"),
             ..Default::default()
         };
+        std::fs::create_dir(&config.data_dir).unwrap();
         let store = Store::from_config(&config).unwrap();
         let admitted = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
             config.validate_with_extension_admission().unwrap(),
