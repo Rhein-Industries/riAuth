@@ -1,0 +1,495 @@
+name: Publish checked Docker images
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full reviewed source commit (40 lowercase hex characters), version 0.1.2
+        required: true
+        type: string
+      checked_ci_run_id:
+        description: Successfully completed Public CI run for exactly that source commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: riauth-public-docker-0.1.2
+  cancel-in-progress: false
+
+env:
+  PYTHONOPTIMIZE: '0'
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.gate.outputs.source_sha }}
+      version: ${{ steps.versions.outputs.version }}
+    steps:
+      - name: Validate the exact successful Public CI run before any build
+        id: gate
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CI_RUN: ${{ inputs.checked_ci_run_id }}
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import json, os, pathlib, re, urllib.request
+          repo = 'Rhein-Industries/riAuth'
+          source, run = os.environ['SOURCE_SHA'], os.environ['CI_RUN']
+          assert os.environ['GITHUB_REPOSITORY'] == repo
+          assert os.environ['GITHUB_API_URL'] == 'https://api.github.com'
+          assert os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+          assert re.fullmatch('[0-9a-f]{40}', source)
+          assert re.fullmatch('[0-9a-f]{40}', os.environ['WORKFLOW_SHA'])
+          assert re.fullmatch('[1-9][0-9]{0,19}', run)
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          opener = urllib.request.build_opener(NoRedirect())
+          def get(path):
+              req = urllib.request.Request('https://api.github.com/repos/' + repo + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+              with opener.open(req, timeout=20) as reply:
+                  data = reply.read(1048577)
+                  assert reply.status == 200 and len(data) <= 1048576
+                  return json.loads(data)
+          workflow = get('/actions/workflows/ci.yml')
+          checked = get('/actions/runs/' + run)
+          assert workflow['name'] == 'Public CI' and workflow['path'] == '.github/workflows/ci.yml'
+          assert workflow['state'] == 'active'
+          assert checked['id'] == int(run) and checked['workflow_id'] == workflow['id']
+          assert checked['name'] == 'Public CI' and checked['path'].split('@', 1)[0] == '.github/workflows/ci.yml'
+          # A PR checkout can test a synthetic merge rather than head_sha.
+          # Push/manual runs use the exact recorded source, with no PR merge ambiguity.
+          assert checked['event'] in ('push', 'workflow_dispatch')
+          assert checked['repository']['full_name'] == repo and checked['head_repository']['full_name'] == repo
+          assert checked['head_sha'] == source and checked['status'] == 'completed' and checked['conclusion'] == 'success'
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'publication-gate'
+          root.mkdir(mode=0o700)
+          record = {'schema': 'riauth.publication-gate/v1', 'repository': repo, 'source_sha': source,
+                    'workflow_sha': os.environ['WORKFLOW_SHA'], 'checked_ci_run_id': run,
+                    'ci_workflow_id': workflow['id'], 'ci_run_attempt': checked['run_attempt'],
+                    'ci_status': checked['status'], 'ci_conclusion': checked['conclusion'], 'ci_event': checked['event'],
+                    'ci_url': checked['html_url']}
+          (root / 'gate.json').write_text(json.dumps(record, sort_keys=True, indent=2) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('source_sha=' + source + '\n')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.gate.outputs.source_sha }}
+          persist-credentials: false
+      - name: Validate the closed version, lockfiles and build controls
+        id: versions
+        env:
+          SOURCE_SHA: ${{ steps.gate.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, tomllib
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == os.environ['SOURCE_SHA']
+          version = '0.1.2'
+          for path, name in [('Cargo.toml', 'riauth'), ('crates/riauthctl/Cargo.toml', 'riauthctl')]:
+              package = tomllib.loads(pathlib.Path(path).read_text())['package']
+              assert package['name'] == name and package['version'] == version
+          for path, name in [('Cargo.lock', 'riauth'), ('crates/riauthctl/Cargo.lock', 'riauthctl'), ('fuzz/Cargo.lock', 'riauth')]:
+              packages = [p for p in tomllib.loads(pathlib.Path(path).read_text())['package'] if p['name'] == name]
+              assert len(packages) == 1 and packages[0]['version'] == version
+          recipe = pathlib.Path('Dockerfile').read_text()
+          for line in ['ARG CARGO_BUILD_JOBS=1', 'ARG CARGO_INCREMENTAL=0', 'ARG CARGO_PROFILE_RELEASE_DEBUG=0']:
+              assert recipe.count(line + '\n') == 1 and recipe.index(line) < recipe.index('RUN case ')
+          assert recipe.count('FROM ') == 2 and all('@sha256:' in line for line in recipe.splitlines() if line.startswith('FROM '))
+          gate = pathlib.Path(os.environ['RUNNER_TEMP']) / 'publication-gate/gate.json'
+          record = json.loads(gate.read_text())
+          record.update(version=version, source_tree=subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip(),
+                        dockerfile_sha256=hashlib.sha256(recipe.encode()).hexdigest())
+          gate.write_text(json.dumps(record, sort_keys=True, indent=2) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('version=' + version + '\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-publication-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-gate/gate.json
+          if-no-files-found: error
+          retention-days: 30
+
+  build:
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: amd64
+            machine: x86_64
+            runner_arch: X64
+            runner: ubuntu-24.04
+            buildkit: docker.io/moby/buildkit@sha256:98cc6a3fc46220d00f8224ae483f3274fc874e9be8d7dd1e2e2c5481209228b5
+          - architecture: arm64
+            machine: aarch64
+            runner_arch: ARM64
+            runner: ubuntu-24.04-arm
+            buildkit: docker.io/moby/buildkit@sha256:3ad6bb9bc8c78c0069d03247adb9a59b3b43d68e55353e876e558b888c6c1768
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+      WORKFLOW_SHA: ${{ github.workflow_sha }}
+      CI_RUN: ${{ inputs.checked_ci_run_id }}
+      VERSION: ${{ needs.validate.outputs.version }}
+      ARCHITECTURE: ${{ matrix.architecture }}
+      NATIVE_MACHINE: ${{ matrix.machine }}
+      NATIVE_RUNNER_ARCH: ${{ matrix.runner_arch }}
+      BUILDKIT_IMAGE: ${{ matrix.buildkit }}
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      PYTHONOPTIMIZE: '0'
+    steps:
+      - name: Establish private capacity and native host identity
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import os, pathlib, platform, shutil
+          assert (platform.system(), platform.machine(), os.environ['RUNNER_ARCH'], os.environ['RUNNER_ENVIRONMENT']) == (
+              'Linux', os.environ['NATIVE_MACHINE'], os.environ['NATIVE_RUNNER_ARCH'], 'github-hosted')
+          assert min(shutil.disk_usage(p).free for p in ('/', os.environ['RUNNER_TEMP'], '/var/lib/docker')) >= 30 * 1024**3
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / ('riauth-publish-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'])
+          root.mkdir(mode=0o700)
+          (root / 'dist').mkdir(mode=0o700)
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('PUBLICATION_ROOT=' + str(root) + '\n')
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: controller
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          path: product
+          persist-credentials: false
+      - name: Build both editions and retain only smoke-tested archives
+        timeout-minutes: 110
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, signal, shutil, subprocess, tempfile, time
+          root = pathlib.Path(os.environ['PUBLICATION_ROOT'])
+          product = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'product'
+          controller = pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'controller'
+          arch, source, workflow = (os.environ[k] for k in ('ARCHITECTURE', 'SOURCE_SHA', 'WORKFLOW_SHA'))
+          assert subprocess.check_output(['git', '-C', str(product), 'rev-parse', 'HEAD'], text=True).strip() == source
+          assert subprocess.check_output(['git', '-C', str(controller), 'rev-parse', 'HEAD'], text=True).strip() == workflow
+          owner = os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'] + '-' + arch
+          builder = 'riauth-publish-' + owner
+          container = 'buildx_buildkit_' + builder + '0'
+          volume = container + '_state'
+          record = {'schema': 'riauth.publication-build/v1', 'source_sha': source, 'workflow_sha': workflow,
+                    'checked_ci_run_id': os.environ['CI_RUN'], 'architecture': arch, 'version': os.environ['VERSION'],
+                    'dockerfile_sha256': hashlib.sha256((product / 'Dockerfile').read_bytes()).hexdigest(),
+                    'smoke_script_sha256': hashlib.sha256((controller / 'scripts/check-container-runtime.py').read_bytes()).hexdigest(),
+                    'buildkit_image': os.environ['BUILDKIT_IMAGE'], 'ok': False, 'failure': None, 'cleanup': [], 'commands': []}
+          deadline = time.monotonic() + 6300
+          signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+          assert signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
+          def interrupted(signum, frame):
+              raise InterruptedError()
+          signal.signal(signal.SIGTERM, interrupted)
+          def run(args, seconds, cleanup=False):
+              if not cleanup:
+                  assert time.monotonic() < deadline, 'build_deadline'
+              with tempfile.TemporaryFile(dir=root) as log:
+                  child = subprocess.Popen(args, stdout=log, stderr=log, start_new_session=True)
+                  end = min(deadline, time.monotonic() + seconds) if not cleanup else time.monotonic() + seconds
+                  try:
+                      while child.poll() is None:
+                          assert time.monotonic() < end, 'command_deadline'
+                          assert os.fstat(log.fileno()).st_size <= 16 * 1024**2, 'build_log_cap'
+                          if not cleanup:
+                              assert min(shutil.disk_usage(p).free for p in (root, '/var/lib/docker')) >= 10 * 1024**3, 'disk_stop_10GiB'
+                          time.sleep(1)
+                      code = child.wait()
+                      assert time.monotonic() < end and os.fstat(log.fileno()).st_size <= 16 * 1024**2, 'terminal_command_bound'
+                      log.seek(0)
+                      data = log.read(16 * 1024**2 + 1)
+                      record['commands'].append({'exit_code': code, 'output_bytes': len(data), 'output_sha256': hashlib.sha256(data).hexdigest()})
+                      assert code == 0, 'command_failed'
+                      return data
+                  finally:
+                      if child.poll() is None:
+                          os.killpg(child.pid, signal.SIGTERM)
+                          try: child.wait(timeout=5)
+                          except subprocess.TimeoutExpired:
+                              os.killpg(child.pid, signal.SIGKILL)
+                              child.wait(timeout=5)
+          created = False
+          try:
+              context = json.loads(run(['docker', 'context', 'inspect'], 30))
+              assert len(context) == 1 and context[0]['Endpoints']['docker']['Host'] == 'unix:///var/run/docker.sock', 'local_docker_required'
+              info = json.loads(run(['docker', 'info', '--format', '{{json .}}'], 30))
+              assert info['OSType'] == 'linux' and info['Architecture'] == os.environ['NATIVE_MACHINE'], 'native_docker_required'
+              # Positive absence observations precede creation; never prune shared resources.
+              assert builder not in run(['docker', 'buildx', 'ls', '--format', '{{.Name}}'], 30).decode().splitlines()
+              assert container not in run(['docker', 'container', 'ls', '--all', '--format', '{{.Names}}'], 30).decode().splitlines()
+              assert volume not in run(['docker', 'volume', 'ls', '--format', '{{.Name}}'], 30).decode().splitlines()
+              created = True
+              run(['docker', 'buildx', 'create', '--name', builder, '--driver', 'docker-container',
+                   '--driver-opt', 'image=' + os.environ['BUILDKIT_IMAGE'],
+                   '--driver-opt', 'env.RIAUTH_PUBLICATION_OWNER=' + owner], 60)
+              run(['docker', 'buildx', 'inspect', builder, '--bootstrap'], 180)
+              for edition in ('essentials', 'platform'):
+                  tag = 'riauth-publish-' + edition + ':0.1.2-' + owner
+                  run(['docker', 'buildx', 'build', '--builder', builder, '--platform', 'linux/' + arch,
+                       '--load', '--progress', 'plain', '--file', str(product / 'Dockerfile'),
+                       '--build-arg', 'RIAUTH_EDITION=' + edition, '--build-arg', 'RIAUTH_COMMIT=' + source,
+                       '--build-arg', 'CARGO_BUILD_JOBS=1', '--build-arg', 'CARGO_INCREMENTAL=0',
+                       '--build-arg', 'CARGO_PROFILE_RELEASE_DEBUG=0',
+                       '--label', 'org.opencontainers.image.version=0.1.2',
+                       '--label', 'org.riauth.publish-run=' + owner, '--tag', tag, str(product)], 2700)
+                  run(['python3', str(controller / 'scripts/check-container-runtime.py'), '--product', str(product),
+                       '--output', str(root / 'dist'), '--image', tag, '--edition', edition, '--architecture', arch,
+                       '--source-sha', source, '--workflow-sha', workflow, '--ci-run', os.environ['CI_RUN']], 420)
+              sums = []
+              for edition in ('essentials', 'platform'):
+                  item = json.loads((root / 'dist' / (edition + '-' + arch + '.json')).read_bytes())
+                  sums.append(item['archive']['sha256'] + '  ' + item['archive']['name'] + '\n')
+              (root / 'dist' / ('SHA256SUMS-' + arch)).write_text(''.join(sums))
+              record['ok'] = True
+          except BaseException:
+              record['failure'] = 'bounded_build_or_smoke_refused'
+          finally:
+              if created:
+                  try:
+                      names = run(['docker', 'container', 'ls', '--all', '--format', '{{.Names}}'], 30, True).decode().splitlines()
+                      if container in names:
+                          owned = json.loads(run(['docker', 'container', 'inspect', container], 30, True))[0]
+                          assert owned['Config']['Image'] == os.environ['BUILDKIT_IMAGE']
+                          assert 'RIAUTH_PUBLICATION_OWNER=' + owner in owned['Config']['Env'], 'builder_owner_changed'
+                      run(['docker', 'buildx', 'rm', builder], 60, cleanup=True)
+                      assert container not in run(['docker', 'container', 'ls', '--all', '--format', '{{.Names}}'], 30, True).decode().splitlines()
+                      assert volume not in run(['docker', 'volume', 'ls', '--format', '{{.Name}}'], 30, True).decode().splitlines()
+                  except BaseException:
+                      record['cleanup'].append('owned_builder_cleanup_failed')
+              record['ok'] = record['ok'] and not record['cleanup']
+              with (root / 'dist/build.json').open('x') as out:
+                  json.dump(record, out, indent=2, sort_keys=True)
+                  out.write('\n'); out.flush(); os.fsync(out.fileno())
+          if not record['ok']:
+              raise SystemExit('Build refused; fixed evidence retained. No publication allowed.')
+          PY
+      - name: Retain archives and fixed evidence, including failed build receipts
+        if: ${{ always() && env.PUBLICATION_ROOT != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-tested-${{ matrix.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.PUBLICATION_ROOT }}/dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  publish:
+    needs: [validate, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: docker-tested-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/tested
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: docker-publication-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gate
+      - name: Publish exact tested images and verify both multiarch manifests
+        env:
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          CI_RUN: ${{ inputs.checked_ci_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, re, shutil, signal, subprocess, tempfile, time, urllib.error, urllib.request
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          evidence = root / 'published'
+          evidence.mkdir(mode=0o700)
+          source, workflow, ci = (os.environ[k] for k in ('SOURCE_SHA', 'WORKFLOW_SHA', 'CI_RUN'))
+          record = {'schema': 'riauth.ghcr-publication/v1', 'source_sha': source, 'workflow_sha': workflow,
+                    'checked_ci_run_id': ci, 'version': '0.1.2', 'ok': False, 'failure': None,
+                    'images': {}, 'attempted_registry_tags': [], 'anonymous_pull_verified': False,
+                    'visibility': 'root_verification_pending'}
+          gate = json.loads((root / 'gate/gate.json').read_bytes())
+          assert (gate['source_sha'], gate['workflow_sha'], gate['checked_ci_run_id'], gate['version'], gate['ci_conclusion']) == (source, workflow, ci, '0.1.2', 'success')
+          deadline = time.monotonic() + 2400
+          signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+          assert signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
+          def interrupted(signum, frame):
+              raise InterruptedError()
+          signal.signal(signal.SIGTERM, interrupted)
+          def sha(path):
+              h = hashlib.sha256()
+              with path.open('rb') as stream:
+                  for block in iter(lambda: stream.read(1048576), b''): h.update(block)
+              return h.hexdigest()
+          with tempfile.TemporaryDirectory(prefix='docker-auth-', dir=root) as private:
+              env = dict(os.environ, DOCKER_CONFIG=private)
+              env.pop('GH_TOKEN', None)
+              def run(args, stdin=None, seconds=300):
+                  with tempfile.TemporaryFile(dir=private) as out:
+                      child = subprocess.Popen(args, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+                                               stdout=out, stderr=out, env=env, start_new_session=True)
+                      try:
+                          if stdin is not None:
+                              child.stdin.write(stdin); child.stdin.close()
+                          end = min(deadline, time.monotonic() + seconds)
+                          while child.poll() is None:
+                              assert time.monotonic() < end, 'publication_deadline'
+                              assert os.fstat(out.fileno()).st_size <= 8 * 1024**2, 'publication_output_cap'
+                              assert min(shutil.disk_usage(p).free for p in (root, '/var/lib/docker')) >= 10 * 1024**3, 'disk_stop_10GiB'
+                              time.sleep(1)
+                          assert child.wait() == 0 and time.monotonic() < end, 'publication_command_failed'
+                          assert os.fstat(out.fileno()).st_size <= 8 * 1024**2
+                          out.seek(0); return out.read(8 * 1024**2 + 1)
+                      finally:
+                          if child.poll() is None:
+                              os.killpg(child.pid, signal.SIGTERM)
+                              try: child.wait(timeout=5)
+                              except subprocess.TimeoutExpired:
+                                  os.killpg(child.pid, signal.SIGKILL); child.wait(timeout=5)
+              class NoRedirect(urllib.request.HTTPRedirectHandler):
+                  def redirect_request(self, req, fp, code, msg, headers, newurl): return None
+              opener = urllib.request.build_opener(NoRedirect())
+              def request(path, token=None, absent=False):
+                  assert time.monotonic() < deadline
+                  headers = {'Accept': 'application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'}
+                  if token is not None: headers['Authorization'] = 'Bearer ' + token
+                  else:
+                      credentials = os.environ['GITHUB_ACTOR'] + ':' + os.environ['GH_TOKEN']
+                      headers['Authorization'] = 'Basic ' + base64.b64encode(credentials.encode()).decode()
+                  try:
+                      with opener.open(urllib.request.Request('https://ghcr.io' + path, headers=headers), timeout=20) as reply:
+                          data = reply.read(1048577)
+                          assert reply.status == 200 and len(data) <= 1048576
+                          return data, reply.headers
+                  except urllib.error.HTTPError as error:
+                      if absent and error.code == 404: return None, None
+                      raise
+              try:
+                  assert min(shutil.disk_usage(p).free for p in (root, '/var/lib/docker')) >= 30 * 1024**3
+                  records = {}
+                  for arch in ('amd64', 'arm64'):
+                      directory = root / 'tested' / ('docker-tested-' + arch + '-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'])
+                      assert {p.name for p in directory.iterdir()} == {'build.json', 'SHA256SUMS-' + arch, *(e + '-' + arch + suffix for e in ('essentials', 'platform') for suffix in ('.json', '.docker.tar'))}
+                      build = json.loads((directory / 'build.json').read_bytes())
+                      assert build['ok'] is True and build['cleanup'] == [] and build['failure'] is None
+                      assert (build['source_sha'], build['workflow_sha'], build['checked_ci_run_id'], build['architecture'], build['version'], build['dockerfile_sha256']) == (source, workflow, ci, arch, '0.1.2', gate['dockerfile_sha256'])
+                      for edition in ('essentials', 'platform'):
+                          item = json.loads((directory / (edition + '-' + arch + '.json')).read_bytes())
+                          assert item['ok'] is True and item['failure'] is None and item['cleanup'] == []
+                          assert item['remaining_owned_containers'] == item['remaining_owned_volumes'] == 0
+                          assert (item['source_sha'], item['workflow_sha'], item['checked_ci_run_id'], item['version'], item['edition'], item['architecture']) == (source, workflow, ci, '0.1.2', edition, arch)
+                          assert item['checks'] == ['native_host_image_binary', 'licenses', 'encrypted_initialization', 'readyz', 'readonly_theme', 'persistent_restart']
+                          archive = directory / (edition + '-' + arch + '.docker.tar')
+                          assert item['archive']['name'] == archive.name and 0 < archive.stat().st_size == item['archive']['bytes'] <= 2 * 1024**3
+                          assert sha(archive) == item['archive']['sha256']
+                          assert re.fullmatch('sha256:[0-9a-f]{64}', item['image_id'])
+                          run(['docker', 'image', 'load', '--input', str(archive)], seconds=120)
+                          loaded = json.loads(run(['docker', 'image', 'inspect', item['image_id']]))[0]
+                          labels = loaded['Config']['Labels']
+                          assert loaded['Os'] == 'linux' and loaded['Architecture'] == arch and loaded['Config']['User'] == '10001:10001'
+                          assert labels['org.riauth.edition'] == edition and labels['org.opencontainers.image.revision'] == source
+                          assert labels['org.opencontainers.image.source'] == 'https://github.com/Rhein-Industries/riAuth' and labels['org.opencontainers.image.version'] == '0.1.2'
+                          records[(edition, arch)] = item
+                      assert (directory / ('SHA256SUMS-' + arch)).read_text() == ''.join(
+                          records[(e, arch)]['archive']['sha256'] + '  ' + records[(e, arch)]['archive']['name'] + '\n'
+                          for e in ('essentials', 'platform'))
+                  tokens = {}
+                  for edition in ('essentials', 'platform'):
+                      name = 'rhein-industries/riauth-' + edition
+                      data, _ = request('/token?service=ghcr.io&scope=repository:' + name + ':pull,push')
+                      tokens[edition] = json.loads(data)['token']
+                      for tag in ('0.1.2', '0.1.2-amd64', '0.1.2-arm64'):
+                          data, _ = request('/v2/' + name + '/manifests/' + tag, tokens[edition], absent=True)
+                          assert data is None, 'existing_version_tag_refused'
+                  # No login/build-time token crossing. This job alone has packages:write.
+                  run(['docker', 'login', 'ghcr.io', '--username', os.environ['GITHUB_ACTOR'], '--password-stdin'],
+                      (os.environ['GH_TOKEN'] + '\n').encode(), seconds=30)
+                  for edition in ('essentials', 'platform'):
+                      name = 'rhein-industries/riauth-' + edition
+                      image = 'ghcr.io/' + name
+                      entries = {}
+                      record['images'][edition] = {'name': image, 'version_tag': image + ':0.1.2',
+                                                   'digest': None, 'architectures': entries}
+                      for arch in ('amd64', 'arm64'):
+                          item = records[(edition, arch)]
+                          tag = image + ':0.1.2-' + arch
+                          run(['docker', 'image', 'tag', item['image_id'], tag])
+                          record['attempted_registry_tags'].append(tag)
+                          run(['docker', 'image', 'push', tag], seconds=600)
+                          raw, headers = request('/v2/' + name + '/manifests/0.1.2-' + arch, tokens[edition])
+                          manifest = json.loads(raw)
+                          digest = 'sha256:' + hashlib.sha256(raw).hexdigest()
+                          assert headers['Docker-Content-Digest'] == digest and manifest['config']['digest'] == item['image_id']
+                          # Image ID is the content digest of the already inspected
+                          # config. The remote manifest binds those exact bytes,
+                          # including its architecture, User and OCI labels; no
+                          # credential-bearing redirect to a blob CDN is needed.
+                          labels = json.loads(run(['docker', 'image', 'inspect', item['image_id']]))[0]['Config']['Labels']
+                          entries[arch] = {'digest': digest, 'config_digest': item['image_id'], 'archive_sha256': item['archive']['sha256'], 'tag': tag, 'labels': labels}
+                      tag = image + ':0.1.2'
+                      run(['docker', 'manifest', 'create', tag, *(image + '@' + entries[a]['digest'] for a in ('amd64', 'arm64'))])
+                      for arch in ('amd64', 'arm64'):
+                          run(['docker', 'manifest', 'annotate', '--os', 'linux', '--arch', arch, tag, image + '@' + entries[arch]['digest']])
+                      record['attempted_registry_tags'].append(tag)
+                      run(['docker', 'manifest', 'push', tag], seconds=120)
+                      raw, headers = request('/v2/' + name + '/manifests/0.1.2', tokens[edition])
+                      index = json.loads(raw)
+                      assert index['schemaVersion'] == 2 and len(index['manifests']) == 2
+                      assert {m['platform']['architecture']: m['digest'] for m in index['manifests']} == {a: entries[a]['digest'] for a in entries}
+                      assert all(m['platform']['os'] == 'linux' for m in index['manifests'])
+                      digest = 'sha256:' + hashlib.sha256(raw).hexdigest()
+                      assert headers['Docker-Content-Digest'] == digest
+                      (evidence / (edition + '-manifest.json')).write_bytes(raw)
+                      record['images'][edition] = {'name': image, 'version_tag': tag, 'digest': digest, 'architectures': entries}
+                  assert time.monotonic() < deadline, 'terminal_publication_deadline'
+                  record['ok'] = True
+              except BaseException:
+                  record['failure'] = 'publication_or_metadata_verification_refused'
+              finally:
+                  # Ephemeral auth directory is removed on exit; no config/token is uploaded.
+                  with (evidence / 'publication.json').open('x') as out:
+                      json.dump(record, out, sort_keys=True, indent=2)
+                      out.write('\n'); out.flush(); os.fsync(out.fileno())
+          if not record['ok']: raise SystemExit('Publication refused; partial registry writes, if any, are recorded. Never overwrite version tags.')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('Both version manifests passed authenticated metadata verification. Public visibility and anonymous pulls require root verification. No latest tag was changed.\n\n')
+              for image in record['images'].values():
+                  summary.write('`docker pull ' + image['name'] + '@' + image['digest'] + '`\n\n')
+          PY
+      - name: Retain immutable registry metadata and partial publication evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: docker-published-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/published/
+          if-no-files-found: error
+          retention-days: 30
