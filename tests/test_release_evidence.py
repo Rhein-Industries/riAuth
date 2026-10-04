@@ -215,5 +215,154 @@ class ReleaseEvidenceAudit(unittest.TestCase):
                 evidence.audit(root)
 
 
+import ast
+import runpy
+from unittest import mock
+
+
+class SourceContractData(unittest.TestCase):
+    def texts(self):
+        return {relative: (ROOT / relative).read_text() for relative in evidence.SOURCE_CONTRACTS}
+
+    def changed_function(self, text, name, before, after):
+        selected = [node for node in ast.parse(text).body
+                    if isinstance(node, ast.FunctionDef) and node.name == name]
+        self.assertEqual(len(selected), 1)
+        body = ast.get_source_segment(text, selected[0])
+        self.assertIn(before, body)
+        return text.replace(body, body.replace(before, after, 1), 1)
+
+    def test_canonical_contracts_allow_comments_and_whitespace(self):
+        for relative, text in self.texts().items():
+            with self.subTest(relative=relative):
+                evidence.recognize_source_contract(text, relative)
+                evidence.recognize_source_contract("\n# source formatting\n" + text + "\n# end\n", relative)
+
+    def test_changed_graphs_and_referenced_constants_refuse(self):
+        texts = self.texts()
+        producer = "scripts/spdx_sbom.py"
+        changed = self.changed_function(texts[producer], "linux_graphs",
+                                        '"lock": "server"', '"lock": "client"')
+        candidates = [
+            (producer, changed),
+            (producer, texts[producer].replace('"x86_64": "x86_64-unknown-linux-gnu"',
+                                               '"x86_64": "other-target"', 1)),
+            ("scripts/check-installed-release-gate.py",
+             texts["scripts/check-installed-release-gate.py"].replace(
+                 'EDITIONS = ("essentials", "platform")', 'EDITIONS = ("essentials",)', 1)),
+            ("scripts/check-release-attestation.py",
+             texts["scripts/check-release-attestation.py"].replace(
+                 'ACTION_SHA = "1e69f48acb82d1966a394da916b4c1698aa569d6"',
+                 'ACTION_SHA = "0000000000000000000000000000000000000000"', 1)),
+        ]
+        for relative, text in candidates:
+            with self.subTest(relative=relative):
+                self.assertNotEqual(text, texts[relative])
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(text, relative)
+
+    def test_selected_decorators_and_defaults_refuse(self):
+        relative = "scripts/spdx_sbom.py"
+        text = self.texts()[relative]
+        for header in ("@staticmethod\ndef linux_graphs(arch):", "def linux_graphs(arch=None):"):
+            with self.subTest(header=header):
+                changed = text.replace("def linux_graphs(arch):", header, 1)
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(changed, relative)
+
+    def test_duplicate_alias_augmented_and_conditional_bindings_refuse(self):
+        relative = "scripts/spdx_sbom.py"
+        text = self.texts()[relative]
+        declarations = (
+            "linux_graphs = None\n",
+            "LINUX_TARGETS += {}\n",
+            "import math as linux_graphs\n",
+            "from math import floor as linux_graphs\n",
+            "def linux_graphs(arch):\n    pass\n",
+            "if True:\n    def linux_graphs(arch):\n        pass\n",
+        )
+        for declaration in declarations:
+            with self.subTest(declaration=declaration):
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(text + "\n" + declaration, relative)
+
+    def test_relevant_writes_in_other_bodies_refuse(self):
+        relative = "scripts/spdx_sbom.py"
+        text = self.texts()[relative]
+        bodies = (
+            "global linux_graphs\n    linux_graphs = None\n    return payload",
+            "import math as linux_graphs\n    return payload",
+            "if False:\n        def linux_graphs(arch):\n            pass\n    return payload",
+            "LINUX_TARGETS['additional'] = 'other'\n    return payload",
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                changed = self.changed_function(text, "sha256_bytes",
+                                                "return hashlib.sha256(payload).hexdigest()", body)
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(changed, relative)
+
+    def test_unrecognized_declarations_and_loader_ownership_refuse(self):
+        texts = self.texts()
+        relative = "scripts/check-installed-release-gate.py"
+        candidates = (
+            texts[relative] + "\nDECLARED_NOTE = object()\n",
+            texts[relative] + "\nclass AdditionalDeclaration:\n    pass\n",
+            texts[relative] + "\nif True:\n    pass\n",
+            texts[relative].replace(' / "spdx_sbom.py"', ' / "other_document.py"', 1),
+        )
+        for text in candidates:
+            with self.subTest(text_length=len(text)):
+                self.assertNotEqual(text, texts[relative])
+                with self.assertRaises(evidence.AuditError):
+                    evidence.recognize_source_contract(text, relative)
+
+    def test_owned_workflow_policy_keeps_permissions_actions_and_subjects(self):
+        workflow = (ROOT / ".github/workflows/release.yml").read_text()
+        result = evidence.require_release_workflow(workflow)
+        self.assertFalse(result["signed_artifact"])
+        self.assertEqual(result["action"], "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2")
+        candidates = (
+            workflow.replace("id-token: write", "id-token: read", 1),
+            workflow.replace("actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6", "actions/attest@other", 1),
+            workflow.replace("all-subjects.txt", "different-subjects.txt", 1),
+            workflow + "\npackages: write\n",
+        )
+        for text in candidates:
+            with self.subTest(text_length=len(text)):
+                self.assertNotEqual(text, workflow)
+                with self.assertRaises(evidence.AuditError):
+                    evidence.require_release_workflow(text)
+
+    def test_source_read_and_parse_are_bounded(self):
+        relative = "scripts/spdx_sbom.py"
+        with self.assertRaises(evidence.AuditError):
+            evidence.recognize_source_contract("x" * (evidence.MAX_SOURCE_BYTES + 1), relative)
+        with self.assertRaises(evidence.AuditError):
+            evidence.recognize_source_contract("def incomplete(", relative)
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            path = root / "source.py"
+            path.write_bytes(b"x" * (evidence.MAX_SOURCE_BYTES + 1))
+            with self.assertRaises(evidence.AuditError):
+                evidence.read_text(root, path.name)
+            path.unlink()
+            path.mkdir()
+            with self.assertRaises(evidence.AuditError):
+                evidence.read_text(root, path.name)
+
+    def test_inspected_contracts_never_use_execution_or_module_loading(self):
+        texts = self.texts()
+        refused = AssertionError("unexpected execution or module loading")
+        with mock.patch("importlib.util.spec_from_file_location", side_effect=refused), \
+                mock.patch("builtins.exec", side_effect=refused), \
+                mock.patch("builtins.eval", side_effect=refused), \
+                mock.patch("runpy.run_path", side_effect=refused):
+            for relative, text in texts.items():
+                evidence.recognize_source_contract(text, relative)
+            evidence.require_package_contract(texts)
+            evidence.require_release_workflow((ROOT / ".github/workflows/release.yml").read_text())
+
+
 if __name__ == "__main__":
     unittest.main()
