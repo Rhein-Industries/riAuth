@@ -565,24 +565,28 @@ internal static class WinSecurity
     private static void Rename(SafeFileHandle file, SafeFileHandle parent, bool replace)
     {
         // FILE_RENAME_INFO x64: union0, HANDLE8, DWORD16, UTF-16 name20.
-        const string name = "device.json";
-        var bytes = Encoding.Unicode.GetBytes(name + "\0");
-        var memory = Marshal.AllocHGlobal(44);
+        var memory = IntPtr.Zero;
         var retained = false;
         try
         {
-            for (var i = 0; i < 44; i++) Marshal.WriteByte(memory, i, 0);
             parent.DangerousAddRef(ref retained);
+            // Use the Win32 absolute-name form; the admitted parent chain stays held.
+            var name = System.IO.Path.Combine(FinalPath(parent), "device.json");
+            Require(System.IO.Path.IsPathFullyQualified(name) && name.Length < 4096);
+            var bytes = Encoding.Unicode.GetBytes(name + "\0");
+            var size = checked(20 + bytes.Length);
+            memory = Marshal.AllocHGlobal(size);
+            for (var i = 0; i < size; i++) Marshal.WriteByte(memory, i, 0);
             Marshal.WriteByte(memory, replace ? (byte)1 : (byte)0);
-            Marshal.WriteIntPtr(memory, 8, parent.DangerousGetHandle());
-            Marshal.WriteInt32(memory, 16, 22);
+            Marshal.WriteIntPtr(memory, 8, IntPtr.Zero);
+            Marshal.WriteInt32(memory, 16, bytes.Length - 2);
             Marshal.Copy(bytes, 0, IntPtr.Add(memory, 20), bytes.Length);
-            Native(SetFileInformationByHandle(file, 3, memory, 44));
+            Native(SetFileInformationByHandle(file, 3, memory, (uint)size));
         }
         finally
         {
             if (retained) parent.DangerousRelease();
-            Marshal.FreeHGlobal(memory);
+            if (memory != IntPtr.Zero) Marshal.FreeHGlobal(memory);
         }
     }
 
