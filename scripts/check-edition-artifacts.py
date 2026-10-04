@@ -274,6 +274,7 @@ def check_images(essentials, platform, platform_maintenance):
             ["docker", "run", "--rm", "-v", f"{volumes['platform']}:/data", essentials,
              "--json", "serve"], text=True, capture_output=True, timeout=20,
         )
+        pathlib.Path(platform_maintenance).chmod(0o755)
         preflight = subprocess.run(
             ["docker", "run", "--rm", "--entrypoint", "/usr/local/bin/riauth-maintenance",
              "-v", f"{volumes['platform']}:/data",
