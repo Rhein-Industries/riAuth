@@ -28,8 +28,10 @@ created.
 
 By default the listener is loopback HTTP without TLS and database encryption
 is off. PostgreSQL, when selected in that default mode, is a disposable
-loopback cluster with trust authentication, `sslmode=disable`,
-`local_unencrypted`, and pool size 8.
+loopback cluster with SCRAM authentication and a fresh private password,
+`sslmode=disable`, `local_unencrypted`, and pool size 8. The password is passed
+to `initdb` through an owner-only file and to libpq through its explicit private
+environment; it is excluded from printed evidence.
 
 `--secure` is the other bounded mode. It keeps the same dataset, pace, and
 general-request estimate. It generates a fresh private CA, a server
