@@ -2208,13 +2208,16 @@ async fn step(core: &Core) {
             .store
             .get::<(String, u64)>("connector_due_cursors", "provisioning_jobs")?
             .is_some();
+        let before_jobs = core.store.list::<Value>("provisioning_jobs")?;
         core.provisioning_step()?;
-        // A claim parks the cursor; only exhaustion can remove a prior one.
+        // A wrapped selection also retires its cursor. Retry only when the
+        // first pass changed no job, so one fixture step advances one item.
         if had_due_cursor
             && core
                 .store
                 .get::<(String, u64)>("connector_due_cursors", "provisioning_jobs")?
                 .is_none()
+            && core.store.list::<Value>("provisioning_jobs")? == before_jobs
         {
             core.provisioning_step()?;
         }
