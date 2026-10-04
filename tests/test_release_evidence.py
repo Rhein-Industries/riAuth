@@ -434,6 +434,27 @@ class SourceContractData(unittest.TestCase):
                         opened.assert_not_called()
                         inspected.assert_not_called()
 
+    def test_report_hashes_the_validated_byte_buffers(self):
+        import hashlib
+
+        validated = {relative: (ROOT / relative).read_bytes() for relative in evidence.AUDITED}
+        validated["SECURITY.md"] += "\r\n<!-- UTF-8 fixture: café -->\r\n".encode("utf-8")
+        later = {relative: payload + b"\n" for relative, payload in validated.items()}
+        with mock.patch.object(evidence, "read_text",
+                               side_effect=lambda root, relative: validated[relative].decode("utf-8")) as reads, \
+                mock.patch.object(evidence, "digest",
+                                  side_effect=lambda path: hashlib.sha256(
+                                      later[path.relative_to(ROOT).as_posix()]).hexdigest()) as rereads, \
+                mock.patch.object(evidence, "worktree_state", return_value={"commit": None, "dirty": None}):
+            report = evidence.audit(ROOT)
+        self.assertEqual(reads.call_args_list, [mock.call(ROOT, relative) for relative in evidence.AUDITED])
+        rereads.assert_not_called()
+        self.assertEqual(set(report["files"]), set(evidence.AUDITED))
+        for relative in evidence.AUDITED:
+            with self.subTest(relative=relative):
+                self.assertEqual(report["files"][relative], hashlib.sha256(validated[relative]).hexdigest())
+                self.assertNotEqual(report["files"][relative], hashlib.sha256(later[relative]).hexdigest())
+
     def test_inspected_contracts_never_use_execution_or_module_loading(self):
         texts = self.texts()
         refused = AssertionError("unexpected execution or module loading")

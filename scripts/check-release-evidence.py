@@ -825,7 +825,7 @@ def audit(root, dist=None):
             "ran_against_assets": False,
         },
         "release_assets": inventory(None if dist is None else pathlib.Path(dist)),
-        "files": {relative: digest(root / relative) for relative in AUDITED},
+        "files": {relative: hashlib.sha256(texts[relative].encode("utf-8")).hexdigest() for relative in AUDITED},
     }
 
 
