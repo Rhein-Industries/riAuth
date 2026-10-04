@@ -55,6 +55,26 @@ def private_json(path, content):
         output.write("\n")
 
 
+def private_text(path, content):
+    with os.fdopen(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), "w") as output:
+        output.write(content)
+
+
+def redact(text, sensitive):
+    for value in sensitive:
+        if value:
+            text = text.replace(value, "[redacted]")
+    return text
+
+
+def postgres_env(password=None):
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("PG") and key != "PSQLRC"}
+    if password is not None:
+        environment["PGPASSWORD"] = password
+    return environment
+
+
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -65,7 +85,8 @@ def main(binary, fixture, pg_bin, out):
     require(all((pg_bin / name).is_file() for name in
                 ("initdb", "pg_ctl", "psql", "pg_basebackup", "pg_verifybackup", "createdb")),
             "PG16 tooling incomplete")
-    require("16.14" in subprocess.check_output([pg_bin / "pg_ctl", "--version"], text=True),
+    require("16.14" in subprocess.check_output([pg_bin / "pg_ctl", "--version"], text=True,
+                                               env=postgres_env()),
             "exact PG16.14 tooling required")
     require(shutil.disk_usage(out.parent).free >= 8 * 1024**3, "8 GiB free-space floor not met")
     out.mkdir(mode=0o700)
@@ -87,11 +108,15 @@ def main(binary, fixture, pg_bin, out):
     service = None
     holder = None
     cleanup_ok = True
+    sensitive = []
+    pg_password = secrets.token_hex(24)
+    sensitive.append(pg_password)
+    password_file = root / "pg-password"
 
     def flush():
         path = out / "report.json"
         temporary = out / "report.json.tmp"
-        temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        temporary.write_text(redact(json.dumps(report, indent=2, sort_keys=True), sensitive) + "\n")
         os.chmod(temporary, 0o600)
         temporary.replace(path)
 
@@ -101,14 +126,16 @@ def main(binary, fixture, pg_bin, out):
 
     def pg(name, *args, ok=True, timeout=90):
         result = subprocess.run([str(pg_bin / name), *map(str, args)],
-                                text=True, capture_output=True, timeout=timeout)
+                                text=True, capture_output=True, timeout=timeout,
+                                env=postgres_env(pg_password))
+        result.stderr = redact(result.stderr, sensitive)
         if ok:
             require(result.returncode == 0,
-                    f"{name} exit {result.returncode}: {result.stderr[-250:]}")
+                    f"{name} exit {result.returncode}")
         return result
 
     def sql(query, database="riauth_drill"):
-        return pg("psql", "-X", "-A", "-t", "-h", "127.0.0.1", "-p", pg_port,
+        return pg("psql", "--no-password", "-X", "-A", "-t", "-h", "127.0.0.1", "-p", pg_port,
                   "-U", "riauth_drill", "-d", database, "-c", query).stdout.strip()
 
     def cli(args, cfg=config, password=None, remote=False, timeout=60):
@@ -179,7 +206,9 @@ def main(binary, fixture, pg_bin, out):
                 "records_oid": sql("select 'riauth_store.records_v1'::regclass::oid")}
 
     try:
-        pg("initdb", "-D", source, "-U", "riauth_drill", "--auth=trust",
+        private_text(password_file, pg_password + "\n")
+        pg("initdb", "-D", source, "-U", "riauth_drill", "--auth=scram-sha-256",
+           "--pwfile", password_file,
            "--encoding=UTF8", "--no-locale")
         escaped = str(root).replace("'", "''")
         with (source / "postgresql.conf").open("a") as config_file:
@@ -187,29 +216,37 @@ def main(binary, fixture, pg_bin, out):
                               f"unix_socket_directories = '{escaped}'\n"
                               "wal_level = replica\nmax_wal_senders = 4\n")
         pg_start(source)
-        pg("createdb", "-h", "127.0.0.1", "-p", pg_port, "-U", "riauth_drill", "riauth_drill")
-        pg("createdb", "-h", "127.0.0.1", "-p", pg_port, "-U", "riauth_drill", "empty_schema")
+        pg("createdb", "--no-password", "-h", "127.0.0.1", "-p", pg_port,
+           "-U", "riauth_drill", "riauth_drill")
+        pg("createdb", "--no-password", "-h", "127.0.0.1", "-p", pg_port,
+           "-U", "riauth_drill", "empty_schema")
         connection = root / "connection"
-        connection.write_text(f"host=127.0.0.1 port={pg_port} dbname=riauth_drill "
-                              "user=riauth_drill sslmode=disable connect_timeout=3\n")
-        os.chmod(connection, 0o600)
+        private_text(connection, (f"host=127.0.0.1 port={pg_port} dbname=riauth_drill "
+                                  f"user=riauth_drill password={pg_password} "
+                                  "sslmode=disable connect_timeout=3\n"))
         postgres_config = root / "postgres.json"
         private_json(postgres_config, {"connection_file": str(connection),
                                        "local_unencrypted": True, "pool_size": 4})
         database_key, wrong_key = root / "database.key", root / "wrong.key"
         success(["keygen", "--out", database_key])
+        sensitive.append(database_key.read_text().strip())
         success(["keygen", "--out", wrong_key])
+        sensitive.append(wrong_key.read_text().strip())
         admin_password = secrets.token_urlsafe(30)
         input_file = root / "input.json"
-        private_json(input_file, {"admin_password": admin_password,
-                                  "user_password": secrets.token_urlsafe(30),
-                                  "new_user_password": secrets.token_urlsafe(30),
-                                  "late_user_password": secrets.token_urlsafe(30)})
+        inputs = {"admin_password": admin_password,
+                  "user_password": secrets.token_urlsafe(30),
+                  "new_user_password": secrets.token_urlsafe(30),
+                  "late_user_password": secrets.token_urlsafe(30)}
+        sensitive.extend(inputs.values())
+        private_json(input_file, inputs)
         success(["init", "--issuer", issuer, "--listen", f"127.0.0.1:{http_port}",
                  "--postgres-config", postgres_config, "--database-key-file", database_key,
                  "--password-stdin"], password=admin_password + "\n")
         artifacts, post, verified = root / "artifacts.json", root / "post.json", root / "verified.json"
         fixture_run("issue", config, input_file, artifacts)
+        sensitive.extend(json.loads(artifacts.read_text())[key] for key in
+                         ("session", "access", "refresh", "code", "verifier", "proof"))
         check("issued_fixture", session=True, bearer=True, refresh=True,
               authorization_code=True, one_use_proof=True)
         service = subprocess.Popen([str(binary), "--config", str(config), "serve"],
@@ -343,10 +380,6 @@ def main(binary, fixture, pg_bin, out):
         check("completion_gates", wrong_id=wrong_id, missing_attestation_exit=no_attestation[0],
               gate_closed=True, listener_closed=True)
         reports = "\n".join(path.read_text() for path in out.glob("*.json"))
-        sensitive = [value for value in json.loads(input_file.read_text()).values()]
-        sensitive += [json.loads(artifacts.read_text())[key] for key in
-                      ("session", "access", "refresh", "code", "verifier", "proof")]
-        sensitive += [database_key.read_text().strip(), wrong_key.read_text().strip()]
         require(all(value not in reports for value in sensitive),
                 "a generated credential or key appeared in a durable report")
         check("report_redaction", generated_credentials_and_keys_absent=True)
@@ -357,8 +390,8 @@ def main(binary, fixture, pg_bin, out):
         ]
     except Exception as error:
         report["outcome"] = "failed"
-        report["failure"] = str(error)[:500]
-        raise
+        report["failure"] = redact(str(error), sensitive)[:500]
+        raise RuntimeError(report["failure"]) from None
     finally:
         if holder is not None:
             try:
@@ -374,14 +407,14 @@ def main(binary, fixture, pg_bin, out):
                 pg_stop()
             except Exception as error:
                 cleanup_ok = False
-                report["cleanup_error"] = str(error)[:300]
+                report["cleanup_error"] = redact(str(error), sensitive)[:300]
         for data in (source, copy):
             if data.exists() and pg("pg_ctl", "-D", data, "status", ok=False).returncode == 0:
                 try:
                     pg("pg_ctl", "-D", data, "stop", "-m", "immediate", "-w")
                 except Exception as error:
                     cleanup_ok = False
-                    report["cleanup_error"] = str(error)[:300]
+                    report["cleanup_error"] = redact(str(error), sensitive)[:300]
         if cleanup_ok:
             shutil.rmtree(root)
         else:
