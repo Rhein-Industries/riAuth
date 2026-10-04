@@ -687,8 +687,8 @@ mod delivery_pass_tests {
 
     #[test]
     fn just_in_time_claim_keeps_later_rows_unleased_until_send() {
+        let (_dir, core) = fixture();
         with_test_time(AT, || {
-            let (_dir, core) = fixture();
             let rows = seed(&core, 17);
             let audit = core.store.list::<Value>("audit").unwrap();
             assert_eq!(queue(&core), (17, 0));
@@ -732,8 +732,8 @@ mod delivery_pass_tests {
 
     #[test]
     fn one_pass_does_not_reclaim_a_failed_delivery_after_other_send_advances_clock() {
+        let (_dir, core) = fixture();
         with_test_time(AT, || {
-            let (_dir, core) = fixture();
             let rows = seed(&core, 2);
             let audit = core.store.list::<Value>("audit").unwrap();
             let mut ids = Vec::new();
@@ -792,8 +792,8 @@ mod delivery_pass_tests {
 
     #[test]
     fn manual_batch_keeps_sixteen_claims_and_original_expiry_guards() {
+        let (_dir, core) = fixture();
         with_test_time(AT, || {
-            let (_dir, core) = fixture();
             let rows = seed(&core, 17);
             let audit = core.store.list::<Value>("audit").unwrap();
             let claimed = core.claim_ssf_deliveries().unwrap();
