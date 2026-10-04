@@ -13,9 +13,9 @@ def function(source: str, name: str) -> str:
     start = re.search(rf"^function {re.escape(name)} \{{\n", source, re.MULTILINE)
     if start is None:
         raise AssertionError("missing function")
-    next_function = re.search(r"^function \S+ \{\n", source[start.end():], re.MULTILINE)
+    next_function = re.search(r"^(?:function \S+ \{\n|# Only one elevated installer)", source[start.end():], re.MULTILINE)
     if next_function is None:
-        raise AssertionError("missing following function")
+        raise AssertionError("missing following source boundary")
     return source[start.end():start.end() + next_function.start()]
 
 
