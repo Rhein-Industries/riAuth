@@ -1,18 +1,34 @@
 # Docker images
 
-The manual **Publish checked Docker images** workflow prepares version `0.1.2`
-for these repositories, each with native Linux `amd64` and `arm64` images:
+Version `0.1.2` is publicly available from these repositories, each with native
+Linux `amd64` and `arm64` images. No registry login is required:
 
 ```text
 ghcr.io/rhein-industries/riauth-essentials:0.1.2
 ghcr.io/rhein-industries/riauth-platform:0.1.2
 ```
 
-Publication is separate from the draft release workflow. A workflow definition
-or successful build does not establish public availability: the maintainer must
-publish, set package visibility and verify an anonymous pull. Use the immutable
-manifest digest from the publication summary when deploying. No `latest` tag is
-created or changed by this workflow.
+## Published manifests
+
+| Edition | Multiarch manifest digest |
+| --- | --- |
+| Essentials | `sha256:bad89630e5d99c82a57c35e2e3c859f92bea05b968f5b8905d9ba499c89e8cb3` |
+| Platform | `sha256:2074842ad67a84653e5e4ba18fe2c445b3787a9e1844d3ccb9d3ce6c54143bb9` |
+
+These images were built from commit
+`04eb0497c00ee198ec7ba616cdf9c77cd0e5c0c5`, which passed
+[full Public CI](https://github.com/Rhein-Industries/riAuth/actions/runs/37232945709).
+The [publication run](https://github.com/Rhein-Industries/riAuth/actions/runs/37236213488)
+built and exercised both editions on native Linux AMD64 and ARM64 hosts, including
+encrypted initialization, readiness, readonly themes and persistent restart.
+Both packages were made public, and anonymous registry downloads verified the
+manifest, config and every layer hash for all four images. The download check
+used the OCI registry protocol; container execution was verified on the hosted
+Linux runners.
+
+Use these immutable manifest digests when deploying. Publication is separate
+from the draft GitHub release workflow. No `latest` tag is created or changed
+by this workflow.
 
 ## Start a single instance
 
