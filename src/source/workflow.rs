@@ -27,7 +27,7 @@ pub(crate) enum Verification {
     Pending,
     Failed,
     Verified {
-        authority: SourceEvidence,
+        authority: Box<SourceEvidence>,
         auth_time: u64,
         expires_at: u64,
     },
@@ -196,7 +196,7 @@ pub(crate) fn consume(
     evidence_authority(tx, pin, user, &evidence)?;
     discard(tx, attempt, binding)?;
     Ok(Verification::Verified {
-        authority: evidence,
+        authority: Box::new(evidence),
         auth_time: identity.auth_time,
         expires_at,
     })

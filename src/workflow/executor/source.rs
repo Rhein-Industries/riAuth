@@ -592,7 +592,7 @@ impl Core {
                     authority,
                     auth_time,
                     expires_at,
-                } => (authority, auth_time, expires_at),
+                } => (*authority, auth_time, expires_at),
             };
             if configured_source_first_passkey_enrollment(checked.definition()).is_some() {
                 let session: Session = tx
