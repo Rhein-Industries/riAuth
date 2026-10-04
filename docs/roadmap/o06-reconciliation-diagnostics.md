@@ -12,6 +12,8 @@ The caller needs `operations.read` on `operations/reconciliation`. `directory.sy
 
 Counts include every stored schedule and every retained reconciliation job. The service keeps at most 256 jobs. The response lists at most 50 attention rows. `truncated` is true when more rows need attention. There is no per-user withholding: a controller scope is the identity of the failure, and an operations reader sees it without that connector's sync permission.
 
+Fresh event and schedule jobs also share a limit of 32 active jobs per stable controller scope. Queued and running jobs count, as does any job with an owned lease that has not expired, including stale or terminal jobs. Origins, configuration fingerprints and controller generations do not partition the limit. An authorized retry of an exact retained event returns that job before admission is checked. A fresh event at capacity returns HTTP 409 `conflict` with `Reconciliation scope capacity reached`, before global history pruning or job and audit writes. A due schedule records the same conflict, waits 30 seconds and keeps draining existing work. Completing or retiring work without a live lease releases its active slot; queued retries and snapshot pages keep theirs. Older over-budget scopes retain their jobs and refuse fresh admission while draining. The existing global 256-job retention and eligible terminal pruning remain in force. This is a per-scope admission bound, not fairness across all controllers, a backlog deadline, a history partition or an audit-storage quota: eight full scopes can still exhaust the global limit.
+
 Attention rows are:
 
 - a schedule with `last_error` present, including an empty string

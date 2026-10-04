@@ -290,6 +290,34 @@ jobs:
               return info
 
 
+          def seal_validator_sources(source, destination, imports):
+              require(len(imports) == 5 and all(re.fullmatch(r"[A-Za-z0-9_-]+\.py", name) is not None
+                                              and re.fullmatch(r"[0-9a-f]{64}", expected) is not None
+                                              for name, expected in imports.items()), "validator_source_manifest")
+              destination.mkdir(mode=0o700)
+              for name, expected in imports.items():
+                  path = source / name
+                  before = regular(path)
+                  require(0 < before.st_size <= 1024 ** 2, "validator_source_size_limit")
+                  fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                  with os.fdopen(fd, "rb") as stream:
+                      opened = os.fstat(stream.fileno())
+                      require(stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1,
+                              "regular_file_required")
+                      payload = stream.read(1024 ** 2 + 1)
+                      after = os.fstat(stream.fileno())
+                  current = regular(path)
+                  identity = lambda info: (info.st_dev, info.st_ino, info.st_size,
+                                           info.st_mtime_ns, info.st_ctime_ns)
+                  require(identity(before) == identity(opened) == identity(after) == identity(current)
+                          and len(payload) == before.st_size, "validator_source_changed")
+                  require(hashlib.sha256(payload).hexdigest() == expected, "validator_import_mismatch")
+                  target = destination / name
+                  fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                  with os.fdopen(fd, "wb") as out:
+                      out.write(payload)
+
+
           def write_new(path, value):
               require(not path.exists(), "owned_file_already_exists")
               temporary = path.with_name(path.name + ".new")
@@ -880,6 +908,7 @@ jobs:
                       require(actual[name] == expected, "validator_import_mismatch")
                   self.data["validator_import_sha256"] = actual
                   self.save()
+                  seal_validator_sources(root / "scripts", PRIVATE / "validator-scripts", FIXED["imports"])
 
               def download(self):
                   write_new(PRIVATE / "transport-owner.json", {"nonce": self.owner["nonce"]})
@@ -1051,12 +1080,27 @@ jobs:
               def helper(self, installed, env):
                   self.guard()
                   require(self.deadline - time.monotonic() >= 660, "full_helper_budget_unavailable")
+                  sealed = PRIVATE / "validator-scripts"
+                  info = sealed.lstat()
+                  require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid()
+                          and stat.S_IMODE(info.st_mode) == 0o700, "validator_source_directory")
+                  require({path.name for path in sealed.iterdir()} == set(FIXED["imports"]), "validator_source_members")
+                  for name, expected in FIXED["imports"].items():
+                      self.guard()
+                      original = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "scripts" / name
+                      regular(original)
+                      require(digest(original) == expected, "validator_import_changed_before_helper")
+                      path = sealed / name
+                      info = regular(path)
+                      require(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600,
+                              "validator_source_file_mode")
+                      require(digest(path) == expected, "sealed_validator_import_changed_before_helper")
                   bootstrap = ROOT / "bootstrap.py"
                   with bootstrap.open("x") as out:
                       out.write(BOOTSTRAP)
                   bootstrap.chmod(0o600)
                   env["A09_ROOT"] = str(ROOT)
-                  helper = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "scripts" / HELPER
+                  helper = sealed / HELPER
                   try:
                       self.command("focused-shared-helper",
                                    [sys.executable, "-I", "-B", str(bootstrap), str(helper), str(installed),
@@ -1109,6 +1153,12 @@ jobs:
                       path = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / "scripts" / name
                       regular(path)
                       require(digest(path) == expected, "validator_import_changed_during_helper")
+                      path = sealed / name
+                      info = regular(path)
+                      require(info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o600,
+                              "validator_source_file_mode")
+                      require(digest(path) == expected, "sealed_validator_import_changed_during_helper")
+                  require({path.name for path in sealed.iterdir()} == set(FIXED["imports"]), "validator_source_members")
                   self.data["sample_result"] = "passed"
                   self.save()
 

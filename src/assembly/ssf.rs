@@ -12,6 +12,7 @@ use crate::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 
 impl SsfTx for Tx<'_> {
     fn deliveries(&self) -> Result<Vec<(String, Delivery)>> {
@@ -320,7 +321,7 @@ impl Core {
 
     pub fn claim_ssf_deliveries(&self) -> Result<Vec<Delivery>> {
         Ok(self
-            .claim_ssf_batch()?
+            .claim_ssf_batch(16, &BTreeSet::new())?
             .into_iter()
             .map(|(delivery, _, _)| delivery)
             .collect())
@@ -328,6 +329,8 @@ impl Core {
 
     fn claim_ssf_batch(
         &self,
+        limit: usize,
+        excluded: &BTreeSet<String>,
     ) -> Result<Vec<(Delivery, crate::crypto::SigningKey, Option<String>)>> {
         // The due index commits with each delivery. An empty snapshot needs no
         // writer; a concurrent enqueue will be picked up by a later pass. Treat
@@ -339,7 +342,7 @@ impl Core {
         {
             return Ok(Vec::new());
         }
-        self.store.write(|tx| claim_deliveries(tx))
+        self.store.write(|tx| claim_deliveries(tx, limit, excluded))
     }
 
     /// Commit this worker's pin before it POSTs. False means the lease was
@@ -350,23 +353,14 @@ impl Core {
     }
 
     pub fn deliver_once(&self) -> Result<Vec<Value>> {
-        let pending = self.claim_ssf_batch()?;
         let http = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(Error::internal)?;
-        let mut results = Vec::new();
-        for (delivery, key, authorization) in pending {
-            let admitted = match delivery.lease.as_deref() {
-                Some(lease) => self.begin_ssf_dispatch(&delivery.id, lease)?,
-                None => false,
-            };
-            if !admitted {
-                continue;
-            }
-            let claims = event_body(&delivery, &self.config.issuer, delivery.created_at);
-            let status = match self.sign_jwt(&key, &claims, "secevent+jwt") {
+        self.deliver_ssf_pass(|delivery, key, authorization| {
+            let claims = event_body(delivery, &self.config.issuer, delivery.created_at);
+            let status = match self.sign_jwt(key, &claims, "secevent+jwt") {
                 Ok(token) => {
                     let mut request = http
                         .post(&delivery.uri)
@@ -386,6 +380,35 @@ impl Core {
                 }
                 Err(_) => None,
             };
+            Ok(status)
+        })
+    }
+
+    fn deliver_ssf_pass(
+        &self,
+        mut send: impl FnMut(
+            &Delivery,
+            &crate::crypto::SigningKey,
+            Option<String>,
+        ) -> Result<Option<u16>>,
+    ) -> Result<Vec<Value>> {
+        let mut results = Vec::new();
+        let mut claimed = BTreeSet::new();
+        for _ in 0..16 {
+            let Some((delivery, key, authorization)) =
+                self.claim_ssf_batch(1, &claimed)?.into_iter().next()
+            else {
+                break;
+            };
+            claimed.insert(delivery.id.clone());
+            let admitted = match delivery.lease.as_deref() {
+                Some(lease) => self.begin_ssf_dispatch(&delivery.id, lease)?,
+                None => false,
+            };
+            if !admitted {
+                continue;
+            }
+            let status = send(&delivery, &key, authorization)?;
             self.finish_ssf_delivery(&delivery.id, delivery.attempts, status)?;
             if status.is_none_or(|code| !(200..300).contains(&code)) {
                 tracing::warn!(
@@ -556,4 +579,244 @@ fn retain_delivery(items: &mut Vec<ListedDelivery>, item: ListedDelivery) {
         (existing.rank, existing.id.as_str()) < (item.rank, item.id.as_str())
     });
     items.insert(pos, item);
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod delivery_pass_tests {
+    use super::*;
+    use crate::{
+        config::Config,
+        crypto::{set_test_time, with_test_time},
+        jose::PublicJwks,
+        model::NewUser,
+    };
+
+    const AT: u64 = 1_700_000_000;
+
+    fn fixture() -> (tempfile::TempDir, Core) {
+        let dir = tempfile::tempdir().unwrap();
+        let core = Core::initialize(
+            Config {
+                data_dir: dir.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: "ssf-pass-test-password".into(),
+                email: None,
+                display_name: "Admin".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        (dir, core)
+    }
+
+    fn seed(core: &Core, count: usize) -> Vec<Delivery> {
+        let stream = Stream {
+            id: "pass".into(),
+            issuer: "http://127.0.0.1:9".into(),
+            audience: "subscriber".into(),
+            events: [ACCOUNT_DISABLED.into()].into(),
+            events_requested: Default::default(),
+            delivery_method: PUSH.into(),
+            endpoint_url: "http://127.0.0.1:9/events".into(),
+            authorization_header: None,
+            jwks: PublicJwks { keys: Vec::new() },
+            subjects: Default::default(),
+            owner: "admin".into(),
+            created_at: AT,
+            description: None,
+            standard: false,
+        };
+        let rows: Vec<_> = (0..count)
+            .map(|index| Delivery {
+                id: format!("pass-{index}"),
+                stream_id: stream.id.clone(),
+                uri: stream.endpoint_url.clone(),
+                event: ACCOUNT_DISABLED.into(),
+                subject: "test-subject".into(),
+                audience: stream.audience.clone(),
+                credential_type: "password".into(),
+                created_at: AT,
+                next_attempt: AT - u64::try_from(count - index).unwrap(),
+                attempts: 0,
+                delivered_at: None,
+                last_status: None,
+                last_failed: false,
+                stopped: false,
+                jti: format!("pass-jti-{index}"),
+                lease: None,
+                dispatch_started: None,
+            })
+            .collect();
+        core.store
+            .write(|tx| {
+                tx.put("ssf_streams", &stream.id, &stream)?;
+                tx.put("ssf_jti", "pass-replay-sentinel", &42u64)?;
+                for row in &rows {
+                    tx.put("ssf_deliveries", &row.id, row)?;
+                }
+                Ok(())
+            })
+            .unwrap();
+        rows
+    }
+
+    fn stored(core: &Core, id: &str) -> Value {
+        core.store.get("ssf_deliveries", id).unwrap().unwrap()
+    }
+
+    fn queue(core: &Core) -> (u64, u64) {
+        let stats = core
+            .store
+            .read(|tx| tx.queue_stats("ssf_deliveries", now()))
+            .unwrap();
+        (stats.pending, stats.failed)
+    }
+
+    fn assert_local_intent_unchanged(core: &Core, audit: &[(String, Value)]) {
+        assert!(core.store.list::<Value>("audit").unwrap().as_slice() == audit);
+        assert_eq!(
+            core.store
+                .get::<u64>("ssf_jti", "pass-replay-sentinel")
+                .unwrap(),
+            Some(42)
+        );
+    }
+
+    #[test]
+    fn just_in_time_claim_keeps_later_rows_unleased_until_send() {
+        let (_dir, core) = fixture();
+        with_test_time(AT, || {
+            let rows = seed(&core, 17);
+            let audit = core.store.list::<Value>("audit").unwrap();
+            assert_eq!(queue(&core), (17, 0));
+            let mut sends = 0;
+            let results = core
+                .deliver_ssf_pass(|delivery, _key, _authorization| {
+                    assert_eq!(delivery.id, rows[sends].id);
+                    assert_eq!(delivery.attempts, 1);
+                    assert_eq!(delivery.next_attempt, now() + LEASE_SECONDS);
+                    assert!(delivery.lease.is_some());
+                    assert_eq!(stored(&core, &delivery.id)["dispatch_started"], true);
+                    for row in &rows[sends + 1..] {
+                        assert!(stored(&core, &row.id) == serde_json::to_value(row).unwrap());
+                    }
+                    if sends == 0 {
+                        set_test_time(AT + 61);
+                    }
+                    sends += 1;
+                    Ok(Some(204))
+                })
+                .unwrap();
+            assert_eq!(sends, 16);
+            assert_eq!(results.len(), 16);
+            for (index, row) in rows[..16].iter().enumerate() {
+                assert_eq!(
+                    results[index],
+                    json!({"id": row.id, "status": 204, "attempt": 1})
+                );
+                let mut expected = row.clone();
+                expected.attempts = 1;
+                expected.next_attempt = AT + if index == 0 { 60 } else { 121 };
+                expected.delivered_at = Some(AT + 61);
+                expected.last_status = Some(204);
+                assert!(stored(&core, &row.id) == serde_json::to_value(expected).unwrap());
+            }
+            assert!(stored(&core, &rows[16].id) == serde_json::to_value(&rows[16]).unwrap());
+            assert_eq!(queue(&core), (1, 0));
+            assert_local_intent_unchanged(&core, &audit);
+        });
+    }
+
+    #[test]
+    fn one_pass_does_not_reclaim_a_failed_delivery_after_other_send_advances_clock() {
+        let (_dir, core) = fixture();
+        with_test_time(AT, || {
+            let rows = seed(&core, 2);
+            let audit = core.store.list::<Value>("audit").unwrap();
+            let mut ids = Vec::new();
+            let mut failed = None;
+            let mut first_lease = None;
+            let results = core
+                .deliver_ssf_pass(|delivery, _key, _authorization| {
+                    ids.push(delivery.id.clone());
+                    assert_eq!(delivery.attempts, 1);
+                    if ids.len() == 1 {
+                        assert_eq!(delivery.id, rows[0].id);
+                        first_lease = delivery.lease.clone();
+                        Ok(Some(500))
+                    } else {
+                        assert_eq!(ids.len(), 2, "each row gets at most one claim per pass");
+                        assert_eq!(delivery.id, rows[1].id);
+                        failed = Some(stored(&core, &rows[0].id));
+                        set_test_time(AT + 61);
+                        Ok(Some(204))
+                    }
+                })
+                .unwrap();
+            assert_eq!(ids, vec![rows[0].id.clone(), rows[1].id.clone()]);
+            assert_eq!(results.len(), 2);
+            assert_eq!(results[0]["status"], 500);
+            assert_eq!(results[1]["status"], 204);
+            let mut expected = rows[0].clone();
+            expected.attempts = 1;
+            expected.next_attempt = AT + 2;
+            expected.last_status = Some(500);
+            expected.last_failed = true;
+            assert!(stored(&core, &rows[0].id) == serde_json::to_value(expected).unwrap());
+            assert!(failed.as_ref() == Some(&stored(&core, &rows[0].id)));
+            assert_eq!(queue(&core), (1, 1));
+
+            let mut retries = 0;
+            let retry = core
+                .deliver_ssf_pass(|delivery, _key, _authorization| {
+                    retries += 1;
+                    assert_eq!(delivery.id, rows[0].id);
+                    assert_eq!(delivery.attempts, 2);
+                    assert_eq!(delivery.next_attempt, AT + 121);
+                    assert!(delivery.lease.is_some());
+                    assert!(delivery.lease != first_lease);
+                    assert_eq!(stored(&core, &delivery.id)["dispatch_started"], true);
+                    Ok(Some(204))
+                })
+                .unwrap();
+            assert_eq!(retries, 1);
+            assert_eq!(retry.len(), 1);
+            assert_eq!(retry[0]["attempt"], 2);
+            assert_eq!(queue(&core), (0, 0));
+            assert_local_intent_unchanged(&core, &audit);
+        });
+    }
+
+    #[test]
+    fn manual_batch_keeps_sixteen_claims_and_original_expiry_guards() {
+        let (_dir, core) = fixture();
+        with_test_time(AT, || {
+            let rows = seed(&core, 17);
+            let audit = core.store.list::<Value>("audit").unwrap();
+            let claimed = core.claim_ssf_deliveries().unwrap();
+            assert_eq!(claimed.len(), 16);
+            for (index, row) in claimed.iter().enumerate() {
+                assert_eq!(row.id, rows[index].id);
+                assert_eq!(row.attempts, 1);
+                assert_eq!(row.next_attempt, AT + 60);
+                assert!(row.lease.is_some());
+                assert!(row.dispatch_started.is_none());
+            }
+            assert!(stored(&core, &rows[16].id) == serde_json::to_value(&rows[16]).unwrap());
+            let first = &claimed[0];
+            let lease = first.lease.as_deref().unwrap();
+            assert!(!core.begin_ssf_dispatch(&first.id, "wrong-owner").unwrap());
+            assert!(core.begin_ssf_dispatch(&first.id, lease).unwrap());
+            assert!(!core.begin_ssf_dispatch(&first.id, lease).unwrap());
+            set_test_time(AT + 60);
+            assert!(!core.begin_ssf_dispatch(&first.id, lease).unwrap());
+            assert_eq!(stored(&core, &first.id)["attempts"], 1);
+            assert_eq!(stored(&core, &first.id)["next_attempt"], AT + 60);
+            assert_eq!(queue(&core), (17, 0));
+            assert_local_intent_unchanged(&core, &audit);
+        });
+    }
 }

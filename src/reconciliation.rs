@@ -29,6 +29,7 @@ use std::{
 const SCHEDULES: &str = "reconciliation_schedules";
 const JOBS: &str = "reconciliation_jobs";
 const MAX_JOBS: usize = 256;
+const MAX_ACTIVE_JOBS_PER_SCOPE: usize = 32;
 const MAX_ATTEMPTS: u32 = 4;
 const LEASE_SECONDS: u64 = 900;
 const DIAGNOSTIC_ITEMS: usize = 50;
@@ -713,8 +714,23 @@ fn job_item(job: &Job) -> Listed {
     }
 }
 
-fn ensure_capacity(tx: &Tx<'_>) -> Result<()> {
+fn ensure_capacity(tx: &Tx<'_>, scope: &str) -> Result<()> {
     let jobs = tx.list::<Job>(JOBS)?;
+    let at = now();
+    // A scope budget spans origins and controller generations. A live owner
+    // keeps its slot even after retirement until its existing lease expires.
+    if jobs
+        .iter()
+        .filter(|(_, job)| {
+            job.scope == scope
+                && (matches!(job.status, Status::Queued | Status::Running)
+                    || job.lease_owner.is_some() && job.lease_until > at)
+        })
+        .count()
+        >= MAX_ACTIVE_JOBS_PER_SCOPE
+    {
+        return Err(Error::conflict("Reconciliation scope capacity reached"));
+    }
     if jobs.len() < MAX_JOBS {
         return Ok(());
     }
@@ -909,7 +925,7 @@ impl Core {
             if let Some(existing) = tx.get::<Job>(JOBS, &job_id)? {
                 return serde_json::to_value(existing).map_err(Error::internal);
             }
-            ensure_capacity(tx)?;
+            ensure_capacity(tx, &scope)?;
             let job = make_job(tx, job_id, &scope, &fingerprint, &actor, Origin::Event)?;
             tx.put(JOBS, &job.id, &job)?;
             audit(tx, &actor.id, "reconciliation.event", &scope)?;
@@ -1124,7 +1140,7 @@ impl Core {
                     if !active {
                         match scoped_agent(tx, &self.config, scope, &config.agent_id) {
                             Ok(actor) => {
-                                match ensure_capacity(tx) {
+                                match ensure_capacity(tx, scope) {
                                     Ok(()) => {
                                         let job = make_job(
                                             tx,

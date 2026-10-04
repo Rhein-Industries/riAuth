@@ -139,3 +139,34 @@ These results do not establish a new external LDAP run, Docker preflight,
 Windows installation or confidential browser checkpoint. Further queue,
 protocol and local tooling findings remain under review. The audit is open,
 and original task statuses and deferred tenant/device gates remain unchanged.
+
+
+## Queue admission and isolated tooling follow-up
+
+2026-10-04. The next reviewed batch bounds fresh reconciliation admission to
+32 active jobs per stable controller scope, claims SSF deliveries immediately
+before each send, retires frozen connector sweeps after their wrapped page,
+and uses bounded unpredictable private guest directories. It also prepares
+mounted maintenance tools for the container user and copies only verified
+validator source bytes into a fresh private import directory.
+
+Locked offline verification passed nine new admission tests and five existing
+reconciliation tests, three SSF delivery-pass tests, three connector-sweep tests,
+one guest-allocation test, all 24 SCIM OAuth tests, both existing SSF lease tests
+and all 32 offboarding tests. Eight source-copy tests and one mounted-tool mode
+test passed without running the hosted handoff workflow or Docker.
+
+The first delivery-pass tests initialized signing fixtures under a historical
+clock and failed before dispatch checks; fixture initialization was moved before
+that clock. The guest test's temporary parent had default permissions; its own
+fixture now explicitly sets its private mode. The initial combined compatibility
+run passed offboarding but failed two SCIM helper assertions: a wrapped selection
+can retire its cursor, so the test helper now retries only when no job changed.
+All security assertions and production claim/lease guards remain in force.
+Those failed receipts remain retained separately from the passing runs.
+
+These local results do not establish current Docker execution, a fresh hosted
+shared-handoff gate, native Windows state admission, external tenants or the
+confidential browser checkpoint. Further protocol and local tooling work is
+pending. The security review remains open, and original task statuses and
+Entra tenant limits remain unchanged.
