@@ -131,3 +131,23 @@ fn check_descriptors() -> Result<(), Denial> {
     }
     Ok(())
 }
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn configured_availability_rejects_missing_nonregular_and_nonexecutable_programs() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(
+            configured_available(&dir.path().join("missing")),
+            Err(Denial::Failed)
+        );
+        assert_eq!(configured_available(dir.path()), Err(Denial::Failed));
+        let file = dir.path().join("guest");
+        std::fs::write(&file, b"metadata-only fixture, never executed").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(configured_available(&file), Err(Denial::Failed));
+    }
+}

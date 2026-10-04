@@ -1823,6 +1823,142 @@ mod tests {
         }
     }
 
+    #[test]
+    fn controlled_extensions_missing_or_changed_proof_do_no_admission_or_metadata_work() {
+        use crate::workflow::extension_gate;
+        let active = supported_extension_config(true);
+        let before = extension_gate::configured_admission_calls_for_test();
+        assert!(!controlled_extensions_configured(&active, None));
+        assert!(!controlled_extensions_configured(
+            &active,
+            Some(&RuntimeStatus::default())
+        ));
+        let admitted_empty = RuntimeStatus::from_extension_admission(
+            Config::default()
+                .validate_with_extension_admission()
+                .unwrap(),
+        );
+        let after_validation = extension_gate::configured_admission_calls_for_test();
+        assert_eq!(after_validation, before);
+        assert!(!controlled_extensions_configured(
+            &active,
+            Some(&admitted_empty)
+        ));
+        let dir = tempfile::tempdir().unwrap();
+        let mut core = Core::initialize(
+            Config {
+                data_dir: dir.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: "capability-test-password".into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let before = extension_gate::configured_admission_calls_for_test();
+        core.config.workflows = active.workflows;
+        core.config.workflow_extensions = active.workflow_extensions;
+        let cloned = core.clone();
+        for selected in [&core, &cloned] {
+            let document = runtime(selected).unwrap();
+            let state = &document["feature_states"][crate::workflow::extension::CAPABILITY];
+            assert_eq!(state["configured"], false);
+            assert_eq!(state["usable"], false);
+            assert_eq!(state["runtime_ready"], Value::Null);
+        }
+        assert_eq!(
+            extension_gate::configured_admission_calls_for_test(),
+            before
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn controlled_extensions_matching_proof_rechecks_current_graph_without_native_work() {
+        use crate::workflow::{extension::CAPABILITY, extension_gate};
+        let active = supported_extension_config(true);
+        let runtime_status = RuntimeStatus::from_extension_admission(
+            active.validate_with_extension_admission().unwrap(),
+        );
+        let before = extension_gate::configured_admission_calls_for_test();
+        assert!(controlled_extensions_configured(
+            &active,
+            Some(&runtime_status)
+        ));
+        let after = extension_gate::configured_admission_calls_for_test();
+        assert_eq!(after.0, before.0);
+        assert_eq!(after.1 - before.1, 1);
+        for edit in 0..6 {
+            let mut changed = active.clone();
+            let workflow = changed.workflows.get_mut("risk-route").unwrap();
+            match edit {
+                0 => workflow.active = false,
+                1 => workflow.definition.id = crate::workflow::Id::new("other-route").unwrap(),
+                2 => workflow.definition.steps[0].timeout_seconds = 3_600,
+                3 => {
+                    if let crate::workflow::Action::Custom { stage, .. } =
+                        &mut workflow.definition.steps[0].action
+                    {
+                        *stage = crate::workflow::Id::new("other-stage").unwrap();
+                    } else {
+                        panic!("expected custom entry");
+                    }
+                }
+                4 => {
+                    if let crate::workflow::Action::Custom { permissions, .. } =
+                        &mut workflow.definition.steps[0].action
+                    {
+                        permissions.push(crate::workflow::StagePermission::ReadGroups);
+                    } else {
+                        panic!("expected custom entry");
+                    }
+                }
+                5 => {
+                    if let crate::workflow::Action::Custom {
+                        max_output_bytes, ..
+                    } = &mut workflow.definition.steps[0].action
+                    {
+                        *max_output_bytes = 4_096;
+                    } else {
+                        panic!("expected custom entry");
+                    }
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(changed.workflow_extensions, active.workflow_extensions);
+            let before = extension_gate::configured_admission_calls_for_test();
+            assert!(!configured(
+                CAPABILITY,
+                &changed,
+                &Facts::default(),
+                Some(&runtime_status)
+            ));
+            assert_eq!(
+                extension_gate::configured_admission_calls_for_test(),
+                before
+            );
+        }
+        let mut changed = active;
+        changed
+            .workflow_extensions
+            .get_mut("risk-check")
+            .unwrap()
+            .push(' ');
+        let before = extension_gate::configured_admission_calls_for_test();
+        assert!(!controlled_extensions_configured(
+            &changed,
+            Some(&runtime_status)
+        ));
+        assert_eq!(
+            extension_gate::configured_admission_calls_for_test(),
+            before
+        );
+    }
+
     fn started_runtime(mut config: Config) -> Value {
         let dir = tempfile::tempdir().unwrap();
         config.data_dir = dir.path().into();

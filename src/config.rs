@@ -1353,4 +1353,144 @@ mod tests {
             dir.path().join("verified-access.json")
         );
     }
+
+    #[test]
+    fn retained_extension_admission_exact_map_and_bounds() {
+        let config = Config::default();
+        let proof = config.validate_with_extension_admission().unwrap();
+        assert!(proof.matches(&config.workflow_extensions));
+        assert_eq!(format!("{proof:?}"), "ExtensionAdmission { .. }");
+        let mut changed = config.clone();
+        changed
+            .workflow_extensions
+            .insert("risk-check".into(), "{}".into());
+        assert!(!proof.matches(&changed.workflow_extensions));
+        assert!(
+            !serde_json::to_value(&config)
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .contains_key("extension_admission")
+        );
+
+        // This exercises only bounds, not native admission or token construction.
+        let mut documents: BTreeMap<_, _> = (0..16)
+            .map(|index| {
+                (
+                    format!("stage-{index}"),
+                    " ".repeat(crate::workflow::extension_gate::MAX_MANIFEST_BYTES),
+                )
+            })
+            .collect();
+        assert!(ExtensionAdmission::bounded(&documents));
+        documents.insert("stage-extra".into(), "{}".into());
+        assert!(!ExtensionAdmission::bounded(&documents));
+        documents.remove("stage-extra");
+        documents.get_mut("stage-0").unwrap().push(' ');
+        assert!(!ExtensionAdmission::bounded(&documents));
+        documents.insert("stage-0".into(), "{}".into());
+        let document = documents.remove("stage-1").unwrap();
+        documents.insert("k".repeat(64), document.clone());
+        assert!(ExtensionAdmission::bounded(&documents));
+        documents.remove(&"k".repeat(64));
+        documents.insert("k".repeat(65), document);
+        assert!(!ExtensionAdmission::bounded(&documents));
+        for (key, document) in [("", "{}"), ("stage", "")] {
+            assert!(!ExtensionAdmission::bounded(&BTreeMap::from([(
+                key.to_owned(),
+                document.to_owned()
+            )])));
+        }
+    }
+
+    #[test]
+    fn retained_extension_admission_reuse_preserves_late_validation() {
+        let config = Config::default();
+        let proof = config.validate_with_extension_admission().unwrap();
+        config.validate_reusing_extension_admission(&proof).unwrap();
+        let mut changed = config.clone();
+        changed.password_history = 25;
+        let original = changed.validate().unwrap_err().to_string();
+        assert_eq!(
+            changed
+                .validate_with_extension_admission()
+                .unwrap_err()
+                .to_string(),
+            original
+        );
+        assert_eq!(
+            changed
+                .validate_reusing_extension_admission(&proof)
+                .unwrap_err()
+                .to_string(),
+            original
+        );
+        changed.password_history = config.password_history;
+        changed
+            .workflow_extensions
+            .insert("risk-check".into(), "{}".into());
+        let calls = crate::workflow::extension_gate::configured_admission_calls_for_test();
+        let error = changed
+            .validate_reusing_extension_admission(&proof)
+            .unwrap_err();
+        assert!(error.to_string().contains("fresh startup validation"));
+        assert_eq!(
+            crate::workflow::extension_gate::configured_admission_calls_for_test(),
+            calls
+        );
+    }
+
+    #[cfg(all(feature = "platform", target_os = "macos"))]
+    #[test]
+    fn retained_extension_admission_requires_native_success_and_full_map() {
+        use crate::workflow::extension_gate::{self, fixture};
+        let mut config = Config::default();
+        for name in ["risk-check", "parked-check"] {
+            let document = fixture::document(&fixture::allow(), |value| {
+                value["stage"] = serde_json::json!(name);
+            });
+            config
+                .workflow_extensions
+                .insert(name.into(), String::from_utf8(document).unwrap());
+        }
+        let before = extension_gate::configured_admission_calls_for_test();
+        let proof = config.validate_with_extension_admission().unwrap();
+        let after = extension_gate::configured_admission_calls_for_test();
+        assert_eq!(after.0 - before.0, 2);
+        assert!(proof.matches(&config.workflow_extensions));
+        assert!(!proof.matches(&BTreeMap::from([(
+            "risk-check".into(),
+            config.workflow_extensions["risk-check"].clone()
+        )])));
+        let mut changed = config.clone();
+        changed
+            .workflow_extensions
+            .get_mut("parked-check")
+            .unwrap()
+            .push(' ');
+        assert!(!proof.matches(&changed.workflow_extensions));
+        let calls = extension_gate::configured_admission_calls_for_test();
+        config.validate_reusing_extension_admission(&proof).unwrap();
+        assert_eq!(extension_gate::configured_admission_calls_for_test(), calls);
+        // Neither native-rejected documents nor a failure after admission yield a proof.
+        changed = config.clone();
+        changed.workflow_extensions.insert(
+            "risk-check".into(),
+            String::from_utf8(fixture::document(
+                &fixture::allow_with_invalid_tail(1),
+                |_| {},
+            ))
+            .unwrap(),
+        );
+        assert!(changed.validate_with_extension_admission().is_err());
+        changed = config;
+        changed.password_history = 25;
+        assert!(
+            changed
+                .validate_with_extension_admission()
+                .unwrap_err()
+                .to_string()
+                .contains("password_history")
+        );
+    }
 }

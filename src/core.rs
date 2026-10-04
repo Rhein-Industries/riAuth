@@ -1442,3 +1442,85 @@ pub(crate) fn revoke_client_grants(tx: &Tx<'_>, cid: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod retained_extension_admission_tests {
+    use super::*;
+
+    #[test]
+    fn internal_constructors_refuse_missing_or_changed_proof_before_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config {
+            data_dir: dir.path().join("data"),
+            ..Default::default()
+        };
+        let store = Store::from_config(&config).unwrap();
+        let admitted = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
+            config.validate_with_extension_admission().unwrap(),
+        ));
+        let mut changed = config.clone();
+        changed
+            .workflow_extensions
+            .insert("unadmitted".into(), "{}".into());
+        let before = store.read(|tx| tx.snapshot()).unwrap();
+        for (selected, runtime) in [
+            (
+                config.clone(),
+                Arc::new(crate::capability::RuntimeStatus::default()),
+            ),
+            (changed, admitted.clone()),
+        ] {
+            let input = NewUser {
+                username: "owner".into(),
+                password: "short".into(),
+                email: None,
+                display_name: "Owner".into(),
+                admin: false,
+            };
+            let error = Core::initialize_store(
+                selected.clone(),
+                store.clone(),
+                runtime.clone(),
+                input,
+                |_| panic!("ownership callback must not run without an exact proof"),
+            )
+            .err()
+            .unwrap();
+            assert!(error.message.contains("fresh startup validation"));
+            let error = Core::initialize_with_administrator(
+                selected.clone(),
+                store.clone(),
+                runtime.clone(),
+                |_| panic!("credential writer must not run without an exact proof"),
+            )
+            .err()
+            .unwrap();
+            assert!(error.message.contains("fresh startup validation"));
+            let error = Core::open_store(selected.clone(), store.clone(), runtime.clone())
+                .err()
+                .unwrap();
+            assert!(error.message.contains("fresh startup validation"));
+            let error = Core::open_admitted(selected, runtime).err().unwrap();
+            assert!(error.message.contains("fresh startup validation"));
+            assert_eq!(store.read(|tx| tx.snapshot()).unwrap(), before);
+        }
+        let core = Core::initialize_store(
+            config,
+            store,
+            admitted,
+            NewUser {
+                username: "owner".into(),
+                password: "retained-admission-test-password".into(),
+                email: None,
+                display_name: "Owner".into(),
+                admin: false,
+            },
+            |_| Ok(()),
+        )
+        .unwrap();
+        core.runtime
+            .require_extension_admission(&core.config.workflow_extensions)
+            .unwrap();
+        assert_eq!(core.store.list::<User>("users").unwrap().len(), 1);
+    }
+}

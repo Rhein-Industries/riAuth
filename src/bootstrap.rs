@@ -914,4 +914,119 @@ mod tests {
             assert!(setup.store.get::<Value>("meta", RECORD).unwrap().is_some());
         });
     }
+
+    #[test]
+    fn passkey_proof_mismatch_preserves_ownership_precedence_and_ceremony() {
+        use webauthn_authenticator_rs::{WebauthnAuthenticator, softpasskey::SoftPasskey};
+        fn response(
+            issuer: &str,
+            key: &mut WebauthnAuthenticator<SoftPasskey>,
+            start: &Value,
+        ) -> Value {
+            let mut options = start["public_key"].clone();
+            options["publicKey"]["authenticatorSelection"]["requireResidentKey"] = json!(false);
+            serde_json::to_value(
+                key.do_registration(
+                    issuer.parse().unwrap(),
+                    serde_json::from_value(options).unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap()
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let config = Config {
+            issuer: "http://localhost:9000".into(),
+            data_dir: dir.path().join("data"),
+            ..Default::default()
+        };
+        let file = dir.path().join("proof");
+        Bootstrap::prepare(config.clone(), &file, 300).unwrap();
+        let proof = std::fs::read_to_string(file).unwrap();
+        let mut setup = Bootstrap::open(config).unwrap();
+        let started = setup
+            .passkey_start(
+                proof.clone(),
+                NewPasskeyAdmin {
+                    username: "owner".into(),
+                    display_name: "Owner".into(),
+                    email: None,
+                    primary_name: "Primary key".into(),
+                    backup_name: "Backup key".into(),
+                },
+            )
+            .unwrap();
+        let mut primary = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let primary_response = response(&setup.config.issuer, &mut primary, &started);
+        let ceremony = started["ceremony"].as_str().unwrap().to_owned();
+        setup
+            .config
+            .workflow_extensions
+            .insert("unadmitted".into(), "{}".into());
+        let before = setup.store.read(|tx| tx.snapshot()).unwrap();
+        let error = setup
+            .passkey_finish(
+                "wrong-proof".into(),
+                ceremony.clone(),
+                serde_json::from_value(primary_response.clone()).unwrap(),
+            )
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "invalid_setup_proof");
+        let error = setup
+            .passkey_finish(
+                proof.clone(),
+                ceremony.clone(),
+                serde_json::from_value(primary_response.clone()).unwrap(),
+            )
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "invalid_setup_ceremony");
+        assert_eq!(setup.store.read(|tx| tx.snapshot()).unwrap(), before);
+        setup.config.workflow_extensions.clear();
+        let second = setup
+            .passkey_first(
+                proof.clone(),
+                ceremony,
+                serde_json::from_value(primary_response).unwrap(),
+            )
+            .unwrap();
+        let mut backup = WebauthnAuthenticator::new(SoftPasskey::new(true));
+        let mut backup_response = response(&setup.config.issuer, &mut backup, &second);
+        backup_response["response"]["attestationObject"] = json!("AA");
+        let ceremony = second["ceremony"].as_str().unwrap().to_owned();
+        setup
+            .config
+            .workflow_extensions
+            .insert("unadmitted".into(), "{}".into());
+        let before = setup.store.read(|tx| tx.snapshot()).unwrap();
+        let calls = crate::workflow::extension_gate::configured_admission_calls_for_test();
+        let error = setup
+            .passkey_finish(
+                proof.clone(),
+                ceremony.clone(),
+                serde_json::from_value(backup_response.clone()).unwrap(),
+            )
+            .err()
+            .unwrap();
+        assert!(error.message.contains("fresh startup validation"));
+        assert_eq!(setup.store.read(|tx| tx.snapshot()).unwrap(), before);
+        assert_eq!(
+            crate::workflow::extension_gate::configured_admission_calls_for_test(),
+            calls
+        );
+        setup.config.workflow_extensions.clear();
+        let error = setup
+            .passkey_finish(
+                proof,
+                ceremony,
+                serde_json::from_value(backup_response).unwrap(),
+            )
+            .err()
+            .unwrap();
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
+        let mut expected = before;
+        assert!(expected.remove(&format!("meta/{PASSKEY_RECORD}")).is_some());
+        assert_eq!(setup.store.read(|tx| tx.snapshot()).unwrap(), expected);
+    }
 }
