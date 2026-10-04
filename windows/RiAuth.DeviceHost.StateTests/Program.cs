@@ -399,6 +399,15 @@ internal static class Program
         Require(refused, "exact sharing violation");
     }
 
+    private static void NamespaceRefusal(Action action)
+    {
+        try { action(); }
+        catch (IOException error) when (error.HResult == unchecked((int)0x80070005)
+            || error.HResult == unchecked((int)0x80070020))
+        { return; } // Windows directory moves can deny an open namespace with ACCESS_DENIED.
+        throw new InvalidOperationException("held namespace move must refuse");
+    }
+
     // Separate ordinary-token definitions require a standard-user fixture:
     // while these handles are held, deletion/rename of ProgramData/RiAuth/DeviceHost
     // must refuse and preserve identity; foreign preplant must refuse without repair.
@@ -409,11 +418,16 @@ internal static class Program
         var before = fixture.Snapshot();
         using (var directory = WinSecurity.StateDirectory.Open(fixture.Root))
         {
-            Joined(() => SharingRefusal(() => Directory.Move(fixture.RiAuth,
+            Joined(() => NamespaceRefusal(() => Directory.Move(fixture.RiAuth,
                 Path.Combine(fixture.Root, "moved"))));
             Require(before.Same(fixture.Snapshot()), "held directory unchanged");
         }
         Require(before.Same(fixture.Snapshot()), "joined namespace unchanged");
+        var moved = Path.Combine(fixture.Root, "moved");
+        Directory.Move(fixture.RiAuth, moved);
+        Require(Directory.Exists(moved) && !Path.Exists(fixture.RiAuth), "released namespace movable");
+        Directory.Move(moved, fixture.RiAuth);
+        Require(before.Same(fixture.Snapshot()), "released namespace restored unchanged");
     }
 
     private static void FileSharing()
