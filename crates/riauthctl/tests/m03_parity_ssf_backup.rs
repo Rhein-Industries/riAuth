@@ -1040,6 +1040,15 @@ const HEADER_SECRET: &str = "Bearer ssf-delivery-secret-never-print-9f31";
 #[derive(Clone, Copy, PartialEq)]
 enum Ssf {
     Honest,
+    EmptyList,
+    ArrayList,
+    MissingStreams,
+    MalformedStreams,
+    MissingInboundUrl,
+    MalformedInboundUrl,
+    MissingInboundType,
+    MalformedInboundType,
+    ListLeaksNested,
     /// Answers with another stream's id.
     OtherStream,
     /// Adds the stored header to the view.
@@ -1080,20 +1089,46 @@ fn ssf_server(mode: Ssf) -> MockServer {
                 .to_string(),
             ),
             (_, "/api/state/revision") => Reply::json("{\"revision\":7}"),
-            ("GET", "/api/ssf/admin/streams") => match mode {
-                Ssf::LeaksField => {
-                    let mut view = ssf_view("one");
-                    view["delivery"]["authorization_header"] = json!(HEADER_SECRET);
-                    Reply::json(json!([view]).to_string())
+            ("GET", "/api/ssf/admin/streams") => {
+                let mut listed = json!({
+                    "streams": [ssf_view("one"), ssf_view("two")],
+                    "inbound_push_url": format!("{ISSUER}/api/ssf/events"),
+                    "inbound_content_type": "application/secevent+jwt"
+                });
+                match mode {
+                    Ssf::EmptyList => listed["streams"] = json!([]),
+                    Ssf::ArrayList => listed = listed["streams"].take(),
+                    Ssf::MissingStreams => {
+                        listed.as_object_mut().unwrap().remove("streams");
+                    }
+                    Ssf::MalformedStreams => listed["streams"] = json!({}),
+                    Ssf::MissingInboundUrl => {
+                        listed.as_object_mut().unwrap().remove("inbound_push_url");
+                    }
+                    Ssf::MalformedInboundUrl => listed["inbound_push_url"] = json!(42),
+                    Ssf::MissingInboundType => {
+                        listed
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("inbound_content_type");
+                    }
+                    Ssf::MalformedInboundType => listed["inbound_content_type"] = json!(null),
+                    Ssf::LeaksField => {
+                        listed["streams"][0]["delivery"]["authorization_header"] =
+                            json!(HEADER_SECRET);
+                    }
+                    Ssf::LeaksFieldMixedCase => {
+                        listed["streams"][0]["delivery"]["AUTHORIZATION_HEADER"] = json!("stored");
+                    }
+                    Ssf::ListLeaksNested => {
+                        listed["extra"] =
+                            json!({"nested": [{"Authorization_Header": HEADER_SECRET}]});
+                    }
+                    Ssf::OtherStream => listed = ssf_view("one"),
+                    _ => {}
                 }
-                Ssf::LeaksFieldMixedCase => {
-                    let mut view = ssf_view("one");
-                    view["delivery"]["AUTHORIZATION_HEADER"] = json!("stored");
-                    Reply::json(json!([view]).to_string())
-                }
-                Ssf::OtherStream => Reply::json(ssf_view("one").to_string()),
-                _ => Reply::json(json!([ssf_view("one"), ssf_view("two")]).to_string()),
-            },
+                Reply::json(listed.to_string())
+            }
             ("POST", "/api/ssf/admin/streams") => {
                 let body = request.json();
                 let id = body["id"].as_str().unwrap();
@@ -1178,11 +1213,12 @@ fn ssf_stream_commands_use_their_routes_with_both_headers() {
         &["ssf", "stream", "list"],
         None,
     ));
-    assert_eq!(listed.as_array().unwrap().len(), 2);
+    assert_eq!(listed["streams"].as_array().unwrap().len(), 2);
     assert_eq!(
-        listed[0]["inbound_push_url"],
+        listed["inbound_push_url"],
         format!("{ISSUER}/api/ssf/events")
     );
+    assert_eq!(listed["inbound_content_type"], "application/secevent+jwt");
     // An id that starts with a hyphen is an id, not an option.
     let deleted = data(&run(
         &server.origin,
@@ -1216,6 +1252,54 @@ fn ssf_stream_commands_use_their_routes_with_both_headers() {
         .collect();
     assert_eq!(reads.len(), 1);
     assert!(reads[0].header("idempotency-key").is_none());
+}
+
+#[test]
+fn empty_ssf_stream_list_preserves_inbound_metadata() {
+    let server = ssf_server(Ssf::EmptyList);
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("session.json");
+    login(&server, &session);
+    let listed = data(&run(
+        &server.origin,
+        &session,
+        &["ssf", "stream", "list"],
+        None,
+    ));
+    assert_eq!(
+        listed,
+        json!({
+            "streams": [],
+            "inbound_push_url": format!("{ISSUER}/api/ssf/events"),
+            "inbound_content_type": "application/secevent+jwt"
+        })
+    );
+    assert!(server.writes().is_empty());
+}
+
+#[test]
+fn malformed_ssf_stream_list_envelopes_are_refused() {
+    for mode in [
+        Ssf::ArrayList,
+        Ssf::MissingStreams,
+        Ssf::MalformedStreams,
+        Ssf::MissingInboundUrl,
+        Ssf::MalformedInboundUrl,
+        Ssf::MissingInboundType,
+        Ssf::MalformedInboundType,
+        Ssf::ListLeaksNested,
+    ] {
+        let server = ssf_server(mode);
+        let dir = tempfile::tempdir().unwrap();
+        let session = dir.path().join("session.json");
+        login(&server, &session);
+        let output = run(&server.origin, &session, &["ssf", "stream", "list"], None);
+        assert!(!output.status.success());
+        let text = output_text(&output);
+        assert!(text.contains("list response is malformed"));
+        assert!(!text.contains(HEADER_SECRET));
+        assert!(server.writes().is_empty());
+    }
 }
 
 #[test]

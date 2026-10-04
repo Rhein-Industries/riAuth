@@ -10,7 +10,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     io::{Read, Write},
     path::{Path, PathBuf},
     time::Duration,
@@ -50,7 +50,39 @@ struct ManifestChunk {
 struct RecordsChunk {
     kind: String,
     index: u64,
+    #[serde(deserialize_with = "unique_backup_records")]
     records: BTreeMap<String, Value>,
+}
+
+fn unique_backup_records<'de, D>(
+    deserializer: D,
+) -> std::result::Result<BTreeMap<String, Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct Records;
+    impl<'de> serde::de::Visitor<'de> for Records {
+        type Value = BTreeMap<String, Value>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("backup records with unique names")
+        }
+
+        fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+        where
+            A: serde::de::MapAccess<'de>,
+        {
+            let mut records = BTreeMap::new();
+            while let Some(name) = map.next_key::<String>()? {
+                if records.contains_key(&name) {
+                    return Err(serde::de::Error::custom("Duplicate backup record name"));
+                }
+                records.insert(name, map.next_value()?);
+            }
+            Ok(records)
+        }
+    }
+    deserializer.deserialize_map(Records)
 }
 
 impl Core {
@@ -504,9 +536,6 @@ fn restore_v2(
                 }
                 for (name, value) in chunk.records {
                     let (bucket, id) = split_record_key(&name)?;
-                    if tx.get::<Value>(bucket, id)?.is_some() {
-                        return Err(Error::bad("Backup payload is invalid"));
-                    }
                     tx.import_record(bucket, id, &value)?;
                     imported += 1;
                 }
@@ -549,6 +578,8 @@ fn load_chunked(envelope: &Value, key: &[u8; 32]) -> Result<ChunkedBackup> {
     let mut schema = None;
     let mut issuer = None;
     let mut count = 0u64;
+    let mut record_names = BTreeSet::new();
+    let mut retained_name_bytes = 0usize;
     for (index, (encoded, digest)) in record_encoded.iter().zip(&manifest.digests).enumerate() {
         let encoded = encoded
             .as_str()
@@ -567,6 +598,14 @@ fn load_chunked(envelope: &Value, key: &[u8; 32]) -> Result<ChunkedBackup> {
         }
         for (name, value) in &chunk.records {
             split_record_key(name)?;
+            if record_names.contains(name) {
+                return Err(Error::bad("Backup payload is invalid"));
+            }
+            retained_name_bytes = retained_name_bytes
+                .checked_add(name.len())
+                .filter(|bytes| *bytes <= MAX_BACKUP_BYTES)
+                .ok_or_else(|| Error::bad("Backup record names exceed 64 MiB"))?;
+            record_names.insert(name.clone());
             count += 1;
             if name == "meta/schema" {
                 schema = Some(value.clone());

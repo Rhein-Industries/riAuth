@@ -11,6 +11,7 @@ use ldap3_proto::proto::{
     LdapFilter, LdapPartialAttribute, LdapSearchRequest, LdapSearchResultEntry, LdapSearchScope,
 };
 use std::{
+    cell::Cell,
     cmp::Reverse,
     collections::{BTreeMap, BTreeSet, BinaryHeap, VecDeque},
     net::IpAddr,
@@ -20,6 +21,68 @@ const MAX_SELECTED_USERS: usize = 2000;
 const MAX_MEMBER_POINT_READS: usize = crate::store::maintenance::PAGE;
 const GROUP_INDEX_PAGE: usize = 16;
 const MAX_RESULT_BYTES: usize = 4 * 1024 * 1024;
+const MAX_SEARCH_WORK: usize = MAX_SELECTED_USERS * crate::store::maintenance::PAGE;
+
+struct SearchWork(Cell<usize>);
+
+impl SearchWork {
+    fn new(limit: usize) -> Self {
+        Self(Cell::new(limit))
+    }
+
+    fn charge(&self, units: usize) -> Result<()> {
+        let left = self
+            .0
+            .get()
+            .checked_sub(units)
+            .ok_or_else(|| Error::bad("LDAP result exceeds provider limit"))?;
+        self.0.set(left);
+        Ok(())
+    }
+
+    fn page(&self) -> Result<()> {
+        self.charge(crate::store::maintenance::PAGE)
+    }
+}
+
+fn search_group_binding(tx: &Tx<'_>, name: &str, work: &SearchWork) -> Result<bool> {
+    // Reserve both small metadata reads before inspecting either record.
+    work.charge(2)?;
+    group_binding(tx, name)
+}
+
+fn search_user_has_group(tx: &Tx<'_>, id: &str, name: &str, work: &SearchWork) -> Result<bool> {
+    work.charge(1)?;
+    tx.user_has_group_index(id, name)
+}
+
+fn matches_search_filter(
+    filter: &LdapFilter,
+    row: &LdapSearchResultEntry,
+    work: &SearchWork,
+) -> Result<bool> {
+    work.charge(1)?;
+    match filter {
+        LdapFilter::And(filters) => {
+            for filter in filters {
+                if !matches_search_filter(filter, row, work)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        LdapFilter::Or(filters) => {
+            for filter in filters {
+                if matches_search_filter(filter, row, work)? {
+                    return Ok(true);
+                }
+            }
+            Ok(false)
+        }
+        LdapFilter::Not(filter) => Ok(!matches_search_filter(filter, row, work)?),
+        _ => Ok(matches_filter(filter, row)),
+    }
+}
 
 /// Both Group metadata rows are checked in the caller's snapshot. Absence is
 /// returned separately so a configured missing Group keeps its public error.
@@ -35,11 +98,13 @@ fn member_of_dns(
     settings: &Settings,
     user_id: &str,
     max_bytes: usize,
+    work: &SearchWork,
 ) -> Result<Option<Vec<String>>> {
     let mut names = BTreeSet::new();
     let mut bytes = 0usize;
     let mut after = None;
     loop {
+        work.page()?;
         let page =
             tx.user_group_index_page(user_id, after.as_deref(), crate::store::maintenance::PAGE)?;
         if page.is_empty() {
@@ -81,9 +146,11 @@ fn matches_member_of(
     settings: &Settings,
     user_id: &str,
     filter: &LdapFilter,
+    work: &SearchWork,
 ) -> Result<bool> {
     let mut after = None;
     loop {
+        work.page()?;
         let page =
             tx.user_group_index_page(user_id, after.as_deref(), crate::store::maintenance::PAGE)?;
         if page.is_empty() {
@@ -101,7 +168,7 @@ fn matches_member_of(
                 String::new(),
                 vec![("memberOf", vec![settings.group_dn(&name)])],
             );
-            if matches_filter(filter, &row) {
+            if matches_search_filter(filter, &row, work)? {
                 return Ok(true);
             }
         }
@@ -118,7 +185,9 @@ fn matches_user_filter(
     filter: &LdapFilter,
     row_without_member_of: &LdapSearchResultEntry,
     groups_enabled: bool,
+    work: &SearchWork,
 ) -> Result<bool> {
+    work.charge(1)?;
     match filter {
         LdapFilter::And(filters) => {
             for filter in filters {
@@ -129,6 +198,7 @@ fn matches_user_filter(
                     filter,
                     row_without_member_of,
                     groups_enabled,
+                    work,
                 )? {
                     return Ok(false);
                 }
@@ -144,6 +214,7 @@ fn matches_user_filter(
                     filter,
                     row_without_member_of,
                     groups_enabled,
+                    work,
                 )? {
                     return Ok(true);
                 }
@@ -157,13 +228,14 @@ fn matches_user_filter(
             filter,
             row_without_member_of,
             groups_enabled,
+            work,
         )?),
         LdapFilter::Equality(name, _)
         | LdapFilter::Present(name)
         | LdapFilter::Substring(name, _)
             if groups_enabled && name.eq_ignore_ascii_case("memberOf") =>
         {
-            matches_member_of(tx, settings, user_id, filter)
+            matches_member_of(tx, settings, user_id, filter, work)
         }
         _ => Ok(matches_filter(filter, row_without_member_of)),
     }
@@ -177,8 +249,9 @@ struct GroupIndexCursor {
 }
 
 impl GroupIndexCursor {
-    fn next(&mut self, tx: &Tx<'_>) -> Result<Option<(String, String)>> {
+    fn next(&mut self, tx: &Tx<'_>, work: &SearchWork) -> Result<Option<(String, String)>> {
         if self.page.is_empty() && !self.exhausted {
+            work.page()?;
             let page =
                 tx.user_group_index_page(&self.user_id, self.after.as_deref(), GROUP_INDEX_PAGE)?;
             self.exhausted = page.len() < GROUP_INDEX_PAGE;
@@ -198,6 +271,7 @@ impl GroupIndexCursor {
 fn for_each_visible_group(
     tx: &Tx<'_>,
     visible: &BTreeMap<String, String>,
+    work: &SearchWork,
     mut visit: impl FnMut(String, Vec<String>) -> Result<()>,
 ) -> Result<()> {
     let mut cursors = Vec::with_capacity(visible.len());
@@ -209,14 +283,14 @@ fn for_each_visible_group(
             page: VecDeque::new(),
             exhausted: false,
         };
-        if let Some((key, name)) = cursor.next(tx)? {
+        if let Some((key, name)) = cursor.next(tx, work)? {
             next.push(Reverse((key, name, cursors.len())));
         }
         cursors.push(cursor);
     }
     while let Some(Reverse((key, name, index))) = next.pop() {
         let mut member_ids = vec![cursors[index].user_id.clone()];
-        if let Some((next_key, next_name)) = cursors[index].next(tx)? {
+        if let Some((next_key, next_name)) = cursors[index].next(tx, work)? {
             next.push(Reverse((next_key, next_name, index)));
         }
         while next
@@ -227,7 +301,7 @@ fn for_each_visible_group(
         {
             let Reverse((_, _, other_index)) = next.pop().unwrap();
             member_ids.push(cursors[other_index].user_id.clone());
-            if let Some((next_key, next_name)) = cursors[other_index].next(tx)? {
+            if let Some((next_key, next_name)) = cursors[other_index].next(tx, work)? {
                 next.push(Reverse((next_key, next_name, other_index)));
             }
         }
@@ -236,7 +310,7 @@ fn for_each_visible_group(
                 "LDAP Group membership index has a mismatched key",
             ));
         }
-        if !group_binding(tx, &name)? {
+        if !search_group_binding(tx, &name, work)? {
             return Err(Error::internal("LDAP Group index has a missing Group"));
         }
         member_ids.sort();
@@ -265,11 +339,13 @@ fn ensure_unique_group_dn(
     tx: &Tx<'_>,
     name: &str,
     visible: &BTreeMap<String, String>,
+    work: &SearchWork,
 ) -> Result<()> {
     let mut after = None;
     let mut indexed = false;
     let folded = name.to_ascii_lowercase();
     loop {
+        work.page()?;
         let page = tx.group_dn_fold_page(name, after.as_deref())?;
         if page.is_empty() {
             break;
@@ -284,11 +360,11 @@ fn ensure_unique_group_dn(
                 indexed = true;
                 continue;
             }
-            if !group_binding(tx, &other_name)? {
+            if !search_group_binding(tx, &other_name, work)? {
                 return Err(Error::internal("LDAP Group index has a missing Group"));
             }
             for id in visible.keys() {
-                if tx.user_has_group_index(id, &other_name)? {
+                if search_user_has_group(tx, id, &other_name, work)? {
                     return Err(Error::conflict("LDAP group DNs collide"));
                 }
             }
@@ -304,7 +380,17 @@ fn ensure_unique_group_dn(
 }
 
 fn authorize(core: &Core, tx: &Tx<'_>, cid: &str, auth: Option<&Auth>) -> Result<Option<User>> {
-    let (client, _) = core.ldap_profile(tx, cid)?;
+    authorize_with_work(core, tx, cid, auth, None)
+}
+
+fn authorize_with_work(
+    core: &Core,
+    tx: &Tx<'_>,
+    cid: &str,
+    auth: Option<&Auth>,
+    work: Option<&SearchWork>,
+) -> Result<Option<User>> {
+    let (client, _) = core.ldap_profile_with_work(tx, cid, work)?;
     match auth {
         Some(Auth::Agent(token)) => {
             core.management(tx, token, "ldap.search", &format!("client/{cid}"))?;
@@ -324,6 +410,18 @@ fn authorize(core: &Core, tx: &Tx<'_>, cid: &str, auth: Option<&Auth>) -> Result
 
 impl Core {
     pub(crate) fn ldap_profile(&self, tx: &Tx<'_>, id: &str) -> Result<(Client, Settings)> {
+        self.ldap_profile_with_work(tx, id, None)
+    }
+
+    fn ldap_profile_with_work(
+        &self,
+        tx: &Tx<'_>,
+        id: &str,
+        work: Option<&SearchWork>,
+    ) -> Result<(Client, Settings)> {
+        if let Some(work) = work {
+            work.charge(1)?;
+        }
         let client = tx
             .get::<Client>("clients", id)?
             .filter(|c| c.enabled)
@@ -331,6 +429,9 @@ impl Core {
         let settings = client.settings.ldap.clone().ok_or_else(Error::forbidden)?;
         settings.validate(&client)?;
         for group in &settings.search_groups {
+            if let Some(work) = work {
+                work.charge(2)?;
+            }
             if !group_binding(tx, group)? {
                 return Err(Error::bad("LDAP search group does not exist"));
             }
@@ -433,8 +534,29 @@ impl Core {
         starttls: bool,
         member_limit: usize,
     ) -> Result<(Vec<LdapSearchResultEntry>, u64)> {
+        self.ldap_search_entries_with_limits(
+            cid,
+            auth,
+            query,
+            starttls,
+            member_limit,
+            MAX_SEARCH_WORK,
+        )
+    }
+
+    fn ldap_search_entries_with_limits(
+        &self,
+        cid: &str,
+        auth: Option<&Auth>,
+        query: &LdapSearchRequest,
+        starttls: bool,
+        member_limit: usize,
+        work_limit: usize,
+    ) -> Result<(Vec<LdapSearchResultEntry>, u64)> {
+        let work = SearchWork::new(work_limit);
         self.store.read(|tx| {
-            let (client, settings) = self.ldap_profile(tx, cid)?;
+            let (client, settings) = self.ldap_profile_with_work(tx, cid, Some(&work))?;
+            work.charge(1)?;
             let revision = tx.get::<u64>("meta", "revision")?.unwrap_or(0);
             if query.base.is_empty() && query.scope == LdapSearchScope::Base {
                 let row = entry(
@@ -454,14 +576,14 @@ impl Core {
                         ("supportedControl", vec![PAGED.into()]),
                     ],
                 );
-                let rows = if matches_filter(&query.filter, &row) {
+                let rows = if matches_search_filter(&query.filter, &row, &work)? {
                     vec![row]
                 } else {
                     Vec::new()
                 };
                 return Ok((rows, revision));
             }
-            let self_user = authorize(self, tx, cid, auth)?;
+            let self_user = authorize_with_work(self, tx, cid, auth, Some(&work))?;
             // User-authenticated searches probe only their own membership.
             // Agent searches visit members of the configured visibility groups
             // and retain at most the provider's selected-user limit, ordered
@@ -475,10 +597,12 @@ impl Core {
                     // and binding in this snapshot. Probe this User's
                     // membership without another full Group read.
                     if !users.contains_key(&me.id)
-                        && tx.user_has_group_index(&me.id, name)?
-                        && let Some(user) = tx.get::<User>("users", &me.id)?
+                        && search_user_has_group(tx, &me.id, name, &work)?
                     {
-                        retain_selected(&mut users, &me.id, user)?;
+                        work.charge(1)?;
+                        if let Some(user) = tx.get::<User>("users", &me.id)? {
+                            retain_selected(&mut users, &me.id, user)?;
+                        }
                     }
                     continue;
                 }
@@ -486,6 +610,7 @@ impl Core {
                 let mut scan_users = false;
                 let mut after = None;
                 loop {
+                    work.page()?;
                     let page = tx.group_member_index_page(name, after.as_deref())?;
                     if page.is_empty() {
                         break;
@@ -500,7 +625,7 @@ impl Core {
                             scan_users = true;
                             break;
                         };
-                        if !tx.user_has_group_index(&id, name)? {
+                        if !search_user_has_group(tx, &id, name, &work)? {
                             return Err(Error::internal(
                                 "LDAP Group member index is not reciprocal",
                             ));
@@ -513,6 +638,7 @@ impl Core {
                             break;
                         }
                         point_reads += 1;
+                        work.charge(1)?;
                         let Some(user) = tx.get::<User>("users", &id)? else {
                             continue;
                         };
@@ -525,6 +651,7 @@ impl Core {
                 if scan_users {
                     let mut after = None;
                     loop {
+                        work.page()?;
                         let page = tx.scan::<User>(
                             "users",
                             after.as_deref(),
@@ -536,8 +663,11 @@ impl Core {
                         let full = page.len() == crate::store::maintenance::PAGE;
                         after = page.last().map(|(key, _)| key.clone());
                         for (id, user) in page {
+                            // Reserve the member lookup and its possible
+                            // overflow-record lookup before either can run.
+                            work.charge(2)?;
                             let member = tx.group_has_member_index(name, &id)?;
-                            let reciprocal = tx.user_has_group_index(&id, name)?;
+                            let reciprocal = search_user_has_group(tx, &id, name, &work)?;
                             if member != reciprocal {
                                 return Err(Error::internal(
                                     "LDAP Group member index is not reciprocal",
@@ -584,11 +714,14 @@ impl Core {
             };
             // A filtered-out entry still participates in base discovery and
             // DN collision checks, but does not occupy the result buffer.
-            let mut include = |row: LdapSearchResultEntry, matched: Option<bool>| {
+            let mut include = |row: LdapSearchResultEntry, matched: Option<bool>| -> Result<()> {
                 let dn = row.dn.to_ascii_lowercase();
                 base_seen |= dn == base;
                 if in_scope(&dn)
-                    && matched.unwrap_or_else(|| matches_filter(&query.filter, &row))
+                    && match matched {
+                        Some(matched) => matched,
+                        None => matches_search_filter(&query.filter, &row, &work)?,
+                    }
                     && !oversized
                 {
                     result_bytes = result_bytes.saturating_add(row.size());
@@ -598,6 +731,7 @@ impl Core {
                         oversized = true;
                     }
                 }
+                Ok(())
             };
             include(
                 entry(
@@ -619,7 +753,7 @@ impl Core {
                     ],
                 ),
                 None,
-            );
+            )?;
             for ou in ["users", "groups"] {
                 include(
                     entry(
@@ -633,7 +767,7 @@ impl Core {
                         ],
                     ),
                     None,
-                );
+                )?;
             }
             for user in users.into_values() {
                 let dn = settings.user_dn(&user.username);
@@ -645,7 +779,7 @@ impl Core {
                     ));
                 }
                 if !user_in_scope {
-                    include(entry(dn, vec![]), Some(false));
+                    include(entry(dn, vec![]), Some(false))?;
                     continue;
                 }
                 let mut attrs = vec![
@@ -675,6 +809,7 @@ impl Core {
                     &query.filter,
                     &row,
                     client.scopes.contains("groups"),
+                    &work,
                 )?;
                 if matched && member_of_output {
                     if query.typesonly {
@@ -683,6 +818,7 @@ impl Core {
                             &settings,
                             &user.id,
                             &LdapFilter::Present("memberOf".into()),
+                            &work,
                         )? {
                             row.attributes.push(LdapPartialAttribute {
                                 atype: "memberOf".into(),
@@ -690,7 +826,8 @@ impl Core {
                             });
                         }
                     } else {
-                        let memberships = member_of_dns(tx, &settings, &user.id, member_limit)?;
+                        let memberships =
+                            member_of_dns(tx, &settings, &user.id, member_limit, &work)?;
                         oversized_member_of |= memberships.is_none();
                         if let Some(memberships) = memberships.filter(|values| !values.is_empty()) {
                             row.attributes.push(LdapPartialAttribute {
@@ -700,10 +837,10 @@ impl Core {
                         }
                     }
                 }
-                include(row, Some(matched));
+                include(row, Some(matched))?;
             }
             if client.scopes.contains("groups") {
-                for_each_visible_group(tx, &visible, |name, member_ids| {
+                for_each_visible_group(tx, &visible, &work, |name, member_ids| {
                     let members: Vec<_> = member_ids
                         .iter()
                         .map(|id| {
@@ -715,7 +852,7 @@ impl Core {
                         .collect::<Result<_>>()?;
                     if !members.is_empty() {
                         let dn = settings.group_dn(&name);
-                        ensure_unique_group_dn(tx, &name, &visible)?;
+                        ensure_unique_group_dn(tx, &name, &visible, &work)?;
                         include(
                             entry(
                                 dn,
@@ -726,7 +863,7 @@ impl Core {
                                 ],
                             ),
                             None,
-                        );
+                        )?;
                     }
                     Ok(())
                 })?;
@@ -753,6 +890,349 @@ mod tests {
         telemetry::ReadContext,
     };
     use ldap3_proto::proto::{LdapDerefAliases, LdapFilter};
+
+    #[test]
+    fn ldap_search_work_counts_pages_and_short_circuited_predicates() {
+        assert_eq!(MAX_SEARCH_WORK, 256_000);
+        let work = SearchWork::new(crate::store::maintenance::PAGE);
+        work.page().unwrap();
+        assert_eq!(work.0.get(), 0);
+        assert_eq!(
+            work.page().unwrap_err().message,
+            "LDAP result exceeds provider limit"
+        );
+        assert!(work.charge(usize::MAX).is_err());
+        assert_eq!(work.0.get(), 0);
+
+        let row = entry("uid=alice".into(), vec![("uid", vec!["alice".into()])]);
+        let filters = [
+            LdapFilter::Or(vec![
+                LdapFilter::Equality("UID".into(), "ALICE".into()),
+                LdapFilter::Not(Box::new(LdapFilter::Present("uid".into()))),
+            ]),
+            LdapFilter::And(vec![
+                LdapFilter::Present("missing".into()),
+                LdapFilter::Present("uid".into()),
+            ]),
+            LdapFilter::Not(Box::new(LdapFilter::Present("missing".into()))),
+        ];
+        for filter in filters {
+            let work = SearchWork::new(2);
+            assert_eq!(
+                matches_search_filter(&filter, &row, &work).unwrap(),
+                matches_filter(&filter, &row)
+            );
+            assert_eq!(work.0.get(), 0);
+            assert!(matches_search_filter(&filter, &row, &work).is_err());
+        }
+    }
+
+    #[test]
+    fn ldap_search_work_preserves_results_visibility_and_atomic_refusal() {
+        let directory = tempfile::tempdir().unwrap();
+        let password = "test-password-for-fixtures-only";
+        let core = Core::initialize(
+            Config {
+                data_dir: directory.path().into(),
+                ..Default::default()
+            },
+            NewUser {
+                username: "admin".into(),
+                password: password.into(),
+                email: None,
+                display_name: "Administrator".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+        let admin = core.login("admin".into(), password.into(), None).unwrap()["session_token"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let admin_id: String = core.store.get("usernames", "admin").unwrap().unwrap();
+        core.create_group(&admin, "directory").unwrap();
+        core.store
+            .write(|tx| {
+                let mut other: User = tx.get("users", &admin_id)?.unwrap();
+                other.id = "other-user".into();
+                other.username = "other".into();
+                other.display_name = "Other".into();
+                other.admin = false;
+                tx.put("users", &other.id, &other)?;
+                tx.put("usernames", &other.username, &other.id)?;
+                tx.put(
+                    "groups",
+                    "directory",
+                    &Group {
+                        name: "directory".into(),
+                        members: [admin_id.clone(), other.id].into(),
+                    },
+                )?;
+                tx.put(
+                    "groups",
+                    "DIRECTORY",
+                    &Group {
+                        name: "DIRECTORY".into(),
+                        members: BTreeSet::new(),
+                    },
+                )
+            })
+            .unwrap();
+        core.create_client(
+            &admin,
+            NewClient {
+                client_id: "ldap".into(),
+                name: "LDAP provider".into(),
+                confidential: false,
+                redirect_uris: vec![],
+                scopes: ["openid", "profile", "groups"].map(str::to_owned).into(),
+                allowed_groups: ["directory"].map(str::to_owned).into(),
+                require_mfa: false,
+                service: false,
+                settings: ProviderSettings {
+                    ldap: Some(Settings {
+                        base_dn: "dc=riauth,dc=test".into(),
+                        search_groups: ["directory"].map(str::to_owned).into(),
+                    }),
+                    ..Default::default()
+                },
+            },
+        )
+        .unwrap();
+        let created = core
+            .create_agent(
+                &admin,
+                NewAgent {
+                    id: "budget-ldap-reader".into(),
+                    ttl: 600,
+                    parent: None,
+                    permissions: vec![Permission {
+                        action: "ldap.search".into(),
+                        resource: "client/ldap".into(),
+                    }],
+                },
+            )
+            .unwrap();
+        let agent = Auth::Agent(zeroize::Zeroizing::new(
+            created["credential"]["token"].as_str().unwrap().into(),
+        ));
+        let query = LdapSearchRequest {
+            base: "ou=users,dc=riauth,dc=test".into(),
+            scope: LdapSearchScope::OneLevel,
+            aliases: LdapDerefAliases::Never,
+            sizelimit: 0,
+            timelimit: 0,
+            typesonly: false,
+            filter: LdapFilter::Present("uid".into()),
+            attrs: vec![],
+        };
+        let expected_user = |name: &str, display: &str, id: &str| LdapSearchResultEntry {
+            dn: format!("uid={name},ou=users,dc=riauth,dc=test"),
+            attributes: vec![
+                (
+                    "objectClass",
+                    vec!["top", "person", "organizationalPerson", "inetOrgPerson"],
+                ),
+                ("uid", vec![name]),
+                ("cn", vec![display]),
+                ("sn", vec![display]),
+                ("displayName", vec![display]),
+                ("entryUUID", vec![id]),
+                ("memberOf", vec!["cn=directory,ou=groups,dc=riauth,dc=test"]),
+            ]
+            .into_iter()
+            .map(|(atype, vals)| LdapPartialAttribute {
+                atype: atype.into(),
+                vals: vals
+                    .into_iter()
+                    .map(|value| value.as_bytes().to_vec())
+                    .collect(),
+            })
+            .collect(),
+        };
+        let expected = vec![
+            expected_user("admin", "Administrator", &admin_id),
+            expected_user("other", "Other", "other-user"),
+        ];
+        let before = core.store.read(|tx| tx.snapshot()).unwrap();
+        let (rows, revision) = core
+            .ldap_search_entries("ldap", Some(&agent), &query, false)
+            .unwrap();
+        assert_eq!(rows, expected);
+        let error = core
+            .ldap_search_entries_with_limits(
+                "ldap",
+                Some(&agent),
+                &query,
+                false,
+                MAX_RESULT_BYTES,
+                512,
+            )
+            .unwrap_err();
+        assert_eq!(error.message, "LDAP result exceeds provider limit");
+        assert_eq!(core.store.read(|tx| tx.snapshot()).unwrap(), before);
+        assert!(
+            core.ldap_search_entries("ldap", None, &query, false)
+                .is_err()
+        );
+
+        let mut root = query.clone();
+        root.base.clear();
+        root.scope = LdapSearchScope::Base;
+        root.filter = LdapFilter::Present("objectClass".into());
+        assert_eq!(
+            core.ldap_search_entries_with_limits("ldap", None, &root, false, MAX_RESULT_BYTES, 5)
+                .unwrap()
+                .0
+                .len(),
+            1
+        );
+        assert!(
+            core.ldap_search_entries_with_limits("ldap", None, &root, false, MAX_RESULT_BYTES, 4)
+                .is_err()
+        );
+
+        let user = Auth::User(zeroize::Zeroizing::new(admin.clone()));
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&user), &query, false)
+                .unwrap(),
+            (vec![expected[0].clone()], revision)
+        );
+        let mut types_only = query.clone();
+        types_only.typesonly = true;
+        let mut expected_types = expected.clone();
+        for row in &mut expected_types {
+            row.attributes.last_mut().unwrap().vals = vec![Vec::new()];
+        }
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &types_only, false)
+                .unwrap()
+                .0,
+            expected_types
+        );
+        let mut uid_only = query.clone();
+        uid_only.attrs = vec!["uid".into()];
+        let mut expected_without_membership = expected.clone();
+        for row in &mut expected_without_membership {
+            row.attributes.pop();
+        }
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &uid_only, false)
+                .unwrap()
+                .0,
+            expected_without_membership
+        );
+
+        core.store
+            .read(|tx| {
+                let (_, settings) = core.ldap_profile(tx, "ldap")?;
+                let work = SearchWork::new(128 + 1 + 128 + 2 + 1);
+                assert!(matches_member_of(
+                    tx,
+                    &settings,
+                    &admin_id,
+                    &LdapFilter::Present("memberOf".into()),
+                    &work
+                )?);
+                let visible = [(admin_id.clone(), "admin".into())].into();
+                ensure_unique_group_dn(tx, "directory", &visible, &work)?;
+                assert_eq!(work.0.get(), 0);
+                let scans = &core.store.telemetry().reads;
+                let count = scans.scans(ReadContext::Read, true).count();
+                assert!(
+                    matches_member_of(
+                        tx,
+                        &settings,
+                        &admin_id,
+                        &LdapFilter::Present("memberOf".into()),
+                        &work
+                    )
+                    .is_err()
+                );
+                assert_eq!(scans.scans(ReadContext::Read, true).count(), count);
+                let empty = SearchWork::new(128);
+                assert!(!matches_member_of(
+                    tx,
+                    &settings,
+                    "missing-user",
+                    &LdapFilter::Present("memberOf".into()),
+                    &empty
+                )?);
+                assert_eq!(empty.0.get(), 0);
+                let filter = LdapFilter::And(vec![
+                    LdapFilter::Present("memberOf".into()),
+                    LdapFilter::Present("memberOf".into()),
+                ]);
+                let shared = SearchWork::new(1 + 2 * (1 + 128 + 1));
+                assert!(matches_user_filter(
+                    tx,
+                    &settings,
+                    &admin_id,
+                    &filter,
+                    &expected[0],
+                    true,
+                    &shared
+                )?);
+                assert_eq!(shared.0.get(), 0);
+                let count = scans.scans(ReadContext::Read, true).count();
+                assert!(
+                    matches_user_filter(
+                        tx,
+                        &settings,
+                        "other-user",
+                        &filter,
+                        &expected[1],
+                        true,
+                        &shared
+                    )
+                    .is_err()
+                );
+                assert_eq!(scans.scans(ReadContext::Read, true).count(), count);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(core.store.read(|tx| tx.snapshot()).unwrap(), before);
+
+        core.store
+            .write(|tx| {
+                let mut group: Group = tx.get("groups", "DIRECTORY")?.unwrap();
+                group.members.insert(admin_id.clone());
+                tx.put("groups", "DIRECTORY", &group)
+            })
+            .unwrap();
+        let before_collision = core.store.read(|tx| tx.snapshot()).unwrap();
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::CONFLICT
+        );
+        assert_eq!(
+            core.store.read(|tx| tx.snapshot()).unwrap(),
+            before_collision
+        );
+
+        core.store
+            .write(|tx| {
+                let mut group: Group = tx.get("groups", "DIRECTORY")?.unwrap();
+                group.members.clear();
+                tx.put("groups", "DIRECTORY", &group)?;
+                let bucket = format!("index_user_groups/{}", crate::crypto::digest(&admin_id));
+                tx.put(&bucket, &crate::crypto::digest("directory"), &"mismatched")
+            })
+            .unwrap();
+        let before_corruption = core.store.read(|tx| tx.snapshot()).unwrap();
+        assert_eq!(
+            core.ldap_search_entries("ldap", Some(&agent), &query, false)
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            core.store.read(|tx| tx.snapshot()).unwrap(),
+            before_corruption
+        );
+    }
 
     #[test]
     fn ldap_bind_target_pages_past_128_users_and_rejects_case_collisions() {

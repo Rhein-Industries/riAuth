@@ -253,6 +253,10 @@ impl Directory {
                     vec![self.id_attribute.clone()],
                 )
             };
+            let remaining_bytes = quota
+                .max_snapshot_bytes
+                .checked_sub(draft.attributes_bytes)
+                .ok_or_else(unavailable)?;
             let (rows, next) = search_page(
                 &mut conn,
                 &self.user_base,
@@ -260,6 +264,7 @@ impl Directory {
                 attrs,
                 &draft.cookie,
                 started,
+                remaining_bytes,
             )?;
             draft.pagination.page(
                 &URL_SAFE_NO_PAD.encode(&draft.cookie),
@@ -298,11 +303,11 @@ fn search_page(
     attrs: Vec<String>,
     cookie: &[u8],
     started: Instant,
+    remaining_bytes: usize,
 ) -> Result<(Vec<SearchEntry>, Vec<u8>)> {
     if started.elapsed() > Duration::from_secs(30) {
         return Err(unavailable());
     }
-    let mut rows = Vec::new();
     conn.with_timeout(STEP_TIMEOUT)
         .with_search_options(SearchOptions::new().timelimit(5).sizelimit(2001))
         .with_controls(
@@ -315,15 +320,18 @@ fn search_page(
     let mut stream = conn
         .streaming_search(base, Scope::Subtree, filter, attrs)
         .map_err(|_| unavailable())?;
-    while let Some(entry) = stream.next().map_err(|_| unavailable())? {
-        if entry.is_ref()
-            || started.elapsed() > Duration::from_secs(30)
-            || rows.len() >= LDAP_PAGE_SIZE
-        {
-            return Err(unavailable());
-        }
-        rows.push(SearchEntry::construct(entry));
-    }
+    let rows = receive_page(
+        || {
+            let Some(entry) = stream.next().map_err(|_| unavailable())? else {
+                return Ok(None);
+            };
+            if entry.is_ref() || started.elapsed() > Duration::from_secs(30) {
+                return Err(unavailable());
+            }
+            Ok(Some(SearchEntry::construct(entry)))
+        },
+        remaining_bytes,
+    )?;
     let result = stream.result().success().map_err(|_| unavailable())?;
     if !result.refs.is_empty() || started.elapsed() > Duration::from_secs(30) {
         return Err(unavailable());
@@ -341,6 +349,42 @@ fn search_page(
     let next = page_cookie(controls[0].1.val.as_deref().ok_or_else(unavailable)?)?;
     Ok((rows, next))
 }
+
+fn checked_entry_bytes(mut lengths: impl Iterator<Item = usize>) -> Result<usize> {
+    lengths.try_fold(0usize, |total, length| {
+        total.checked_add(length).ok_or_else(unavailable)
+    })
+}
+
+fn logical_entry_bytes(entry: &SearchEntry) -> Result<usize> {
+    checked_entry_bytes(
+        std::iter::once(entry.dn.len())
+            .chain(entry.attrs.iter().flat_map(|(name, values)| {
+                std::iter::once(name.len()).chain(values.iter().map(String::len))
+            }))
+            .chain(entry.bin_attrs.iter().flat_map(|(name, values)| {
+                std::iter::once(name.len()).chain(values.iter().map(Vec::len))
+            })),
+    )
+}
+
+fn receive_page(
+    mut next: impl FnMut() -> Result<Option<SearchEntry>>,
+    mut remaining_bytes: usize,
+) -> Result<Vec<SearchEntry>> {
+    let mut rows = Vec::new();
+    while let Some(entry) = next()? {
+        if rows.len() >= LDAP_PAGE_SIZE {
+            return Err(unavailable());
+        }
+        remaining_bytes = remaining_bytes
+            .checked_sub(logical_entry_bytes(&entry)?)
+            .ok_or_else(unavailable)?;
+        rows.push(entry);
+    }
+    Ok(rows)
+}
+
 fn page_cookie(bytes: &[u8]) -> Result<Vec<u8>> {
     fn tlv<'a>(input: &mut &'a [u8], tag: u8) -> Result<&'a [u8]> {
         if input.len() < 2 || input[0] != tag {
@@ -528,30 +572,10 @@ impl SnapshotDraft {
         phase: usize,
         entry: SearchEntry,
     ) -> Result<()> {
-        let bytes = entry
-            .dn
-            .len()
-            .saturating_add(
-                entry
-                    .attrs
-                    .iter()
-                    .map(|(key, values)| {
-                        key.len()
-                            .saturating_add(values.iter().map(String::len).sum::<usize>())
-                    })
-                    .sum::<usize>(),
-            )
-            .saturating_add(
-                entry
-                    .bin_attrs
-                    .iter()
-                    .map(|(key, values)| {
-                        key.len()
-                            .saturating_add(values.iter().map(Vec::len).sum::<usize>())
-                    })
-                    .sum::<usize>(),
-            );
-        self.attributes_bytes = self.attributes_bytes.saturating_add(bytes);
+        self.attributes_bytes = self
+            .attributes_bytes
+            .checked_add(logical_entry_bytes(&entry)?)
+            .ok_or_else(unavailable)?;
         if self.attributes_bytes > quota.max_snapshot_bytes
             || entry.dn.is_empty()
             || entry.dn.len() > 2048
@@ -644,4 +668,179 @@ pub struct Plan {
 }
 pub(crate) fn binding_key(directory: &str, external_id: &str) -> String {
     digest(&format!("{directory}\0{external_id}"))
+}
+
+#[cfg(test)]
+mod receive_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    fn mapped_entry() -> SearchEntry {
+        SearchEntry {
+            dn: "uid=alice,dc=test".into(),
+            attrs: [
+                ("entryUUID".into(), vec!["stable-alice".into()]),
+                ("uid".into(), vec!["alice".into()]),
+                ("cn".into(), vec!["Alice".into()]),
+            ]
+            .into(),
+            bin_attrs: Default::default(),
+        }
+    }
+
+    #[test]
+    fn ldap_receive_page_charges_all_entry_bytes_before_retention() {
+        let row = SearchEntry {
+            dn: "uid=a,dc=test".into(),
+            attrs: [
+                ("uid".into(), vec!["alice".into()]),
+                ("ignored".into(), vec!["é".into(), "unused".into()]),
+            ]
+            .into(),
+            bin_attrs: [("binary".into(), vec![vec![0, 1, 2], vec![3, 4]])].into(),
+        };
+        let bytes = 13 + 3 + 5 + 7 + 2 + 6 + 6 + 3 + 2;
+        assert_eq!(logical_entry_bytes(&row).unwrap(), bytes);
+        let calls = Cell::new(0);
+        let mut input = vec![row.clone(), row.clone()].into_iter();
+        let accepted = receive_page(
+            || {
+                calls.set(calls.get() + 1);
+                Ok(input.next())
+            },
+            2 * bytes,
+        )
+        .unwrap();
+        assert_eq!(calls.get(), 3);
+        assert_eq!(accepted.len(), 2);
+        for accepted in accepted {
+            assert_eq!(accepted.dn, row.dn);
+            assert_eq!(accepted.attrs, row.attrs);
+            assert_eq!(accepted.bin_attrs, row.bin_attrs);
+        }
+
+        for (allowance, expected_calls) in [(bytes - 1, 1), (2 * bytes - 1, 2)] {
+            calls.set(0);
+            let mut input = vec![row.clone(), row.clone(), row.clone()].into_iter();
+            let error = receive_page(
+                || {
+                    calls.set(calls.get() + 1);
+                    Ok(input.next())
+                },
+                allowance,
+            )
+            .unwrap_err();
+            assert_eq!(error.code, "directory_unavailable");
+            assert_eq!(calls.get(), expected_calls, "no later entry may be pulled");
+        }
+        assert!(receive_page(|| Ok(None), 0).unwrap().is_empty());
+        assert_eq!(
+            checked_entry_bytes([usize::MAX].into_iter()).unwrap(),
+            usize::MAX
+        );
+        assert!(checked_entry_bytes([usize::MAX, 1].into_iter()).is_err());
+    }
+
+    #[test]
+    fn ldap_receive_page_keeps_row_and_stream_error_bounds() {
+        let row = mapped_entry();
+        let calls = Cell::new(0);
+        let mut input = vec![row.clone(); LDAP_PAGE_SIZE + 2].into_iter();
+        assert!(
+            receive_page(
+                || {
+                    calls.set(calls.get() + 1);
+                    Ok(input.next())
+                },
+                usize::MAX,
+            )
+            .is_err()
+        );
+        assert_eq!(calls.get(), LDAP_PAGE_SIZE + 1);
+
+        calls.set(0);
+        assert!(
+            receive_page(
+                || {
+                    calls.set(calls.get() + 1);
+                    if calls.get() == 1 {
+                        Ok(Some(row.clone()))
+                    } else {
+                        Err(unavailable())
+                    }
+                },
+                usize::MAX,
+            )
+            .is_err()
+        );
+        assert_eq!(calls.get(), 2);
+    }
+
+    #[test]
+    fn ldap_receive_and_draft_share_accounting_without_double_charge() {
+        let directory = Directory {
+            url: "ldaps://directory.invalid".into(),
+            transport: Transport::Ldaps,
+            bind_dn: "cn=reader,dc=test".into(),
+            password_file: "unused-test-password-path".into(),
+            ca_file: None,
+            user_base: "dc=test".into(),
+            user_filter: "(objectClass=person)".into(),
+            id_attribute: "entryUUID".into(),
+            username_attribute: "uid".into(),
+            display_attribute: "cn".into(),
+            email_attribute: None,
+            username_prefix: String::new(),
+            group_user_filters: [("staff".into(), "(uid=alice)".into())].into(),
+        };
+        let quota = LdapReconciliationQuota::default();
+        let mut draft = SnapshotDraft::new(
+            "staff-source".into(),
+            "test-actor".into(),
+            0,
+            "test-fingerprint".into(),
+            "test-authority".into(),
+            &quota,
+        );
+        let row = mapped_entry();
+        let bytes = logical_entry_bytes(&row).unwrap();
+        for phase in 0..2 {
+            let mut input = [row.clone()].into_iter();
+            let rows = receive_page(
+                || Ok(input.next()),
+                quota
+                    .max_snapshot_bytes
+                    .checked_sub(draft.attributes_bytes)
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(draft.attributes_bytes, phase * bytes);
+            for entry in rows {
+                draft.record(&directory, &quota, phase, entry).unwrap();
+            }
+            assert_eq!(draft.attributes_bytes, (phase + 1) * bytes);
+            draft.bounded(&quota).unwrap();
+            if phase == 0 {
+                draft.next_phase(&quota);
+            }
+        }
+        assert_eq!(
+            serde_json::to_value(&draft.users).unwrap(),
+            json!({
+                "c3RhYmxlLWFsaWNl": {
+                    "external_id": "c3RhYmxlLWFsaWNl",
+                    "dn": "uid=alice,dc=test",
+                    "username": "alice",
+                    "display_name": "Alice",
+                    "email": null,
+                    "groups": ["staff"]
+                }
+            })
+        );
+
+        draft.attributes_bytes = usize::MAX;
+        let before = serde_json::to_value(&draft).unwrap();
+        assert!(draft.record(&directory, &quota, 1, row).is_err());
+        assert_eq!(serde_json::to_value(&draft).unwrap(), before);
+    }
 }
