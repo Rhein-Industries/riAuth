@@ -759,3 +759,24 @@ fn prepared_range_revalidation_prevents_two_proofs_spending_one_client_slot() {
     f.assert_snapshot(&before);
     assert_eq!(f.core.store.list::<Value>(BUCKET).unwrap().len(), 1024);
 }
+
+#[test]
+fn restored_pending_device_poll_receipts_are_invalidated_with_their_proofs() {
+    let f = fixture();
+    let (started, _) = pending_template(&f);
+    let code = text(&started, "device_code");
+    assert_eq!(
+        riauth::recovery::classify(BUCKET),
+        Some(riauth::recovery::Class::Invalidated)
+    );
+    let recovery = riauth::recovery::invalidate_restored(&f.core.store).unwrap();
+    assert_eq!(recovery.invalidated[BUCKET], 1);
+    assert!(f.core.store.list::<Value>(BUCKET).unwrap().is_empty());
+    assert!(f.core.store.list::<Device>("devices").unwrap().is_empty());
+    let before = f.snapshot().unwrap();
+    assert_eq!(
+        refusal(keyed(&f.core, request("app", &code, None), "first", 1)).code,
+        "invalid_grant"
+    );
+    f.assert_snapshot(&before);
+}

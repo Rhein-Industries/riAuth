@@ -76,6 +76,7 @@ pub const INVALIDATED: &[&str] = &[
     "codes",
     "devices",
     "device_users",
+    "device_poll_receipts",
     "saml_codes",
     "portal_codes",
     "logout_codes",
