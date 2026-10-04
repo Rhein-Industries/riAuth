@@ -577,11 +577,11 @@ internal static class WinSecurity
             var size = checked(20 + bytes.Length);
             memory = Marshal.AllocHGlobal(size);
             for (var i = 0; i < size; i++) Marshal.WriteByte(memory, i, 0);
-            Marshal.WriteByte(memory, replace ? (byte)1 : (byte)0);
+            Marshal.WriteInt32(memory, replace ? 3 : 0); // REPLACE_IF_EXISTS | POSIX_SEMANTICS
             Marshal.WriteIntPtr(memory, 8, IntPtr.Zero);
             Marshal.WriteInt32(memory, 16, bytes.Length - 2);
             Marshal.Copy(bytes, 0, IntPtr.Add(memory, 20), bytes.Length);
-            Native(SetFileInformationByHandle(file, 3, memory, (uint)size));
+            Native(SetFileInformationByHandle(file, replace ? 22 : 3, memory, (uint)size));
         }
         finally
         {
