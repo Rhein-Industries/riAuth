@@ -569,7 +569,7 @@ fn secret_rotation_client_disable_and_wrong_proof_refuse_before_replay() {
             1
         ))
         .code,
-        "conflict"
+        "invalid_grant"
     );
     f.assert_snapshot(&before);
     let stored = record(&f, "confidential", "first").to_string();
