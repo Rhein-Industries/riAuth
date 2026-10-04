@@ -64,7 +64,7 @@ BACKGROUND_JOBS = (
 )
 INSECURE_LISTENER = "The listener is loopback HTTP without TLS. Database encryption is off."
 INSECURE_POSTGRES = (
-    "PostgreSQL uses one disposable loopback cluster with trust auth, sslmode=disable, and local_unencrypted."
+    "PostgreSQL uses one disposable loopback cluster with SCRAM auth, sslmode=disable, and local_unencrypted."
 )
 SECURE_LISTENER = (
     "The listener is loopback HTTPS. The client trusts one fresh private CA and checks the certificate hostname. "
@@ -392,7 +392,7 @@ def command_output(args, *, cwd, env, input_text=None, timeout=60, hidden=()):
         fail(f"timeout: {args[0]} {args[-1]}", hidden)
     except OSError as error:
         fail(str(error), hidden)
-    tail = scrub((result.stderr or "")[-800:], hidden)
+    tail = scrub(result.stderr or "", hidden)[-800:]
     return result.returncode, result.stdout, tail
 
 
@@ -925,9 +925,11 @@ def libpq_conninfo(port, sslmode, ca_file):
     )
 
 
-def postgres_env(password):
-    env = os.environ.copy()
-    env["PGPASSWORD"] = password
+def postgres_env(password=None):
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith("PG") and key != "PSQLRC"}
+    if password is not None:
+        env["PGPASSWORD"] = password
     return env
 
 
@@ -991,15 +993,23 @@ def feature_facts(runtime, names):
     return facts
 
 
-def start_postgres(root):
+def start_postgres(root, hidden=None):
+    if hidden is None:
+        hidden = []
     programs = require_programs(("initdb", "pg_ctl", "createdb"))
     cluster = root / "postgres-cluster"
     port = free_port()
+    password = secrets.token_hex(24)
+    remember_secret(hidden, password)
+    password_file = root / "pg-password"
+    write_private_text(password_file, password + "\n")
     code, _stdout, tail = command_output(
-        [programs["initdb"], "-D", str(cluster), "-U", "riauth_test", "--auth=trust",
+        [programs["initdb"], "-D", str(cluster), "-U", "riauth_test",
+         "--auth=scram-sha-256", "--pwfile", str(password_file),
          "--encoding=UTF8", "--no-locale"],
-        cwd=root, env=os.environ.copy(), timeout=60,
+        cwd=root, env=postgres_env(), timeout=60, hidden=hidden,
     )
+    password_file.unlink(missing_ok=True)
     if code != 0:
         raise SliceError(f"initdb failed: {tail}")
     with (cluster / "postgresql.conf").open("a") as config:
@@ -1010,22 +1020,23 @@ def start_postgres(root):
     try:
         code, _stdout, tail = command_output(
             [programs["pg_ctl"], "-D", str(cluster), "-l", str(root / "postgres.log"), "start", "-w"],
-            cwd=root, env=os.environ.copy(), timeout=60,
+            cwd=root, env=postgres_env(), timeout=60, hidden=hidden,
         )
         if code != 0:
             raise SliceError(f"pg_ctl start failed: {tail}")
         started = True
         code, _stdout, tail = command_output(
-            [programs["createdb"], "-h", "127.0.0.1", "-p", str(port), "-U", "riauth_test", "riauth_q09"],
-            cwd=root, env=os.environ.copy(), timeout=60,
+            [programs["createdb"], "--no-password", "-h", "127.0.0.1", "-p", str(port),
+             "-U", "riauth_test", "riauth_q09"],
+            cwd=root, env=postgres_env(password), timeout=60, hidden=hidden,
         )
         if code != 0:
             raise SliceError(f"createdb failed: {tail}")
         connection = root / "connection"
-        connection.write_text(
-            f"host=127.0.0.1 port={port} dbname=riauth_q09 user=riauth_test sslmode=disable\n"
-        )
-        connection.chmod(0o600)
+        write_private_text(connection, (
+            f"host=127.0.0.1 port={port} dbname=riauth_q09 "
+            f"user=riauth_test password={password} sslmode=disable\n"
+        ))
         config_path = root / "postgres.json"
         config_path.write_text(json.dumps({
             "connection_file": str(connection),
@@ -1036,14 +1047,14 @@ def start_postgres(root):
         return {"programs": programs, "cluster": cluster, "root": root, "config": config_path, "port": port}
     except Exception:
         if started or (cluster / "postmaster.pid").exists():
-            stop_postgres(programs, cluster, root)
+            stop_postgres(programs, cluster, root, hidden=hidden)
         raise
 
 
-def stop_postgres(programs, cluster, root):
+def stop_postgres(programs, cluster, root, hidden=()):
     command_output(
         [programs["pg_ctl"], "-D", str(cluster), "stop", "-m", "immediate", "-w"],
-        cwd=root, env=os.environ.copy(), timeout=60,
+        cwd=root, env=postgres_env(), timeout=60, hidden=hidden,
     )
 
 
@@ -1139,7 +1150,7 @@ def start_postgres_verified(root, material, hidden):
         }
     except Exception:
         if started or (cluster / "postmaster.pid").exists():
-            stop_postgres(programs, cluster, root)
+            stop_postgres(programs, cluster, root, hidden=hidden)
         raise
 
 
@@ -1571,7 +1582,7 @@ def run_slice(
         if secure:
             material = make_server_material(root, hidden)
         if backend == "postgresql":
-            cluster = start_postgres_verified(root, material, hidden) if secure else start_postgres(root)
+            cluster = start_postgres_verified(root, material, hidden) if secure else start_postgres(root, hidden)
         port = free_port()
         base = f"{'https' if secure else 'http'}://127.0.0.1:{port}"
         instance = root / "instance"
@@ -1767,7 +1778,7 @@ def run_slice(
             TLS_CONTEXT.reset(tls_reset)
         stderr = stop_process(server, hidden)
         if cluster is not None:
-            stop_postgres(cluster["programs"], cluster["cluster"], cluster["root"])
+            stop_postgres(cluster["programs"], cluster["cluster"], cluster["root"], hidden=hidden)
         shutil.rmtree(root, ignore_errors=True)
         del stderr
 
