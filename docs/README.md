@@ -20,6 +20,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Platform guide](platform-guide.md) | The same tasks on the Platform binaries, with shared semantics and the remote-client split, then a configured workflow, SAML IdP and source, an LDAP provider listener, and the same browser invitation acceptance |
 | [Getting started](getting-started.md) | Undifferentiated local walkthrough; `cargo install --locked --path .` selects the default `platform` feature |
 | [Project README](../README.md) | Install, initialize and try browser and terminal sign-in |
+| [Frontend themes](frontend-themes.md) | Operator-supplied browser layouts, CSS, same-origin scripts, images and fonts in both editions |
 | [Architecture](architecture.md) | Components, request paths, state and worker boundaries |
 | [Operations](operations.md) | TLS, probes, metrics, backups, restore, maintenance and releases |
 | [Linux image deployments](deployment-examples.md) | Single-owner redb and two-host PostgreSQL Compose examples with operator steps |

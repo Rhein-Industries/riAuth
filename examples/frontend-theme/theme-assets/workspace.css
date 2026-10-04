@@ -1,0 +1,26 @@
+/* Full layout and style customization, after the embedded baseline CSS. */
+.acme-workspace {
+  --accent: #145c4b;
+  --accent-soft: #e5f3ee;
+  --sidebar: 280px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.acme-workspace .workspace-banner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+  padding: 24px;
+  border-radius: 16px;
+  background: #145c4b;
+  color: #ffffff;
+}
+.acme-workspace .workspace-banner h2 { margin-bottom: 8px; }
+.acme-workspace .workspace-banner p { margin: 0; line-height: 1.6; }
+.acme-workspace .brand small { white-space: normal; }
+.acme-workspace .primary:hover { background: #0e493b; }
+@media (max-width: 760px) {
+  .acme-workspace { --sidebar: 0px; }
+  .acme-workspace .workspace-banner { padding: 18px; }
+}

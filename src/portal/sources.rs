@@ -62,26 +62,16 @@ pub fn browser_routes() -> Router<App> {
         .route("/account/sources/continue", get(page))
         .route(
             "/portal/assets/sources.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("sources.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/source-login.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("source-login.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
 }
 
 async fn page(State(app): State<App>) -> Response {
-    portal_html(include_str!("sources.html"), &app, true)
+    portal_html(app.core.runtime.frontend.page("sources.html"), &app, true)
 }
 
 async fn list(State(app): State<App>) -> Result<Json<Value>> {

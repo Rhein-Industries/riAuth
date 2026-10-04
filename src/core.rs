@@ -115,9 +115,10 @@ impl Core {
         let admission = config
             .validate_with_extension_admission()
             .map_err(Error::internal)?;
-        let runtime = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
-            admission,
-        ));
+        let runtime = Arc::new(
+            crate::capability::RuntimeStatus::from_extension_admission(admission)
+                .with_frontend(&config)?,
+        );
         crate::config::private_dir(&config.data_dir).map_err(Error::internal)?;
         let store = Store::from_config(&config)?;
         Self::initialize_store(config, store, runtime, input, |_| Ok(()))
@@ -132,6 +133,7 @@ impl Core {
         ownership: impl FnOnce(&Tx<'_>) -> Result<()>,
     ) -> Result<Self> {
         runtime.require_extension_admission(&config.workflow_extensions)?;
+        runtime.frontend.require_config(&config.frontend)?;
         if store.get::<u32>("meta", "schema")?.is_some() {
             return Err(Error::conflict("Instance already initialized"));
         }
@@ -152,6 +154,7 @@ impl Core {
         administrator: impl FnOnce(&Tx<'_>) -> Result<User>,
     ) -> Result<Self> {
         runtime.require_extension_admission(&config.workflow_extensions)?;
+        runtime.frontend.require_config(&config.frontend)?;
         if store.get::<u32>("meta", "schema")?.is_some() {
             return Err(Error::conflict("Instance already initialized"));
         }
@@ -217,9 +220,10 @@ impl Core {
         let admission = config
             .validate_with_extension_admission()
             .map_err(Error::internal)?;
-        let runtime = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
-            admission,
-        ));
+        let runtime = Arc::new(
+            crate::capability::RuntimeStatus::from_extension_admission(admission)
+                .with_frontend(&config)?,
+        );
         Self::open_admitted(config, runtime)
     }
 
@@ -228,6 +232,7 @@ impl Core {
         runtime: Arc<crate::capability::RuntimeStatus>,
     ) -> Result<Self> {
         runtime.require_extension_admission(&config.workflow_extensions)?;
+        runtime.frontend.require_config(&config.frontend)?;
         if config.postgres.is_none() && !config.data_dir.join("riauth.redb").is_file() {
             return Err(Error::missing("Database missing; run riauth init"));
         }
@@ -241,6 +246,7 @@ impl Core {
         runtime: Arc<crate::capability::RuntimeStatus>,
     ) -> Result<Self> {
         let admission = runtime.require_extension_admission(&config.workflow_extensions)?;
+        runtime.frontend.require_config(&config.frontend)?;
         if store.get::<String>("meta", "issuer")?.as_deref() != Some(&config.issuer) {
             return Err(Error::bad(
                 "Configured issuer does not match the initialized instance",
@@ -253,6 +259,7 @@ impl Core {
         // read-only, before the agreement check and before any worker starts.
         let (config, connectors) = crate::connector_definitions::merge(config, &store, admission)?;
         runtime.require_extension_admission(&config.workflow_extensions)?;
+        runtime.frontend.require_config(&config.frontend)?;
         // Compare the complete agreement before any startup write. Old or missing
         // rows require explicit offline recording, never automatic adoption.
         crate::node_security::enforce(&config, &store)?;

@@ -33,26 +33,16 @@ pub fn browser_routes() -> Router<App> {
         .route("/account/security/", get(page))
         .route(
             "/portal/assets/security.css",
-            get(|| async {
-                (
-                    [("content-type", "text/css; charset=utf-8")],
-                    include_str!("security.css"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
         .route(
             "/portal/assets/security.js",
-            get(|| async {
-                (
-                    [("content-type", "text/javascript; charset=utf-8")],
-                    include_str!("security.js"),
-                )
-            }),
+            get(crate::portal::theme::builtin),
         )
 }
 
 async fn page(State(app): State<App>) -> Response {
-    portal_html(include_str!("security.html"), &app, true)
+    portal_html(app.core.runtime.frontend.page("security.html"), &app, true)
 }
 
 async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
