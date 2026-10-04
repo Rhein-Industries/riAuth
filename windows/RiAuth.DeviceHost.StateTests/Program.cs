@@ -271,20 +271,20 @@ internal static class Program
                         ("CreateDirectoryAtBirth", 509) => "create_directory",
                         ("CreateTemporary", 531) => "create_file_temporary",
                         ("MarkDeleted", 560) => "delete_file",
-                        ("Rename", 580) => "rename_file",
-                        ("TestCreateAnchor", 742) => "create_fixture_anchor",
-                        ("TestSetMetadata", 757) => "get_security_control",
-                        ("TestSetMetadata", 761) => "set_fixture_security_info",
-                        ("TestSecurityBytes", 775) => "get_security_info",
-                        ("TestSecurityBytes", 777) => "get_security_control",
-                        ("TestSameIdentity", 819 or 820) => "get_file_information",
+                        ("Rename", 584) => "rename_file",
+                        ("TestCreateAnchor", 746) => "create_fixture_anchor",
+                        ("TestSetMetadata", 761) => "get_security_control",
+                        ("TestSetMetadata", 765) => "set_fixture_security_info",
+                        ("TestSecurityBytes", 779) => "get_security_info",
+                        ("TestSecurityBytes", 781) => "get_security_control",
+                        ("TestSameIdentity", 823 or 824) => "get_file_information",
                         _ => null
                     };
                 }
                 if (method.DeclaringType == typeof(WinSecurity.StateDirectory))
                     return (method.Name, line) switch
                     {
-                        ("Save", 693) => "flush_file_buffers",
+                        ("Save", 697) => "flush_file_buffers",
                         _ => null
                     };
             }
