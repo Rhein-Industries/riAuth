@@ -32,3 +32,9 @@ password_history = 5
 
 # Exact socket-peer IPs whose X-Forwarded-For chain may be trusted.
 trusted_proxies = []
+
+# Optional frontend layouts/styles/scripts in both editions. Missing files use
+# embedded defaults. Relative to this config file; see docs/frontend-themes.md.
+# Place this table after all top-level keys and restart to load a new snapshot.
+# [frontend]
+# theme_dir = "frontend-theme"

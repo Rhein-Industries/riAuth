@@ -514,3 +514,280 @@ pub(crate) async fn additional(
     }
     app.core.runtime.frontend.additional(&key)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(root: &FsPath, key: &str, bytes: &[u8]) {
+        let path = root.join(key);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn load(root: &FsPath) -> Result<Theme> {
+        Theme::load(&Frontend {
+            theme_dir: Some(root.into()),
+        })
+    }
+
+    #[test]
+    fn default_and_empty_theme_use_all_embedded_templates() {
+        let root = tempfile::tempdir().unwrap();
+        let empty = load(root.path()).unwrap();
+        let default = Theme::load(&Frontend::default()).unwrap();
+        for name in [
+            "apps.html",
+            "signin.html",
+            "admin.html",
+            "account.html",
+            "security.html",
+            "device.html",
+            "source-stage.html",
+            "setup.html",
+            "sources.html",
+            "events.html",
+            "access-review.html",
+        ] {
+            assert!(!embedded_page(name).is_empty());
+            assert_eq!(empty.page(name), embedded_page(name));
+            assert_eq!(default.page(name), embedded_page(name));
+        }
+        assert!(empty.assets.is_empty());
+        assert!(default.assets.is_empty());
+    }
+
+    #[test]
+    fn each_known_page_override_retains_explicit_placeholders() {
+        let root = tempfile::tempdir().unwrap();
+        for name in [
+            "apps.html",
+            "signin.html",
+            "admin.html",
+            "account.html",
+            "security.html",
+            "device.html",
+            "source-stage.html",
+            "setup.html",
+            "sources.html",
+            "events.html",
+            "access-review.html",
+        ] {
+            let template = format!(
+                "<main>{name} __BASE__ __CODE__ __COMMAND__ __AUTHORIZATION__ __STAGE__ __RESUME__ __CANCEL__ __CONTINUE__</main>"
+            );
+            write(root.path(), &format!("pages/{name}"), template.as_bytes());
+        }
+        let theme = load(root.path()).unwrap();
+        for (name, body) in &theme.pages {
+            assert_eq!(theme.page(name), body);
+            assert!(body.contains("__BASE__"));
+            assert!(body.contains("__CODE__"));
+            assert!(body.contains("__STAGE__"));
+        }
+        assert_eq!(theme.pages.len(), 11);
+    }
+
+    #[test]
+    fn frontend_default_serde_and_config_relative_path() {
+        let mut config = crate::config::Config::default();
+        let original = serde_json::to_value(&config).unwrap();
+        assert!(original.get("frontend").is_none());
+        assert!(!toml::to_string(&config).unwrap().contains("[frontend]"));
+        let decoded: crate::config::Config = serde_json::from_value(original.clone()).unwrap();
+        assert!(decoded.frontend.is_default());
+        let mut explicit = original;
+        explicit["frontend"] = serde_json::json!({});
+        let decoded: crate::config::Config = serde_json::from_value(explicit).unwrap();
+        assert!(
+            serde_json::to_value(decoded)
+                .unwrap()
+                .get("frontend")
+                .is_none()
+        );
+        assert!(
+            serde_json::from_str::<Frontend>(r#"{"theme_dir":"theme","unknown":true}"#).is_err()
+        );
+        config.frontend.theme_dir = Some(PathBuf::new());
+        assert!(config.validate().is_err());
+        let root = tempfile::tempdir().unwrap();
+        config.frontend.theme_dir = Some("theme".into());
+        let path = root.path().join("riauth.toml");
+        fs::write(&path, toml::to_string(&config).unwrap()).unwrap();
+        let decoded = crate::config::Config::load(&path).unwrap();
+        assert_eq!(decoded.frontend.theme_dir, Some(root.path().join("theme")));
+    }
+
+    #[test]
+    fn invalid_names_types_and_utf8_refuse_the_whole_theme() {
+        for (key, bytes) in [
+            ("pages/unknown.html", b"unknown".as_slice()),
+            ("assets/unknown.js", b"unknown".as_slice()),
+            ("theme-assets/file.html", b"unknown".as_slice()),
+            ("theme-assets/file.py", b"unknown".as_slice()),
+            ("theme-assets/file%2ejs", b"unknown".as_slice()),
+            ("theme-assets/.hidden.js", b"unknown".as_slice()),
+            ("pages/apps.html", b"\xff".as_slice()),
+            ("assets/app.css", b"\xff".as_slice()),
+            ("theme-assets/test.js", b"\xff".as_slice()),
+            ("theme-assets/test.svg", b"\xff".as_slice()),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            write(root.path(), "assets/auth.js", b"// valid first asset");
+            write(root.path(), key, bytes);
+            assert!(load(root.path()).is_err(), "{key}");
+        }
+        for key in [
+            "../logo.svg",
+            "a/../logo.svg",
+            "a//logo.svg",
+            "/logo.svg",
+            "//host/logo.svg",
+            "https://host/logo.svg",
+            "a\\logo.svg",
+            "a?x.svg",
+            "a#x.svg",
+            "a%2fb.svg",
+            "a\n.svg",
+            "NUL.png",
+            "a/COM1.js",
+        ] {
+            assert!(!valid_key(key), "{key}");
+        }
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "theme-assets/Logo.svg", b"<svg/>");
+        write(root.path(), "theme-assets/logo.svg", b"<svg/>");
+        // Case-insensitive filesystems may keep one file; the normalized key set
+        // still rejects a second equivalent spelling on case-sensitive hosts.
+        let mut budget = Budget::default();
+        assert!(
+            budget
+                .keys
+                .insert("theme-assets/Logo.svg".to_ascii_lowercase())
+        );
+        assert!(
+            !budget
+                .keys
+                .insert("theme-assets/logo.svg".to_ascii_lowercase())
+        );
+        if fs::read_dir(root.path().join("theme-assets"))
+            .unwrap()
+            .count()
+            == 2
+        {
+            assert!(load(root.path()).is_err());
+        }
+    }
+
+    #[test]
+    fn file_aggregate_depth_and_count_bounds_are_enforced() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            root.path(),
+            "theme-assets/large.png",
+            &vec![0; MAX_FILE_BYTES + 1],
+        );
+        assert!(load(root.path()).is_err());
+        let root = tempfile::tempdir().unwrap();
+        for n in 0..8 {
+            write(
+                root.path(),
+                &format!("theme-assets/{n}.png"),
+                &vec![0; MAX_FILE_BYTES],
+            );
+        }
+        assert!(load(root.path()).is_ok());
+        write(root.path(), "theme-assets/extra.png", &[0]);
+        assert!(load(root.path()).is_err());
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "theme-assets/a/b/c/image.png", &[0]);
+        assert!(load(root.path()).is_ok());
+        write(root.path(), "theme-assets/a/b/c/d/image.png", &[0]);
+        assert!(load(root.path()).is_err());
+        let root = tempfile::tempdir().unwrap();
+        for n in 0..MAX_FILES {
+            write(root.path(), &format!("theme-assets/{n}.png"), &[0]);
+        }
+        assert!(load(root.path()).is_ok());
+        write(root.path(), "theme-assets/extra.png", &[0]);
+        assert!(load(root.path()).is_err());
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir(root.path().join("theme-assets")).unwrap();
+        for n in 0..MAX_ENTRIES {
+            fs::create_dir(root.path().join(format!("theme-assets/dir{n}"))).unwrap();
+        }
+        assert!(load(root.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_roots_directories_and_files_are_rejected() {
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir().unwrap();
+        let linked = root.path().join("linked");
+        let real = root.path().join("real");
+        fs::create_dir(&real).unwrap();
+        symlink(&real, &linked).unwrap();
+        assert!(load(&linked).is_err());
+        symlink(&real, real.join("theme-assets")).unwrap();
+        assert!(load(&real).is_err());
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "theme-assets/real.png", &[0]);
+        symlink(
+            root.path().join("theme-assets/real.png"),
+            root.path().join("theme-assets/link.png"),
+        )
+        .unwrap();
+        assert!(load(root.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replaced_file_symlink_and_local_socket_refuse_before_content_read() {
+        use std::os::unix::{fs::symlink, net::UnixListener};
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("checked.svg");
+        fs::write(&path, b"<svg/>").unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::rename(&path, root.path().join("original.svg")).unwrap();
+        symlink(root.path().join("original.svg"), &path).unwrap();
+        assert!(open_regular(&path, &before).is_err());
+        let socket = root.path().join("theme-assets/s.svg");
+        fs::create_dir(socket.parent().unwrap()).unwrap();
+        let _listener = UnixListener::bind(&socket).unwrap();
+        let metadata = fs::symlink_metadata(&socket).unwrap();
+        assert!(!metadata.is_file());
+        assert!(open_regular(&socket, &before).is_err());
+        // Remove unrelated root files by using the theme-assets parent as a
+        // complete tree with one special file in its allowed child directory.
+        let theme_root = root.path().join("socket-theme");
+        fs::create_dir_all(theme_root.join("theme-assets")).unwrap();
+        fs::rename(&socket, theme_root.join("theme-assets/s.svg")).unwrap();
+        assert!(load(&theme_root).is_err());
+    }
+
+    #[test]
+    fn snapshot_survives_file_changes_and_requires_matching_handoff() {
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "pages/apps.html", b"first __BASE__");
+        write(root.path(), "theme-assets/logo.svg", b"<svg/>");
+        let theme = load(root.path()).unwrap();
+        write(root.path(), "pages/apps.html", b"second");
+        assert_eq!(theme.page("apps.html"), "first __BASE__");
+        assert!(
+            theme
+                .require_config(&Frontend {
+                    theme_dir: Some(root.path().into())
+                })
+                .is_ok()
+        );
+        assert!(theme.require_config(&Frontend::default()).is_err());
+        assert!(
+            Theme::default()
+                .require_config(&Frontend {
+                    theme_dir: Some(root.path().into())
+                })
+                .is_err()
+        );
+    }
+}
