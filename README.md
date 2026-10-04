@@ -6,7 +6,7 @@
 
 riAuth brings sign-in, single sign-on, application access, and identity administration into one self-hosted service. People get a familiar place to find their apps and sign in. Administrators get standards-based connections, clear access policies, and a way to preview desired-state changes before applying them.
 
-**v0.1.1 · [MIT licensed](LICENSE)**
+**v0.1.2 · [MIT licensed](LICENSE)**
 
 ## What you can do with riAuth
 
@@ -18,6 +18,8 @@ riAuth brings sign-in, single sign-on, application access, and identity administ
 | **Run it your way** | Start with one service and embedded storage, or use external database storage for multiple service processes. Health probes, metrics, native HTTPS, and encrypted backup and restore support day-to-day operations. |
 
 Explore the [documentation](docs/README.md) for configuration and protocol details.
+
+For container deployment, follow the [Docker guide](docs/docker.md) and its persistent, nonroot Compose example. Public image availability requires a completed maintainer publication and anonymous-pull verification.
 
 ## Try it locally
 

@@ -1,0 +1,63 @@
+# Run from a matching source checkout; see docs/docker.md for first initialization.
+name: riauth-docker
+services:
+  riauth:
+    image: ${RIAUTH_IMAGE:-ghcr.io/rhein-industries/riauth-essentials:0.1.2}
+    user: "10001:10001"
+    entrypoint: ["/usr/local/bin/riauth", "--config", "/config/riauth.toml"]
+    command: ["serve"]
+    # Config's loopback listen address enforces the local bind (HTTP issuer rule).
+    network_mode: host
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m
+    volumes:
+      - type: volume
+        source: riauth-data
+        target: /data
+      - type: bind
+        source: ../deployment-private/docker/config
+        target: /config
+        read_only: true
+        bind:
+          create_host_path: false
+      # An empty directory is fine. Only [frontend] in config enables the theme.
+      - type: bind
+        source: ../deployment-private/docker/theme
+        target: /theme
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/riauth", "--server", "http://127.0.0.1:${RIAUTH_PORT:-9000}", "--session-file", "/tmp/riauth-health-session", "--request-timeout", "5", "status"]
+      interval: 15s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  # Explicit tools only; no automatic initialization, password or secret in YAML.
+  init:
+    profiles: [tools]
+    image: ${RIAUTH_IMAGE:-ghcr.io/rhein-industries/riauth-essentials:0.1.2}
+    user: "10001:10001"
+    network_mode: none
+    entrypoint: ["/usr/local/bin/riauth", "--config", "/config/riauth.toml"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - type: volume
+        source: riauth-data
+        target: /data
+      - type: bind
+        source: ../deployment-private/docker/config
+        target: /config
+        bind:
+          create_host_path: false
+
+volumes:
+  riauth-data:

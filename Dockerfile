@@ -5,6 +5,9 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY src ./src
 COPY assets/riauth-mark.svg ./assets/riauth-mark.svg
 ARG RIAUTH_EDITION=essentials
+ARG CARGO_BUILD_JOBS=1
+ARG CARGO_INCREMENTAL=0
+ARG CARGO_PROFILE_RELEASE_DEBUG=0
 RUN case "$RIAUTH_EDITION" in essentials|platform) ;; *) exit 2;; esac \
     && cargo build --release --locked --no-default-features --features "$RIAUTH_EDITION" --bin riauth
 
