@@ -749,9 +749,10 @@ internal static class WinSecurity
         var descriptor = Descriptor(sddl);
         try
         {
+            var dacl = IntPtr.Zero;
             Require(GetSecurityDescriptorOwner(descriptor, out var owner, out _)
                 && owner != IntPtr.Zero
-                && GetSecurityDescriptorDacl(descriptor, out var present, out var dacl, out _)
+                && GetSecurityDescriptorDacl(descriptor, out var present, out dacl, out _)
                 && present);
             Native(GetSecurityDescriptorControl(descriptor, out var control, out _));
             var information = 5u | ((control & 0x1000) != 0 ? 0x80000000u : 0x20000000u);

@@ -11,5 +11,6 @@
   <ItemGroup>
     <Compile Include="../RiAuth.DeviceHost/WindowsStateStore.cs" Link="WindowsStateStore.cs" />
     <Compile Include="../RiAuth.DeviceHost/DeviceHost.cs" Link="DeviceHost.cs" />
+    <Compile Include="../RiAuth.DeviceHost/WindowsLocalAccount.cs" Link="WindowsLocalAccount.cs" />
   </ItemGroup>
 </Project>

@@ -102,7 +102,8 @@ class StateAdmissionOrder(unittest.TestCase):
         self.assertEqual(tree.findtext("PropertyGroup/DefineConstants"),
                          "$(DefineConstants);DEVICE_STATE_TESTS")
         self.assertEqual([node.attrib["Include"] for node in tree.findall("ItemGroup/Compile")],
-                         ["../RiAuth.DeviceHost/WindowsStateStore.cs", "../RiAuth.DeviceHost/DeviceHost.cs"])
+                         ["../RiAuth.DeviceHost/WindowsStateStore.cs", "../RiAuth.DeviceHost/DeviceHost.cs",
+                          "../RiAuth.DeviceHost/WindowsLocalAccount.cs"])
         self.assertEqual(tree.findall(".//PackageReference"), [])
         production_project = (WINDOWS / "RiAuth.DeviceHost" / "RiAuth.DeviceHost.csproj").read_text()
         self.assertNotIn("DEVICE_STATE_TESTS", production_project)
