@@ -172,8 +172,9 @@ internal static class Program
                 $"O:BAG:BAD:P(A;{flags};FA;;;SY)(A;{flags};FA;;;BA)(A;;FW;;;BU)"));
             Case("unprotected_" + place, () => Refusal(place,
                 $"O:BAG:BAD:(A;{flags};FA;;;SY)(A;{flags};FA;;;BA)"));
+            // Duplicate the elevated fixture actor so observation and cleanup stay authorized.
             Case("duplicate_trustee_" + place, () => Refusal(place,
-                $"O:BAG:BAD:P(A;{flags};FA;;;SY)(A;{flags};FA;;;SY)"));
+                $"O:BAG:BAD:P(A;{flags};FA;;;BA)(A;{flags};FA;;;BA)"));
             Case("null_dacl_" + place, () => Refusal(place, "O:BAG:BAD:NO_ACCESS_CONTROL"));
         }
         // Assigning SY ownership requires the native test actor's owner-assignment
