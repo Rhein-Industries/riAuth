@@ -14,6 +14,7 @@ namespace RiAuth.DeviceHost.StateTests;
 internal static class Program
 {
     private static string currentCase = "preflight";
+    private static string? lifecycleSaveOperation;
     private static readonly List<string> passed = [];
     private static bool cleanupFailed;
     private static readonly Stopwatch clock = Stopwatch.StartNew();
@@ -144,6 +145,8 @@ internal static class Program
                 status = "failed", case_name = currentCase, passed,
                 native_code = error is Win32Exception native ? (int?)native.NativeErrorCode : null,
                 native_stage = FirstLifecycleNativeStage(error),
+                lifecycle_save = currentCase == "create_load_save_purge"
+                    ? lifecycleSaveOperation : null,
                 elapsed_ms = clock.ElapsedMilliseconds, cleanup_failed = cleanupFailed
             }));
             return 1;
@@ -311,16 +314,16 @@ internal static class Program
         using var fixture = new Fixture(seed: false);
         fixture.Store.Prepare();
         Require(fixture.Store.Load() is null, "fresh empty");
-        fixture.Store.Save(fixture.State);
+        LifecycleSave(fixture.Store, fixture.State, "initial");
         var before = fixture.Snapshot();
         Require(fixture.Store.Load() == fixture.State, "complete loaded state");
         fixture.Store.Prepare();
         Require(before.Same(fixture.Snapshot()), "read preparation noninterference");
         var legacy = fixture.State with { LocalSid = null };
-        fixture.Store.Save(legacy);
+        LifecycleSave(fixture.Store, legacy, "legacy_replacement");
         Require(fixture.Store.Load() == legacy, "schema one retained");
         var updated = fixture.State with { LastEpoch = 7 };
-        fixture.Store.Save(updated);
+        LifecycleSave(fixture.Store, updated, "updated_replacement");
         Require(fixture.Store.Load() == updated, "replacement full result");
         Require(Directory.GetFiles(fixture.DeviceHost).Select(Path.GetFileName)
             .SequenceEqual(new[] { "device.json" }), "no temporary residue");
@@ -328,6 +331,13 @@ internal static class Program
         Require(fixture.Store.Load() is null, "purged");
         fixture.Store.Purge();
         Require(fixture.Store.Load() is null, "missing idempotent");
+    }
+
+    private static void LifecycleSave(WindowsStateStore store, DeviceState state, string operation)
+    {
+        lifecycleSaveOperation = operation;
+        store.Save(state);
+        lifecycleSaveOperation = null;
     }
 
     private static void Refusal(string place, string sddl)
