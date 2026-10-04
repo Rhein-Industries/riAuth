@@ -118,9 +118,8 @@ then start with the same volume and config. Review [operations](operations.md),
 [migration](migration.md) and the compatibility rules in [operations](operations.md) before
 changing version, edition, backend or issuer. Existing old-format shared policy
 requires the explicit stopped-node agreement procedure with both confirmations;
-there is no automatic adoption or policy overwrite in this deployment. Older
-binaries refuse the current format; selecting an older image is not a database
-rollback. Use a separately verified backup/restore path with compatible inputs.
+there is no automatic adoption or policy overwrite in this deployment. Binaries supporting only agreement formats 1 or 2 refuse the current format;
+selecting an older image is not a database rollback. Use a separately verified backup/restore path with compatible inputs.
 
 ## Maintainer publication procedure
 
