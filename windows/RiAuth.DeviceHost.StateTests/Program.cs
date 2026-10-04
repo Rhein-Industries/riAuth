@@ -143,6 +143,7 @@ internal static class Program
             {
                 status = "failed", case_name = currentCase, passed,
                 native_code = error is Win32Exception native ? (int?)native.NativeErrorCode : null,
+                native_stage = FirstLifecycleNativeStage(error),
                 elapsed_ms = clock.ElapsedMilliseconds, cleanup_failed = cleanupFailed
             }));
             return 1;
@@ -232,6 +233,64 @@ internal static class Program
         });
         Case("held_parent_namespace", ParentSharing);
         Case("held_file_read_and_delete_sharing", FileSharing);
+    }
+
+    private static string? FirstLifecycleNativeStage(Exception error)
+    {
+        if (currentCase != "create_load_save_purge" || error is not Win32Exception)
+            return null;
+        try
+        {
+            // This exact line table requires the independently pinned Debug StateStore source/PDB.
+            // No file name, raw stack, private value, or runtime argument is emitted.
+            var trace = new StackTrace(error, true);
+            if (trace.FrameCount is < 1 or > 32) return null;
+            for (var index = 0; index < trace.FrameCount; index++)
+            {
+                var frame = trace.GetFrame(index);
+                var method = frame?.GetMethod();
+                if (frame is null || method is null) return null;
+                var line = frame.GetFileLineNumber();
+                if (method.DeclaringType == typeof(WinSecurity))
+                {
+                    if (method.Name == "Native") continue;
+                    return (method.Name, line) switch
+                    {
+                        ("OpenFile", 348) => "create_file_open",
+                        ("FinalPath", 355) => "get_final_path",
+                        ("CheckObject", 363) => "get_file_information",
+                        ("CheckObject", 364) => "get_file_standard",
+                        ("CheckObject", 365) => "get_file_attribute_tag",
+                        ("CheckVolume", 383) => "get_volume_information",
+                        ("FixedSid", 409) => "convert_sid",
+                        ("Admit", 427) => "get_security_info",
+                        ("Admit", 430) => "get_security_control",
+                        ("Admit", 450) => "get_acl_information",
+                        ("Admit", 457) => "get_ace",
+                        ("Descriptor", 493) => "convert_sddl",
+                        ("CreateDirectoryAtBirth", 509) => "create_directory",
+                        ("CreateTemporary", 531) => "create_file_temporary",
+                        ("MarkDeleted", 560) => "delete_file",
+                        ("Rename", 580) => "rename_file",
+                        ("TestCreateAnchor", 742) => "create_fixture_anchor",
+                        ("TestSetMetadata", 757) => "get_security_control",
+                        ("TestSetMetadata", 761) => "set_fixture_security_info",
+                        ("TestSecurityBytes", 775) => "get_security_info",
+                        ("TestSecurityBytes", 777) => "get_security_control",
+                        ("TestSameIdentity", 819 or 820) => "get_file_information",
+                        _ => null
+                    };
+                }
+                if (method.DeclaringType == typeof(WinSecurity.StateDirectory))
+                    return (method.Name, line) switch
+                    {
+                        ("Save", 693) => "flush_file_buffers",
+                        _ => null
+                    };
+            }
+            return null;
+        }
+        catch { return null; } // Projection failure must never replace the actual failed outcome.
     }
 
     private static void Case(string name, Action body)
