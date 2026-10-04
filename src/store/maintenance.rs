@@ -604,7 +604,9 @@ impl Tx<'_> {
     /// jobs. Freeze the due cutoff until wraparound; new retries/appends cannot
     /// keep the cursor chasing the tail forever. A stored cursor whose forward
     /// pass inspects no due row wraps once from the index start under that same
-    /// cutoff. A pass that already inspected a due row does not wrap. Only
+    /// cutoff. A wrapped page ends that frozen sweep even when full; the next
+    /// call starts a fresh cutoff. A pass that already inspected a due row does
+    /// not wrap. Only
     /// cursor metadata changes on a refused claim, never a job's retry time,
     /// lease or attempt count.
     pub(crate) fn connector_due<T: DeserializeOwned, R>(
@@ -625,6 +627,7 @@ impl Tx<'_> {
         // pass may restart once.
         let mut after = stored.map(|(key, _)| key);
         let mut wrap = after.is_some();
+        let mut wrapped = false;
         let mut selected = None;
         let mut exhausted;
         let mut last;
@@ -658,12 +661,13 @@ impl Tx<'_> {
             // due row, and do not restart a second time in this call.
             if wrap && last.is_none() && selected.is_none() {
                 wrap = false;
+                wrapped = true;
                 after = None;
                 continue;
             }
             break;
         }
-        if let Some(last) = last.filter(|_| !exhausted) {
+        if let Some(last) = last.filter(|_| !exhausted && !wrapped) {
             self.put(CURSORS, bucket, &(last, cutoff))?;
         } else {
             self.delete(CURSORS, bucket)?;
@@ -791,5 +795,279 @@ impl Tx<'_> {
             }
             after = Some(last);
         }
+    }
+}
+
+#[cfg(all(test, feature = "test-support", feature = "platform"))]
+mod connector_due_tests {
+    use super::*;
+    use crate::{
+        background::{Background, Job},
+        crypto::with_test_time,
+    };
+    use serde_json::json;
+
+    const AT: u64 = 1_700_000_100;
+    const CURSORS: &str = "connector_due_cursors";
+    const QUEUES: [(&str, Job); 2] = [
+        ("provisioning_jobs", Job::Provisioning),
+        ("provisioning_deactivations", Job::Deactivation),
+    ];
+
+    // These generic queue records test selection and actual target admission,
+    // not Job/Deactivation authority validation or any remote delivery.
+    fn pending(id: &str, target: &str, due: u64) -> Value {
+        json!({
+            "id": id,
+            "target": target,
+            "status": "pending",
+            "attempts": 0,
+            "next_attempt": due,
+            "created_at": AT,
+            "delivered_at": null,
+            "completed": false,
+            "stale": false,
+            "stopped": false,
+            "last_failed": false,
+            "error": null,
+            "last_error": null,
+            "lease": null,
+            "lease_owner": null,
+            "lease_until": 0,
+            "dispatch_started": null
+        })
+    }
+
+    fn cursor(store: &Store, bucket: &str) -> Option<(String, u64)> {
+        store.get(CURSORS, bucket).unwrap()
+    }
+
+    fn queue_state_snapshot(store: &Store, bucket: &str) -> Value {
+        store
+            .read(|tx| {
+                Ok(json!({
+                    "rows": tx.list::<Value>(bucket)?,
+                    "due": tx.list::<String>(&format!("index_due_{bucket}"))?,
+                    "age": tx.list::<u64>(&format!("index_age_{bucket}"))?,
+                    "counts": tx.get::<Value>("index_queues", bucket)?
+                }))
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn wrapped_full_refused_page_refreshes_cutoff_for_both_connector_queues() {
+        with_test_time(AT, || {
+            for (bucket, job) in QUEUES {
+                let dir = tempfile::tempdir().unwrap();
+                let path = dir.path().join("cursor.redb");
+                let store = Store::open(&path).unwrap();
+                let cutoff = AT - 1;
+                store
+                    .write(|tx| {
+                        for index in 0..16 {
+                            let id = format!("busy-{index}");
+                            tx.put(bucket, &id, &pending(&id, "busy", cutoff))?;
+                        }
+                        tx.put(bucket, "unrelated", &pending("unrelated", "unrelated", AT))?;
+                        let mut leased = pending("leased", "unrelated", AT + 60);
+                        leased["status"] = json!("running");
+                        leased["attempts"] = json!(1);
+                        leased["lease"] = json!("retained-owner");
+                        leased["lease_owner"] = json!("retained-owner");
+                        leased["lease_until"] = json!(AT + 60);
+                        leased["dispatch_started"] = json!(false);
+                        tx.put(bucket, "leased", &leased)?;
+                        let mut terminal = pending("terminal", "unrelated", cutoff);
+                        terminal["status"] = json!("delivered");
+                        terminal["completed"] = json!(true);
+                        terminal["delivered_at"] = json!(AT - 2);
+                        tx.put(bucket, "terminal", &terminal)?;
+                        let head = tx.scan::<String>(&format!("index_due_{bucket}"), None, 16)?;
+                        tx.put(CURSORS, bucket, &(head[15].0.clone(), cutoff))
+                    })
+                    .unwrap();
+                let retained = cursor(&store, bucket).unwrap();
+                let before = queue_state_snapshot(&store, bucket);
+                drop(store);
+                let store = Store::open(&path).unwrap();
+                assert_eq!(cursor(&store, bucket), Some(retained.clone()));
+                assert!(queue_state_snapshot(&store, bucket) == before);
+                let background = Background::shared(&store);
+                let busy = background
+                    .try_target(Job::ManualConnector, "scim/busy")
+                    .unwrap()
+                    .unwrap();
+
+                for pass in 0..3 {
+                    let mut inspected = Vec::new();
+                    let selected = store
+                        .write(|tx| {
+                            tx.connector_due::<Value, _>(bucket, AT, |id, row| {
+                                inspected.push(id.clone());
+                                let target = format!("scim/{}", row["target"].as_str().unwrap());
+                                Ok(background
+                                    .try_target_in(tx, job, &target)?
+                                    .map(|permit| (id, permit)))
+                            })
+                        })
+                        .unwrap();
+                    match pass {
+                        0 => {
+                            assert!(selected.is_none());
+                            assert!(cursor(&store, bucket).is_none());
+                        }
+                        1 => {
+                            assert!(selected.is_none());
+                            assert_eq!(cursor(&store, bucket), Some((retained.0.clone(), AT)));
+                        }
+                        2 => {
+                            let (id, permit) = selected.unwrap();
+                            assert_eq!(id, "unrelated");
+                            assert_eq!(inspected, vec!["unrelated"]);
+                            permit.release().unwrap();
+                        }
+                        _ => unreachable!(),
+                    }
+                    if pass < 2 {
+                        assert_eq!(inspected.len(), 16);
+                        assert_eq!(
+                            inspected
+                                .iter()
+                                .collect::<std::collections::BTreeSet<_>>()
+                                .len(),
+                            16
+                        );
+                        assert!(inspected.iter().all(|id| id.starts_with("busy-")));
+                    }
+                    // Only cursor/admission metadata may change. Even the
+                    // selected test callback does not rewrite a queue record.
+                    assert!(queue_state_snapshot(&store, bucket) == before);
+                }
+                assert!(background.try_target(job, "scim/busy").unwrap().is_none());
+                busy.release().unwrap();
+            }
+        });
+    }
+
+    #[test]
+    fn redue_wrap_preserves_frozen_cutoff_and_single_callback_per_row() {
+        with_test_time(AT, || {
+            for (bucket, _job) in QUEUES {
+                let dir = tempfile::tempdir().unwrap();
+                let store = Store::open(&dir.path().join("redue.redb")).unwrap();
+                let cutoff = AT - 2;
+                let parked = format!("{:020}/~", AT - 1);
+                store
+                    .write(|tx| {
+                        tx.put(bucket, "early", &pending("early", "busy", AT + 30))?;
+                        tx.put(bucket, "later", &pending("later", "unrelated", AT))?;
+                        let mut leased = pending("leased", "unrelated", AT + 60);
+                        leased["status"] = json!("running");
+                        leased["attempts"] = json!(1);
+                        leased["lease_owner"] = json!("retained-owner");
+                        leased["lease_until"] = json!(AT + 60);
+                        leased["dispatch_started"] = json!(false);
+                        tx.put(bucket, "leased", &leased)?;
+                        tx.put(CURSORS, bucket, &(parked.clone(), cutoff))?;
+                        let mut early: Value = tx.get(bucket, "early")?.unwrap();
+                        early["next_attempt"] = json!(cutoff);
+                        tx.put(bucket, "early", &early)
+                    })
+                    .unwrap();
+                let before = queue_state_snapshot(&store, bucket);
+                let mut inspected = Vec::new();
+                let selected = store
+                    .write(|tx| {
+                        tx.connector_due::<Value, _>(bucket, AT, |id, _row| {
+                            inspected.push(id);
+                            Ok(None::<String>)
+                        })
+                    })
+                    .unwrap();
+                assert!(selected.is_none());
+                assert_eq!(inspected, vec!["early"]);
+                assert!(cursor(&store, bucket).is_none());
+                assert!(queue_state_snapshot(&store, bucket) == before);
+
+                // Inspecting any due row on the forward pass must not wrap
+                // and call that row twice, even when no selection succeeds.
+                store
+                    .write(|tx| tx.put(CURSORS, bucket, &(format!("{:020}/~", AT - 3), cutoff)))
+                    .unwrap();
+                inspected.clear();
+                let selected = store
+                    .write(|tx| {
+                        tx.connector_due::<Value, _>(bucket, AT, |id, _row| {
+                            inspected.push(id);
+                            Ok(None::<String>)
+                        })
+                    })
+                    .unwrap();
+                assert!(selected.is_none());
+                assert_eq!(inspected, vec!["early"]);
+                assert!(cursor(&store, bucket).is_none());
+                assert!(queue_state_snapshot(&store, bucket) == before);
+
+                inspected.clear();
+                let selected = store
+                    .write(|tx| {
+                        tx.connector_due::<Value, _>(bucket, AT, |id, _row| {
+                            inspected.push(id);
+                            Ok(None::<String>)
+                        })
+                    })
+                    .unwrap();
+                assert!(selected.is_none());
+                assert_eq!(inspected, vec!["early", "later"]);
+                assert!(queue_state_snapshot(&store, bucket) == before);
+            }
+        });
+    }
+
+    #[test]
+    fn wrapped_success_returns_one_selection_and_retires_cursor() {
+        with_test_time(AT, || {
+            for (bucket, _job) in QUEUES {
+                let dir = tempfile::tempdir().unwrap();
+                let store = Store::open(&dir.path().join("success.redb")).unwrap();
+                let cutoff = AT - 1;
+                store
+                    .write(|tx| {
+                        for index in 0..16 {
+                            let id = format!("ready-{index}");
+                            tx.put(bucket, &id, &pending(&id, "unrelated", cutoff))?;
+                        }
+                        tx.put(CURSORS, bucket, &(format!("{cutoff:020}/~"), cutoff))
+                    })
+                    .unwrap();
+                let before = queue_state_snapshot(&store, bucket);
+                let first = store
+                    .list::<String>(&format!("index_due_{bucket}"))
+                    .unwrap()[0]
+                    .1
+                    .clone();
+                let mut inspected = Vec::new();
+                let selected = store
+                    .write(|tx| {
+                        tx.connector_due::<Value, _>(bucket, AT, |id, _row| {
+                            inspected.push(id.clone());
+                            Ok(Some(id))
+                        })
+                    })
+                    .unwrap();
+                assert_eq!(selected, Some(first.clone()));
+                assert_eq!(inspected, vec![first]);
+                assert!(cursor(&store, bucket).is_none());
+                assert!(queue_state_snapshot(&store, bucket) == before);
+                // The external SCIM fixture helper's cursor-deletion check
+                // cannot distinguish this successful wrap from exhaustion.
+                // Preserve that helper; selection is an independent oracle.
+                assert!(
+                    selected.is_some(),
+                    "cursor deletion alone does not prove exhaustion"
+                );
+            }
+        });
     }
 }
