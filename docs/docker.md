@@ -123,13 +123,15 @@ selecting an older image is not a database rollback. Use a separately verified b
 
 ## Maintainer publication procedure
 
-After pushing the reviewed `0.1.2` source, wait for **Public CI** to complete
-successfully for that exact full commit on a push or manual CI run. A PR run is
-refused because its checkout may test a synthetic merge. Manually run **Publish checked Docker
-images** with `source_sha` set to that 40-character commit and
-`checked_ci_run_id` set to the successful run ID. The workflow validates the
-run through GitHub API before building; the workflow revision and product
-revision are recorded separately. Both manifests and all three applicable
+After pushing the reviewed `0.1.2` source, identify **Public CI** for that exact
+full commit on a push or manual CI run. A PR run is refused because its checkout
+may test a synthetic merge. Manually run **Publish checked Docker images** with
+`source_sha` set to that 40-character commit and `checked_ci_run_id` set to that
+run ID. Native builds may run while CI is queued or active. A completed failed
+CI run is refused. The publisher waits within its existing finite budget for
+that exact run to finish successfully, revalidating its source and workflow
+identity before any image load, registry login or write. The workflow revision
+and product revision are recorded separately. Both manifests and all three applicable
 lockfile package entries must match `0.1.2`.
 
 Each native hosted job builds both editions from the pinned Dockerfile, with
