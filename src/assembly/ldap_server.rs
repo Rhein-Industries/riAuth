@@ -1081,19 +1081,15 @@ mod tests {
         root.scope = LdapSearchScope::Base;
         root.filter = LdapFilter::Present("objectClass".into());
         assert_eq!(
-            core.ldap_search_entries_with_limits(
-                "ldap", None, &root, false, MAX_RESULT_BYTES, 5
-            )
-            .unwrap()
-            .0
-            .len(),
+            core.ldap_search_entries_with_limits("ldap", None, &root, false, MAX_RESULT_BYTES, 5)
+                .unwrap()
+                .0
+                .len(),
             1
         );
         assert!(
-            core.ldap_search_entries_with_limits(
-                "ldap", None, &root, false, MAX_RESULT_BYTES, 4
-            )
-            .is_err()
+            core.ldap_search_entries_with_limits("ldap", None, &root, false, MAX_RESULT_BYTES, 4)
+                .is_err()
         );
 
         let user = Auth::User(zeroize::Zeroizing::new(admin.clone()));
@@ -1169,13 +1165,25 @@ mod tests {
                 ]);
                 let shared = SearchWork::new(1 + 2 * (1 + 128 + 1));
                 assert!(matches_user_filter(
-                    tx, &settings, &admin_id, &filter, &expected[0], true, &shared
+                    tx,
+                    &settings,
+                    &admin_id,
+                    &filter,
+                    &expected[0],
+                    true,
+                    &shared
                 )?);
                 assert_eq!(shared.0.get(), 0);
                 let count = scans.scans(ReadContext::Read, true).count();
                 assert!(
                     matches_user_filter(
-                        tx, &settings, "other-user", &filter, &expected[1], true, &shared
+                        tx,
+                        &settings,
+                        "other-user",
+                        &filter,
+                        &expected[1],
+                        true,
+                        &shared
                     )
                     .is_err()
                 );
@@ -1199,7 +1207,10 @@ mod tests {
                 .status,
             axum::http::StatusCode::CONFLICT
         );
-        assert_eq!(core.store.read(|tx| tx.snapshot()).unwrap(), before_collision);
+        assert_eq!(
+            core.store.read(|tx| tx.snapshot()).unwrap(),
+            before_collision
+        );
 
         core.store
             .write(|tx| {
@@ -1217,7 +1228,10 @@ mod tests {
                 .status,
             axum::http::StatusCode::INTERNAL_SERVER_ERROR
         );
-        assert_eq!(core.store.read(|tx| tx.snapshot()).unwrap(), before_corruption);
+        assert_eq!(
+            core.store.read(|tx| tx.snapshot()).unwrap(),
+            before_corruption
+        );
     }
 
     #[test]
