@@ -9,6 +9,51 @@ use std::{
 };
 use url::Url;
 
+/// Native admission retained only in this process; no serialized or caller-set form.
+#[derive(Clone)]
+pub(crate) struct ExtensionAdmission {
+    documents: std::sync::Arc<BTreeMap<String, String>>,
+}
+
+impl std::fmt::Debug for ExtensionAdmission {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ExtensionAdmission { .. }")
+    }
+}
+
+impl ExtensionAdmission {
+    fn bounded(documents: &BTreeMap<String, String>) -> bool {
+        if documents.len() > 16 {
+            return false;
+        }
+        let mut total = 0usize;
+        for (key, document) in documents {
+            if key.is_empty()
+                || key.len() > 64
+                || document.is_empty()
+                || document.len() > crate::workflow::extension_gate::MAX_MANIFEST_BYTES
+            {
+                return false;
+            }
+            let Some(next) = total
+                .checked_add(key.len())
+                .and_then(|bytes| bytes.checked_add(document.len()))
+            else {
+                return false;
+            };
+            if next > 16 * (64 + crate::workflow::extension_gate::MAX_MANIFEST_BYTES) {
+                return false;
+            }
+            total = next;
+        }
+        true
+    }
+
+    pub(crate) fn matches(&self, documents: &BTreeMap<String, String>) -> bool {
+        Self::bounded(documents) && self.documents.as_ref() == documents
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -547,6 +592,27 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<()> {
+        self.validate_with_extension_admission().map(|_| ())
+    }
+
+    pub(crate) fn validate_with_extension_admission(&self) -> Result<ExtensionAdmission> {
+        self.validate_extension_mode(None)
+    }
+
+    pub(crate) fn validate_reusing_extension_admission(
+        &self,
+        admission: &ExtensionAdmission,
+    ) -> Result<()> {
+        self.validate_extension_mode(Some(admission)).map(|_| ())
+    }
+
+    fn validate_extension_mode(
+        &self,
+        retained: Option<&ExtensionAdmission>,
+    ) -> Result<ExtensionAdmission> {
+        if retained.is_some_and(|admission| !admission.matches(&self.workflow_extensions)) {
+            bail!("Workflow extension configuration requires fresh startup validation");
+        }
         crate::edition::validate_config(self)?;
         crate::capability::validate_config(self)?;
         let ldap = listener_ids(&self.ldap_listeners);
@@ -651,11 +717,26 @@ impl Config {
         if self.workflow_extensions.len() > 16 {
             bail!("Configure at most 16 workflow extensions");
         }
-        let extensions =
-            crate::workflow::extension_gate::stage_registration(&self.workflow_extensions)
-                .map_err(|denial| {
-                    anyhow::anyhow!("Workflow extension was rejected ({})", denial.as_str())
-                })?;
+        let extensions = match retained {
+            None => crate::workflow::extension_gate::stage_registration(&self.workflow_extensions),
+            Some(_) => {
+                #[cfg(feature = "platform")]
+                {
+                    crate::workflow::extension_gate::stage_binding(&self.workflow_extensions)
+                }
+                #[cfg(not(feature = "platform"))]
+                {
+                    if self.workflow_extensions.is_empty() {
+                        Ok(BTreeMap::new())
+                    } else {
+                        Err(crate::workflow::extension_gate::Denial::ExternalRuntimeRequired)
+                    }
+                }
+            }
+        }
+        .map_err(|denial| {
+            anyhow::anyhow!("Workflow extension was rejected ({})", denial.as_str())
+        })?;
         for (name, configured) in &self.workflows {
             let id = crate::workflow::Id::new(name.clone())
                 .map_err(|_| anyhow::anyhow!("Invalid workflow configuration key"))?;
@@ -814,7 +895,15 @@ impl Config {
         if self.password_history > 24 {
             bail!("password_history must be from 0 through 24");
         }
-        Ok(())
+        if let Some(admission) = retained {
+            return Ok(admission.clone());
+        }
+        if !ExtensionAdmission::bounded(&self.workflow_extensions) {
+            bail!("Workflow extension configuration exceeds admission proof bounds");
+        }
+        Ok(ExtensionAdmission {
+            documents: std::sync::Arc::new(self.workflow_extensions.clone()),
+        })
     }
     pub fn load(path: &Path) -> Result<Self> {
         Self::load_with_validation(path, true)

@@ -366,7 +366,7 @@ pub fn runtime_linked() -> bool {
 }
 
 /// Check every configured manifest, including Wasmi validation on Platform.
-/// The map key is the stage id. Configuration and capability use this path.
+/// The map key is the stage id. Initial configuration uses this native admission path.
 pub(crate) fn stage_registration(
     documents: &BTreeMap<String, String>,
 ) -> Result<BTreeMap<Id, Checked>, Denial> {
@@ -1047,6 +1047,17 @@ fn resolve_guest_program() -> Result<std::path::PathBuf, Denial> {
         return Err(Denial::Failed);
     }
     Ok(guest_program(&current).to_path_buf())
+}
+
+/// Metadata eligibility for configured reporting, not current native readiness.
+#[cfg(feature = "platform")]
+pub(crate) fn configured_runtime_available() -> bool {
+    if !RUNTIME_LINKED || !cfg!(target_os = "macos") {
+        return false;
+    }
+    resolve_guest_program()
+        .and_then(|program| isolation::configured_available(&program))
+        .is_ok()
 }
 
 #[cfg(all(feature = "platform", test))]

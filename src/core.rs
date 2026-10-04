@@ -112,25 +112,32 @@ impl Core {
 
 impl Core {
     pub fn initialize(config: Config, input: NewUser) -> Result<Self> {
-        config.validate().map_err(Error::internal)?;
+        let admission = config
+            .validate_with_extension_admission()
+            .map_err(Error::internal)?;
+        let runtime = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
+            admission,
+        ));
         crate::config::private_dir(&config.data_dir).map_err(Error::internal)?;
         let store = Store::from_config(&config)?;
-        Self::initialize_store(config, store, input, |_| Ok(()))
+        Self::initialize_store(config, store, runtime, input, |_| Ok(()))
     }
 
     /// All first-administrator paths use the same transaction and credential policy.
     pub(crate) fn initialize_store(
         config: Config,
         store: Store,
+        runtime: Arc<crate::capability::RuntimeStatus>,
         input: NewUser,
         ownership: impl FnOnce(&Tx<'_>) -> Result<()>,
     ) -> Result<Self> {
+        runtime.require_extension_admission(&config.workflow_extensions)?;
         if store.get::<u32>("meta", "schema")?.is_some() {
             return Err(Error::conflict("Instance already initialized"));
         }
         let mut user = make_user(input)?;
         user.admin = true;
-        Self::initialize_with_administrator(config, store, |tx| {
+        Self::initialize_with_administrator(config, store, runtime, |tx| {
             ownership(tx)?;
             Ok(user)
         })
@@ -141,8 +148,10 @@ impl Core {
     pub(crate) fn initialize_with_administrator(
         config: Config,
         store: Store,
+        runtime: Arc<crate::capability::RuntimeStatus>,
         administrator: impl FnOnce(&Tx<'_>) -> Result<User>,
     ) -> Result<Self> {
+        runtime.require_extension_admission(&config.workflow_extensions)?;
         if store.get::<u32>("meta", "schema")?.is_some() {
             return Err(Error::conflict("Instance already initialized"));
         }
@@ -196,7 +205,7 @@ impl Core {
             config,
             store,
             dummy_hash: Arc::new(dummy),
-            runtime: Arc::default(),
+            runtime,
             connectors: Arc::default(),
             #[cfg(feature = "platform")]
             verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
@@ -205,15 +214,33 @@ impl Core {
         })
     }
     pub fn open(config: Config) -> Result<Self> {
-        config.validate().map_err(Error::internal)?;
+        let admission = config
+            .validate_with_extension_admission()
+            .map_err(Error::internal)?;
+        let runtime = Arc::new(crate::capability::RuntimeStatus::from_extension_admission(
+            admission,
+        ));
+        Self::open_admitted(config, runtime)
+    }
+
+    pub(crate) fn open_admitted(
+        config: Config,
+        runtime: Arc<crate::capability::RuntimeStatus>,
+    ) -> Result<Self> {
+        runtime.require_extension_admission(&config.workflow_extensions)?;
         if config.postgres.is_none() && !config.data_dir.join("riauth.redb").is_file() {
             return Err(Error::missing("Database missing; run riauth init"));
         }
         let store = Store::from_config(&config)?;
-        Self::open_store(config, store)
+        Self::open_store(config, store, runtime)
     }
 
-    pub(crate) fn open_store(config: Config, store: Store) -> Result<Self> {
+    pub(crate) fn open_store(
+        config: Config,
+        store: Store,
+        runtime: Arc<crate::capability::RuntimeStatus>,
+    ) -> Result<Self> {
+        let admission = runtime.require_extension_admission(&config.workflow_extensions)?;
         if store.get::<String>("meta", "issuer")?.as_deref() != Some(&config.issuer) {
             return Err(Error::bad(
                 "Configured issuer does not match the initialized instance",
@@ -224,7 +251,8 @@ impl Core {
         crate::edition::validate_store(&store)?;
         // Stored connector definitions join this process's configuration here,
         // read-only, before the agreement check and before any worker starts.
-        let (config, connectors) = crate::connector_definitions::merge(config, &store)?;
+        let (config, connectors) = crate::connector_definitions::merge(config, &store, admission)?;
+        runtime.require_extension_admission(&config.workflow_extensions)?;
         // Compare the complete agreement before any startup write. Old or missing
         // rows require explicit offline recording, never automatic adoption.
         crate::node_security::enforce(&config, &store)?;
@@ -241,7 +269,7 @@ impl Core {
             config,
             store,
             dummy_hash: Arc::new(dummy),
-            runtime: Arc::default(),
+            runtime,
             connectors: Arc::new(connectors),
             #[cfg(feature = "platform")]
             verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),

@@ -1121,6 +1121,15 @@ isolation backend is macOS-only. Other hosts refuse manifest validation and
 execution with `external_runtime_required`; linking Wasmi alone does not make
 an extension usable.
 
+Configured reporting also requires the exact full extension-document map admitted
+by successful startup configuration validation in this process. Reporting performs
+pure manifest binding and current workflow coverage checks, then checks supported
+host and guest/backend executable metadata; it launches no admission helper. Missing
+or changed admission reports not configured and requires fresh startup validation.
+`runtime_ready` remains `null`: configuration admission and executable metadata do
+not attest current native readiness or peer health. Execution still validates the
+guest afresh inside its isolated deadline; a later native failure refuses the step.
+
 [`workflow::extension::Host`](../src/workflow/extension.rs) is a held in-process
 contract for a native registrant. It is not an isolation boundary and it is not
 on the configured path. Registration names the stage, the

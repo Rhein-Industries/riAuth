@@ -28,12 +28,40 @@ type ListenerStates<T> = Mutex<BTreeMap<String, Vec<(T, Weak<AtomicBool>)>>>;
 /// retain a server after its owner or worker stops.
 #[derive(Default)]
 pub(crate) struct RuntimeStatus {
+    extension_admission: Option<crate::config::ExtensionAdmission>,
     #[cfg(feature = "platform")]
     ldap: ListenerStates<crate::ldap_server::Listener>,
     #[cfg(feature = "platform")]
     radius: ListenerStates<crate::radius::Listener>,
     #[cfg(feature = "platform")]
     proxy: ListenerStates<crate::proxy_server::Listener>,
+}
+
+impl RuntimeStatus {
+    pub(crate) fn from_extension_admission(admission: crate::config::ExtensionAdmission) -> Self {
+        Self {
+            extension_admission: Some(admission),
+            ..Self::default()
+        }
+    }
+
+    fn matching_extension_admission(
+        &self,
+        documents: &BTreeMap<String, String>,
+    ) -> Option<&crate::config::ExtensionAdmission> {
+        self.extension_admission
+            .as_ref()
+            .filter(|admission| admission.matches(documents))
+    }
+
+    pub(crate) fn require_extension_admission(
+        &self,
+        documents: &BTreeMap<String, String>,
+    ) -> Result<&crate::config::ExtensionAdmission> {
+        self.matching_extension_admission(documents).ok_or_else(|| {
+            Error::bad("Workflow extension configuration requires fresh startup validation")
+        })
+    }
 }
 
 #[cfg(feature = "platform")]
@@ -678,17 +706,24 @@ impl Facts {
 
 /// Platform reports this capability when one active workflow is the supported
 /// extension-then-password graph and an admitted manifest covers its stage.
-/// Essentials stays false. The predicate only reads configuration.
-fn controlled_extensions_configured(config: &Config) -> bool {
+/// Essentials stays false. Reporting requires retained native admission and
+/// reads current configuration and executable/backend metadata without launching a guest.
+fn controlled_extensions_configured(config: &Config, runtime: Option<&RuntimeStatus>) -> bool {
     #[cfg(not(feature = "platform"))]
     {
-        let _ = config;
+        let _ = (config, runtime);
         false
     }
     #[cfg(feature = "platform")]
     {
+        if runtime
+            .and_then(|runtime| runtime.matching_extension_admission(&config.workflow_extensions))
+            .is_none()
+        {
+            return false;
+        }
         let Ok(registered) =
-            crate::workflow::extension_gate::stage_registration(&config.workflow_extensions)
+            crate::workflow::extension_gate::stage_binding(&config.workflow_extensions)
         else {
             return false;
         };
@@ -710,11 +745,11 @@ fn controlled_extensions_configured(config: &Config) -> bool {
                 && registered.values().any(|guest| {
                     crate::workflow::extension_gate::covers(guest, checked.definition())
                 })
-        })
+        }) && crate::workflow::extension_gate::configured_runtime_available()
     }
 }
 
-fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
+fn configured(name: &str, config: &Config, facts: &Facts, runtime: Option<&RuntimeStatus>) -> bool {
     match name {
         "operations.postgresql" => config.postgres.is_some(),
         "operations.native_tls" => config.tls_cert_file.is_some() && config.tls_key_file.is_some(),
@@ -769,7 +804,7 @@ fn configured(name: &str, config: &Config, facts: &Facts) -> bool {
         // True only for one active validated extension-then-password workflow
         // whose admitted manifest covers that stage. The flag does not run the
         // guest or widen it: no imports, no network, fuel-only timeout.
-        "workflow.controlled_extensions" => controlled_extensions_configured(config),
+        "workflow.controlled_extensions" => controlled_extensions_configured(config, runtime),
         // Shared local protocols and Platform routes with no instance-wide
         // prerequisite can serve an authorized request immediately.
         _ => true,
@@ -859,7 +894,7 @@ pub fn runtime(core: &Core) -> Result<Value> {
     for &name in agent::FEATURES {
         let compiled = compiled(name);
         let enabled = core.config.capabilities.enabled(name);
-        let configured = configured(name, &core.config, &facts);
+        let configured = configured(name, &core.config, &facts, Some(core.runtime.as_ref()));
         let runtime_ready = runtime_ready(name, core, &facts);
         let available = compiled && enabled && configured && runtime_ready.unwrap_or(true);
         if available {
@@ -1477,7 +1512,7 @@ mod tests {
         ));
         assert!(compiled_for(CAPABILITY, crate::edition::Target::Platform));
         let config = Config::default();
-        assert!(!configured(CAPABILITY, &config, &Facts::default()));
+        assert!(!configured(CAPABILITY, &config, &Facts::default(), None));
         let mut disabled = config.clone();
         disabled.capabilities.disabled.insert(CAPABILITY.to_owned());
         let platform = validate_config_for(&disabled, crate::edition::Target::Platform)
@@ -1525,7 +1560,9 @@ mod tests {
 
         let validate_admission = |config: &Config| {
             if cfg!(target_os = "macos") {
-                config.validate().unwrap();
+                Some(RuntimeStatus::from_extension_admission(
+                    config.validate_with_extension_admission().unwrap(),
+                ))
             } else {
                 let error = config.validate().unwrap_err().to_string();
                 assert!(error.contains("external_runtime_required"), "{error}");
@@ -1533,6 +1570,7 @@ mod tests {
                     extension_gate::stage_registration(&config.workflow_extensions).unwrap_err(),
                     extension_gate::Denial::ExternalRuntimeRequired
                 );
+                None
             }
         };
 
@@ -1555,9 +1593,14 @@ mod tests {
         let manifest = &active.workflow_extensions["risk-check"];
         assert!(manifest.contains("\"permissions\":[\"read_profile\"]"));
         assert!(manifest.contains("\"network\":\"deny\""));
-        validate_admission(&active);
+        let active_runtime = validate_admission(&active);
         assert_eq!(
-            configured(CAPABILITY, &active, &Facts::default()),
+            configured(
+                CAPABILITY,
+                &active,
+                &Facts::default(),
+                active_runtime.as_ref()
+            ),
             cfg!(target_os = "macos")
         );
         // Request binding remains portable; it cannot advertise a native runtime.
@@ -1568,23 +1611,38 @@ mod tests {
         ));
 
         let inactive = supported_extension_config(false);
-        validate_admission(&inactive);
-        assert!(!configured(CAPABILITY, &inactive, &Facts::default()));
+        let inactive_runtime = validate_admission(&inactive);
+        assert!(!configured(
+            CAPABILITY,
+            &inactive,
+            &Facts::default(),
+            inactive_runtime.as_ref()
+        ));
 
         let mut manifest_only = Config::default();
         manifest_only.workflow_extensions.insert(
             "risk-check".into(),
             String::from_utf8(fixture::document(&fixture::allow(), |_| {})).unwrap(),
         );
-        validate_admission(&manifest_only);
-        assert!(!configured(CAPABILITY, &manifest_only, &Facts::default()));
+        let manifest_only_runtime = validate_admission(&manifest_only);
+        assert!(!configured(
+            CAPABILITY,
+            &manifest_only,
+            &Facts::default(),
+            manifest_only_runtime.as_ref()
+        ));
 
         let mut mismatched_key = active.clone();
         let stored = mismatched_key.workflows.remove("risk-route").unwrap();
         mismatched_key
             .workflows
             .insert("other-route".into(), stored);
-        assert!(!configured(CAPABILITY, &mismatched_key, &Facts::default()));
+        assert!(!configured(
+            CAPABILITY,
+            &mismatched_key,
+            &Facts::default(),
+            active_runtime.as_ref()
+        ));
 
         let mut rejected = active.clone();
         rejected.workflow_extensions.insert(
@@ -1594,7 +1652,12 @@ mod tests {
             }))
             .unwrap(),
         );
-        assert!(!configured(CAPABILITY, &rejected, &Facts::default()));
+        assert!(!configured(
+            CAPABILITY,
+            &rejected,
+            &Facts::default(),
+            active_runtime.as_ref()
+        ));
         assert_eq!(
             extension_gate::stage_binding(&rejected.workflow_extensions).unwrap_err(),
             extension_gate::Denial::Integrity
@@ -1608,7 +1671,12 @@ mod tests {
             }))
             .unwrap(),
         );
-        assert!(!configured(CAPABILITY, &uncovered, &Facts::default()));
+        assert!(!configured(
+            CAPABILITY,
+            &uncovered,
+            &Facts::default(),
+            active_runtime.as_ref()
+        ));
         let registered = extension_gate::stage_binding(&uncovered.workflow_extensions).unwrap();
         assert!(!extension_gate::covers(
             &registered[&crate::workflow::Id::new("risk-check").unwrap()],
@@ -1633,7 +1701,12 @@ mod tests {
                 &registered[&crate::workflow::Id::new("risk-check").unwrap()],
                 &uncovered.workflows["risk-route"].definition
             ));
-            assert!(!configured(CAPABILITY, &uncovered, &Facts::default()));
+            assert!(!configured(
+                CAPABILITY,
+                &uncovered,
+                &Facts::default(),
+                active_runtime.as_ref()
+            ));
         }
 
         let mut other_stage = active.clone();
@@ -1645,7 +1718,12 @@ mod tests {
             }))
             .unwrap(),
         );
-        assert!(!configured(CAPABILITY, &other_stage, &Facts::default()));
+        assert!(!configured(
+            CAPABILITY,
+            &other_stage,
+            &Facts::default(),
+            active_runtime.as_ref()
+        ));
         let registered = extension_gate::stage_binding(&other_stage.workflow_extensions).unwrap();
         assert!(!extension_gate::covers(
             &registered[&crate::workflow::Id::new("other-stage").unwrap()],
@@ -1657,15 +1735,25 @@ mod tests {
             "risk-check".into(),
             String::from_utf8(fixture::document(&fixture::allow(), |_| {})).unwrap(),
         );
-        validate_admission(&unsupported);
-        assert!(!configured(CAPABILITY, &unsupported, &Facts::default()));
+        let unsupported_runtime = validate_admission(&unsupported);
+        assert!(!configured(
+            CAPABILITY,
+            &unsupported,
+            &Facts::default(),
+            unsupported_runtime.as_ref()
+        ));
 
         let mut mixed = unsupported.clone();
         let parked = supported_extension_config(false);
         mixed.workflows.extend(parked.workflows);
         mixed.workflow_extensions = parked.workflow_extensions;
-        validate_admission(&mixed);
-        assert!(!configured(CAPABILITY, &mixed, &Facts::default()));
+        let mixed_runtime = validate_admission(&mixed);
+        assert!(!configured(
+            CAPABILITY,
+            &mixed,
+            &Facts::default(),
+            mixed_runtime.as_ref()
+        ));
 
         if !cfg!(target_os = "macos") {
             // Startup rejects these manifests. Also verify a changed in-memory
@@ -1873,8 +1961,10 @@ mod essentials_controlled_extensions {
             crate::edition::Target::Essentials
         ));
         let populated = supported_extension_config(true);
-        assert!(!configured(CAPABILITY, &populated, &Facts::default()));
-        assert!(!(compiled(CAPABILITY) && configured(CAPABILITY, &populated, &Facts::default())));
+        assert!(!configured(CAPABILITY, &populated, &Facts::default(), None));
+        assert!(
+            !(compiled(CAPABILITY) && configured(CAPABILITY, &populated, &Facts::default(), None))
+        );
 
         let dir = tempfile::tempdir().unwrap();
         let core = Core::initialize(

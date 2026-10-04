@@ -45,6 +45,30 @@ pub(super) fn command(program: &Path) -> Result<Command, Denial> {
     }
 }
 
+/// Check only supported-host program/backend metadata; never launch or probe.
+pub(super) fn configured_available(program: &Path) -> Result<(), Denial> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for path in [program, Path::new("/usr/bin/sandbox-exec")] {
+            let path = path.canonicalize().map_err(|_| Denial::Failed)?;
+            if path.to_str().is_none() {
+                return Err(Denial::Failed);
+            }
+            let metadata = path.metadata().map_err(|_| Denial::Failed)?;
+            if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+                return Err(Denial::Failed);
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = program;
+        Err(Denial::ExternalRuntimeRequired)
+    }
+}
+
 pub(super) fn check_entry() -> Result<(), Denial> {
     #[cfg(target_os = "macos")]
     {

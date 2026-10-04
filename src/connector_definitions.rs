@@ -1401,7 +1401,16 @@ fn refuse(error: Error) -> Error {
 /// row is a configuration that was already merged and is a no-op. The merged
 /// configuration passes the same `Config::validate` gates, including edition
 /// and capability rules.
-pub(crate) fn merge(mut config: Config, store: &Store) -> Result<(Config, Loaded)> {
+pub(crate) fn merge(
+    mut config: Config,
+    store: &Store,
+    admission: &crate::config::ExtensionAdmission,
+) -> Result<(Config, Loaded)> {
+    if !admission.matches(&config.workflow_extensions) {
+        return Err(Error::bad(
+            "Workflow extension configuration requires fresh startup validation",
+        ));
+    }
     let Some(directory) = config.connector_secret_dir.clone() else {
         return Ok((config, Loaded::default()));
     };
@@ -1475,7 +1484,7 @@ pub(crate) fn merge(mut config: Config, store: &Store) -> Result<(Config, Loaded
     configured.extend(stored);
     check_set(&configured).map_err(refuse)?;
     config
-        .validate()
+        .validate_reusing_extension_admission(admission)
         .map_err(|error| refuse(Error::bad(error.to_string())))?;
     Ok((config, loaded))
 }
