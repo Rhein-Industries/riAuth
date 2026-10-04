@@ -25,6 +25,97 @@ const PREPARED_REQUESTS: &str = "authorization_prepared";
 const PREPARED_ACTOR_DECISIONS: &str = "authorization_prepared_actor_decisions";
 const PREPARED_INDEX_VERSION: &str = "authorization_prepared_index_v1";
 const MAX_PREPARED_PER_REQUEST: usize = 64;
+const DEVICE_POLL_RECEIPTS: &str = "device_poll_receipts";
+const MAX_DEVICE_POLL_RECEIPTS: usize = 4096;
+const MAX_CLIENT_POLL_RECEIPTS: usize = 1024;
+const MAX_PROOF_POLL_RECEIPTS: usize = 512;
+const MAX_RETAINED_DEVICES: usize = 256;
+const MAX_CLIENT_DEVICES: usize = 32;
+const DEVICE_POLL_RETENTION_SECONDS: u64 = 60;
+
+fn device_capacity() -> Error {
+    Error::new(
+        StatusCode::TOO_MANY_REQUESTS,
+        "rate_limited",
+        "Device authorization capacity reached",
+    )
+}
+
+fn admit_device(tx: &Tx<'_>, client_id: &str) -> Result<()> {
+    // Count retained rows, including expired proofs whose cleanup has not run.
+    let devices = tx.scan::<Device>("devices", None, MAX_RETAINED_DEVICES + 1)?;
+    if devices.len() >= MAX_RETAINED_DEVICES
+        || devices
+            .iter()
+            .filter(|(_, device)| device.client_id == client_id)
+            .count()
+            >= MAX_CLIENT_DEVICES
+    {
+        return Err(device_capacity());
+    }
+    Ok(())
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct DevicePollAuthority {
+    protocol: String,
+    client_id: String,
+    client_hash: String,
+    device_code_hash: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StoredDevicePollReceipt {
+    fingerprint: String,
+    permissions: DevicePollAuthority,
+    result: DevicePollResult,
+    retain_until: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyDevicePollReceipt {
+    fingerprint: String,
+    permissions: DevicePollAuthority,
+    result: DevicePollResult,
+    expires_at: u64,
+}
+
+fn poll_digest(value: &str) -> bool {
+    URL_SAFE_NO_PAD
+        .decode(value)
+        .is_ok_and(|bytes| bytes.len() == 32 && URL_SAFE_NO_PAD.encode(bytes) == value)
+}
+
+fn valid_poll_record(
+    fingerprint: &str,
+    authority: &DevicePollAuthority,
+    result: &DevicePollResult,
+) -> bool {
+    authority.protocol == "oidc-device-poll-v1"
+        && crate::core::validate_name(&authority.client_id).is_ok()
+        && poll_digest(fingerprint)
+        && poll_digest(&authority.client_hash)
+        && poll_digest(&authority.device_code_hash)
+        && poll_digest(&result.status_hash)
+        && matches!(result.error.as_str(), "authorization_pending" | "slow_down")
+        && result.interval >= 5
+        && result.interval.is_multiple_of(5)
+        && result.last_poll_at.is_some_and(|at| at < result.expires_at)
+}
+
+impl StoredDevicePollReceipt {
+    fn valid(&self) -> bool {
+        valid_poll_record(&self.fingerprint, &self.permissions, &self.result)
+            && self.retain_until
+                == self
+                    .result
+                    .expires_at
+                    .saturating_add(DEVICE_POLL_RETENTION_SECONDS)
+    }
+}
 
 /// Device polling has a protocol receipt, not a management mutation receipt.
 /// It records only a non-secret pending/slow-down error and the timing state
@@ -33,7 +124,7 @@ const MAX_PREPARED_PER_REQUEST: usize = 64;
 struct DevicePollReceipt {
     key: String,
     fingerprint: String,
-    authority: Value,
+    authority: DevicePollAuthority,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -94,22 +185,50 @@ impl DevicePollReceipt {
                 client.id
             )),
             fingerprint,
-            authority: json!({
-                "protocol": "oidc-device-poll-v1",
-                "client_id": client.id,
-                "client_hash": client_hash,
-                "device_code_hash": device_key,
-            }),
+            authority: DevicePollAuthority {
+                protocol: "oidc-device-poll-v1".into(),
+                client_id: client.id.clone(),
+                client_hash,
+                device_code_hash: device_key.into(),
+            },
         }))
     }
 
     fn replay(&self, tx: &Tx<'_>, device: &Device) -> Result<Option<Error>> {
-        let Some(value) =
-            crate::context::replay_receipt(tx, &self.key, &self.fingerprint, &self.authority)?
-        else {
-            return Ok(None);
+        let result = if let Some(saved) =
+            tx.get::<StoredDevicePollReceipt>(DEVICE_POLL_RECEIPTS, &self.key)?
+        {
+            if saved.retain_until <= now() {
+                return Err(Error::conflict(
+                    "Idempotency receipt expired; inspect state before using a new key",
+                ));
+            }
+            if saved.fingerprint != self.fingerprint {
+                return Err(Error::conflict(
+                    "Idempotency key was used for a different request",
+                ));
+            }
+            if saved.permissions != self.authority {
+                return Err(Error::forbidden());
+            }
+            if !saved.valid() {
+                return Err(Error::internal("Invalid device polling receipt"));
+            }
+            saved.result
+        } else {
+            // Historical generic receipts retain their exact live authority and
+            // state fences. They are not copied into or charged to the new bucket.
+            let Some(value) = crate::context::replay_receipt(
+                tx,
+                &self.key,
+                &self.fingerprint,
+                &serde_json::to_value(&self.authority).map_err(Error::internal)?,
+            )?
+            else {
+                return Ok(None);
+            };
+            serde_json::from_value(value).map_err(Error::internal)?
         };
-        let result: DevicePollResult = serde_json::from_value(value).map_err(Error::internal)?;
         if result.expires_at != device.expires_at
             || result.last_poll_at != device.last_poll_at
             || result.interval != device.interval
@@ -132,6 +251,32 @@ impl DevicePollReceipt {
         Ok(Some(error))
     }
 
+    fn admit(&self, tx: &Tx<'_>) -> Result<()> {
+        // One finite range is tracked and revalidated by prepared_write before
+        // any timing or receipt write commits. Stable client IDs span new codes,
+        // client configuration/secret changes, IPs and concurrent workers.
+        let rows = tx.scan::<Value>(DEVICE_POLL_RECEIPTS, None, MAX_DEVICE_POLL_RECEIPTS + 1)?;
+        if rows.len() >= MAX_DEVICE_POLL_RECEIPTS {
+            return Err(device_capacity());
+        }
+        let mut client_count = 0;
+        let mut proof_count = 0;
+        for (_, value) in rows {
+            let saved: StoredDevicePollReceipt =
+                serde_json::from_value(value).map_err(|_| device_capacity())?;
+            if !saved.valid() {
+                return Err(device_capacity());
+            }
+            client_count += usize::from(saved.permissions.client_id == self.authority.client_id);
+            proof_count +=
+                usize::from(saved.permissions.device_code_hash == self.authority.device_code_hash);
+        }
+        if client_count >= MAX_CLIENT_POLL_RECEIPTS || proof_count >= MAX_PROOF_POLL_RECEIPTS {
+            return Err(device_capacity());
+        }
+        Ok(())
+    }
+
     fn save(&self, tx: &Tx<'_>, device: &Device, error: &str) -> Result<()> {
         let result = DevicePollResult {
             error: error.into(),
@@ -140,12 +285,53 @@ impl DevicePollReceipt {
             status_hash: device_poll_status_hash(&device.status)?,
             expires_at: device.expires_at,
         };
-        crate::context::save_receipt(
-            tx,
+        tx.put(
+            DEVICE_POLL_RECEIPTS,
             &self.key,
-            self.fingerprint.clone(),
-            self.authority.clone(),
-            &serde_json::to_value(result).map_err(Error::internal)?,
+            &StoredDevicePollReceipt {
+                fingerprint: self.fingerprint.clone(),
+                permissions: DevicePollAuthority {
+                    protocol: self.authority.protocol.clone(),
+                    client_id: self.authority.client_id.clone(),
+                    client_hash: self.authority.client_hash.clone(),
+                    device_code_hash: self.authority.device_code_hash.clone(),
+                },
+                retain_until: device
+                    .expires_at
+                    .saturating_add(DEVICE_POLL_RETENTION_SECONDS),
+                result,
+            },
+        )
+    }
+}
+
+impl Core {
+    pub(crate) fn cleanup_device_poll_receipts_in(tx: &Tx<'_>, at: u64) -> Result<()> {
+        for (key, saved) in tx.maintenance_page::<StoredDevicePollReceipt>(DEVICE_POLL_RECEIPTS)? {
+            if saved.valid() && saved.retain_until <= at {
+                tx.delete(DEVICE_POLL_RECEIPTS, &key)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn legacy_device_poll_receipt_deadline(key: &str, value: &Value) -> Option<u64> {
+        let saved: LegacyDevicePollReceipt = serde_json::from_value(value.clone()).ok()?;
+        if !poll_digest(key)
+            || saved.expires_at < saved.result.expires_at
+            || saved
+                .result
+                .last_poll_at
+                .is_none_or(|at| saved.result.expires_at.saturating_sub(at) > 1800)
+            || !valid_poll_record(&saved.fingerprint, &saved.permissions, &saved.result)
+        {
+            return None;
+        }
+        Some(
+            saved
+                .result
+                .expires_at
+                .saturating_add(DEVICE_POLL_RETENTION_SECONDS),
         )
     }
 }
@@ -1147,6 +1333,7 @@ impl Core {
             let user_hash = digest(&crypto::normalize_code(&user_code)?);
             let lifetime = client.settings.device_ttl.unwrap_or(600);
             crate::resource::validate(&client,request.resource.as_deref(),&scopes)?;
+            admit_device(tx, &client.id)?;
             let device = Device { resource:request.resource,client_id: client.id, user_code_hash: user_hash.clone(), scopes, expires_at: now() + lifetime, last_poll_at: None, interval: 5, status: DeviceStatus::Pending };
             tx.put("devices", &digest(&device_code), &device)?;
             tx.put("device_users", &user_hash, &digest(&device_code))?;
@@ -1368,6 +1555,16 @@ impl Core {
                 return Ok(Err(replayed));
             }
             let at = now();
+            // Only pending/timing errors need a fresh receipt. Eligible issuance
+            // and denial must not be held behind polling receipt capacity.
+            if let Some(receipt) = &receipt
+                && (device
+                    .last_poll_at
+                    .is_some_and(|last| at < last + device.interval)
+                    || matches!(device.status, DeviceStatus::Pending))
+            {
+                receipt.admit(tx)?;
+            }
             if device
                 .last_poll_at
                 .is_some_and(|last| at < last + device.interval)

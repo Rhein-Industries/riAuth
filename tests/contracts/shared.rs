@@ -1421,7 +1421,12 @@ pub fn device_poll_protocol_receipt(backend: Backend) {
     assert!(device.last_poll_at.is_some());
     assert_eq!(device.interval, 5);
     let receipt_key = digest("oidc-device-poll-v1\0poll-app\0pending-1");
-    let receipt: Value = f.core.store.get("receipts", &receipt_key).unwrap().unwrap();
+    let receipt: Value = f
+        .core
+        .store
+        .get("device_poll_receipts", &receipt_key)
+        .unwrap()
+        .unwrap();
     assert_eq!(receipt["result"]["error"], "authorization_pending");
     let stored = receipt.to_string();
     assert!(!stored.contains(&code) && !stored.contains(&user_code));
