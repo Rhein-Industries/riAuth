@@ -119,6 +119,13 @@ impl Upstream {
                     &format!(r#"AuthnInstant="{auth}""#),
                     &format!(r#"AuthnInstant="{}""#, at(now() - 600)),
                 );
+            } else if from == "$session-expiry-absent" {
+                let doc = roxmltree::Document::parse(&assertion).unwrap();
+                let expiry = doc
+                    .descendants()
+                    .find_map(|n| n.attribute("SessionNotOnOrAfter"))
+                    .unwrap();
+                assertion = assertion.replace(&format!(r#" SessionNotOnOrAfter="{expiry}""#), "");
             } else if from == "$session-expiry" {
                 let doc = roxmltree::Document::parse(&assertion).unwrap();
                 let expiry = doc
@@ -2280,4 +2287,432 @@ fn saml_login_presented_while_source_disabled_cannot_continue_after_reenable() {
     assert_eq!(saml_links(&f)[0]["issuer"], "urn:example:enterprise-idp");
     assert_eq!(saml_links(&f)[0]["subject"], "opaque-subject");
     assert_eq!(saml_links(&f)[0]["user_id"], user_id);
+}
+
+#[test]
+fn saml_source_workflow_authorizations_retain_signed_session_deadline() {
+    const CLIENT: &str = "saml-deadline";
+
+    fn source_login(
+        f: &Fixture,
+        source: &Source,
+        upstream: &Upstream,
+        change: Option<(&str, &str)>,
+    ) -> String {
+        let (relay, request, credential) = begin(f, source, None);
+        let response = upstream.response(
+            source,
+            &f.core.saml_source_callback_url(&source.id),
+            &request,
+            change,
+            false,
+        );
+        assert_eq!(
+            post(f, source, &relay, &response).unwrap()["completed"],
+            true
+        );
+        let token = text(&finish(f, &credential, true).unwrap(), "session_token");
+        let before = f.snapshot().unwrap();
+        assert!(finish(f, &credential, true).is_err());
+        assert!(post(f, source, &relay, &response).is_err());
+        f.assert_snapshot(&before);
+        token
+    }
+
+    fn start(
+        f: &Fixture,
+        bearer: &str,
+        source: &Source,
+    ) -> (
+        riauth::workflow::executor::SourceStart,
+        TokenRequest,
+        String,
+        String,
+    ) {
+        let verifier = crypto::random_token("");
+        let state = crypto::id();
+        let nonce = crypto::id();
+        let mut request = f.request(CLIENT, &verifier);
+        request.prompt = Some("login".into());
+        request.state = Some(state.clone());
+        request.nonce = Some(nonce.clone());
+        request.transaction_id = Some(text(
+            &f.core
+                .authorization_prepare(Some(bearer), request.clone())
+                .unwrap(),
+            "transaction_id",
+        ));
+        let started = f
+            .core
+            .workflow_source_authorization_start(bearer, &source.id, request)
+            .unwrap();
+        (
+            started,
+            TokenRequest {
+                grant_type: "authorization_code".into(),
+                client_id: Some(CLIENT.into()),
+                redirect_uri: Some("http://localhost:7777/callback?existing=1".into()),
+                code_verifier: Some(verifier),
+                ..Default::default()
+            },
+            state,
+            nonce,
+        )
+    }
+
+    fn code(
+        f: &Fixture,
+        bearer: &str,
+        source: &Source,
+        upstream: &Upstream,
+        change: Option<(&str, &str)>,
+        bound: Option<u64>,
+    ) -> (TokenRequest, String) {
+        let (started, mut exchange, state, nonce) = start(f, bearer, source);
+        let acs = f.core.saml_source_callback_url(&source.id);
+        let (relay, request) = decode_redirect(source, &started.authorization_url, &acs);
+        let response = upstream.response(source, &acs, &request, change, false);
+        let callback = post(f, source, &relay, &response).unwrap();
+        assert_eq!(callback["completed"], true);
+        assert!(callback.get("session_token").is_none());
+        assert!(callback.get("code").is_none());
+        let completed = f
+            .core
+            .workflow_source_finish(bearer, &started.workflow.id)
+            .unwrap();
+        let redirect = url::Url::parse(completed.authorization_response.as_ref().unwrap()).unwrap();
+        let fields: std::collections::BTreeMap<_, _> =
+            redirect.query_pairs().into_owned().collect();
+        assert!(fields.get("error").is_none());
+        assert_eq!(fields["state"], state);
+        exchange.code = Some(fields["code"].clone());
+        let stored: Code = f
+            .core
+            .store
+            .get("codes", &digest(&fields["code"]))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            stored.challenge,
+            digest(exchange.code_verifier.as_ref().unwrap())
+        );
+        assert_eq!(stored.nonce.as_deref(), Some(nonce.as_str()));
+        assert_eq!(
+            stored
+                .identity
+                .source
+                .as_ref()
+                .unwrap()
+                .authorization_expires_at,
+            bound
+        );
+        if let Some(bound) = bound {
+            assert!(stored.expires_at <= bound);
+            assert!(
+                now() < bound,
+                "fixture must complete before its signed deadline"
+            );
+        } else {
+            assert!(stored.expires_at > now() + 60);
+        }
+        let evidence = f
+            .core
+            .store
+            .list::<Value>("workflow_evidence")
+            .unwrap()
+            .into_iter()
+            .find(|(_, receipt)| receipt["run"] == started.workflow.id)
+            .unwrap()
+            .1;
+        assert_eq!(evidence["consumed"], true);
+        assert_eq!(evidence["source"]["saml_session"]["expiry_verified"], true);
+        if change.is_some_and(|(kind, _)| kind == "$session-expiry-absent") {
+            assert!(
+                evidence["source"]["saml_session"]
+                    .get("expires_at")
+                    .is_none()
+            );
+        } else if let Some(bound) = bound {
+            assert_eq!(evidence["source"]["saml_session"]["expires_at"], bound);
+            assert!(evidence["expires_at"].as_u64().unwrap() <= bound);
+        }
+        let before = f.snapshot().unwrap();
+        assert!(
+            f.core
+                .workflow_source_finish(bearer, &started.workflow.id)
+                .is_err()
+        );
+        assert!(post(f, source, &relay, &response).is_err());
+        f.assert_snapshot(&before);
+        (exchange, nonce)
+    }
+
+    fn assert_grants(
+        f: &Fixture,
+        tokens: &Value,
+        bound: Option<u64>,
+        session_id: &str,
+        nonce: &str,
+    ) {
+        let session: Session = f.core.store.get("sessions", session_id).unwrap().unwrap();
+        let original = session.identity.source.as_ref().unwrap();
+        let mut family_id = None;
+        for (collection, field) in [("access", "access_token"), ("refresh", "refresh_token")] {
+            let grant: Grant = f
+                .core
+                .store
+                .get(collection, &digest(&text(tokens, field)))
+                .unwrap()
+                .unwrap();
+            let identity = grant.identity.as_ref().unwrap();
+            assert!(identity.user_id == session.identity.user_id);
+            assert!(identity.session_id == session_id);
+            let source = identity.source.as_ref().unwrap();
+            assert!(source.id == original.id);
+            assert!(source.fingerprint == original.fingerprint);
+            assert!(source.link == original.link);
+            assert_eq!(source.authorization_expires_at, bound);
+            assert_eq!(grant.nonce.as_deref(), Some(nonce));
+            let family: Family = f
+                .core
+                .store
+                .get("families", &grant.family_id)
+                .unwrap()
+                .unwrap();
+            assert!(!family.revoked);
+            if let Some(bound) = bound {
+                assert!(grant.expires_at <= bound);
+                assert_eq!(family.expires_at, bound);
+            } else {
+                assert!(grant.expires_at > now() + 60);
+                assert!(family.expires_at > now() + 600);
+            }
+            if let Some(previous) = &family_id {
+                assert!(previous == &grant.family_id);
+            }
+            family_id = Some(grant.family_id);
+        }
+        let jwks = fixture_jwks(f);
+        let mut subject = None;
+        for field in ["access_token", "id_token"] {
+            let claims = jwks
+                .verify(&text(tokens, field), &f.core.config.issuer, CLIENT)
+                .unwrap();
+            if let Some(bound) = bound {
+                assert!(claims["exp"].as_u64().unwrap() <= bound);
+            } else {
+                assert!(claims["exp"].as_u64().unwrap() > now() + 60);
+            }
+            if field == "id_token" {
+                assert_eq!(claims["nonce"], nonce);
+            }
+            if let Some(previous) = &subject {
+                assert!(previous == &claims["sub"]);
+            }
+            subject = Some(claims["sub"].clone());
+        }
+        let userinfo = f.core.userinfo(&text(tokens, "access_token")).unwrap();
+        assert!(Some(&userinfo["sub"]) == subject.as_ref());
+    }
+
+    let f = Fixture::new();
+    let (source, upstream) = install_saml(&f);
+    f.client_with_settings(
+        CLIENT,
+        false,
+        ProviderSettings {
+            code_ttl: Some(120),
+            access_token_ttl: Some(300),
+            refresh_token_ttl: Some(3600),
+            ..Default::default()
+        },
+    );
+    let bearer = source_login(&f, &source, &upstream, Some(("$session-expiry-absent", "")));
+    let session_id = text(&f.core.me(&bearer).unwrap(), "session_id");
+    let session_before: Value = f.core.store.get("sessions", &session_id).unwrap().unwrap();
+    let upstream_before: Value = f
+        .core
+        .store
+        .get("saml_source_sessions", &session_id)
+        .unwrap()
+        .unwrap();
+    assert!(upstream_before["expires_at"].is_null());
+    assert!(session_before["identity"]["source"]["authorization_expires_at"].is_null());
+
+    // A signed absent optional deadline keeps ordinary grant lifetimes.
+    let (unbounded_code, unbounded_nonce) = code(
+        &f,
+        &bearer,
+        &source,
+        &upstream,
+        Some(("$session-expiry-absent", "")),
+        None,
+    );
+    let unbounded_tokens = f.core.token(unbounded_code).unwrap();
+    assert_grants(&f, &unbounded_tokens, None, &session_id, &unbounded_nonce);
+
+    // An existing finite upstream bound still applies to a new signed absence.
+    let finite_bearer = source_login(&f, &source, &upstream, None);
+    let finite_id = text(&f.core.me(&finite_bearer).unwrap(), "session_id");
+    let finite_session: Value = f.core.store.get("sessions", &finite_id).unwrap().unwrap();
+    let finite_upstream: Value = f
+        .core
+        .store
+        .get("saml_source_sessions", &finite_id)
+        .unwrap()
+        .unwrap();
+    let existing_deadline = finite_upstream["expires_at"].as_u64().unwrap();
+    let (finite_code, finite_nonce) = code(
+        &f,
+        &finite_bearer,
+        &source,
+        &upstream,
+        Some(("$session-expiry-absent", "")),
+        Some(existing_deadline),
+    );
+    let finite_tokens = f.core.token(finite_code.clone()).unwrap();
+    assert_grants(
+        &f,
+        &finite_tokens,
+        Some(existing_deadline),
+        &finite_id,
+        &finite_nonce,
+    );
+    assert_eq!(f.core.token(finite_code).unwrap_err().code, "invalid_grant");
+
+    for (change, expected_code) in [
+        (("opaque-subject", "different-subject"), "access_denied"),
+        (
+            (
+                r#"SessionIndex="upstream-session""#,
+                r#"SessionIndex="different-session""#,
+            ),
+            "server_error",
+        ),
+    ] {
+        let (started, _, _, _) = start(&f, &bearer, &source);
+        let acs = f.core.saml_source_callback_url(&source.id);
+        let (relay, request) = decode_redirect(&source, &started.authorization_url, &acs);
+        let response = upstream.response(&source, &acs, &request, Some(change), false);
+        assert_eq!(
+            post(&f, &source, &relay, &response).unwrap()["completed"],
+            true
+        );
+        let before = f.snapshot().unwrap();
+        assert_eq!(
+            f.core
+                .workflow_source_finish(&bearer, &started.workflow.id)
+                .unwrap_err()
+                .code,
+            expected_code
+        );
+        f.assert_snapshot(&before);
+        let canceled = f
+            .core
+            .workflow_cancel(&bearer, &started.workflow.id)
+            .unwrap();
+        assert!(canceled.authorization_response.is_none());
+    }
+
+    // All key/user setup and non-timed cases precede this one absolute deadline.
+    let timed = std::time::Instant::now();
+    let deadline = now() + 10;
+    let expiry = at(deadline);
+    let (held_code, _) = code(
+        &f,
+        &bearer,
+        &source,
+        &upstream,
+        Some(("$session-expiry", &expiry)),
+        Some(deadline),
+    );
+    let (redeemed_code, nonce) = code(
+        &f,
+        &bearer,
+        &source,
+        &upstream,
+        Some(("$session-expiry", &expiry)),
+        Some(deadline),
+    );
+    assert!(
+        now() < deadline,
+        "fixture missed its signed deadline; do not repair or retry"
+    );
+    let tokens = f.core.token(redeemed_code).unwrap();
+    assert_grants(&f, &tokens, Some(deadline), &session_id, &nonce);
+    let refresh = TokenRequest {
+        grant_type: "refresh_token".into(),
+        client_id: Some(CLIENT.into()),
+        refresh_token: Some(text(&tokens, "refresh_token")),
+        ..Default::default()
+    };
+    assert!(
+        now() < deadline,
+        "rotation must finish before the same absolute deadline"
+    );
+    let rotated = f.core.token(refresh).unwrap();
+    assert_grants(&f, &rotated, Some(deadline), &session_id, &nonce);
+    let used: Grant = f
+        .core
+        .store
+        .get("refresh", &digest(&text(&tokens, "refresh_token")))
+        .unwrap()
+        .unwrap();
+    assert!(used.used);
+    assert_eq!(used.expires_at, deadline);
+    let later_refresh = TokenRequest {
+        grant_type: "refresh_token".into(),
+        client_id: Some(CLIENT.into()),
+        refresh_token: Some(text(&rotated, "refresh_token")),
+        ..Default::default()
+    };
+    assert!(
+        now() < deadline,
+        "complete the whole live fixture before waiting"
+    );
+    for _ in 0..1200 {
+        if now() >= deadline {
+            break;
+        }
+        assert!(timed.elapsed() < std::time::Duration::from_secs(12));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(now() >= deadline);
+    assert!(timed.elapsed() < std::time::Duration::from_secs(12));
+    let before = f.snapshot().unwrap();
+    assert_eq!(f.core.token(held_code).unwrap_err().code, "invalid_grant");
+    assert_eq!(
+        f.core.token(later_refresh).unwrap_err().code,
+        "invalid_grant"
+    );
+    for tokens in [&tokens, &rotated] {
+        assert_eq!(
+            f.core
+                .userinfo(&text(tokens, "access_token"))
+                .unwrap_err()
+                .code,
+            "invalid_token"
+        );
+    }
+    f.assert_snapshot(&before);
+    assert!(f.core.me(&bearer).is_ok());
+    assert!(
+        f.core
+            .userinfo(&text(&unbounded_tokens, "access_token"))
+            .is_ok()
+    );
+    for (id, session, upstream) in [
+        (&session_id, &session_before, &upstream_before),
+        (&finite_id, &finite_session, &finite_upstream),
+    ] {
+        assert!(f.core.store.get::<Value>("sessions", id).unwrap().as_ref() == Some(session));
+        assert!(
+            f.core
+                .store
+                .get::<Value>("saml_source_sessions", id)
+                .unwrap()
+                .as_ref()
+                == Some(upstream)
+        );
+    }
 }

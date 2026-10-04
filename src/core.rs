@@ -964,6 +964,8 @@ impl Core {
         self.store.write(|tx| crate::mtls::cleanup(tx, at))?;
         self.store.write(|tx| crate::saml::cleanup(tx, at))?;
         self.store.write(crate::context::cleanup)?;
+        self.store
+            .write(|tx| Self::cleanup_device_poll_receipts_in(tx, at))?;
         self.store.write(|tx| crate::browser::cleanup(tx, at))?;
         self.store.write(|tx| crate::portal::cleanup(tx, at))?;
         #[cfg(feature = "platform")]

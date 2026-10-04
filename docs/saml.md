@@ -153,6 +153,8 @@ Use `source start ID --link` with a fresh local session to link an existing user
 
 Upstream MFA is false unless the signed AuthnContextClassRef exactly matches a configured `trusted_mfa_acr`. Its AuthnInstant is preserved. SessionNotOnOrAfter bounds the local session and subsequent online identity checks. Stable persistent, email and unspecified NameIDs are supported; transient identities, unsolicited IdP-initiated source login, artifact/SOAP/ECP flows are not advertised. Optional upstream SLO is described below.
 
+During workflow reauthentication, `SessionNotOnOrAfter` also bounds authorization codes, access and refresh grants, and JWT expiry. The earlier signed or existing upstream deadline applies; refresh rotation cannot extend it. The original bearer session and logout association retain their authentication state. If the signed attribute is absent, existing upstream and configured lifetimes still apply without imposing the proof receipt's short completion window. Unconsumed legacy receipts use their existing receipt expiry as a conservative grant ceiling.
+
 The source tests cover independently verified outgoing Redirect signatures, signed/encrypted inbound authentication, explicit linking, email-collision isolation, replay, mismatched requests, issuer/audience/recipient checks, stale authentication, signature tampering, inherited namespaces, MFA trust, source changes, IdP certificate rollover and rollback, browser return after a pinned-source change, source disable, and unlink revocation. An additional `saml_source_independent_xmlsec` test accepts responses signed by independent `xmlsec1` and verifies exported SP metadata.
 
 ### Upstream SAML logout

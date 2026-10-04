@@ -471,3 +471,106 @@ class SecureMode(unittest.TestCase):
             benchmark.run_slice(
                 benchmark.sys.executable, "redb", 1, 0, 1, fixture=True, secure=True,
             )
+
+
+from unittest import mock
+
+
+class PostgresPrivateAuth(unittest.TestCase):
+    def fake_run(self, root, hidden, password, calls, failed_tool=None):
+        def run(argv, **options):
+            name = pathlib.Path(argv[0]).name
+            self.assertIn(name, ("initdb", "pg_ctl", "createdb"))
+            calls.append((argv, options))
+            self.assertIn(password, hidden)
+            self.assertTrue(all(password not in str(argument) for argument in argv))
+            if name == "initdb":
+                self.assertIn("--auth=scram-sha-256", argv)
+                self.assertNotIn("--auth=trust", argv)
+                pwfile = pathlib.Path(argv[argv.index("--pwfile") + 1])
+                self.assertEqual(pwfile.read_text(), password + "\n")
+                self.assertEqual(pwfile.stat().st_mode & 0o777, 0o600)
+                cluster = root / "postgres-cluster"
+                cluster.mkdir()
+                (cluster / "postgresql.conf").write_text("")
+            expected_env = {"PATH": "/fixture-only-pg"}
+            if name == "createdb":
+                self.assertIn("--no-password", argv)
+                expected_env["PGPASSWORD"] = password
+            self.assertEqual(options["env"], expected_env)
+            failed = name == failed_tool
+            return mock.Mock(returncode=17 if failed else 0, stdout="",
+                             stderr=password + "x" * 790 if failed else "")
+        return run
+
+    def test_default_scram_auth_is_private_and_keeps_unencrypted_labels(self):
+        password = "d3" * 24
+        hidden, calls = [], []
+        environment = {"PATH": "/fixture-only-pg", "PGPASSWORD": "inherited-password",
+                       "PGHOST": "foreign-host", "PGSERVICE": "foreign-service",
+                       "PGOPTIONS": "foreign-options", "PGPASSFILE": "/foreign-passfile",
+                       "PSQLRC": "/foreign-psqlrc"}
+        programs = {name: "/fixture-only-pg/" + name for name in ("initdb", "pg_ctl", "createdb")}
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            with mock.patch.dict(os.environ, environment, clear=True), \
+                    mock.patch.object(benchmark, "require_programs", return_value=programs), \
+                    mock.patch.object(benchmark, "free_port", return_value=54321), \
+                    mock.patch.object(benchmark.secrets, "token_hex", return_value=password), \
+                    mock.patch.object(benchmark.subprocess, "run", self.fake_run(root, hidden, password, calls)):
+                result = benchmark.start_postgres(root, hidden)
+                benchmark.stop_postgres(programs, result["cluster"], root, hidden=hidden)
+            self.assertEqual(root.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(hidden, [password])
+            self.assertFalse((root / "pg-password").exists())
+            connection = root / "connection"
+            self.assertEqual(connection.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(connection.read_text(),
+                             f"host=127.0.0.1 port=54321 dbname=riauth_q09 "
+                             f"user=riauth_test password={password} sslmode=disable\n")
+            settings = json.loads(result["config"].read_text())
+            self.assertTrue(settings["local_unencrypted"])
+            self.assertIsNone(settings["ca_file"])
+            self.assertEqual(settings["pool_size"], 8)
+            self.assertEqual([pathlib.Path(argv[0]).name for argv, _options in calls],
+                             ["initdb", "pg_ctl", "createdb", "pg_ctl"])
+            self.assertEqual(calls[-1][0][-4:], ["stop", "-m", "immediate", "-w"])
+            with self.assertRaises(FileExistsError):
+                benchmark.write_private_text(connection, "replacement")
+            self.assertIn("password=" + password, connection.read_text())
+
+    def test_default_createdb_failure_redacts_before_tail_and_stops_owned_cluster(self):
+        password = "e4" * 24
+        hidden, calls = [], []
+        programs = {name: "/fixture-only-pg/" + name for name in ("initdb", "pg_ctl", "createdb")}
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            with mock.patch.dict(os.environ, {"PATH": "/fixture-only-pg"}, clear=True), \
+                    mock.patch.object(benchmark, "require_programs", return_value=programs), \
+                    mock.patch.object(benchmark, "free_port", return_value=54321), \
+                    mock.patch.object(benchmark.secrets, "token_hex", return_value=password), \
+                    mock.patch.object(benchmark.subprocess, "run",
+                                      self.fake_run(root, hidden, password, calls, "createdb")):
+                with self.assertRaises(benchmark.SliceError) as caught:
+                    benchmark.start_postgres(root, hidden)
+            self.assertIn("createdb failed", str(caught.exception))
+            self.assertIn("[redacted]", str(caught.exception))
+            self.assertNotIn(password[-10:], str(caught.exception))
+            self.assertFalse((root / "pg-password").exists())
+            self.assertEqual([pathlib.Path(argv[0]).name for argv, _options in calls],
+                             ["initdb", "pg_ctl", "createdb", "pg_ctl"])
+            self.assertIn("stop", calls[-1][0])
+            self.assertFalse((root / "connection").exists())
+
+    def test_command_output_redacts_before_truncating_a_secret_boundary(self):
+        password = "f5" * 24
+        fake = mock.Mock(returncode=19, stdout="retained-output", stderr=password + "x" * 790)
+        with mock.patch.object(benchmark.subprocess, "run", return_value=fake):
+            code, stdout, tail = benchmark.command_output(
+                ["/fixture-only-pg/initdb"], cwd="/fixture-only-lab", env={}, hidden=[password],
+            )
+        self.assertEqual(code, 19)
+        self.assertEqual(stdout, "retained-output")
+        self.assertEqual(len(tail), 800)
+        self.assertIn("[redacted]", tail)
+        self.assertNotIn(password[-10:], tail)

@@ -929,3 +929,48 @@ fn atomic_finish_rejects_changed_facts_or_receipts() {
         assert!(matches!(store.run.state, RunState::Active { .. }));
     }
 }
+
+#[test]
+fn source_session_legacy_serde_retains_verified_optional_absence() {
+    let legacy = serde_json::json!({"subject": "subject", "index": "index"});
+    let parsed: SourceSession = serde_json::from_value(legacy.clone()).unwrap();
+    assert_eq!(parsed.expires_at, None);
+    assert!(!parsed.expiry_verified);
+
+    let verified = SourceSession {
+        expiry_verified: true,
+        ..parsed
+    };
+    let encoded = serde_json::to_value(&verified).unwrap();
+    assert!(encoded.get("expires_at").is_none());
+    assert_eq!(encoded["expiry_verified"], true);
+    assert_eq!(
+        serde_json::from_value::<SourceSession>(encoded).unwrap(),
+        verified
+    );
+
+    let bounded = SourceSession {
+        expires_at: Some(100),
+        ..verified
+    };
+    assert_eq!(
+        serde_json::from_value::<SourceSession>(serde_json::to_value(&bounded).unwrap()).unwrap(),
+        bounded
+    );
+    let mut unverified_bound = legacy.clone();
+    unverified_bound["expires_at"] = serde_json::json!(100);
+    let unverified: SourceSession = serde_json::from_value(unverified_bound).unwrap();
+    assert_eq!(unverified.expires_at, Some(100));
+    assert!(!unverified.expiry_verified);
+    let mut unknown = legacy;
+    unknown["untrusted"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<SourceSession>(unknown).is_err());
+
+    let legacy_identity = serde_json::json!({
+        "id": "source", "fingerprint": "fingerprint", "link": "link"
+    });
+    let identity: crate::model::federation::SourceIdentity =
+        serde_json::from_value(legacy_identity.clone()).unwrap();
+    assert_eq!(identity.authorization_expires_at, None);
+    assert_eq!(serde_json::to_value(identity).unwrap(), legacy_identity);
+}

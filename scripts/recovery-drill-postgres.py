@@ -29,6 +29,21 @@ def private_file(path, content):
         output.write(content)
 
 
+def redact(text, sensitive):
+    for value in sensitive:
+        if value:
+            text = text.replace(value, "[redacted]")
+    return text
+
+
+def postgres_env(password=None):
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("PG") and key != "PSQLRC"}
+    if password is not None:
+        environment["PGPASSWORD"] = password
+    return environment
+
+
 def port():
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -69,7 +84,9 @@ def wait_ready(service, issuer):
     raise RuntimeError("service readiness timed out")
 
 
-def run(binary, pg_bin, evidence, maintenance_binary=None):
+def run(binary, pg_bin, evidence, maintenance_binary=None, *, sensitive=None):
+    if sensitive is None:
+        sensitive = []
     with tempfile.TemporaryDirectory(prefix="riauth-pg-recovery-drill-") as workspace:
         root = Path(workspace)
         pg_data = root / "postgres"
@@ -88,19 +105,25 @@ def run(binary, pg_bin, evidence, maintenance_binary=None):
         issuer = f"http://127.0.0.1:{http_port}"
         admin_password = secrets.token_urlsafe(28)
         user_password = secrets.token_urlsafe(28)
+        pg_password = secrets.token_hex(24)
+        sensitive.extend((admin_password, user_password, pg_password))
+        password_file = root / "pg-password"
+        private_file(password_file, (pg_password + "\n").encode())
         service = None
         pg_running = False
 
         def pg(command, *args, timeout=60, allow_failure=False):
             result = subprocess.run([str(pg_bin / command), *map(str, args)],
-                                    capture_output=True, text=True, timeout=timeout)
+                                    capture_output=True, text=True, timeout=timeout,
+                                    env=postgres_env(pg_password))
+            result.stderr = redact(result.stderr, sensitive)
             if not allow_failure:
                 require(result.returncode == 0,
-                        f"{command} failed with exit {result.returncode}: {result.stderr[-300:]}")
+                        f"{command} failed with exit {result.returncode}")
             return result
 
         def sql(database, query):
-            result = pg("psql", "-X", "-A", "-t", "-h", "127.0.0.1", "-p", pg_port,
+            result = pg("psql", "--no-password", "-X", "-A", "-t", "-h", "127.0.0.1", "-p", pg_port,
                         "-U", "riauth_drill", "-d", database, "-c", query)
             return result.stdout.strip()
 
@@ -134,7 +157,7 @@ def run(binary, pg_bin, evidence, maintenance_binary=None):
             try:
                 envelope = json.loads(result.stdout)
             except json.JSONDecodeError:
-                envelope = {"_stderr": result.stderr[-1000:]}
+                envelope = {"_stderr": "unstructured CLI output"}
             return result.returncode, envelope
 
         def passed(identifier, **observed):
@@ -160,7 +183,8 @@ def run(binary, pg_bin, evidence, maintenance_binary=None):
             connection = root / f"{database}.connection"
             settings = root / f"{database}.json"
             private_file(connection, (f"host=127.0.0.1 port={pg_port} dbname={database} "
-                                      "user=riauth_drill sslmode=disable connect_timeout=3\n").encode())
+                                      f"user=riauth_drill password={pg_password} "
+                                      "sslmode=disable connect_timeout=3\n").encode())
             private_file(settings, json.dumps({"connection_file": str(connection),
                                                "local_unencrypted": True,
                                                "pool_size": 4}).encode())
@@ -171,7 +195,8 @@ def run(binary, pg_bin, evidence, maintenance_binary=None):
             capabilities = success(["capabilities"])
             passed("local_tooling", postgres_version=version, edition=capabilities.get("edition"))
 
-            pg("initdb", "-D", pg_data, "-U", "riauth_drill", "--auth=trust",
+            pg("initdb", "-D", pg_data, "-U", "riauth_drill", "--auth=scram-sha-256",
+               "--pwfile", password_file,
                "--encoding=UTF8", "--no-locale", timeout=90)
             escaped_root = str(root).replace("'", "''")
             with (pg_data / "postgresql.conf").open("a") as output:
@@ -179,7 +204,8 @@ def run(binary, pg_bin, evidence, maintenance_binary=None):
                              f"unix_socket_directories = '{escaped_root}'\n")
             start_pg()
             for database in ("riauth_source", "riauth_target"):
-                pg("createdb", "-h", "127.0.0.1", "-p", pg_port, "-U", "riauth_drill", database)
+                pg("createdb", "--no-password", "-h", "127.0.0.1", "-p", pg_port,
+                   "-U", "riauth_drill", database)
             source_pg = pg_config("riauth_source")
             target_pg = pg_config("riauth_target")
             require(sql("riauth_target", "select count(*) from pg_namespace "
@@ -188,8 +214,11 @@ def run(binary, pg_bin, evidence, maintenance_binary=None):
                    loopback_only=True)
 
             success(["keygen", "--out", backup_key])
+            sensitive.append(backup_key.read_text().strip())
             success(["keygen", "--out", database_key])
+            sensitive.append(database_key.read_text().strip())
             success(["keygen", "--out", wrong_key])
+            sensitive.append(wrong_key.read_text().strip())
             require(backup_key.read_bytes() != database_key.read_bytes(), "keys are equal")
             success(["init", "--issuer", issuer, "--listen", f"127.0.0.1:{http_port}",
                      "--postgres-config", source_pg, "--database-key-file", database_key,
@@ -367,13 +396,14 @@ def main():
                                    "PostgreSQL PITR and multi-node failover", "TLS PostgreSQL connection",
                                    "external signers, mail, directories and provisioning",
                                    "real OIDC or SAML relying party"]}
+    sensitive = []
     try:
-        run(binary, pg_bin, evidence, maintenance_binary)
+        run(binary, pg_bin, evidence, maintenance_binary, sensitive=sensitive)
         evidence["result"] = "passed"
     except Exception as error:
-        evidence["failure"] = {"type": type(error).__name__, "message": str(error)}
+        evidence["failure"] = {"type": type(error).__name__, "message": redact(str(error), sensitive)}
     evidence["finished_at"] = datetime.now(timezone.utc).isoformat()
-    private_file(args.evidence, (json.dumps(evidence, indent=2, sort_keys=True) + "\n").encode())
+    private_file(args.evidence, (redact(json.dumps(evidence, indent=2, sort_keys=True), sensitive) + "\n").encode())
     print(json.dumps({"result": evidence["result"], "checks": len(evidence["checks"]),
                       "evidence": str(args.evidence)}))
     return 0 if evidence["result"] == "passed" else 1

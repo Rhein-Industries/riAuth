@@ -233,6 +233,7 @@ impl Core {
                     id: source.id.clone(),
                     fingerprint: pending.fingerprint.clone(),
                     link: link_id,
+                    authorization_expires_at: None,
                     pin_retired: false,
                 }),
             },

@@ -170,3 +170,36 @@ shared-handoff gate, native Windows state admission, external tenants or the
 confidential browser checkpoint. Further protocol and local tooling work is
 pending. The security review remains open, and original task statuses and
 Entra tenant limits remain unchanged.
+
+
+## Federation lifetimes and bounded device admission
+
+2026-10-04. The next reviewed batch preserves a newly verified SAML upstream
+session deadline through workflow authorization, code redemption, refresh and
+online identity validation. Device authorization has separate bounded pending
+proof and polling-receipt collections, with stable per-proof, per-client and
+instance admission limits. Recovery discards pending polling state with its
+proofs while preserving ordinary management receipts. Disposable PostgreSQL
+benchmark and recovery tools now use fresh private SCRAM credentials.
+
+Local locked offline verification passed the signed federation lifecycle and
+legacy receipt-deserialization tests, all nine device polling tests in Platform
+and Essentials, both existing polling receipt contracts, and the strengthened
+recovery compatibility check. Seven mocked PostgreSQL tooling checks passed;
+no native PostgreSQL cluster, benchmark or recovery drill ran in this batch.
+
+The initial federation fixture expected the same public error for two different
+existing error boundaries. The initial device fixture expected replay conflict
+after secret rotation had already deleted its device proof. Both expectations
+were corrected without changing production behavior or snapshot assertions;
+the failed runs remain retained. A module-mismatched federation filter selected
+zero tests, and an initial Essentials command omitted its required edition
+feature. Neither supplies test credit.
+
+These results are scoped to the tested local contracts. Dedicated receipt
+capacity is bounded for new writes; the pre-existing generic receipt backlog is
+not retroactively bounded. Current hosted CI, native Windows state admission,
+extension capability admission, release-source inspection, external tenants and
+the confidential browser checkpoint remain separate checks. The security review
+remains open, with Entra tenant testing deferred and original task statuses
+unchanged.

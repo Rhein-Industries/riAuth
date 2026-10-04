@@ -341,7 +341,12 @@ fn grant_identity(
             (
                 amr,
                 receipt.mfa,
-                Some(upstream::authorization_identity(tx, session, receipt)?),
+                Some(upstream::authorization_identity(
+                    tx,
+                    session,
+                    receipt,
+                    primary.expires_at,
+                )?),
             )
         }
         _ => return Err(Error::forbidden()),

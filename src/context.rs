@@ -372,6 +372,16 @@ pub(crate) fn save_receipt(
 pub fn cleanup(tx: &Tx<'_>) -> Result<()> {
     // Keep expired receipts as bounded tombstones for seven days, preventing accidental immediate reuse.
     for (id, mut receipt) in tx.maintenance_page::<Receipt>("receipts")? {
+        if receipt.permissions["protocol"] == "oidc-device-poll-v1"
+            && let Some(value) = tx.get::<Value>("receipts", &id)?
+            && let Some(deadline) =
+                crate::core::Core::legacy_device_poll_receipt_deadline(&id, &value)
+        {
+            if deadline <= now() {
+                tx.delete("receipts", &id)?;
+            }
+            continue;
+        }
         if receipt.expires_at.saturating_add(6 * 86_400) <= now() {
             tx.delete("receipts", &id)?;
         } else if redact_legacy_issuance(&mut receipt) {

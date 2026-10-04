@@ -724,7 +724,7 @@ impl Core {
                 challenge=>challenge?,
             };
             let mfa=user.totp_secret.is_some();
-            let identity=Identity{user_id:user.id.clone(),epoch:user.epoch,mfa,auth_time:now(),session_id:String::new(),amr:if mfa {vec!["pwd".into(),"otp".into()]}else{vec!["pwd".into()]},source:Some(SourceIdentity{id:format!("ldap/{}",binding.directory),fingerprint:directory.fingerprint()?,link:binding_key(&binding.directory,&binding.external_id),pin_retired:false})};
+            let identity=Identity{user_id:user.id.clone(),epoch:user.epoch,mfa,auth_time:now(),session_id:String::new(),amr:if mfa {vec!["pwd".into(),"otp".into()]}else{vec!["pwd".into()]},source:Some(SourceIdentity{id:format!("ldap/{}",binding.directory),fingerprint:directory.fingerprint()?,link:binding_key(&binding.directory,&binding.external_id),authorization_expires_at:None,pin_retired:false})};
             if delivery==Delivery::Browser {
                 let staged=self.stage_browser_login(tx,identity,now()+self.config.session_ttl,"password")?;
                 audit(tx,&user.id,"directory.login_succeeded",&staged)?;

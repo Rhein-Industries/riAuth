@@ -10,6 +10,12 @@ use crate::{
 
 pub fn validate_identity(tx: &Tx<'_>, identity: &Identity) -> Result<()> {
     if let Some(context) = &identity.source {
+        if context
+            .authorization_expires_at
+            .is_some_and(|at| at <= now())
+        {
+            return Err(Error::unauthorized());
+        }
         if context.id.starts_with("ldap/") {
             return Ok(());
         } // Validated against server configuration by Core.
