@@ -33,6 +33,20 @@ jobs:
       - name: Check managed device-host refusal and response deadlines
         timeout-minutes: 5
         run: dotnet run --project windows/RiAuth.DeviceHost/RiAuth.DeviceHost.csproj --configuration Debug --no-launch-profile -- selftest
+      - name: Check installer parsing and state admission ordering
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          $installer = Join-Path $env:GITHUB_WORKSPACE 'windows/Install-DeviceHost.ps1'
+          [System.Management.Automation.Language.Parser]::ParseFile($installer, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -ne 0) { throw 'Installer parsing failed.' }
+          python -I -B -m unittest discover -s windows/tests -p test_state_admission_order.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'State admission ordering checks failed.' }
+      - name: Check native device state admission on NTFS
+        timeout-minutes: 5
+        run: dotnet run --project windows/RiAuth.DeviceHost.StateTests/RiAuth.DeviceHost.StateTests.csproj --configuration Debug --no-launch-profile
 
   check:
     runs-on: ubuntu-24.04
