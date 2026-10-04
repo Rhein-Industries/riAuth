@@ -351,6 +351,45 @@ class SourceContractData(unittest.TestCase):
             with self.assertRaises(evidence.AuditError):
                 evidence.read_text(root, path.name)
 
+    def test_source_ast_normalizes_only_empty_type_parameters(self):
+        import copy
+
+        absent = ast.parse(
+            'def ordinary():\n    return "type_params=[]"\n'
+            'async def asynchronous():\n    return "type_params=[]"\n'
+            'class Declaration:\n    note = "type_params=[]"\n'
+        )
+        for node in absent.body:
+            if "type_params" not in node._fields:
+                node._fields = (*node._fields, "type_params")
+            if hasattr(node, "type_params"):
+                delattr(node, "type_params")
+        empty = copy.deepcopy(absent)
+        for node in empty.body:
+            node.type_params = []
+        before = ast.dump(empty, include_attributes=True)
+        self.assertEqual(evidence.source_ast_dump(absent), evidence.source_ast_dump(empty))
+        self.assertEqual(evidence.source_declarations_sha256(absent),
+                         evidence.source_declarations_sha256(empty))
+        self.assertEqual(ast.dump(empty, include_attributes=True), before)
+        self.assertTrue(all(not hasattr(node, "type_params") for node in absent.body))
+        self.assertTrue(all(node.type_params == [] for node in empty.body))
+        for index in range(len(empty.body)):
+            with self.subTest(node_type=type(empty.body[index]).__name__):
+                nonempty = copy.deepcopy(empty)
+                nonempty.body[index].type_params = [ast.Name(id="T", ctx=ast.Load())]
+                self.assertNotEqual(evidence.source_ast_dump(nonempty),
+                                    evidence.source_ast_dump(empty))
+                self.assertNotEqual(evidence.source_declarations_sha256(nonempty),
+                                    evidence.source_declarations_sha256(empty))
+                self.assertEqual(len(nonempty.body[index].type_params), 1)
+        literal = ast.Constant(value="type_params=[]")
+        self.assertEqual(evidence.source_ast_dump(literal),
+                         ast.dump(literal, include_attributes=False))
+        self.assertEqual(literal.value, "type_params=[]")
+        self.assertEqual([node.value for node in ast.walk(empty)
+                          if isinstance(node, ast.Constant)], ["type_params=[]"] * 3)
+
     def test_inspected_contracts_never_use_execution_or_module_loading(self):
         texts = self.texts()
         refused = AssertionError("unexpected execution or module loading")

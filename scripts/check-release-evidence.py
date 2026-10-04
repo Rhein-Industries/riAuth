@@ -10,6 +10,7 @@ release SBOM.
 
 import argparse
 import ast
+import copy
 import hashlib
 import json
 import os
@@ -334,19 +335,28 @@ def source_binding_names(node):
     return ()
 
 
+def source_ast_dump(node):
+    normalized = copy.deepcopy(node)
+    for item in ast.walk(normalized):
+        parameters = getattr(item, "type_params", None)
+        if type(parameters) is list and not parameters:
+            delattr(item, "type_params")
+    return ast.dump(normalized, include_attributes=False)
+
+
 def source_declarations_sha256(tree):
     rows = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             rows.append([
-                type(node).__name__, node.name, ast.dump(node.args, include_attributes=False),
-                [ast.dump(item, include_attributes=False) for item in node.decorator_list],
-                None if node.returns is None else ast.dump(node.returns, include_attributes=False),
+                type(node).__name__, node.name, source_ast_dump(node.args),
+                [source_ast_dump(item) for item in node.decorator_list],
+                None if node.returns is None else source_ast_dump(node.returns),
                 node.type_comment,
-                [ast.dump(item, include_attributes=False) for item in getattr(node, "type_params", [])],
+                [source_ast_dump(item) for item in getattr(node, "type_params", [])],
             ])
         else:
-            rows.append(["declaration", ast.dump(node, include_attributes=False)])
+            rows.append(["declaration", source_ast_dump(node)])
     return hashlib.sha256(json.dumps(rows, separators=(",", ":"), ensure_ascii=True).encode("ascii")).hexdigest()
 
 
@@ -401,7 +411,7 @@ def recognize_source_contract(text, relative):
             elif isinstance(node, ast.arg):
                 require(node.arg not in protected, f"rebound source contract {relative}")
         for name, expected_hash in expected.items():
-            actual = hashlib.sha256(ast.dump(bindings[name], include_attributes=False).encode()).hexdigest()
+            actual = hashlib.sha256(source_ast_dump(bindings[name]).encode()).hexdigest()
             require(actual == expected_hash, f"source contract changed {relative}: {name}")
         require(source_declarations_sha256(tree) == contract["declarations_sha256"],
                 f"unsupported source declarations {relative}")
