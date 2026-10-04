@@ -609,7 +609,7 @@ async fn setup_additional(
     axum::extract::Path(key): axum::extract::Path<String>,
     uri: axum::http::Uri,
 ) -> Response {
-    if uri.path().contains('%') {
+    if !crate::portal::theme::canonical_asset_path(&uri, &key) {
         return Error::missing("Frontend asset not found").into_response();
     }
     app.setup.runtime.frontend.additional(&key)

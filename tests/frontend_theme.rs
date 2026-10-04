@@ -426,3 +426,35 @@ async fn signin_override_keeps_binding_markers_escaped_base_and_popup_csp() {
         pending["browser_hash"]
     );
 }
+
+#[tokio::test]
+async fn encoded_issuer_prefix_keeps_additional_asset_keys_canonical_in_core_and_setup() {
+    for pending in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let theme = root.path().join("theme");
+        write(&theme, "theme-assets/images/logo.svg", b"<svg/>");
+        let mut cfg = config(root.path());
+        cfg.issuer = "http://localhost:9000/identity%20team".into();
+        cfg.frontend.theme_dir = Some(theme);
+        let router = if pending {
+            Bootstrap::prepare(cfg.clone(), &root.path().join("proof"), 900).unwrap();
+            riauth::bootstrap::router(Bootstrap::open(cfg).unwrap())
+        } else {
+            riauth::api::router(Core::initialize(cfg, admin()).unwrap())
+        };
+        let (status, _, bytes) = get(
+            &router,
+            "/identity%20team/portal/theme-assets/images/logo.svg",
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "pending={pending}");
+        assert_eq!(bytes, b"<svg/>");
+        for path in [
+            "/identity%20team/portal/theme-assets/images%2flogo.svg",
+            "/identity%20team/portal/theme-assets/images/lo%67o.svg",
+            "/identity%20team/portal/theme-assets/%2e%2e/images/logo.svg",
+        ] {
+            assert_eq!(get(&router, path).await.0, StatusCode::NOT_FOUND, "{path}");
+        }
+    }
+}

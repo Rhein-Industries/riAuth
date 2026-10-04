@@ -504,12 +504,22 @@ pub(crate) async fn builtin(State(app): State<App>, uri: Uri) -> Response {
         .builtin(uri.path().rsplit('/').next().unwrap_or_default())
 }
 
+/// The configured issuer prefix may be percent-encoded; theme keys may not.
+/// Axum already selected the issuer route, so compare only its raw key suffix.
+pub(crate) fn canonical_asset_path(uri: &Uri, key: &str) -> bool {
+    valid_key(key)
+        && uri
+            .path()
+            .strip_suffix(key)
+            .is_some_and(|prefix| prefix.ends_with("/portal/theme-assets/"))
+}
+
 pub(crate) async fn additional(
     State(app): State<App>,
     Path(key): Path<String>,
     uri: Uri,
 ) -> Response {
-    if uri.path().contains('%') {
+    if !canonical_asset_path(&uri, &key) {
         return Error::missing("Frontend asset not found").into_response();
     }
     app.core.runtime.frontend.additional(&key)
