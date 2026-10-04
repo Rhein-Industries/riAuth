@@ -1,6 +1,6 @@
 # Documentation
 
-Choose a path for v0.1.1:
+Choose a path for v0.1.2:
 
 - **New Essentials operator or user?** Follow the [Essentials guide](essentials-guide.md). Its small install uses the Essentials binaries and loopback redb. Section 11 is browser invitation acceptance.
 - **New Platform operator or user?** Follow the [Platform guide](platform-guide.md). It walks the same tasks on the Platform binaries, then one configured workflow, SAML, and the LDAP provider listener. Section 14 is that same invitation page.
@@ -20,6 +20,7 @@ Read [release limitations](limitations.md) before a production cutover. The [tes
 | [Platform guide](platform-guide.md) | The same tasks on the Platform binaries, with shared semantics and the remote-client split, then a configured workflow, SAML IdP and source, an LDAP provider listener, and the same browser invitation acceptance |
 | [Getting started](getting-started.md) | Undifferentiated local walkthrough; `cargo install --locked --path .` selects the default `platform` feature |
 | [Project README](../README.md) | Install, initialize and try browser and terminal sign-in |
+| [Docker images](docker.md) | Native Essentials/Platform image publication and persistent, nonroot Compose initialization |
 | [Frontend themes](frontend-themes.md) | Operator-supplied browser layouts, CSS, same-origin scripts, images and fonts in both editions |
 | [Architecture](architecture.md) | Components, request paths, state and worker boundaries |
 | [Operations](operations.md) | TLS, probes, metrics, backups, restore, maintenance and releases |
