@@ -6,4 +6,7 @@ asn1-rs-LICENSE-MIT  https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7
 asn1-rs-LICENSE-APACHE  https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-APACHE
 yasna-LICENSE-MIT  https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-MIT
 yasna-LICENSE-APACHE  https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-APACHE
+wasmi-LICENSE-MIT  https://raw.githubusercontent.com/wasmi-labs/wasmi/f384f288a149625dc7fc29bcd686f8bca3ee71c0/LICENSE-MIT
+wasmi-LICENSE-APACHE  https://raw.githubusercontent.com/wasmi-labs/wasmi/f384f288a149625dc7fc29bcd686f8bca3ee71c0/LICENSE-APACHE
+wasmparser-LICENSE-APACHE  https://raw.githubusercontent.com/bytecodealliance/wasm-tools/1b2c8585415dde926134e57b0d1e6a4c9438abe3/LICENSE-APACHE
 Apache-2.0.txt  https://www.apache.org/licenses/LICENSE-2.0.txt

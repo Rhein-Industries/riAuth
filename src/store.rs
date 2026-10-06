@@ -891,20 +891,32 @@ impl Tx<'_> {
         let group_digest = (bucket == "groups")
             .then(|| group_source_digest(value))
             .transpose()?;
+        if group_digest.is_some() {
+            self.raw_put(&record_key(maintenance::GROUP_SOURCE_DIGESTS, key), None)?;
+        }
+        self.import_snapshot_record(bucket, key, value)?;
+        if let Some(digest) = group_digest {
+            self.import_snapshot_record(maintenance::GROUP_SOURCE_DIGESTS, key, &digest)?;
+        }
+        Ok(())
+    }
+    /// Copy exactly one offline snapshot record without generating other rows.
+    /// Restore rebuilds and validates indexes before activation; migration
+    /// compares the complete source and destination snapshots. Generating a
+    /// Group digest here would collide with its later archived index record.
+    pub(crate) fn import_snapshot_record<T: Serialize>(
+        &self,
+        bucket: &str,
+        key: &str,
+        value: &T,
+    ) -> Result<()> {
         let name = record_key(bucket, key);
         let plain = Zeroizing::new(serde_json::to_vec(value).map_err(Error::internal)?);
         let bytes = match self.key {
             Some(key) => crypto::seal(key, name.as_bytes(), &plain)?,
             None => plain.to_vec(),
         };
-        if group_digest.is_some() {
-            self.raw_put(&record_key(maintenance::GROUP_SOURCE_DIGESTS, key), None)?;
-        }
-        self.raw_put(&name, Some(bytes))?;
-        if let Some(digest) = group_digest {
-            self.import_record(maintenance::GROUP_SOURCE_DIGESTS, key, &digest)?;
-        }
-        Ok(())
+        self.raw_put(&name, Some(bytes))
     }
     pub fn delete(&self, bucket: &str, key: &str) -> Result<()> {
         let transitions = self

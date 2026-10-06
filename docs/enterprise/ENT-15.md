@@ -10,7 +10,7 @@ Review filters, retention, and redaction are defined in [ENT-09.md](ENT-09.md).
 
 | Surface | Permission | Notes |
 | --- | --- | --- |
-| `GET /api/reports/users.csv` | Same as user inventory: caller must be an administrator, or an agent with some `user.read` permission. Each row still requires `user.read` on `user/{username}` (exact resource or `*`). | Query: `filter` (username substring), `limit`, `cursor`. |
+| `GET /api/reports/users.csv` | Same as user inventory: administrator, delegated human with a readable user, or an agent with some `user.read` permission. Each row requires `user.read` on `user/{username}`; each membership requires `group.read` on `group/{name}`. Agent exact resources or `*` apply independently to each permission. | Query: `filter` (username substring), `limit`, `cursor`. |
 | `GET /api/reports/audit.csv` | `audit.read` on `audit/events`, same as review. | Same filters as `GET /api/audit/review`. |
 | `riauth report users --out FILE` | The saved admin or agent credential. | Walks every page and writes one CSV. |
 | `riauth report audit --out FILE` | The saved admin or agent credential. | Same, with `--action`, `--actor`, `--target`, `--run-id`, `--from`, `--to`. |
@@ -29,7 +29,7 @@ User CSV, in order:
 
 `id, username, email, display_name, enabled, admin, created_at, groups`
 
-`enabled` and `admin` are `true` or `false`. Empty email is an empty field. `groups` is `;`-separated durable group names, sorted. Temporary PAM grants are not included because export reads `Group.members`. Group names cannot contain `;`.
+`enabled` and `admin` are `true` or `false`. Empty email is an empty field. `groups` is `;`-separated readable durable group names, sorted. Groups outside the caller's `group.read` scope are omitted; without that permission the column is empty. Temporary PAM grants are not included because export reads `Group.members`. Group names cannot contain `;`.
 
 Audit CSV, in order:
 

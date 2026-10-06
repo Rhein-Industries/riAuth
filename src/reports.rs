@@ -1,5 +1,6 @@
 //! Audit review and CSV reports. Operational control, not a compliance certification.
 use crate::{
+    agent::Principal,
     core::{AUDIT_RETENTION_SECONDS, Core},
     crypto::{self, now},
     error::{Error, Result},
@@ -304,7 +305,7 @@ where
     Ok((items, next))
 }
 
-fn memberships(tx: &Tx<'_>) -> Result<BTreeMap<String, BTreeSet<String>>> {
+fn memberships(tx: &Tx<'_>, actor: &Principal) -> Result<BTreeMap<String, BTreeSet<String>>> {
     let mut index: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut after = None;
     let mut seen = 0usize;
@@ -320,6 +321,9 @@ fn memberships(tx: &Tx<'_>) -> Result<BTreeMap<String, BTreeSet<String>>> {
         let full = batch.len() == 256;
         after = batch.last().map(|(key, _)| key.clone());
         for (_, group) in batch {
+            if !actor.allows("group.read", &format!("group/{}", group.name)) {
+                continue;
+            }
             for member in group.members {
                 index.entry(member).or_default().insert(group.name.clone());
             }
@@ -487,7 +491,7 @@ impl Core {
                 Some(revision),
                 query.cursor.as_deref(),
             )?;
-            let index = memberships(tx)?;
+            let index = memberships(tx, &actor)?;
             let (users, next_key) = scan_page(
                 tx,
                 "users",

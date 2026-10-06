@@ -192,19 +192,28 @@ async fn ipv6_addresses_in_one_64_share_a_bucket() {
 
 #[tokio::test]
 async fn configured_rate_limit_overrides_apply() {
-    let (_f, router) = router(&[("outpost_start", 2), ("general", 3), ("forward_auth", 4)]);
-    exhaust(&router, &[("GET", START)], 2, CLIENT).await;
-    assert!(limited(&router, "GET", START, CLIENT).await);
+    let mut overrides = vec![("portal_start", 2), ("general", 3)];
+    if cfg!(feature = "platform") {
+        overrides.extend([("outpost_start", 2), ("forward_auth", 4)]);
+    }
+    let (_f, router) = router(&overrides);
+    exhaust(&router, &[("POST", "/api/portal/sign-in")], 2, CLIENT).await;
+    assert!(limited(&router, "POST", "/api/portal/sign-in", CLIENT).await);
     exhaust(
         &router,
-        &[("GET", "/outpost/dashboard/callback")],
+        &[("GET", "/.well-known/openid-configuration")],
         3,
         CLIENT,
     )
     .await;
     assert!(limited(&router, "GET", "/api/portal", CLIENT).await);
-    exhaust(&router, &[("GET", "/outpost/dashboard/traefik")], 4, CLIENT).await;
-    assert!(limited(&router, "GET", "/outpost/dashboard/auth", CLIENT).await);
+    #[cfg(feature = "platform")]
+    {
+        exhaust(&router, &[("GET", START)], 2, CLIENT).await;
+        assert!(limited(&router, "GET", START, CLIENT).await);
+        exhaust(&router, &[("GET", "/outpost/dashboard/traefik")], 4, CLIENT).await;
+        assert!(limited(&router, "GET", "/outpost/dashboard/auth", CLIENT).await);
+    }
     // Categories without an override keep their defaults.
     exhaust(&router, &[("POST", "/api/login")], 20, CLIENT).await;
     assert!(limited(&router, "POST", "/api/login", CLIENT).await);
@@ -257,7 +266,15 @@ fn config_rejects_unknown_rate_limit_categories() {
     };
     for category in categories {
         for limit in [1, 100_000] {
-            assert!(config(category, limit).validate().is_ok(), "{category}");
+            let result = config(category, limit).validate();
+            if !cfg!(feature = "platform")
+                && matches!(category, "saml" | "forward_auth" | "outpost_start")
+            {
+                let error = result.unwrap_err().to_string();
+                assert!(error.contains("requires the Platform build"), "{error}");
+            } else {
+                assert!(result.is_ok(), "{category}: {result:?}");
+            }
         }
         for limit in [0, 100_001] {
             assert!(config(category, limit).validate().is_err(), "{category}");

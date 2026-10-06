@@ -634,11 +634,16 @@ fn management_receipt_replays_before_revision_checks_on_both_redb_formats() {
             )
         };
         let first = context::scope(Some(request.clone()), create).unwrap();
-        assert_eq!(
-            context::scope(Some(request.clone()), create).unwrap(),
-            first
-        );
-        assert_eq!(f.core.store.list::<Value>("receipts").unwrap().len(), 1);
+        let issued = text(&first["credential"], "token");
+        let committed = f.snapshot().unwrap();
+        let repeated = context::scope(Some(request.clone()), create).unwrap_err();
+        assert_eq!(repeated.status.as_u16(), 409);
+        assert_eq!(repeated.code, "credential_already_issued");
+        f.assert_snapshot(&committed);
+        let receipts = f.core.store.list::<Value>("receipts").unwrap();
+        assert_eq!(receipts.len(), 1);
+        assert_eq!(receipts[0].1["result"]["credential_issued"], true);
+        assert!(!serde_json::to_string(&receipts).unwrap().contains(&issued));
         let mut changed = request.clone();
         changed.fingerprint = "request-v2".into();
         assert_eq!(
@@ -660,5 +665,39 @@ fn management_receipt_replays_before_revision_checks_on_both_redb_formats() {
                 .unwrap()
                 .enabled
         );
+
+        // Ordinary secret-free receipts still replay before the stale revision
+        // check, while credential issuance above cannot redisclose its secret.
+        let profile_request = RequestContext {
+            idempotency_key: Some("update-boundary-user".into()),
+            fingerprint: "profile-v1".into(),
+            revision: f.core.store.get("meta", "revision").unwrap(),
+            ..Default::default()
+        };
+        let update = || {
+            f.core.update_user(
+                &f.admin,
+                "alice",
+                riauth::model::UserPatch {
+                    display_name: Some("Updated Alice".into()),
+                    ..Default::default()
+                },
+            )
+        };
+        let profile = context::scope(Some(profile_request.clone()), update).unwrap();
+        let committed = f.snapshot().unwrap();
+        assert_eq!(
+            context::scope(Some(profile_request.clone()), update).unwrap(),
+            profile
+        );
+        f.assert_snapshot(&committed);
+        let mut stale = profile_request;
+        stale.idempotency_key = Some("another-profile-request".into());
+        assert_eq!(
+            context::scope(Some(stale), update).unwrap_err().message,
+            "Configuration revision changed"
+        );
+        f.assert_snapshot(&committed);
+        assert_eq!(f.core.store.list::<Value>("receipts").unwrap().len(), 2);
     }
 }

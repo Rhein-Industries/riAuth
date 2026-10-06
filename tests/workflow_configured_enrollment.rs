@@ -186,6 +186,40 @@ fn configured_passkey_enrollment_binds_fresh_proof_and_commits_once_after_restar
         .store
         .write(|tx| tx.put("workflow_runs", &run.id, &original))
         .unwrap();
+    // Detecting policy tampering durably retires the active-session authority,
+    // consumes verifier evidence, and discards the in-flight ceremony. Restoring
+    // only the old runtime row must not revive any of that authority.
+    assert_eq!(
+        f.core
+            .workflow_passkey_enroll(&alice, &run.id, response)
+            .unwrap_err()
+            .status
+            .as_u16(),
+        403
+    );
+    let run = f
+        .core
+        .workflow_configured_start(&alice, "local-passkey-enrollment")
+        .unwrap();
+    let passkey = f.core.workflow_passkey_challenge(&alice, &run.id).unwrap();
+    let verified = existing
+        .do_authentication(
+            "http://localhost:9000".parse().unwrap(),
+            serde_json::from_value(passkey.public_key).unwrap(),
+        )
+        .unwrap();
+    f.core.workflow_passkey(&alice, &run.id, verified).unwrap();
+    let registration = f
+        .core
+        .workflow_passkey_enrollment_challenge(&alice, &run.id, "Added key".into())
+        .unwrap();
+    let mut added = WebauthnAuthenticator::new(SoftPasskey::new(true));
+    let response = added
+        .do_registration(
+            "http://localhost:9000".parse().unwrap(),
+            serde_json::from_value(registration.public_key).unwrap(),
+        )
+        .unwrap();
     let sessions = f.core.store.list::<Session>("sessions").unwrap().len();
     let f = f.reopen_with(|config| assert!(config.workflows["local-passkey-enrollment"].active));
     for wrong in [&bob, &second] {

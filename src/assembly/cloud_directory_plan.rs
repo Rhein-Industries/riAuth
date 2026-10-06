@@ -175,7 +175,17 @@ impl Core {
         expected: &Plan,
         reviewed_plan: Option<&str>,
     ) -> Result<Principal> {
-        let actor = self.cloud_snapshot_actor(
+        let actor = self.management(tx, token, "directory.sync", &settings.resource())?;
+        if actor.id != expected.actor {
+            return Err(Error::forbidden());
+        }
+        // A live scope reduction denies the exact affected resources before
+        // reporting stale-review conflicts or fetching another remote page.
+        authorize_reconcile(tx, &actor, settings, &expected.entries)?;
+        expected
+            .review
+            .validate(tx, &actor, &plan_content(expected)?)?;
+        self.cloud_snapshot_actor(
             tx,
             token,
             settings,
@@ -200,11 +210,7 @@ impl Core {
         }
         expected
             .review
-            .validate(tx, &actor, &plan_content(expected)?)?;
-        expected
-            .review
             .confirm(&expected.id, &expected.removal_impact, reviewed_plan)?;
-        authorize_reconcile(tx, &actor, settings, &expected.entries)?;
         Ok(actor)
     }
 

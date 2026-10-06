@@ -13,13 +13,13 @@ use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, SocketAddr},
-    sync::Arc,
-    time::Duration,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, UdpSocket},
-    sync::Semaphore,
+    sync::{OwnedSemaphorePermit, Semaphore},
     task::{JoinHandle, JoinSet},
 };
 
@@ -597,6 +597,142 @@ async fn udp<P: RadiusPort>(core: P, id: String, config: Listener, socket: UdpSo
         }
     }
 }
+const RADSEC_HANDSHAKES: usize = 64;
+const RADSEC_HANDSHAKES_PER_PEER: usize = 4;
+const RADSEC_ACCEPTS_PER_WINDOW: u32 = 16;
+const RADSEC_ACCEPT_WINDOW: Duration = Duration::from_secs(5);
+const RADSEC_SESSIONS: usize = 64;
+const RADSEC_SESSIONS_PER_NAS: usize = 8;
+
+struct RadsecPeerBudget {
+    slots: Arc<Semaphore>,
+    accepts: Mutex<(Instant, u32)>,
+}
+struct RadsecBudget {
+    handshakes: Arc<Semaphore>,
+    sessions: Arc<Semaphore>,
+    peers: BTreeMap<IpAddr, RadsecPeerBudget>,
+    nas: BTreeMap<String, Arc<Semaphore>>,
+}
+impl RadsecBudget {
+    fn new(nas: &BTreeMap<String, Nas>) -> Self {
+        Self {
+            handshakes: Arc::new(Semaphore::new(RADSEC_HANDSHAKES)),
+            sessions: Arc::new(Semaphore::new(RADSEC_SESSIONS)),
+            peers: nas
+                .values()
+                .map(|nas| {
+                    (
+                        nas.peer,
+                        RadsecPeerBudget {
+                            slots: Arc::new(Semaphore::new(RADSEC_HANDSHAKES_PER_PEER)),
+                            accepts: Mutex::new((Instant::now(), 0)),
+                        },
+                    )
+                })
+                .collect(),
+            nas: nas
+                .keys()
+                .map(|id| {
+                    (
+                        id.clone(),
+                        Arc::new(Semaphore::new(RADSEC_SESSIONS_PER_NAS)),
+                    )
+                })
+                .collect(),
+        }
+    }
+    fn handshake(&self, peer: IpAddr) -> Option<(OwnedSemaphorePermit, OwnedSemaphorePermit)> {
+        let peer = self.peers.get(&peer)?;
+        let mut accepts = peer
+            .accepts
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let now = Instant::now();
+        if now.duration_since(accepts.0) >= RADSEC_ACCEPT_WINDOW {
+            *accepts = (now, 0);
+        }
+        if accepts.1 >= RADSEC_ACCEPTS_PER_WINDOW {
+            return None;
+        }
+        accepts.1 += 1;
+        // Per-source admission precedes the shared pool and TLS processing.
+        let peer_permit = peer.slots.clone().try_acquire_owned().ok()?;
+        let global_permit = self.handshakes.clone().try_acquire_owned().ok()?;
+        Some((peer_permit, global_permit))
+    }
+    fn session(&self, nas: &str) -> Option<(OwnedSemaphorePermit, OwnedSemaphorePermit)> {
+        let nas_permit = self.nas.get(nas)?.clone().try_acquire_owned().ok()?;
+        let global_permit = self.sessions.clone().try_acquire_owned().ok()?;
+        Some((nas_permit, global_permit))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn radsec_connection<P: RadiusPort>(
+    core: P,
+    id: String,
+    config: Listener,
+    tls: Arc<rustls::ServerConfig>,
+    stream: tokio::net::TcpStream,
+    peer: IpAddr,
+    budgets: Arc<RadsecBudget>,
+    handshake_permits: (OwnedSemaphorePermit, OwnedSemaphorePermit),
+    engine: Arc<eap::Engine>,
+) -> anyhow::Result<()> {
+    let mut stream = tokio::time::timeout(
+        Duration::from_secs(5),
+        tokio_rustls::TlsAcceptor::from(tls).accept(stream),
+    )
+    .await??;
+    let certificates = stream
+        .get_ref()
+        .1
+        .peer_certificates()
+        .ok_or_else(|| anyhow::anyhow!("Missing RadSec certificate"))?;
+    let certificate = certificates
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("Missing RadSec certificate"))?;
+    use sha2::Digest as ShaDigest;
+    let pin = URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(certificate.as_ref()));
+    let (nas_id, nas) = config
+        .nas
+        .iter()
+        .find(|(_, nas)| nas.peer == peer && nas.certificate_sha256.as_deref() == Some(&pin))
+        .ok_or_else(|| anyhow::anyhow!("Unregistered RadSec certificate"))?;
+    // Only a certificate-pinned NAS can consume authenticated capacity. Keep
+    // these budgets independent so stalled handshakes cannot displace sessions.
+    let _session_permits = budgets
+        .session(nas_id)
+        .ok_or_else(|| anyhow::anyhow!("RadSec authenticated capacity is busy"))?;
+    drop(handshake_permits);
+    for _ in 0..1000 {
+        let mut header = [0; 4];
+        tokio::time::timeout(Duration::from_secs(30), stream.read_exact(&mut header)).await??;
+        let len = u16::from_be_bytes([header[2], header[3]]) as usize;
+        if !(20..=4096).contains(&len) {
+            break;
+        }
+        let mut bytes = vec![0; len];
+        bytes[..4].copy_from_slice(&header);
+        tokio::time::timeout(Duration::from_secs(5), stream.read_exact(&mut bytes[4..])).await??;
+        if let Some(reply) = process(
+            core.clone(),
+            id.clone(),
+            nas_id.clone(),
+            nas.clone(),
+            bytes,
+            true,
+            engine.clone(),
+        )
+        .await
+        {
+            tokio::time::timeout(Duration::from_secs(5), stream.write_all(&reply)).await??;
+        }
+    }
+    Ok(())
+}
+
 async fn tcp<P: RadiusPort>(
     core: P,
     id: String,
@@ -605,18 +741,21 @@ async fn tcp<P: RadiusPort>(
     mut tls: Arc<rustls::ServerConfig>,
 ) {
     let engine = Arc::new(eap::Engine::default());
-    let slots = Arc::new(Semaphore::new(64));
+    let budgets = Arc::new(RadsecBudget::new(&config.nas));
     let mut jobs = JoinSet::new();
     let mut reload = tokio::time::interval(Duration::from_secs(60));
     loop {
         tokio::select! {
-            accepted=socket.accept()=>{let Ok((stream,peer))=accepted else{break};if !config.nas.values().any(|n|n.peer==peer.ip()){continue;}let Ok(permit)=slots.clone().try_acquire_owned()else{continue};let(core,id,config,tls)=(core.clone(),id.clone(),config.clone(),tls.clone());let engine=engine.clone();jobs.spawn(async move{let _permit=permit;let _=async{
-                let mut stream=tokio::time::timeout(Duration::from_secs(5),tokio_rustls::TlsAcceptor::from(tls).accept(stream)).await??;
-                let certificates=stream.get_ref().1.peer_certificates().ok_or_else(||anyhow::anyhow!("Missing RadSec certificate"))?;let certificate=certificates.first().ok_or_else(||anyhow::anyhow!("Missing RadSec certificate"))?;
-                use sha2::Digest as ShaDigest;let pin=URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(certificate.as_ref()));let (nas_id,nas)=config.nas.iter().find(|(_,n)|n.peer==peer.ip()&&n.certificate_sha256.as_deref()==Some(&pin)).ok_or_else(||anyhow::anyhow!("Unregistered RadSec certificate"))?;
-                for _ in 0..1000 {let mut header=[0;4];tokio::time::timeout(Duration::from_secs(30),stream.read_exact(&mut header)).await??;let len=u16::from_be_bytes([header[2],header[3]]) as usize;if !(20..=4096).contains(&len){break;}let mut bytes=vec![0;len];bytes[..4].copy_from_slice(&header);tokio::time::timeout(Duration::from_secs(5),stream.read_exact(&mut bytes[4..])).await??;if let Some(reply)=process(core.clone(),id.clone(),nas_id.clone(),nas.clone(),bytes,true,engine.clone()).await{tokio::time::timeout(Duration::from_secs(5),stream.write_all(&reply)).await??;}}
-                anyhow::Ok(())
-            }.await;});},
+            accepted = socket.accept() => {
+                let Ok((stream, peer)) = accepted else { break };
+                let Some(handshake_permits) = budgets.handshake(peer.ip()) else { continue };
+                let (core, id, config, tls, budgets, engine) = (
+                    core.clone(), id.clone(), config.clone(), tls.clone(), budgets.clone(), engine.clone(),
+                );
+                jobs.spawn(async move {
+                    let _ = radsec_connection(core, id, config, tls, stream, peer.ip(), budgets, handshake_permits, engine).await;
+                });
+            },
             _=reload.tick()=>{match tls_config(&config).await{Ok(next)=>tls=next,Err(_)=>tracing::warn!("RadSec certificate reload failed; retaining current configuration")}},
             _=jobs.join_next(),if !jobs.is_empty()=>{},
         }
@@ -628,4 +767,71 @@ pub(crate) fn fuzz_packet(data: &[u8]) {
     let _ = decode(data, b"fuzz-fixture-secret-not-a-credential");
     // Exercise EAP framing even when the outer RADIUS authenticator is invalid.
     eap::fuzz_message(data);
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+
+    fn budget() -> RadsecBudget {
+        RadsecBudget::new(&BTreeMap::from([
+            (
+                "nas-a".into(),
+                Nas {
+                    peer: "192.0.2.1".parse().unwrap(),
+                    client_id: "network".into(),
+                    shared_secret_file: None,
+                    certificate_sha256: None,
+                },
+            ),
+            (
+                "nas-b".into(),
+                Nas {
+                    peer: "192.0.2.2".parse().unwrap(),
+                    client_id: "network".into(),
+                    shared_secret_file: None,
+                    certificate_sha256: None,
+                },
+            ),
+        ]))
+    }
+
+    #[test]
+    fn one_radsec_peer_cannot_exhaust_handshake_or_authenticated_capacity() {
+        let budgets = budget();
+        let peer_a = "192.0.2.1".parse().unwrap();
+        let peer_b = "192.0.2.2".parse().unwrap();
+        let pending = (0..RADSEC_HANDSHAKES_PER_PEER)
+            .map(|_| budgets.handshake(peer_a).unwrap())
+            .collect::<Vec<_>>();
+        assert!(budgets.handshake(peer_a).is_none());
+        let other_peer = budgets.handshake(peer_b).unwrap();
+        assert_eq!(budgets.sessions.available_permits(), RADSEC_SESSIONS);
+        assert!(budgets.handshake("192.0.2.3".parse().unwrap()).is_none());
+        drop((pending, other_peer));
+        assert_eq!(budgets.handshakes.available_permits(), RADSEC_HANDSHAKES);
+
+        let authenticated = (0..RADSEC_SESSIONS_PER_NAS)
+            .map(|_| budgets.session("nas-a").unwrap())
+            .collect::<Vec<_>>();
+        assert!(budgets.session("nas-a").is_none());
+        let other_nas = budgets.session("nas-b").unwrap();
+        assert!(budgets.handshake(peer_b).is_some());
+        drop((authenticated, other_nas));
+        assert_eq!(budgets.sessions.available_permits(), RADSEC_SESSIONS);
+    }
+
+    #[test]
+    fn radsec_accept_rate_is_per_peer_and_recovers_after_its_window() {
+        let budgets = budget();
+        let peer_a = "192.0.2.1".parse().unwrap();
+        let peer_b = "192.0.2.2".parse().unwrap();
+        for _ in 0..RADSEC_ACCEPTS_PER_WINDOW {
+            drop(budgets.handshake(peer_a).unwrap());
+        }
+        assert!(budgets.handshake(peer_a).is_none());
+        assert!(budgets.handshake(peer_b).is_some());
+        budgets.peers[&peer_a].accepts.lock().unwrap().0 = Instant::now() - RADSEC_ACCEPT_WINDOW;
+        assert!(budgets.handshake(peer_a).is_some());
+    }
 }

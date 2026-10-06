@@ -1901,9 +1901,15 @@ async fn client_create_and_update_require_retry_binding_across_browser_and_beare
             .starts_with("ri_client_")
     );
     let committed = fixture.snapshot().unwrap();
-    assert_eq!(
-        send(&app, browser_collection, browser_create()).await.2,
-        first.2
+    let repeated = send(&app, browser_collection, browser_create()).await;
+    assert_eq!(repeated.0, StatusCode::CONFLICT, "{}", repeated.2);
+    assert_eq!(repeated.2["error"], "credential_already_issued");
+    assert!(repeated.2.get("client_secret").is_none());
+    assert!(
+        !repeated
+            .2
+            .to_string()
+            .contains(first.2["client_secret"].as_str().unwrap())
     );
     fixture.assert_http_mutation_snapshot(&committed);
     assert_eq!(audit_count("client.create"), 1);

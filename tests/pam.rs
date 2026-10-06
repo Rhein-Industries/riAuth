@@ -65,6 +65,147 @@ fn ask(core: &Core, token: &str, group: &str, reason: impl Into<String>, ttl: u6
     .unwrap()
 }
 
+#[test]
+fn collection_reads_use_live_ownership_approver_and_agent_scopes() {
+    use riauth::agent::{NewAgent, Permission};
+
+    let Pam {
+        _dir,
+        core,
+        admin,
+        alice,
+        approver,
+    } = open_pam(&["approver"]);
+    let new_session = |username: &str| {
+        core.create_user(
+            &admin,
+            NewUser {
+                username: username.into(),
+                password: PASSWORD.into(),
+                email: None,
+                display_name: username.into(),
+                admin: false,
+            },
+        )
+        .unwrap();
+        text(
+            &core.login(username.into(), PASSWORD.into(), None).unwrap(),
+            "session_token",
+        )
+    };
+    let bob = new_session("bob");
+    let other_approver = new_session("other-approver");
+    let unrelated = new_session("unrelated");
+    let mut config = core.config.clone();
+    config
+        .pam_approvers
+        .insert("other".into(), strings(&["other-approver"]));
+    drop(core);
+    let core = Core::open(config).unwrap();
+
+    let mut requests = Vec::new();
+    let mut grants = Vec::new();
+    for (requester, group, reviewer) in [
+        (&alice, "ops", &approver),
+        (&bob, "ops", &approver),
+        (&bob, "other", &other_approver),
+        (&approver, "other", &other_approver),
+    ] {
+        let request = ask(&core, requester, group, "private operational reason", 3600);
+        let decision = core
+            .decide_access(reviewer, &text(&request, "id"), true)
+            .unwrap();
+        requests.push(text(&request, "id"));
+        grants.push(text(&decision["grant"], "id"));
+    }
+
+    let assert_visible = |core: &Core, token: &str, expected: &[usize]| {
+        let ids = |rows: Value| -> BTreeSet<String> {
+            rows.as_array()
+                .unwrap()
+                .iter()
+                .map(|row| text(row, "id"))
+                .collect()
+        };
+        let expected_ids = |all: &[String]| -> BTreeSet<String> {
+            expected.iter().map(|index| all[*index].clone()).collect()
+        };
+        assert_eq!(
+            ids(core.list_access_requests(token).unwrap()),
+            expected_ids(&requests)
+        );
+        assert_eq!(
+            ids(core.list_access_grants(token).unwrap()),
+            expected_ids(&grants)
+        );
+    };
+    assert_visible(&core, &alice, &[0]);
+    assert_visible(&core, &bob, &[1, 2]);
+    assert_visible(&core, &approver, &[0, 1, 3]);
+    assert_visible(&core, &other_approver, &[2, 3]);
+    assert_visible(&core, &unrelated, &[]);
+    assert_visible(&core, &admin, &[0, 1, 2, 3]);
+
+    let make_agent = |id: &str, action: &str, resource: &str| {
+        text(
+            &core
+                .create_agent(
+                    &admin,
+                    NewAgent {
+                        id: id.into(),
+                        permissions: vec![Permission {
+                            action: action.into(),
+                            resource: resource.into(),
+                        }],
+                        ttl: 3600,
+                        parent: None,
+                    },
+                )
+                .unwrap()["credential"],
+            "token",
+        )
+    };
+    let reader = make_agent("reader", "access.read", "*");
+    assert_visible(&core, &reader, &[0, 1, 2, 3]);
+    let requests_reader = make_agent("request-reader", "access.read", "access/requests");
+    assert_eq!(
+        core.list_access_requests(&requests_reader)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert_eq!(status_of(core.list_access_grants(&requests_reader)), 403);
+    let grants_reader = make_agent("grant-reader", "access.read", "access/grants");
+    assert_eq!(
+        core.list_access_grants(&grants_reader)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert_eq!(status_of(core.list_access_requests(&grants_reader)), 403);
+    let blind = make_agent("blind", "user.read", "*");
+    assert_eq!(status_of(core.list_access_requests(&blind)), 403);
+    assert_eq!(status_of(core.list_access_grants(&blind)), 403);
+    assert_eq!(status_of(core.list_access_requests("invalid")), 401);
+    assert_eq!(status_of(core.list_access_grants("invalid")), 401);
+
+    // Retained decisions confer no historical approver privilege after the
+    // current configuration removes that approver. Ownership remains visible.
+    let mut config = core.config.clone();
+    config
+        .pam_approvers
+        .insert("ops".into(), strings(&["other-approver"]));
+    drop(core);
+    let core = Core::open(config).unwrap();
+    assert_visible(&core, &approver, &[3]);
+    assert_visible(&core, &other_approver, &[0, 1, 2, 3]);
+    assert_visible(&core, &alice, &[0]);
+}
+
 fn status_of(result: riauth::error::Result<Value>) -> u16 {
     result
         .expect_err("expected an access error")

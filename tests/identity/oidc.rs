@@ -2367,7 +2367,11 @@ fn manifest_rotation_permission_precedes_secret_resolution() {
             },
         )
         .unwrap_err();
-    assert_eq!(error.status.as_u16(), 403);
+    assert_eq!(error.status.as_u16(), 409);
+    assert_eq!(
+        error.message,
+        "Connector plan content or authority changed; create and review a new plan"
+    );
     f.assert_snapshot(&before);
 }
 

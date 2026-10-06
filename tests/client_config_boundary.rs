@@ -117,7 +117,14 @@ fn populated_configuration_json_and_schemas_match_baseline() {
         ),
         (
             "provider_schema",
-            "6f68906ad83708fc8a817ea0d9b7d996e8863abb06dfed01e34d70a41454400c",
+            // Platform adds the optional policy.conditional extension. The
+            // original schema is preserved outside that extension (checked
+            // structurally in provider_settings_boundary.rs).
+            if cfg!(feature = "platform") {
+                "31f187d5ccf1b82a9075940ed755133de7b7e4f575a2075357ef0337f76b0be2"
+            } else {
+                "6f68906ad83708fc8a817ea0d9b7d996e8863abb06dfed01e34d70a41454400c"
+            },
         ),
     ];
     for ((name, bytes), (expected_name, expected_digest)) in cases.into_iter().zip(expected) {

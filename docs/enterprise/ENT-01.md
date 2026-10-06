@@ -24,11 +24,11 @@ Restart after changing `pam_approvers` in the configuration file; request and de
 | Request | Enabled human session. Not an agent. The group must exist and have an approver rule. |
 | Approve or deny | Enabled human in that group's approver set, other than the requester. The first decision wins. |
 | Revoke | An approver for that group, or an administrator. |
-| List requests or grants | Any human session, or an agent with `access.read` on `access/requests` or `access/grants` (`*` covers both). |
+| List requests or grants | A live human sees their own records and records for groups where they are currently a configured approver; administrators see all records. Agents need `access.read` on `access/requests` or `access/grants` (`*` covers both). |
 
 Agents cannot request, approve, deny, revoke, or create a grant. Self-approval is forbidden even when the requester is also an approver. A disabled requester cannot be approved. A second approve or deny of the same request conflicts, including when the two calls race: both run in a write transaction, and the later one sees the decided status.
 
-A request carries a reason of 1–280 characters without control characters or the credential patterns rejected by `validate_reason`, and a duration of 60–86400 seconds. This pattern check does not guarantee that arbitrary sensitive text is detected. Every authenticated human can list every request, including its reason; listing is not restricted to the requester or approvers. At most 1,000 pending requests are accepted across the instance. The duration starts when the request is approved (`not_before` is that time, `expires_at` is that time plus the duration). Denial stores the decision and creates no grant.
+A request carries a reason of 1–280 characters without control characters or the credential patterns rejected by `validate_reason`, and a duration of 60–86400 seconds. This pattern check does not guarantee that arbitrary sensitive text is detected. Request reasons share the request's read scope. Removing a configured approver removes that person's group visibility on subsequent reads, including retained decisions and grants; their own records remain visible. At most 1,000 pending requests are accepted across the instance. The duration starts when the request is approved (`not_before` is that time, `expires_at` is that time plus the duration). Denial stores the decision and creates no grant.
 
 ## What a grant changes
 

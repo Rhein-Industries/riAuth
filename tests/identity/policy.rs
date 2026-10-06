@@ -8,7 +8,18 @@ fn platform_conditional_policy_uses_bound_signals_and_projects_only_allowed_clai
         ConditionalPolicy, Predicate,
     };
 
-    let f = Fixture::new();
+    let mut f = Fixture::new();
+    let trust_file = f._dir.path().join("device-trust.json");
+    std::fs::write(
+        &trust_file,
+        serde_json::to_vec(&f.core.jwks().unwrap()).unwrap(),
+    )
+    .unwrap();
+    f.core.config.device_trust = Some(riauth::device_trust::TrustConfig {
+        jwks_file: Some(trust_file),
+        ..Default::default()
+    });
+    f.core.config.validate().unwrap();
     f.client("app", false);
     let alice = f.user("alice");
     f.core.create_group(&f.admin, "engineering").unwrap();

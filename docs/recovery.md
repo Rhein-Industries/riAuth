@@ -26,6 +26,7 @@ the same function. It runs in one storage transaction, before any traffic is ser
 | Every account | Epoch advanced by 2³² | Every restored identity reference is rejected by the shared epoch check. A post-snapshot artifact that carries a later epoch cannot match either. |
 | Configuration revision | Advanced by 2³² | Stale plans, provisioning jobs, conditional writes and sealed cursors fail their revision check. |
 | Replay caches: client assertions, DPoP, JAR request objects, SAML assertions, SETs | Kept | Deleting them would permit replay. |
+| Historical reviewed membership holders | Kept | Credential changes remain fenced for live members of formerly reviewed groups, even after the protected-group configuration changes. |
 | Reconciliation controller schedules and jobs | Deleted | A restored cursor or pending job cannot dispatch work from an older timeline. After the recovery gate is completed, the worker builds fresh schedule cursors from current connector configuration and scoped agent authority. Source event producers must resend any needed events with current IDs. |
 | Users, subjects, pairwise seeds, clients, groups, sources, signing keys, audit, receipts and other queued jobs | Kept | User IDs, subjects, issuer and JWKS continue. Restored plans and retained provisioning jobs fail their advanced-revision check before new delivery. |
 | Persistent credentials and bindings | Kept and listed | These must be reconciled; see [Serving gate](#serving-gate). |
@@ -179,7 +180,10 @@ data from before that stamp cannot be detected.
 
 Every restore reader calls `commit_restore` in [`operations.rs`](../src/operations.rs),
 which applies `crate::recovery::invalidate`, rebuilds indexes, and stamps the
-selected PostgreSQL target's lineage inside its import transaction. This covers
+selected PostgreSQL target's lineage inside its import transaction. Snapshot
+records are copied without creating derived rows during import, so a group's
+archived digest is not mistaken for a duplicate. Live group writes still refresh
+their digest to detect inconsistent LDAP bindings. This covers
 v1/v2 envelopes and v3 streams for redb and PostgreSQL. New storage collections must be added to a class in
 `src/recovery.rs`. The `every_storage_collection_has_a_restore_classification` test
 enforces this.

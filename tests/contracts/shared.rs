@@ -5553,7 +5553,28 @@ pub fn offboard_intent_durable_cancel(backend: Backend) {
     assert!(f.core.me(&bob).is_ok());
 
     let f = f.reopen_with(|_| {});
-    f.assert_snapshot(&before_rejection);
+    // Opening records newly observed Platform dependencies in sticky edition
+    // provenance. The durable intent, identity state and audit remain exact.
+    f.assert_snapshot_except(&before_rejection, |key| key == "meta/edition_provenance");
+    let provenance = f
+        .core
+        .store
+        .get::<Value>("meta", "edition_provenance")
+        .unwrap()
+        .unwrap();
+    assert_eq!(provenance["schema_version"], 1);
+    assert_eq!(provenance["last_activated_edition"], "platform");
+    assert!(
+        provenance["platform_dependencies"]
+            .get(format!("{}/{id}", offboarding::BUCKET))
+            .is_some()
+    );
+    for (resource, reason) in before_rejection["meta/edition_provenance"]["platform_dependencies"]
+        .as_object()
+        .unwrap()
+    {
+        assert_eq!(&provenance["platform_dependencies"][resource], reason);
+    }
     assert_eq!(f.core.offboard_get(&allowed, &id).unwrap(), scheduled);
     let cancelled = f.core.offboard_cancel(&allowed, &id).unwrap();
     assert_eq!(cancelled["status"], "cancelled");

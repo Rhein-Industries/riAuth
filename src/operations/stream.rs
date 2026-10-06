@@ -790,7 +790,7 @@ pub fn restore_stream_into(
                 Phase::Import,
                 |name, value| {
                     let (bucket, id) = split_record_key(name)?;
-                    tx.import_record(bucket, id, &value)
+                    tx.import_snapshot_record(bucket, id, &value)
                 },
             )?;
             check_cancel(cancel)?;

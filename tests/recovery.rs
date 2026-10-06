@@ -4,6 +4,8 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{Fixture, PASSWORD, text};
+#[cfg(feature = "platform")]
+use riauth::pam::AccessGrant;
 use riauth::{
     agent::{NewAgent, Permission},
     config::Config,
@@ -11,7 +13,6 @@ use riauth::{
     crypto,
     model::User,
     oidc::TokenRequest,
-    pam::AccessGrant,
     recovery::{self, Cause, Recovery, STRIDE},
 };
 use serde_json::{Value, json};
@@ -48,6 +49,7 @@ fn restore(directory: &Path, archive: &(std::path::PathBuf, std::path::PathBuf))
     (result, core)
 }
 
+#[cfg(feature = "platform")]
 fn temporary_grant(f: &Fixture, user_id: &str) -> AccessGrant {
     let at = crypto::now();
     let grant = AccessGrant {
@@ -75,11 +77,20 @@ fn restore_invalidates_restored_sessions_proofs_and_grants_but_preserves_identit
     let tokens = f.tokens("app", &alice, None);
     let pending_code = f.exchange_request("app", &alice, None);
     let before = user(&f.core, "alice");
+    #[cfg(feature = "platform")]
     let grant = temporary_grant(&f, &before.id);
+    f.core
+        .create_group(&f.admin, "historically-reviewed")
+        .unwrap();
+    f.core
+        .group_member(&f.admin, "historically-reviewed", "alice", true)
+        .unwrap();
+    let holders = std::collections::BTreeSet::from(["historically-reviewed".to_owned()]);
     let revision: u64 = f.core.store.get("meta", "revision").unwrap().unwrap();
     f.core
         .store
         .write(|tx| {
+            tx.put("reviewed_membership_holders", &before.id, &holders)?;
             tx.put(
                 "dpop_replays",
                 "restore-fixture",
@@ -103,7 +114,14 @@ fn restore_invalidates_restored_sessions_proofs_and_grants_but_preserves_identit
         );
     }
     assert!(recovery.invalidated["sessions"] >= 2);
-    assert_eq!(recovery.invalidated["access_grants"], 1);
+    assert_eq!(
+        recovery
+            .invalidated
+            .get("access_grants")
+            .copied()
+            .unwrap_or(0),
+        u64::from(cfg!(feature = "platform"))
+    );
 
     // Identity continuity.
     let after = user(&restored, "alice");
@@ -112,6 +130,14 @@ fn restore_invalidates_restored_sessions_proofs_and_grants_but_preserves_identit
     assert_eq!(after.pairwise_seed, before.pairwise_seed);
     assert_eq!(after.password_hash, before.password_hash);
     assert_eq!(after.epoch, before.epoch + STRIDE);
+    assert_eq!(
+        restored
+            .store
+            .get::<std::collections::BTreeSet<String>>("reviewed_membership_holders", &before.id)
+            .unwrap(),
+        Some(holders),
+        "historical membership fences must survive restored configuration"
+    );
     assert_eq!(restored.jwks().unwrap(), f.core.jwks().unwrap());
     assert!(
         restored
@@ -128,19 +154,22 @@ fn restore_invalidates_restored_sessions_proofs_and_grants_but_preserves_identit
     assert!(restored.userinfo(&text(&tokens, "access_token")).is_err());
     assert!(restored.token(refresh(&tokens)).is_err());
     assert!(restored.token(pending_code).is_err());
-    let revoked: AccessGrant = restored
-        .store
-        .get("access_grants", &grant.id)
-        .unwrap()
-        .unwrap();
-    assert!(revoked.revoked_at.is_some());
-    assert!(
-        restored
+    #[cfg(feature = "platform")]
+    {
+        let revoked: AccessGrant = restored
             .store
-            .read(|tx| tx.user_access_grants::<AccessGrant>(&before.id))
+            .get("access_grants", &grant.id)
             .unwrap()
-            .is_empty()
-    );
+            .unwrap();
+        assert!(revoked.revoked_at.is_some());
+        assert!(
+            restored
+                .store
+                .read(|tx| tx.user_access_grants::<AccessGrant>(&before.id))
+                .unwrap()
+                .is_empty()
+        );
+    }
     let snapshot = restored.store.read(|tx| tx.snapshot()).unwrap();
     for bucket in recovery::INVALIDATED {
         let prefix = format!("{bucket}/");
@@ -336,6 +365,7 @@ fn every_storage_collection_has_a_restore_classification() {
                 "maintenance_page",
                 "due",
                 "import_record",
+                "import_snapshot_record",
             ] {
                 let call = format!("{receiver}{method}");
                 for (index, _) in source.match_indices(&call) {
@@ -377,6 +407,10 @@ fn every_storage_collection_has_a_restore_classification() {
     }
     assert_eq!(
         recovery::classify("user_listing_generation"),
+        Some(recovery::Class::Retained)
+    );
+    assert_eq!(
+        recovery::classify("reviewed_membership_holders"),
         Some(recovery::Class::Retained)
     );
 }

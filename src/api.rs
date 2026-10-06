@@ -957,35 +957,6 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         context.fingerprint = fingerprint;
         req = Request::from_parts(parts, axum::body::Body::from(body));
     }
-    let origin = req
-        .headers()
-        .get("origin")
-        .and_then(|v| v.to_str().ok())
-        .map(String::from);
-    let cors_endpoint = matches!(
-        req.uri().path(),
-        "/oauth/token"
-            | "/oauth/userinfo"
-            | "/oauth/jwks"
-            | "/oauth/revoke"
-            | "/.well-known/openid-configuration"
-    );
-    let allowed_origin = if cors_endpoint && let Some(origin) = origin {
-        let candidate = origin.clone();
-        app.run(move |core| {
-            Ok(core
-                .store
-                .list::<crate::model::Client>("clients")?
-                .iter()
-                .any(|(_, c)| c.enabled && c.settings.origins.contains(&candidate)))
-        })
-        .await
-        .unwrap_or(false)
-        .then_some(origin)
-    } else {
-        None
-    };
-    let preflight = req.method() == axum::http::Method::OPTIONS;
     let peer = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -1111,6 +1082,41 @@ async fn protect(State(app): State<App>, mut req: Request, next: Next) -> Respon
         let mut rates = app.rates.lock().unwrap_or_else(|e| e.into_inner());
         rates.hit((grouped, category), limit, Instant::now())
     };
+    // Resolve the trusted peer and charge its rate budget before doing any
+    // storage-backed CORS work. Rejected requests never read the origin index.
+    let cors_endpoint = matches!(
+        route_path,
+        "/oauth/token"
+            | "/oauth/userinfo"
+            | "/oauth/jwks"
+            | "/oauth/revoke"
+            | "/.well-known/openid-configuration"
+    );
+    let origin = if !limited && cors_endpoint {
+        let values = req.headers().get_all("origin");
+        if values.iter().count() == 1 {
+            values
+                .iter()
+                .next()
+                .and_then(|value| value.to_str().ok())
+                .filter(|origin| !origin.is_empty() && origin.len() <= 2048)
+                .map(String::from)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    let allowed_origin = if let Some(origin) = origin {
+        let candidate = origin.clone();
+        app.run(move |core| core.store.read(|tx| tx.cors_origin_allowed(&candidate)))
+            .await
+            .unwrap_or(false)
+            .then_some(origin)
+    } else {
+        None
+    };
+    let preflight = req.method() == axum::http::Method::OPTIONS;
     let mut response = if limited {
         Error::new(
             StatusCode::TOO_MANY_REQUESTS,

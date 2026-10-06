@@ -31,6 +31,9 @@ OVERRIDE_URLS = {
     "asn1-rs-LICENSE-APACHE": "https://raw.githubusercontent.com/rusticata/asn1-rs/a20e5f7319c896737ad0f2557037817b91ad854f/LICENSE-APACHE",
     "yasna-LICENSE-MIT": "https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-MIT",
     "yasna-LICENSE-APACHE": "https://raw.githubusercontent.com/qnighy/yasna.rs/b7e65f9a4c317494cce2d18ea02b3d6eaaea7985/LICENSE-APACHE",
+    "wasmi-LICENSE-MIT": "https://raw.githubusercontent.com/wasmi-labs/wasmi/f384f288a149625dc7fc29bcd686f8bca3ee71c0/LICENSE-MIT",
+    "wasmi-LICENSE-APACHE": "https://raw.githubusercontent.com/wasmi-labs/wasmi/f384f288a149625dc7fc29bcd686f8bca3ee71c0/LICENSE-APACHE",
+    "wasmparser-LICENSE-APACHE": "https://raw.githubusercontent.com/bytecodealliance/wasm-tools/1b2c8585415dde926134e57b0d1e6a4c9438abe3/LICENSE-APACHE",
     "Apache-2.0.txt": "https://www.apache.org/licenses/LICENSE-2.0.txt",
 }
 
@@ -110,6 +113,17 @@ def override_files(package):
         names = ("asn1-rs-LICENSE-MIT", "asn1-rs-LICENSE-APACHE")
     elif name == "yasna":
         names = ("yasna-LICENSE-MIT", "yasna-LICENSE-APACHE")
+    elif name in {"wasmi", "wasmi_core", "wasmi_ir", "wasmi_collections"} and package["version"] == "0.40.0":
+        # All four published archives omit the workspace license files. Their
+        # .cargo_vcs_info.json pins f384f288..., whose workspace manifest
+        # declares 0.40.0 and MIT/Apache-2.0. Do not silently reuse these texts
+        # for another release without reviewing its exact upstream revision.
+        names = ("wasmi-LICENSE-MIT", "wasmi-LICENSE-APACHE")
+    elif name == "wasmparser" and package["version"] == "0.221.3":
+        # Its archive also omits the workspace license files. The packaged
+        # revision is 1b2c8585...; elect the plain Apache-2.0 option explicitly
+        # offered by that revision and the published package's SPDX expression.
+        names = ("wasmparser-LICENSE-APACHE",)
     elif name == "cms":
         # The published crate and matching upstream revision have no LICENSE
         # file. Its README explicitly offers Apache-2.0 or MIT; elect Apache.

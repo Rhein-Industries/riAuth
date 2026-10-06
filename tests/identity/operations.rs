@@ -500,16 +500,24 @@ async fn http_agent_mutations_are_atomic_retriable_conditional_and_attributed() 
     assert!(first.headers().contains_key("x-request-id"));
     let first: Value =
         serde_json::from_slice(&first.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let committed = f.snapshot().unwrap();
     let repeat = app
         .clone()
         .oneshot(request("create-app", Some(revision), &body))
         .await
         .unwrap();
-    assert_eq!(repeat.status(), StatusCode::OK);
+    assert_eq!(repeat.status(), StatusCode::CONFLICT);
     let repeat: Value =
         serde_json::from_slice(&repeat.into_body().collect().await.unwrap().to_bytes()).unwrap();
-    assert_eq!(first, repeat);
     assert!(first["client_secret"].is_string());
+    assert_eq!(repeat["error"], "credential_already_issued");
+    assert!(repeat.get("client_secret").is_none());
+    assert!(
+        !repeat
+            .to_string()
+            .contains(first["client_secret"].as_str().unwrap())
+    );
+    f.assert_http_mutation_snapshot(&committed);
     assert_eq!(
         app.clone()
             .oneshot(request("different", Some(revision), &body))
@@ -527,6 +535,7 @@ async fn http_agent_mutations_are_atomic_retriable_conditional_and_attributed() 
             .status(),
         StatusCode::CONFLICT
     );
+    f.assert_http_mutation_snapshot(&committed);
     let audit = f.core.audit_events(&f.admin, 100).unwrap();
     let changes: Vec<_> = audit
         .as_array()
@@ -595,6 +604,7 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
         "users":[{"pk":42,"uid":"existing-authentik-subject","username":"alice","name":"Alice","email":"alice@example.test","groups":["child"],"attributes":{},"type":"internal","is_active":true,"roles":[]}],
         "groups":[{"pk":"child","name":"engineering","parent":"parent"},{"pk":"parent","name":"employees","parent":null}],
         "providers":[{"pk":1,"name":"app","client_id":"app","client_type":"public","grant_types":["authorization_code","refresh_token"],"redirect_uris":[{"matching_mode":"strict","url":"http://localhost:7777/callback?existing=1"}],"property_mappings":["profile-mapping"],"sub_mode":"hashed_user_id","issuer_mode":"per_provider","include_claims_in_id_token":true,"access_code_validity":"minutes=1","access_token_validity":"minutes=5","refresh_token_validity":"days=30"}],
+        "scope_mappings":[{"pk":"profile-mapping","name":"Profile","scope_name":"profile","expression":"return {\"name\": request.user.name, \"preferred_username\": request.user.username, \"groups\": [group.name for group in request.user.ak_groups.all()]}"}],
         "applications":[{"slug":"app","provider":1,"name":"Team workspace","meta_launch_url":"https://app.example.test/","meta_description":"The team’s applications","group":"Engineering"}],"policy_bindings":[{"pk":"binding-1"}],"sources":[],
         "passwords":{"alice":{"reference":"env:ALICE_PASSWORD","version":"import-v1"}},
         "clients":{"app":{"issuer":format!("{}/application/o/app/", f.core.config.issuer),"scopes":["openid","profile","groups","offline_access"],"settings":{"groups_in_profile":true,"policy":{"access":{"all_groups":["engineering"]}}},"translated_mapping_ids":["profile-mapping"],"translated_binding_ids":["binding-1"],"authentication_flow_reviewed":true,"require_mfa":false}}});
@@ -620,6 +630,12 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
         format!("{}/application/o/app/", f.core.config.issuer)
     );
     assert_eq!(classified("grant", "app"), ["exact"]);
+    // The complete mapping proves it cannot override subjects. Its direct
+    // groups become the explicitly reviewed ancestor-inclusive group claims.
+    assert_eq!(
+        classified("property_mapping", "app/profile-mapping"),
+        ["manual"]
+    );
     assert_eq!(classified("password", "alice"), ["manual"]);
     assert_eq!(classified("passkey", "*"), ["unsupported"]);
     assert_eq!(report["manifest"]["clients"][0]["name"], "Team workspace");
@@ -705,6 +721,24 @@ fn authentik_import_preserves_exported_subjects_and_blocks_incomplete_translatio
     assert_eq!(
         f.core.portal_launch(Some(cookie), "app").unwrap(),
         "https://app.example.test/"
+    );
+    let mut incomplete = input.clone();
+    incomplete["scope_mappings"] = json!([]);
+    let report = riauth::migration::convert(serde_json::from_value(incomplete).unwrap()).unwrap();
+    assert_eq!(report["ready_for_plan"], false);
+    assert!(report["manifest"].is_null());
+    assert_eq!(
+        report["blockers"],
+        json!([
+            "app: property mapping profile-mapping is missing from scope_mappings; subject continuity cannot be proved"
+        ])
+    );
+    // An acknowledgement cannot replace the missing mapping definition.
+    assert!(
+        input["clients"]["app"]["translated_mapping_ids"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("profile-mapping"))
     );
     let mut incomplete = input.clone();
     incomplete["clients"]["app"]["translated_binding_ids"] = json!([]);
@@ -915,8 +949,14 @@ fn authentik_preflight_classifies_every_exported_item() {
         (Session, "*", vec![(Unsupported, false)]),
         (Provider, "legacy", vec![(Manual, false)]),
         (AuthenticationFlow, "legacy", vec![(Manual, false)]),
-        (PropertyMapping, "legacy/mapped", vec![(Manual, false)]),
-        (PropertyMapping, "legacy/unmapped", vec![(Manual, true)]),
+        // Both definitions are absent, so even the acknowledged mapping must
+        // block: its effects on subjects cannot be established from an ID.
+        (PropertyMapping, "legacy/mapped", vec![(Unsupported, true)]),
+        (
+            PropertyMapping,
+            "legacy/unmapped",
+            vec![(Unsupported, true)],
+        ),
         (PolicyBinding, "bound", vec![(Manual, false)]),
         (PolicyBinding, "loose", vec![(Manual, true)]),
         (SigningKey, "legacy", vec![(Manual, false)]),
@@ -1087,7 +1127,7 @@ fn authentik_preflight_fails_closed_on_missing_or_mismatched_resolutions() {
     for (kind, id, expected) in [
         (Provider, "orphan", vec![(Manual, true)]),
         (AuthenticationFlow, "orphan", vec![(Manual, true)]),
-        (PropertyMapping, "orphan/m1", vec![(Manual, true)]),
+        (PropertyMapping, "orphan/m1", vec![(Unsupported, true)]),
         (
             Federation,
             "orphan/jwt_federation_sources",
@@ -1148,6 +1188,7 @@ fn authentik_preflight_fails_closed_on_missing_or_mismatched_resolutions() {
     }
     for blocker in [
         "orphan: provide reviewed issuer, scopes, mappings, policies and authentication requirements in clients",
+        "orphan: property mapping m1 is missing from scope_mappings; subject continuity cannot be proved",
         "orphan: duplicate subjects would merge identities",
         "ghost: clients entry does not match an exported provider",
         "Source plex-uuid: a source resolution cannot replace an unsupported plex source",

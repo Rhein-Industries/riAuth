@@ -1580,7 +1580,13 @@ async fn sign_in_pages_offer_password_recovery() {
         .unwrap()
         .to_bytes();
     let html = String::from_utf8(bytes.to_vec()).unwrap();
-    assert!(html.contains(r#"id="forgot-password" href="/account/reset""#));
+    let (recovery_link, _) = html
+        .split("<a ")
+        .filter_map(|anchor| anchor.split_once('>'))
+        .find(|(attributes, _)| attributes.contains(r#"id="forgot-password""#))
+        .expect("the portal must offer password recovery");
+    assert!(recovery_link.contains(r#"href="/account/reset""#));
+    assert!(recovery_link.contains(r#"data-capability="identity.email_password_reset""#));
     for id in [
         "password-change",
         "password-current",

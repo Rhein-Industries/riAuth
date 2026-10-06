@@ -298,7 +298,38 @@ fn history_retention_import_preview_and_concurrent_writes() {
         }]
     }))
     .unwrap();
-    apply_manifest(&f, disabled, vec![]).unwrap();
+    let plan = f.core.plan_state(&f.admin, disabled).unwrap();
+    assert_eq!(plan.removal_impact.disabled_passwords, 1);
+    assert!(plan.removal_impact.review_required);
+    let plan_id = plan.plan_id.clone();
+    let before_removal = f.snapshot().unwrap();
+    assert_eq!(
+        f.core
+            .apply_state(
+                &f.admin,
+                ApplyRequest {
+                    plan: plan.clone(),
+                    secrets: Default::default(),
+                    run_id: None,
+                },
+            )
+            .unwrap_err()
+            .status
+            .as_u16(),
+        409
+    );
+    f.assert_snapshot(&before_removal);
+    f.core
+        .apply_state_confirmed(
+            &f.admin,
+            ApplyRequest {
+                plan,
+                secrets: Default::default(),
+                run_id: None,
+            },
+            Some(&plan_id),
+        )
+        .unwrap();
     let cleared: User = f
         .core
         .store

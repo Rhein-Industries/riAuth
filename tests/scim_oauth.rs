@@ -8,7 +8,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use axum::{
@@ -954,7 +954,7 @@ fn completed_job_history_is_compact_and_bounded() {
             assert_eq!(first_job["total"], 0);
         }
         f.core.provisioning_apply(&agent, &id).unwrap();
-        f.core.provisioning_step().unwrap();
+        step_due(&f.core);
         if index == 0 {
             first_job_id = Some(id);
         }
@@ -1155,7 +1155,12 @@ async fn uncertain_patch_response_is_reconciled_without_a_second_patch() {
         "Applied before lost acknowledgement"
     );
 
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // Retry the persisted failed item when due, without relying on a wall-clock
+    // sleep or sending a second write after the first applied remotely.
+    let failed_state = job_record(&f, &plan_id);
+    assert_eq!(failed_state["attempts"], 1);
+    assert_eq!(failed_state["uncertain"], true);
+    make_due(&f, &plan_id);
     step(&f.core).await;
     let jobs = f.core.provisioning_jobs(&agent).unwrap();
     let completed = jobs
@@ -2189,10 +2194,38 @@ async fn deliver(f: &Fixture, agent: &str, target: &str) {
 
 async fn step(core: &Core) {
     let core = core.clone();
-    tokio::task::spawn_blocking(move || core.provisioning_step())
+    tokio::task::spawn_blocking(move || step_due(&core))
         .await
-        .unwrap()
         .unwrap();
+}
+
+fn step_due(core: &Core) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let before = core.store.list::<Value>("provisioning_jobs").unwrap();
+        core.provisioning_step().unwrap();
+        let after = core.store.list::<Value>("provisioning_jobs").unwrap();
+        // A bounded claim may only advance its durable round-robin cursor,
+        // especially after the frozen due cutoff crosses a clock second.
+        // Stop after the first observable job transition, so an uncertain
+        // dispatched write is never retried by this helper.
+        if after != before
+            || !after.iter().any(|(_, job)| {
+                job["completed"] == false
+                    && job["stale"] == false
+                    && job["next_attempt"]
+                        .as_u64()
+                        .is_some_and(|due| due <= crypto::now())
+            })
+        {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "SCIM worker did not advance a due job"
+        );
+        std::thread::yield_now();
+    }
 }
 
 async fn acquire(

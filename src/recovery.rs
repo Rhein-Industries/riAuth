@@ -207,6 +207,9 @@ const RETAINED: &[&str] = &[
     // A restored support exposure must keep blocking later privilege elevation.
     "support_credential_exposure",
     "elevation_provenance",
+    // Historical reviewed membership must keep fencing credential changes
+    // even after the configured protected-group list has changed.
+    "reviewed_membership_holders",
     "scim_oauth_cache",
     "agent_tokens",
     "registration_tokens",

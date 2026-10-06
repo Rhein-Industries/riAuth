@@ -14,8 +14,20 @@ use axum::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::StreamExt;
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, time::Duration};
-use tokio::{sync::Semaphore, task::JoinHandle};
+use std::{
+    collections::BTreeMap,
+    net::SocketAddr,
+    pin::Pin,
+    sync::{Arc, Mutex},
+    task::{Context, Poll},
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, ReadBuf},
+    sync::Semaphore,
+    task::JoinHandle,
+    time::Instant,
+};
 use tokio_util::sync::CancellationToken;
 
 pub use crate::assembly::proxy_start as start;
@@ -39,9 +51,150 @@ struct Runtime {
     requests: ProxyRequests,
     routes: BTreeMap<String, Route>,
     slots: Arc<Semaphore>,
+    websockets: Arc<WebSocketBudget>,
     body_limit: usize,
     timeout: Duration,
     stop: CancellationToken,
+}
+const WEBSOCKET_SLOTS: usize = 128;
+const WEBSOCKETS_PER_PRINCIPAL: usize = 8;
+const WEBSOCKETS_PER_ROUTE: usize = 64;
+const WEBSOCKET_IDLE: Duration = Duration::from_secs(5 * 60);
+const WEBSOCKET_LIFETIME: Duration = Duration::from_secs(60 * 60);
+
+#[derive(Default)]
+struct WebSocketCounts {
+    total: usize,
+    principals: BTreeMap<String, usize>,
+    routes: BTreeMap<String, usize>,
+}
+#[derive(Default)]
+struct WebSocketBudget(Mutex<WebSocketCounts>);
+struct WebSocketPermit {
+    budget: Arc<WebSocketBudget>,
+    principal: String,
+    route: String,
+}
+impl WebSocketBudget {
+    fn acquire(self: &Arc<Self>, principal: &str, route: &str) -> Result<WebSocketPermit> {
+        let mut counts = self.0.lock().unwrap_or_else(|error| error.into_inner());
+        if counts.total >= WEBSOCKET_SLOTS
+            || counts.principals.get(principal).copied().unwrap_or(0) >= WEBSOCKETS_PER_PRINCIPAL
+            || counts.routes.get(route).copied().unwrap_or(0) >= WEBSOCKETS_PER_ROUTE
+        {
+            return Err(Error::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "temporarily_unavailable",
+                "Proxy WebSocket capacity is busy",
+            ));
+        }
+        counts.total += 1;
+        *counts.principals.entry(principal.to_owned()).or_default() += 1;
+        *counts.routes.entry(route.to_owned()).or_default() += 1;
+        Ok(WebSocketPermit {
+            budget: self.clone(),
+            principal: principal.to_owned(),
+            route: route.to_owned(),
+        })
+    }
+}
+impl Drop for WebSocketPermit {
+    fn drop(&mut self) {
+        let mut counts = self
+            .budget
+            .0
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        counts.total -= 1;
+        fn release(entries: &mut BTreeMap<String, usize>, key: &str) {
+            if let Some(count) = entries.get_mut(key) {
+                *count -= 1;
+                if *count == 0 {
+                    entries.remove(key);
+                }
+            }
+        }
+        release(&mut counts.principals, &self.principal);
+        release(&mut counts.routes, &self.route);
+    }
+}
+
+// Both directions share activity so a one-way stream remains live, while a
+// socket that makes no progress releases its capacity even if still authorized.
+struct ActiveStream<T> {
+    stream: T,
+    activity: Arc<Mutex<Instant>>,
+}
+impl<T: AsyncRead + Unpin> AsyncRead for ActiveStream<T> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        let before = buf.filled().len();
+        let result = Pin::new(&mut this.stream).poll_read(cx, buf);
+        if matches!(result, Poll::Ready(Ok(()))) && buf.filled().len() > before {
+            *this
+                .activity
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Instant::now();
+        }
+        result
+    }
+}
+impl<T: AsyncWrite + Unpin> AsyncWrite for ActiveStream<T> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        let result = Pin::new(&mut this.stream).poll_write(cx, buf);
+        if matches!(result, Poll::Ready(Ok(written)) if written > 0) {
+            *this
+                .activity
+                .lock()
+                .unwrap_or_else(|error| error.into_inner()) = Instant::now();
+        }
+        result
+    }
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().stream).poll_flush(cx)
+    }
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.get_mut().stream).poll_shutdown(cx)
+    }
+}
+async fn copy_websocket<A, B>(downstream: A, upstream: B, idle: Duration, lifetime: Duration)
+where
+    A: AsyncRead + AsyncWrite + Unpin,
+    B: AsyncRead + AsyncWrite + Unpin,
+{
+    let activity = Arc::new(Mutex::new(Instant::now()));
+    let mut downstream = ActiveStream {
+        stream: downstream,
+        activity: activity.clone(),
+    };
+    let mut upstream = ActiveStream {
+        stream: upstream,
+        activity: activity.clone(),
+    };
+    let idle_expiry = async {
+        loop {
+            let expiry = *activity.lock().unwrap_or_else(|error| error.into_inner()) + idle;
+            tokio::time::sleep_until(expiry).await;
+            if Instant::now() >= *activity.lock().unwrap_or_else(|error| error.into_inner()) + idle
+            {
+                break;
+            }
+        }
+    };
+    tokio::select! {
+        _ = tokio::io::copy_bidirectional(&mut downstream, &mut upstream) => {},
+        _ = idle_expiry => {},
+        _ = tokio::time::sleep(lifetime) => {},
+    }
 }
 pub(crate) fn internal_peer() -> std::net::IpAddr {
     std::net::Ipv4Addr::LOCALHOST.into()
@@ -264,7 +417,7 @@ async fn handle(
     let websocket = single(request.headers(), "upgrade")?.is_some();
     let copied = auth_headers.clone();
     let cid = id.clone();
-    let (_, identity_headers) = match runtime.requests.authenticate(cid, copied).await {
+    let (identity, identity_headers) = match runtime.requests.authenticate(cid, copied).await {
         Ok(result) => result,
         Err(e)
             if e.status == StatusCode::UNAUTHORIZED
@@ -342,6 +495,16 @@ async fn handle(
     let offered_protocols = single(request.headers(), "sec-websocket-protocol")?
         .unwrap_or("")
         .to_owned();
+    // This is a server-authenticated username, shared across clients and
+    // sessions; client-specific pairwise subjects must not split this quota.
+    let websocket_permit = if websocket {
+        let principal = identity["username"]
+            .as_str()
+            .ok_or_else(|| Error::internal("Missing authenticated proxy principal"))?;
+        Some(runtime.websockets.acquire(principal, &route.external)?)
+    } else {
+        None
+    };
     let upgrade = websocket.then(|| hyper::upgrade::on(&mut request));
     let method = request.method().clone();
     let body = tokio::time::timeout(
@@ -430,20 +593,22 @@ async fn handle(
                 "Application selected an unrequested WebSocket protocol",
             ));
         }
-        let mut upstream = response
+        let upstream = response
             .upgrade()
             .await
             .map_err(|_| Error::internal("Upstream WebSocket upgrade failed"))?;
         output_headers.insert("connection", HeaderValue::from_static("Upgrade"));
         output_headers.insert("upgrade", HeaderValue::from_static("websocket"));
+        // Upgraded sockets never retain the ordinary request/response budget.
+        drop(permit);
         tokio::spawn(async move {
-            let _permit = permit;
+            let _permit = websocket_permit.expect("WebSocket capacity acquired before forwarding");
             let Ok(Ok(stream)) =
                 tokio::time::timeout(Duration::from_secs(10), upgrade.unwrap()).await
             else {
                 return;
             };
-            let mut stream = hyper_util::rt::TokioIo::new(stream);
+            let stream = hyper_util::rt::TokioIo::new(stream);
             let recheck = async {
                 loop {
                     tokio::time::sleep(Duration::from_secs(30)).await;
@@ -453,7 +618,11 @@ async fn handle(
                     }
                 }
             };
-            tokio::select! {_=tokio::io::copy_bidirectional(&mut stream,&mut upstream)=>{},_=recheck=>{},_=runtime.stop.cancelled()=>{}}
+            tokio::select! {
+                _ = copy_websocket(stream, upstream, WEBSOCKET_IDLE, WEBSOCKET_LIFETIME) => {},
+                _ = recheck => {},
+                _ = runtime.stop.cancelled() => {},
+            }
         });
         let mut reply = StatusCode::SWITCHING_PROTOCOLS.into_response();
         *reply.headers_mut() = output_headers;
@@ -545,6 +714,7 @@ pub(crate) async fn start_with_port<P: ProxyPort>(port: P) -> anyhow::Result<Ser
             requests: port.requests(),
             routes,
             slots: Arc::new(Semaphore::new(256)),
+            websockets: Arc::new(WebSocketBudget::default()),
             body_limit: config.max_body_bytes,
             timeout: Duration::from_secs(config.upstream_timeout_seconds),
             stop: stop.clone(),
@@ -600,4 +770,117 @@ pub(crate) async fn start_with_port<P: ProxyPort>(port: P) -> anyhow::Result<Ser
         }
     }
     Ok(servers)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[test]
+    fn websocket_quotas_preserve_other_principals_and_routes() {
+        let budget = Arc::new(WebSocketBudget::default());
+        let mut alice = (0..WEBSOCKETS_PER_PRINCIPAL)
+            .map(|_| budget.acquire("alice", "route-a").unwrap())
+            .collect::<Vec<_>>();
+        assert!(budget.acquire("alice", "route-a").is_err());
+        assert!(budget.acquire("alice", "route-b").is_err());
+        let bob = budget.acquire("bob", "route-a").unwrap();
+        drop(alice.pop());
+        let replacement = budget.acquire("alice", "route-b").unwrap();
+        drop((alice, bob, replacement));
+        let counts = budget.0.lock().unwrap();
+        assert_eq!(counts.total, 0);
+        assert!(counts.principals.is_empty());
+        assert!(counts.routes.is_empty());
+    }
+
+    #[test]
+    fn websocket_route_and_global_caps_release_on_failure_or_close() {
+        let budget = Arc::new(WebSocketBudget::default());
+        let mut sockets = vec![];
+        for n in 0..WEBSOCKETS_PER_ROUTE {
+            sockets.push(budget.acquire(&format!("user-{n}"), "route-a").unwrap());
+        }
+        assert!(budget.acquire("next-user", "route-a").is_err());
+        for n in 0..WEBSOCKETS_PER_ROUTE {
+            sockets.push(budget.acquire(&format!("user-{n}"), "route-b").unwrap());
+        }
+        assert!(budget.acquire("next-user", "route-c").is_err());
+        drop(sockets.pop());
+        let replacement = budget.acquire("next-user", "route-c").unwrap();
+        drop((sockets, replacement));
+        assert_eq!(budget.0.lock().unwrap().total, 0);
+    }
+
+    #[tokio::test]
+    async fn idle_websocket_closes_and_releases_quota() {
+        let budget = Arc::new(WebSocketBudget::default());
+        let permit = budget.acquire("alice", "route-a").unwrap();
+        let (mut client, downstream) = tokio::io::duplex(64);
+        let (_server, upstream) = tokio::io::duplex(64);
+        let task = tokio::spawn(async move {
+            let _permit = permit;
+            copy_websocket(
+                downstream,
+                upstream,
+                Duration::from_millis(100),
+                Duration::from_secs(10),
+            )
+            .await;
+        });
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(client.read(&mut [0; 1]).await.unwrap(), 0);
+        assert_eq!(budget.0.lock().unwrap().total, 0);
+    }
+
+    #[tokio::test]
+    async fn active_one_way_websocket_still_expires_at_maximum_lifetime() {
+        let budget = Arc::new(WebSocketBudget::default());
+        let permit = budget.acquire("alice", "route-a").unwrap();
+        let (mut client, downstream) = tokio::io::duplex(64);
+        let (mut server, upstream) = tokio::io::duplex(64);
+        let task = tokio::spawn(async move {
+            let _permit = permit;
+            copy_websocket(
+                downstream,
+                upstream,
+                Duration::from_millis(500),
+                Duration::from_secs(2),
+            )
+            .await;
+        });
+        // Each successful one-way transfer moves the idle deadline. The
+        // connection remains usable past its first deadline, then closes even
+        // though the caller continues sending data.
+        let started = Instant::now();
+        let mut exchanges = 0;
+        loop {
+            if client.write_all(b"x").await.is_err() {
+                break;
+            }
+            match tokio::time::timeout(Duration::from_secs(5), server.read(&mut [0; 1]))
+                .await
+                .unwrap()
+            {
+                Ok(0) | Err(_) => break,
+                Ok(_) => exchanges += 1,
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(
+            exchanges >= 30,
+            "One-way traffic failed to renew the idle deadline"
+        );
+        assert!(
+            started.elapsed() >= Duration::from_secs(2),
+            "Active WebSocket closed before its maximum lifetime"
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        task.await.unwrap();
+        assert_eq!(budget.0.lock().unwrap().total, 0);
+    }
 }

@@ -81,7 +81,14 @@ fn existing_provider_schemas_remain_byte_stable() {
     let expected: [(&str, &str); 11] = [
         (
             "provider",
-            "6f68906ad83708fc8a817ea0d9b7d996e8863abb06dfed01e34d70a41454400c",
+            // Platform adds the optional policy.conditional extension. The
+            // original schema is preserved outside that extension (checked
+            // structurally in provider_settings_boundary.rs).
+            if cfg!(feature = "platform") {
+                "31f187d5ccf1b82a9075940ed755133de7b7e4f575a2075357ef0337f76b0be2"
+            } else {
+                "6f68906ad83708fc8a817ea0d9b7d996e8863abb06dfed01e34d70a41454400c"
+            },
         ),
         (
             "portal",
@@ -129,6 +136,69 @@ fn existing_provider_schemas_remain_byte_stable() {
         let observed = digest(&serde_json::to_vec(&schema).unwrap());
         assert_eq!(observed, expected_digest, "schema {name} changed");
     }
+}
+
+#[test]
+fn provider_schema_preserves_original_shape_outside_optional_platform_policy() {
+    let mut schema = riauth::schema::schema("provider").unwrap();
+    let policy = &schema["$defs"]["Policy"];
+    assert_eq!(policy["additionalProperties"], false);
+    assert!(
+        !policy["required"]
+            .as_array()
+            .is_some_and(|required| required.contains(&json!("conditional")))
+    );
+    if cfg!(feature = "platform") {
+        assert_eq!(
+            policy["properties"]["conditional"]["anyOf"],
+            json!([{"$ref": "#/$defs/ConditionalPolicy"}, {"type": "null"}])
+        );
+        assert_eq!(
+            schema["$defs"]["ConditionalPolicy"]["additionalProperties"],
+            false
+        );
+        for alternative in schema["$defs"]["Predicate"]["oneOf"].as_array().unwrap() {
+            assert_eq!(alternative["additionalProperties"], false);
+        }
+        // Remove only the reviewed additive field and its five new type
+        // definitions. Everything else must match the original schema bytes.
+        assert!(
+            schema["$defs"]["Policy"]["properties"]
+                .as_object_mut()
+                .unwrap()
+                .remove("conditional")
+                .is_some()
+        );
+        for name in [
+            "ConditionalPolicy",
+            "ConditionalClaimMapping",
+            "Predicate",
+            "AuthenticationProof",
+            "AssuranceLevel",
+        ] {
+            assert!(
+                schema["$defs"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove(name)
+                    .is_some(),
+                "{name}"
+            );
+        }
+    } else {
+        assert!(policy["properties"].get("conditional").is_none());
+    }
+    assert_eq!(
+        digest(&serde_json::to_vec(&schema).unwrap()),
+        "6f68906ad83708fc8a817ea0d9b7d996e8863abb06dfed01e34d70a41454400c"
+    );
+    let settings = riauth::model::ProviderSettings::default();
+    assert!(settings.policy.conditional().is_none());
+    assert!(
+        serde_json::to_value(settings).unwrap()["policy"]
+            .get("conditional")
+            .is_none()
+    );
 }
 
 #[test]

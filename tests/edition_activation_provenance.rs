@@ -71,8 +71,17 @@ fn platform_activation_retains_dependency_after_configuration_changes() {
         before
     );
 
-    // Reopening Platform with the reduced configuration cannot erase evidence.
-    drop(Core::open(candidate.clone()).unwrap());
+    // Changing the active set cannot silently replace the stored agreement or
+    // erase provenance. Reopening with only the rate override removed is valid.
+    let error = Core::open(candidate.clone()).err().unwrap();
+    assert!(error.message.contains("active capabilities"), "{error}");
+    assert_eq!(
+        Store::inspect(&candidate, |_, tx| tx.unwrap().snapshot()).unwrap(),
+        before
+    );
+    let mut compatible = candidate.clone();
+    compatible.capabilities.disabled = config.capabilities.disabled;
+    drop(Core::open(compatible).unwrap());
     let retained: Value = Store::inspect(&candidate, |_, tx| {
         tx.unwrap().get("meta", "edition_provenance")
     })

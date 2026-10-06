@@ -243,7 +243,7 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | GET | `/api/consents` | Current user's remembered application consent |
 | DELETE | `/api/consents/{id}` | Revoke current user's consent and grants for this client |
 
-Temporary access routes use the same human sessions. `GET /api/access/requests` and `GET /api/access/grants` list requests/grants (agent readers need `access.read`). `POST /api/access/requests` accepts `group`, `reason`, `ttl`; `POST /api/access/requests/{id}/approve` or `POST /api/access/requests/{id}/deny` requires a configured human approver. `POST /api/access/grants/{id}/revoke` requires an approver or administrator. Self-approval and agent decisions are forbidden. See [ENT-01](enterprise/ENT-01.md).
+Temporary access routes use the same human sessions. `GET /api/access/requests` and `GET /api/access/grants` return a human's own records and records for groups where that human is currently a configured approver; administrators see all records. Agent readers need `access.read` on the requested collection. `POST /api/access/requests` accepts `group`, `reason`, `ttl`; `POST /api/access/requests/{id}/approve` or `POST /api/access/requests/{id}/deny` requires a configured human approver. `POST /api/access/grants/{id}/revoke` requires an approver or administrator. Self-approval and agent decisions are forbidden. See [ENT-01](enterprise/ENT-01.md).
 
 OAuth access tokens and agent credentials cannot substitute for end-user CLI sessions. The serving procedure for a stolen session, a lost passkey, a compromised agent or client secret, and a signing-key concern is [credential compromise](credential-compromise.md).
 
@@ -266,7 +266,7 @@ Authenticate using a human administrator CLI session or dedicated agent bearer u
 | GET | `/api/inventory/{kind}` | Users/groups/clients/sources/audit; `after`, `limit`, optional `filter` (exact run id for audit, name substring otherwise) |
 | GET | `/api/audit?limit=100` | Recent audit; maximum 1,000 events |
 | GET | `/api/audit/review` | Filtered audit review (`audit.read` on `audit/events`). Query: `action`, `actor`, `target`, `run_id`, `from`, `to`, `limit` (1–500, default 100), `cursor`. See [ENT-09](enterprise/ENT-09.md). |
-| GET | `/api/reports/users.csv` | UTF-8 LF user CSV. Same per-row `user.read` rule as inventory. `limit` 1–1000, `filter`, `cursor` via `x-next-cursor`. |
+| GET | `/api/reports/users.csv` | UTF-8 LF user CSV. Same per-row `user.read` rule as inventory; each exported membership also requires `group.read` on that group. `limit` 1–1000, `filter`, `cursor` via `x-next-cursor`. |
 | GET | `/api/reports/audit.csv` | UTF-8 LF audit CSV. Same permission and filters as review. No detail blob. |
 | GET | `/api/audit/map` | Aggregated stored coordinates; `audit.read` on `audit/events`; see below |
 | GET | `/api/directories` | Configured LDAP directories visible to the caller |

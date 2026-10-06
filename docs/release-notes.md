@@ -1,3 +1,29 @@
+# Unreleased authorization and listener hardening
+
+- [Embedded proxy](proxy.md) WebSockets use separate listener, user, and route
+  capacity, with idle and maximum lifetimes. Ordinary HTTP capacity remains
+  available when a user's WebSocket quota is full.
+- [RadSec](radius.md) limits pending handshakes and connection attempts per
+  source IP, then applies separate authenticated connection limits per NAS.
+- [Receiver-managed SSF delivery](enterprise/ENT-07.md) requires public HTTPS
+  destinations and checks resolved addresses when connecting. Older unsafe
+  receiver deliveries stop; intentional local integrations use the separate
+  administrator-managed stream API.
+- CORS checks use an enabled-client origin index updated atomically with client
+  changes. Rate-limited requests skip that lookup. Startup rebuilds derived
+  indexes at revision 9; stop all writers and back up before upgrading. Older
+  binaries refuse the upgraded index revision.
+- [User CSV reports](enterprise/ENT-15.md) include memberships only for groups
+  the caller can read. [Temporary-access collections](enterprise/ENT-01.md)
+  expose a human's own records and records in their configured approver groups;
+  administrators retain full visibility and agents require `access.read` on
+  each collection.
+- Backup restore copies archived group records and their indexes without
+  generating a duplicate digest row during import. Indexes are rebuilt before
+  activation, and [recovery](recovery.md) retains historical membership fences.
+- Reviewed cloud-directory apply checks current resource authority before
+  reporting stale-review conflicts or requesting another remote page.
+
 # Unreleased Chrome Verified Access v2 adapter (I07)
 
 - Platform can select `google_verified_access_v2` beside the existing local

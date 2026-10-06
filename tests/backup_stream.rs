@@ -73,6 +73,7 @@ impl Seed {
         for (key, value) in before {
             if key.starts_with("clients/")
                 || key.starts_with("groups/")
+                || key.starts_with("index_group_source_digests/")
                 || key.starts_with("usernames/")
                 || key == "meta/keys"
                 || key == "meta/issuer"
@@ -155,6 +156,14 @@ fn rejects(directory: &Path, name: &str, bytes: &[u8], key: &Path) -> riauth::er
 #[test]
 fn stream_backup_restores_identity_with_the_same_recovery_policy_as_v2() {
     let seed = Seed::new(600);
+    seed.fixture
+        .core
+        .create_group(&seed.fixture.admin, "engineering")
+        .unwrap();
+    seed.fixture
+        .core
+        .group_member(&seed.fixture.admin, "engineering", "alice", true)
+        .unwrap();
     let before = seed.snapshot();
     let key = riauth::crypto::random_token("");
     let mut seen = Vec::new();

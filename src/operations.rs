@@ -440,7 +440,7 @@ fn restore_v1(
         move |tx| {
             for (name, value) in records {
                 let (bucket, id) = split_record_key(&name)?;
-                tx.import_record(bucket, id, &value)?;
+                tx.import_snapshot_record(bucket, id, &value)?;
             }
             Ok(())
         },
@@ -492,7 +492,7 @@ fn restore_v2(
                     if tx.get::<Value>(bucket, id)?.is_some() {
                         return Err(Error::bad("Backup payload is invalid"));
                     }
-                    tx.import_record(bucket, id, &value)?;
+                    tx.import_snapshot_record(bucket, id, &value)?;
                     imported += 1;
                 }
             }
@@ -849,7 +849,7 @@ fn migrate_postgres_checkpointed(
                                 "Target database does not match this migration",
                             ));
                         }
-                        None => destination.import_record(bucket, key, value)?,
+                        None => destination.import_snapshot_record(bucket, key, value)?,
                     }
                 }
                 Ok(())

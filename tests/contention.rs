@@ -848,6 +848,25 @@ fn assert_well_formed(text: &str, forbidden: &[&str]) {
         ("context", Some(&["read", "writer", "prepared"][..])),
         ("limit", Some(&["bounded", "unbounded"][..])),
         ("permits", Some(&["workers", "credentials", "forward"][..])),
+        (
+            "job",
+            Some(
+                &[
+                    "reconciliation",
+                    "provisioning",
+                    "mail",
+                    "logout_ssf",
+                    "maintenance",
+                    "alerts",
+                    "manual_connector",
+                    "deactivation",
+                ][..],
+            ),
+        ),
+        (
+            "lane",
+            Some(&["connectors", "delivery", "maintenance", "deactivation"][..]),
+        ),
     ]);
     for secret in forbidden {
         assert!(!text.contains(secret), "exposition contains {secret}");
@@ -996,6 +1015,8 @@ async fn http_admission_and_storage_contention_metrics_are_exposed() {
         "riauth_storage_scan_rows_count{context=\"",
         "riauth_prepared_prepare_seconds_count ",
         "riauth_storage_point_reads_total{context=\"prepared\"}",
+        "riauth_background_finished_total{job=\"provisioning\",lane=\"connectors\"} 0\n",
+        "riauth_background_capacity{lane=\"deactivation\"} 1\n",
     ] {
         assert!(text.contains(series), "missing {series}");
     }

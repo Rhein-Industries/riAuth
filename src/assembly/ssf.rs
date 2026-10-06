@@ -330,13 +330,24 @@ impl Core {
             return Ok(Vec::new());
         }
         let pending = self.store.write(|tx| claim_deliveries(tx))?;
-        let http = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(Error::internal)?;
+        if pending.is_empty() {
+            return Ok(Vec::new());
+        }
+        let operator_http = delivery_client(false)?;
+        let receiver_http = delivery_client(true)?;
         let mut results = Vec::new();
-        for (delivery, key, authorization) in pending {
+        for ClaimedDelivery {
+            delivery,
+            key,
+            authorization,
+            receiver_managed,
+        } in pending
+        {
+            let http = if receiver_managed {
+                &receiver_http
+            } else {
+                &operator_http
+            };
             let claims = event_body(&delivery, &self.config.issuer, delivery.created_at);
             let status = match self.sign_jwt(&key, &claims, "secevent+jwt") {
                 Ok(token) => {
