@@ -187,8 +187,12 @@
     $("signin-password").required = totpStage !== "totp";
     $("signin-otp").parentElement.hidden = totpStage === "password";
     $("signin-otp").required = totpStage === "totp" || (!configuredTotp && mfa);
-    $("signin-otp").parentElement.querySelector("label").textContent = configuredTotp ? "Current authenticator code" : "Authenticator or recovery code (if enabled)";
-    $("signin-otp-hint").textContent = configuredTotp ? "Use the current code from your authenticator app." : "Leave empty if your account has no authenticator app.";
+    if (changed) RiAuth.otp("signin-otp").reset();
+    RiAuth.otp("signin-otp").configure({
+      recoveryAllowed: !configuredTotp,
+      label: configuredTotp ? "Current authenticator code" : "Authenticator code (if enabled)",
+      hint: configuredTotp ? "Use the current code from your authenticator app." : "Leave empty if your account has no authenticator app."
+    });
     $("signin-submit").textContent = totpStage === "password" ? "Verify password" : totpStage === "totp" ? "Verify code" : "Sign in";
     $("signin-requirement").hidden = configuredTotp || !mfa;
     $("signin-requirement-text").textContent = `${app()} requires a passkey or an authenticator code.`;
@@ -306,14 +310,10 @@
     };
     return act(button, errorId, () => RiAuth.post(`${page.api}/decision`, body, { retry: true }), "Couldn't send your decision. Try again.");
   }
-  function code(value) {
-    const trimmed = value.trim();
-    return (trimmed.startsWith("ri_recovery_") ? trimmed : value.replace(/\s+/g, "")) || null;
-  }
   $("signin-form").addEventListener("submit", (event) => {
     event.preventDefault();
     if (acting) return;
-    const username = $("signin-username").value.trim(), password = $("signin-password").value, otp = code($("signin-otp").value);
+    const username = $("signin-username").value.trim(), password = $("signin-password").value, otp = RiAuth.otp("signin-otp").value();
     if (!username || ($("signin-password").required && !password)) {
       clearError("signin-error");
       if (!username) { $("signin-username").setAttribute("aria-invalid", "true"); $("signin-username").setAttribute("aria-describedby", "signin-error"); }
@@ -324,6 +324,11 @@
       clearError("signin-error");
       $("signin-otp").setAttribute("aria-invalid", "true"); $("signin-otp").setAttribute("aria-describedby", "signin-otp-hint signin-error");
       showError("signin-error", state?.requirements?.configured_totp ? "Enter your current authenticator code." : "Enter your authenticator or recovery code, or sign in with a passkey."); return;
+    }
+    if (!RiAuth.otp("signin-otp").valid()) {
+      clearError("signin-error");
+      $("signin-otp").setAttribute("aria-invalid", "true"); $("signin-otp").setAttribute("aria-describedby", "signin-otp-hint signin-error");
+      showError("signin-error", "Enter a 6-digit code, or an 8-digit code if your app uses one."); return;
     }
     $("signin-password").value = "";
     act($("signin-submit"), "signin-error", async () => {

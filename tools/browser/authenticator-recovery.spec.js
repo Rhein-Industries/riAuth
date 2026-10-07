@@ -116,8 +116,15 @@ async function keyboardSignIn(page, browserName, user, otp = '') {
   await page.locator('#login-username').fill(user.username);
   await tabTo(page, browserName, 'login-password', 10);
   await page.locator('#login-password').fill(user.password);
-  await tabTo(page, browserName, 'login-otp', 10);
+  const recovery = otp.startsWith('ri_recovery_');
+  if ((await page.locator('#login-otp').getAttribute('data-otp-kind') === 'recovery') !== recovery) {
+    await tabTo(page, browserName, 'login-otp-mode', 10);
+    await page.keyboard.press('Enter');
+  } else await tabTo(page, browserName, 'login-otp', 10);
+  await expect(page.locator('#login-otp')).toBeFocused();
+  await expect(page.locator('#login-otp')).toHaveAttribute('inputmode', recovery ? 'text' : 'numeric');
   await page.locator('#login-otp').fill(otp);
+  await expect(page.locator('#login-otp')).toHaveValue(otp);
   await tabTo(page, browserName, 'password-login', 10);
   expect((await within(page.locator('#password-login'))).height).toBeGreaterThanOrEqual(24);
   await page.keyboard.press('Enter');

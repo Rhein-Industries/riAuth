@@ -83,6 +83,59 @@
     finally { busy.delete(button); button.disabled = false; button.removeAttribute("aria-busy"); }
   }
 
+  // One text input preserves leading zeroes, OTP autofill and whole-code paste.
+  // Imported authenticators can use eight digits; new enrollments use six.
+  const otpFields = new Map();
+  function otp(id) { return otpFields.get(id); }
+  for (const input of document.querySelectorAll("input[data-otp]")) {
+    const label = input.labels[0], hint = document.getElementById(`${input.id}-hint`);
+    const toggle = document.getElementById(`${input.id}-mode`);
+    const defaults = { label: label.textContent, hint: hint?.textContent, recoveryAllowed: !!toggle };
+    let settings = defaults, recovery = false;
+    const pattern = input.dataset.otpDigits === "6" ? "[0-9]{6}" : "[0-9]{6}([0-9]{2})?";
+    function render() {
+      input.dataset.otpKind = recovery ? "recovery" : "authenticator";
+      input.inputMode = recovery ? "text" : "numeric";
+      input.autocomplete = recovery ? "off" : "one-time-code";
+      input.maxLength = recovery ? 128 : input.dataset.otpDigits === "6" ? 6 : 8;
+      input.placeholder = recovery ? "ri_recovery_…" : "000000";
+      if (recovery) input.removeAttribute("pattern"); else input.pattern = pattern;
+      label.textContent = recovery ? "Recovery code" : settings.label;
+      if (hint) hint.textContent = recovery ? "Enter one of the recovery codes you saved." : settings.hint;
+      if (toggle) {
+        toggle.hidden = !settings.recoveryAllowed;
+        toggle.textContent = recovery ? "Use an authenticator code" : "Use a recovery code";
+      }
+    }
+    function clear() {
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    const field = {
+      value: () => input.value.trim() || null,
+      valid: () => recovery || !input.value || new RegExp(`^${pattern}$`).test(input.value),
+      configure(options) {
+        settings = { ...defaults, ...options };
+        if (!settings.recoveryAllowed && recovery) { recovery = false; clear(); }
+        render();
+      },
+      reset() { recovery = false; clear(); render(); }
+    };
+    toggle?.addEventListener("click", () => {
+      if (!settings.recoveryAllowed) return;
+      recovery = !recovery; clear(); render(); input.focus();
+    });
+    input.addEventListener("paste", (event) => {
+      if (recovery) return;
+      const pasted = event.clipboardData?.getData("text/plain").replace(/\s+/g, "");
+      if (!pasted || !new RegExp(`^${pattern}$`).test(pasted)) return;
+      event.preventDefault(); input.value = pasted;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    input.form?.addEventListener("reset", () => field.reset());
+    otpFields.set(input.id, field); render();
+  }
+
   function bytes(value) {
     const text = atob(String(value).replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(String(value).length / 4) * 4, "="));
     return Uint8Array.from(text, (c) => c.charCodeAt(0));
@@ -171,5 +224,5 @@
   const passkeysAvailable = () => "PublicKeyCredential" in window && isSecureContext;
   const shellQuote = (s) => `'${s.replaceAll("'", "'\\''")}'`;
 
-  window.RiAuth = Object.freeze({ base, get, post, inFlight, arm, guard, passkeyGet, passkeyCreate, passkeyFlow, passkeysAvailable, shellQuote });
+  window.RiAuth = Object.freeze({ base, get, post, inFlight, arm, guard, otp, passkeyGet, passkeyCreate, passkeyFlow, passkeysAvailable, shellQuote });
 })();

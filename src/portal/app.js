@@ -489,22 +489,18 @@
     if (["invalid_credentials", "unknown_passkey"].includes(error?.code) && error.description) return error.description;
     return fallback;
   }
-  function code(value) {
-    const trimmed = value.trim();
-    return (trimmed.startsWith("ri_recovery_") ? trimmed : value.replace(/\s+/g, "")) || null;
-  }
   function showError(id, message) { $(id).textContent = message; $(id).hidden = false; $(id).focus(); }
   function clearAuthError() {
     $("auth-error").hidden = true; $("auth-error").textContent = "";
     for (const id of ["login-username", "login-password", "login-otp"]) $(id).removeAttribute("aria-invalid");
     for (const id of ["login-username", "login-password"]) $(id).removeAttribute("aria-describedby");
+    $("login-otp").setAttribute("aria-describedby", "login-otp-hint");
   }
-  async function signedIn() { $("login-password").value = ""; $("login-otp").value = ""; stopRequest(); await refresh(); }
+  async function signedIn() { $("login-password").value = ""; RiAuth.otp("login-otp").reset(); stopRequest(); await refresh(); }
   $("password-form").addEventListener("submit", (event) => {
     event.preventDefault();
     RiAuth.inFlight($("password-login"), async () => {
-      const username = $("login-username").value.trim(), password = $("login-password").value;
-      $("login-password").value = "";
+      const username = $("login-username").value.trim(), password = $("login-password").value, otp = RiAuth.otp("login-otp").value();
       clearAuthError();
       if (!username || !password) {
         if (!username) { $("login-username").setAttribute("aria-invalid", "true"); $("login-username").setAttribute("aria-describedby", "auth-error"); }
@@ -512,10 +508,15 @@
         showError("auth-error", "Enter your username and password.");
         return;
       }
+      if (!RiAuth.otp("login-otp").valid()) {
+        $("login-otp").setAttribute("aria-invalid", "true"); $("login-otp").setAttribute("aria-describedby", "login-otp-hint auth-error");
+        showError("auth-error", "Enter a 6-digit code, or an 8-digit code if your app uses one."); return;
+      }
+      $("login-password").value = "";
       try {
         if (!(await security.flows.signIn.cancel())) { showError("auth-error", "Finishing passkey sign-in. Please wait."); return; }
         $("passkey-login-cancel").hidden = true;
-        await RiAuth.post("api/portal/login/password", { username, password, otp: code($("login-otp").value), reauthenticate: false });
+        await RiAuth.post("api/portal/login/password", { username, password, otp, reauthenticate: false });
         await signedIn();
       } catch (error) {
         $("login-password").value = "";
@@ -529,7 +530,7 @@
   });
   for (const id of ["login-username", "login-password", "login-otp"]) $(id).addEventListener("input", () => {
     $(id).removeAttribute("aria-invalid");
-    if (id !== "login-otp") $(id).removeAttribute("aria-describedby");
+    if (id === "login-otp") $(id).setAttribute("aria-describedby", "login-otp-hint"); else $(id).removeAttribute("aria-describedby");
   });
   $("passkey-login").addEventListener("click", () => RiAuth.inFlight($("passkey-login"), async () => {
     const generation = state.generation;
@@ -555,7 +556,7 @@
     $("reauth-form").hidden = security.data?.password === "none";
   }
   function hideReauth() {
-    $("reauth-panel").hidden = true; $("reauth-password").value = ""; $("reauth-otp").value = "";
+    $("reauth-panel").hidden = true; $("reauth-password").value = ""; RiAuth.otp("reauth-otp").reset();
   }
   function securityControls() {
     const data = security.data, pending = !!security.action;
@@ -799,13 +800,13 @@
   }
   async function reauthenticate(password = null) {
     if (security.busy || !state.data) return;
-    const generation = security.generation, user = state.data.user.id, username = state.data.user.username, run = {};
+    const generation = security.generation, user = state.data.user.id, username = state.data.user.username, otp = RiAuth.otp("reauth-otp").value(), run = {};
     security.run = run; security.busy = true; securityControls(); $("reauth-error").hidden = true;
     try {
       if (password !== null) {
         security.committing = true;
         await security.flows.reauth.cancel();
-        await RiAuth.post("api/portal/login/password", { username, password, otp: code($("reauth-otp").value), reauthenticate: true });
+        await RiAuth.post("api/portal/login/password", { username, password, otp, reauthenticate: true });
       } else await security.flows.reauth();
       if (generation !== security.generation || user !== state.data?.user.id) { await refresh(); return; }
       security.busy = false; security.committing = false; security.run = null;
@@ -821,7 +822,14 @@
     event.preventDefault();
     const password = $("reauth-password").value;
     if (!password) { showError("reauth-error", "Enter your password."); return; }
+    if (!RiAuth.otp("reauth-otp").valid()) {
+      $("reauth-otp").setAttribute("aria-invalid", "true"); $("reauth-otp").setAttribute("aria-describedby", "reauth-otp-hint reauth-error");
+      showError("reauth-error", "Enter a 6-digit code, or an 8-digit code if your app uses one."); return;
+    }
     reauthenticate(password);
+  });
+  $("reauth-otp").addEventListener("input", () => {
+    $("reauth-otp").removeAttribute("aria-invalid"); $("reauth-otp").setAttribute("aria-describedby", "reauth-otp-hint");
   });
   $("passkey-form").addEventListener("submit", (event) => { event.preventDefault(); changePasskey("add"); });
   $("password-change-start").addEventListener("click", openPassword);

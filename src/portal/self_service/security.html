@@ -43,7 +43,7 @@
         <button id="verify-passkey" class="button primary" data-capability="identity.passkeys" type="button">Use a passkey</button>
         <form id="verify-form" novalidate>
           <div class="field"><label for="verify-password">Password</label><input id="verify-password" type="password" autocomplete="current-password" maxlength="1024" required></div>
-          <div class="field"><label for="verify-otp">Authenticator or recovery code (if enabled)</label><input id="verify-otp" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" maxlength="128"></div>
+          <div class="field"><label for="verify-otp">Authenticator code (if enabled)</label><input id="verify-otp" class="otp-input" data-otp autocomplete="one-time-code" inputmode="numeric" autocapitalize="none" spellcheck="false" maxlength="8" pattern="[0-9]{6}([0-9]{2})?" placeholder="000000" aria-describedby="verify-otp-hint"><p class="field-hint" id="verify-otp-hint">Leave empty if your account has no authenticator app.</p><button id="verify-otp-mode" class="text-button otp-switch" type="button" aria-controls="verify-otp">Use a recovery code</button></div>
           <button id="verify-password-button" class="button secondary" type="submit">Confirm with password</button>
         </form>
       </section>

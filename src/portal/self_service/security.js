@@ -49,12 +49,13 @@
       $(id).removeAttribute("aria-invalid");
       $(id).removeAttribute("aria-describedby");
     }
+    $("verify-otp").setAttribute("aria-describedby", "verify-otp-hint");
   }
   function showVerifyError(message, fields) {
     clearVerifyInvalid();
     for (const id of fields) {
       $(id).setAttribute("aria-invalid", "true");
-      $(id).setAttribute("aria-describedby", "verify-error");
+      $(id).setAttribute("aria-describedby", id === "verify-otp" ? "verify-otp-hint verify-error" : "verify-error");
     }
     $("verify-error").textContent = message;
     $("verify-error").hidden = false;
@@ -222,11 +223,15 @@
     if (!snapshot) return;
     const password = $("verify-password").value;
     if (!password) { showVerifyError("Enter your password.", ["verify-password"]); return; }
+    if (!RiAuth.otp("verify-otp").valid()) {
+      showVerifyError("Enter a 6-digit code, or an 8-digit code if your app uses one.", ["verify-otp"]); return;
+    }
+    const otp = RiAuth.otp("verify-otp").value();
     clearVerifyInvalid();
     RiAuth.inFlight($("verify-password-button"), async () => {
       try {
         await RiAuth.post("api/portal/login/password", {
-          username: snapshot.user.username, password, otp: $("verify-otp").value.trim() || null, reauthenticate: true
+          username: snapshot.user.username, password, otp, reauthenticate: true
         });
         $("verify-password").value = $("verify-otp").value = "";
         await load(); showStatus("Identity confirmed. Choose your action again.");
@@ -238,7 +243,7 @@
   for (const id of ["verify-password", "verify-otp"]) {
     $(id).addEventListener("input", () => {
       $(id).removeAttribute("aria-invalid");
-      $(id).removeAttribute("aria-describedby");
+      if (id === "verify-otp") $(id).setAttribute("aria-describedby", "verify-otp-hint"); else $(id).removeAttribute("aria-describedby");
     });
   }
   $("verify-passkey").addEventListener("click", () => RiAuth.inFlight($("verify-passkey"), async () => {

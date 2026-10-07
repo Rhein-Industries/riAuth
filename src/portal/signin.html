@@ -37,7 +37,7 @@
       <form id="signin-form" novalidate>
         <div class="field"><label for="signin-username">Username</label><input id="signin-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="64" required></div>
         <div class="field"><label for="signin-password">Password</label><input id="signin-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required></div>
-        <div class="field"><label for="signin-otp">Authenticator or recovery code (if enabled)</label><input id="signin-otp" name="otp" autocomplete="one-time-code" inputmode="text" autocapitalize="none" spellcheck="false" maxlength="128" aria-describedby="signin-otp-hint"><p class="field-hint" id="signin-otp-hint">Leave empty if your account has no authenticator app.</p></div>
+        <div class="field"><label for="signin-otp">Authenticator code (if enabled)</label><input id="signin-otp" class="otp-input" data-otp name="otp" autocomplete="one-time-code" inputmode="numeric" autocapitalize="none" spellcheck="false" maxlength="8" pattern="[0-9]{6}([0-9]{2})?" placeholder="000000" aria-describedby="signin-otp-hint"><p class="field-hint" id="signin-otp-hint">Leave empty if your account has no authenticator app.</p><button id="signin-otp-mode" class="text-button otp-switch" type="button" aria-controls="signin-otp">Use a recovery code</button></div>
         <button class="button primary" id="signin-submit" type="submit">Sign in</button>
       </form>
       <p class="auth-links"><a class="text-button" id="signin-forgot" data-capability="identity.email_password_reset" href="__BASE__account/reset" target="_blank" rel="noopener noreferrer">Forgot your password? (opens in a new tab)</a></p>

@@ -152,6 +152,65 @@ const consentScopes = async (page) => (await page.locator('#consent-scopes li').
 // riAuth's uniform answer to a wrong password, code, unknown user or locked account.
 const INVALID = 'Check your username, password and code. After several failed attempts, sign-in pauses for 15 minutes.';
 
+test('numeric OTP input validates before submitting, preserves pasted zeroes and separates recovery codes', async ({ page, browserName }) => {
+  const attempts = [];
+  await page.route('**/api/portal/login/password', async (route) => {
+    attempts.push(route.request().postDataJSON());
+    await route.fulfill({ status: 401, json: { error: 'invalid_credentials', error_description: INVALID } });
+  });
+  await page.goto(`${fixture.issuer}/apps`);
+  const otp = page.locator('#login-otp');
+  await expect(otp).toHaveAttribute('inputmode', 'numeric');
+  expect(await otp.evaluate((input) => input.type)).toBe('text');
+  await expect(otp).toHaveAttribute('autocomplete', 'one-time-code');
+  await expect(otp).toHaveAttribute('placeholder', '000000');
+  await page.locator('#login-username').fill(fixture.users.bob.username);
+  await page.locator('#login-password').fill(fixture.users.bob.password);
+  await otp.fill('12345');
+  await otp.press('Enter');
+  await expect(page.locator('#auth-error')).toBeFocused();
+  await expect(otp).toHaveAttribute('aria-invalid', 'true');
+  expect(attempts).toEqual([]);
+  // Pasting grouped codes keeps leading zeroes and submits the complete code.
+  await otp.evaluate((input) => {
+    // Firefox clears synthetic ClipboardEvent data. Supply the text interface
+    // without reading or changing the host clipboard.
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: { getData: (type) => type === 'text/plain' ? '012 345' : '' } });
+    input.dispatchEvent(event);
+  });
+  await expect(otp).toHaveValue('012345');
+  await expect(otp).not.toHaveAttribute('aria-invalid');
+  await otp.press('Enter');
+  await expect(page.locator('#auth-error')).toHaveText(INVALID);
+  expect(attempts.map((attempt) => attempt.otp)).toEqual(['012345']);
+  // Imported eight-digit authenticators remain usable.
+  await page.locator('#login-password').fill(fixture.users.bob.password);
+  await otp.fill('01234567');
+  await otp.press('Enter');
+  await expect.poll(() => attempts.length).toBe(2);
+  expect(attempts[1].otp).toBe('01234567');
+  await expect(otp).toHaveValue('');
+  await tabTo(page, browserName, 'login-otp-mode');
+  await page.keyboard.press('Enter');
+  await expect(otp).toBeFocused();
+  await expect(otp).toHaveAttribute('inputmode', 'text');
+  await expect(otp).toHaveAttribute('maxlength', '128');
+  await expect(page.locator('label[for="login-otp"]')).toHaveText('Recovery code');
+  const recovery = `ri_recovery_${'a'.repeat(43)}`;
+  await otp.fill(recovery);
+  await page.locator('#login-password').fill(fixture.users.bob.password);
+  await otp.press('Enter');
+  await expect.poll(() => attempts.length).toBe(3);
+  expect(attempts[2].otp).toBe(recovery);
+  await expect(otp).toHaveValue('');
+  await tabTo(page, browserName, 'login-otp-mode');
+  await page.keyboard.press('Enter');
+  await expect(otp).toHaveAttribute('inputmode', 'numeric');
+  await axe(page);
+  await reflows(page);
+});
+
 test('portal password and TOTP sign-in is accessible and keeps cookies out of JavaScript', async ({ page, context, browserName }) => {
   const user = fixture.users.totp1;
   await page.goto(`${fixture.issuer}/apps`);

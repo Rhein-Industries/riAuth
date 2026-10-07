@@ -174,3 +174,11 @@ Workspace Settings and Sign-in and security now use full page sections in
 and the `data-workspace-page` navigation links. These sections replace the former
 settings, security and recovery-code dialogs. The separate `security.html`
 template continues to provide Sessions and consent at `/account/security`.
+
+Authenticator inputs use `class="otp-input"` and `data-otp` with a numeric keyboard,
+OTP autofill and a six-digit placeholder. Keep the matching `<input-id>-hint`
+and `<input-id>-mode` controls to offer recovery-code entry without truncation.
+Enrollment's `totp-code` uses `data-otp-digits="6"` and has no recovery-code toggle.
+Sign-in and verification also accept imported eight-digit authenticators. The
+shared `auth.js` controller keeps the current-authenticator workflow from offering
+recovery codes when that workflow requires TOTP.

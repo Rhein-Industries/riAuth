@@ -58,6 +58,8 @@
 .account-page .security-section > h2 { margin: 0 0 10px; font-size: 19px; letter-spacing: -.3px; line-height: 1.4; }
 .account-page .security-section .field, .account-page form { margin: 20px 0 0; }
 .account-page .field-hint { margin: 10px 0; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.field input.otp-input[data-otp-kind="authenticator"] { width: 100%; max-width: 240px; min-height: 52px; font: 24px/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; font-variant-numeric: tabular-nums; letter-spacing: .3em; text-align: center; padding-left: calc(12px + .3em); }
+.field .otp-switch { display: block; width: fit-content; min-height: 44px; margin-top: 2px; padding: 8px 0; font-size: 12px; text-align: left; }
 .account-page .security-section > .button { margin-top: 12px; }
 .account-page .field + .button, .account-page .form-error + .button { margin-top: 8px; }
 .account-page .passkey-row { flex-wrap: wrap; }
