@@ -82,8 +82,8 @@ test('removing a passkey ends every session and rejects that credential', async 
     expect(await portalStatus(otherPage)).toBe(200);
 
     await page.locator('#account-security').click();
-    const dialog = page.getByRole('dialog', { name: 'Sign-in and security' });
-    await expect(dialog).toBeVisible();
+    const securityPage = page.locator('#security-page');
+    await expect(securityPage).toBeVisible();
     await expect(page.locator('#security-status')).toHaveText('You have no passkeys yet.');
     await fits(page);
     await page.locator('#passkey-name').fill(PASSKEY_NAME);
@@ -99,6 +99,13 @@ test('removing a passkey ends every session and rejects that credential', async 
     expect(await context.credentials.get({ rpId: 'localhost' })).toHaveLength(1);
 
     await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+    await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+    await expect(page.locator('#security-page')).toBeVisible();
+    await expect(page.locator('#security-title')).toBeFocused();
+    await expect(page.locator('#catalogue')).toBeHidden();
+    await page.locator('#security-close').focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(`${fixture.issuer}/apps`);
     await expect(page.locator('#catalogue')).toBeVisible();
     await expect(page.locator('#account-name')).toHaveText('Pat Passkey');
     await expect(page.locator('#mfa-notice')).toBeHidden();
@@ -109,7 +116,7 @@ test('removing a passkey ends every session and rejects that credential', async 
     expect(renewed.value).not.toBe(otherSession.value);
 
     await page.locator('#account-security').click();
-    await expect(dialog).toBeVisible();
+    await expect(securityPage).toBeVisible();
     await expect(page.locator('#security-status')).toHaveText(/^1 of \d+ passkeys\./);
     await page.getByRole('button', { name: `Remove ${PASSKEY_NAME}` }).click();
     await expect(page.locator('#passkey-action-title')).toHaveText(`Remove ${PASSKEY_NAME}?`);
@@ -158,7 +165,7 @@ test('removing a passkey ends every session and rejects that credential', async 
     await passwordSignIn(page, user);
     expect(await portalStatus(page)).toBe(200);
     await page.locator('#account-security').click();
-    await expect(dialog).toBeVisible();
+    await expect(securityPage).toBeVisible();
     await expect(page.locator('#security-status')).toHaveText('You have no passkeys yet.');
     await expect(page.locator('#passkey-list')).toBeEmpty();
     await fits(page);

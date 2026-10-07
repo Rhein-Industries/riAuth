@@ -2,7 +2,10 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const { base } = RiAuth;
-  const state = { data: null, favorites: new Set(), view: "grid", section: "all", loading: false, generation: 0, request: null,
+  const pagePath = (page) => `${base}apps${page === "catalogue" ? "" : `/${page}`}`;
+  const pageAtLocation = () => location.pathname.replace(/\/$/, "") === pagePath("security") ? "security"
+    : location.pathname.replace(/\/$/, "") === pagePath("settings") ? "settings" : "catalogue";
+  const state = { data: null, favorites: new Set(), view: "grid", section: "all", page: pageAtLocation(), loading: false, generation: 0, request: null,
     verificationMessage: null, verificationRequested: false, verificationNeedsRelogin: false };
   // Passkey flows keep cancelled options for WebKit's gesture rule; `retry` runs after re-authentication.
   const security = { flows: {}, retry: null, data: null, action: null, generation: 0, busy: false, passwordOpen: false };
@@ -18,7 +21,7 @@
   }
   // Authenticator app state. A setup key or recovery code lives only in the DOM of its step.
   const factor = { data: null, enrollment: null, action: null, codes: null };
-  let pollTimer, expiryTimer, toastTimer;
+  let pollTimer, expiryTimer, toastTimer, pageEpoch = 0;
   const icons = new Set(["app", "code", "chart", "files", "messages", "book", "cloud", "terminal", "shield", "globe"]);
   const accents = new Set(["violet", "blue", "teal", "amber", "rose", "slate"]);
 
@@ -40,16 +43,109 @@
     $("connection-label").textContent = label; $("connection").classList.toggle("live", live);
   }
   function screen(name) {
-    if (name === "catalogue" && $("catalogue").hidden) RiAuth.arm();
+    // Recovery codes remain visible until saved, including after a credential change ends the session.
+    if (factor.codes) name = "security";
+    const enteringPage = (name === "security" || name === "settings") && $(`${name}-page`).hidden;
+    if ((name === "catalogue" && $("catalogue").hidden) || enteringPage) RiAuth.arm();
     const active = document.activeElement;
     const enteringAuth = name === "auth" && $("auth").hidden;
-    const workspace = name === "catalogue";
-    document.body.classList.toggle("portal-entry", !workspace);
+    const workspace = !!state.data && ["catalogue", "security", "settings"].includes(name);
+    document.body.classList.toggle("portal-entry", !workspace && name !== "security");
+    document.body.classList.toggle("account-entry", !workspace && name === "security");
     $("workspace-navigation").hidden = $("workspace-header").hidden = !workspace;
-    document.title = workspace ? "Your applications · riAuth" : name === "error" ? "Applications unavailable · riAuth" : "Sign in · riAuth";
-    for (const id of ["catalogue", "auth", "error", "loading"]) $(id).hidden = id !== name;
-    if (enteringAuth || active?.closest("[hidden]")) $(name === "auth" ? "auth-title" : "main").focus({ preventScroll: true });
+    const title = name === "settings" ? "Settings" : name === "security" ? factor.codes ? $("codes-title").textContent : "Sign-in and security"
+      : name === "catalogue" ? "Your applications" : name === "error" ? "Applications unavailable" : "Sign in";
+    document.title = `${title} · riAuth`;
+    $("breadcrumb-current").textContent = title;
+    for (const id of ["catalogue", "auth", "error", "loading", "security-page", "settings-page"]) $(id).hidden = id !== (name === "security" || name === "settings" ? `${name}-page` : name);
+    $("security-content").hidden = !!factor.codes;
+    $("codes-page").hidden = !factor.codes;
+    $("security-page").setAttribute("aria-labelledby", factor.codes ? "codes-title" : "security-title");
+    $("workspace-settings").classList.toggle("active", name === "settings");
+    if (name === "settings") $("workspace-settings").setAttribute("aria-current", "page"); else $("workspace-settings").removeAttribute("aria-current");
+    if (enteringPage && !factor.codes) $(`${name}-title`).focus({ preventScroll: true });
+    else if (enteringAuth || active?.closest("[hidden]")) $(name === "auth" ? "auth-title" : "main").focus({ preventScroll: true });
   }
+  const securityVisible = () => !$("security-page").hidden;
+  let historyIndex = Number.isInteger(history.state?.riauthWorkspaceIndex) ? history.state.riauthWorkspaceIndex : 0;
+  let restoringHistoryIndex = null, pendingHistory = null, processingHistory = false;
+  let navigationTask = Promise.resolve();
+  history.replaceState({ ...history.state, riauthWorkspaceIndex: historyIndex }, "");
+  function savedCodes() {
+    if (!factor.codes || $("codes-saved").checked) return true;
+    $("codes-status").textContent = "Save your recovery codes before leaving. They won't be shown again.";
+    $("codes-saved").focus(); return false;
+  }
+  async function leaveSecurity() {
+    if (!savedCodes()) return false;
+    if (!await cancelChange()) return false;
+    if (factor.codes) closeCodes();
+    return true;
+  }
+  async function navigate(page, record = true) {
+    const epoch = pageEpoch;
+    const previous = navigationTask;
+    let complete;
+    navigationTask = new Promise((resolve) => { complete = resolve; });
+    await previous;
+    try {
+      if (epoch !== pageEpoch) return false;
+      if (page === state.page) return true;
+      if ((state.page === "security" || factor.codes) && !await leaveSecurity()) return false;
+      if (epoch !== pageEpoch) return false;
+      state.page = page;
+      if (record) history.pushState({ riauthWorkspaceIndex: ++historyIndex }, "", pagePath(page));
+      screen(state.data ? page : "auth"); render();
+      if (state.data) {
+        $(page === "catalogue" ? "page-title" : `${page}-title`).focus({ preventScroll: true });
+        if (page === "security") void loadSecurity();
+      }
+      window.scrollTo(0, 0);
+      return true;
+    } finally { complete(); }
+  }
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a[href]");
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target || link.hasAttribute("download")) return;
+    const destination = new URL(link.href);
+    if (destination.origin === location.origin && destination.pathname === location.pathname && destination.search === location.search && destination.hash) return;
+    if (link.dataset.workspacePage) { event.preventDefault(); void navigate(link.dataset.workspacePage); }
+    else if ((state.page === "security" || factor.codes) && (!savedCodes() || security.committing || security.flows.add?.finishing || security.flows.reauth?.finishing)) {
+      event.preventDefault(); if (!factor.codes) securityStatus("Finishing your change. Please wait.");
+    }
+  });
+  window.addEventListener("popstate", async (event) => {
+    const targetIndex = Number.isInteger(event.state?.riauthWorkspaceIndex) ? event.state.riauthWorkspaceIndex : 0;
+    if (targetIndex === restoringHistoryIndex) { restoringHistoryIndex = null; return; }
+    restoringHistoryIndex = null;
+    pendingHistory = { page: pageAtLocation(), index: targetIndex, epoch: pageEpoch };
+    if (processingHistory) return;
+    processingHistory = true;
+    try {
+      while (pendingHistory) {
+        const target = pendingHistory; pendingHistory = null;
+        if (target.epoch !== pageEpoch) continue;
+        const allowed = await navigate(target.page, false);
+        if (target.epoch !== pageEpoch) continue;
+        if (allowed) historyIndex = target.index;
+        else if (!pendingHistory) {
+          const delta = historyIndex - target.index;
+          if (delta) { restoringHistoryIndex = historyIndex; history.go(delta); }
+          else history.replaceState({ ...history.state, riauthWorkspaceIndex: historyIndex }, "", pagePath(state.page));
+        }
+      }
+    } finally { processingHistory = false; }
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if ((factor.codes && !$("codes-saved").checked) || security.committing || security.flows.add?.finishing || security.flows.reauth?.finishing) {
+      event.preventDefault(); event.returnValue = "";
+    }
+  });
+  window.addEventListener("pagehide", () => {
+    // Secrets never survive a back/forward cache restoration.
+    pageEpoch += 1; state.generation += 1; security.generation += 1;
+    closeCodes(false); void cancelChange(); clearEnrollment();
+  });
   function api(path, method = "GET") {
     return method === "POST" ? RiAuth.post(`api/portal${path}`) : RiAuth.get(`api/portal${path}`);
   }
@@ -83,9 +179,8 @@
     $("nav-all").classList.add("active"); $("nav-all").setAttribute("aria-current", "page");
     $("nav-favorites").classList.remove("active"); $("nav-favorites").removeAttribute("aria-current");
     $("mfa-notice").hidden = true; $("verification-notice").hidden = true; $("passkey-list").replaceChildren();
-    if ($("security-dialog").open) $("security-dialog").close();
-    if ($("settings-dialog").open) $("settings-dialog").close();
     $("settings-account").textContent = "";
+    $("security-account").textContent = "";
     clearTimeout(expiryTimer);
   }
   function resetFlows() {
@@ -132,8 +227,7 @@
       const data = await api("");
       if (generation !== state.generation) return;
       const changedUser = state.data?.user.id !== data.user.id;
-      if (changedUser && $("security-dialog").open) $("security-dialog").close();
-      if (changedUser && $("settings-dialog").open) $("settings-dialog").close();
+      if (factor.codes && factor.codes.userId !== data.user.id) closeCodes(false);
       state.data = data;
       if (changedUser) {
         loadPreferences(); state.section = "all"; $("search").value = ""; resetFlows();
@@ -163,7 +257,9 @@
       $("category").replaceChildren(new Option("All categories", ""));
       [...new Set(data.apps.map((app) => app.category))].sort((a, b) => a.localeCompare(b)).forEach((name) => $("category").add(new Option(name, name)));
       $("category").value = [...$("category").options].some((option) => option.value === category) ? category : "";
-      screen("catalogue"); connection("Connected", true); render(); RiAuthCapabilities.apply();
+      $("settings-account").textContent = $("security-account").textContent = `${data.user.display_name} (@${data.user.username})`;
+      screen(state.page); connection("Connected", true); render(); RiAuthCapabilities.apply();
+      if (changedUser && state.page === "security" && !factor.codes) void loadSecurity();
       clearTimeout(expiryTimer);
       expiryTimer = setTimeout(refresh, Math.max(1000, Math.min(30000, data.expires_at * 1000 - Date.now())));
     } catch (error) {
@@ -192,14 +288,16 @@
     $("all-count").textContent = String(all.length); $("favorite-count").textContent = String(state.favorites.size);
     $("clear-search").hidden = !$("search").value; $("search-shortcut").hidden = !!$("search").value;
     for (const section of ["all", "favorites"]) {
-      const selected = state.section === section, button = $(`nav-${section}`);
+      const selected = state.page === "catalogue" && state.section === section, button = $(`nav-${section}`);
       button.classList.toggle("active", selected); if (selected) button.setAttribute("aria-current", "page"); else button.removeAttribute("aria-current");
     }
     const favorites = state.section === "favorites";
     $("page-title").replaceChildren(document.createTextNode(favorites ? "Your favorites" : "Your applications"), element("span", "heading-dot", "."));
     $("collection-title").replaceChildren(document.createTextNode(favorites ? "Favorite applications " : "All applications "), element("span", "", `(${visible.length})`));
-    $("breadcrumb-current").textContent = favorites ? "Favorites" : "Applications";
-    document.title = `${favorites ? "Your favorites" : "Your applications"} · riAuth`;
+    if (state.page === "catalogue" && !factor.codes) {
+      $("breadcrumb-current").textContent = favorites ? "Favorites" : "Applications";
+      document.title = `${favorites ? "Your favorites" : "Your applications"} · riAuth`;
+    }
     $("apps").classList.toggle("list", state.view === "list");
     for (const view of ["grid", "list"]) { $(`view-${view}`).classList.toggle("selected", state.view === view); $(`view-${view}`).setAttribute("aria-pressed", String(state.view === view)); }
     const fragment = document.createDocumentFragment();
@@ -255,7 +353,7 @@
     $("announcement").textContent = `${visible.length} ${visible.length === 1 ? "application" : "applications"} shown.`;
   }
 
-  function setSection(section) { if (!state.data) return; state.section = section; $("search").value = ""; $("category").value = ""; render(); }
+  async function setSection(section) { if (!state.data || !await navigate("catalogue")) return; state.section = section; $("search").value = ""; $("category").value = ""; render(); }
   $("nav-all").addEventListener("click", () => setSection("all"));
   $("nav-favorites").addEventListener("click", () => setSection("favorites"));
   $("search").addEventListener("input", render); $("category").addEventListener("change", render);
@@ -263,7 +361,7 @@
   $("reset-filters").addEventListener("click", () => { $("search").value = ""; $("category").value = ""; render(); $("search").focus(); });
   for (const view of ["grid", "list"]) $(`view-${view}`).addEventListener("click", () => { state.view = view; savePreferences(); render(); });
   document.addEventListener("keydown", (event) => {
-    if (!state.data || event.isComposing || $("security-dialog").open || $("settings-dialog").open) return;
+    if (!state.data || event.isComposing || state.page !== "catalogue" || factor.codes) return;
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
     if ((!typing && event.key === "/") || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")) { event.preventDefault(); $("search").focus(); }
     if (event.key === "Escape" && document.activeElement === $("search")) { $("search").value = ""; render(); }
@@ -271,7 +369,13 @@
   $("refresh").addEventListener("click", refresh); $("retry").addEventListener("click", refresh);
   window.addEventListener("focus", refresh);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
-  window.addEventListener("pageshow", (event) => { if (event.persisted) { clearIdentity(); screen("loading"); refresh(); } });
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    state.page = pageAtLocation();
+    historyIndex = Number.isInteger(history.state?.riauthWorkspaceIndex) ? history.state.riauthWorkspaceIndex : 0;
+    restoringHistoryIndex = null;
+    clearIdentity(); screen("loading"); refresh();
+  });
 
   $("start-login").addEventListener("click", async () => {
     if (!(await security.flows.signIn.cancel())) return;
@@ -363,6 +467,7 @@
     }
   }));
   RiAuth.guard($("sign-out"), async () => {
+    if ((state.page === "security" || factor.codes) && !await leaveSecurity()) return;
     $("sign-out").disabled = true; state.generation += 1;
     try {
       const result = await api("/sign-out", "POST"); clearIdentity(); stopRequest(); screen("auth"); connection("Not signed in");
@@ -441,7 +546,7 @@
     clearAuthError(); $("passkey-login").focus();
   });
 
-  // Passkey management stays bound to the account and dialog that opened the action.
+  // Passkey management stays bound to the account and page that opened the action.
   function securityStatus(message) { $("security-status").textContent = message; }
   function showReauth(hint) {
     $("reauth-hint").textContent = hint; $("reauth-panel").hidden = false; $("reauth-error").hidden = true;
@@ -474,8 +579,8 @@
     securityStatus("Loading your passkeys…");
     try {
       const data = await RiAuth.get("api/portal/passkeys");
-      if (generation !== security.generation || state.data?.user.id !== user || !$("security-dialog").open) return;
-      if (data.user_id !== user) { $("security-dialog").close(); await refresh(); return; }
+      if (generation !== security.generation || state.data?.user.id !== user || !securityVisible()) return;
+      if (data.user_id !== user) { clearIdentity(); await refresh(); return; }
       security.data = data;
       const rows = data.passkeys.map((passkey) => {
         const row = element("li", "passkey-row"), text = element("div", "passkey-text"), actions = element("div", "passkey-actions");
@@ -503,23 +608,29 @@
     } catch (error) {
       if (generation !== security.generation) return;
       if (error.status === 401) { refresh(); return; }
-      securityStatus(describe(error, "Couldn't load your passkeys. Close this dialog and try again."));
+      securityStatus(describe(error, "Couldn't load your passkeys. Reload this page and try again."));
     }
   }
-  async function openSecurity(kind) {
+  async function loadSecurity(kind) {
     if (!state.data) return;
-    if (!$("security-dialog").open) $("security-dialog").showModal();
     $("security-account").textContent = `${state.data.user.display_name} (@${state.data.user.username})`;
     if (!$("passkey-name").value) $("passkey-name").value = navigator.userAgentData?.platform || "This device";
     securityControls(); await Promise.all([loadPasskeys(), loadFactor()]);
-    if (kind && $("security-dialog").open) showReauth(hint(kind));
+    if (kind && securityVisible()) showReauth(hint(kind));
   }
-  function factorChanged(message) {
-    state.generation += 1; $("security-dialog").close();
-    clearIdentity(); stopRequest(); screen("auth"); connection("Not signed in");
+  async function openSecurity(kind) {
+    if (!state.data || !await navigate("security")) return;
+    if (kind && securityVisible()) showReauth(hint(kind));
+  }
+  function factorChanged(message, recoveryCodes = false) {
+    state.generation += 1;
+    clearIdentity(); stopRequest(); connection("Not signed in");
     $("auth-description").textContent = "Your sessions have ended. Sign in again to return to your applications.";
     toast(message);
-    ($("passkey-login").hidden ? $("login-username") : $("passkey-login")).focus();
+    if (!recoveryCodes) {
+      screen("auth");
+      ($("passkey-login").hidden ? $("login-username") : $("passkey-login")).focus();
+    }
   }
   function securityError(error, retry) {
     if (error.code === "reauthentication_required" || error.code === "mfa_required") {
@@ -541,7 +652,7 @@
     factor.enrollment = null; factor.action = null; clearEnrollment();
     $("passkey-action").hidden = true; $("passkey-rename").value = ""; hideReauth(); closePassword();
     securityControls();
-    // A setup key shown in this dialog is gone once it closes, so its enrollment goes too.
+    // Leaving this page clears the setup key and cancels its enrollment.
     await Promise.all([add?.cancel(), reauth?.cancel(), enrolling && RiAuth.post("api/portal/mfa/totp/cancel", {}).catch(() => {})]);
     return true;
   }
@@ -676,7 +787,7 @@
   async function reauthenticated() {
     hideReauth();
     await refresh();
-    if (!state.data || !$("security-dialog").open) return;
+    if (!state.data || !securityVisible()) return;
     await Promise.all([loadPasskeys(), loadFactor()]);
     const retry = security.retry; security.retry = null;
     if (retry) await retry();
@@ -723,7 +834,7 @@
     if (await cancelChange()) { await Promise.all([loadPasskeys(), loadFactor()]); securityStatus("Change cancelled."); }
   });
 
-  // Authenticator app (TOTP) and recovery codes. Every change runs for the account and dialog
+  // Authenticator app (TOTP) and recovery codes. Every change runs for the account and page
   // that started it; enabling, replacing and removing end every session, this one included.
   function factorStatus(message) { $("factor-status").textContent = message; }
   function factorReady() {
@@ -754,13 +865,13 @@
     const generation = security.generation, user = state.data?.user.id;
     try {
       const data = await RiAuth.get("api/portal/mfa");
-      if (generation !== security.generation || state.data?.user.id !== user || !$("security-dialog").open) return;
-      if (data.user_id !== user) { $("security-dialog").close(); await refresh(); return; }
+      if (generation !== security.generation || state.data?.user.id !== user || !securityVisible()) return;
+      if (data.user_id !== user) { clearIdentity(); await refresh(); return; }
       factor.data = data; renderFactor();
     } catch (error) {
       if (generation !== security.generation) return;
       if (error.status === 401) { refresh(); return; }
-      factorStatus(describe(error, "Couldn't load your authenticator app settings. Close this dialog and try again."));
+      factorStatus(describe(error, "Couldn't load your authenticator app settings. Reload this page and try again."));
     }
   }
   // The retry waits in the shared panel; the factor's own cancel buttons drop it.
@@ -779,7 +890,7 @@
     if (error.status === 409) void loadFactor();
     factorStatus(describe(error, error.description || "Couldn't change your authenticator app. Try again."));
   }
-  // `commit` marks a request that changes credentials: the dialog stays until it settles.
+  // `commit` marks a request that changes credentials: the page stays until it settles.
   async function factorRun(commit, retry, work, what = "your authenticator app") {
     if (security.busy || !state.data || !factor.data) return;
     if (!factorReady()) { needProof(retry, factorHint(what)); return; }
@@ -825,6 +936,7 @@
     });
   }
   function confirmTotp() {
+    const epoch = pageEpoch;
     const enrollment = factor.enrollment;
     if (!enrollment || security.busy) return;
     const code = $("totp-code").value.replace(/\s+/g, "");
@@ -846,10 +958,11 @@
         }
         throw error;
       }
+      if (epoch !== pageEpoch || (state.data && state.data.user.id !== user)) return;
       const replaced = result.status === "replaced";
       endEnrollment();
-      factorChanged(replaced ? "Authenticator app replaced. Sign in with a code from your new app." : "Authenticator app turned on. Sign in with your password and a code from it.");
-      showCodes(result.recovery_codes, replaced ? "replaced" : "enabled", username);
+      factorChanged(replaced ? "Authenticator app replaced. Sign in with a code from your new app." : "Authenticator app turned on. Sign in with your password and a code from it.", true);
+      showCodes(result.recovery_codes, replaced ? "replaced" : "enabled", username, user);
     });
   }
   function askFactor(kind) {
@@ -864,36 +977,42 @@
     factorStatus(""); renderFactor(); $("factor-confirm-title").focus();
   }
   function runFactorAction() {
+    const epoch = pageEpoch;
     const kind = factor.action;
     if (!kind) return;
     return factorRun(true, () => runFactorAction(), async (user) => {
       const username = state.data.user.username;
       if (kind === "remove") {
         await RiAuth.post("api/portal/mfa/totp/remove", { expected_user_id: user });
+        if (epoch !== pageEpoch || (state.data && state.data.user.id !== user)) return;
         factor.action = null; factorChanged("Authenticator app removed. Sign in again.");
         return;
       }
       const result = await RiAuth.post("api/portal/mfa/recovery-codes", { expected_user_id: user });
+      if (epoch !== pageEpoch || (state.data && state.data.user.id !== user)) return;
       factor.action = null; renderFactor();
       // The previous codes are already void; this response is the only copy of the new ones.
-      showCodes(result.recovery_codes, "rotated", username);
+      showCodes(result.recovery_codes, "rotated", username, user);
       void loadFactor();
     }, kind === "remove" ? "your authenticator app" : "your recovery codes");
   }
-  function showCodes(codes, kind, username) {
+  function showCodes(codes, kind, username, userId) {
     const list = Array.isArray(codes) ? codes.filter((code) => typeof code === "string") : [];
-    factor.codes = { list, username };
+    factor.codes = { list, username, userId };
     $("codes-title").textContent = kind === "rotated" ? "Save your new recovery codes" : kind === "replaced" ? "Authenticator app replaced" : "Authenticator app turned on";
     $("codes-description").textContent = `${kind === "rotated" ? "Your previous recovery codes no longer work." : kind === "replaced" ? "Your old app and recovery codes no longer work, and you're signed out everywhere." : "You're signed out everywhere. Sign in again with your password and a code from your app."} Save these recovery codes somewhere safe, like a password manager. Each one signs you in once if you can't use your authenticator app. They won't be shown again.`;
     $("codes-list").replaceChildren(...list.map((code) => element("li", "", code)));
     $("codes-saved").checked = false; $("codes-status").textContent = "";
-    if (!$("codes-dialog").open) $("codes-dialog").showModal();
-    RiAuth.arm(); $("codes-title").focus();
+    screen("security");
+    RiAuth.arm(); $("codes-title").focus({ preventScroll: true }); window.scrollTo(0, 0);
   }
-  function closeCodes() {
+  function closeCodes(focus = true) {
     factor.codes = null; $("codes-list").replaceChildren(); $("codes-saved").checked = false; $("codes-status").textContent = "";
-    if ($("codes-dialog").open) $("codes-dialog").close();
-    if ($("security-dialog").open) $("recovery-rotate").focus();
+    $("codes-page").hidden = true; $("security-content").hidden = false;
+    if (focus) {
+      screen(state.data ? state.page : "auth");
+      if (state.data && securityVisible()) $("recovery-rotate").focus();
+    }
   }
   async function copyText(text, target, status, done, fallback) {
     try { await navigator.clipboard.writeText(text); status(done); }
@@ -937,29 +1056,6 @@
   RiAuth.guard($("codes-done"), () => {
     if ($("codes-saved").checked) { closeCodes(); return; }
     $("codes-status").textContent = "Save the codes, then confirm that you saved them."; $("codes-saved").focus();
-  });
-  $("codes-dialog").addEventListener("cancel", (event) => {
-    if (!factor.codes || $("codes-saved").checked) return;
-    event.preventDefault();
-    $("codes-status").textContent = "Save your recovery codes before closing. They won't be shown again."; $("codes-saved").focus();
-  });
-  $("codes-dialog").addEventListener("close", () => { if (factor.codes) closeCodes(); });
-  $("account-security").addEventListener("click", () => openSecurity());
-  $("workspace-settings").addEventListener("click", () => {
-    if (!state.data) return;
-    $("settings-account").textContent = `${state.data.user.display_name} (@${state.data.user.username})`;
-    $("appearance").value = RiAuthAppearance.get();
-    $("settings-dialog").showModal();
-  });
-  $("settings-close").addEventListener("click", () => $("settings-dialog").close());
-  $("settings-dialog").addEventListener("close", () => { if (state.data) $("workspace-settings").focus(); });
-  $("settings-security").addEventListener("click", () => { $("settings-dialog").close(); openSecurity(); });
-  async function closeSecurity() { if (await cancelChange()) $("security-dialog").close(); }
-  $("security-close").addEventListener("click", closeSecurity);
-  $("security-dialog").addEventListener("cancel", (event) => { event.preventDefault(); closeSecurity(); });
-  $("security-dialog").addEventListener("close", () => {
-    void cancelChange();
-    if (!$("account").hidden) $("account-security").focus();
   });
   $("mfa-action").addEventListener("click", () => {
     if (!state.data) return;

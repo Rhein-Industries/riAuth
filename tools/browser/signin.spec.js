@@ -103,7 +103,10 @@ async function reflows(page) {
 }
 // WebKit on macOS moves focus only between text fields on Tab, like Safari; Option-Tab
 // reaches every control there. Other engines and WebKit on Linux use Tab.
-const tabKey = (browserName) => (browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab');
+const tabKey = (browserName, backward = false) => {
+  const option = browserName === 'webkit' && process.platform === 'darwin';
+  return backward ? option ? 'Alt+Shift+Tab' : 'Shift+Tab' : option ? 'Alt+Tab' : 'Tab';
+};
 const focusedId = (page) => page.evaluate(() => document.activeElement?.id ?? '');
 async function tabTo(page, browserName, id, limit = 25) {
   for (let i = 0; i < limit; i += 1) {
@@ -111,6 +114,13 @@ async function tabTo(page, browserName, id, limit = 25) {
     if (await focusedId(page) === id) return;
   }
   throw new Error(`Tab did not reach #${id}`);
+}
+async function tabBack(page, browserName, id, limit = 25) {
+  for (let i = 0; i < limit; i += 1) {
+    if (await focusedId(page) === id) return;
+    await page.keyboard.press(tabKey(browserName, true));
+  }
+  throw new Error(`Shift+Tab did not reach #${id}`);
 }
 
 const screen = (page, name) => expect(page.locator(`#signin-${name}`)).toBeVisible();
@@ -381,7 +391,7 @@ test('RP logout confirmation signs this browser out', async ({ page, context }) 
 // Playwright's WebAuthn shim answers navigator.credentials in every engine. It tests the
 // pages and the server, not the browser's own WebAuthn. It is installed before the page
 // exists, as Playwright documents.
-test('passkey enrollment and passwordless sign-in', async ({ context }) => {
+test('passkey enrollment and passwordless sign-in', async ({ context, browserName }) => {
   const user = fixture.users.passkey;
   await context.credentials.install();
   const page = await context.newPage();
@@ -390,16 +400,46 @@ test('passkey enrollment and passwordless sign-in', async ({ context }) => {
     'This engine build has no WebAuthn, so the pages hide their passkey buttons');
   await portalSignIn(page, user);
   await page.locator('#account-security').click();
-  await expect(page.getByRole('dialog', { name: 'Sign-in and security' })).toBeVisible();
+  await expect(page.locator('#security-page')).toBeVisible();
+  await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
   await expect(page.locator('#security-status')).toHaveText('You have no passkeys yet.');
   await axe(page);
-  await page.getByRole('button', { name: 'Add a passkey' }).click();
+  // Finishing a credential change cannot be interrupted by a page link or
+  // browser Back. Hold the request before it reaches the real server so the
+  // navigation guard is exercised deterministically, then finish normally.
+  let releaseFinish, enteredFinish;
+  const mayFinish = new Promise((resolve) => { releaseFinish = resolve; });
+  const finishing = new Promise((resolve) => { enteredFinish = resolve; });
+  await page.route('**/api/portal/passkeys/registration/finish', async (route) => {
+    enteredFinish();
+    await mayFinish;
+    await route.continue();
+  });
+  try {
+    await page.getByRole('button', { name: 'Add a passkey' }).click();
+    await finishing;
+    await page.locator('#security-close').click();
+    await expect(page.locator('#security-status')).toHaveText('Finishing your change. Please wait.');
+    await expect(page.locator('#security-page')).toBeVisible();
+    await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+    await page.goBack();
+    await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+    await expect(page.locator('#security-page')).toBeVisible();
+    await expect(page.locator('#catalogue')).toBeHidden();
+  } finally { releaseFinish(); }
   await expect(page.locator('#toast')).toHaveText('Passkey added. Sign in with it to continue.');
   await expect(page.locator('#auth')).toBeVisible();
   await expect(page.locator('#passkey-login')).toBeFocused();
   expect(await context.credentials.get({ rpId: 'localhost' })).toHaveLength(1);
   // Discoverable sign-in in the portal gives an MFA session.
   await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+  await expect(page.locator('#security-page')).toBeVisible();
+  await expect(page.locator('#security-title')).toBeFocused();
+  await expect(page.locator('#catalogue')).toBeHidden();
+  await tabTo(page, browserName, 'security-close', 60);
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(`${fixture.issuer}/apps`);
   await expect(page.locator('#catalogue')).toBeVisible();
   await expect(page.locator('#account-name')).toHaveText('Pat Passkey');
   await expect(page.locator('#mfa-notice')).toBeHidden();
@@ -561,7 +601,7 @@ test('empty interaction credentials identify missing fields without a request', 
   await page.keyboard.type('local-only-not-submitted');
   await expect(password).not.toHaveAttribute('aria-invalid');
   await expect(password).not.toHaveAttribute('aria-describedby');
-  await tabTo(page, browserName, 'signin-username');
+  await tabBack(page, browserName, 'signin-username');
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.press('Backspace');
   await page.keyboard.press('Enter');

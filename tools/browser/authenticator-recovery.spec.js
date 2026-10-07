@@ -98,11 +98,8 @@ async function tabTo(page, browserName, id, limit = 40) {
 async function tabBack(page, browserName, id, limit = 15) {
   await moveFocus(page, browserName, id, true, limit);
 }
-// Firefox can leave the dialog's last button focused and then ignore a forward Tab.
-// Shift+Tab still walks back through the controls that loaded after the dialog opened.
 async function tabToControl(page, browserName, id, limit = 40) {
-  if (await focusedId(page) === 'security-close') await tabBack(page, browserName, id, limit);
-  else await tabTo(page, browserName, id, limit);
+  await tabTo(page, browserName, id, limit);
 }
 async function within(locator) {
   const box = await locator.boundingBox();
@@ -125,7 +122,17 @@ async function keyboardSignIn(page, browserName, user, otp = '') {
   expect((await within(page.locator('#password-login'))).height).toBeGreaterThanOrEqual(24);
   await page.keyboard.press('Enter');
 }
-async function expectSignedIn(page, { mfa }) {
+async function expectSignedIn(page, browserName, { mfa }) {
+  await expect(page.locator('#auth')).toBeHidden();
+  if (new URL(page.url()).pathname === new URL(`${fixture.issuer}/apps/security`).pathname) {
+    await expect(page.locator('#security-page')).toBeVisible();
+    await expect(page.locator('#catalogue')).toBeHidden();
+    await expect(page.locator('#security-title')).toBeFocused();
+    await tabToControl(page, browserName, 'security-close', 60);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(`${fixture.issuer}/apps`);
+    await expect(page.locator('#security-page')).toBeHidden();
+  }
   await expect(page.locator('#catalogue')).toBeVisible();
   await expect(page.locator('#account-name')).toHaveText('Bob Example');
   await expect(page.locator('#auth')).toBeHidden();
@@ -153,13 +160,19 @@ async function expectRejected(page) {
   await fits(page);
 }
 async function openSecurity(page, browserName) {
-  await tabTo(page, browserName, 'account-security', 50);
+  // The sidebar precedes the main page in document order. Walk backwards
+  // from a page heading/form instead of relying on Tab wrapping at the end.
+  const fromMain = await page.evaluate(() => Boolean(document.activeElement?.closest('main')));
+  if (fromMain) await tabBack(page, browserName, 'account-security', 50);
+  else await tabTo(page, browserName, 'account-security', 50);
   expect((await within(page.locator('#account-security'))).height).toBeGreaterThanOrEqual(24);
   await page.keyboard.press('Enter');
-  const dialog = page.locator('#security-dialog');
-  await expect(dialog).toBeVisible();
+  const securityPage = page.locator('#security-page');
+  await expect(securityPage).toBeVisible();
+  await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+  await expect(page.locator('#catalogue')).toBeHidden();
   await expect(page.locator('#security-account')).toHaveText('Bob Example (@bob)');
-  await within(dialog);
+  await within(page.locator('#security-title'));
   await fits(page);
 }
 async function expectRecoveryCount(page, browserName, left) {
@@ -172,7 +185,12 @@ async function expectRecoveryCount(page, browserName, left) {
   expect((await within(page.locator('#recovery-rotate'))).height).toBeGreaterThanOrEqual(24);
   await within(page.locator('#recovery-summary'));
   await page.keyboard.press('Escape');
-  await expect(page.locator('#security-dialog')).toBeHidden();
+  await expect(page.locator('#security-page')).toBeVisible();
+  await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+  await tabToControl(page, browserName, 'security-close', 50);
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(`${fixture.issuer}/apps`);
+  await expect(page.locator('#catalogue')).toBeVisible();
 }
 
 test('enrolling an authenticator app ends every session and a recovery code signs in once', async ({ context, browser, browserName }) => {
@@ -191,17 +209,61 @@ test('enrolling an authenticator app ends every session and a recovery code sign
     await arm(other, problems);
     const otherPage = await other.newPage();
     await keyboardSignIn(page, browserName, user);
-    await expectSignedIn(page, { mfa: false });
+    await expectSignedIn(page, browserName, { mfa: false });
     await otherPage.goto(`${fixture.issuer}/apps`);
     await keyboardSignIn(otherPage, browserName, user);
-    await expectSignedIn(otherPage, { mfa: false });
+    await expectSignedIn(otherPage, browserName, { mfa: false });
     const otherSession = await sso(other);
     expect(otherSession?.value).toMatch(/^ri_sso_/);
 
+    // Give browser Back two distinct workspace entries to traverse.
+    await page.locator('#workspace-settings').click();
+    await expect(page).toHaveURL(`${fixture.issuer}/apps/settings`);
+    await expect(page.locator('#settings-page')).toBeVisible();
     await openSecurity(page, browserName);
     await expect(page.locator('#security-status')).toHaveText('You have no passkeys yet.');
     await expect(page.locator('#totp-summary')).toHaveText('Off. Use an authenticator app on your phone or computer for 6-digit sign-in codes after your password.');
     await expect(page.locator('#recovery-section')).toBeHidden();
+    // Cancellation must finish before a new page becomes active. A second
+    // Back while the real cancellation is held must settle on the latest
+    // history entry, with neither a leaked setup key nor a mismatched page.
+    await tabToControl(page, browserName, 'totp-setup', 20);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#totp-enroll-title')).toBeFocused();
+    const discardedKey = (await page.locator('#totp-key').innerText()).replace(/\s+/g, '');
+    expect(discardedKey).toMatch(/^[A-Z2-7]+=*$/);
+    let releaseCancel, enteredCancel, cancelRequests = 0;
+    const mayCancel = new Promise((resolve) => { releaseCancel = resolve; });
+    const cancelling = new Promise((resolve) => { enteredCancel = resolve; });
+    const cancelPattern = '**/api/portal/mfa/totp/cancel';
+    const holdCancel = async (route) => {
+      cancelRequests += 1;
+      enteredCancel();
+      await mayCancel;
+      await route.continue();
+    };
+    await page.route(cancelPattern, holdCancel);
+    const cancelled = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/api/portal/mfa/totp/cancel'));
+    try {
+      await page.goBack();
+      await cancelling;
+      await page.goBack();
+      await expect(page).toHaveURL(`${fixture.issuer}/apps`);
+      await expect(page.locator('#totp-key')).toBeEmpty();
+      await expect(page.locator('#totp-enroll')).toBeHidden();
+      await expect(page.locator('#security-page')).toBeVisible();
+      await expect(page.locator('#catalogue')).toBeHidden();
+    } finally { releaseCancel(); }
+    expect((await cancelled).status()).toBe(200);
+    await page.unroute(cancelPattern, holdCancel);
+    await expect(page.locator('#catalogue')).toBeVisible();
+    await expect(page.locator('#page-title')).toBeFocused();
+    await expect(page.locator('#security-page')).toBeHidden();
+    await expect(page.locator('#settings-page')).toBeHidden();
+    await expect(page).toHaveURL(`${fixture.issuer}/apps`);
+    expect(cancelRequests).toBe(1);
+    await openSecurity(page, browserName);
     await tabToControl(page, browserName, 'totp-setup', 20);
     expect((await within(page.locator('#totp-setup'))).height).toBeGreaterThanOrEqual(24);
     await page.keyboard.press('Enter');
@@ -210,7 +272,8 @@ test('enrolling an authenticator app ends every session and a recovery code sign
     await expect(page.locator('#totp-key-details')).toHaveText('Time-based, 6 digits, new code every 30 seconds (SHA1). Spaces in the key are optional.');
     const secret = (await page.locator('#totp-key').innerText()).replace(/\s+/g, '');
     expect(secret).toMatch(/^[A-Z2-7]+=*$/);
-    await within(page.locator('#security-dialog'));
+    expect(secret).not.toBe(discardedKey);
+    await within(page.locator('#totp-enroll-title'));
 
     await tabTo(page, browserName, 'totp-code', 15);
     await page.keyboard.press('Enter');
@@ -244,15 +307,16 @@ test('enrolling an authenticator app ends every session and a recovery code sign
     await page.keyboard.press('Enter');
     await expect(page.locator('#toast')).toHaveText('Authenticator app turned on. Sign in with your password and a code from it.');
     await expect(page.locator('#auth-description')).toHaveText('Your sessions have ended. Sign in again to return to your applications.');
-    await expect(page.locator('#auth')).toBeVisible();
+    await expect(page.locator('#auth')).toBeHidden();
     await expect(page.locator('#catalogue')).toBeHidden();
     await expect.poll(async () => Boolean(await sso(context))).toBe(false);
     expect(await portalStatus(page)).toBe(401);
     await expect.poll(() => portalStatus(otherPage)).toBe(401);
     expect((await sso(other))?.value).toBe(otherSession.value);
 
-    const codesDialog = page.locator('#codes-dialog');
-    await expect(codesDialog).toBeVisible();
+    const codesPage = page.locator('#codes-page');
+    await expect(codesPage).toBeVisible();
+    await expect(page.locator('#security-content')).toBeHidden();
     await expect(page.locator('#codes-title')).toBeFocused();
     await expect(page.locator('#codes-title')).toHaveText('Authenticator app turned on');
     await expect(page.locator('#codes-description')).toHaveText("You're signed out everywhere. Sign in again with your password and a code from your app. Save these recovery codes somewhere safe, like a password manager. Each one signs you in once if you can't use your authenticator app. They won't be shown again.");
@@ -260,7 +324,7 @@ test('enrolling an authenticator app ends every session and a recovery code sign
     expect(codes).toHaveLength(10);
     expect(new Set(codes).size).toBe(10);
     for (const code of codes) expect(code).toMatch(/^ri_recovery_[A-Za-z0-9_-]{40,}$/);
-    await within(codesDialog);
+    await within(page.locator('#codes-title'));
     await fits(page);
     await tabTo(page, browserName, 'codes-done', 15);
     await expect(page.locator('#codes-done')).not.toHaveAttribute('aria-disabled', 'true');
@@ -268,15 +332,24 @@ test('enrolling an authenticator app ends every session and a recovery code sign
     await page.keyboard.press('Enter');
     await expect(page.locator('#codes-saved')).toBeFocused();
     await expect(page.locator('#codes-status')).toHaveText('Save the codes, then confirm that you saved them.');
-    await expect(codesDialog).toBeVisible();
+    await expect(codesPage).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(codesPage).toBeVisible();
+    const codesRoute = page.url();
+    await page.goBack();
+    await expect(page).toHaveURL(codesRoute);
+    await expect(codesPage).toBeVisible();
+    await expect(page.locator('#codes-saved')).toBeFocused();
+    await expect(page.locator('#codes-status')).toHaveText("Save your recovery codes before leaving. They won't be shown again.");
     await within(page.locator('label.checkbox'));
     await page.keyboard.press('Space');
     await expect(page.locator('#codes-saved')).toBeChecked();
     await tabTo(page, browserName, 'codes-done', 10);
     await expect(page.locator('#codes-done')).not.toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('Enter');
-    await expect(codesDialog).toBeHidden();
+    await expect(codesPage).toBeHidden();
     await expect(page.locator('#codes-list')).toBeEmpty();
+    await expect(page.locator('#auth')).toBeVisible();
 
     await otherPage.reload();
     await expect(otherPage.locator('#auth')).toBeVisible();
@@ -288,7 +361,7 @@ test('enrolling an authenticator app ends every session and a recovery code sign
     expect(await sso(context)).toBeUndefined();
 
     await keyboardSignIn(page, browserName, user, codes[0]);
-    await expectSignedIn(page, { mfa: true });
+    await expectSignedIn(page, browserName, { mfa: true });
     const recovered = await sso(context);
     expect(recovered?.value).toMatch(/^ri_sso_/);
     await expectRecoveryCount(page, browserName, 9);
@@ -297,7 +370,7 @@ test('enrolling an authenticator app ends every session and a recovery code sign
     await expectRejected(otherPage);
     expect((await sso(other))?.value).toBe(otherSession.value);
     await keyboardSignIn(otherPage, browserName, user, codes[1]);
-    await expectSignedIn(otherPage, { mfa: true });
+    await expectSignedIn(otherPage, browserName, { mfa: true });
     expect((await sso(other))?.value).toMatch(/^ri_sso_/);
     expect((await sso(other))?.value).not.toBe(otherSession.value);
     await expectRecoveryCount(otherPage, browserName, 8);

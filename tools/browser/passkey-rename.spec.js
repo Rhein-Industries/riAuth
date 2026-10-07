@@ -101,11 +101,8 @@ async function tabTo(page, browserName, id, limit = 40) {
 async function tabBack(page, browserName, id, limit = 15) {
   await moveFocus(page, browserName, id, true, limit);
 }
-// Firefox can leave the dialog's last button focused and then ignore a forward Tab.
-// Shift+Tab still walks back through the controls that loaded after the dialog opened.
 async function tabToControl(page, browserName, id, limit = 40) {
-  if (await focusedId(page) === 'security-close') await tabBack(page, browserName, id, limit);
-  else await tabTo(page, browserName, id, limit);
+  await tabTo(page, browserName, id, limit);
 }
 // Chromium's forward Tab from the document skips #passkey-name and stops on Add a passkey.
 // One Shift+Tab from that button reaches the name field. Other engines tab forward to it.
@@ -135,8 +132,7 @@ async function tabToPasskeyName(page, browserName) {
 // The passkey row buttons have an accessible name and no id.
 async function tabToLabel(page, browserName, label, limit = 40) {
   await releaseHiddenFocus(page);
-  const backward = await focusedId(page) === 'security-close';
-  const key = tabKey(browserName, backward);
+  const key = tabKey(browserName, false);
   const seen = [];
   for (let i = 0; i <= limit; i += 1) {
     const current = await focusLabel(page);
@@ -176,7 +172,17 @@ async function keyboardSignIn(page, browserName, user) {
   expect((await within(page.locator('#password-login'))).height).toBeGreaterThanOrEqual(24);
   await page.keyboard.press('Enter');
 }
-async function expectSignedIn(page) {
+async function expectSignedIn(page, browserName) {
+  await expect(page.locator('#auth')).toBeHidden();
+  if (new URL(page.url()).pathname === new URL(`${fixture.issuer}/apps/security`).pathname) {
+    await expect(page.locator('#security-page')).toBeVisible();
+    await expect(page.locator('#catalogue')).toBeHidden();
+    await expect(page.locator('#security-title')).toBeFocused();
+    await tabToControl(page, browserName, 'security-close', 60);
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(`${fixture.issuer}/apps`);
+    await expect(page.locator('#security-page')).toBeHidden();
+  }
   await expect(page.locator('#catalogue')).toBeVisible();
   await expect(page.locator('#account-name')).toHaveText('Pat Passkey');
   await expect(page.locator('#auth')).toBeHidden();
@@ -184,15 +190,21 @@ async function expectSignedIn(page) {
   await fits(page);
 }
 async function openSecurity(page, browserName) {
-  await tabTo(page, browserName, 'account-security', 50);
+  // The sidebar precedes the main page in document order. Walk backwards
+  // from a page heading/form instead of relying on Tab wrapping at the end.
+  const fromMain = await page.evaluate(() => Boolean(document.activeElement?.closest('main')));
+  if (fromMain) await tabBack(page, browserName, 'account-security', 50);
+  else await tabTo(page, browserName, 'account-security', 50);
   expect((await within(page.locator('#account-security'))).height).toBeGreaterThanOrEqual(24);
   await page.keyboard.press('Enter');
-  const dialog = page.locator('#security-dialog');
-  await expect(dialog).toBeVisible();
+  const securityPage = page.locator('#security-page');
+  await expect(securityPage).toBeVisible();
+  await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+  await expect(page.locator('#catalogue')).toBeHidden();
   await expect(page.locator('#security-account')).toHaveText('Pat Passkey (@passkey1)');
-  await within(dialog);
+  await within(page.locator('#security-title'));
   await fits(page);
-  return dialog;
+  return securityPage;
 }
 async function replaceFocusedText(page, value) {
   await page.keyboard.press('ControlOrMeta+A');
@@ -221,7 +233,7 @@ async function signInWithPasskey(page, browserName) {
   if (await focusedId(page) !== 'passkey-login') await tabTo(page, browserName, 'passkey-login', 25);
   expect((await within(button)).height).toBeGreaterThanOrEqual(24);
   await page.keyboard.press('Enter');
-  await expectSignedIn(page);
+  await expectSignedIn(page, browserName);
   await expect(page.locator('#mfa-notice')).toBeHidden();
 }
 
@@ -243,7 +255,7 @@ test('renaming a passkey keeps the credential and the other session', async ({ c
     await arm(other, problems);
     const otherPage = await other.newPage();
     await keyboardSignIn(page, browserName, user);
-    await expectSignedIn(page);
+    await expectSignedIn(page, browserName);
     await expect(page.locator('#mfa-notice')).toBeVisible();
     await expect(page.locator('#mfa-notice-text')).toHaveText('Some applications need extra verification. Add a passkey or an authenticator app under Sign-in and security.');
 
@@ -269,7 +281,7 @@ test('renaming a passkey keeps the credential and the other session', async ({ c
     const credential = await authenticatorIdentity(context);
     await otherPage.goto(`${fixture.issuer}/apps`);
     await keyboardSignIn(otherPage, browserName, user);
-    await expectSignedIn(otherPage);
+    await expectSignedIn(otherPage, browserName);
     const otherSession = await sso(other);
     expect(otherSession?.value).toMatch(/^ri_sso_/);
     expect(await portalStatus(otherPage)).toBe(200);
@@ -340,7 +352,8 @@ test('renaming a passkey keeps the credential and the other session', async ({ c
 
     await expect(page.locator('#security-status')).toHaveText('Passkey renamed.');
     await expect(page.locator('#passkey-action')).toBeHidden();
-    await expect(page.locator('#catalogue')).toBeVisible();
+    await expect(page.locator('#catalogue')).toBeHidden();
+    await expect(page.locator('#security-page')).toBeVisible();
     await expect(page.locator('#passkey-list strong')).toHaveText(RENAMED_NAME);
     await expect(page.getByRole('button', { name: `Rename ${RENAMED_NAME}` })).toBeVisible();
     await expect(page.getByRole('button', { name: `Rename ${ENROLLED_NAME}` })).toHaveCount(0);
@@ -354,20 +367,27 @@ test('renaming a passkey keeps the credential and the other session', async ({ c
     await fits(page);
 
     await page.reload();
-    await expectSignedIn(page);
-    await openSecurity(page, browserName);
+    await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+    await expect(page.locator('#security-page')).toBeVisible();
+    await expect(page.locator('#security-title')).toBeFocused();
+    await expect(page.locator('#catalogue')).toBeHidden();
+    expect(await portalStatus(page)).toBe(200);
     await expect(page.locator('#security-status')).toHaveText(/^1 of \d+ passkeys\./);
     await expect(page.locator('#passkey-list strong')).toHaveText(RENAMED_NAME);
     await expect(page.locator('#reauth-panel')).toBeHidden();
     expect(await storedPasskey(page)).toEqual(renamed);
     expect(await authenticatorIdentity(context)).toEqual(credential);
     await otherPage.reload();
-    await expectSignedIn(otherPage);
+    await expectSignedIn(otherPage, browserName);
     expect((await sso(other))?.value).toBe(otherSession.value);
 
     await page.keyboard.press('Escape');
-    await expect(page.locator('#security-dialog')).toBeHidden();
-    await tabTo(page, browserName, 'sign-out', 20);
+    await expect(page.locator('#security-page')).toBeVisible();
+    await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+    await tabToControl(page, browserName, 'security-close', 50);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#catalogue')).toBeVisible();
+    await tabBack(page, browserName, 'sign-out', 20);
     const signOut = page.locator('#sign-out');
     expect((await within(signOut)).height).toBeGreaterThanOrEqual(24);
     await expect(signOut).not.toHaveAttribute('aria-disabled', 'true');

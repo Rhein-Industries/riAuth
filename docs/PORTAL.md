@@ -41,22 +41,27 @@ Buttons that act on a decision (**Sign out**, and on an application's page **All
 Some applications require MFA. After a password-only sign-in the catalogue shows a notice instead of silently hiding them:
 
 - If the account has TOTP or a passkey: "Some applications need your passkey or authenticator code." with **Sign in with your passkey**, which re-authenticates the same account.
-- Otherwise: "Some applications need extra verification. Add a passkey or an authenticator app under Sign-in and security." with a button that opens that dialog.
+- Otherwise: "Some applications need extra verification. Add a passkey or an authenticator app under Sign-in and security." with a button that opens that page.
 
 ## User settings and appearance
 
-Open **Settings** in the applications sidebar. It shows the signed-in account, a
+Open **Settings** in the applications sidebar, or go directly to
+`<issuer>/apps/settings`. This full workspace page shows the signed-in account, a
 **Color mode** selector, **Sign-in and security** for passwords, passkeys and
 authenticator apps, and **Sessions and consent** for active sessions, remembered
 approvals and linked providers. The latter page remains at
-`<issuer>/account/security` and also has the color selector.
+`<issuer>/account/security` and also has the color selector. Settings and Sign-in
+and security have links to each other, Sessions and consent, and back to
+applications. Their URLs support reloads and normal browser Back and Forward.
 
 Choose **Light**, **Dark**, or **System default**. System default follows the
 device's current appearance, including changes while the page is open. The choice
 applies to the workspace, account pages, administration and application sign-in
 pages. It is stored in this browser for this issuer and shared between its tabs;
 it does not sync to other browsers. Storage-disabled browsers keep the choice in
-the current tab. The application sidebar appears only after sign-in.
+the current tab. The application sidebar appears only after sign-in. Signed-out
+workspace and application sign-in screens use the full page without a floating
+dialog or card frame.
 
 Deeper presentation customization uses the existing `[frontend].theme_dir`
 configuration, including layout, CSS, JavaScript, logos, media and local fonts.
@@ -64,41 +69,45 @@ See [frontend themes](frontend-themes.md) for the supported contracts.
 
 ## Sign-in and security
 
-Signed-in users open **Sign-in and security** from the account menu. It has a **Password** and a **Passkeys** section.
+Signed-in users open **Sign-in and security** from the account menu or Settings,
+or go directly to `<issuer>/apps/security`. It is a full workspace page with
+sections for passwords, passkeys, authenticator apps and recovery codes. Opening
+either workspace account URL while signed out shows sign-in first and returns to
+that page after authentication.
 
 ### Password
 
 **Change password** asks for the current password, a new password and its confirmation. The change keeps passkeys, the authenticator app and recovery codes, and **signs the account out everywhere**, including this browser, terminal sessions and application grants; the page returns to sign-in with "Password changed. Sign in with your new password."
 
 - The form proves the current password again. A wrong one shows "Your current password is incorrect…" and counts toward sign-in's lockout (five failures in fifteen minutes pause password checks for fifteen minutes). New passwords follow the 12-character minimum and the [password history](enterprise/ENT-08.md).
-- If the account has TOTP or a passkey, the session must be an MFA sign-in from the last five minutes; otherwise the dialog asks to confirm with **Use your passkey** or password plus code, then reopens the form.
+- If the account has TOTP or a passkey, the session must be an MFA sign-in from the last five minutes; otherwise the page asks to confirm with **Use your passkey** or password plus code, then reopens the form.
 - A browser signed in by terminal approval signs in here first, as for passkeys.
 - An account whose password an imported directory manages sees "Your organization's directory manages your password. Change it there."; a passkey-only or upstream-only account has no password to change.
 
-Forgotten passwords are reset from the sign-in page, not from this dialog. See [account lifecycle](lifecycle.md#change-or-reset-a-password-in-the-browser).
+Forgotten passwords are reset from the sign-in page. See [account lifecycle](lifecycle.md#change-or-reset-a-password-in-the-browser).
 
 ### Passkeys
 
-The **Passkeys** section lists the account's passkeys (name and date added), adds another authenticator with a chosen name, renames a passkey, and removes one after confirmation. Closing the dialog or selecting Cancel before verification is submitted discards a pending enrollment without changing the account.
+The **Passkeys** section lists the account's passkeys (name and date added), adds another authenticator with a chosen name, renames a passkey, and removes one after confirmation. Leaving the page or selecting Cancel before verification is submitted discards a pending enrollment without changing the account.
 
 - Up to sixteen passkeys per account. The browser is asked for a discoverable (resident) passkey with user verification.
-- Adding, renaming, or removing needs a sign-in within the last five minutes. If the account already has TOTP or a passkey, it also needs a session signed in with a passkey or code; after a password-only sign-in the dialog explains "Sign in with your passkey or authenticator code to change your password or passkeys." (or "…your passkeys." when the password can already be changed) and offers **Use your passkey** or password plus code.
+- Adding, renaming, or removing needs a sign-in within the last five minutes. If the account already has TOTP or a passkey, it also needs a session signed in with a passkey or code; after a password-only sign-in the page explains "Sign in with your passkey or authenticator code to change your password or passkeys." (or "…your passkeys." when the password can already be changed) and offers **Use your passkey** or password plus code.
 - The first passkey of an account with no other factor needs only a recent sign-in.
-- A browser signed in by terminal approval shares the terminal's session. Because such an approval can be phished, that browser cannot change its password, passkeys, authenticator app or recovery codes: the dialog says "This browser uses your terminal's sign-in. Sign in here to change your password or passkeys." and signing in there with the account's password (plus code) or passkey gives this browser a session of its own, leaving the terminal signed in. A user whose only passkeys are on other devices signs in here with a phone or security key (cross-device sign-in), or enrolls from the terminal with USB-enabled `riauthctl passkey enroll`.
+- A browser signed in by terminal approval shares the terminal's session. Because such an approval can be phished, that browser cannot change its password, passkeys, authenticator app or recovery codes: the page says "This browser uses your terminal's sign-in. Sign in here to change your password or passkeys." and signing in there with the account's password (plus code) or passkey gives this browser a session of its own, leaving the terminal signed in. A user whose only passkeys are on other devices signs in here with a phone or security key (cross-device sign-in), or enrolls from the terminal with USB-enabled `riauthctl passkey enroll`.
 - A passkey-only account cannot remove its last passkey. It can add a backup authenticator first. Renaming leaves the credential and active sessions intact.
 - **Adding or removing a passkey signs the account out everywhere**, including terminal sessions and application grants. The page returns to sign-in with "Passkey added. Sign in with it to continue." or "Passkey removed. Sign in again."
 
 ### Authenticator app and recovery codes
 
-The same dialog sets up, replaces and removes an authenticator app (TOTP) and creates recovery codes. Every change follows the passkey rules above: a sign-in within the last five minutes, a passkey or code sign-in once the account has any factor, and this browser's own session rather than a terminal approval. When a check fails, the dialog asks the user to confirm it's them and then retries the change.
+The same page sets up, replaces and removes an authenticator app (TOTP) and creates recovery codes. Every change follows the passkey rules above: a sign-in within the last five minutes, a passkey or code sign-in once the account has any factor, and this browser's own session rather than a terminal approval. When a check fails, the page asks the user to confirm it's them and then retries the change.
 
-- **Set up** shows a QR code of the `otpauth://` URI, the setup key as text with a copy button for manual entry, its parameters (time-based, 6 digits, 30 seconds, SHA1) and an **Open in an authenticator app on this device** link. Nothing changes until a current code from the app is entered: an unconfirmed setup is not a factor, and **Cancel setup** or closing the dialog discards it. The pending setup belongs to the browser session that started it and expires after ten minutes.
+- **Set up** shows a QR code of the `otpauth://` URI, the setup key as text with a copy button for manual entry, its parameters (time-based, 6 digits, 30 seconds, SHA1) and an **Open in an authenticator app on this device** link. Nothing changes until a current code from the app is entered: an unconfirmed setup is not a factor, and **Cancel setup** or leaving the page discards it. The pending setup belongs to the browser session that started it and expires after ten minutes.
 - **Verify and turn on** enables the app, signs the account out everywhere, including terminal sessions and application grants, and shows ten new recovery codes once. The code that confirmed the app cannot be used to sign in.
 - **Replace app** sets up a new secret while the current app and recovery codes keep working. Verifying the new app retires the old secret and every old recovery code, signs out everywhere and shows ten new codes.
 - **Remove app**, after a confirmation step, removes the app, its recovery codes and any pending setup and signs out everywhere. Applications that require MFA then need a passkey.
 - **Create new recovery codes**, after a confirmation step, replaces all ten codes; the previous codes stop working immediately. Other sessions stay signed in, because rotation adds no new way in. The section shows how many unused codes remain.
 
-Recovery codes appear in their own dialog with **Copy codes** and **Download** (a text file generated in the page). Done needs the "I saved these codes somewhere safe" confirmation. Setup keys and codes are never written to browser storage and are cleared from the page when their step ends; the status endpoint reports only whether an app is set up and how many codes remain.
+Recovery codes appear on a dedicated page within Sign-in and security, with **Copy codes** and **Download** (a text file generated in the page). Done needs the "I saved these codes somewhere safe" confirmation. When enabling or replacing an authenticator app ends the session, this page remains visible until the codes are saved; the browser then returns to sign-in. Setup keys and codes are never written to browser storage and are cleared from the page when their step ends; the status endpoint reports only whether an app is set up and how many codes remain.
 
 See [passkeys](passkeys.md) for how browser, USB and split ceremonies relate.
 
@@ -195,7 +204,7 @@ The separate Chromium/Firefox/WebKit matrix includes keyboard interaction,
 responsive layout, text scaling, connection recovery and automated accessibility.
 `tools/browser/accessibility-journeys.spec.js` covers device approval, the
 password-reset page when email delivery is unavailable, sessions and consent after
-terminal approval, the sign-in and security dialog, an empty workspace sign-in, and an
+terminal approval, the sign-in and security page, an empty workspace sign-in, and an
 administrator's empty password confirmation for another person. The fixture has no mail
 delivery, so that reset page focuses the unavailable-recovery alert instead of
 asking for a username. Each of those pages must be reachable from the keyboard, report no WCAG 2.1

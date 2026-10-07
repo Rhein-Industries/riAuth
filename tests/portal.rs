@@ -2310,6 +2310,95 @@ async fn https_issuer_uses_host_prefixed_sso_and_ignores_duplicates_and_tossed_n
 }
 
 #[tokio::test]
+async fn workspace_account_pages_support_direct_requests_without_disclosing_credentials() {
+    for prefix in ["", "/identity"] {
+        let f = Fixture::new(prefix);
+        let sso = f.cookie(&f.admin);
+        let app = riauth::api::router(f.core.clone());
+        for path in ["/apps/security", "/apps/settings"] {
+            let uri = format!("{prefix}{path}");
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(&uri)
+                        .header("accept", "text/html")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{uri}");
+            assert_eq!(response.headers()["cache-control"], "no-store");
+            assert!(
+                response.headers()["content-security-policy"]
+                    .to_str()
+                    .unwrap()
+                    .contains("script-src 'self'")
+            );
+            let cookies: Vec<_> = response
+                .headers()
+                .get_all("set-cookie")
+                .iter()
+                .map(|value| value.to_str().unwrap().to_owned())
+                .collect();
+            assert_eq!(cookies.len(), 1, "{uri}");
+            let binding = sso_value(&cookies);
+            assert_eq!(f.signed_in_as(&binding), None, "a GET cannot sign in");
+            let body = String::from_utf8(
+                response
+                    .into_body()
+                    .collect()
+                    .await
+                    .unwrap()
+                    .to_bytes()
+                    .to_vec(),
+            )
+            .unwrap();
+            assert!(body.contains(&format!("src=\"{prefix}/portal/assets/app.js\"")));
+            assert!(body.contains(&format!("href=\"{prefix}/apps/security\"")));
+            assert!(body.contains(&format!("href=\"{prefix}/apps/settings\"")));
+            for secret in [&binding, &sso, &f.admin] {
+                assert!(!body.contains(secret), "{uri} embeds a credential");
+            }
+            assert!(!body.contains("__BASE__"), "{uri}");
+
+            // Reload/deep linking retains the browser's binding and existing
+            // session instead of issuing a different cookie or authenticating a GET.
+            for existing in [&binding, &sso] {
+                let (status, cookies, _) = call(
+                    &app,
+                    Request::builder()
+                        .uri(&uri)
+                        .header("cookie", format!("riauth_sso={existing}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await;
+                assert_eq!(status, StatusCode::OK, "{uri}");
+                assert!(cookies.is_empty(), "{uri} replaced an existing cookie");
+            }
+        }
+        assert_eq!(f.signed_in_as(&sso).as_deref(), Some("admin"));
+        if !prefix.is_empty() {
+            for uri in ["/apps/security", "/apps/settings"] {
+                let (status, _, body) = call(
+                    &app,
+                    Request::builder().uri(uri).body(Body::empty()).unwrap(),
+                )
+                .await;
+                assert_eq!(
+                    status,
+                    StatusCode::BAD_REQUEST,
+                    "{uri} escaped the issuer prefix"
+                );
+                assert_eq!(body["error"], "invalid_request", "{uri}");
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn portal_page_and_auth_asset_stay_offline() {
     let f = Fixture::new("/identity");
     let app = riauth::api::router(f.core.clone());
@@ -2386,7 +2475,8 @@ async fn portal_page_and_auth_asset_stay_offline() {
         "account-security",
         "sign-out",
         "mfa-notice",
-        "security-dialog",
+        "security-page",
+        "security-content",
         "security-title",
         "passkey-list",
         "security-status",
@@ -2400,8 +2490,51 @@ async fn portal_page_and_auth_asset_stay_offline() {
         "passkey-name",
         "add-passkey",
         "security-close",
+        "settings-page",
+        "settings-title",
+        "workspace-settings",
+        "settings-security",
+        "settings-close",
+        "codes-page",
     ] {
         assert!(page.contains(&format!("id=\"{id}\"")), "{id}");
+    }
+    let tag = |id: &str| {
+        let id = page.find(&format!("id=\"{id}\"")).unwrap();
+        let start = page[..id].rfind('<').unwrap();
+        let end = id + page[id..].find('>').unwrap() + 1;
+        &page[start..end]
+    };
+    for id in ["security-page", "settings-page", "codes-page"] {
+        assert!(tag(id).starts_with("<section "), "{id} is a page section");
+        assert!(
+            tag(id).contains("hidden"),
+            "{id} waits for authenticated state"
+        );
+    }
+    for id in ["security-title", "settings-title"] {
+        assert!(tag(id).starts_with("<h1 "), "{id} is a page heading");
+        assert!(
+            tag(id).contains("tabindex=\"-1\""),
+            "{id} can receive navigation focus"
+        );
+    }
+    for (id, path) in [
+        ("account-security", "/identity/apps/security"),
+        ("workspace-settings", "/identity/apps/settings"),
+        ("settings-security", "/identity/apps/security"),
+        ("security-close", "/identity/apps"),
+        ("settings-close", "/identity/apps"),
+    ] {
+        assert!(tag(id).starts_with("<a "), "{id} is a real navigation link");
+        assert!(tag(id).contains(&format!("href=\"{path}\"")), "{id}");
+        assert!(!tag(id).contains("aria-haspopup=\"dialog\""), "{id}");
+    }
+    for old in ["security-dialog", "settings-dialog", "codes-dialog"] {
+        assert!(
+            !page.contains(&format!("id=\"{old}\"")),
+            "{old} is replaced by a page"
+        );
     }
     assert!(page.contains(r#"<button class="button secondary" id="start-login""#));
     assert!(page.contains("Sign in with your terminal"));
@@ -2469,8 +2602,7 @@ async fn portal_page_and_auth_asset_stay_offline() {
         "details.terminal{",
         ".passkey-list{",
         ".passkey-row{",
-        "dialog.security{",
-        "dialog::backdrop{",
+        ".account-page{",
         ".spinner{",
         ".signin-shell{",
         "[aria-busy=true]",

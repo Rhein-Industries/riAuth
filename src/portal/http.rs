@@ -77,6 +77,10 @@ pub fn browser_routes() -> Router<App> {
         )
         .route("/apps", get(page))
         .route("/apps/", get(page))
+        .route("/apps/security", get(page))
+        .route("/apps/security/", get(page))
+        .route("/apps/settings", get(page))
+        .route("/apps/settings/", get(page))
         .route("/apps/launch", get(launch))
         .route(
             "/portal/assets/appearance.js",

@@ -43,7 +43,7 @@ The following page overrides are exact names under `pages/`:
 
 | Theme file | Embedded source to copy | Existing route or use |
 | --- | --- | --- |
-| `pages/apps.html` | `src/portal/index.html` | `/apps` and HTML root |
+| `pages/apps.html` | `src/portal/index.html` | `/apps`, `/apps/settings`, `/apps/security` and HTML root |
 | `pages/signin.html` | `src/portal/signin.html` | OIDC/SAML sign-in, consent and sign-out interaction |
 | `pages/admin.html` | `src/portal/admin.html` | `/admin` |
 | `pages/account.html` | `src/portal/account.html` | `/account/accept`, `/account/verify`, `/account/reset` |
@@ -165,5 +165,12 @@ browser preference, or from the system setting when no choice is saved. Custom
 styles can target these attributes and override `--canvas`, `--surface`, `--ink`,
 `--muted`, `--line`, `--accent` and `--accent-soft`. Keep the `riauth-base` meta
 tag and the external `__BASE__portal/assets/appearance.js` script before the
-stylesheet when replacing pages, and copy the workspace template
-from the 0.1.3 source so its Settings controls match `app.js`.
+stylesheet when replacing pages. Copy the workspace template from the same
+source revision as the deployed `app.js` so its controls and page sections match.
+
+Workspace Settings and Sign-in and security now use full page sections in
+`apps.html`. Themes that replace this template must retain `settings-page`,
+`security-page`, `security-content` and `codes-page`, their existing form controls,
+and the `data-workspace-page` navigation links. These sections replace the former
+settings, security and recovery-code dialogs. The separate `security.html`
+template continues to provide Sessions and consent at `/account/security`.

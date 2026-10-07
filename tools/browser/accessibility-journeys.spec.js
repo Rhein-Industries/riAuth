@@ -133,7 +133,7 @@ test('sessions reauthentication keeps an empty-password error in view', async ({
   }
 });
 
-test('sign-in and security dialog reaches its close control at 320 pixels', async ({ page, browserName }) => {
+test('sign-in and security page reaches its return link at 320 pixels', async ({ page, browserName }) => {
   test.setTimeout(90000);
   const user = fixture.users.bob;
   await page.goto(`${fixture.issuer}/apps`);
@@ -143,18 +143,20 @@ test('sign-in and security dialog reaches its close control at 320 pixels', asyn
   await page.locator('#password-login').click();
   await expect(page.locator('#catalogue')).toBeVisible();
   await page.locator('#account-security').click();
-  const dialog = page.getByRole('dialog', { name: 'Sign-in and security' });
-  await expect(dialog).toBeVisible();
+  const securityPage = page.locator('#security-page');
+  await expect(securityPage).toBeVisible();
+  await expect(page).toHaveURL(`${fixture.issuer}/apps/security`);
+  await expect(page.getByRole('heading', { name: 'Sign-in and security', level: 1 })).toBeFocused();
+  await expect(page.locator('#catalogue')).toBeHidden();
+  await expect(page.getByRole('dialog', { name: 'Sign-in and security' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(securityPage).toBeVisible();
   await axe(page);
   await page.setViewportSize({ width: 320, height: 640 });
-  await expect(dialog).toBeVisible();
+  await expect(securityPage).toBeVisible();
   await tabTo(page, browserName, 'security-close', 50);
-  const inside = await page.locator('#security-close').evaluate((el) => {
-    const box = el.getBoundingClientRect();
-    const frame = el.closest('dialog').getBoundingClientRect();
-    return box.top >= frame.top - 1 && box.bottom <= frame.bottom + 1 && box.left >= frame.left - 1 && box.right <= frame.right + 1;
-  });
-  expect(inside).toBe(true);
+  await expect(page.getByRole('link', { name: 'Back to applications' })).toBeFocused();
+  expect(await onScreen(page.locator('#security-close'))).toBe(true);
   await fits(page);
   for (const width of [768, 1440]) {
     await page.setViewportSize({ width, height: 800 });
@@ -163,14 +165,17 @@ test('sign-in and security dialog reaches its close control at 320 pixels', asyn
   }
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.evaluate(() => {
-    const dialog = document.getElementById('security-dialog');
-    for (const node of dialog.querySelectorAll('h2,h3,h4,p,a,button,input,label,li')) {
+    const securityPage = document.getElementById('security-page');
+    for (const node of securityPage.querySelectorAll('h1,h2,h3,h4,p,a,button,input,label,li')) {
       node.style.fontSize = `${parseFloat(getComputedStyle(node).fontSize) * 2}px`;
     }
   });
   await fits(page);
-  const dialogFits = await page.locator('#security-dialog').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
-  expect(dialogFits).toBe(true);
+  const pageFits = await securityPage.evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+  expect(pageFits).toBe(true);
+  await page.locator('#security-close').click();
+  await expect(page).toHaveURL(`${fixture.issuer}/apps`);
+  await expect(page.locator('#catalogue')).toBeVisible();
 });
 
 test('signed-in account controls stay inside a 320 pixel viewport', async ({ page, browserName }) => {
