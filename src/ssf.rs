@@ -901,6 +901,30 @@ mod destination_tests {
     use super::*;
     use reqwest::dns::Resolve;
 
+    fn isolated_dns_test(name: &str, run: impl FnOnce()) {
+        const CHILD: &str = "RIAUTH_SSF_DNS_UNIT_TEST";
+        if std::env::var(CHILD).is_ok_and(|selected| selected == name) {
+            run();
+            return;
+        }
+        // Darwin getaddrinfo retains an inheritable com.apple.netsrc control
+        // socket. Run DNS assertions in a fresh process so that OS-global
+        // state cannot contaminate the unrelated isolated-guest tests. Their
+        // inherited-descriptor audit must continue to refuse that socket.
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([name, "--exact", "--nocapture", "--test-threads=1"])
+            .env(CHILD, name)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("test result: ok. 1 passed;"),
+            "isolated DNS test {name} failed: {:?}\n{stdout}\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     #[test]
     fn receiver_destinations_reject_special_use_and_embedded_private_addresses() {
         for address in [
@@ -988,36 +1012,52 @@ mod destination_tests {
         assert!(public_addresses(std::iter::repeat_n(public, 65)).is_err());
     }
 
-    #[tokio::test]
-    async fn connector_resolver_rejects_a_hostname_resolving_to_loopback() {
-        assert!(
-            PublicResolver
-                .resolve("localhost".parse().unwrap())
-                .await
-                .is_err()
+    #[test]
+    fn connector_resolver_rejects_a_hostname_resolving_to_loopback() {
+        isolated_dns_test(
+            "ssf::destination_tests::connector_resolver_rejects_a_hostname_resolving_to_loopback",
+            || {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(async {
+                        assert!(
+                            PublicResolver
+                                .resolve("localhost".parse().unwrap())
+                                .await
+                                .is_err()
+                        );
+                    });
+            },
         );
     }
 
     #[test]
     fn receiver_client_checks_dns_before_opening_a_socket() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        listener.set_nonblocking(true).unwrap();
-        let endpoint = format!(
-            "https://localhost:{}/events",
-            listener.local_addr().unwrap().port()
-        );
-        // Exercise the configured connector itself even when its caller has
-        // skipped the earlier URL check, as old durable records could do.
-        let error = delivery_client(true)
-            .unwrap()
-            .post(endpoint)
-            .body("must not reach a local service")
-            .send()
-            .unwrap_err();
-        assert!(error.is_connect());
-        assert_eq!(
-            listener.accept().unwrap_err().kind(),
-            std::io::ErrorKind::WouldBlock
+        isolated_dns_test(
+            "ssf::destination_tests::receiver_client_checks_dns_before_opening_a_socket",
+            || {
+                let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+                listener.set_nonblocking(true).unwrap();
+                let endpoint = format!(
+                    "https://localhost:{}/events",
+                    listener.local_addr().unwrap().port()
+                );
+                // Exercise the configured connector itself even when its caller has
+                // skipped the earlier URL check, as old durable records could do.
+                let error = delivery_client(true)
+                    .unwrap()
+                    .post(endpoint)
+                    .body("must not reach a local service")
+                    .send()
+                    .unwrap_err();
+                assert!(error.is_connect());
+                assert_eq!(
+                    listener.accept().unwrap_err().kind(),
+                    std::io::ErrorKind::WouldBlock
+                );
+            },
         );
     }
 }
