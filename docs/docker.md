@@ -1,34 +1,34 @@
 # Docker images
 
-Version `0.1.2` is publicly available from these repositories, each with native
+Version `0.1.3` is publicly available from these repositories, each with native
 Linux `amd64` and `arm64` images. No registry login is required:
 
 ```text
-ghcr.io/rhein-industries/riauth-essentials:0.1.2
-ghcr.io/rhein-industries/riauth-platform:0.1.2
+ghcr.io/rhein-industries/riauth-essentials:0.1.3
+ghcr.io/rhein-industries/riauth-platform:0.1.3
 ```
 
 ## Published manifests
 
 | Edition | Multiarch manifest digest |
 | --- | --- |
-| Essentials | `sha256:bad89630e5d99c82a57c35e2e3c859f92bea05b968f5b8905d9ba499c89e8cb3` |
-| Platform | `sha256:2074842ad67a84653e5e4ba18fe2c445b3787a9e1844d3ccb9d3ce6c54143bb9` |
+| Essentials | `sha256:8483e6afea222742ba93850a55bff2ddad8a1770f0e09d0301eed8185919f480` |
+| Platform | `sha256:d821de9629a079eec0c020623a5d3bacb23d191fb92862c20c50820b52f89c08` |
 
 These images were built from commit
-`04eb0497c00ee198ec7ba616cdf9c77cd0e5c0c5`, which passed
-[full Public CI](https://github.com/Rhein-Industries/riAuth/actions/runs/37232945709).
-The [publication run](https://github.com/Rhein-Industries/riAuth/actions/runs/37236213488)
+`4c19dbe11bab84bef3c5ca100d5ce55600dddd6d`, which passed
+[full Public CI](https://github.com/Rhein-Industries/riAuth/actions/runs/37645438600).
+The [publication run](https://github.com/Rhein-Industries/riAuth/actions/runs/37645504184)
 built and exercised both editions on native Linux AMD64 and ARM64 hosts, including
 encrypted initialization, readiness, readonly themes and persistent restart.
-Both packages were made public, and anonymous registry downloads verified the
+Both packages are public, and anonymous registry downloads verified the
 manifest, config and every layer hash for all four images. The download check
 used the OCI registry protocol; container execution was verified on the hosted
 Linux runners.
 
 Use these immutable manifest digests when deploying. Publication is separate
 from the draft GitHub release workflow. No `latest` tag is created or changed
-by this workflow.
+by this workflow. Existing `0.1.2` tags remain available.
 
 ## Start a single instance
 
@@ -38,9 +38,9 @@ server CLI, embedded browser frontend, MIT license and third-party notices.
 Choose the edition before initialization; this example uses Essentials:
 
 ```sh
-export RIAUTH_IMAGE=ghcr.io/rhein-industries/riauth-essentials:0.1.2
+export RIAUTH_IMAGE=ghcr.io/rhein-industries/riauth-essentials:0.1.3
 # For Platform instead:
-# export RIAUTH_IMAGE=ghcr.io/rhein-industries/riauth-platform:0.1.2
+# export RIAUTH_IMAGE=ghcr.io/rhein-industries/riauth-platform:0.1.3
 docker pull "$RIAUTH_IMAGE"
 ```
 
@@ -132,14 +132,17 @@ Stop the service before offline maintenance or restore, make an encrypted
 backup and preserve the original config/key. Select the new image by digest,
 then start with the same volume and config. Review [operations](operations.md),
 [migration](migration.md) and the compatibility rules in [operations](operations.md) before
-changing version, edition, backend or issuer. Existing old-format shared policy
+changing version, edition, backend or issuer. Version `0.1.3` rebuilds derived
+indexes at revision 10. Stop all writers before upgrading and verify a
+pre-upgrade backup. Older binaries refuse the upgraded activation state;
+rollback requires restoring that backup. Existing old-format shared policy
 requires the explicit stopped-node agreement procedure with both confirmations;
 there is no automatic adoption or policy overwrite in this deployment. Binaries supporting only agreement formats 1 or 2 refuse the current format;
 selecting an older image is not a database rollback. Use a separately verified backup/restore path with compatible inputs.
 
 ## Maintainer publication procedure
 
-After pushing the reviewed `0.1.2` source, identify **Public CI** for that exact
+After pushing the reviewed `0.1.3` source, identify **Public CI** for that exact
 full commit on a push or manual CI run. A PR run is refused because its checkout
 may test a synthetic merge. Manually run **Publish checked Docker images** with
 `source_sha` set to that 40-character commit and `checked_ci_run_id` set to that
@@ -148,7 +151,7 @@ CI run is refused. The publisher waits within its existing finite budget for
 that exact run to finish successfully, revalidating its source and workflow
 identity before any image load, registry login or write. The workflow revision
 and product revision are recorded separately. Both manifests and all three applicable
-lockfile package entries must match `0.1.2`.
+lockfile package entries must match `0.1.3`.
 
 Each native hosted job builds both editions from the pinned Dockerfile, with
 one Cargo job and incremental/release debug disabled. A fresh owned fixture
@@ -165,8 +168,8 @@ hostname or claim an executed TLS reverse proxy.
 Build jobs have readonly repository permissions and no registry credentials.
 Only the final job receives `packages: write`, after both native jobs succeed.
 It checks artifact hashes and provenance, loads those tested archives, refuses
-any existing version/architecture tag, pushes `0.1.2-amd64` and `0.1.2-arm64`,
-then creates and verifies each two-architecture `0.1.2` manifest. Remote config
+any existing version/architecture tag, pushes `0.1.3-amd64` and `0.1.3-arm64`,
+then creates and verifies each two-architecture `0.1.3` manifest. Remote config
 digests bind the exact tested image metadata, including OCI revision/source
 labels. An authenticated publication is not anonymous-pull evidence.
 
