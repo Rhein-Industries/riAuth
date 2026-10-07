@@ -15,7 +15,19 @@ test('terminal approval, cancellation, keyboard access, reflow and private-conte
   await page.goto(`${fixture.issuer}/apps`);
   const start = page.getByRole('button', {name:/sign in with your terminal/i});
   await expect(start).toBeVisible();
+  await expect(page.getByRole('heading', {name:'Sign in', exact:true})).toBeVisible();
+  await expect(page).toHaveTitle('Sign in · riAuth');
+  await expect(page.getByRole('complementary', {name:'Workspace navigation'})).toBeHidden();
+  await expect(page.locator('#workspace-header')).toBeHidden();
+  await expect(page.getByRole('button', {name:'All applications', exact:false})).toBeHidden();
+  await expect(page.getByRole('searchbox', {name:'Search applications'})).toBeHidden();
+  for (const width of [1280, 640, 320]) {
+    await page.setViewportSize({width,height:900});
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect(start).toBeVisible();
+  }
   await accessibility(page);
+  await page.setViewportSize({width:1280,height:900});
   await start.focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#user-code')).not.toBeEmpty();
@@ -27,6 +39,9 @@ test('terminal approval, cancellation, keyboard access, reflow and private-conte
   const response = await page.request.post(`${fixture.issuer}/api/portal/requests/${encodeURIComponent(code)}`, {headers:{authorization:`Bearer ${fixture.token}`}, data:{approve:true}});
   expect(response.ok()).toBe(true);
   await expect(page.getByRole('link',{name:'Open Fixture application (opens in a new tab)',exact:true})).toBeVisible({timeout:15000});
+  await expect(page.getByRole('complementary', {name:'Workspace navigation'})).toBeVisible();
+  await expect(page.locator('#workspace-header')).toBeVisible();
+  await expect(page).toHaveTitle('Your applications · riAuth');
   await accessibility(page);
   for (const width of [1280, 640, 320]) {
     await page.setViewportSize({width,height:900});
@@ -37,15 +52,24 @@ test('terminal approval, cancellation, keyboard access, reflow and private-conte
   await page.evaluate(() => { for (const node of document.querySelectorAll('h1,h2,h3,p,a,button,input,select')) node.style.fontSize = `${parseFloat(getComputedStyle(node).fontSize)*2}px`; });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.reload();
+  await expect(page.getByRole('searchbox',{name:'Search applications'})).toBeVisible();
   await page.keyboard.press('/');
   await expect(page.getByRole('searchbox',{name:'Search applications'})).toBeFocused();
   await context.setOffline(true);
   await page.getByRole('button',{name:'Refresh applications'}).click();
   await expect(page.locator('#connection-label')).toContainText(/offline|reconnect|interrupted/i);
+  await expect(page.locator('#workspace-header')).toBeHidden();
+  await expect(page.getByRole('button',{name:'Try again'})).toBeVisible();
   await context.setOffline(false);
-  await page.getByRole('button',{name:'Refresh applications'}).click();
+  await page.getByRole('button',{name:'Try again'}).click();
   await expect(page.getByRole('link',{name:'Open Fixture application (opens in a new tab)',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Sign out'}).click();
+  await page.getByRole('button',{name:'Sign out'}).focus();
+  await expect(page.getByRole('button',{name:'Sign out'})).toBeEnabled();
+  await page.keyboard.press('Enter');
   await expect(start).toBeVisible();
+  await expect(page.getByRole('heading', {name:'Sign in', exact:true})).toBeFocused();
+  await expect(page.getByRole('complementary', {name:'Workspace navigation'})).toBeHidden();
+  await expect(page.locator('#workspace-header')).toBeHidden();
+  await expect(page).toHaveTitle('Sign in · riAuth');
   await expect(page.getByRole('link',{name:'Open Fixture application (opens in a new tab)',exact:true})).toHaveCount(0);
 });

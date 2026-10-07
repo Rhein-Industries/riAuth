@@ -41,7 +41,14 @@
   }
   function screen(name) {
     if (name === "catalogue" && $("catalogue").hidden) RiAuth.arm();
+    const active = document.activeElement;
+    const enteringAuth = name === "auth" && $("auth").hidden;
+    const workspace = name === "catalogue";
+    document.body.classList.toggle("portal-entry", !workspace);
+    $("workspace-navigation").hidden = $("workspace-header").hidden = !workspace;
+    document.title = workspace ? "Your applications · riAuth" : name === "error" ? "Applications unavailable · riAuth" : "Sign in · riAuth";
     for (const id of ["catalogue", "auth", "error", "loading"]) $(id).hidden = id !== name;
+    if (enteringAuth || active?.closest("[hidden]")) $(name === "auth" ? "auth-title" : "main").focus({ preventScroll: true });
   }
   function api(path, method = "GET") {
     return method === "POST" ? RiAuth.post(`api/portal${path}`) : RiAuth.get(`api/portal${path}`);
@@ -161,7 +168,7 @@
       const hadSession = !!state.data; clearIdentity();
       if (error.status === 401) {
         screen("auth"); connection("Not signed in");
-        $("auth-description").textContent = hadSession ? "Your session has ended. Sign in again to return to your applications." : "Sign in to see the applications available to you. Your workspace is ready when you are.";
+        $("auth-description").textContent = hadSession ? "Your session has ended. Sign in again to return to your applications." : "Sign in to open your applications.";
       } else {
         screen("error"); connection("Connection interrupted");
         $("announcement").textContent = "We couldn’t check your access. Retry to load your applications.";
