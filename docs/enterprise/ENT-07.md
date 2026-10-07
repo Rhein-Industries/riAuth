@@ -98,6 +98,10 @@ Receiver-managed standard streams stay on the SSF configuration API. A desired-s
 
 For a receiver-created outbound stream, set or replace the entire approved mapping with `PUT /api/ssf/admin/streams/{id}/subjects` and a JSON body of `{"subjects":{"<subject-id>":"local-username"}}`. This operation requires the same `ssf.manage` permission. Removing a stream, replacing bindings, or changing its delivery endpoint cancels pending deliveries for that stream.
 
+Receiver-managed delivery endpoints must use HTTPS and public unicast destinations. Create, PATCH and PUT reject local hostnames and private or special-use IP literals. The delivery connector checks DNS answers immediately before connecting, rejects the entire answer if any address is private or special-use, and uses only that checked address snapshot. Redirects and system HTTP proxies are disabled. DNS is checked on delivery rather than during configuration, so accepting a hostname does not establish that it currently resolves to a permitted address.
+
+Existing receiver streams and queued deliveries are checked under the same policy after an upgrade. An unsafe URL stops its queued delivery without a connection; a disallowed DNS answer records a transport failure and retries under the normal attempt cap. Replace an old local receiver endpoint with a public HTTPS receiver. If an operator intentionally needs a local integration, use the separate administrator-managed stream API with `ssf.manage`; those streams cannot be changed through the receiver configuration API.
+
 `iss` in the create response is this instance's issuer (the transmitter identity on SETs it signs).
 
 ## Inbound behavior

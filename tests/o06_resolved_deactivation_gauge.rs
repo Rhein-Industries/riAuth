@@ -371,7 +371,7 @@ async fn operator_resolution_updates_failed_gauge_and_rebuilds_legacy_indexes() 
     assert_failed(&f, failed);
     let corrected = f.snapshot().unwrap();
     let revision = corrected["meta/revision"].as_u64().unwrap();
-    assert_eq!(INDEX_VERSION, 9);
+    assert_eq!(INDEX_VERSION, 10);
     let legacy_failed = f.core.store.list::<Value>(BUCKET).unwrap().len() as u64;
     assert_eq!(legacy_failed, failed + 4);
     f.core
@@ -409,7 +409,7 @@ async fn operator_resolution_updates_failed_gauge_and_rebuilds_legacy_indexes() 
     f = f.reopen_with(|_| {});
     assert_eq!(
         f.core.store.get::<u32>("meta", "index_version").unwrap(),
-        Some(9)
+        Some(INDEX_VERSION)
     );
     assert_failed(&f, failed);
     assert_metrics(&f, &scraper, failed).await;

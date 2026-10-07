@@ -1478,10 +1478,10 @@ fn outbound_configuration_and_inbound_trust_have_separate_authority() {
 }
 
 #[test]
-fn receiver_authorization_header_is_sent_and_write_only() {
+fn receiver_authorization_header_is_write_only_and_cleared_on_retarget() {
     let f = encrypted_fixture();
     f.user("alice");
-    let (endpoint, received) = push_server(vec![500, 202]);
+    let endpoint = "https://receiver.example/events".to_owned();
     let secret_a = "Bearer receiver-secret-one";
     let secret_b = "Bearer receiver-secret-two";
     let make_configuration = |authorization_header: Option<&str>| ConfigurationInput {
@@ -1534,10 +1534,19 @@ fn receiver_authorization_header_is_sent_and_write_only() {
             },
         )
         .unwrap();
-    let first = f.core.deliver_once().unwrap();
-    assert_eq!(first[0]["status"], 500);
-    assert!(received.lock().unwrap()[0].header.contains(secret_a));
     let queued = f.core.store.list::<Delivery>("ssf_deliveries").unwrap();
+    assert_eq!(queued.len(), 1);
+    let first_id = queued[0].0.clone();
+    assert_eq!(
+        f.core
+            .store
+            .get::<riauth::ssf::Stream>("ssf_streams", id)
+            .unwrap()
+            .unwrap()
+            .authorization_header
+            .as_deref(),
+        Some(secret_a)
+    );
     assert!(!serde_json::to_string(&queued).unwrap().contains(secret_a));
 
     f.core
@@ -1550,7 +1559,7 @@ fn receiver_authorization_header_is_sent_and_write_only() {
     let cancelled = f
         .core
         .store
-        .get::<Delivery>("ssf_deliveries", first[0]["id"].as_str().unwrap())
+        .get::<Delivery>("ssf_deliveries", &first_id)
         .unwrap()
         .unwrap();
     assert!(cancelled.stopped);
@@ -1564,14 +1573,17 @@ fn receiver_authorization_header_is_sent_and_write_only() {
             },
         )
         .unwrap();
-    let second = f.core.deliver_once().unwrap();
-    assert_eq!(second[0]["status"], 202);
-    let received = received.lock().unwrap();
-    assert_eq!(received.len(), 2);
-    assert!(received[1].header.contains(secret_b));
-    assert!(!received[1].header.contains(secret_a));
-    drop(received);
-    let (new_endpoint, new_received) = push_server(vec![202]);
+    assert_eq!(
+        f.core
+            .store
+            .get::<riauth::ssf::Stream>("ssf_streams", id)
+            .unwrap()
+            .unwrap()
+            .authorization_header
+            .as_deref(),
+        Some(secret_b)
+    );
+    let new_endpoint = "https://other-receiver.example/events";
     f.core
         .ssf_config_update(
             &auth,
@@ -1589,14 +1601,14 @@ fn receiver_authorization_header_is_sent_and_write_only() {
             },
         )
         .unwrap();
-    let third = f.core.deliver_once().unwrap();
-    assert_eq!(third[0]["status"], 202);
-    assert!(
-        !new_received.lock().unwrap()[0]
-            .header
-            .lines()
-            .any(|line| line.to_ascii_lowercase().starts_with("authorization:"))
-    );
+    let retargeted = f
+        .core
+        .store
+        .get::<riauth::ssf::Stream>("ssf_streams", id)
+        .unwrap()
+        .unwrap();
+    assert!(retargeted.authorization_header.is_none());
+    assert_eq!(retargeted.endpoint_url, new_endpoint);
     assert!(
         !f.core
             .ssf_config_read(&auth, Some(id))
@@ -1946,7 +1958,7 @@ async fn advertised_configuration_endpoint_uses_receiver_and_transmitter_fields(
 
     let f = Fixture::new();
     f.user("alice");
-    let (endpoint, received) = push_server(vec![202]);
+    let endpoint = "https://receiver.example/events";
     let app = riauth::api::router(f.core.clone());
     let post = app
         .clone()
@@ -2047,7 +2059,7 @@ async fn advertised_configuration_endpoint_uses_receiver_and_transmitter_fields(
     let subject_key =
         json!({"format":"iss_sub", "iss": f.core.config.issuer, "sub":"external"}).to_string();
     let mut bindings = json!({"subjects": {}});
-    bindings["subjects"][subject_key] = json!("alice");
+    bindings["subjects"][&subject_key] = json!("alice");
     let bound = app
         .clone()
         .oneshot(
@@ -2072,27 +2084,12 @@ async fn advertised_configuration_endpoint_uses_receiver_and_transmitter_fields(
             },
         )
         .unwrap();
-    let deliver_core = f.core.clone();
-    let delivered = tokio::task::spawn_blocking(move || deliver_core.deliver_once())
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(delivered[0]["status"], 202);
-    let sent = received.lock().unwrap().pop().unwrap();
-    let claims: Value = {
-        use base64::Engine;
-        let middle = sent.body.split('.').nth(1).unwrap();
-        serde_json::from_slice(
-            &base64::engine::general_purpose::URL_SAFE_NO_PAD
-                .decode(middle)
-                .unwrap(),
-        )
-        .unwrap()
-    };
-    assert_eq!(claims["aud"], created["aud"]);
-    assert_eq!(claims["sub_id"]["iss"], f.core.config.issuer);
-    assert_eq!(claims["sub_id"]["sub"], "external");
-    assert!(claims.get("sub").is_none() && claims.get("exp").is_none());
+    let queued = f.core.store.list::<Delivery>("ssf_deliveries").unwrap();
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].1.audience, created["aud"].as_str().unwrap());
+    assert_eq!(queued[0].1.uri, endpoint);
+    assert_eq!(queued[0].1.subject, subject_key);
+    assert_eq!(queued[0].1.event, ACCOUNT_DISABLED);
 
     let list = app
         .clone()
@@ -2528,4 +2525,242 @@ fn reenabling_legacy_disabled_accounts_never_restores_child_credentials() {
         vec![(ACCOUNT_DISABLED.into(), "".into())],
         "re-enable must not replay disable events"
     );
+}
+
+#[test]
+fn receiver_configuration_cannot_create_or_retarget_to_internal_destinations() {
+    let f = Fixture::new();
+    let agent = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "receiver".into(),
+                permissions: vec![Permission {
+                    action: "ssf.configure".into(),
+                    resource: "*".into(),
+                }],
+                ttl: 3600,
+                parent: None,
+            },
+        )
+        .unwrap();
+    let auth = SsfAuth::Bearer(agent["credential"]["token"].as_str().unwrap().into());
+    let input = |endpoint: &str| ConfigurationInput {
+        events_requested: [ACCOUNT_DISABLED.into()].into(),
+        delivery: DeliverySpec {
+            method: PUSH.into(),
+            endpoint_url: endpoint.into(),
+            authorization_header: None,
+        },
+        description: None,
+    };
+    let safe_endpoint = "https://receiver.example/events";
+    let safe = f
+        .core
+        .ssf_config_create(&auth, input(safe_endpoint))
+        .unwrap();
+    let id = safe["stream_id"].as_str().unwrap();
+    for endpoint in [
+        "http://localhost:8100/events",
+        "http://127.0.0.1/events",
+        "http://[::1]/events",
+        "https://localhost/events",
+        "https://127.0.0.1/events",
+        "https://[::1]/events",
+        "https://10.1.2.3/events",
+        "https://172.16.1.2/events",
+        "https://192.168.1.2/events",
+        "https://169.254.169.254/events",
+        "https://[fd00::1]/events",
+        "https://[fe80::1]/events",
+        "https://224.0.0.1/events",
+        "https://0.0.0.0/events",
+        "https://[::]/events",
+        "https://[::ffff:127.0.0.1]/events",
+        "https://[2002:7f00:1::]/events",
+    ] {
+        assert_eq!(
+            f.core
+                .ssf_config_create(&auth, input(endpoint))
+                .unwrap_err()
+                .status,
+            axum::http::StatusCode::BAD_REQUEST,
+            "create: {endpoint}"
+        );
+        for replace in [false, true] {
+            assert_eq!(
+                f.core
+                    .ssf_config_update(
+                        &auth,
+                        json!({
+                            "stream_id": id, "delivery": {"method": PUSH, "endpoint_url": endpoint}
+                        }),
+                        replace
+                    )
+                    .unwrap_err()
+                    .status,
+                axum::http::StatusCode::BAD_REQUEST,
+                "update (replace={replace}): {endpoint}"
+            );
+        }
+    }
+    assert_eq!(
+        f.core.ssf_config_read(&auth, Some(id)).unwrap()["delivery"]["endpoint_url"],
+        safe_endpoint
+    );
+    assert_eq!(
+        f.core
+            .store
+            .list::<riauth::ssf::Stream>("ssf_streams")
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn preexisting_unsafe_receiver_stream_and_queued_delivery_are_stopped_without_connecting() {
+    let f = Fixture::new();
+    f.user("alice");
+    let auth = SsfAuth::Bearer(f.admin.clone());
+    let created = f
+        .core
+        .ssf_config_create(
+            &auth,
+            ConfigurationInput {
+                events_requested: [ACCOUNT_DISABLED.into()].into(),
+                delivery: DeliverySpec {
+                    method: PUSH.into(),
+                    endpoint_url: "https://receiver.example/events".into(),
+                    authorization_header: None,
+                },
+                description: None,
+            },
+        )
+        .unwrap();
+    let id = created["stream_id"].as_str().unwrap();
+    f.core
+        .ssf_bind_subjects(
+            &auth,
+            id,
+            SubjectBindings {
+                subjects: [("external".into(), "alice".into())].into(),
+            },
+        )
+        .unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let local_endpoint = format!("http://{}/events", listener.local_addr().unwrap());
+    // Simulate durable data written by an older release. The delivery worker
+    // must enforce the new boundary even when no configuration writer ran.
+    f.core
+        .store
+        .write(|tx| {
+            let mut stream = tx.get::<riauth::ssf::Stream>("ssf_streams", id)?.unwrap();
+            stream.endpoint_url = local_endpoint.clone();
+            tx.put("ssf_streams", id, &stream)
+        })
+        .unwrap();
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        f.core
+            .store
+            .list::<Delivery>("ssf_deliveries")
+            .unwrap()
+            .len(),
+        1
+    );
+    f.core
+        .store
+        .write(|tx| {
+            let (key, mut delivery) = tx.list::<Delivery>("ssf_deliveries")?.pop().unwrap();
+            delivery.lease = Some("expired-worker-lease".into());
+            delivery.dispatch_started = Some(true);
+            tx.put("ssf_deliveries", &key, &delivery)
+        })
+        .unwrap();
+    assert!(f.core.deliver_once().unwrap().is_empty());
+    let queued = f.core.store.list::<Delivery>("ssf_deliveries").unwrap();
+    assert!(queued[0].1.stopped);
+    assert!(queued[0].1.last_failed);
+    assert_eq!(queued[0].1.attempts, 1);
+    assert!(queued[0].1.lease.is_none());
+    assert!(queued[0].1.dispatch_started.is_none());
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
+    // A partial update cannot keep an old unsafe endpoint in operation.
+    assert_eq!(
+        f.core
+            .ssf_config_update(
+                &auth,
+                json!({
+                    "stream_id": id, "description": "keep existing endpoint"
+                }),
+                false
+            )
+            .unwrap_err()
+            .status,
+        axum::http::StatusCode::BAD_REQUEST
+    );
+}
+
+#[test]
+fn operator_managed_local_stream_sends_authorization_and_cannot_be_receiver_retargeted() {
+    let f = encrypted_fixture();
+    f.user("alice");
+    let (_, jwks, _) = signer();
+    let (endpoint, received) = push_server(vec![202]);
+    let auth = SsfAuth::Bearer(f.admin.clone());
+    let mut input = stream(
+        "local-operator",
+        "https://transmitter.example",
+        "receiver",
+        &endpoint,
+        &[ACCOUNT_DISABLED],
+        jwks,
+        &[("external", "alice")],
+    );
+    input.delivery.as_mut().unwrap().authorization_header =
+        Some("Bearer private-receiver-token".into());
+    f.core.ssf_create(&auth, input).unwrap();
+    assert!(
+        f.core
+            .ssf_config_update(
+                &auth,
+                json!({
+                    "stream_id": "local-operator", "delivery": {
+                        "method": PUSH, "endpoint_url": "https://receiver.example/events"
+                    }
+                }),
+                false
+            )
+            .is_err()
+    );
+    f.core
+        .update_user(
+            &f.admin,
+            "alice",
+            UserPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let delivered = f.core.deliver_once().unwrap();
+    assert_eq!(delivered[0]["status"], 202);
+    let received = received.lock().unwrap();
+    assert_eq!(received.len(), 1);
+    assert!(received[0].header.contains("Bearer private-receiver-token"));
 }

@@ -165,6 +165,16 @@ authorization header, or delivered events calls `cancel_pending` for that
 stream. Pending rows gain `stopped` and keep the `last_failed` they already
 had. That write is separate from this GET.
 
+Receiver-managed streams require public HTTPS destinations. Claim stops
+deliveries whose persisted receiver URL violates that policy, including old
+local URLs saved before the policy was introduced. A DNS answer containing
+private or special-use addresses is rejected by the connector without a
+connection and follows the existing transport-failure retry path. Delivery
+uses the checked DNS address snapshot, disables system HTTP proxies, and
+never follows redirects. The separate administrator-managed stream API
+retains intentional local delivery under `ssf.manage` authority; receiver
+configuration cannot update those streams.
+
 ## Remote receipt and readiness
 
 `counts.delivered` means `delivered_at` is set. The worker sets that after

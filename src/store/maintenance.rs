@@ -3,7 +3,7 @@
 use super::*;
 
 pub const PAGE: usize = 128;
-pub const INDEX_VERSION: u32 = 9;
+pub const INDEX_VERSION: u32 = 10;
 pub const QUEUES: [&str; 6] = [
     "logout_deliveries",
     "mail_deliveries",
@@ -14,6 +14,8 @@ pub const QUEUES: [&str; 6] = [
 ];
 // Outbound SCIM user links, grouped by local user for the disable transition.
 const USER_LINKS: &str = "index_user_provisioning_links";
+// Enabled-client reference counts make CORS authorization one point read.
+const CLIENT_ORIGINS: &str = "index_client_origins";
 const GROUP_DN_FOLDS: &str = "index_group_dn_folds";
 pub(super) const GROUP_BINDINGS: &str = "index_group_bindings";
 pub(super) const GROUP_SOURCE_DIGESTS: &str = "index_group_source_digests";
@@ -127,6 +129,10 @@ impl Tx<'_> {
         group_before: Option<&Value>,
         after: Option<&Value>,
     ) -> Result<()> {
+        if bucket == "clients" {
+            let before = self.get::<Value>(bucket, id)?;
+            self.update_client_origin_index(before.as_ref(), after)?;
+        }
         if bucket == "users" {
             // Authentication can rewrite factors or rehash a password without
             // changing the outbound SCIM projection. Only source changes that
@@ -235,6 +241,53 @@ impl Tx<'_> {
         let before = self.get::<Value>(bucket, id)?;
         self.update_queue_indexes(bucket, id, before.as_ref(), after)
     }
+    fn update_client_origin_index(
+        &self,
+        before: Option<&Value>,
+        after: Option<&Value>,
+    ) -> Result<()> {
+        let origins = |value: Option<&Value>| -> Result<BTreeSet<String>> {
+            let client = value
+                .map(|value| serde_json::from_value::<crate::model::Client>(value.clone()))
+                .transpose()
+                .map_err(Error::internal)?;
+            Ok(client
+                .filter(|client| client.enabled)
+                .map(|client| client.settings.origins)
+                .unwrap_or_default())
+        };
+        let before = origins(before)?;
+        let after = origins(after)?;
+        for origin in before.difference(&after) {
+            let key = crypto::digest(origin);
+            let count = self.get::<u64>(CLIENT_ORIGINS, &key)?.unwrap_or(0);
+            let count = count
+                .checked_sub(1)
+                .ok_or_else(|| Error::internal("Client origin index is inconsistent"))?;
+            if count == 0 {
+                self.delete(CLIENT_ORIGINS, &key)?;
+            } else {
+                self.put(CLIENT_ORIGINS, &key, &count)?;
+            }
+        }
+        for origin in after.difference(&before) {
+            let key = crypto::digest(origin);
+            let count = self
+                .get::<u64>(CLIENT_ORIGINS, &key)?
+                .unwrap_or(0)
+                .checked_add(1)
+                .ok_or_else(|| Error::internal("Client origin count overflow"))?;
+            self.put(CLIENT_ORIGINS, &key, &count)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn cors_origin_allowed(&self, origin: &str) -> Result<bool> {
+        Ok(self
+            .get::<u64>(CLIENT_ORIGINS, &crypto::digest(origin))?
+            .is_some_and(|count| count > 0))
+    }
+
     fn update_grant_index(
         &self,
         id: &str,
@@ -725,6 +778,7 @@ impl Tx<'_> {
             GROUP_MEMBERS.into(),
             GROUP_MEMBER_OVERFLOW.into(),
             USER_LINKS.into(),
+            CLIENT_ORIGINS.into(),
         ];
         for bucket in COUNTED {
             indexes.push(format!("index_expiry_{bucket}"));
@@ -767,6 +821,9 @@ impl Tx<'_> {
         })?;
         self.for_each_rebuild_page::<Value>("provisioning_links", check, |id, link| {
             self.update_link_index(&id, None, Some(&link))
+        })?;
+        self.for_each_rebuild_page::<Value>("clients", check, |_, client| {
+            self.update_client_origin_index(None, Some(&client))
         })?;
         check()?;
         self.put("meta", "index_version", &INDEX_VERSION)?;

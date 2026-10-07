@@ -768,6 +768,109 @@ fn agent_csv_hides_users_outside_user_read() {
 }
 
 #[test]
+fn user_csv_filters_memberships_by_each_group_read_permission() {
+    let f = Fixture::new();
+    f.user("alice");
+    f.user("bob");
+    for group in ["staff", "sensitive"] {
+        f.core.create_group(&f.admin, group).unwrap();
+        f.core.group_member(&f.admin, group, "alice", true).unwrap();
+        f.core.group_member(&f.admin, group, "bob", true).unwrap();
+    }
+
+    type CsvScopeCase<'a> = (&'a str, &'a [(&'a str, &'a str)], &'a str, bool);
+    let cases: &[CsvScopeCase<'_>] = &[
+        ("user-exact", &[("user.read", "user/alice")], "", false),
+        ("user-all", &[("user.read", "*")], "", true),
+        (
+            "group-writer",
+            &[("user.read", "user/alice"), ("group.write", "group/staff")],
+            "",
+            false,
+        ),
+        (
+            "group-exact",
+            &[("user.read", "user/alice"), ("group.read", "group/staff")],
+            "staff",
+            false,
+        ),
+        (
+            "group-with-users",
+            &[("user.read", "*"), ("group.read", "group/staff")],
+            "staff",
+            true,
+        ),
+        (
+            "group-all",
+            &[("user.read", "user/alice"), ("group.read", "*")],
+            "sensitive;staff",
+            false,
+        ),
+    ];
+    for &(id, permissions, groups, all_users) in cases {
+        let token = agent_token(&f, id, permissions);
+        let page = f
+            .core
+            .users_csv(&token, UserReportQuery::default())
+            .unwrap();
+        let rows = parse_csv(&page.body);
+        let alice = rows.iter().find(|row| row[1] == "alice").unwrap();
+        assert_eq!(alice[7], groups, "{id}");
+        if all_users {
+            let bob = rows.iter().find(|row| row[1] == "bob").unwrap();
+            assert_eq!(bob[7], groups, "{id}");
+        } else {
+            assert_eq!(usernames(&page.body), ["alice"], "{id}");
+        }
+        if !groups.contains("sensitive") {
+            assert!(!page.body.contains("sensitive"), "{id}");
+        }
+    }
+
+    let page = f
+        .core
+        .users_csv(&f.admin, UserReportQuery::default())
+        .unwrap();
+    let rows = parse_csv(&page.body);
+    for username in ["alice", "bob"] {
+        let row = rows.iter().find(|row| row[1] == username).unwrap();
+        assert_eq!(row[7], "sensitive;staff");
+    }
+}
+
+#[cfg(feature = "platform")]
+#[test]
+fn help_desk_user_csv_does_not_disclose_unreadable_groups() {
+    use riauth::delegation::{GrantInput, HumanRole};
+
+    let f = Fixture::new();
+    f.user("alice");
+    let helper = f.user("helper");
+    f.core.create_group(&f.admin, "sensitive").unwrap();
+    f.core
+        .group_member(&f.admin, "sensitive", "alice", true)
+        .unwrap();
+    f.core
+        .set_human_grants(
+            &f.admin,
+            "helper",
+            vec![GrantInput {
+                role: HumanRole::HelpDesk,
+                scope: "user/alice".into(),
+            }],
+        )
+        .unwrap();
+    let page = f
+        .core
+        .users_csv(&helper, UserReportQuery::default())
+        .unwrap();
+    let rows = parse_csv(&page.body);
+    assert_eq!(usernames(&page.body), ["alice"]);
+    assert_eq!(rows[1][7], "");
+    assert!(!page.body.contains("sensitive"));
+}
+
+#[test]
 fn complete_pagination_returns_every_row() {
     let f = Fixture::new();
     f.core

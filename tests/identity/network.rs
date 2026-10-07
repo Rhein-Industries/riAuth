@@ -740,6 +740,19 @@ async fn radius_udp_radsec_authenticators_mfa_duplicates_pinning_and_live_policy
         let mut stream = connector(Some((&nas_cert, &nas_key)))
             .connect("localhost", tcp())
             .unwrap();
+        // A source without a completed client-certificate handshake gets only
+        // four pending slots. It cannot fill listener-wide capacity, and an
+        // already certificate-pinned NAS retains its authenticated capacity.
+        let stalled = (0..4).map(|_| tcp()).collect::<Vec<_>>();
+        let mut overflow = tcp();
+        overflow
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        assert_eq!(
+            overflow.read(&mut [0]).unwrap(),
+            0,
+            "Fifth pending RadSec handshake was not rejected"
+        );
         for _ in 0..2 {
             stream.write_all(&packet).unwrap();
             let mut header = [0; 4];
@@ -750,6 +763,7 @@ async fn radius_udp_radsec_authenticators_mfa_duplicates_pinning_and_live_policy
             stream.read_exact(&mut bytes[4..]).unwrap();
             response(&bytes, &packet, b"radsec", 2);
         }
+        drop(stalled);
         // A certificate issued by the trusted CA still needs an exact registered NAS pin.
         if let Ok(mut unregistered) =
             connector(Some((&rogue, &rogue_key))).connect("localhost", tcp())

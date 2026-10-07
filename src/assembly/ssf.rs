@@ -323,7 +323,7 @@ impl Core {
         Ok(self
             .claim_ssf_batch(16, &BTreeSet::new())?
             .into_iter()
-            .map(|(delivery, _, _)| delivery)
+            .map(|claim| claim.delivery)
             .collect())
     }
 
@@ -331,7 +331,7 @@ impl Core {
         &self,
         limit: usize,
         excluded: &BTreeSet<String>,
-    ) -> Result<Vec<(Delivery, crate::crypto::SigningKey, Option<String>)>> {
+    ) -> Result<Vec<ClaimedDelivery>> {
         // The due index commits with each delivery. An empty snapshot needs no
         // writer; a concurrent enqueue will be picked up by a later pass. Treat
         // this only as a hint: reread claims, stream state and retries below.
@@ -353,12 +353,14 @@ impl Core {
     }
 
     pub fn deliver_once(&self) -> Result<Vec<Value>> {
-        let http = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(Error::internal)?;
-        self.deliver_ssf_pass(|delivery, key, authorization| {
+        let operator_http = delivery_client(false)?;
+        let receiver_http = delivery_client(true)?;
+        self.deliver_ssf_pass(|delivery, key, authorization, receiver_managed| {
+            let http = if receiver_managed {
+                &receiver_http
+            } else {
+                &operator_http
+            };
             let claims = event_body(delivery, &self.config.issuer, delivery.created_at);
             let status = match self.sign_jwt(key, &claims, "secevent+jwt") {
                 Ok(token) => {
@@ -390,13 +392,18 @@ impl Core {
             &Delivery,
             &crate::crypto::SigningKey,
             Option<String>,
+            bool,
         ) -> Result<Option<u16>>,
     ) -> Result<Vec<Value>> {
         let mut results = Vec::new();
         let mut claimed = BTreeSet::new();
         for _ in 0..16 {
-            let Some((delivery, key, authorization)) =
-                self.claim_ssf_batch(1, &claimed)?.into_iter().next()
+            let Some(ClaimedDelivery {
+                delivery,
+                key,
+                authorization,
+                receiver_managed,
+            }) = self.claim_ssf_batch(1, &claimed)?.into_iter().next()
             else {
                 break;
             };
@@ -408,7 +415,7 @@ impl Core {
             if !admitted {
                 continue;
             }
-            let status = send(&delivery, &key, authorization)?;
+            let status = send(&delivery, &key, authorization, receiver_managed)?;
             self.finish_ssf_delivery(&delivery.id, delivery.attempts, status)?;
             if status.is_none_or(|code| !(200..300).contains(&code)) {
                 tracing::warn!(
@@ -694,7 +701,8 @@ mod delivery_pass_tests {
             assert_eq!(queue(&core), (17, 0));
             let mut sends = 0;
             let results = core
-                .deliver_ssf_pass(|delivery, _key, _authorization| {
+                .deliver_ssf_pass(|delivery, _key, _authorization, receiver_managed| {
+                    assert!(!receiver_managed);
                     assert_eq!(delivery.id, rows[sends].id);
                     assert_eq!(delivery.attempts, 1);
                     assert_eq!(delivery.next_attempt, now() + LEASE_SECONDS);
@@ -740,7 +748,8 @@ mod delivery_pass_tests {
             let mut failed = None;
             let mut first_lease = None;
             let results = core
-                .deliver_ssf_pass(|delivery, _key, _authorization| {
+                .deliver_ssf_pass(|delivery, _key, _authorization, receiver_managed| {
+                    assert!(!receiver_managed);
                     ids.push(delivery.id.clone());
                     assert_eq!(delivery.attempts, 1);
                     if ids.len() == 1 {
@@ -771,7 +780,8 @@ mod delivery_pass_tests {
 
             let mut retries = 0;
             let retry = core
-                .deliver_ssf_pass(|delivery, _key, _authorization| {
+                .deliver_ssf_pass(|delivery, _key, _authorization, receiver_managed| {
+                    assert!(!receiver_managed);
                     retries += 1;
                     assert_eq!(delivery.id, rows[0].id);
                     assert_eq!(delivery.attempts, 2);
@@ -787,6 +797,42 @@ mod delivery_pass_tests {
             assert_eq!(retry[0]["attempt"], 2);
             assert_eq!(queue(&core), (0, 0));
             assert_local_intent_unchanged(&core, &audit);
+        });
+    }
+
+    #[test]
+    fn receiver_delivery_keeps_dispatch_lease_and_public_transport_policy() {
+        let (_dir, core) = fixture();
+        with_test_time(AT, || {
+            let rows = seed(&core, 1);
+            core.store
+                .write(|tx| {
+                    let mut stream = tx.get::<Stream>("ssf_streams", "pass")?.unwrap();
+                    stream.standard = true;
+                    stream.endpoint_url = "https://receiver.example/events".into();
+                    tx.put("ssf_streams", &stream.id, &stream)?;
+                    let mut delivery = rows[0].clone();
+                    delivery.uri = stream.endpoint_url;
+                    tx.put("ssf_deliveries", &delivery.id, &delivery)
+                })
+                .unwrap();
+            let mut sends = 0;
+            let results = core
+                .deliver_ssf_pass(|delivery, _key, _authorization, receiver_managed| {
+                    assert!(receiver_managed);
+                    assert_eq!(delivery.attempts, 1);
+                    assert!(delivery.lease.is_some());
+                    assert_eq!(stored(&core, &delivery.id)["dispatch_started"], true);
+                    sends += 1;
+                    Ok(Some(204))
+                })
+                .unwrap();
+            assert_eq!(sends, 1);
+            assert_eq!(results.len(), 1);
+            let delivered = stored(&core, &rows[0].id);
+            assert_eq!(delivered["delivered_at"], AT);
+            assert!(delivered["lease"].is_null());
+            assert!(delivered["dispatch_started"].is_null());
         });
     }
 

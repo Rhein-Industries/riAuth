@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#f7f8fc">
   <meta name="riauth-base" content="__BASE__">
   <title>Sessions and consent · riAuth</title>
+  <script src="__BASE__portal/assets/appearance.js"></script>
   <link rel="stylesheet" href="__BASE__portal/assets/app.css">
   <link rel="stylesheet" href="__BASE__portal/assets/security.css">
   <script src="__BASE__portal/assets/auth.js" defer></script>
@@ -31,6 +32,10 @@
     </section>
     <div id="security-content" hidden>
       <p class="account-line" id="account-line"></p>
+      <section class="security-card" aria-labelledby="appearance-title">
+        <h2 id="appearance-title">Appearance</h2>
+        <div class="field appearance-field"><label for="appearance">Color mode</label><select id="appearance" data-appearance aria-describedby="appearance-hint"><option value="system">System default</option><option value="light">Light</option><option value="dark">Dark</option></select><p class="field-hint" id="appearance-hint">Choose how riAuth looks in this browser.</p></div>
+      </section>
       <section id="verify-panel" class="security-card verify-panel" aria-labelledby="verify-title" hidden>
         <h2 id="verify-title">Confirm it is you</h2>
         <p id="verify-hint">Sign in again in this browser before changing sessions or consent. Then choose your action again.</p>

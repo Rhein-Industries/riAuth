@@ -189,6 +189,56 @@ fn terminal_cookie(core: &Core, token: &str) -> String {
 }
 
 #[tokio::test]
+async fn bearer_access_collections_hide_other_users_records() {
+    let f = PamFixture::new();
+    let unrelated = f.user("unrelated");
+    let request = f
+        .core
+        .request_access(
+            &f.alice,
+            NewAccessRequest {
+                group: "ops".into(),
+                reason: "Private release support reason".into(),
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let decision = f
+        .core
+        .decide_access(&f.approver, &text(&request, "id"), true)
+        .unwrap();
+    let app = riauth::api::router(f.core.clone());
+    for (path, row_id) in [
+        ("/api/access/requests", text(&request, "id")),
+        ("/api/access/grants", text(&decision["grant"], "id")),
+    ] {
+        for (token, visible) in [
+            (&unrelated, false),
+            (&f.alice, true),
+            (&f.approver, true),
+            (&f.admin, true),
+        ] {
+            let (status, rows) = send(
+                &app,
+                Request::builder()
+                    .uri(path)
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            if visible {
+                assert_eq!(rows.as_array().unwrap().len(), 1);
+                assert_eq!(rows[0]["id"], row_id);
+            } else {
+                assert_eq!(rows, json!([]));
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn pam_writers_bind_retries_revision_and_browser_authority() {
     let f = PamFixture::new();
     let app = riauth::api::router(f.core.clone());

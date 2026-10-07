@@ -9,6 +9,28 @@ use crate::{
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
+/// Agents have explicit collection authority; human visibility follows live
+/// administration, ownership, and the current exact group approver rules.
+enum AccessReader {
+    All,
+    Human {
+        user_id: String,
+        approver_groups: BTreeSet<String>,
+    },
+}
+
+impl AccessReader {
+    fn allows(&self, user_id: &str, group: &str) -> bool {
+        match self {
+            Self::All => true,
+            Self::Human {
+                user_id: actor_id,
+                approver_groups,
+            } => actor_id == user_id || approver_groups.contains(group),
+        }
+    }
+}
+
 /// Groups conferred by an unexpired, unrevoked grant with no known third-party
 /// credential exposure. This does not read `Group.members`.
 pub fn extra_groups(tx: &Tx<'_>, user_id: &str, now: u64) -> Result<BTreeSet<String>> {
@@ -48,13 +70,26 @@ impl Core {
         let (user, session) = self.session(tx, token)?;
         Ok((user, session, "bearer"))
     }
-    fn read_access(&self, tx: &Tx<'_>, token: &str, resource: &str) -> Result<()> {
+    fn read_access(&self, tx: &Tx<'_>, token: &str, resource: &str) -> Result<AccessReader> {
         if token.starts_with("ri_agent_") {
             self.management(tx, token, "access.read", resource)?;
-            return Ok(());
+            return Ok(AccessReader::All);
         }
-        self.pam_actor(tx, token)?;
-        Ok(())
+        let (actor, _, _) = self.pam_actor(tx, token)?;
+        if actor.admin {
+            return Ok(AccessReader::All);
+        }
+        let approver_groups = self
+            .config
+            .pam_approvers
+            .iter()
+            .filter(|(_, names)| names.contains(&actor.username))
+            .map(|(group, _)| group.clone())
+            .collect();
+        Ok(AccessReader::Human {
+            user_id: actor.id,
+            approver_groups,
+        })
     }
     pub fn request_access(&self, token: &str, input: NewAccessRequest) -> Result<Value> {
         crate::management::validate_access_request(&input)?;
@@ -78,10 +113,11 @@ impl Core {
     }
     pub fn list_access_requests(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
-            self.read_access(tx, token, "access/requests")?;
+            let reader = self.read_access(tx, token, "access/requests")?;
             let mut rows: Vec<_> = tx
                 .list::<AccessRequest>("access_requests")?
                 .into_iter()
+                .filter(|(_, row)| reader.allows(&row.user_id, &row.group))
                 .map(|(_, row)| row)
                 .collect();
             rows.sort_by(|a, b| {
@@ -94,10 +130,11 @@ impl Core {
     }
     pub fn list_access_grants(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
-            self.read_access(tx, token, "access/grants")?;
+            let reader = self.read_access(tx, token, "access/grants")?;
             let mut rows: Vec<_> = tx
                 .list::<AccessGrant>("access_grants")?
                 .into_iter()
+                .filter(|(_, row)| reader.allows(&row.user_id, &row.group))
                 .map(|(_, row)| row)
                 .collect();
             rows.sort_by(|a, b| {

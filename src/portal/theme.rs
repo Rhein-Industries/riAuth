@@ -412,6 +412,10 @@ fn embedded_asset(name: &str) -> Option<(&'static str, &'static [u8])> {
             "image/svg+xml; charset=utf-8",
             include_bytes!("../../assets/riauth-mark.svg"),
         ),
+        "appearance.js" => (
+            "text/javascript; charset=utf-8",
+            include_bytes!("appearance.js"),
+        ),
         "app.js" => ("text/javascript; charset=utf-8", include_bytes!("app.js")),
         "admin.js" => ("text/javascript; charset=utf-8", include_bytes!("admin.js")),
         "auth.js" => ("text/javascript; charset=utf-8", include_bytes!("auth.js")),

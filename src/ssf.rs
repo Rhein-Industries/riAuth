@@ -16,7 +16,11 @@ use crate::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+};
 
 // Compatibility paths for the existing public records and event constants.
 pub(crate) use crate::identity::signals::enqueue;
@@ -149,6 +153,9 @@ pub(crate) fn normalize_method(value: &str) -> Result<String> {
 }
 
 pub(crate) fn push_url(value: &str) -> Result<()> {
+    if value.len() > 2048 {
+        return Err(Error::bad("Push URL is too long"));
+    }
     let url = url::Url::parse(value).map_err(|_| Error::bad("Invalid push URL"))?;
     let loopback = url.scheme() == "http"
         && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
@@ -163,6 +170,108 @@ pub(crate) fn push_url(value: &str) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+/// Receiver configuration is remotely controlled, unlike the separate
+/// administrator-managed stream endpoint. Local destinations never inherit
+/// trust just because an administrator linked subjects to a receiver stream.
+pub(crate) fn receiver_push_url(value: &str) -> Result<()> {
+    push_url(value)?;
+    let url = url::Url::parse(value).map_err(|_| Error::bad("Invalid push URL"))?;
+    let allowed_host = match url.host() {
+        Some(url::Host::Ipv4(ip)) => public_address(IpAddr::V4(ip)),
+        Some(url::Host::Ipv6(ip)) => public_address(IpAddr::V6(ip)),
+        Some(url::Host::Domain(host)) => {
+            let host = host.trim_end_matches('.');
+            host != "localhost" && !host.ends_with(".localhost")
+        }
+        None => false,
+    };
+    if url.scheme() != "https" || !allowed_host {
+        return Err(Error::bad(
+            "Receiver push URL must use HTTPS and a public destination",
+        ));
+    }
+    Ok(())
+}
+
+/// Deliberately conservative public unicast policy. Besides private networks,
+/// reject special-use ranges and IPv6 translation/tunnel ranges, which can
+/// otherwise encode an IPv4 loopback or private destination.
+/// See the IANA IPv4/IPv6 Special-Purpose Address Registries.
+fn public_address(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            let [a, b, c, _] = ip.octets();
+            !(matches!(a, 0 | 10 | 127)
+                || a >= 224
+                || (a == 100 && (64..=127).contains(&b))
+                || (a == 169 && b == 254)
+                || (a == 172 && (16..=31).contains(&b))
+                || (a == 192 && b == 168)
+                || (a == 192 && b == 0 && matches!(c, 0 | 2))
+                || (a == 192 && b == 88 && c == 99)
+                || (a == 198 && matches!(b, 18 | 19))
+                || (a == 198 && b == 51 && c == 100)
+                || (a == 203 && b == 0 && c == 113))
+        }
+        IpAddr::V6(ip) => {
+            let segments = ip.segments();
+            // Only native global unicast (2000::/3). This also excludes IPv4
+            // mapped/compatible addresses, NAT64, ULA, link-local and multicast.
+            segments[0] & 0xe000 == 0x2000
+                && !(segments[0] == 0x2001 && segments[1] < 0x0200)
+                && !(segments[0] == 0x2001 && segments[1] == 0x0db8)
+                && segments[0] != 0x2002
+                && !(segments[0] == 0x3fff && segments[1] < 0x1000)
+        }
+    }
+}
+
+fn public_addresses(addrs: impl Iterator<Item = SocketAddr>) -> std::io::Result<Vec<SocketAddr>> {
+    let mut checked = Vec::new();
+    for addr in addrs {
+        if !public_address(addr.ip()) || checked.len() == 64 {
+            return Err(std::io::Error::other("Receiver destination is not public"));
+        }
+        checked.push(addr);
+    }
+    if checked.is_empty() {
+        return Err(std::io::Error::other(
+            "Receiver destination has no addresses",
+        ));
+    }
+    Ok(checked)
+}
+
+struct PublicResolver;
+
+impl reqwest::dns::Resolve for PublicResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        Box::pin(async move {
+            let resolved = tokio::net::lookup_host((name.as_str(), 0)).await?;
+            // The connector receives only this checked address snapshot, so a
+            // second DNS lookup cannot rebind the name between check and use.
+            let addrs: reqwest::dns::Addrs = Box::new(public_addresses(resolved)?.into_iter());
+            Ok(addrs)
+        })
+    }
+}
+
+pub(crate) fn delivery_client(receiver_managed: bool) -> Result<reqwest::blocking::Client> {
+    let mut builder = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .redirect(reqwest::redirect::Policy::none())
+        // A system proxy would resolve the destination elsewhere and bypass
+        // the checked connector addresses. Local operator streams also retain
+        // direct delivery rather than forwarding credentials to a proxy.
+        .no_proxy();
+    if receiver_managed {
+        builder = builder
+            .https_only(true)
+            .dns_resolver(Arc::new(PublicResolver));
+    }
+    builder.build().map_err(Error::internal)
 }
 
 pub(crate) fn authorization_header(value: Option<&str>) -> Result<()> {
@@ -611,6 +720,13 @@ fn clear_owner(delivery: &mut Delivery) {
     delivery.dispatch_started = None;
 }
 
+pub(crate) struct ClaimedDelivery {
+    pub(crate) delivery: Delivery,
+    pub(crate) key: SigningKey,
+    pub(crate) authorization: Option<String>,
+    pub(crate) receiver_managed: bool,
+}
+
 /// Claim each due delivery before leaving the write transaction for HTTP.
 /// The same signing key, attempt number, and owner lease are then carried to
 /// the sender. The lease lives in `next_attempt` as well, 60 seconds ahead.
@@ -618,7 +734,7 @@ pub(crate) fn claim_deliveries(
     tx: &impl SsfTx,
     limit: usize,
     excluded: &BTreeSet<String>,
-) -> Result<Vec<(Delivery, SigningKey, Option<String>)>> {
+) -> Result<Vec<ClaimedDelivery>> {
     let mut ready = Vec::new();
     for (id, mut delivery) in tx.due_deliveries(now(), 32)? {
         if ready.len() == limit.min(16) {
@@ -657,13 +773,28 @@ pub(crate) fn claim_deliveries(
             tx.put_delivery(&id, &delivery)?;
             continue;
         }
+        // Revalidate durable receiver streams as well as newly configured
+        // ones, including deliveries queued before the destination policy.
+        if stream.standard && receiver_push_url(&delivery.uri).is_err() {
+            delivery.stopped = true;
+            delivery.last_failed = true;
+            delivery.attempts += 1;
+            clear_owner(&mut delivery);
+            tx.put_delivery(&id, &delivery)?;
+            continue;
+        }
         delivery.attempts += 1;
         delivery.next_attempt = now().saturating_add(LEASE_SECONDS);
         delivery.lease = Some(crate::crypto::id());
         delivery.dispatch_started = None;
         let key = tx.active_signing_key()?;
         tx.put_delivery(&id, &delivery)?;
-        ready.push((delivery, key, stream.authorization_header));
+        ready.push(ClaimedDelivery {
+            delivery,
+            key,
+            authorization: stream.authorization_header,
+            receiver_managed: stream.standard,
+        });
     }
     Ok(ready)
 }
@@ -763,4 +894,130 @@ pub fn cleanup(tx: &impl SsfTx, at: u64) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod destination_tests {
+    use super::*;
+    use reqwest::dns::Resolve;
+
+    #[test]
+    fn receiver_destinations_reject_special_use_and_embedded_private_addresses() {
+        for address in [
+            "0.0.0.0",
+            "0.1.2.3",
+            "10.0.0.1",
+            "100.64.0.1",
+            "127.0.0.2",
+            "169.254.169.254",
+            "172.16.0.1",
+            "172.31.255.255",
+            "192.0.0.1",
+            "192.0.2.1",
+            "192.88.99.1",
+            "192.168.0.1",
+            "198.18.0.1",
+            "198.19.255.255",
+            "198.51.100.1",
+            "203.0.113.1",
+            "224.0.0.1",
+            "240.0.0.1",
+            "255.255.255.255",
+            "::",
+            "::1",
+            "::ffff:127.0.0.1",
+            "::ffff:8.8.8.8",
+            "64:ff9b::7f00:1",
+            "100::1",
+            "2001::1",
+            "2001:db8::1",
+            "2002:7f00:1::",
+            "fc00::1",
+            "fd00::1",
+            "fe80::1",
+            "ff02::1",
+            "3fff::1",
+        ] {
+            let ip = address.parse::<IpAddr>().unwrap();
+            assert!(!public_address(ip), "{address}");
+            let host = match ip {
+                IpAddr::V4(_) => address.to_owned(),
+                IpAddr::V6(_) => format!("[{address}]"),
+            };
+            assert!(
+                receiver_push_url(&format!("https://{host}/events")).is_err(),
+                "{address}"
+            );
+        }
+        for address in [
+            "8.8.8.8",
+            "1.1.1.1",
+            "172.15.255.255",
+            "172.32.0.1",
+            "2606:4700::1111",
+        ] {
+            assert!(public_address(address.parse().unwrap()), "{address}");
+        }
+        for endpoint in [
+            "http://localhost/events",
+            "https://localhost./events",
+            "https://a.localhost/events",
+            "https://2130706433/events",
+            "https://0x7f000001/events",
+        ] {
+            assert!(receiver_push_url(endpoint).is_err(), "{endpoint}");
+        }
+        assert!(receiver_push_url("https://receiver.example/events").is_ok());
+        // The separate administrator route intentionally retains local delivery.
+        assert!(push_url("http://127.0.0.1:8100/events").is_ok());
+    }
+
+    #[test]
+    fn connector_address_snapshot_rejects_mixed_answers_and_rebinding() {
+        let public = "8.8.8.8:443".parse::<SocketAddr>().unwrap();
+        let private = "127.0.0.1:443".parse::<SocketAddr>().unwrap();
+        assert_eq!(
+            public_addresses([public].into_iter()).unwrap(),
+            vec![public]
+        );
+        assert!(public_addresses([public, private].into_iter()).is_err());
+        // Every fresh connector resolution repeats the policy. A public answer
+        // observed on an earlier connection never authorizes a private answer.
+        assert!(public_addresses([private].into_iter()).is_err());
+        assert!(public_addresses(std::iter::empty()).is_err());
+        assert!(public_addresses(std::iter::repeat_n(public, 65)).is_err());
+    }
+
+    #[tokio::test]
+    async fn connector_resolver_rejects_a_hostname_resolving_to_loopback() {
+        assert!(
+            PublicResolver
+                .resolve("localhost".parse().unwrap())
+                .await
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn receiver_client_checks_dns_before_opening_a_socket() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let endpoint = format!(
+            "https://localhost:{}/events",
+            listener.local_addr().unwrap().port()
+        );
+        // Exercise the configured connector itself even when its caller has
+        // skipped the earlier URL check, as old durable records could do.
+        let error = delivery_client(true)
+            .unwrap()
+            .post(endpoint)
+            .body("must not reach a local service")
+            .send()
+            .unwrap_err();
+        assert!(error.is_connect());
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+    }
 }

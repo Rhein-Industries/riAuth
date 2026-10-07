@@ -385,7 +385,7 @@ pub(crate) fn create_receiver(
 ) -> Result<Value> {
     let delivered = requested_events(&input.events_requested)?;
     let method = normalize_method(&input.delivery.method)?;
-    push_url(&input.delivery.endpoint_url)?;
+    receiver_push_url(&input.delivery.endpoint_url)?;
     authorization_header(input.delivery.authorization_header.as_deref())?;
     require_protected_authorization(core, input.delivery.authorization_header.as_deref())?;
     validate_description(input.description.as_deref())?;
@@ -661,7 +661,7 @@ pub(crate) fn update_receiver(
             let (next_method, next_endpoint, next_authorization) = if let Some(delivery) = &delivery
             {
                 let method = normalize_method(&delivery.method)?;
-                push_url(&delivery.endpoint_url)?;
+                receiver_push_url(&delivery.endpoint_url)?;
                 let authorization = if replace
                     || authorization_supplied
                     || delivery.endpoint_url != stream.endpoint_url
@@ -678,6 +678,7 @@ pub(crate) fn update_receiver(
                     stream.authorization_header.clone(),
                 )
             };
+            receiver_push_url(&next_endpoint)?;
             if next_events != stream.events
                 || next_endpoint != stream.endpoint_url
                 || next_authorization != stream.authorization_header

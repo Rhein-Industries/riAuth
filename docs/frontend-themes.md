@@ -3,8 +3,9 @@
 Essentials and Platform support the same operator-supplied frontend themes.
 You can replace complete page layouts, stylesheets, external JavaScript and
 images without rebuilding the server. Omitted files keep their embedded
-defaults. With no theme configured, the embedded HTML and asset bodies remain
-identical; HTML CSP additionally permits same-origin fonts.
+defaults. The built-in frontend follows the system color scheme by default. Users can
+choose Light, Dark or System under workspace **Settings**; the preference is
+local to this browser and issuer. HTML CSP permits same-origin fonts.
 
 ## Configure and start
 
@@ -65,7 +66,7 @@ Existing asset overrides use `assets/<filename>` and retain their existing
 
 ```text
 app.css admin.css security.css map.css access-review.css riauth-mark.svg
-app.js admin.js auth.js account.js capabilities.js signin.js setup.js device.js
+appearance.js app.js admin.js auth.js account.js capabilities.js signin.js setup.js device.js
 sources.js source-login.js source-stage.js security.js access-review.js map.js
 grant-review.js membership-review.js client-creation-review.js
 client-policy-review.js client-status-review.js client-endpoint-review.js
@@ -155,3 +156,14 @@ To replace a full existing stylesheet instead, copy it into `assets/` under the
 same filename. Restart after deployment and verify sign-in, cancellation, consent,
 account security, administration and setup flows that your changed pages use.
 The supplied theme and router tests are not a real-browser execution claim.
+
+## Appearance in 0.1.3
+
+Embedded portal pages load `appearance.js` before the first stylesheet. It
+sets `data-theme="light"` or `data-theme="dark"` on the root element from the saved
+browser preference, or from the system setting when no choice is saved. Custom
+styles can target these attributes and override `--canvas`, `--surface`, `--ink`,
+`--muted`, `--line`, `--accent` and `--accent-soft`. Keep the `riauth-base` meta
+tag and the external `__BASE__portal/assets/appearance.js` script before the
+stylesheet when replacing pages, and copy the workspace template
+from the 0.1.3 source so its Settings controls match `app.js`.

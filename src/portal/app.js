@@ -41,7 +41,14 @@
   }
   function screen(name) {
     if (name === "catalogue" && $("catalogue").hidden) RiAuth.arm();
+    const active = document.activeElement;
+    const enteringAuth = name === "auth" && $("auth").hidden;
+    const workspace = name === "catalogue";
+    document.body.classList.toggle("portal-entry", !workspace);
+    $("workspace-navigation").hidden = $("workspace-header").hidden = !workspace;
+    document.title = workspace ? "Your applications · riAuth" : name === "error" ? "Applications unavailable · riAuth" : "Sign in · riAuth";
     for (const id of ["catalogue", "auth", "error", "loading"]) $(id).hidden = id !== name;
+    if (enteringAuth || active?.closest("[hidden]")) $(name === "auth" ? "auth-title" : "main").focus({ preventScroll: true });
   }
   function api(path, method = "GET") {
     return method === "POST" ? RiAuth.post(`api/portal${path}`) : RiAuth.get(`api/portal${path}`);
@@ -77,6 +84,8 @@
     $("nav-favorites").classList.remove("active"); $("nav-favorites").removeAttribute("aria-current");
     $("mfa-notice").hidden = true; $("verification-notice").hidden = true; $("passkey-list").replaceChildren();
     if ($("security-dialog").open) $("security-dialog").close();
+    if ($("settings-dialog").open) $("settings-dialog").close();
+    $("settings-account").textContent = "";
     clearTimeout(expiryTimer);
   }
   function resetFlows() {
@@ -124,6 +133,7 @@
       if (generation !== state.generation) return;
       const changedUser = state.data?.user.id !== data.user.id;
       if (changedUser && $("security-dialog").open) $("security-dialog").close();
+      if (changedUser && $("settings-dialog").open) $("settings-dialog").close();
       state.data = data;
       if (changedUser) {
         loadPreferences(); state.section = "all"; $("search").value = ""; resetFlows();
@@ -161,7 +171,7 @@
       const hadSession = !!state.data; clearIdentity();
       if (error.status === 401) {
         screen("auth"); connection("Not signed in");
-        $("auth-description").textContent = hadSession ? "Your session has ended. Sign in again to return to your applications." : "Sign in to see the applications available to you. Your workspace is ready when you are.";
+        $("auth-description").textContent = hadSession ? "Your session has ended. Sign in again to return to your applications." : "Sign in to open your applications.";
       } else {
         screen("error"); connection("Connection interrupted");
         $("announcement").textContent = "We couldn’t check your access. Retry to load your applications.";
@@ -253,7 +263,7 @@
   $("reset-filters").addEventListener("click", () => { $("search").value = ""; $("category").value = ""; render(); $("search").focus(); });
   for (const view of ["grid", "list"]) $(`view-${view}`).addEventListener("click", () => { state.view = view; savePreferences(); render(); });
   document.addEventListener("keydown", (event) => {
-    if (!state.data || event.isComposing || $("security-dialog").open) return;
+    if (!state.data || event.isComposing || $("security-dialog").open || $("settings-dialog").open) return;
     const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
     if ((!typing && event.key === "/") || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")) { event.preventDefault(); $("search").focus(); }
     if (event.key === "Escape" && document.activeElement === $("search")) { $("search").value = ""; render(); }
@@ -935,6 +945,15 @@
   });
   $("codes-dialog").addEventListener("close", () => { if (factor.codes) closeCodes(); });
   $("account-security").addEventListener("click", () => openSecurity());
+  $("workspace-settings").addEventListener("click", () => {
+    if (!state.data) return;
+    $("settings-account").textContent = `${state.data.user.display_name} (@${state.data.user.username})`;
+    $("appearance").value = RiAuthAppearance.get();
+    $("settings-dialog").showModal();
+  });
+  $("settings-close").addEventListener("click", () => $("settings-dialog").close());
+  $("settings-dialog").addEventListener("close", () => { if (state.data) $("workspace-settings").focus(); });
+  $("settings-security").addEventListener("click", () => { $("settings-dialog").close(); openSecurity(); });
   async function closeSecurity() { if (await cancelChange()) $("security-dialog").close(); }
   $("security-close").addEventListener("click", closeSecurity);
   $("security-dialog").addEventListener("cancel", (event) => { event.preventDefault(); closeSecurity(); });

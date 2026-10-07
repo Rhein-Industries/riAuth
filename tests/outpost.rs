@@ -517,6 +517,148 @@ async fn exercise(nginx: Option<String>) {
             socket.next().await.unwrap().unwrap().into_text().unwrap(),
             "protected echo"
         );
+        let websocket_request = || {
+            let mut request = format!("ws://{proxy_addr}/ws")
+                .into_client_request()
+                .unwrap();
+            request
+                .headers_mut()
+                .insert("origin", origin.parse().unwrap());
+            request
+                .headers_mut()
+                .insert("cookie", proxy_cookie.parse().unwrap());
+            request
+                .headers_mut()
+                .insert("sec-websocket-protocol", "test".parse().unwrap());
+            request
+        };
+        let mut extra_sockets = Vec::new();
+        // The existing socket plus seven additional sessions reach this
+        // principal's quota, without occupying ordinary HTTP capacity.
+        for _ in 0..7 {
+            let (extra, _) = tokio_tungstenite::connect_async(websocket_request())
+                .await
+                .unwrap();
+            extra_sockets.push(extra);
+        }
+        let denied = tokio_tungstenite::connect_async(websocket_request())
+            .await
+            .unwrap_err();
+        let tokio_tungstenite::tungstenite::Error::Http(denied) = denied else {
+            panic!("Expected a quota rejection, got {denied:?}");
+        };
+        assert_eq!(denied.status(), 503);
+        assert_eq!(
+            http.get(&target)
+                .header("cookie", &proxy_cookie)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            200,
+            "A principal's WebSocket quota denied ordinary HTTP"
+        );
+        let _ = receiver.recv().await;
+        let mut direct = core.clone();
+        direct.config.trusted_proxies = vec!["127.0.0.1".parse().unwrap()];
+        direct
+            .create_user(
+                &session,
+                NewUser {
+                    username: "other-proxy-user".into(),
+                    password: "other-proxy-fixture-password".into(),
+                    email: None,
+                    display_name: "Other proxy user".into(),
+                    admin: false,
+                },
+            )
+            .unwrap();
+        let other_session = text(
+            &direct
+                .login(
+                    "other-proxy-user".into(),
+                    "other-proxy-fixture-password".into(),
+                    None,
+                )
+                .unwrap(),
+            "session_token",
+        );
+        let start = direct
+            .outpost_start("reports", "127.0.0.1".parse().unwrap(), &target)
+            .unwrap();
+        let authorization = url::Url::parse(start.location.as_deref().unwrap()).unwrap();
+        let mut authorization: riauth::oidc::Authorization =
+            serde_urlencoded::from_str(authorization.query().unwrap()).unwrap();
+        authorization.decision = Some("approve".into());
+        let callback = direct.authorize(&other_session, authorization).unwrap();
+        let pairs = url::Url::parse(&callback)
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect();
+        let mut binding = HeaderMap::new();
+        binding.insert(
+            "cookie",
+            start.cookies[0].split(';').next().unwrap().parse().unwrap(),
+        );
+        let callback = direct
+            .outpost_callback("reports", "127.0.0.1".parse().unwrap(), &binding, pairs)
+            .unwrap();
+        let mut other_request = websocket_request();
+        other_request.headers_mut().insert(
+            "cookie",
+            callback.cookies[0]
+                .split(';')
+                .next()
+                .unwrap()
+                .parse()
+                .unwrap(),
+        );
+        let (mut other_socket, _) = tokio_tungstenite::connect_async(other_request)
+            .await
+            .expect("One user's saturated quota denied a different user");
+        other_socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(
+                "other user echo".into(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            other_socket
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .into_text()
+                .unwrap(),
+            "other user echo"
+        );
+        other_socket.close(None).await.unwrap();
+        // Closing a socket returns quota without waiting for periodic
+        // authorization or the idle deadline.
+        let mut closing = extra_sockets.pop().unwrap();
+        closing.close(None).await.unwrap();
+        let _ = closing.next().await;
+        drop(closing);
+        let (mut replacement, _) = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match tokio_tungstenite::connect_async(websocket_request()).await {
+                    Ok(socket) => break socket,
+                    Err(tokio_tungstenite::tungstenite::Error::Http(response))
+                        if response.status() == 503 =>
+                    {
+                        tokio::task::yield_now().await;
+                    }
+                    Err(error) => panic!("Replacement WebSocket failed: {error}"),
+                }
+            }
+        })
+        .await
+        .expect("Closed WebSocket did not release its quota");
+        replacement.close(None).await.unwrap();
+        for mut extra in extra_sockets {
+            extra.close(None).await.unwrap();
+        }
         assert_eq!(
             http.post(&target)
                 .header("cookie", &proxy_cookie)

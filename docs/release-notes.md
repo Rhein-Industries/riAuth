@@ -1,3 +1,54 @@
+# riAuth v0.1.3 release notes
+
+riAuth 0.1.3 adds workspace appearance settings and strengthens authorization,
+callback destinations and shared listener capacity in Essentials and Platform.
+
+## Workspace and customization
+
+- Signed-out application pages show a focused sign-in card. Workspace navigation
+  and application controls appear after authentication.
+- Workspace **Settings** offers Light, Dark and System default. System is the
+  initial setting; a saved choice persists for this browser and issuer, across
+  pages and tabs. Settings links existing password, passkey, authenticator,
+  session and consent controls.
+- Both editions retain the existing `[frontend].theme_dir` customization of
+  page layouts, CSS, JavaScript, logos, images and fonts. Appearance supplies
+  root `data-theme` attributes and shared color tokens. See
+  [frontend themes](frontend-themes.md) and [user settings](PORTAL.md#user-settings-and-appearance).
+
+## Security and availability
+
+- Embedded-proxy WebSockets have separate listener, user and route capacity,
+  idle bounds and maximum lifetimes, preserving ordinary HTTP capacity.
+- RadSec separates pending handshakes from authenticated connections and applies
+  source-peer admission and authenticated NAS limits.
+- Receiver-managed SSF endpoints require public HTTPS and validate resolved
+  destination addresses when connecting. Unsafe older receiver jobs stop;
+  intentional local integrations use the separate administrator-managed API.
+- CORS origin checks use a transactional enabled-client origin index after
+  request rate limiting, avoiding a full client-registry scan.
+- User CSV reports include only memberships the caller can read. Temporary
+  access collections respect human ownership and approver groups; administrators
+  retain full visibility and agents require the collection's `access.read` grant.
+
+## Upgrade
+
+The logical storage schema remains version 3; derived indexes advance to revision
+10. Take and verify an encrypted backup, then stop all writers before starting
+0.1.3. Startup rebuilds the indexes and records the newer activation. Older
+binaries refuse that upgraded state; rollback requires a pre-upgrade backup.
+Follow [upgrade and rollback](operations.md#upgrade-and-rollback).
+
+Update customized workspace templates from this source revision to include the
+Settings controls expected by `app.js`. Themes are trusted deployment code and
+are snapshotted at startup; restart after editing them.
+
+Docker publication builds Essentials and Platform for native Linux AMD64 and
+ARM64 and requires successful Public CI for the exact published source commit.
+Existing 0.1.2 image tags are retained; no `latest` tag is changed.
+
+---
+
 # Unreleased targeted workflow retirement and live review retries
 
 - Browser and Core workflow activation now honor optional supplied

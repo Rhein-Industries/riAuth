@@ -43,6 +43,25 @@ Some applications require MFA. After a password-only sign-in the catalogue shows
 - If the account has TOTP or a passkey: "Some applications need your passkey or authenticator code." with **Sign in with your passkey**, which re-authenticates the same account.
 - Otherwise: "Some applications need extra verification. Add a passkey or an authenticator app under Sign-in and security." with a button that opens that dialog.
 
+## User settings and appearance
+
+Open **Settings** in the applications sidebar. It shows the signed-in account, a
+**Color mode** selector, **Sign-in and security** for passwords, passkeys and
+authenticator apps, and **Sessions and consent** for active sessions, remembered
+approvals and linked providers. The latter page remains at
+`<issuer>/account/security` and also has the color selector.
+
+Choose **Light**, **Dark**, or **System default**. System default follows the
+device's current appearance, including changes while the page is open. The choice
+applies to the workspace, account pages, administration and application sign-in
+pages. It is stored in this browser for this issuer and shared between its tabs;
+it does not sync to other browsers. Storage-disabled browsers keep the choice in
+the current tab. The application sidebar appears only after sign-in.
+
+Deeper presentation customization uses the existing `[frontend].theme_dir`
+configuration, including layout, CSS, JavaScript, logos, media and local fonts.
+See [frontend themes](frontend-themes.md) for the supported contracts.
+
 ## Sign-in and security
 
 Signed-in users open **Sign-in and security** from the account menu. It has a **Password** and a **Passkeys** section.
