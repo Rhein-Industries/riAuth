@@ -36,6 +36,7 @@
   <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V3H3v13h5"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4.5"/><path d="M11.2 11.8 20 3m-3 3 3 3m-5-1 2 2"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h7m4 0h5M4 17h3m4 0h9"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
 </defs></svg>
 <div class="shell">
   <aside class="sidebar" id="workspace-navigation" aria-label="Workspace navigation" hidden>
@@ -45,6 +46,7 @@
     <nav>
       <button class="nav-item active" id="nav-all" aria-current="page"><svg class="icon"><use href="#i-app"/></svg><span>All applications</span><span class="nav-count" id="all-count">—</span></button>
       <button class="nav-item" id="nav-favorites"><svg class="icon"><use href="#i-star"/></svg><span>Favorites</span><span class="nav-count" id="favorite-count">—</span></button>
+      <button class="nav-item" id="workspace-settings" type="button" aria-haspopup="dialog"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span></button>
       <a class="nav-item" id="access-review-link" href="__BASE__access/review" hidden><svg class="icon"><use href="#i-shield"/></svg><span>Access reviews</span></a>
     </nav>
     <div class="sidebar-bottom">
@@ -87,6 +89,20 @@
     </main>
   </div>
 </div>
+<dialog id="settings-dialog" class="security" aria-labelledby="settings-title">
+  <h2 id="settings-title">Settings</h2>
+  <p class="account-line" id="settings-account"></p>
+  <section class="security-section" aria-labelledby="appearance-title">
+    <h3 id="appearance-title">Appearance</h3>
+    <div class="field"><label for="appearance">Color mode</label><select id="appearance" data-appearance aria-describedby="appearance-hint"><option value="system">System default</option><option value="light">Light</option><option value="dark">Dark</option></select><p class="field-hint" id="appearance-hint">Choose how riAuth looks in this browser.</p></div>
+  </section>
+  <section class="security-section" aria-labelledby="settings-security-title">
+    <h3 id="settings-security-title">Account security</h3>
+    <p class="field-hint">Manage your password, passkeys, authenticator app, sessions and remembered approvals.</p>
+    <div class="settings-actions"><button class="button secondary" id="settings-security" type="button">Sign-in and security</button><a class="button secondary" href="__BASE__account/security">Sessions and consent</a></div>
+  </section>
+  <button class="button secondary" id="settings-close" type="button">Done</button>
+</dialog>
 <dialog id="security-dialog" class="security" aria-labelledby="security-title">
   <h2 id="security-title">Sign-in and security</h2>
   <p class="account-line" id="security-account"></p>

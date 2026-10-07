@@ -43,6 +43,61 @@ Some applications require MFA. After a password-only sign-in the catalogue shows
 - If the account has TOTP or a passkey: "Some applications need your passkey or authenticator code." with **Sign in with your passkey**, which re-authenticates the same account.
 - Otherwise: "Some applications need extra verification. Add a passkey or an authenticator app under Sign-in and security." with a button that opens that dialog.
 
+## User settings and appearance
+
+Open **Settings** in the applications sidebar. It shows the signed-in account, a
+**Color mode** selector, **Sign-in and security** for passwords, passkeys and
+authenticator apps, and **Sessions and consent** for active sessions, remembered
+approvals and linked providers. The latter page remains at
+`<issuer>/account/security` and also has the color selector.
+
+Choose **Light**, **Dark**, or **System default**. System default follows the
+device's current appearance, including changes while the page is open. The choice
+applies to the workspace, account pages, administration and application sign-in
+pages. It is stored in this browser for this issuer and shared between its tabs;
+it does not sync to other browsers. Storage-disabled browsers keep the choice in
+the current tab. The application sidebar appears only after sign-in.
+
+## Deployment themes
+
+Essentials and Platform accept an operator-supplied presentation directory:
+
+```toml
+portal_theme_dir = "theme"
+```
+
+The path is relative to the selected configuration file. Place `theme.css` there
+to override the built-in styles and optionally `riauth-mark.svg` to replace the
+logo. CSS is loaded last on browser portal, sign-in, administration and account
+pages. For example:
+
+```css
+:root[data-theme="light"] {
+  --accent: #265dce;
+  --accent-soft: #eaf1fd;
+}
+:root[data-theme="dark"] {
+  --accent: #9cbdff;
+  --accent-soft: #20304a;
+}
+```
+
+The shared tokens are `--canvas`, `--surface`, `--ink`, `--muted`, `--line`,
+`--accent` and `--accent-soft`. CSS can also change typography, spacing, card
+shapes and layout. SVG, PNG, JPEG, WebP and WOFF2 files in the same directory are
+available at `<issuer>/portal/theme/<filename>`; relative URLs in `theme.css`
+resolve there. Fonts and images must come from this instance under the existing
+content security policy.
+
+Themes are trusted deployment files and public assets. Keep them in a dedicated
+directory without credentials. Only `theme.css` and the listed media formats are
+accepted, with simple ASCII filenames, at most 32 files and 4 MiB total. CSS and
+SVG are bounded to 256 KiB each, images to 1 MiB and WOFF2 to 512 KiB. Symlinks,
+directories, unsupported file types and oversized files refuse startup. Assets
+are read into memory on open; restart after editing them. Authentication scripts
+and templates remain embedded. Initial administrator setup uses the built-in
+presentation, and `browser_ui = false` leaves theme files unused.
+
 ## Sign-in and security
 
 Signed-in users open **Sign-in and security** from the account menu. It has a **Password** and a **Passkeys** section.

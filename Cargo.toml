@@ -28,6 +28,7 @@ axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 base64 = "0.23"
 clap = { version = "4.6", features = ["derive", "env"] }
 jsonwebtoken = { version = "11.1", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+libc = "0.2"
 pem = "4"
 rand = "0.10.3"
 redb = "4.3"

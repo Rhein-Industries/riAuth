@@ -74,6 +74,16 @@ pub fn browser_routes() -> Router<App> {
         .route("/apps", get(page))
         .route("/apps/", get(page))
         .route("/apps/launch", get(launch))
+        .route("/portal/theme/{name}", get(theme_asset))
+        .route(
+            "/portal/assets/appearance.js",
+            get(|| async {
+                (
+                    [("content-type", "text/javascript; charset=utf-8")],
+                    include_str!("appearance.js"),
+                )
+            }),
+        )
         .route("/device", get(device_page))
         .route("/device/", get(device_page))
         .route(
@@ -97,15 +107,7 @@ pub fn browser_routes() -> Router<App> {
                 )
             }),
         )
-        .route(
-            "/portal/assets/riauth-mark.svg",
-            get(|| async {
-                (
-                    [("content-type", "image/svg+xml; charset=utf-8")],
-                    include_str!("../../assets/riauth-mark.svg"),
-                )
-            }),
-        )
+        .route("/portal/assets/riauth-mark.svg", get(brand_mark))
         .route(
             "/portal/assets/app.js",
             get(|| async {
@@ -253,6 +255,24 @@ pub async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
     response
 }
 
+async fn theme_asset(State(app): State<App>, Path(name): Path<String>) -> Response {
+    match app.core.portal_theme.asset(&name) {
+        Some((mime, bytes)) => ([("content-type", mime)], bytes.to_vec()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn brand_mark(State(app): State<App>) -> Response {
+    match app.core.portal_theme.asset("riauth-mark.svg") {
+        Some((mime, bytes)) => ([("content-type", mime)], bytes.to_vec()).into_response(),
+        None => (
+            [("content-type", "image/svg+xml; charset=utf-8")],
+            include_str!("../../assets/riauth-mark.svg"),
+        )
+            .into_response(),
+    }
+}
+
 async fn device_page(State(app): State<App>, headers: HeaderMap) -> Response {
     let mut response = portal_html(include_str!("device.html"), &app, true);
     if sso_cookie(&app, &headers).is_none() {
@@ -392,10 +412,21 @@ async fn events_page(State(app): State<App>) -> Response {
 /// Portal pages isolate their browsing context with COOP. Interaction pages pass
 /// `coop: false`, because relying parties may open them in a popup.
 pub(crate) fn portal_html(template: &str, app: &App, coop: bool) -> Response {
-    let html = template.replace("__BASE__", &escape(&app.core.cookie_path()));
+    let base = escape(&app.core.cookie_path());
+    let mut html = template.replace("__BASE__", &base).replacen(
+        "<link rel=\"stylesheet\"",
+        &format!("<script src=\"{base}portal/assets/appearance.js\"></script>\n  <link rel=\"stylesheet\""),
+        1,
+    );
+    if app.core.portal_theme.asset("theme.css").is_some() {
+        html = html.replace(
+            "</head>",
+            &format!("<link rel=\"stylesheet\" href=\"{base}portal/theme/theme.css\">\n</head>"),
+        );
+    }
     let mut response = Html(html).into_response();
     let headers = response.headers_mut();
-    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"));
+    headers.insert("content-security-policy", HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"));
     headers.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     headers.insert(

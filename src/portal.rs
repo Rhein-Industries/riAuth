@@ -6,6 +6,7 @@ pub mod http;
 mod mfa;
 pub mod self_service;
 pub mod sources;
+pub(crate) mod theme;
 
 use crate::{
     browser::BrowserReply,

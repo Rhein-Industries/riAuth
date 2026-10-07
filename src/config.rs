@@ -15,6 +15,9 @@ pub struct Config {
     /// Serve the embedded browser pages and assets. API and OIDC routes remain available.
     #[serde(default = "default_browser_ui")]
     pub browser_ui: bool,
+    /// Trusted local CSS, logo and media assets, snapshotted before serving browser pages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub portal_theme_dir: Option<PathBuf>,
     /// Duties for this process. Omitted means the integrated one-process server.
     #[serde(
         default,
@@ -390,6 +393,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             browser_ui: default_browser_ui(),
+            portal_theme_dir: None,
             process: crate::process_role::ProcessSelection::default(),
             capabilities: CapabilityActivation::default(),
             proxy_listeners: Default::default(),
@@ -742,6 +746,11 @@ impl Config {
                 .parent()
                 .unwrap_or(Path::new("."))
                 .join(&value.data_dir);
+        }
+        if let Some(dir) = value.portal_theme_dir.as_mut()
+            && dir.is_relative()
+        {
+            *dir = path.parent().unwrap_or(Path::new(".")).join(&*dir);
         }
         if let Some(key) = value.database_key_file.as_mut()
             && key.is_relative()

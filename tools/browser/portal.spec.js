@@ -43,6 +43,43 @@ test('terminal approval, cancellation, keyboard access, reflow and private-conte
   await expect(page.locator('#workspace-header')).toBeVisible();
   await expect(page).toHaveTitle('Your applications · riAuth');
   await accessibility(page);
+  const settings = page.getByRole('dialog', {name:'Settings',exact:true});
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
+  await expect(settings).toBeVisible();
+  const appearance = settings.getByRole('combobox',{name:'Color mode'});
+  await expect(appearance).toHaveValue('system');
+  await appearance.selectOption('dark');
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await accessibility(page);
+  await settings.getByRole('button',{name:'Done',exact:true}).click();
+  await accessibility(page);
+  await page.reload();
+  await expect(page.getByRole('searchbox',{name:'Search applications'})).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
+  await expect(appearance).toHaveValue('dark');
+  await appearance.selectOption('light');
+  await page.emulateMedia({colorScheme:'dark'});
+  // Let the media change render before reversing it: Firefox coalesces changes
+  // within a frame, while a user changing OS appearance triggers separate frames.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+  await appearance.selectOption('system');
+  await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+  await page.emulateMedia({colorScheme:'light'});
+  await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+  await appearance.selectOption('dark');
+  const account = await context.newPage();
+  await account.goto(`${fixture.issuer}/account/security`);
+  await expect(account.getByRole('combobox',{name:'Color mode'})).toHaveValue('dark');
+  await expect(account.locator('html')).toHaveAttribute('data-theme','dark');
+  await accessibility(account);
+  await account.getByRole('combobox',{name:'Color mode'}).selectOption('light');
+  await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+  await account.close();
+  await settings.getByRole('button',{name:'Sign-in and security',exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'Sign-in and security',exact:true})).toBeVisible();
+  await page.locator('#security-close').click();
   for (const width of [1280, 640, 320]) {
     await page.setViewportSize({width,height:900});
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -71,5 +108,6 @@ test('terminal approval, cancellation, keyboard access, reflow and private-conte
   await expect(page.getByRole('complementary', {name:'Workspace navigation'})).toBeHidden();
   await expect(page.locator('#workspace-header')).toBeHidden();
   await expect(page).toHaveTitle('Sign in · riAuth');
+  await expect(page.getByRole('button',{name:'Settings',exact:true})).toBeHidden();
   await expect(page.getByRole('link',{name:'Open Fixture application (opens in a new tab)',exact:true})).toHaveCount(0);
 });

@@ -2365,7 +2365,11 @@ async fn portal_page_and_auth_asset_stay_offline() {
         "shared helpers load before app.js"
     );
     assert!(script < source_login, "source login loads after app.js");
-    assert_eq!(page.matches("<script").count(), 4, "no inline script");
+    assert_eq!(page.matches("<script").count(), 5, "no inline script");
+    assert!(
+        page.find("portal/assets/appearance.js").unwrap()
+            < page.find("portal/assets/app.css").unwrap()
+    );
     assert!(page.contains(r#"src="/identity/portal/assets/riauth-mark.svg""#));
     for id in [
         "auth-error",

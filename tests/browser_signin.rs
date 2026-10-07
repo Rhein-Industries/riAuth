@@ -484,7 +484,7 @@ async fn resume_page_has_strict_headers_no_refresh_and_no_coop() {
     assert!(html.contains("<script src=\"/portal/assets/auth.js\" defer></script>"));
     assert!(html.contains("<script src=\"/portal/assets/capabilities.js\" defer></script>"));
     assert!(html.contains("<script src=\"/portal/assets/signin.js\" defer></script>"));
-    assert_eq!(html.matches("<script").count(), 3, "no inline script");
+    assert_eq!(html.matches("<script").count(), 4, "no inline script");
     assert!(html.contains("data-capability=\"identity.passkeys\""));
     assert!(!html.contains("style="), "no inline style");
     for placeholder in ["__BASE__", "__CODE__", "__COMMAND__"] {
@@ -673,6 +673,9 @@ async fn interaction_writes_require_origin_header_fetch_site_and_binding() {
         format!("/oauth/resume/{MISSING}"),
         format!("/saml/resume/{MISSING}"),
     ] {
+        if base.starts_with("/saml/") && !cfg!(feature = "platform") {
+            continue;
+        }
         writes.push((
             format!("{base}/password"),
             json!({"username": "alice", "password": PASSWORD, "otp": null}),
@@ -2703,6 +2706,9 @@ async fn resume_errors_render_html_for_browsers() {
             "This sign-out request has ended",
         ),
     ] {
+        if uri.starts_with("/saml/") && !cfg!(feature = "platform") {
+            continue;
+        }
         let page = call(&app, get(&uri, "text/html", cookies)).await;
         assert_eq!(page.status, status, "{uri}");
         assert!(

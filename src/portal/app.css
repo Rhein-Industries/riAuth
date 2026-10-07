@@ -38,3 +38,45 @@
   .portal-entry .workspace > main { padding: 20px 16px; }
   .portal-entry #auth { padding: 24px 20px; }
 }
+
+.settings-actions { display: grid; gap: 8px; margin: 16px 0 20px; }
+.appearance-field { max-width: 360px; margin: 18px 0 0; }
+
+/* Presentation tokens are shared by the workspace, sign-in and account pages. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #111522;
+  --surface: #1a2030;
+  --ink: #ecedf4;
+  --muted: #acb3c8;
+  --line: #343c50;
+  --accent: #b5a1ff;
+  --accent-soft: #302747;
+}
+:root[data-theme="dark"] .topbar { background: var(--surface); }
+:root[data-theme="dark"] :is(.app-card, .search-field, .secondary, select, .field input, .field select, .consent-list li, .passkey-row, details.terminal, .security-row, .admin-search, .chip, .workflow-node, .admin-form textarea, .inline-form input, .admin-form .field input, .admin-form .field select, .workflow-editor input, .workflow-editor select) { background: var(--surface); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] :is(kbd, .account-line, .code-list, .command-box, .workspace-icon, .nav-count, .view-switch, .settings-json, .workflow-graph, .admin-table thead th, .check-result, .setup-report, #passkey-action, #totp-enroll, #factor-confirm) { background: #232a3c; color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] :is(.nav-label, .app-description, .open-indicator, .footer-detail, .nav-item, .icon-button, .breadcrumb > span, .admin .breadcrumb a, .app-card-bottom, .catalogue-footer, .unavailable, .results-heading > span, .results-heading h2 span, .search-field input::placeholder, .category-tag, .favorite-button, .text-button, .command-box > code, .terminal-help code, .badges code, .facts code, dialog.security code, .settings-json) { color: var(--muted); }
+:root[data-theme="dark"] :is(.app-card, .app-card-bottom, .search-field, .secondary, .workspace-label, .empty-state, .command-box, .view-switch, .passkey-row) { border-color: var(--line); }
+:root[data-theme="dark"] :is(.nav-item:hover, .icon-button:hover, .secondary:hover) { background: #282f43; color: var(--ink); }
+:root[data-theme="dark"] :is(.nav-item.active, .view-switch .selected, .notice, .security-badge, .badge.info, .active .nav-count) { background: var(--accent-soft); color: #e0d4ff; border-color: var(--line); }
+:root[data-theme="dark"] :is(.notice .text-button, .admin-apps-link, .admin-table a, .plain-list a, .chip a, .security-shell #status a, .workflow-node span, details summary) { color: var(--accent); }
+:root[data-theme="dark"] .primary { color: #151025; }
+:root[data-theme="dark"] .primary:hover { background: #c5b6ff; }
+:root[data-theme="dark"] :is(.access-note, .access-pill, .empty-state, .verify-panel) { background: var(--surface); border-color: var(--line); color: var(--muted); }
+:root[data-theme="dark"] :is(.app-icon, .avatar, .empty-icon) { background: #332b4f; color: #c9baff; }
+:root[data-theme="dark"] .accent-blue { background: #21344f; color: #a2caff; }
+:root[data-theme="dark"] .accent-teal { background: #1f3b36; color: #9de0c9; }
+:root[data-theme="dark"] .accent-amber { background: #443620; color: #ebc988; }
+:root[data-theme="dark"] .accent-rose { background: #432b3a; color: #f0b4d0; }
+:root[data-theme="dark"] .accent-slate { background: #30394b; color: #c4d0e8; }
+:root[data-theme="dark"] .favorite-button[aria-pressed="true"] { color: #ebc988; }
+:root[data-theme="dark"] .favorite-button[aria-pressed="true"] .icon { fill: #443620; }
+:root[data-theme="dark"] :is(.form-error, .verify-panel .form-error, .standalone .form-error) { background: #3a2226; color: #ffb7b1; border-color: #985a62; }
+:root[data-theme="dark"] .badge { background: #30394b; color: #d1d7e5; }
+:root[data-theme="dark"] .badge.ok { background: #1f3b36; color: #9de0c9; }
+:root[data-theme="dark"] :is(.badge.warn, .admin .nav-count.attention) { background: #443620; color: #ebc988; }
+:root[data-theme="dark"] :is(.choice:has(input:checked), .workflow-node.terminal) { background: #232a3c; }
+:root[data-theme="dark"] .choice:has(input:disabled) { background: var(--surface); }
+:root[data-theme="dark"] .skeleton { background: #232a3c; }
+:root[data-theme="dark"] .toast { background: #ecedf4; color: #202537; }

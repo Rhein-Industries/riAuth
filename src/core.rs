@@ -26,6 +26,7 @@ pub struct Core {
     pub store: Store,
     dummy_hash: Arc<String>,
     pub(crate) runtime: Arc<crate::capability::RuntimeStatus>,
+    pub(crate) portal_theme: Arc<crate::portal::theme::Theme>,
     #[cfg(feature = "platform")]
     pub(crate) verified_access_cache: Arc<Mutex<crate::device_trust::TokenCache>>,
     #[cfg(all(feature = "platform", feature = "test-support"))]
@@ -141,6 +142,8 @@ impl Core {
         store: Store,
         administrator: impl FnOnce(&Tx<'_>) -> Result<User>,
     ) -> Result<Self> {
+        let portal_theme =
+            Arc::new(crate::portal::theme::Theme::load(&config).map_err(Error::internal)?);
         if store.get::<u32>("meta", "schema")?.is_some() {
             return Err(Error::conflict("Instance already initialized"));
         }
@@ -195,6 +198,7 @@ impl Core {
             store,
             dummy_hash: Arc::new(dummy),
             runtime: Arc::default(),
+            portal_theme,
             #[cfg(feature = "platform")]
             verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
             #[cfg(all(feature = "platform", feature = "test-support"))]
@@ -211,6 +215,8 @@ impl Core {
     }
 
     pub(crate) fn open_store(config: Config, store: Store) -> Result<Self> {
+        let portal_theme =
+            Arc::new(crate::portal::theme::Theme::load(&config).map_err(Error::internal)?);
         if store.get::<String>("meta", "issuer")?.as_deref() != Some(&config.issuer) {
             return Err(Error::bad(
                 "Configured issuer does not match the initialized instance",
@@ -238,6 +244,7 @@ impl Core {
             store,
             dummy_hash: Arc::new(dummy),
             runtime: Arc::default(),
+            portal_theme,
             #[cfg(feature = "platform")]
             verified_access_cache: Arc::new(Mutex::new(crate::device_trust::TokenCache::default())),
             #[cfg(all(feature = "platform", feature = "test-support"))]

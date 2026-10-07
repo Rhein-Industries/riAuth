@@ -386,6 +386,7 @@ async fn main() -> anyhow::Result<()> {
         issuer: issuer.clone(),
         listen,
         data_dir: dir.path().into(),
+        portal_theme_dir: std::env::var_os("RIAUTH_FIXTURE_THEME_DIR").map(PathBuf::from),
         reviewed_membership_groups: ["m05-protected".into()].into(),
         ..Default::default()
     };

@@ -6,6 +6,10 @@ data_dir = "data"
 # Optional API-only mode. Browser pages and embedded assets are served by default.
 # browser_ui = false
 
+# Optional operator theme: theme.css, riauth-mark.svg, images and WOFF2 fonts.
+# Relative to this config file. Assets are public and snapshotted at startup.
+# portal_theme_dir = "theme"
+
 # Optional process role. Omit this table for the integrated one-process server:
 # product HTTP, configured listeners, and background loops.
 # gateway keeps product HTTP and configured listeners and does not start background loops.
