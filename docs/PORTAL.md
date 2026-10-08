@@ -51,7 +51,7 @@ Open **Settings** in the applications sidebar, or go directly to
 authenticator apps, and **Sessions and consent** for active sessions, remembered
 approvals and linked providers. The latter page remains at
 `<issuer>/account/security` and also has the color selector. Settings and Sign-in
-and security have links to each other, Sessions and consent, and back to
+and security have links to each other, Sessions and consent, My agents and back to
 applications. Their URLs support reloads and normal browser Back and Forward.
 
 Choose **Light**, **Dark**, or **System default**. System default follows the
@@ -110,6 +110,18 @@ The same page sets up, replaces and removes an authenticator app (TOTP) and crea
 Recovery codes appear on a dedicated page within Sign-in and security, with **Copy codes** and **Download** (a text file generated in the page). Done needs the "I saved these codes somewhere safe" confirmation. When enabling or replacing an authenticator app ends the session, this page remains visible until the codes are saved; the browser then returns to sign-in. Setup keys and codes are never written to browser storage and are cleared from the page when their step ends; the status endpoint reports only whether an app is set up and how many codes remain.
 
 See [passkeys](passkeys.md) for how browser, USB and split ceremonies relate.
+
+## My agents
+
+**My agents** (`<issuer>/account/agents`, linked from Settings, Sign-in and security, and Sessions and consent) lets a person give a tool or script its own credential without an administrator. An agent can do only what you approve, never more than your account can do now, and stops working when it expires or you revoke it.
+
+- **Your agents** lists each agent with its status (**Active**, **Expired** or **Revoked**), when it expires (date, time and time zone), the permissions you approved and what they allow now. **Show recent activity** loads the agent's recent audited actions.
+- **Prepare an agent** takes a name, a lifetime (1 hour, 1 day, 7 days or 30 days) and what the agent may do on your account: see your name and email, change your display name, see or sign out your sessions, see or withdraw application approvals, and see or revoke your agents. **Advanced: exact permissions** accepts one `action=resource` per line for anything else you can manage, for example `state.read=state/revision`.
+- **Review permissions** prepares a proposal and shows exactly what would be issued: the permissions, what they allow now, the absolute expiry and the time by which you must approve it (ten minutes). Nothing is issued until **Approve and issue**. A proposal you leave stays under **Prepared, not yet approved** until it lapses.
+- After approval the credential appears once, with **Copy credential** and **Download JSON**. The file is what `riauth --agent-file` reads. The page keeps the credential only in memory: it is gone after **Done** (which needs **I saved this credential**), a reload or leaving the page, and it is never written to browser storage.
+- **Replace credential** issues a new credential with the lifetime you choose and stops the old one at once. **Revoke** stops the agent for good after you confirm.
+
+Approving and replacing need a sign-in in this browser within the last five minutes, with your passkey or authenticator code when you have one. Otherwise the page shows **Confirm it is you** with a passkey or password, as Sessions and consent does; then choose the action again. A browser that shares a terminal sign-in confirms here first. Preparing and revoking need only your current sign-in. The same operations are available from a terminal with `riauth me agents` (see the [agent interface](agent.md#my-agents-page-and-cli)).
 
 ## Upstream sign-in providers
 

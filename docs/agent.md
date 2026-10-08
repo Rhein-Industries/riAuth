@@ -90,6 +90,28 @@ A signed-in person can manage agents they own without an administrator. Every ro
 
 A person can hold at most 20 enabled agents and open proposals together. Another person's agent answers 404. The same operations are available to the signed-in browser under `/api/portal/agents`, bound to the page's account and session. Audit events for these operations have the person as actor and `details.self_service: true`.
 
+### My agents page and CLI
+
+The signed-in browser page `<issuer>/account/agents` (**My agents**, linked from Settings, Sign-in and security, and Sessions and consent) uses the browser routes above. It lists each owned agent with its status (active, expired or revoked), absolute expiry, approved permissions and what they allow now, and loads an agent's recent activity on request. **Prepare an agent** takes a name, a lifetime of 1 hour, 1 day, 7 days or 30 days, the personal actions on `self`, and optional exact `action=resource` lines under **Advanced**. The page then shows the proposal (exact permissions, what they allow now, the absolute expiry and the approval deadline) and issues nothing until **Approve and issue**. The credential is shown once with **Copy credential** and **Download JSON**; the file is the JSON `--agent-file` reads, byte for byte what the CLI writes. The page keeps it only in memory until **Done**. **Replace credential** takes a new lifetime and shows the replacement the same way; **Revoke** asks for confirmation. When approval or replacement answers `reauthentication_required` or `mfa_required`, the page asks the person to confirm with a passkey or password, as Sessions and consent does, and then to choose the action again. See [My agents](PORTAL.md#my-agents) for the page itself.
+
+From a terminal, `riauth me agents` uses the saved session from `riauth login`; an agent credential is refused locally:
+
+```sh
+riauth me agents list
+riauth me agents create mail-helper --permission profile.read=self \
+  --permission consents.read=self --permission consents.revoke=self \
+  --ttl 86400 --out deployment-private/mail-helper.json
+riauth me agents activity mail-helper --limit 20
+riauth me agents rotate mail-helper --ttl 3600 --out deployment-private/mail-helper-2.json
+riauth me agents revoke mail-helper
+```
+
+`create` refuses an existing `--out`, or one in a missing directory, before any request. It then prepares the proposal and prints its exact permissions, what they allow now and the absolute UTC expiry to stderr. It approves only after `y` on a terminal, or with `--yes`. Without either, for example with `--non-interactive` or redirected input, it exits with an error and leaves the proposal unapproved to lapse after ten minutes. The credential goes to a new owner-only (0600) file exactly as `agent create` writes it, and the output names the file, never the token. `rotate` writes the replacement the same way and sends `--idempotency-key` when given. Approval and rotation need `riauth login` within the last five minutes, with `--mfa` when the account has an authenticator; the CLI says so when the server answers `reauthentication_required` or `mfa_required`. `activity` prints the agent's recent audited actions, oldest first.
+
+An agent uses the personal actions with its credential: `riauth --agent-file FILE user profile|sessions|consents|agents USERNAME`, and `riauth --agent-file FILE --if-revision REVISION --idempotency-key KEY user consent-revoke USERNAME CLIENT_ID` to withdraw consent. Get the revision with `riauth revision`, which needs `state.read=state/revision`. The existing `user update USERNAME --name NAME` (with the same binding) changes the display name under `profile.write`, `session revoke ID` revokes a session under `sessions.revoke`, and `agent revoke ID` (with the same binding) revokes an owned agent under `agents.revoke`.
+
+Audit review and the audit CSV show `parent_user`, `authorized_by`, `target_parent_user` and `self_service` for these events, so a reviewer sees both the agent and the person behind it ([ENT-09](enterprise/ENT-09.md#actor-attribution)).
+
 ### Prepared sensitive changes
 
 An agent never changes authentication factors, recovery channels, administrator roles or delegated grants on its own. An owned agent holding `changes.prepare` on `user/<username>` (or `self`) prepares one exact change, and its owner approves it through the same fresh sign-in and MFA rule as agent approval. The change then runs as the owner, through the writer that already guards it. No password, one-time code or factor secret passes through these routes.
