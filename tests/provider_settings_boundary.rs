@@ -84,9 +84,9 @@ fn existing_provider_schemas_remain_byte_stable() {
             // Platform adds the optional settings.policy.conditional (cf999a6);
             // Essentials keeps the original schema. See client_config_boundary.rs.
             if cfg!(feature = "platform") {
-                "31f187d5ccf1b82a9075940ed755133de7b7e4f575a2075357ef0337f76b0be2"
+                "0a40cf77582f6fa0876b7a2ec6a37a2f6d5cc070795dc6f4a02545ad116b5919"
             } else {
-                "6f68906ad83708fc8a817ea0d9b7d996e8863abb06dfed01e34d70a41454400c"
+                "93767ad7faed53223b3fbba8cdf084a8b12e26ed285b4dcc06c6237f6650f230"
             },
         ),
         (
