@@ -381,10 +381,15 @@ pub enum Command {
         #[command(subcommand)]
         command: AgentCommand,
     },
-    /// Manage what you own with your saved session: `me agents`
+    /// Manage what you own with your saved session: `me agents`, `me changes`
     Me {
         #[command(subcommand)]
         command: my_agents::MeCommand,
+    },
+    /// As an agent, prepare sensitive changes for your owner to approve
+    Changes {
+        #[command(subcommand)]
+        command: my_agents::ChangeCommand,
     },
     /// Create an instance, signing key and first administrator
     Init(local::InitArgs),
@@ -1993,6 +1998,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             },
         },
         Command::Me { command } => my_agents::run(&remote, command).await?,
+        Command::Changes { command } => my_agents::run_changes(&remote, command).await?,
         Command::Status => remote.call(Method::GET, "/healthz", None, false).await?,
         Command::Discovery => {
             remote

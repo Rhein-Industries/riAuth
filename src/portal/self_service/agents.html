@@ -102,9 +102,9 @@
       <section id="agent-applications" class="security-card" aria-labelledby="agent-applications-title" hidden>
         <h2 id="agent-applications-title">Connected applications</h2>
       </section>
-      <!-- Reserved for a later release: actions agents ask you to approve. Not implemented; keep hidden. -->
       <section id="agent-approvals" class="security-card" aria-labelledby="agent-approvals-title" hidden>
-        <h2 id="agent-approvals-title">Pending approvals</h2>
+        <div class="section-heading"><div><h2 id="agent-approvals-title">Pending approvals</h2><p>Your agents asked for these sensitive changes. Nothing changes until you approve, and approving needs a recent sign-in in this browser.</p></div></div>
+        <ul id="approval-list" class="security-list"></ul>
       </section>
     </div>
     <div id="loading" class="security-card" role="status">Loading your agents…</div>

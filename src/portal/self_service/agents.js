@@ -168,7 +168,23 @@
     row.append(details, button);
     return row;
   }
-  function render(security, list) {
+  // One sensitive change an agent prepared, described exactly as approval applies it.
+  function changeRow(change) {
+    const row = node("li", "security-row"), details = node("div");
+    details.append(node("strong", "", change.summary),
+      node("p", "", `Prepared by ${change.agent_id} · Approve by ${date(change.expires_at)}`));
+    const actions = node("div", "agent-actions");
+    const approveButton = node("button", "button primary", "Approve"), declineButton = node("button", "button secondary", "Decline");
+    approveButton.type = declineButton.type = "button";
+    approveButton.setAttribute("aria-label", `Approve: ${change.summary}`);
+    declineButton.setAttribute("aria-label", `Decline: ${change.summary}`);
+    RiAuth.guard(approveButton, () => decideChange(approveButton, change, true));
+    RiAuth.guard(declineButton, () => decideChange(declineButton, change, false));
+    actions.append(approveButton, declineButton);
+    row.append(details, actions);
+    return row;
+  }
+  function render(security, list, changes) {
     snapshot = security;
     $("agents-admin-link").hidden = security.user.admin !== true;
     $("agents-events-link").hidden = security.user.admin !== true || !RiAuthCapabilities.usable("audit.self_hosted_event_map");
@@ -192,6 +208,9 @@
     const open = openProposals(list.proposals, list.agents, at).map(proposalRow);
     $("proposal-list").replaceChildren(...open);
     $("proposals").hidden = open.length === 0;
+    const approvals = (changes?.changes || []).map(changeRow);
+    $("approval-list").replaceChildren(...approvals);
+    $("agent-approvals").hidden = approvals.length === 0;
     RiAuthCapabilities.apply();
   }
   // A quiet reload keeps the current status and any credential on screen.
@@ -200,8 +219,9 @@
     if (!quiet) { $("status").hidden = true; $("loading").hidden = snapshot !== null; }
     try {
       await RiAuthCapabilities.refresh().catch(() => {});
-      const [security, list] = await Promise.all([RiAuth.get("api/portal/security"), RiAuth.get("api/portal/agents")]);
-      if (mine === generation) render(security, list);
+      const [security, list, changes] = await Promise.all([RiAuth.get("api/portal/security"), RiAuth.get("api/portal/agents"),
+        RiAuth.get("api/portal/changes")]);
+      if (mine === generation) render(security, list, changes);
     } catch (error) {
       if (mine !== generation) return;
       if (error.status === 401) { signedOut(); return; }
@@ -326,6 +346,18 @@
         showCredential(result);
         await load(true);
         showStatus(`${agent.id} has a new credential. Save it now; the previous one no longer works.`);
+      } catch (error) { await failed(error); }
+    });
+  }
+  async function decideChange(button, change, approve) {
+    if (!snapshot) return;
+    if (approve && !window.confirm(`Approve this change?\n\n${change.summary}`)) return;
+    await RiAuth.inFlight(button, async () => {
+      try {
+        const path = `api/portal/changes/${encodeURIComponent(change.id)}/${approve ? "approve" : "reject"}`;
+        await RiAuth.post(path, approve ? { ...binding(), digest: change.digest } : binding(), { retry: true });
+        await load();
+        showStatus(approve ? "Change approved." : "Change declined.");
       } catch (error) { await failed(error); }
     });
   }

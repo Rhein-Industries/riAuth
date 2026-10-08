@@ -19,6 +19,41 @@ pub enum MeCommand {
         #[command(subcommand)]
         command: MyAgentCommand,
     },
+    /// Approve or decline sensitive changes your agents prepared
+    Changes {
+        #[command(subcommand)]
+        command: MyChangeCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MyChangeCommand {
+    /// Changes your agents prepared that you can approve now
+    List,
+    /// Show one prepared change exactly, then approve it
+    Approve {
+        id: String,
+        /// Approve the printed change without asking
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Decline a prepared change
+    Reject { id: String },
+}
+
+/// What an agent does with its own credential: prepare changes for its owner.
+#[derive(Subcommand)]
+pub enum ChangeCommand {
+    /// Prepare one exact change, given as JSON, for your owner to approve
+    Prepare {
+        /// Username of the account to change
+        target: String,
+        /// The change, for example '{"kind":"email","email":"a@example.test"}'
+        #[arg(long)]
+        change: String,
+    },
+    /// Changes this agent prepared, with their status
+    List,
 }
 
 #[derive(Subcommand)]
@@ -167,7 +202,7 @@ fn explain_fresh_sign_in(error: anyhow::Error) -> anyhow::Error {
         {
             RemoteFailure {
                 message: format!(
-                    "{} Issuing an agent credential needs a sign-in within the last five minutes, with your second factor if you have one: run `riauth login USERNAME` (add --mfa for an authenticator code), then repeat this command.",
+                    "{} This needs a sign-in within the last five minutes, with your second factor if you have one: run `riauth login USERNAME` (add --mfa for an authenticator code), then repeat this command.",
                     failure.message
                 ),
                 ..failure
@@ -184,13 +219,94 @@ fn credential_file(result: &Value, out: &Path) -> Result<Value> {
     Ok(json!({"agent": result["agent"], "credential_file": out}))
 }
 
+/// An agent prepares changes with its credential; only its owner approves.
+pub(super) async fn run_changes(remote: &Remote, command: ChangeCommand) -> Result<Value> {
+    if remote.agent_file.is_none() {
+        bail!("Prepare changes with --agent-file; approve them with `riauth me changes`");
+    }
+    match command {
+        ChangeCommand::Prepare { target, change } => {
+            let change: Value = serde_json::from_str(&change)
+                .map_err(|_| anyhow::anyhow!("--change must be a JSON object"))?;
+            let body = json!({"target": target, "change": change});
+            remote
+                .call(Method::POST, "/api/changes", Some(body), true)
+                .await
+        }
+        ChangeCommand::List => remote.call(Method::GET, "/api/changes", None, true).await,
+    }
+}
+
+async fn run_my_changes(remote: &Remote, command: MyChangeCommand) -> Result<Value> {
+    match command {
+        MyChangeCommand::List => {
+            remote
+                .call(Method::GET, "/api/me/changes", None, true)
+                .await
+        }
+        MyChangeCommand::Approve { id, yes } => {
+            let listed = remote
+                .call(Method::GET, "/api/me/changes", None, true)
+                .await?;
+            let Some(change) = listed["changes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|change| change["id"] == id.as_str())
+            else {
+                bail!("No pending change {id}");
+            };
+            eprintln!(
+                "{}\nPrepared by agent {}; approvable until {}.",
+                change["summary"].as_str().unwrap_or_default(),
+                change["agent_id"].as_str().unwrap_or_default(),
+                change["expires_at"].as_u64().map(utc).unwrap_or_default()
+            );
+            if !yes {
+                if NON_INTERACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+                    || !io::stdin().is_terminal()
+                {
+                    bail!(
+                        "Change {id} was not approved: review it and repeat with --yes, or run on a terminal to confirm"
+                    );
+                }
+                if !confirm("Approve exactly this change? [y/N] ")? {
+                    return Ok(json!({"approved": false, "id": id}));
+                }
+            }
+            remote
+                .call(
+                    Method::POST,
+                    &format!("/api/me/changes/{}/approve", segment(&id)?),
+                    Some(json!({"digest": change["digest"]})),
+                    true,
+                )
+                .await
+                .map_err(explain_fresh_sign_in)
+        }
+        MyChangeCommand::Reject { id } => {
+            remote
+                .call(
+                    Method::POST,
+                    &format!("/api/me/changes/{}/reject", segment(&id)?),
+                    None,
+                    true,
+                )
+                .await
+        }
+    }
+}
+
 pub(super) async fn run(remote: &Remote, command: MeCommand) -> Result<Value> {
     if remote.agent_file.is_some() {
         bail!(
             "Your agents are managed with your own sign-in; an agent credential cannot manage them"
         );
     }
-    let MeCommand::Agents { command } = command;
+    let command = match command {
+        MeCommand::Agents { command } => command,
+        MeCommand::Changes { command } => return run_my_changes(remote, command).await,
+    };
     match command {
         MyAgentCommand::List => remote.call(Method::GET, "/api/me/agents", None, true).await,
         MyAgentCommand::Create {
