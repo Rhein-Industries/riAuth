@@ -353,7 +353,8 @@
     $("announcement").textContent = `${visible.length} ${visible.length === 1 ? "application" : "applications"} shown.`;
   }
 
-  async function setSection(section) { if (!state.data || !await navigate("catalogue")) return; state.section = section; $("search").value = ""; $("category").value = ""; render(); }
+  // Already on the catalogue, switch synchronously so input that follows the click is kept.
+  async function setSection(section) { if (!state.data || state.page !== "catalogue" && !await navigate("catalogue")) return; state.section = section; $("search").value = ""; $("category").value = ""; render(); }
   $("nav-all").addEventListener("click", () => setSection("all"));
   $("nav-favorites").addEventListener("click", () => setSection("favorites"));
   $("search").addEventListener("input", render); $("category").addEventListener("change", render);
