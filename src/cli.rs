@@ -7,6 +7,7 @@ mod grants;
 mod input;
 pub mod local;
 mod memberships;
+mod my_agents;
 mod transport;
 mod usb;
 mod workflows;
@@ -379,6 +380,11 @@ pub enum Command {
     Agent {
         #[command(subcommand)]
         command: AgentCommand,
+    },
+    /// Manage what you own with your saved session: `me agents`
+    Me {
+        #[command(subcommand)]
+        command: my_agents::MeCommand,
     },
     /// Create an instance, signing key and first administrator
     Init(local::InitArgs),
@@ -913,6 +919,28 @@ pub enum UserCommand {
         username: String,
     },
     ResetMfa {
+        username: String,
+    },
+    /// Username, display name and email of one account (profile.read)
+    Profile {
+        username: String,
+    },
+    /// Unrevoked sessions of one account (sessions.read)
+    Sessions {
+        username: String,
+    },
+    /// Remembered application consent of one account (consents.read)
+    Consents {
+        username: String,
+    },
+    /// Withdraw an application's consent and revoke its grants (consents.revoke);
+    /// requires --idempotency-key and --if-revision
+    ConsentRevoke {
+        username: String,
+        client: String,
+    },
+    /// Agents one account owns, with what each holds now (agents.read)
+    Agents {
         username: String,
     },
 }
@@ -1942,10 +1970,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
                     bail!("Agent creation requires --idempotency-key and --if-revision (from `riauth revision`)");
                 }
-                let permissions: Vec<crate::agent::Permission> = permissions.into_iter().map(|p| -> Result<_> {
-                    let (action, resource) = p.split_once('=').context("Permission must be action=resource")?;
-                    Ok(crate::agent::Permission { action: action.into(), resource: resource.into() })
-                }).collect::<Result<_>>()?;
+                let permissions = my_agents::permissions(permissions)?;
                 let result = remote.call(Method::POST, "/api/agents", Some(json!({"id": id, "permissions": permissions, "ttl": ttl, "parent": parent})), true).await?;
                 write_private(&out, &serde_json::to_vec(&result["credential"])?, false)?;
                 json!({"agent": result["agent"], "credential_file": out})
@@ -1967,6 +1992,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 remote.call(Method::DELETE, &format!("/api/agents/{}", segment(&id)?), None, true).await?
             },
         },
+        Command::Me { command } => my_agents::run(&remote, command).await?,
         Command::Status => remote.call(Method::GET, "/healthz", None, false).await?,
         Command::Discovery => {
             remote
@@ -2593,6 +2619,33 @@ async fn run_ssf(remote: &Remote, command: SsfCommand) -> Result<Value> {
 async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
     let (username, patch) = match command {
         UserCommand::List => return remote.call(Method::GET, "/api/users", None, true).await,
+        UserCommand::Profile { username } => return personal(remote, &username, "profile").await,
+        UserCommand::Sessions { username } => {
+            return personal(remote, &username, "sessions").await;
+        }
+        UserCommand::Consents { username } => {
+            return personal(remote, &username, "consents").await;
+        }
+        UserCommand::Agents { username } => return personal(remote, &username, "agents").await,
+        UserCommand::ConsentRevoke { username, client } => {
+            if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
+                bail!(
+                    "Consent withdrawal requires --idempotency-key and --if-revision (from `riauth revision`)"
+                );
+            }
+            return remote
+                .call(
+                    Method::DELETE,
+                    &format!(
+                        "/api/users/{}/consents/{}",
+                        segment(&username)?,
+                        segment(&client)?
+                    ),
+                    None,
+                    true,
+                )
+                .await;
+        }
         UserCommand::Create {
             username,
             email,
@@ -2684,6 +2737,17 @@ async fn run_user(remote: &Remote, command: UserCommand) -> Result<Value> {
             Method::PATCH,
             &format!("/api/users/{}", segment(&username)?),
             Some(json!(patch)),
+            true,
+        )
+        .await
+}
+/// One personal read about an account: profile, sessions, consents or agents.
+async fn personal(remote: &Remote, username: &str, view: &str) -> Result<Value> {
+    remote
+        .call(
+            Method::GET,
+            &format!("/api/users/{}/{view}", segment(username)?),
+            None,
             true,
         )
         .await

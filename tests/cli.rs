@@ -3796,3 +3796,275 @@ fn cli_api_and_state_source_writes_share_management_seam() {
     assert!(!events.to_string().contains(secret));
     assert!(!planned.to_string().contains(secret));
 }
+
+/// Signs in an ordinary user, created by the administrator, into its own session file.
+fn owner_session(dir: &Path, config: &Path, admin: &Path, username: &str) -> PathBuf {
+    let revision = current_revision(dir, config, admin);
+    success(invoke(
+        dir,
+        config,
+        admin,
+        &[
+            "--if-revision",
+            &revision,
+            "--idempotency-key",
+            &format!("create-{username}"),
+            "user",
+            "create",
+            username,
+            "--password-stdin",
+        ],
+        Some("cli-owner-password-value\n"),
+    ));
+    let session = dir.join(format!("{username}-session.json"));
+    success(invoke(
+        dir,
+        config,
+        &session,
+        &["login", username, "--password-stdin"],
+        Some("cli-owner-password-value\n"),
+    ));
+    session
+}
+
+#[test]
+fn cli_owner_reviews_approves_rotates_and_revokes_own_agent() {
+    let dir = TempDir::new().unwrap();
+    let (config, admin, _server) = serve_with_admin(dir.path());
+    let owner = owner_session(dir.path(), &config, &admin, "owner");
+    let me = |args: &[&str]| invoke(dir.path(), &config, &owner, args, None);
+    let credential = dir.path().join("helper.json");
+    let create = |extra: &[&str], out: &Path| {
+        let mut args = vec![
+            "me",
+            "agents",
+            "create",
+            "helper",
+            "--permission",
+            "profile.read=self",
+            "--permission",
+            "sessions.read=self",
+            "--permission",
+            "consents.read=self",
+            "--permission",
+            "consents.revoke=self",
+            "--permission",
+            "agents.read=self",
+            "--permission",
+            "state.read=state/revision",
+            "--ttl",
+            "3600",
+            "--out",
+            out.to_str().unwrap(),
+        ];
+        args.extend(extra);
+        me(&args)
+    };
+
+    // Without --yes and without a terminal, the proposal is shown and not approved.
+    let unapproved = create(&[], &credential);
+    let stderr = String::from_utf8_lossy(&unapproved.stderr).into_owned();
+    let (code, error) = failure(unapproved);
+    assert_eq!(code, 1);
+    assert!(error["message"].as_str().unwrap().contains("--yes"));
+    assert!(stderr.contains("Agent: helper"), "{stderr}");
+    assert!(stderr.contains("  profile.read=self\n"), "{stderr}");
+    assert!(stderr.contains("  profile.read=user/owner\n"), "{stderr}");
+    assert!(stderr.contains("Agent expires: "), "{stderr}");
+    assert!(stderr.contains(" UTC ("), "{stderr}");
+    assert!(!credential.exists());
+    let listed = success(me(&["me", "agents", "list"]));
+    assert_eq!(listed["agents"], serde_json::json!([]));
+    assert_eq!(listed["proposals"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["proposals"][0]["agent"]["id"], "helper");
+
+    // An existing destination is refused before anything is prepared or issued.
+    let taken = dir.path().join("taken.json");
+    std::fs::write(&taken, "keep").unwrap();
+    let (_, error) = failure(create(&["--yes"], &taken));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("already exists")
+    );
+    assert_eq!(std::fs::read_to_string(&taken).unwrap(), "keep");
+    let listed = success(me(&["me", "agents", "list"]));
+    assert_eq!(listed["proposals"].as_array().unwrap().len(), 1);
+
+    let created = success(create(&["--yes"], &credential));
+    assert_eq!(created["agent"]["id"], "helper");
+    assert_eq!(created["agent"]["enabled"], true);
+    assert!(created.get("credential").is_none());
+    let owner_id = created["agent"]["parent_user"].as_str().unwrap().to_owned();
+    assert_eq!(created["agent"]["authorized_by"], owner_id.as_str());
+    assert_eq!(
+        created["agent"]["effective_permissions"][0],
+        serde_json::json!({"action": "profile.read", "resource": "user/owner"})
+    );
+    let issued: Value = serde_json::from_slice(&std::fs::read(&credential).unwrap()).unwrap();
+    let mut keys = issued
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    keys.sort();
+    assert_eq!(keys, ["agent_id", "expires_at", "issuer", "token"]);
+    assert_eq!(issued["agent_id"], "helper");
+    let token = issued["token"].as_str().unwrap().to_owned();
+    assert!(!created.to_string().contains(&token));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&credential).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let listed = success(me(&["me", "agents", "list"]));
+    assert_eq!(listed["agents"].as_array().unwrap().len(), 1);
+
+    // The agent manages its owner's account through the personal commands.
+    let agent = |path: &Path, args: &[&str]| {
+        let mut full = vec!["--agent-file", path.to_str().unwrap()];
+        full.extend(args);
+        invoke(dir.path(), &config, &owner, &full, None)
+    };
+    let profile = success(agent(&credential, &["user", "profile", "owner"]));
+    assert_eq!(profile["username"], "owner");
+    let sessions = success(agent(&credential, &["user", "sessions", "owner"]));
+    assert!(!sessions.as_array().unwrap().is_empty());
+    assert_eq!(
+        success(agent(&credential, &["user", "consents", "owner"])),
+        serde_json::json!([])
+    );
+    let owned = success(agent(&credential, &["user", "agents", "owner"]));
+    assert_eq!(owned[0]["id"], "helper");
+    let (code, _) = failure(agent(&credential, &["user", "profile", "admin"]));
+    assert_eq!(code, 4);
+    let (_, error) = failure(agent(
+        &credential,
+        &["user", "consent-revoke", "owner", "reports"],
+    ));
+    assert!(error["message"].as_str().unwrap().contains("--if-revision"));
+    let revision = success(agent(&credential, &["revision"]))["revision"]
+        .as_u64()
+        .unwrap()
+        .to_string();
+    let withdrawn = success(agent(
+        &credential,
+        &[
+            "--if-revision",
+            &revision,
+            "--idempotency-key",
+            "withdraw-reports",
+            "user",
+            "consent-revoke",
+            "owner",
+            "reports",
+        ],
+    ));
+    assert_eq!(withdrawn["revoked"], true);
+    let (_, error) = failure(agent(&credential, &["me", "agents", "list"]));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("agent credential cannot manage")
+    );
+
+    let activity = success(me(&["me", "agents", "activity", "helper", "--limit", "5"]));
+    assert_eq!(activity["agent_id"], "helper");
+    assert!(
+        activity["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["action"] == "consent.revoke" && event["target"] == "reports")
+    );
+
+    // Rotation writes a new private file and retires the previous token.
+    let rotated = dir.path().join("rotated.json");
+    let result = success(me(&[
+        "me",
+        "agents",
+        "rotate",
+        "helper",
+        "--ttl",
+        "600",
+        "--out",
+        rotated.to_str().unwrap(),
+    ]));
+    assert_eq!(result["agent"]["id"], "helper");
+    assert!(result.get("credential").is_none());
+    let replacement: Value = serde_json::from_slice(&std::fs::read(&rotated).unwrap()).unwrap();
+    assert_ne!(replacement["token"], token.as_str());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&rotated).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let (code, _) = failure(agent(&credential, &["user", "profile", "owner"]));
+    assert_eq!(code, 3);
+    success(agent(&rotated, &["user", "profile", "owner"]));
+    let (_, error) = failure(me(&[
+        "me",
+        "agents",
+        "rotate",
+        "helper",
+        "--ttl",
+        "600",
+        "--out",
+        rotated.to_str().unwrap(),
+    ]));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("already exists")
+    );
+
+    let revoked = success(me(&["me", "agents", "revoke", "helper"]));
+    assert_eq!(revoked["enabled"], false);
+    let (code, _) = failure(agent(&rotated, &["user", "profile", "owner"]));
+    assert_eq!(code, 3);
+    // Another person's agents are not visible or revocable.
+    let (code, _) = failure(invoke(
+        dir.path(),
+        &config,
+        &admin,
+        &["me", "agents", "revoke", "helper"],
+        None,
+    ));
+    assert_eq!(code, 1);
+
+    // Audit names the owner and approver of the agent's own action.
+    let events = success(invoke(
+        dir.path(),
+        &config,
+        &admin,
+        &["audit", "--limit", "200"],
+        None,
+    ));
+    let events = events.as_array().unwrap();
+    let find = |action: &str| {
+        events
+            .iter()
+            .find(|event| event["action"] == action)
+            .unwrap_or_else(|| panic!("{action} missing"))
+    };
+    let create_event = find("agent.create");
+    assert_eq!(create_event["actor"], owner_id.as_str());
+    assert_eq!(create_event["details"]["self_service"], true);
+    let withdrawal = find("consent.revoke");
+    assert_eq!(withdrawal["actor"], "agent:helper");
+    assert_eq!(withdrawal["details"]["parent_user"], owner_id.as_str());
+    assert_eq!(withdrawal["details"]["authorized_by"], owner_id.as_str());
+    assert_eq!(find("agent.rotate")["details"]["self_service"], true);
+    assert_eq!(find("agent.revoke")["details"]["self_service"], true);
+    assert!(!Value::Array(events.clone()).to_string().contains(&token));
+}
