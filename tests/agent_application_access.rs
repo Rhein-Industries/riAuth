@@ -410,6 +410,65 @@ fn approval_needs_ownership_a_live_agent_an_opted_in_application_and_fresh_sign_
 }
 
 #[test]
+fn available_applications_are_the_opted_in_ones_open_to_the_person() {
+    let f = Fixture::new();
+    let owner = f.user("owner");
+    let token = agent(&f, &owner, "mail-helper", 3600);
+    f.core.create_group(&f.admin, "staff").unwrap();
+    application(&f, JMAP, |client| client.name = "Mail".into());
+    application(&f, "plain", |client| client.settings.agent_access = false);
+    application(&f, "login-only", |client| {
+        client.scopes = strings(&["openid", "offline_access"]);
+        client.settings.resources.clear();
+    });
+    application(&f, "staff-mail", |client| {
+        client.name = "Archive".into();
+        client.allowed_groups = strings(&["staff"]);
+        client.settings.resources.clear();
+    });
+    let ids = |listed: &Value| -> Vec<String> {
+        listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|app| text(app, "client_id"))
+            .collect()
+    };
+
+    // Only opted-in applications with an approvable scope, open to the person.
+    let listed = f.core.available_agent_applications(&owner).unwrap();
+    assert_eq!(ids(&listed), [JMAP]);
+    assert_eq!(
+        listed[0],
+        json!({
+            "client_id": JMAP,
+            "name": "Mail",
+            "scopes": ["contacts", "email", "groups", "mail", "profile"],
+            "resources": [{"uri": RESOURCE, "scopes": ["mail"]}],
+        })
+    );
+    // Group membership opens a restricted application; applications sort by name.
+    f.core
+        .group_member(&f.admin, "staff", "owner", true)
+        .unwrap();
+    let listed = f.core.available_agent_applications(&owner).unwrap();
+    assert_eq!(ids(&listed), ["staff-mail", JMAP]);
+    assert_eq!(listed[0]["resources"], json!([]));
+    // What is listed is what approval accepts.
+    f.core
+        .approve_my_agent_application(&owner, "mail-helper", access("staff-mail", &["mail"]))
+        .unwrap();
+    // The list needs the person's own sign-in, not an agent credential.
+    assert_eq!(
+        f.core
+            .available_agent_applications(&token)
+            .unwrap_err()
+            .code,
+        "invalid_token"
+    );
+}
+
+#[test]
 fn exchange_issues_only_an_owner_access_token_naming_the_agent() {
     let f = Fixture::new();
     let owner = f.user("owner");
@@ -1272,6 +1331,9 @@ async fn browser_owner_routes_approve_list_and_revoke_application_access() {
             )
         }
     };
+    let (status, available) = send("GET", "/api/portal/agent-applications", None).await;
+    assert_eq!(status, StatusCode::OK, "{available}");
+    assert_eq!(available[0]["client_id"], JMAP);
     let path = "/api/portal/agents/browser-agent/applications";
     let stale = json!({"expected_user_id": user_id, "expected_session_id": "another", "application": {"client_id": JMAP, "scopes": ["mail"]}});
     assert_eq!(
@@ -1324,6 +1386,9 @@ async fn browser_owner_routes_approve_list_and_revoke_application_access() {
             )
         }
     };
+    let (status, available) = bearer("GET", "/api/me/agent-applications".into(), None).await;
+    assert_eq!(status, StatusCode::OK, "{available}");
+    assert_eq!(available[0]["client_id"], JMAP);
     let (status, approved) = bearer(
         "POST",
         "/api/me/agents/browser-agent/applications".into(),

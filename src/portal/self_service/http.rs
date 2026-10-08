@@ -34,6 +34,10 @@ pub fn routes() -> Router<App> {
         .route("/api/portal/agents/{id}/revoke", post(revoke_agent))
         .route("/api/portal/agents/{id}/activity", get(agent_activity))
         .route(
+            "/api/portal/agent-applications",
+            get(available_agent_applications),
+        )
+        .route(
             "/api/portal/agents/{id}/applications",
             get(agent_applications).post(approve_agent_application),
         )
@@ -239,6 +243,18 @@ async fn agent_activity(
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     app.run(move |core| core.portal_my_agent_activity(sso.as_deref(), &id).map(Json))
         .await
+}
+
+async fn available_agent_applications(
+    State(app): State<App>,
+    headers: HeaderMap,
+) -> Result<Json<Value>> {
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.portal_available_agent_applications(sso.as_deref())
+            .map(Json)
+    })
+    .await
 }
 
 async fn agent_applications(

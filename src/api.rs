@@ -410,6 +410,10 @@ pub fn router(core: Core) -> Router {
         .route("/api/me/agents/{id}/rotate", post(rotate_my_agent))
         .route("/api/me/agents/{id}/activity", get(my_agent_activity))
         .route(
+            "/api/me/agent-applications",
+            get(available_agent_applications),
+        )
+        .route(
             "/api/me/agents/{id}/applications",
             get(my_agent_applications).post(approve_my_agent_application),
         )
@@ -2197,6 +2201,14 @@ async fn my_agent_activity(
             .map(Json)
     })
     .await
+}
+async fn available_agent_applications(
+    State(app): State<App>,
+    headers: HeaderMap,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.available_agent_applications(&token).map(Json))
+        .await
 }
 async fn my_agent_applications(
     State(app): State<App>,

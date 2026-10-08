@@ -391,6 +391,21 @@ pub enum Command {
         #[command(subcommand)]
         command: my_agents::ChangeCommand,
     },
+    /// As an agent, exchange your credential for an application your owner allowed;
+    /// the token goes to a new private --output-file
+    AgentToken {
+        /// The application's client id, sent as the exchange audience
+        client_id: String,
+        /// Scope to request, at most those allowed (default: all allowed); repeat for more
+        #[arg(long = "scope")]
+        scopes: Vec<String>,
+        /// The resource the approval names, if it names one
+        #[arg(long)]
+        resource: Option<String>,
+        /// DPoP proof for an application that binds tokens to a key
+        #[arg(long)]
+        dpop_proof_file: Option<PathBuf>,
+    },
     /// Create an instance, signing key and first administrator
     Init(local::InitArgs),
     /// Run the identity service with native TLS or a configured TLS reverse proxy
@@ -1999,6 +2014,14 @@ pub async fn run(cli: Cli) -> Result<()> {
         },
         Command::Me { command } => my_agents::run(&remote, command).await?,
         Command::Changes { command } => my_agents::run_changes(&remote, command).await?,
+        Command::AgentToken {
+            client_id,
+            scopes,
+            resource,
+            dpop_proof_file,
+        } => {
+            my_agents::agent_token(&remote, client_id, scopes, resource, dpop_proof_file).await?
+        }
         Command::Status => remote.call(Method::GET, "/healthz", None, false).await?,
         Command::Discovery => {
             remote

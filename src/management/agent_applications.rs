@@ -9,7 +9,7 @@
 use crate::{
     agent::{Agent, live_principal},
     config::Config,
-    core::{Core, audit_with_details},
+    core::{Core, audit_with_details, groups_for},
     crypto::{self, now},
     error::{Error, Result},
     management::owner_agents::OwnerSession,
@@ -123,6 +123,67 @@ pub(crate) fn list(
         })
         .collect();
     Ok(json!({"agent_id": agent.id, "applications": applications}))
+}
+
+/// The scopes of `scopes` an approval may name.
+fn approvable(scopes: &BTreeSet<String>) -> BTreeSet<String> {
+    scopes
+        .iter()
+        .filter(|scope| !REFUSED_SCOPES.contains(&scope.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Applications the person could approve an agent for: enabled, user-facing,
+/// opted in, with an approvable scope, and open to one of the person's groups
+/// when they name any. Each registered resource lists the scopes it covers.
+/// Approval still checks the application's whole policy with the fresh sign-in.
+pub(crate) fn available(core: &Core, tx: &Tx<'_>, auth: OwnerSession<'_>) -> Result<Value> {
+    let (owner, _) = core.owner_session(tx, &auth, false)?;
+    let groups = groups_for(tx, &owner.id)?;
+    let mut applications: Vec<_> = tx
+        .list::<Client>("clients")?
+        .into_iter()
+        .map(|(_, client)| client)
+        .filter(|client| {
+            client.enabled
+                && !client.service
+                && client.settings.agent_access
+                && (client.allowed_groups.is_empty() || !client.allowed_groups.is_disjoint(&groups))
+        })
+        .filter_map(|client| {
+            let scopes = approvable(&client.scopes);
+            if scopes.is_empty() {
+                return None;
+            }
+            let resources: Vec<_> = client
+                .settings
+                .resources
+                .iter()
+                .filter_map(|(uri, covered)| {
+                    let covered: BTreeSet<_> =
+                        approvable(covered).intersection(&scopes).cloned().collect();
+                    (!covered.is_empty()).then(|| json!({"uri": uri, "scopes": covered}))
+                })
+                .collect();
+            Some((
+                client.name.to_lowercase(),
+                json!({
+                    "client_id": client.id,
+                    "name": client.name,
+                    "scopes": scopes,
+                    "resources": resources,
+                }),
+            ))
+        })
+        .collect();
+    applications.sort_by(|(a, left), (b, right)| {
+        a.cmp(b)
+            .then_with(|| left["client_id"].as_str().cmp(&right["client_id"].as_str()))
+    });
+    Ok(Value::Array(
+        applications.into_iter().map(|(_, view)| view).collect(),
+    ))
 }
 
 /// Approve a live owned agent for one application. The owner must hold this
@@ -514,6 +575,10 @@ pub(crate) fn cleanup(tx: &Tx<'_>, at: u64) -> Result<()> {
 }
 
 impl Core {
+    pub fn available_agent_applications(&self, token: &str) -> Result<Value> {
+        self.store
+            .read(|tx| available(self, tx, OwnerSession::Bearer { token }))
+    }
     pub fn my_agent_applications(&self, token: &str, id: &str) -> Result<Value> {
         self.store
             .read(|tx| list(self, tx, OwnerSession::Bearer { token }, id))
@@ -541,6 +606,10 @@ impl Core {
 /// Browser forms of the owner routes. Every write carries the page binding;
 /// approval also needs a fresh sign-in in this browser.
 impl Core {
+    pub fn portal_available_agent_applications(&self, sso: Option<&str>) -> Result<Value> {
+        self.store
+            .read(|tx| available(self, tx, OwnerSession::BrowserRead { cookie: sso }))
+    }
     pub fn portal_my_agent_applications(&self, sso: Option<&str>, id: &str) -> Result<Value> {
         self.store
             .read(|tx| list(self, tx, OwnerSession::BrowserRead { cookie: sso }, id))

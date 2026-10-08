@@ -4068,3 +4068,179 @@ fn cli_owner_reviews_approves_rotates_and_revokes_own_agent() {
     assert_eq!(find("agent.revoke")["details"]["self_service"], true);
     assert!(!Value::Array(events.clone()).to_string().contains(&token));
 }
+
+#[test]
+fn cli_owner_allows_an_agent_an_application_and_the_agent_writes_its_token_privately() {
+    let dir = TempDir::new().unwrap();
+    let (config, admin, _server) = serve_with_admin(dir.path());
+    let settings = dir.path().join("jmap-settings.json");
+    std::fs::write(
+        &settings,
+        r#"{"agent_access": true, "resources": {"https://mail.example.test/jmap": ["mail"]}}"#,
+    )
+    .unwrap();
+    let revision = current_revision(dir.path(), &config, &admin);
+    success(invoke(
+        dir.path(),
+        &config,
+        &admin,
+        &[
+            "--if-revision",
+            &revision,
+            "--idempotency-key",
+            "create-jmap",
+            "client",
+            "create",
+            "jmap",
+            "--name",
+            "Mail",
+            "--redirect-uri",
+            "http://localhost:7777/callback",
+            "--scope",
+            "openid,mail,contacts",
+            "--settings-file",
+            settings.to_str().unwrap(),
+        ],
+        None,
+    ));
+    let owner = owner_session(dir.path(), &config, &admin, "owner");
+    let me = |args: &[&str]| invoke(dir.path(), &config, &owner, args, None);
+    let credential = dir.path().join("helper.json");
+    success(me(&[
+        "me",
+        "agents",
+        "create",
+        "helper",
+        "--permission",
+        "profile.read=self",
+        "--ttl",
+        "3600",
+        "--out",
+        credential.to_str().unwrap(),
+        "--yes",
+    ]));
+    let agent = |args: &[&str]| {
+        let mut full = vec!["--agent-file", credential.to_str().unwrap()];
+        full.extend(args);
+        invoke(dir.path(), &config, &owner, &full, None)
+    };
+
+    // The person sees what they could allow, with the approvable scopes only.
+    let available = success(me(&["me", "agents", "available"]));
+    assert_eq!(
+        available,
+        serde_json::json!([{
+            "client_id": "jmap",
+            "name": "Mail",
+            "scopes": ["contacts", "mail"],
+            "resources": [{"uri": "https://mail.example.test/jmap", "scopes": ["mail"]}],
+        }])
+    );
+    // An agent credential cannot list or allow applications.
+    let (_, error) = failure(agent(&["me", "agents", "available"]));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("agent credential cannot manage")
+    );
+
+    // Without --yes and without a terminal, the exact approval is shown and nothing is allowed.
+    let unapproved = me(&["me", "agents", "allow", "helper", "jmap", "--scope", "mail"]);
+    let stderr = String::from_utf8_lossy(&unapproved.stderr).into_owned();
+    let (code, error) = failure(unapproved);
+    assert_eq!(code, 1);
+    assert!(error["message"].as_str().unwrap().contains("--yes"));
+    assert!(
+        stderr.contains("Agent: helper\nApplication: Mail (jmap)\nScopes, exactly:\n  mail\n"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("Lasts: until the agent expires "),
+        "{stderr}"
+    );
+    let listed = success(me(&["me", "agents", "applications", "helper"]));
+    assert_eq!(listed["applications"], serde_json::json!([]));
+    // The agent has nothing to exchange yet.
+    let token_file = dir.path().join("jmap-token.json");
+    let token_path = token_file.to_str().unwrap();
+    let (code, error) = failure(agent(&["--output-file", token_path, "agent-token", "jmap"]));
+    assert_eq!(code, 2);
+    assert_eq!(error["code"], "invalid_grant");
+    assert!(!token_file.exists());
+
+    let allowed = me(&[
+        "me", "agents", "allow", "helper", "jmap", "--scope", "mail", "--ttl", "600", "--yes",
+    ]);
+    let stderr = String::from_utf8_lossy(&allowed.stderr).into_owned();
+    let approval = success(allowed);
+    assert!(
+        stderr.contains("Lasts: 600 seconds from approval"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("riauth --agent-file FILE agent-token jmap --scope mail --output-file"),
+        "{stderr}"
+    );
+    assert_eq!(approval["active"], true);
+    assert_eq!(approval["client_id"], "jmap");
+    assert_eq!(approval["scopes"], serde_json::json!(["mail"]));
+    let grant_id = approval["id"].as_str().unwrap().to_owned();
+
+    // The token is a secret: it is written only to a new private file.
+    let (_, error) = failure(agent(&["agent-token", "jmap"]));
+    assert!(error["message"].as_str().unwrap().contains("--output-file"));
+    let (_, error) = failure(me(&["--output-file", token_path, "agent-token", "jmap"]));
+    assert!(error["message"].as_str().unwrap().contains("--agent-file"));
+    let output = agent(&[
+        "--output-file",
+        token_path,
+        "agent-token",
+        "jmap",
+        "--scope",
+        "mail",
+    ]);
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let written = success(output);
+    assert_eq!(written["written"], true);
+    let response: Value = serde_json::from_slice(&std::fs::read(&token_file).unwrap()).unwrap();
+    let access_token = response["access_token"].as_str().unwrap();
+    assert!(!stdout.contains(access_token));
+    assert_eq!(response["scope"], "mail");
+    assert_eq!(
+        response["issued_token_type"],
+        "urn:ietf:params:oauth:token-type:access_token"
+    );
+    assert!(response.get("refresh_token").is_none());
+    assert!(response.get("id_token").is_none());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&token_file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let (_, error) = failure(agent(&["--output-file", token_path, "agent-token", "jmap"]));
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("already exists")
+    );
+
+    // Revoking the approval ends the agent's access to the application.
+    let revoked = success(me(&["me", "agents", "disallow", "helper", &grant_id]));
+    assert_eq!(revoked["active"], false);
+    let second = dir.path().join("second-token.json");
+    let (_, error) = failure(agent(&[
+        "--output-file",
+        second.to_str().unwrap(),
+        "agent-token",
+        "jmap",
+    ]));
+    assert_eq!(error["code"], "invalid_grant");
+    assert!(!second.exists());
+    let listed = success(me(&["me", "agents", "applications", "helper"]));
+    assert_eq!(listed["applications"][0]["active"], false);
+}

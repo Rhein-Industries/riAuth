@@ -1,16 +1,21 @@
 //! A person's own agents over `/api/me/agents`, with their saved session.
 //! Creation prepares an exact proposal, shows it, and approves that unchanged
 //! proposal only after confirmation; the one-time credential goes straight to
-//! a new private file, as `agent create` writes it.
-use super::{NON_INTERACTIVE, Remote, RemoteFailure, confirm, segment, write_private};
+//! a new private file, as `agent create` writes it. Allowing an agent to use an
+//! application shows the exact approval and asks the same way.
+use super::{
+    NON_INTERACTIVE, Remote, RemoteFailure, confirm, response_json, segment, write_private,
+};
 use anyhow::{Result, bail};
 use clap::Subcommand;
 use reqwest::Method;
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeSet,
     io::{self, IsTerminal},
     path::{Path, PathBuf},
 };
+use zeroize::Zeroizing;
 
 #[derive(Subcommand)]
 pub enum MeCommand {
@@ -94,6 +99,31 @@ pub enum MyAgentCommand {
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
+    /// Applications you can allow your agents to use, with their scopes and resources
+    Available,
+    /// The application approvals of an agent you own, usable or not
+    Applications { id: String },
+    /// Show one exact application approval, then let the agent use the application as you
+    Allow {
+        id: String,
+        /// The application's client id
+        client_id: String,
+        /// Scope the agent may use there; repeat for more
+        #[arg(long = "scope", required = true)]
+        scopes: Vec<String>,
+        /// A resource registered for the application; its tokens then name it as audience
+        #[arg(long)]
+        resource: Option<String>,
+        /// Lifetime in seconds, 60 to 2592000 (30 days), never past the agent's expiry
+        /// (default: until the agent expires)
+        #[arg(long)]
+        ttl: Option<u64>,
+        /// Allow the printed approval without asking
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Revoke one application approval at once; the agent's tokens for it stop working
+    Disallow { id: String, grant_id: String },
 }
 
 /// `action=resource` as the server's permission object.
@@ -189,6 +219,104 @@ pub(super) fn describe(proposal: &Value) -> String {
         at(&agent["expires_at"]),
         at(&proposal["expires_at"]),
     )
+}
+
+/// The exact application approval a person allows, in words.
+pub(super) fn describe_application(
+    agent: &Value,
+    application: &str,
+    scopes: &BTreeSet<String>,
+    resource: Option<&str>,
+    ttl: Option<u64>,
+) -> String {
+    let expires = agent["expires_at"]
+        .as_u64()
+        .map(|seconds| format!("{} ({seconds})", utc(seconds)))
+        .unwrap_or_default();
+    let scopes = scopes
+        .iter()
+        .map(|scope| format!("  {scope}\n"))
+        .collect::<String>();
+    let lifetime = match ttl {
+        Some(ttl) => {
+            format!("{ttl} seconds from approval, never past the agent's expiry {expires}")
+        }
+        None => format!("until the agent expires {expires}"),
+    };
+    format!(
+        "Agent: {}\nApplication: {application}\nScopes, exactly:\n{scopes}Resource: {}\nLasts: {lifetime}\nThe agent then obtains access tokens for this application that act as you.\n",
+        agent["id"].as_str().unwrap_or_default(),
+        resource.unwrap_or("(none; tokens name the application itself)"),
+    )
+}
+
+/// The command an approved agent runs to obtain its token.
+fn agent_token_command(
+    client_id: &str,
+    scopes: &BTreeSet<String>,
+    resource: Option<&str>,
+) -> String {
+    let mut command = format!("riauth --agent-file FILE agent-token {client_id}");
+    for scope in scopes {
+        command.push_str(&format!(" --scope {scope}"));
+    }
+    if let Some(resource) = resource {
+        command.push_str(&format!(
+            " --resource '{}'",
+            resource.replace('\'', "'\\''")
+        ));
+    }
+    command.push_str(" --output-file TOKEN_FILE");
+    command
+}
+
+/// An agent exchanges its own credential for one application's access token
+/// under its owner's approval, with no client authentication. The token is a
+/// secret: it goes to the new private `--output-file`, or to stdout only with
+/// `--show-secrets`.
+pub(super) async fn agent_token(
+    remote: &Remote,
+    client_id: String,
+    scopes: Vec<String>,
+    resource: Option<String>,
+    dpop_proof_file: Option<PathBuf>,
+) -> Result<Value> {
+    if remote.agent_file.is_none() {
+        bail!(
+            "agent-token exchanges an agent credential: pass --agent-file. Allow the agent with `riauth me agents allow`"
+        );
+    }
+    remote.secret_destination()?;
+    let credential = Zeroizing::new(remote.authentication()?);
+    let mut pairs = vec![
+        ("grant_type", crate::exchange::TOKEN_EXCHANGE.to_owned()),
+        ("subject_token", credential.as_str().to_owned()),
+        (
+            "subject_token_type",
+            crate::exchange::AGENT_TOKEN.to_owned(),
+        ),
+        ("audience", client_id),
+    ];
+    if !scopes.is_empty() {
+        pairs.push(("scope", scopes.join(" ")));
+    }
+    if let Some(resource) = resource {
+        pairs.push(("resource", resource));
+    }
+    let mut request = remote
+        .http
+        .post(format!(
+            "{}/oauth/token",
+            remote.issuer.trim_end_matches('/')
+        ))
+        .form(&pairs);
+    if let Some(path) = dpop_proof_file {
+        request = request.header(
+            "dpop",
+            crate::config::read_private_secret(&path, 16384)?.trim(),
+        );
+    }
+    response_json(request.send().await?).await
 }
 
 /// Approval and rotation need a recent sign-in; say how to get one.
@@ -382,6 +510,95 @@ pub(super) async fn run(remote: &Remote, command: MeCommand) -> Result<Value> {
                 )
                 .await
         }
+        MyAgentCommand::Available => {
+            remote
+                .call(Method::GET, "/api/me/agent-applications", None, true)
+                .await
+        }
+        MyAgentCommand::Applications { id } => {
+            remote
+                .call(
+                    Method::GET,
+                    &format!("/api/me/agents/{}/applications", segment(&id)?),
+                    None,
+                    true,
+                )
+                .await
+        }
+        MyAgentCommand::Allow {
+            id,
+            client_id,
+            scopes,
+            resource,
+            ttl,
+            yes,
+        } => {
+            let path = format!("/api/me/agents/{}/applications", segment(&id)?);
+            let listed = remote
+                .call(Method::GET, "/api/me/agents", None, true)
+                .await?;
+            let Some(agent) = listed["agents"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|agent| agent["id"] == id.as_str())
+            else {
+                bail!("You have no agent {id}");
+            };
+            let available = remote
+                .call(Method::GET, "/api/me/agent-applications", None, true)
+                .await?;
+            let application = available
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|application| application["client_id"] == client_id.as_str())
+                .and_then(|application| application["name"].as_str())
+                .filter(|name| *name != client_id)
+                .map_or_else(|| client_id.clone(), |name| format!("{name} ({client_id})"));
+            let scopes: BTreeSet<String> = scopes.into_iter().collect();
+            eprint!(
+                "{}",
+                describe_application(agent, &application, &scopes, resource.as_deref(), ttl)
+            );
+            if !yes {
+                if NON_INTERACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+                    || !io::stdin().is_terminal()
+                {
+                    bail!(
+                        "Application access for {id} was not approved: review it and repeat with --yes, or run on a terminal to confirm"
+                    );
+                }
+                if !confirm("Allow exactly this? [y/N] ")? {
+                    return Ok(json!({"approved": false, "agent_id": id, "client_id": client_id}));
+                }
+            }
+            let body =
+                json!({"client_id": client_id, "scopes": scopes, "resource": resource, "ttl": ttl});
+            let approval = remote
+                .call(Method::POST, &path, Some(body), true)
+                .await
+                .map_err(explain_fresh_sign_in)?;
+            eprintln!(
+                "The agent obtains a token with:\n  {}",
+                agent_token_command(&client_id, &scopes, resource.as_deref())
+            );
+            Ok(approval)
+        }
+        MyAgentCommand::Disallow { id, grant_id } => {
+            remote
+                .call(
+                    Method::DELETE,
+                    &format!(
+                        "/api/me/agents/{}/applications/{}",
+                        segment(&id)?,
+                        segment(&grant_id)?
+                    ),
+                    None,
+                    true,
+                )
+                .await
+        }
     }
 }
 
@@ -414,6 +631,32 @@ mod tests {
         assert!(text.contains("What they allow now:\n  (none)\n"));
         assert!(text.contains("Agent expires: 1970-01-02 00:00:00 UTC (86400)"));
         assert!(text.contains("until 1970-01-01 00:10:00 UTC (600)"));
+    }
+
+    #[test]
+    fn an_application_approval_reads_as_exact_scopes_and_lifetime() {
+        let agent = json!({"id": "helper", "expires_at": 86_400});
+        let scopes: BTreeSet<String> = ["mail".into(), "contacts".into()].into();
+        let text = describe_application(&agent, "Mail (jmap)", &scopes, None, None);
+        assert!(text.contains("Agent: helper\nApplication: Mail (jmap)\n"));
+        assert!(text.contains("Scopes, exactly:\n  contacts\n  mail\n"));
+        assert!(text.contains("Resource: (none; tokens name the application itself)\n"));
+        assert!(text.contains("Lasts: until the agent expires 1970-01-02 00:00:00 UTC (86400)\n"));
+        let text = describe_application(
+            &agent,
+            "jmap",
+            &scopes,
+            Some("https://mail.example.test/jmap"),
+            Some(3600),
+        );
+        assert!(text.contains("Resource: https://mail.example.test/jmap\n"));
+        assert!(text.contains(
+            "Lasts: 3600 seconds from approval, never past the agent's expiry 1970-01-02 00:00:00 UTC (86400)\n"
+        ));
+        assert_eq!(
+            agent_token_command("jmap", &scopes, Some("https://mail.example.test/jmap")),
+            "riauth --agent-file FILE agent-token jmap --scope contacts --scope mail --resource 'https://mail.example.test/jmap' --output-file TOKEN_FILE"
+        );
     }
 
     #[test]
