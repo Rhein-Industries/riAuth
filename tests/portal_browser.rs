@@ -629,6 +629,30 @@ async fn my_agents_page_reviews_issues_once_rotates_and_revokes() {
         .as_str()
         .unwrap()
         .to_owned();
+    // A mail application that accepts agents, with one resource that covers `mail` only.
+    core.create_client(
+        &admin,
+        NewClient {
+            client_id: "jmap".into(),
+            name: "Mail".into(),
+            confidential: true,
+            redirect_uris: vec!["http://localhost:7777/callback".into()],
+            scopes: ["openid", "mail", "contacts"].map(String::from).into(),
+            allowed_groups: Default::default(),
+            require_mfa: false,
+            service: false,
+            settings: ProviderSettings {
+                agent_access: true,
+                resources: [(
+                    "https://mail.example.test/jmap".to_owned(),
+                    ["mail".to_owned()].into(),
+                )]
+                .into(),
+                ..Default::default()
+            },
+        },
+    )
+    .unwrap();
     let server =
         tokio::spawn(axum::serve(listener, riauth::api::router(core.clone())).into_future());
     let (_browser, mut cdp) = open_browser(&browser, &profile).await;
@@ -659,7 +683,7 @@ async fn my_agents_page_reviews_issues_once_rotates_and_revokes() {
     cdp.eval("RiAuthAppearance.set('light')").await;
     assert_eq!(
         cdp.eval("[document.getElementById('agents-empty').hidden, document.getElementById('verify-panel').hidden, document.querySelectorAll('#personal-options input[type=checkbox]').length, document.getElementById('agent-applications').hidden, document.getElementById('agent-approvals').hidden]").await,
-        json!([false, true, 8, true, true])
+        json!([false, true, 8, false, true])
     );
     cdp.screenshot("agents-empty").await;
 
@@ -828,15 +852,89 @@ async fn my_agents_page_reviews_issues_once_rotates_and_revokes() {
             },
         )
         .unwrap();
-    core.approve_my_agent(
-        &terminal,
-        prepared["proposal_id"].as_str().unwrap(),
-        prepared["digest"].as_str().unwrap(),
-    )
-    .unwrap();
+    let second = core
+        .approve_my_agent(
+            &terminal,
+            prepared["proposal_id"].as_str().unwrap(),
+            prepared["digest"].as_str().unwrap(),
+        )
+        .unwrap()["credential"]["token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let exchange = || riauth::oidc::TokenRequest {
+        grant_type: riauth::exchange::TOKEN_EXCHANGE.into(),
+        subject_token: Some(second.clone()),
+        subject_token_type: Some(riauth::exchange::AGENT_TOKEN.into()),
+        audience: Some("jmap".into()),
+        ..Default::default()
+    };
     cdp.call("Page.reload", json!({})).await;
     cdp.wait("document.querySelectorAll('#agent-list .agent-status.active').length === 1")
         .await;
+
+    // Application access: the form offers the opted-in application's scopes, approves exactly
+    // the chosen ones and says how the agent exchanges its credential; revoking ends it.
+    cdp.eval(
+        "document.querySelector('[aria-label=\"Show applications of second-helper\"]').click()",
+    )
+    .await;
+    cdp.wait("document.querySelector('.applications-region [role=status]')?.textContent === 'No applications yet.'").await;
+    assert_eq!(
+        cdp.eval("[document.querySelector('[aria-label=\"Hide applications of second-helper\"]').getAttribute('aria-expanded'), [...document.querySelectorAll('.application-form select')[0].options].map(o => o.textContent)]").await,
+        json!(["true", ["Choose an application", "Mail (jmap)"]])
+    );
+    cdp.eval("{ const s = document.querySelector('.application-form select'); s.value = 'jmap'; s.dispatchEvent(new Event('change')) }").await;
+    assert_eq!(
+        cdp.eval("[[...document.querySelectorAll('.application-form .permission-choice input')].map(i => i.value), document.querySelectorAll('.application-form select')[1].closest('.field').hidden]").await,
+        json!([["contacts", "mail"], false])
+    );
+    // The resource narrows the scopes to those it covers.
+    cdp.eval("{ const r = document.querySelectorAll('.application-form select')[1]; r.value = 'https://mail.example.test/jmap'; r.dispatchEvent(new Event('change')) }").await;
+    assert_eq!(
+        cdp.eval("[...document.querySelectorAll('.application-form .permission-choice input')].map(i => i.value)").await,
+        json!(["mail"])
+    );
+    cdp.eval("{ const r = document.querySelectorAll('.application-form select')[1]; r.value = ''; r.dispatchEvent(new Event('change')) }").await;
+    cdp.wait("!document.querySelector('.application-form .button.primary').hasAttribute('aria-disabled')").await;
+    cdp.eval("document.querySelector('.application-form .button.primary').click()")
+        .await;
+    assert_eq!(
+        cdp.eval("[document.querySelector('.application-form .form-error').textContent, document.activeElement.className]").await,
+        json!(["Choose at least one scope.", "form-error"])
+    );
+    assert!(core.token(exchange()).is_err());
+    cdp.eval("window.confirm = () => true; document.querySelector('.application-form input[value=\"mail\"]').click(); document.querySelector('.application-form .button.primary').click()").await;
+    cdp.wait("document.getElementById('status').textContent === 'second-helper may now use Mail (jmap) as you.'").await;
+    cdp.wait("document.querySelector('.application-item .agent-status.active') !== null")
+        .await;
+    assert_eq!(
+        cdp.eval("[document.activeElement.textContent, [...document.querySelectorAll('.exchange-hint dt')].map(d => d.textContent), [...document.querySelectorAll('.exchange-hint dd')].map(d => d.textContent).slice(2), document.querySelector('.exchange-hint p:nth-of-type(3) code').textContent]").await,
+        json!([
+            "How second-helper gets a token for Mail (jmap)",
+            ["grant_type", "subject_token", "subject_token_type", "audience", "scope"],
+            ["urn:riauth:params:oauth:token-type:agent", "jmap", "mail"],
+            "riauth --agent-file riauth-agent-second-helper.json agent-token jmap --scope mail --output-file jmap-token.json"
+        ])
+    );
+    let issued = core.token(exchange()).unwrap();
+    assert_eq!(issued["scope"], "mail");
+    assert!(issued.get("refresh_token").is_none());
+    cdp.screenshot("agents-applications").await;
+    for width in [320, 1280] {
+        cdp.width(width, 900).await;
+        if width == 320 {
+            cdp.screenshot("agents-applications-narrow").await;
+        }
+    }
+    cdp.wait("!document.querySelector('[aria-label=\"Revoke Mail (jmap) for second-helper\"]').hasAttribute('aria-disabled')").await;
+    cdp.eval(
+        "document.querySelector('[aria-label=\"Revoke Mail (jmap) for second-helper\"]').click()",
+    )
+    .await;
+    cdp.wait("document.getElementById('status').textContent === 'second-helper can no longer use Mail (jmap).'").await;
+    cdp.wait("document.querySelector('.application-item .agent-status.revoked') !== null && !document.querySelector('.exchange-hint')").await;
+    assert_eq!(core.token(exchange()).unwrap_err().code, "invalid_grant");
     cdp.wait("!document.querySelector('[aria-label=\"Revoke second-helper\"]').hasAttribute('aria-disabled')").await;
     cdp.eval("window.confirm = () => true; document.querySelector('[aria-label=\"Revoke second-helper\"]').click()").await;
     cdp.wait("document.getElementById('status').textContent === 'second-helper is revoked.'")
