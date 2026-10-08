@@ -47,6 +47,7 @@ pub(crate) mod owner_agents;
 mod pam;
 mod personal;
 mod portal_approvals;
+pub(crate) mod prepared_changes;
 mod sessions;
 mod source_links;
 #[cfg(feature = "platform")]

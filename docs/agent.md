@@ -74,6 +74,7 @@ These narrow actions manage one account. Each names `user/<username>`, `*`, or `
 | `consents.revoke` | `DELETE /api/users/{username}/consents/{client_id}`: withdraws consent and revokes that account's outstanding grants for the client. |
 | `agents.read` | `GET /api/users/{username}/agents`: owned agents with their effective permissions. |
 | `agents.revoke` | `DELETE /api/agents/{id}` for an agent that account owns, including the calling agent itself. When an agent revokes another agent, the audit event adds `target_parent_user`. |
+| `changes.prepare` | `POST /api/changes`: prepare one sensitive change for the agent's owner to approve ([prepared sensitive changes](#prepared-sensitive-changes)). Nothing changes until the owner approves. |
 
 Agents still cannot alter an administrator account through `profile.write`. Writes keep the usual `If-Match` and `Idempotency-Key` requirements for scoped callers.
 
@@ -88,6 +89,30 @@ A signed-in person can manage agents they own without an administrator. Every ro
 5. `DELETE /api/me/agents/{id}` revokes an agent at once, with no fresh sign-in.
 
 A person can hold at most 20 enabled agents and open proposals together. Another person's agent answers 404. The same operations are available to the signed-in browser under `/api/portal/agents`, bound to the page's account and session. Audit events for these operations have the person as actor and `details.self_service: true`.
+
+### Prepared sensitive changes
+
+An agent never changes authentication factors, recovery channels, administrator roles or delegated grants on its own. An owned agent holding `changes.prepare` on `user/<username>` (or `self`) prepares one exact change, and its owner approves it through the same fresh sign-in and MFA rule as agent approval. The change then runs as the owner, through the writer that already guards it. No password, one-time code or factor secret passes through these routes.
+
+`POST /api/changes` takes `{"target": "<username>", "change": {...}}` with one of:
+
+| `change` | Meaning | Target |
+| --- | --- | --- |
+| `{"kind":"email","email":"..."}` | Set the recovery address, in plain ASCII so the owner approves it exactly as shown. It is saved unverified and becomes the account's email at once, with `email_verified` false; the person confirms it through the verification flow. | The owner |
+| `{"kind":"remove_factor","factor":"totp"}` | Remove the authenticator app and its recovery codes. Every session ends. | The owner |
+| `{"kind":"remove_factor","factor":"passkey","credential_id":"..."}` | Remove one passkey. Every session ends. The writer still keeps the last local credential and an administrator's second passkey. | The owner |
+| `{"kind":"admin","admin":true}` or `false` | Grant or remove full administrator rights. | Another account |
+| `{"kind":"delegated_grants","grants":[{"role":"...","scope":"..."}]}` | Replace the complete [delegated grant](#delegated-human-administration-m04-first-slice) set; `[]` removes every grant. | Another account |
+
+The response shows the change `id`, its `digest`, a human-readable `summary` of exactly what approval will do, and `expires_at`, 24 hours later. An exact retry of an open change returns that change. A person's agents may hold 20 open changes together. `GET /api/changes` lists the calling agent's changes with `status`: `pending`, `approved`, `staged`, `rejected`, `expired`, or `void` once the agent is revoked or expired, its owner is disabled, or it no longer holds `changes.prepare` on the target. Because an ordinary person's agents act within the person's own authority, only an administrator's agent can prepare role or grant changes for other accounts, and only an agent that administrator authorized themselves (`authorized_by` is the owner): an agent another administrator issued for them cannot make them the author of a reviewed change. An agent without an owner cannot prepare at all.
+
+The owner lists open changes with `GET /api/me/changes`, approves one with `POST /api/me/changes/{id}/approve` and `{"digest"}`, or declines it with `POST /api/me/changes/{id}/reject`. Approval needs a sign-in within the last five minutes, with a second factor when the account has one; rejection does not. An agent credential is refused on these routes, and another person's change answers 404. Approval returns 409 if the digest differs, the change was already decided or has expired, the preparing agent is void, or the target's relevant state changed since preparation (address, factors, role, enabled state, session epoch, stored grants or the identity a requested grant scope names); prepare it again. Role and grant changes also need the owner to be a full administrator at approval, or 403. Then:
+
+- Address and factor changes use the person's own account writers. A change the owner approved for their own account is not operator credential exposure.
+- An administrator change is applied by the user update writer with the owner as actor. Elevation provenance and credential-exposure checks, last-administrator protection and owned-agent revocation on promotion all apply; an account whose credentials an agent chose stays ineligible for promotion.
+- A grant set that only changes `help_desk`, `application_owner` or `auditor` grants is applied by the immediate writer. One that adds, removes or rebinds `directory_operator` or `security_administrator` is staged as a [reviewed grant change](reviewed-grants.md) with the owner as author, reported as `staged` with its `reviewed_change_id`; it still needs a distinct reviewer and executor.
+
+The same owner operations are available to the signed-in browser under `/api/portal/changes`, bound to the page's account and session; approving a factor removal clears that browser's session. Audit events `prepared_change.prepare` (the agent as actor), `prepared_change.approve` and `prepared_change.reject` (the owner as actor) carry `change_id`, `kind`, `digest` and `prepared_by: "agent:<id>"`; the applied change is audited by its own writer with the owner as actor. Prepared changes are not restored from a backup.
 
 ## Delegated human administration (M04 first slice)
 

@@ -15,7 +15,7 @@ future authorized work, not implemented tests or claims of passing coverage.
 | Credentials and recovery | RI-CRED-001–003 | Factor/recovery checks exist; full browser self-service is not established. |
 | Sessions, proofs, consumption and revocation | RI-SES-001–005 | Browser, bearer, grant and replay paths exist; expiry must remain distinct from revocation. |
 | Authorization and protocol binding | RI-AUTH-001–002 | Shared online checks and protocol-specific binding exist. |
-| Agents, management approval, retries and audit | RI-MGT-001–005 | Current management core exists; exact secret-byte review, cached-result authority and future multi-party review need explicit contracts. |
+| Agents, management approval, retries and audit | RI-MGT-001–006 | Current management core exists; exact secret-byte review, cached-result authority and future multi-party review need explicit contracts. |
 | Connectors, offboarding and signals | RI-CON-001–004 | Local transactions and reviewed remote work exist. A disable commits per-target deactivation intent, which is delivered later under a scoped controller. |
 | Workflows | RI-WF-001–002 | Embedded source stages exist; general configurable workflows are intended policy. |
 | Proxies | RI-PROXY-001–002 | Forward auth and embedded proxy exist; deployment header trust remains an external dependency. |
@@ -522,6 +522,51 @@ scope/parent escape, changed content/dependencies and revoked reviewer/executor;
 rejection leaves no mutation or success audit. Q05-R03/R05 races approvals,
 permission/policy changes and execution; stale approval cannot authorize a new
 operation and retries produce one attributable committed outcome.
+
+### RI-MGT-006: agent-prepared sensitive changes need exact human approval
+
+**Contract.** An agent cannot change an authentication factor, recovery
+address, administrator role or delegated grant set by preparing it. An owned
+agent with `changes.prepare` on the target records one exact change, bound by
+digest to its content and to a fingerprint of the target's relevant state.
+Only the owner applies it, by digest, with a sign-in from the last five minutes
+and MFA when enrolled; agent credentials cannot approve and another person's
+change is not found. At approval the change must be open and unexpired, the
+preparing agent live and still authorized, the target state unchanged, and,
+for role and grant changes, the owner a current full administrator who
+authorized that agent themselves, so another administrator cannot author a
+reviewed change through it and then review it. The change
+then runs as the owner through its existing writer, so elevation provenance,
+credential exposure, last-administrator and passkey rules still hold; a
+reviewed grant role is only staged for the M05 author/reviewer/executor
+workflow. Owner-approved changes to the owner's own account are not operator
+exposure. Prepared changes carry no secret and are invalidated on restore.
+
+**Observed enforcement.** [Prepared changes](../../src/management/prepared_changes.rs)
+`prepare`, `approve`, `state`, `preparer_live`; [owner self-service](../../src/management/owner_agents.rs)
+`owner_session`; [grants](../../src/management/grants.rs) `requires_review`,
+`stage_grants`, `write_immediate_grants`; [management](../../src/management.rs)
+`update_user`; [identity](../../src/identity.rs) `user_security_transition`;
+[recovery](../../src/recovery.rs) `INVALIDATED`.
+
+**Existing regressions.** [Prepared changes](../../tests/agent_prepared_changes.rs)
+`an_owner_approves_their_own_recovery_address_change`,
+`an_owner_approves_removal_of_their_authenticator_app`,
+`an_owner_approves_removal_of_one_passkey`,
+`an_administrator_owner_approves_a_role_change_and_agent_credentials_stay_unelevated`,
+`low_risk_grants_apply_and_reviewed_roles_are_only_staged`,
+`approval_binds_the_exact_change_and_the_account_state`,
+`approval_needs_fresh_authentication`,
+`revoking_the_agent_voids_its_pending_changes`,
+`only_a_current_administrator_approves_role_and_grant_changes`,
+`an_ordinary_owner_agent_cannot_prepare_role_or_grant_changes`,
+`change_requests_carry_no_secret_or_unknown_field`,
+`prepared_changes_do_not_survive_restore_or_outlive_expiry`,
+`http_routes_serve_the_agent_the_owner_and_the_bound_browser`.
+
+**Missing coverage / later contract.** Q05-R03/R05 race approval with agent
+revocation, owner demotion and concurrent target writes. No CLI or portal page
+presents these routes yet.
 
 ## Connectors and offboarding
 

@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 
 pub use crate::identity::agent_credentials::{Agent, Permission};
 pub use crate::management::owner_agents::AgentProposalInput;
+pub use crate::management::prepared_changes::{Factor, PrepareChange, SensitiveChange};
 
 /// Prefix of the management credential for a browser session: the SSO cookie value follows.
 /// `api::bearer` rejects whitespace, so an Authorization header can never carry one; only the
@@ -75,6 +76,7 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("consents.revoke", "user"),
     ("agents.read", "user"),
     ("agents.revoke", "user"),
+    ("changes.prepare", "user"),
 ];
 
 /// Narrow management of one person's own account. Each names `user/<username>`,
@@ -88,6 +90,7 @@ pub const PERSONAL_ACTIONS: &[&str] = &[
     "consents.revoke",
     "agents.read",
     "agents.revoke",
+    "changes.prepare",
 ];
 
 /// Permission resource naming the owner's own account. Valid only for personal

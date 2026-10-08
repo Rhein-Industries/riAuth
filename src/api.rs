@@ -8,6 +8,7 @@ pub use server::{Shutdown, into_rustls_server, serve, tls_configuration};
 mod interaction;
 mod invitation;
 mod observability;
+mod prepared_changes;
 mod probes;
 #[cfg(feature = "test-support")]
 #[doc(hidden)]
@@ -319,6 +320,7 @@ pub fn router(core: Core) -> Router {
         .route("/api/account/reset-request", post(account_reset_request))
         .route("/api/account/complete", post(account_complete))
         .merge(invitation::routes())
+        .merge(prepared_changes::routes())
         .route(
             "/api/account/invitations",
             get(account_invitations).post(account_invite),

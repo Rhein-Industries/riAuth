@@ -991,6 +991,8 @@ impl Core {
         self.store
             .write(|tx| crate::management::owner_agents::cleanup(tx, at))?;
         self.store
+            .write(|tx| crate::management::prepared_changes::cleanup(tx, at))?;
+        self.store
             .write(|tx| crate::provisioning::cleanup(tx, at))?;
         self.store.write(|tx| crate::directory::cleanup(tx, at))?;
         #[cfg(feature = "platform")]

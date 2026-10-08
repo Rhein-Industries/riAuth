@@ -127,12 +127,18 @@ pub(super) fn full_administrator(
     token: &str,
 ) -> Result<(Principal, Authority)> {
     let actor = core.principal(tx, token)?;
+    let current = human_authority(tx, &actor)?;
+    Ok((actor, current))
+}
+
+/// The current authority of a full human administrator; agents and grant
+/// holders are refused.
+fn human_authority(tx: &Tx<'_>, actor: &Principal) -> Result<Authority> {
     if actor.agent || actor.delegated {
         return Err(Error::forbidden());
     }
-    crate::reconciliation::validate_apply_lease(tx, &actor)?;
-    let current = authority(tx, &actor.id)?;
-    Ok((actor, current))
+    crate::reconciliation::validate_apply_lease(tx, actor)?;
+    authority(tx, &actor.id)
 }
 
 pub(super) fn revalidate_authority(tx: &Tx<'_>, expected: &Authority) -> Result<()> {
@@ -423,6 +429,79 @@ fn revalidate(core: &Core, tx: &Tx<'_>, actor: &Principal, change: &Change) -> R
     Ok(holder)
 }
 
+/// Whether replacing `username`'s grants as `actor` adds, removes or rebinds
+/// a high-privilege role, so it must be staged for review. Runs the same
+/// validation as both writers.
+pub(crate) fn requires_review(
+    core: &Core,
+    tx: &Tx<'_>,
+    actor: &Principal,
+    username: &str,
+    grants: Vec<GrantInput>,
+) -> Result<bool> {
+    let (_, before, after) = prepare(core, tx, actor, username, grants)?;
+    Ok(high_privilege(&before) != high_privilege(&after))
+}
+
+/// Stage a reviewed change with `actor` as its author. The direct route and an
+/// owner approving a change their agent prepared share this one writer.
+pub(crate) fn stage_grants(
+    core: &Core,
+    tx: &Tx<'_>,
+    actor: &Principal,
+    username: &str,
+    grants: Vec<GrantInput>,
+) -> Result<Value> {
+    let author = human_authority(tx, actor)?;
+    let (holder, before, after) = prepare(core, tx, actor, username, grants)?;
+    if high_privilege(&before) == high_privilege(&after) {
+        return Err(Error::bad(
+            "This grant change can use the immediate grant endpoint",
+        ));
+    }
+    // Bound both retained work and each scan, without evicting live approvals.
+    let mut retained = 0;
+    for (key, old) in tx.scan::<Change>(CHANGES, None, MAX_CHANGES + 1)? {
+        if old.proposal.expires_at <= now() {
+            if matches!(old.status, Status::Pending | Status::Approved) {
+                audit_change(tx, &actor.id, "reviewed_grants.expire", &old)?;
+            }
+            tx.delete(CHANGES, &key)?;
+        } else {
+            retained += 1;
+        }
+    }
+    if retained >= MAX_CHANGES {
+        return Err(Error::conflict("Reviewed grant change capacity reached"));
+    }
+    let at = now();
+    let proposal = Proposal {
+        id: id(),
+        resource: format!("user/{username}/delegated-grants"),
+        username: username.into(),
+        holder_id: holder.id.clone(),
+        author,
+        base_revision: tx.get::<u64>("meta", "revision")?.unwrap_or(0),
+        resource_revision: resource_revision(core, tx, &holder, &before, &after)?,
+        policy_revision: policy_revision(&core.config)?,
+        before,
+        after,
+        created_at: at,
+        expires_at: at + LIFETIME,
+    };
+    let change = Change {
+        digest: canonical_digest(&proposal)?,
+        proposal,
+        status: Status::Pending,
+        approvals: vec![],
+        executor: None,
+        executed_at: None,
+    };
+    tx.put(CHANGES, &change.proposal.id, &change)?;
+    audit_change(tx, &actor.id, "reviewed_grants.stage", &change)?;
+    Ok(json!(change))
+}
+
 impl Core {
     /// Immediate low-risk changes share validation and persistence with execution.
     pub fn set_human_grants(
@@ -452,54 +531,8 @@ impl Core {
         grants: Vec<GrantInput>,
     ) -> Result<Value> {
         self.mutation(token, |tx| {
-            let (actor, author) = full_administrator(self, tx, token)?;
-            let (holder, before, after) = prepare(self, tx, &actor, username, grants)?;
-            if high_privilege(&before) == high_privilege(&after) {
-                return Err(Error::bad(
-                    "This grant change can use the immediate grant endpoint",
-                ));
-            }
-            // Bound both retained work and each scan, without evicting live approvals.
-            let mut retained = 0;
-            for (key, old) in tx.scan::<Change>(CHANGES, None, MAX_CHANGES + 1)? {
-                if old.proposal.expires_at <= now() {
-                    if matches!(old.status, Status::Pending | Status::Approved) {
-                        audit_change(tx, &actor.id, "reviewed_grants.expire", &old)?;
-                    }
-                    tx.delete(CHANGES, &key)?;
-                } else {
-                    retained += 1;
-                }
-            }
-            if retained >= MAX_CHANGES {
-                return Err(Error::conflict("Reviewed grant change capacity reached"));
-            }
-            let at = now();
-            let proposal = Proposal {
-                id: id(),
-                resource: format!("user/{username}/delegated-grants"),
-                username: username.into(),
-                holder_id: holder.id.clone(),
-                author,
-                base_revision: tx.get::<u64>("meta", "revision")?.unwrap_or(0),
-                resource_revision: resource_revision(self, tx, &holder, &before, &after)?,
-                policy_revision: policy_revision(&self.config)?,
-                before,
-                after,
-                created_at: at,
-                expires_at: at + LIFETIME,
-            };
-            let change = Change {
-                digest: canonical_digest(&proposal)?,
-                proposal,
-                status: Status::Pending,
-                approvals: vec![],
-                executor: None,
-                executed_at: None,
-            };
-            tx.put(CHANGES, &change.proposal.id, &change)?;
-            audit_change(tx, &actor.id, "reviewed_grants.stage", &change)?;
-            Ok(json!(change))
+            let actor = self.principal(tx, token)?;
+            stage_grants(self, tx, &actor, username, grants)
         })
     }
 
