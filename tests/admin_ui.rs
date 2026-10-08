@@ -424,6 +424,7 @@ async fn explicit_headless_mode_keeps_json_and_oidc_routes() {
         "/apps",
         "/admin",
         "/account/security",
+        "/account/agents",
         "/account/sources/continue",
         "/device",
         "/setup",

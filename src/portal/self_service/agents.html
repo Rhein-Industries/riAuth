@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="riauth-base" content="__BASE__">
+  <title>My agents · riAuth</title>
+  <script src="__BASE__portal/assets/appearance.js"></script>
+  <link rel="stylesheet" href="__BASE__portal/assets/app.css">
+  <link rel="stylesheet" href="__BASE__portal/assets/security.css">
+  <link rel="stylesheet" href="__BASE__portal/assets/agents.css">
+  <script src="__BASE__portal/assets/auth.js" defer></script>
+  <script src="__BASE__portal/assets/capabilities.js" defer></script>
+  <script src="__BASE__portal/assets/agents.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to your agents</a>
+<div class="security-shell">
+  <header class="security-header">
+    <a class="security-brand" href="__BASE__apps"><img src="__BASE__portal/assets/riauth-mark.svg" alt="" aria-hidden="true">ri<span>Auth</span></a>
+    <nav class="security-navigation" aria-label="Account navigation"><a id="agents-events-link" class="button secondary" data-capability="audit.self_hosted_event_map" href="__BASE__events" hidden>Event map</a><a id="agents-admin-link" class="button secondary" href="__BASE__admin" hidden>Administration</a><a class="button secondary" href="__BASE__account/security">Sessions and consent</a><a class="button secondary" href="__BASE__apps">Back to applications</a></nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <p class="eyebrow">YOUR ACCOUNT</p>
+    <h1>My agents<span class="heading-dot">.</span></h1>
+    <p class="security-intro">An agent is a credential for a tool or script that acts for you. It can do only what you approve here, never more than you can do yourself, and stops working when it expires or you revoke it.</p>
+    <p id="status" class="notice" role="status" aria-live="polite" hidden></p>
+    <section id="signed-out" class="security-card" hidden>
+      <h2>Sign in to manage your agents</h2>
+      <p>Your session has ended. Sign in from your applications, then return here.</p>
+      <a class="button primary" href="__BASE__apps">Go to applications</a>
+    </section>
+    <div id="agents-content" hidden>
+      <p class="account-line" id="account-line"></p>
+      <section id="verify-panel" class="security-card verify-panel" aria-labelledby="verify-title" hidden>
+        <h2 id="verify-title">Confirm it is you</h2>
+        <p id="verify-hint">Issuing an agent credential needs a sign-in in this browser within the last five minutes. Confirm it is you, then choose your action again.</p>
+        <p id="verify-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+        <button id="verify-passkey" class="button primary" data-capability="identity.passkeys" type="button">Use a passkey</button>
+        <form id="verify-form" novalidate>
+          <div class="field"><label for="verify-password">Password</label><input id="verify-password" type="password" autocomplete="current-password" maxlength="1024" required></div>
+          <div class="field"><label for="verify-otp">Authenticator code (if enabled)</label><input id="verify-otp" class="otp-input" data-otp autocomplete="one-time-code" inputmode="numeric" autocapitalize="none" spellcheck="false" maxlength="8" pattern="[0-9]{6}([0-9]{2})?" placeholder="000000" aria-describedby="verify-otp-hint"><p class="field-hint" id="verify-otp-hint">Leave empty if your account has no authenticator app.</p><button id="verify-otp-mode" class="text-button otp-switch" type="button" aria-controls="verify-otp">Use a recovery code</button></div>
+          <button id="verify-password-button" class="button secondary" type="submit">Confirm with password</button>
+        </form>
+      </section>
+      <section id="credential-panel" class="security-card credential-panel" aria-labelledby="credential-title" hidden>
+        <h2 id="credential-title" tabindex="-1">Save this credential now</h2>
+        <p>This is the only time riAuth shows it. It is not stored in this browser, and riAuth keeps only a fingerprint of it. Anyone who has it can act as this agent until it expires or you revoke it.</p>
+        <dl class="review-facts"><dt>Agent</dt><dd id="credential-agent"></dd><dt>Expires</dt><dd id="credential-expires"></dd></dl>
+        <pre class="credential-json" id="credential-json" tabindex="0" aria-label="Agent credential JSON"></pre>
+        <div class="review-actions"><button id="credential-copy" class="button primary" type="button">Copy credential</button><button id="credential-download" class="button secondary" type="button">Download JSON</button></div>
+        <p class="field-hint">Use the downloaded file with <code>riauth --agent-file FILE</code>. Keep it private: readable only by you.</p>
+        <p id="credential-status" class="field-hint" role="status" aria-live="polite"></p>
+        <div class="credential-done"><label class="permission-choice"><input id="credential-saved" type="checkbox"><span>I saved this credential</span></label><button id="credential-close" class="button secondary" type="button">Done</button></div>
+      </section>
+      <section id="review-panel" class="security-card review-panel" aria-labelledby="review-title" hidden>
+        <h2 id="review-title" tabindex="-1">Review and approve</h2>
+        <p>Approving issues a credential for exactly this agent. Nothing has been issued yet.</p>
+        <dl class="review-facts"><dt>Agent</dt><dd id="review-agent"></dd><dt>Expires</dt><dd id="review-expires"></dd><dt>Approve by</dt><dd id="review-deadline"></dd></dl>
+        <h3 class="review-heading">Permissions you approve</h3>
+        <ul id="review-permissions" class="permission-list"></ul>
+        <h3 class="review-heading">What they allow now</h3>
+        <ul id="review-effective" class="permission-list"></ul>
+        <div class="review-actions"><button id="review-approve" class="button primary" type="button">Approve and issue</button><button id="review-cancel" class="button secondary" type="button">Not now</button></div>
+      </section>
+      <section class="security-card" aria-labelledby="agents-title">
+        <div class="section-heading"><div><h2 id="agents-title" tabindex="-1">Your agents</h2><p>Each agent holds the permissions you approved, limited to what your account can do now. Replacing a credential stops the old one at once; revoking stops the agent for good.</p></div></div>
+        <ul id="agent-list" class="security-list"></ul>
+        <p id="agents-empty" class="field-hint" hidden>You have no agents yet. Prepare one below.</p>
+      </section>
+      <section id="proposals" class="security-card" aria-labelledby="proposals-title" hidden>
+        <div class="section-heading"><div><h2 id="proposals-title">Prepared, not yet approved</h2><p>Each can be approved for ten minutes after you prepared it. Nothing is issued until you approve.</p></div></div>
+        <ul id="proposal-list" class="security-list"></ul>
+      </section>
+      <section class="security-card" aria-labelledby="create-title">
+        <h2 id="create-title">Prepare an agent</h2>
+        <p>Choose a name, how long it lasts and what it may do. You review the exact result before anything is issued.</p>
+        <form id="create-form" class="agent-form" novalidate>
+          <div class="field"><label for="agent-id">Agent name</label><input id="agent-id" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="64" required aria-describedby="agent-id-hint"><p class="field-hint" id="agent-id-hint">Up to 64 letters, digits, dots, hyphens, underscores or @. It cannot be reused.</p></div>
+          <fieldset class="agent-fieldset"><legend>Lifetime</legend>
+            <div class="lifetime-options" id="lifetime-options">
+              <label class="permission-choice"><input type="radio" name="lifetime" value="3600"><span>1 hour</span></label>
+              <label class="permission-choice"><input type="radio" name="lifetime" value="86400" checked><span>1 day</span></label>
+              <label class="permission-choice"><input type="radio" name="lifetime" value="604800"><span>7 days</span></label>
+              <label class="permission-choice"><input type="radio" name="lifetime" value="2592000"><span>30 days</span></label>
+            </div>
+          </fieldset>
+          <fieldset class="agent-fieldset" aria-describedby="personal-hint"><legend>What it may do on your account</legend>
+            <p class="field-hint" id="personal-hint">These apply only to your own account.</p>
+            <div class="permission-options" id="personal-options"></div>
+          </fieldset>
+          <details class="advanced-permissions" id="advanced">
+            <summary>Advanced: exact permissions</summary>
+            <div class="field"><label for="agent-advanced">One permission per line, as action=resource</label><textarea id="agent-advanced" rows="4" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="agent-advanced-hint"></textarea><p class="field-hint" id="agent-advanced-hint">For example <code>state.read=state/revision</code>. Name an exact resource you can manage now, or <code>self</code> for a personal action.</p></div>
+          </details>
+          <p id="create-error" class="form-error" role="alert" tabindex="-1" hidden></p>
+          <button id="create-submit" class="button primary" type="submit">Review permissions</button>
+        </form>
+      </section>
+      <!-- Reserved for a later release: applications an agent is connected to. Not implemented; keep hidden. -->
+      <section id="agent-applications" class="security-card" aria-labelledby="agent-applications-title" hidden>
+        <h2 id="agent-applications-title">Connected applications</h2>
+      </section>
+      <!-- Reserved for a later release: actions agents ask you to approve. Not implemented; keep hidden. -->
+      <section id="agent-approvals" class="security-card" aria-labelledby="agent-approvals-title" hidden>
+        <h2 id="agent-approvals-title">Pending approvals</h2>
+      </section>
+    </div>
+    <div id="loading" class="security-card" role="status">Loading your agents…</div>
+    <noscript><div class="security-card"><h2>JavaScript is needed for this page</h2><p>Enable JavaScript and reload, or use <code>riauth me agents</code>.</p></div></noscript>
+  </main>
+</div>
+</body>
+</html>

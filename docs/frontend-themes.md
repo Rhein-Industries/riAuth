@@ -48,6 +48,7 @@ The following page overrides are exact names under `pages/`:
 | `pages/admin.html` | `src/portal/admin.html` | `/admin` |
 | `pages/account.html` | `src/portal/account.html` | `/account/accept`, `/account/verify`, `/account/reset` |
 | `pages/security.html` | `src/portal/self_service/security.html` | `/account/security` |
+| `pages/agents.html` | `src/portal/self_service/agents.html` | `/account/agents` |
 | `pages/device.html` | `src/portal/device.html` | `/device` |
 | `pages/source-stage.html` | `src/portal/source-stage.html` | Embedded source-stage browser continuation |
 | `pages/setup.html` | `src/portal/setup.html` | Pending first-administrator `/setup` |
@@ -65,15 +66,15 @@ Existing asset overrides use `assets/<filename>` and retain their existing
 `__BASE__portal/assets/<filename>` URLs. The exact supported names are:
 
 ```text
-app.css admin.css security.css map.css access-review.css riauth-mark.svg
+app.css admin.css security.css agents.css map.css access-review.css riauth-mark.svg
 appearance.js app.js admin.js auth.js account.js capabilities.js signin.js setup.js device.js
-sources.js source-login.js source-stage.js security.js access-review.js map.js
+sources.js source-login.js source-stage.js security.js agents.js access-review.js map.js
 grant-review.js membership-review.js client-creation-review.js
 client-policy-review.js client-status-review.js client-endpoint-review.js
 ```
 
-Copy these from `src/portal/`, except `security.css`/`security.js` from
-`src/portal/self_service/` and `riauth-mark.svg` from `assets/`. Asset routes
+Copy these from `src/portal/`, except `security.css`/`security.js` and
+`agents.css`/`agents.js` from `src/portal/self_service/` and `riauth-mark.svg` from `assets/`. Asset routes
 retain their existing edition/feature availability; pending setup serves its
 existing four baseline assets (`setup.js`, `auth.js`, `app.css`, the mark).
 

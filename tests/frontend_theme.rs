@@ -77,6 +77,10 @@ async fn default_pages_and_assets_keep_exact_embedded_bytes_and_csp() {
             include_str!("../src/portal/self_service/security.html"),
         ),
         (
+            "account/agents",
+            include_str!("../src/portal/self_service/agents.html"),
+        ),
+        (
             "account/sources/continue",
             include_str!("../src/portal/sources.html"),
         ),
@@ -99,6 +103,14 @@ async fn default_pages_and_assets_keep_exact_embedded_bytes_and_csp() {
         (
             "riauth-mark.svg",
             include_bytes!("../assets/riauth-mark.svg").as_slice(),
+        ),
+        (
+            "agents.js",
+            include_bytes!("../src/portal/self_service/agents.js").as_slice(),
+        ),
+        (
+            "agents.css",
+            include_bytes!("../src/portal/self_service/agents.css").as_slice(),
         ),
     ] {
         let (status, headers, bytes) =

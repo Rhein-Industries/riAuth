@@ -117,6 +117,61 @@ impl Cdp {
     }
 }
 
+/// Starts headless Chrome with a fresh profile and attaches to its first page.
+async fn open_browser(browser: &str, profile: &std::path::Path) -> (Browser, Cdp) {
+    let child = Browser(
+        Command::new(browser)
+            .args([
+                "--headless=new",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-background-networking",
+                "--disable-component-update",
+                "--remote-debugging-port=0",
+            ])
+            .arg(format!("--user-data-dir={}", profile.display()))
+            .arg("about:blank")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let port = tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            if let Ok(text) = std::fs::read_to_string(profile.join("DevToolsActivePort")) {
+                break text.lines().next().unwrap().parse::<u16>().unwrap();
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let targets: Value = reqwest::get(format!("http://127.0.0.1:{port}/json/list"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let target = targets
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["type"] == "page")
+        .unwrap();
+    let (socket, _) =
+        tokio_tungstenite::connect_async(target["webSocketDebuggerUrl"].as_str().unwrap())
+            .await
+            .unwrap();
+    let mut cdp = Cdp {
+        socket,
+        sequence: 0,
+        errors: vec![],
+    };
+    cdp.call("Page.enable", json!({})).await;
+    cdp.call("Runtime.enable", json!({})).await;
+    (child, cdp)
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "Set RIAUTH_TEST_BROWSER to Chrome/Chromium; optional RIAUTH_PORTAL_SCREENSHOTS directory"]
 async fn portal_terminal_sign_in_access_changes_and_responsive_interactions() {
@@ -305,56 +360,7 @@ async fn portal_terminal_sign_in_access_changes_and_responsive_interactions() {
     }
     let server =
         tokio::spawn(axum::serve(listener, riauth::api::router(core.clone())).into_future());
-    let _browser = Browser(
-        Command::new(browser)
-            .args([
-                "--headless=new",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-background-networking",
-                "--disable-component-update",
-                "--remote-debugging-port=0",
-            ])
-            .arg(format!("--user-data-dir={}", profile.display()))
-            .arg("about:blank")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap(),
-    );
-    let port = tokio::time::timeout(Duration::from_secs(20), async {
-        loop {
-            if let Ok(text) = std::fs::read_to_string(profile.join("DevToolsActivePort")) {
-                break text.lines().next().unwrap().parse::<u16>().unwrap();
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    })
-    .await
-    .unwrap();
-    let targets: Value = reqwest::get(format!("http://127.0.0.1:{port}/json/list"))
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let target = targets
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|t| t["type"] == "page")
-        .unwrap();
-    let (socket, _) =
-        tokio_tungstenite::connect_async(target["webSocketDebuggerUrl"].as_str().unwrap())
-            .await
-            .unwrap();
-    let mut cdp = Cdp {
-        socket,
-        sequence: 0,
-        errors: vec![],
-    };
-    cdp.call("Page.enable", json!({})).await;
-    cdp.call("Runtime.enable", json!({})).await;
+    let (_browser, mut cdp) = open_browser(&browser, &profile).await;
     cdp.width(1440, 1000).await;
     cdp.call("Page.navigate", json!({"url":format!("{issuer}/apps")}))
         .await;
@@ -564,6 +570,282 @@ async fn portal_terminal_sign_in_access_changes_and_responsive_interactions() {
         .await;
     cdp.wait("document.getElementById('auth').hidden === false")
         .await;
+    assert!(cdp.errors.is_empty(), "Browser errors: {:?}", cdp.errors);
+    server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "Set RIAUTH_TEST_BROWSER to Chrome/Chromium; optional RIAUTH_PORTAL_SCREENSHOTS directory"]
+async fn my_agents_page_reviews_issues_once_rotates_and_revokes() {
+    let browser = std::env::var("RIAUTH_TEST_BROWSER").expect("RIAUTH_TEST_BROWSER required");
+    let dir = tempfile::TempDir::new().unwrap();
+    let profile = dir.path().join("chrome");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}/identity", listener.local_addr().unwrap());
+    let core = Core::initialize(
+        Config {
+            issuer: issuer.clone(),
+            listen: listener.local_addr().unwrap(),
+            data_dir: dir.path().join("data"),
+            ..Default::default()
+        },
+        NewUser {
+            username: "admin".into(),
+            password: "browser-portal-fixture-password".into(),
+            email: None,
+            display_name: "Administrator".into(),
+            admin: true,
+        },
+    )
+    .unwrap();
+    let admin = core
+        .login(
+            "admin".into(),
+            "browser-portal-fixture-password".into(),
+            None,
+        )
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    core.create_user(
+        &admin,
+        NewUser {
+            username: "alex.morgan".into(),
+            password: "browser-user-fixture-password".into(),
+            email: None,
+            display_name: "Alex Morgan".into(),
+            admin: false,
+        },
+    )
+    .unwrap();
+    let terminal = core
+        .login(
+            "alex.morgan".into(),
+            "browser-user-fixture-password".into(),
+            None,
+        )
+        .unwrap()["session_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let server =
+        tokio::spawn(axum::serve(listener, riauth::api::router(core.clone())).into_future());
+    let (_browser, mut cdp) = open_browser(&browser, &profile).await;
+    cdp.width(1280, 1000).await;
+    // A terminal sign-in approves this browser, so issuing needs a browser sign-in first.
+    cdp.call("Page.navigate", json!({"url":format!("{issuer}/apps")}))
+        .await;
+    cdp.wait("document.getElementById('auth')?.hidden === false")
+        .await;
+    cdp.eval("document.getElementById('start-login').click()")
+        .await;
+    cdp.wait("document.getElementById('user-code')?.textContent.length > 4")
+        .await;
+    let code = cdp
+        .eval("document.getElementById('user-code').textContent")
+        .await;
+    core.portal_decide(&terminal, code.as_str().unwrap(), true)
+        .unwrap();
+    cdp.wait("document.getElementById('account-name')?.textContent === 'Alex Morgan'")
+        .await;
+    cdp.call(
+        "Page.navigate",
+        json!({"url":format!("{issuer}/account/agents")}),
+    )
+    .await;
+    cdp.wait("document.getElementById('agents-content')?.hidden === false")
+        .await;
+    cdp.eval("RiAuthAppearance.set('light')").await;
+    assert_eq!(
+        cdp.eval("[document.getElementById('agents-empty').hidden, document.getElementById('verify-panel').hidden, document.querySelectorAll('#personal-options input[type=checkbox]').length, document.getElementById('agent-applications').hidden, document.getElementById('agent-approvals').hidden]").await,
+        json!([false, true, 8, true, true])
+    );
+    cdp.screenshot("agents-empty").await;
+
+    // Prepare: the review shows the exact permissions, what they mean now and the expiry.
+    cdp.eval("document.getElementById('agent-id').value = 'mail-helper'; document.querySelector('#personal-options input[value=\"profile.read\"]').click(); document.querySelector('#personal-options input[value=\"agents.revoke\"]').click(); document.querySelector('input[name=lifetime][value=\"604800\"]').click(); document.getElementById('advanced').open = true; document.getElementById('agent-advanced').value = 'state.read=state/revision'; document.getElementById('create-submit').click()").await;
+    cdp.wait("document.getElementById('review-panel').hidden === false")
+        .await;
+    assert_eq!(
+        cdp.eval(
+            "[...document.querySelectorAll('#review-permissions code')].map(c => c.textContent)"
+        )
+        .await,
+        json!([
+            "profile.read=self",
+            "agents.revoke=self",
+            "state.read=state/revision"
+        ])
+    );
+    assert_eq!(
+        cdp.eval(
+            "[...document.querySelectorAll('#review-effective code')].map(c => c.textContent)"
+        )
+        .await,
+        json!([
+            "profile.read=user/alex.morgan",
+            "agents.revoke=user/alex.morgan",
+            "state.read=state/revision"
+        ])
+    );
+    assert_eq!(cdp.eval("document.activeElement.id").await, "review-title");
+    assert_eq!(
+        cdp.eval("document.getElementById('review-expires').textContent.length > 8 && document.getElementById('proposals').hidden === false").await,
+        true
+    );
+    cdp.screenshot("agents-review").await;
+    cdp.wait("!document.getElementById('review-approve').hasAttribute('aria-disabled')")
+        .await;
+    cdp.eval("document.getElementById('review-approve').click()")
+        .await;
+    cdp.wait("document.getElementById('verify-panel').hidden === false")
+        .await;
+    assert_eq!(
+        cdp.eval("document.getElementById('credential-panel').hidden && document.getElementById('review-panel').hidden === false").await,
+        true
+    );
+    cdp.screenshot("agents-verify").await;
+    cdp.eval("document.getElementById('verify-password').value = 'browser-user-fixture-password'; document.getElementById('verify-password-button').click()").await;
+    cdp.wait("document.getElementById('status').textContent.includes('Identity confirmed')")
+        .await;
+    assert_eq!(
+        cdp.eval("document.getElementById('verify-panel').hidden")
+            .await,
+        true
+    );
+    cdp.wait("!document.getElementById('review-approve').hasAttribute('aria-disabled')")
+        .await;
+    cdp.eval("document.getElementById('review-approve').click()")
+        .await;
+    cdp.wait("document.getElementById('credential-panel').hidden === false")
+        .await;
+    let issued: Value = serde_json::from_str(
+        cdp.eval("document.getElementById('credential-json').textContent")
+            .await
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(issued["issuer"], issuer.as_str());
+    assert_eq!(issued["agent_id"], "mail-helper");
+    let token = issued["token"].as_str().unwrap().to_owned();
+    assert_eq!(
+        core.user_profile(&token, "alex.morgan").unwrap()["username"],
+        "alex.morgan"
+    );
+    assert_eq!(
+        cdp.eval("JSON.stringify([localStorage, sessionStorage]).includes('ri_agent_')")
+            .await,
+        false
+    );
+    assert_eq!(
+        cdp.eval("[document.getElementById('review-panel').hidden, document.getElementById('proposals').hidden, document.querySelectorAll('#agent-list .agent-status.active').length]").await,
+        json!([true, true, 1])
+    );
+    cdp.screenshot("agents-credential").await;
+    // The credential stays until the person confirms they saved it, then leaves the page.
+    cdp.wait("!document.getElementById('credential-close').hasAttribute('aria-disabled')")
+        .await;
+    cdp.eval("document.getElementById('credential-close').click()")
+        .await;
+    assert_eq!(
+        cdp.eval("document.getElementById('credential-panel').hidden || document.activeElement.id")
+            .await,
+        "credential-saved"
+    );
+    cdp.eval("document.getElementById('credential-saved').click(); document.getElementById('credential-close').click()").await;
+    assert_eq!(
+        cdp.eval("document.getElementById('credential-panel').hidden && !document.body.textContent.includes('ri_agent_')").await,
+        true
+    );
+
+    // Activity loads on demand. The agent's own revocation of itself is recorded there.
+    cdp.eval(
+        "document.querySelector('#agent-list .activity-region').previousElementSibling.click()",
+    )
+    .await;
+    cdp.wait("document.querySelector('#agent-list .activity-region').textContent.includes('No recorded actions yet.')").await;
+
+    // Rotation issues a new one-time credential and retires the old token.
+    cdp.eval("window.confirm = () => true; document.querySelector('[aria-label=\"Replace credential of mail-helper\"]').click()").await;
+    cdp.eval("const s = document.querySelector('.rotate-form select'); s.value = '3600'; s.dispatchEvent(new Event('change'))").await;
+    cdp.wait(
+        "!document.querySelector('.rotate-form .button.primary').hasAttribute('aria-disabled')",
+    )
+    .await;
+    cdp.eval("document.querySelector('.rotate-form .button.primary').click()")
+        .await;
+    cdp.wait("document.getElementById('credential-panel').hidden === false && document.getElementById('status').textContent.includes('new credential')").await;
+    let rotated: Value = serde_json::from_str(
+        cdp.eval("document.getElementById('credential-json').textContent")
+            .await
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let replacement = rotated["token"].as_str().unwrap().to_owned();
+    assert_ne!(replacement, token);
+    assert!(core.user_profile(&token, "alex.morgan").is_err());
+    core.revoke_agent(&replacement, "mail-helper").unwrap();
+    cdp.eval("document.getElementById('credential-saved').click(); document.getElementById('credential-close').click()").await;
+    cdp.call("Page.reload", json!({})).await;
+    cdp.wait("document.querySelectorAll('#agent-list .agent-status.revoked').length === 1")
+        .await;
+    cdp.eval(
+        "document.querySelector('#agent-list .activity-region').previousElementSibling.click()",
+    )
+    .await;
+    cdp.wait("document.querySelector('#agent-list .activity-region code')?.textContent === 'agent.revoke'").await;
+    assert_eq!(
+        cdp.eval("document.querySelectorAll('#agent-list .agent-actions').length")
+            .await,
+        0
+    );
+    for width in [320, 390, 768, 1280] {
+        cdp.width(width, 900).await;
+        if width == 390 {
+            cdp.screenshot("agents-mobile").await;
+        }
+    }
+    cdp.eval("RiAuthAppearance.set('dark')").await;
+    cdp.width(390, 900).await;
+    cdp.screenshot("agents-dark-mobile").await;
+    cdp.width(1280, 1000).await;
+    cdp.screenshot("agents-dark").await;
+
+    // Revocation from the page, on a second agent.
+    let prepared = core
+        .prepare_my_agent(
+            &terminal,
+            riauth::agent::AgentProposalInput {
+                id: "second-helper".into(),
+                permissions: vec![riauth::agent::Permission {
+                    action: "profile.read".into(),
+                    resource: "self".into(),
+                }],
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    core.approve_my_agent(
+        &terminal,
+        prepared["proposal_id"].as_str().unwrap(),
+        prepared["digest"].as_str().unwrap(),
+    )
+    .unwrap();
+    cdp.call("Page.reload", json!({})).await;
+    cdp.wait("document.querySelectorAll('#agent-list .agent-status.active').length === 1")
+        .await;
+    cdp.wait("!document.querySelector('[aria-label=\"Revoke second-helper\"]').hasAttribute('aria-disabled')").await;
+    cdp.eval("window.confirm = () => true; document.querySelector('[aria-label=\"Revoke second-helper\"]').click()").await;
+    cdp.wait("document.getElementById('status').textContent === 'second-helper is revoked.'")
+        .await;
+    assert_eq!(
+        cdp.eval("document.querySelectorAll('#agent-list .agent-status.revoked').length")
+            .await,
+        2
+    );
     assert!(cdp.errors.is_empty(), "Browser errors: {:?}", cdp.errors);
     server.abort();
 }

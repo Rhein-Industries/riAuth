@@ -47,10 +47,25 @@ pub fn browser_routes() -> Router<App> {
             "/portal/assets/security.js",
             get(crate::portal::theme::builtin),
         )
+        .route("/account/agents", get(agents_page))
+        .route("/account/agents/", get(agents_page))
+        .route(
+            "/portal/assets/agents.css",
+            get(crate::portal::theme::builtin),
+        )
+        .route(
+            "/portal/assets/agents.js",
+            get(crate::portal::theme::builtin),
+        )
 }
 
 async fn page(State(app): State<App>) -> Response {
     portal_html(app.core.runtime.frontend.page("security.html"), &app, true)
+}
+
+/// My agents: the owner self-service routes below, for the signed-in browser.
+async fn agents_page(State(app): State<App>) -> Response {
+    portal_html(app.core.runtime.frontend.page("agents.html"), &app, true)
 }
 
 async fn overview(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {

@@ -369,6 +369,7 @@ fn known_page(name: &str) -> bool {
             | "admin.html"
             | "account.html"
             | "security.html"
+            | "agents.html"
             | "device.html"
             | "source-stage.html"
             | "setup.html"
@@ -385,6 +386,7 @@ fn embedded_page(name: &str) -> &'static str {
         "admin.html" => include_str!("admin.html"),
         "account.html" => include_str!("account.html"),
         "security.html" => include_str!("self_service/security.html"),
+        "agents.html" => include_str!("self_service/agents.html"),
         "device.html" => include_str!("device.html"),
         "source-stage.html" => include_str!("source-stage.html"),
         "setup.html" => include_str!("setup.html"),
@@ -402,6 +404,10 @@ fn embedded_asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "security.css" => (
             "text/css; charset=utf-8",
             include_bytes!("self_service/security.css"),
+        ),
+        "agents.css" => (
+            "text/css; charset=utf-8",
+            include_bytes!("self_service/agents.css"),
         ),
         "map.css" => ("text/css; charset=utf-8", include_bytes!("map.css")),
         "access-review.css" => (
@@ -451,6 +457,10 @@ fn embedded_asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "security.js" => (
             "text/javascript; charset=utf-8",
             include_bytes!("self_service/security.js"),
+        ),
+        "agents.js" => (
+            "text/javascript; charset=utf-8",
+            include_bytes!("self_service/agents.js"),
         ),
         "access-review.js" => (
             "text/javascript; charset=utf-8",
@@ -556,6 +566,7 @@ mod tests {
             "admin.html",
             "account.html",
             "security.html",
+            "agents.html",
             "device.html",
             "source-stage.html",
             "setup.html",
@@ -580,6 +591,7 @@ mod tests {
             "admin.html",
             "account.html",
             "security.html",
+            "agents.html",
             "device.html",
             "source-stage.html",
             "setup.html",
@@ -599,7 +611,7 @@ mod tests {
             assert!(body.contains("__CODE__"));
             assert!(body.contains("__STAGE__"));
         }
-        assert_eq!(theme.pages.len(), 11);
+        assert_eq!(theme.pages.len(), 12);
     }
 
     #[test]
