@@ -198,6 +198,10 @@ pub struct ProviderSettings {
     /// First-party client: skip the browser consent screen. prompt=consent still asks.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub implicit_consent: bool,
+    /// Owners may approve their agents' access to this application. Each approval
+    /// is separate from riAuth management permissions and is checked on every use.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub agent_access: bool,
 }
 
 impl ProviderSettings {
@@ -322,6 +326,10 @@ pub struct Grant {
     pub machine_trust_hash: Option<String>,
     #[serde(default)]
     pub exchange: Option<exchange::ExchangeGrant>,
+    /// Set on an agent's application token, which has no session: the owner's
+    /// approval and the agent are checked live instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_application: Option<AgentApplication>,
     pub client_id: String,
     pub identity: Option<Identity>,
     pub scopes: BTreeSet<String>,
@@ -330,6 +338,14 @@ pub struct Grant {
     pub issued_at: u64,
     pub expires_at: u64,
     pub used: bool,
+}
+
+/// The owner's approval an agent's application token stands for, and a digest
+/// of the agent credential that obtained it, so rotation ends the token.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct AgentApplication {
+    pub approval: String,
+    pub credential: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

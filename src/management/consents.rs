@@ -191,6 +191,7 @@ pub(super) fn revoke_consent_for_user(
 ) -> Result<()> {
     tx.delete("consents", &consent_key(user_id, cid))?;
     crate::saml::revoke_consent(tx, user_id, cid)?;
+    super::agent_applications::revoke_owner_client(tx, user_id, cid)?;
     crate::outpost::revoke_sessions(tx, user_id, cid)?;
     for (_, grant) in tx
         .list::<crate::model::Grant>("access")?

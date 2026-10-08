@@ -409,6 +409,14 @@ pub fn router(core: Core) -> Router {
         )
         .route("/api/me/agents/{id}/rotate", post(rotate_my_agent))
         .route("/api/me/agents/{id}/activity", get(my_agent_activity))
+        .route(
+            "/api/me/agents/{id}/applications",
+            get(my_agent_applications).post(approve_my_agent_application),
+        )
+        .route(
+            "/api/me/agents/{id}/applications/{grant_id}",
+            axum::routing::delete(revoke_my_agent_application),
+        )
         .route("/api/sessions", get(sessions))
         .route("/api/sessions/{id}", axum::routing::delete(revoke_session))
         .route("/api/users", get(users).post(create_user))
@@ -2186,6 +2194,40 @@ async fn my_agent_activity(
     let token = bearer(&headers)?;
     app.run(move |core| {
         core.my_agent_activity(&token, &id, query.limit.unwrap_or(50))
+            .map(Json)
+    })
+    .await
+}
+async fn my_agent_applications(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.my_agent_applications(&token, &id).map(Json))
+        .await
+}
+async fn approve_my_agent_application(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<crate::management::ApplicationAccessInput>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.approve_my_agent_application(&token, &id, input)
+            .map(Json)
+    })
+    .await
+}
+async fn revoke_my_agent_application(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, grant_id)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.revoke_my_agent_application(&token, &id, &grant_id)
             .map(Json)
     })
     .await

@@ -993,6 +993,8 @@ impl Core {
         self.store
             .write(|tx| crate::management::prepared_changes::cleanup(tx, at))?;
         self.store
+            .write(|tx| crate::management::agent_applications::cleanup(tx, at))?;
+        self.store
             .write(|tx| crate::provisioning::cleanup(tx, at))?;
         self.store.write(|tx| crate::directory::cleanup(tx, at))?;
         #[cfg(feature = "platform")]
@@ -1113,7 +1115,14 @@ impl Core {
     }
     pub(crate) fn identity_user(&self, tx: &Tx<'_>, identity: &Identity) -> Result<User> {
         let user = self.identity_user_unbound(tx, identity)?;
-        crate::identity::validate_session(tx, identity, &user)?;
+        // An agent's application token stands for its owner without a session;
+        // the owner's approval, the agent and the application are checked instead.
+        match crate::management::agent_applications::bound_approval(identity) {
+            Some(approval) => crate::management::agent_applications::validate_live(
+                self, tx, approval, identity, &user,
+            )?,
+            None => crate::identity::validate_session(tx, identity, &user)?,
+        }
         Ok(user)
     }
     /// Every identity check except the session row, for identities not yet bound to a session.
@@ -1384,6 +1393,19 @@ pub(crate) fn validate_client(tx: &Tx<'_>, c: &Client) -> Result<()> {
     {
         return Err(Error::bad(
             "implicit_consent requires a confidential, proxy or SAML client",
+        ));
+    }
+    // Device trust and conditional predicates are facts of a browser session,
+    // which an agent's application token never has, and proxy-client tokens
+    // never leave riAuth's outpost.
+    if c.settings.agent_access
+        && (c.service
+            || c.settings.proxy.is_some()
+            || c.settings.require_device_trust
+            || c.settings.policy.conditional().is_some())
+    {
+        return Err(Error::bad(
+            "agent_access requires a user-facing, non-proxy client without device trust or conditional policy",
         ));
     }
     for uri in &c.redirect_uris {

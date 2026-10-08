@@ -8,6 +8,8 @@ use std::collections::BTreeSet;
 
 pub const TOKEN_EXCHANGE: &str = "urn:ietf:params:oauth:grant-type:token-exchange";
 pub const ACCESS_TOKEN: &str = "urn:ietf:params:oauth:token-type:access_token";
+/// Subject token type of an agent credential exchanged for application access.
+pub const AGENT_TOKEN: &str = "urn:riauth:params:oauth:token-type:agent";
 
 pub(crate) fn invalid() -> Error {
     Error::oauth(

@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub use crate::identity::agent_credentials::{Agent, Permission};
+pub use crate::management::ApplicationAccessInput;
 pub use crate::management::owner_agents::AgentProposalInput;
 pub use crate::management::prepared_changes::{Factor, PrepareChange, SensitiveChange};
 

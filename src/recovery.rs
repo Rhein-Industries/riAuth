@@ -62,6 +62,8 @@ pub const INVALIDATED: &[&str] = &[
     "device_verifications",
     // A restored snapshot cannot prove a human grant was not revoked later.
     "human_grants",
+    // Nor an owner's approval of an agent's application access.
+    "agent_application_grants",
     // Staged approvals cannot authorize writes on a restored timeline.
     "reviewed_human_grants",
     "agent_proposals",

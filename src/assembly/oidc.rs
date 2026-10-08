@@ -1439,6 +1439,11 @@ impl Core {
             DEVICE_GRANT => self.exchange_device(request),
             "refresh_token" => self.refresh(request),
             "client_credentials" => self.client_credentials(request),
+            crate::exchange::TOKEN_EXCHANGE
+                if request.subject_token_type.as_deref() == Some(crate::exchange::AGENT_TOKEN) =>
+            {
+                self.agent_application_token(request)
+            }
             crate::exchange::TOKEN_EXCHANGE => self.exchange_token(request),
             crate::jose::JWT_GRANT => self.machine_token(request),
             _ => Err(Error::oauth(
@@ -1738,6 +1743,7 @@ impl Core {
             acr_values: None,
             machine_trust_hash: None,
             exchange: None,
+            agent_application: None,
             client_id: client.id.clone(),
             identity,
             scopes,
@@ -1803,6 +1809,9 @@ impl Core {
             if let Some(act) = &exchange.act {
                 claims["act"] = act.clone();
             }
+        }
+        if let Some(act) = crate::management::agent_applications::act(tx, &self.config, grant)? {
+            claims["act"] = act;
         }
         claims["aud"] = json!(crate::resource::audience(grant));
         if let Some(jkt) = &grant.confirmation_jkt {
@@ -1907,6 +1916,7 @@ impl Core {
         let client = get_client(tx, &grant.client_id).map_err(|_| Error::unauthorized())?;
         crate::resource::validate(&client, grant.resource.as_deref(), &grant.scopes)
             .map_err(|_| Error::unauthorized())?;
+        crate::management::agent_applications::check_token_grant(tx, grant)?;
         if let Some(hash) = &grant.machine_trust_hash
             && !client.settings.machine_trust.iter().any(|trust| {
                 serde_json::to_string(trust).is_ok_and(|s| digest(&s) == *hash)
@@ -2037,6 +2047,7 @@ impl Core {
             let mut value = json!({"active":true,"client_id":grant.exchange.as_ref().map(|e| &e.requester_id).unwrap_or(&grant.client_id),"sub":subject,"scope":grant.scopes.iter().cloned().collect::<Vec<_>>().join(" "),"iss":crate::issuer::for_client(&self.config.issuer,&client),"aud":crate::resource::audience(&grant),"exp":grant.expires_at,"iat":grant.issued_at,"token_type":if grant.confirmation_jkt.is_some(){"DPoP"}else{"Bearer"}});
             if let Some(jkt) = &grant.confirmation_jkt { value["cnf"] = json!({"jkt":jkt}); }
             if let Some(act) = grant.exchange.as_ref().and_then(|e| e.act.as_ref()) { value["act"] = act.clone(); }
+            if let Some(act) = crate::management::agent_applications::act(tx, &self.config, &grant)? { value["act"] = act; }
             Ok(value)
         })
     }

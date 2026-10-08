@@ -61,7 +61,7 @@ The static assets `/portal/assets/app.css`, `/portal/assets/app.js`, `/portal/as
 | GET | `/oauth/resume/{id}` | With its binding cookie: HTML gets the sign-in page while undecided; JSON gets the terminal instructions and `Refresh`. Once decided, delivers the callback **once** (302 or form post) and deletes the request, its code index and any leftover proof |
 | POST | `/oauth/device/code` | Form client authentication and optional scope; returns `verification_uri` and `verification_uri_complete` for browser approval |
 | GET | `/device` | Browser code-entry and approval page; `?user_code=CODE` pre-fills the code without taking a decision |
-| POST | `/oauth/token` | Form client authentication plus grant parameters; every grant for a proxy client is refused with 400 `unauthorized_client` (its codes are redeemed only inside riAuth) |
+| POST | `/oauth/token` | Form client authentication plus grant parameters; every grant for a proxy client is refused with 400 `unauthorized_client` (its codes are redeemed only inside riAuth). An agent's application exchange (`subject_token_type=urn:riauth:params:oauth:token-type:agent`) authenticates with the agent credential alone and refuses client credentials ([profile](oidc-profiles.md#agent-application-access)) |
 | POST | `/oauth/par` | Authenticated pushed authorization request |
 | POST | `/oauth/register` | Restricted RFC 7591 registration using an initial access credential |
 | GET, POST | `/oauth/userinfo` | Access token with `openid` scope; Bearer or proof-bound DPoP authentication |
@@ -219,6 +219,8 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 | GET | `/api/me/changes` | Signed-in person: open sensitive changes their agents prepared, with exact `summary` and `digest` ([prepared sensitive changes](agent.md#prepared-sensitive-changes)) |
 | POST | `/api/me/changes/{id}/approve` | Apply exactly that change once as this person; `{"digest"}`, fresh sign-in (with MFA when enrolled). 409 when changed, decided, expired, voided by its agent or stale against the account; role and grant changes need a current administrator (else 403) and reviewed grant roles are only staged |
 | POST | `/api/me/changes/{id}/reject` | Decline an open change; no fresh sign-in |
+| GET, POST | `/api/me/agents/{id}/applications` | List an owned agent's application approvals / approve a live owned agent for one opted-in application with `client_id`, `scopes`, optional `resource` and `ttl`; fresh sign-in ([application access](agent.md#application-access)) |
+| DELETE | `/api/me/agents/{id}/applications/{grant_id}` | Revoke one application approval at once; outstanding tokens stop working |
 | GET | `/api/me` | Current user/session, or for an agent: `permissions` it holds now (approved list limited to its owner's current authority), `approved_permissions`, `parent_user`, `authorized_by` and `expires_at` |
 | POST | `/api/logout` | Revoke current end-user session and associated grants; return optional `saml_logout_url` |
 | GET | `/api/sessions` | Current user's unrevoked sessions, each with `kind`: `browser` (no bearer token) or `terminal` |

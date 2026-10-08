@@ -172,7 +172,9 @@ change/creator or parent disable; one valid completion, no partial groups or use
 **Contract.** Browser-owned sessions authenticate through protected SSO cookies
 and have no bearer-token row. Staged logins, interaction/binding codes, browser
 tombstones, agent credentials, Windows tickets and OAuth grants are not
-interchangeable with a human session token.
+interchangeable with a human session token. An agent's application access
+token stands for its owner without any session: it never authenticates,
+authorizes or consents as the owner, and only the owner's own session approves it.
 
 **Observed enforcement.** [Signin](../../src/signin.rs) `stage_browser_login`,
 `attach_browser_login`, `bearer_backed`; [browser](../../src/browser.rs)
@@ -180,12 +182,20 @@ interchangeable with a human session token.
 provide HttpOnly/SameSite cookies and Secure/host prefixes on HTTPS.
 [Core](../../src/core.rs) `session` resolves only the session-token digest index.
 [CLI transport](../../src/cli/transport.rs) pins saved credentials to the issuer.
+[Core](../../src/core.rs) `identity_user` replaces the session check only for the
+reserved application identity, with
+[agent applications](../../src/management/agent_applications.rs) `validate_live`;
+`check_token_grant` keeps that identity on the grant that names its approval, and
+[exchange](../../src/assembly/exchange.rs) refuses it as an exchange subject.
 
 **Existing regressions.** [Signin](../../tests/signin_core.rs)
 `attach_creates_tokenless_session_without_bearer_row`,
 `rotation_tombstone_never_authenticates`, `attach_never_modifies_terminal_backed_sessions`;
 [portal](../../tests/portal.rs) `portal_password_sign_in_sets_only_an_httponly_cookie`;
-[Windows](../../tests/windows_login.rs) `enroll_returns_the_secret_once_and_login_succeeds`.
+[Windows](../../tests/windows_login.rs) `enroll_returns_the_secret_once_and_login_succeeds`;
+[agent application access](../../tests/agent_application_access.rs)
+`agents_still_cannot_authorize_consent_or_launder_application_tokens`,
+`approval_needs_ownership_a_live_agent_an_opted_in_application_and_fresh_sign_in`.
 
 **Missing coverage / later contract.** Q02-C01 tries every credential class at
 all other authentication endpoints and checks raw secrets stay out of browser
@@ -286,7 +296,12 @@ notification enqueue share the local transaction.
 `reenabling_legacy_disabled_accounts_never_restores_child_credentials`;
 [factors](../../tests/identity/factors.rs) `password_reset_revokes_sessions_and_grants`;
 [OIDC](../../tests/identity/oidc.rs)
-`token_exchange_requires_bilateral_trust_actor_proof_and_revokes_with_parent`.
+`token_exchange_requires_bilateral_trust_actor_proof_and_revokes_with_parent`;
+[agent application access](../../tests/agent_application_access.rs)
+`revoking_the_approval_or_the_agent_ends_outstanding_tokens_at_once`,
+`disabling_or_promoting_the_owner_ends_tokens_and_revives_nothing`,
+`the_application_policy_and_opt_in_are_checked_on_every_use`,
+`expiry_ends_tokens_and_the_approval`.
 
 **Missing coverage / later contract.** Q02-C01/C05 covers all disable/reset/
 unlink/import/offboarding writers and every online consumer. Q05-R03 revokes
@@ -351,7 +366,11 @@ policy during verification. JWT claims at an offline RP have RI-SES-005 limits.
 **Contract.** Grants bind the authenticated client, registered redirect, S256
 PKCE, requested resource/scopes and required proof key. Signed/pushed requests
 bind exact supported semantics and expiry. Exchange requires bilateral trust and
-the actor/parent chain. Unknown or unsupported security settings, proof
+the actor/parent chain. An agent's application exchange instead requires the
+agent credential alone (client credentials are refused), its owner's live
+approval for that exact client and resource, and scopes within the approval; it
+issues one access token with `act`, never a login or refresh credential, and no
+management permission substitutes for the approval. Unknown or unsupported security settings, proof
 algorithms, authentication methods and required protections reject explicitly.
 
 **Observed enforcement.** [OIDC](../../src/oidc.rs) `validate_authorization`,
@@ -359,14 +378,20 @@ algorithms, authentication methods and required protections reject explicitly.
 [provider](../../src/provider.rs) settings/grant/redirect validation;
 [authorization](../../src/authorization.rs) reference validation;
 [resource](../../src/resource.rs), [DPoP](../../src/dpop.rs),
-[JOSE](../../src/jose.rs), [exchange](../../src/exchange.rs).
+[JOSE](../../src/jose.rs), [exchange](../../src/exchange.rs),
+[agent exchange](../../src/assembly/agent_exchange.rs).
 
 **Existing regressions.** [OIDC](../../tests/identity/oidc.rs)
 `redirect_pkce_and_code_replay_are_enforced`,
 `private_key_jwt_binds_issuer_subject_audience_and_consumes_assertions_atomically`,
 `dpop_binds_code_refresh_resource_and_replay_revocation_to_the_key`,
 `resource_indicators_bind_consent_code_refresh_audience_and_online_policy`,
-`token_exchange_enforces_target_dpop_binding_for_impersonation_and_delegation`.
+`token_exchange_enforces_target_dpop_binding_for_impersonation_and_delegation`;
+[agent application access](../../tests/agent_application_access.rs)
+`exchange_issues_only_an_owner_access_token_naming_the_agent`,
+`dpop_bound_applications_require_a_proof_for_agent_tokens`,
+`other_agents_and_other_owners_agents_get_nothing`,
+`management_permissions_confer_no_application_access`.
 
 **Missing coverage / later contract.** Q02-C03 independently changes each
 binding/algorithm/method, strips required proof/PAR/JAR/MFA, and tests duplicate

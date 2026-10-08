@@ -33,6 +33,14 @@ pub fn routes() -> Router<App> {
         .route("/api/portal/agents/{id}/rotate", post(rotate_agent))
         .route("/api/portal/agents/{id}/revoke", post(revoke_agent))
         .route("/api/portal/agents/{id}/activity", get(agent_activity))
+        .route(
+            "/api/portal/agents/{id}/applications",
+            get(agent_applications).post(approve_agent_application),
+        )
+        .route(
+            "/api/portal/agents/{id}/applications/{grant_id}/revoke",
+            post(revoke_agent_application),
+        )
 }
 
 pub fn browser_routes() -> Router<App> {
@@ -140,6 +148,14 @@ struct RotateAgent {
     ttl: u64,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApproveApplication {
+    expected_user_id: String,
+    expected_session_id: String,
+    application: crate::management::ApplicationAccessInput,
+}
+
 fn binding(expected_user_id: String, expected_session_id: String) -> Binding {
     Binding {
         expected_user_id,
@@ -223,4 +239,48 @@ async fn agent_activity(
     let sso = sso_cookie(&app, &headers).map(str::to_owned);
     app.run(move |core| core.portal_my_agent_activity(sso.as_deref(), &id).map(Json))
         .await
+}
+
+async fn agent_applications(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.portal_my_agent_applications(sso.as_deref(), &id)
+            .map(Json)
+    })
+    .await
+}
+
+async fn approve_agent_application(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<ApproveApplication>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    let bound = binding(input.expected_user_id, input.expected_session_id);
+    app.run(move |core| {
+        core.portal_approve_my_agent_application(sso.as_deref(), &bound, &id, input.application)
+            .map(Json)
+    })
+    .await
+}
+
+async fn revoke_agent_application(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, grant_id)): Path<(String, String)>,
+    Json(bound): Json<Binding>,
+) -> Result<Json<Value>> {
+    browser_write_guard(&app, &headers)?;
+    let sso = sso_cookie(&app, &headers).map(str::to_owned);
+    app.run(move |core| {
+        core.portal_revoke_my_agent_application(sso.as_deref(), &bound, &id, &grant_id)
+            .map(Json)
+    })
+    .await
 }

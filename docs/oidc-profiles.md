@@ -76,6 +76,26 @@ JWT bearer workload grants require a service client with explicit `machine_trust
 
 RFC 8693 exchange requires an authenticated confidential requester, an `exchange` policy on it, and `exchange_from` on the target client. Scope expansion is forbidden. Delegation additionally requires the requester's own service access token. Parent/actor revocation propagates online; chains are limited to four exchanges. Only access-token inputs/outputs are supported, with no new login or offline credentials. `audience` selects a client; `resource` selects a unique registered resource within permitted target clients.
 
+### Agent application access
+
+`settings.agent_access: true` lets owners approve their agents for this application ([agent approvals](agent.md#application-access)). Only holders of `client.write` on the client set it, through the usual create, update and desired-state paths; dynamic-registration templates that set it are rejected and registered clients always get `false`. It is refused for service clients, for proxy clients (whose tokens stay inside the outpost) and for clients with `require_device_trust` or a conditional policy, whose facts belong to a browser session that an agent never has. Turning it off revokes every approval for the client. Client views show it only when `true`.
+
+An approved agent exchanges its credential without client authentication:
+
+```text
+POST /oauth/token
+grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+&subject_token=ri_agent_...
+&subject_token_type=urn:riauth:params:oauth:token-type:agent
+&audience=jmap
+&scope=mail            (optional; at most the approved scopes)
+&resource=https://...  (only, and exactly, when the approval names it)
+```
+
+Client credentials (`client_secret`, Basic or an assertion) are refused with `invalid_request`, so the application never appears as the requester. `client_id` may be sent only if it equals `audience`. `actor_token` and any `requested_token_type` other than an access token are refused. The response has `issued_token_type` access token and no refresh or ID token. The access token has the application's usual `at+jwt` format, issuer, signing key and encryption: `sub` is the owner's subject for that client (pairwise rules apply), `aud` the approved resource or the client id, `client_id` the client, `scope` the granted scopes, and `act` `{"sub": "agent:<id>", "iss": <issuer>}`. `exp` is the earliest of the access-token lifetime, the approval's expiry and the agent's expiry. A client with `dpop_bound_access_tokens` needs a DPoP proof on the exchange. A missing, revoked or foreign credential, or no usable approval, gives `invalid_grant`; a scope outside the approval or no longer registered for the client gives `invalid_scope`. Exchange issues only a token that its own validation would accept at that moment.
+
+The token has no session. Introspection, userinfo, resource validation and the proxy check instead require, on each use, the approval to be unrevoked and unexpired, the agent live with the credential that obtained the token, its owner enabled with the same epoch, still passing the client's policy and still holding any upstream source link the approval relied on, and the client enabled with `agent_access` and the token's scopes. Introspection adds `act`. Userinfo answers 403 `insufficient_scope`, since the token never has `openid`. `/oauth/revoke` follows the client's own token rules. The token cannot be the subject of another exchange.
+
 ## Authorization and assurance
 
 ### Platform conditional application policy

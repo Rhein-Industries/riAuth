@@ -1,5 +1,6 @@
 //! Server assembly of identity and protocol ports over concrete storage.
 
+mod agent_exchange;
 mod authenticator;
 mod authorization;
 mod browser_runtime;

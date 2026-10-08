@@ -34,6 +34,7 @@
 //! Registration-template and Windows-device issuance disclose their generated
 //! credentials only in the first committed response; their receipts keep a marker.
 
+pub(crate) mod agent_applications;
 mod client_creation;
 mod client_endpoint;
 mod client_policy;
@@ -52,6 +53,7 @@ mod sessions;
 mod source_links;
 #[cfg(feature = "platform")]
 pub(crate) mod ssf_streams;
+pub use agent_applications::ApplicationAccessInput;
 pub(crate) use consents::{
     ConsentApproval, ConsentWithdraw, remember_approved_consent, withdraw_consent,
 };
@@ -2648,6 +2650,9 @@ fn write_client_as(
     {
         revoke_client_grants(tx, &next.id)?;
     }
+    if existing.is_some_and(|c| c.settings.agent_access && !next.settings.agent_access) {
+        agent_applications::revoke_client(tx, &next.id)?;
+    }
     tx.put("clients", &next.id, &next)?;
     match authority {
         Authority::Management(actor, Record::Direct(action)) => {
@@ -3029,6 +3034,7 @@ fn require_registration_bounds(
     };
     let mut expected_settings = template.settings.clone();
     expected_settings.implicit_consent = false;
+    expected_settings.agent_access = false;
     expected_settings.allowed_grants = client.settings.allowed_grants.clone();
     expected_settings.token_endpoint_auth_method =
         client.settings.token_endpoint_auth_method.clone();
@@ -3064,6 +3070,7 @@ fn require_registration_bounds(
         || !client.settings.exchange_from.is_empty()
         || !client.settings.machine_trust.is_empty()
         || client.settings.implicit_consent
+        || client.settings.agent_access
     {
         return Err(metadata(
             "Client metadata is outside the registration template",
@@ -3207,6 +3214,11 @@ fn create_registration_template(
     if template.settings.implicit_consent {
         return Err(Error::bad(
             "Registration templates cannot skip browser consent",
+        ));
+    }
+    if template.settings.agent_access {
+        return Err(Error::bad(
+            "Registration templates cannot accept agent access",
         ));
     }
     let mut sample = Client {
@@ -3353,6 +3365,7 @@ pub(crate) fn register_client(
     let mut settings = template.settings.clone();
     // Registration never turns an initial access token into consent authority.
     settings.implicit_consent = false;
+    settings.agent_access = false;
     settings.allowed_grants = grants;
     settings.token_endpoint_auth_method = Some(match method {
         "none" => ClientAuthMethod::None,

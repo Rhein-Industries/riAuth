@@ -63,8 +63,10 @@ impl Core {
                 Error::oauth("unauthorized_client", "Client has no exchange policy")
             })?;
             let subject_hash = digest(request.subject_token.as_deref().ok_or_else(invalid)?);
+            // An agent's application token is never exchanged onward.
             let subject = tx
                 .get::<Grant>("access", &subject_hash)?
+                .filter(|subject| subject.agent_application.is_none())
                 .ok_or_else(invalid)?;
             self.validate_grant_chain(tx, &subject, 0)
                 .map_err(|_| invalid())?;
