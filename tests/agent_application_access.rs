@@ -144,6 +144,99 @@ fn assert_ended(f: &Fixture, secret: &str, token: &str) {
 }
 
 #[test]
+fn account_resets_and_signing_out_everywhere_end_application_access() {
+    let f = Fixture::new();
+    let owner = f.user("owner");
+    let secret = application(&f, JMAP, |_| {});
+    let credential = agent(&f, &owner, "mail-helper", 3600);
+    let approve = |session: &str| {
+        f.core
+            .approve_my_agent_application(session, "mail-helper", access(JMAP, &["mail"]))
+            .unwrap()
+    };
+    let token = |credential: &str| {
+        text(
+            &f.core.token(exchange(credential, JMAP)).unwrap(),
+            "access_token",
+        )
+    };
+
+    // A password change advances the account epoch: the approval and its
+    // tokens end, and the agent cannot mint new ones.
+    approve(&owner);
+    let before = token(&credential);
+    assert_live(&f, &secret, &before);
+    let password = "a-different-password-for-tests";
+    f.core
+        .change_password(&owner, PASSWORD.into(), password.into(), None)
+        .unwrap();
+    assert_ended(&f, &secret, &before);
+    assert_eq!(
+        f.core.token(exchange(&credential, JMAP)).unwrap_err().code,
+        "invalid_grant"
+    );
+    let owner = text(
+        &f.core.login("owner".into(), password.into(), None).unwrap(),
+        "session_token",
+    );
+    let listed = f.core.my_agent_applications(&owner, "mail-helper").unwrap();
+    assert_eq!(listed["applications"][0]["active"], false);
+
+    // A fresh approval works; signing out everywhere revokes it.
+    approve(&owner);
+    let again = token(&credential);
+    assert_live(&f, &secret, &again);
+    let reply = f
+        .core
+        .portal_password(None, "owner".into(), password.into(), None, false)
+        .unwrap();
+    let cookie = reply
+        .cookies
+        .iter()
+        .find_map(|value| value.split(';').next()?.strip_prefix("riauth_sso="))
+        .unwrap()
+        .to_owned();
+    let page = f.core.portal_security(Some(&cookie)).unwrap();
+    let binding: riauth::portal::self_service::Binding = serde_json::from_value(json!({
+        "expected_user_id": page["user"]["id"],
+        "expected_session_id": page["current_session_id"],
+    }))
+    .unwrap();
+    f.core
+        .portal_revoke_all_sessions(Some(&cookie), &binding)
+        .unwrap();
+    assert_ended(&f, &secret, &again);
+    assert_eq!(
+        f.core.token(exchange(&credential, JMAP)).unwrap_err().code,
+        "invalid_grant"
+    );
+
+    // An agent an administrator issued for this person cannot act as them.
+    f.core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "issued-for-owner".into(),
+                permissions: permissions(&[("profile.read", "self")]),
+                ttl: 3600,
+                parent: Some("owner".into()),
+            },
+        )
+        .unwrap();
+    let owner = text(
+        &f.core.login("owner".into(), password.into(), None).unwrap(),
+        "session_token",
+    );
+    assert_eq!(
+        f.core
+            .approve_my_agent_application(&owner, "issued-for-owner", access(JMAP, &["mail"]))
+            .unwrap_err()
+            .code,
+        "access_denied"
+    );
+}
+
+#[test]
 fn approval_needs_ownership_a_live_agent_an_opted_in_application_and_fresh_sign_in() {
     let f = Fixture::new();
     let owner = f.user("owner");
@@ -543,20 +636,26 @@ fn management_permissions_confer_no_application_access() {
             "invalid_grant",
             "{id}"
         );
-        // client.write may opt an application in, but approves nothing.
-        f.core
-            .update_client(
-                &token,
-                "later",
-                ClientPatch {
-                    settings: Some(ProviderSettings {
-                        agent_access: true,
+        // Opting an application in is a human administrator's decision, so
+        // client.write neither opts in nor approves anything.
+        assert_eq!(
+            f.core
+                .update_client(
+                    &token,
+                    "later",
+                    ClientPatch {
+                        settings: Some(ProviderSettings {
+                            agent_access: true,
+                            ..Default::default()
+                        }),
                         ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
+                    },
+                )
+                .unwrap_err()
+                .code,
+            "access_denied",
+            "{id}"
+        );
         assert_eq!(
             f.core.token(exchange(&token, "later")).unwrap_err().code,
             "invalid_grant"

@@ -58,6 +58,10 @@ pub(crate) struct Approval {
     /// The approving sign-in used a second factor. Tokens carry it as the
     /// owner's MFA state, as a refresh token carries its original sign-in.
     pub(crate) mfa: bool,
+    /// The owner's account epoch at approval. A password, factor or session
+    /// reset advances it and ends the approval, as it ends refresh tokens.
+    #[serde(default)]
+    pub(crate) owner_epoch: u64,
     /// The upstream sign-in the approval relied on. Tokens carry it, so its
     /// source, link and authorization deadline are checked on every use.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -71,6 +75,10 @@ pub(crate) struct Approval {
 impl Approval {
     fn active(&self, at: u64) -> bool {
         self.revoked_at.is_none() && self.expires_at > at
+    }
+
+    fn current_for(&self, owner: &User) -> bool {
+        self.owner_id == owner.id && self.owner_epoch == owner.epoch
     }
 
     fn view(&self) -> Value {
@@ -107,7 +115,12 @@ pub(crate) fn list(
         .list::<Approval>(APPROVALS)?
         .into_iter()
         .filter(|(_, approval)| approval.agent_id == agent.id && approval.owner_id == owner.id)
-        .map(|(_, approval)| approval.view())
+        .map(|(_, approval)| {
+            let mut view = approval.view();
+            // An account reset since approval ended it, though nothing revoked it.
+            view["active"] = json!(approval.active(now()) && approval.current_for(&owner));
+            view
+        })
         .collect();
     Ok(json!({"agent_id": agent.id, "applications": applications}))
 }
@@ -126,6 +139,15 @@ pub(crate) fn approve(
     if live_principal(tx, &core.config, &agent)?.is_none() {
         return Err(Error::conflict(
             "Only an enabled, unexpired agent can be approved for an application",
+        ));
+    }
+    // An administrator may hold the credential of an agent it issued for
+    // someone; only an agent the owner issued may act as the owner.
+    if agent.authorized_by.as_deref() != Some(owner.id.as_str()) {
+        return Err(Error::new(
+            StatusCode::FORBIDDEN,
+            "access_denied",
+            "Only an agent you issued yourself can be approved for an application",
         ));
     }
     let client = tx
@@ -191,7 +213,9 @@ pub(crate) fn approve(
         .list::<Approval>(APPROVALS)?
         .into_iter()
         .map(|(_, approval)| approval)
-        .filter(|approval| approval.agent_id == agent.id && approval.active(at))
+        .filter(|approval| {
+            approval.agent_id == agent.id && approval.active(at) && approval.current_for(&owner)
+        })
         .collect();
     if live
         .iter()
@@ -214,6 +238,7 @@ pub(crate) fn approve(
         scopes: input.scopes,
         resource: input.resource,
         mfa: session.identity.mfa,
+        owner_epoch: owner.epoch,
         source,
         created_at: at,
         expires_at,
@@ -279,6 +304,19 @@ pub(crate) fn revoke_client(tx: &Tx<'_>, client_id: &str) -> Result<()> {
 
 /// Withdrawing a person's consent for an application also ends their agents'
 /// approvals for it, so disconnecting an application leaves no agent access.
+/// End every approval an owner gave, as signing out everywhere ends the
+/// owner's refresh tokens.
+pub(crate) fn revoke_owner_all(tx: &Tx<'_>, owner_id: &str) -> Result<()> {
+    let at = now();
+    for (id, mut approval) in tx.list::<Approval>(APPROVALS)? {
+        if approval.owner_id == owner_id && approval.revoked_at.is_none() {
+            approval.revoked_at = Some(at);
+            tx.put(APPROVALS, &id, &approval)?;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn revoke_owner_client(tx: &Tx<'_>, owner_id: &str, client_id: &str) -> Result<()> {
     revoke_matching(tx, |approval| {
         approval.owner_id == owner_id && approval.client_id == client_id
@@ -318,13 +356,15 @@ pub(crate) fn find(
 
 /// The owner identity an application token carries: no session, no
 /// interactive sign-in, the approving sign-in's MFA state and upstream source,
-/// and the owner's current epoch, so any later account revocation ends the token.
+/// and the owner's epoch recorded at approval, so any later account
+/// revocation ends the token and the approval.
 pub(crate) fn identity(approval: &Approval, owner: &User) -> Identity {
     Identity {
         amr: vec![],
         source: approval.source.clone(),
         user_id: owner.id.clone(),
-        epoch: owner.epoch,
+        // The approval's epoch: once the owner's advances, every use fails.
+        epoch: approval.owner_epoch,
         mfa: approval.mfa,
         auth_time: 0,
         session_id: format!("{SESSION_PREFIX}{}", approval.id),
@@ -351,7 +391,7 @@ pub(crate) fn validate_live(
         .get::<Approval>(APPROVALS, approval_id)?
         .filter(|approval| approval.active(now()))
         .ok_or_else(Error::unauthorized)?;
-    if approval.owner_id != user.id
+    if !approval.current_for(user)
         || identity.user_id != user.id
         || identity.mfa != approval.mfa
         || identity.auth_time != 0
@@ -438,9 +478,13 @@ pub(crate) fn act(tx: &Tx<'_>, config: &Config, grant: &Grant) -> Result<Option<
     let approval = tx
         .get::<Approval>(APPROVALS, &reference.approval)?
         .ok_or_else(Error::unauthorized)?;
-    Ok(Some(
-        json!({"sub": format!("agent:{}", approval.agent_id), "iss": config.issuer}),
-    ))
+    let client = tx
+        .get::<Client>("clients", &approval.client_id)?
+        .ok_or_else(Error::unauthorized)?;
+    Ok(Some(json!({
+        "sub": format!("agent:{}", approval.agent_id),
+        "iss": crate::issuer::for_client(&config.issuer, &client),
+    })))
 }
 
 /// Drop approvals a day after they stop being usable. Storage records a

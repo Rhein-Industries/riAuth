@@ -250,6 +250,8 @@ pub(crate) fn revoke_sessions(
             }
             crate::logout::queue_user(tx, &user.id)?;
             crate::ssf::enqueue(tx, &user.id, crate::ssf::SESSION_REVOKED, "")?;
+            // Application approvals outlive no sign-out, as refresh tokens do not.
+            crate::management::agent_applications::revoke_owner_all(tx, &user.id)?;
             audit(tx, &user.id, "session.revoke_all", &user.id)?;
             let propagation = propagate(core, tx, ids.clone(), frontchannel.into_iter().collect())?;
             tx.delete("browser_sessions", &digest(cookie))?;

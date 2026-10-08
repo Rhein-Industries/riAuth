@@ -2750,6 +2750,14 @@ fn check_client_as(
     }
     // Every adapter, including state preview/apply, reaches this guard. Only
     // the exact-content review executor may authorize a changed existing policy.
+    // Letting agents act for people at an application is a decision for a
+    // full human administrator, never for an agent or a delegated owner.
+    if existing.map_or(next.settings.agent_access, |c| {
+        c.settings.agent_access != next.settings.agent_access
+    }) && !matches!(authority, Authority::Management(actor, _) if !actor.agent && !actor.delegated)
+    {
+        return Err(Error::forbidden());
+    }
     if review != ClientReview::AccessPolicy
         && existing.is_some_and(|c| {
             c.allowed_groups != next.allowed_groups || c.require_mfa != next.require_mfa
