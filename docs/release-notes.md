@@ -1,3 +1,59 @@
+# riAuth v0.1.4 release notes
+
+riAuth 0.1.4 limits every owned agent to its owner's current authority, adds
+narrow personal account permissions, brings parent-owned agents to Essentials
+and makes account security and workspace Settings full pages.
+
+## Agents and delegation
+
+- An owned agent acts with its approved permissions limited to what its owner
+  holds now. The limit is recomputed on every request and before delayed
+  offboarding, provisioning, reconciliation, invitation and registration work.
+  A full administrator owner leaves the approved list as the ceiling; anyone
+  else contributes their live delegated grants, personal actions on their own
+  account and the configuration revision. See [owner authority](agent.md#owner-authority).
+- Administrators may own agents. Ownership never grants administrator power.
+  For other owners, issuance accepts only exact resources or `self` within the
+  owner's current authority. Promoting an owner revokes their agents, as it
+  removes delegated grants.
+- Agents record the owner, the authorizing administrator (`authorized_by`) and
+  the approved permissions separately. Audit events carry both owner and
+  authorizer, and `target_parent_user` when an agent revokes another agent.
+- New personal actions on `user/<name>`, `*` or `self`: `profile.read`,
+  `profile.write`, `sessions.read`, `sessions.revoke`, `consents.read`,
+  `consents.revoke`, `agents.read` and `agents.revoke`. A display-name-only
+  update needs `profile.write` instead of `user.write`. New routes read an
+  account's profile, sessions, consents and owned agents and withdraw its
+  consent. See [personal actions](agent.md#personal-actions).
+- Parent-owned agents are available in Essentials as well as Platform.
+
+## Workspace
+
+- Account security and workspace Settings have direct routes, normal page links
+  and history navigation. Sign-in is presented without a floating card, and
+  recovery codes appear as a full page.
+- Authenticator code fields accept six digits, or eight for imported
+  authenticators, with numeric entry, one-time-code autofill and whole-code
+  paste.
+
+## Upgrade
+
+This release changes agent authorization without a migration step. An existing
+owned agent keeps authenticating, but permissions its owner does not hold no
+longer apply; reissue such an agent with an administrator owner or without an
+owner.
+
+Essentials now compiles `agents.parent_ownership`, which changes the recorded
+active capabilities. Before starting 0.1.4 on an existing Essentials store, stop
+every riAuth process, take and verify an encrypted backup, and run
+`riauth-maintenance security-agreement-record --confirm-authentication-policy
+--confirm-rate-limits --confirm-capabilities` once with the 0.1.4 maintenance
+binary. Platform stores need no agreement change. The logical storage schema and
+derived index revision are unchanged from 0.1.3. Follow
+[upgrade and rollback](operations.md#upgrade-and-rollback).
+
+---
+
 # riAuth v0.1.3 release notes
 
 riAuth 0.1.3 adds workspace appearance settings and strengthens authorization,
