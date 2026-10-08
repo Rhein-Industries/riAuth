@@ -64,6 +64,7 @@ pub const INVALIDATED: &[&str] = &[
     "human_grants",
     // Staged approvals cannot authorize writes on a restored timeline.
     "reviewed_human_grants",
+    "agent_proposals",
     "reviewed_group_memberships",
     "reviewed_client_policies",
     "reviewed_client_statuses",

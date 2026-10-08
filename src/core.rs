@@ -989,6 +989,8 @@ impl Core {
             .write(|tx| crate::identity::windows_credentials::cleanup(tx, at))?;
         self.store.write(|tx| crate::lifecycle::cleanup(tx, at))?;
         self.store
+            .write(|tx| crate::management::owner_agents::cleanup(tx, at))?;
+        self.store
             .write(|tx| crate::provisioning::cleanup(tx, at))?;
         self.store.write(|tx| crate::directory::cleanup(tx, at))?;
         #[cfg(feature = "platform")]

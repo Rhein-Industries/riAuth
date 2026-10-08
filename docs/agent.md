@@ -77,6 +77,18 @@ These narrow actions manage one account. Each names `user/<username>`, `*`, or `
 
 Agents still cannot alter an administrator account through `profile.write`. Writes keep the usual `If-Match` and `Idempotency-Key` requirements for scoped callers.
 
+### Owner self-service
+
+A signed-in person can manage agents they own without an administrator. Every route uses their own session; an agent credential is refused.
+
+1. `POST /api/me/agents` with `{"id", "permissions", "ttl"}` prepares a proposal. Each permission must be an exact resource or `self` within the person's current authority. The response shows the exact approved permissions, what they mean now (`effective_permissions`) and the absolute `expires_at` the agent will have, with a `proposal_id` and `digest`. Nothing is issued yet, and a proposal stays approvable for ten minutes.
+2. `POST /api/me/agents/proposals/{proposal_id}/approve` with `{"digest"}` issues exactly that agent. It needs a sign-in within the last five minutes, with a second factor when the account has one. The owner is both `parent_user` and `authorized_by`. Only this first response discloses the credential; a retry returns 409 `credential_already_issued`.
+3. `GET /api/me/agents` lists the person's agents with their effective permissions and open proposals. `GET /api/me/agents/{id}/activity` lists the agent's recent audited actions.
+4. `POST /api/me/agents/{id}/rotate` with `{"ttl"}` replaces the credential of an enabled, unexpired agent and needs the same fresh sign-in. An expired agent is not revived; prepare a new one. An optional `Idempotency-Key` turns an exact retry into `credential_already_issued`.
+5. `DELETE /api/me/agents/{id}` revokes an agent at once, with no fresh sign-in.
+
+A person can hold at most 20 enabled agents and open proposals together. Another person's agent answers 404. The same operations are available to the signed-in browser under `/api/portal/agents`, bound to the page's account and session. Audit events for these operations have the person as actor and `details.self_service: true`.
+
 ## Delegated human administration (M04 first slice)
 
 A full human administrator can replace another enabled, non-administrator's low-risk delegated grants with `PUT /api/users/{username}/delegated-grants` using a JSON array. Changes that add, remove or rebind `directory_operator` or `security_administrator` grants require the [M05 reviewed-grant workflow](reviewed-grants.md), including complete revocation with an empty array. `GET` on the same path reads grants. The same routes are available to an administrator's signed-in browser at `/api/admin/users/{username}/delegated-grants` behind the portal read or write guards. A grant is tied to the exact named target and its stable stored ID; `*` and kind-wide scopes are rejected. Committed changes are live on the next management request and are audited with the assigning actor and scopes. A grant holder cannot change grants, even their own.

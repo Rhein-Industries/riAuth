@@ -211,6 +211,11 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 
 | Method | Route | Contract |
 | --- | --- | --- |
+| GET, POST | `/api/me/agents` | Signed-in person: list owned agents and open proposals / prepare a proposal with exact permissions and expiry ([owner self-service](agent.md#owner-self-service)) |
+| POST | `/api/me/agents/proposals/{id}/approve` | Issue exactly the prepared agent once; needs fresh sign-in (with MFA when enrolled) and the proposal `digest` |
+| POST | `/api/me/agents/{id}/rotate` | Rotate an enabled, unexpired owned agent; fresh sign-in |
+| DELETE | `/api/me/agents/{id}` | Revoke an owned agent |
+| GET | `/api/me/agents/{id}/activity` | Recent audited actions of an owned agent |
 | GET | `/api/me` | Current user/session, or for an agent: `permissions` it holds now (approved list limited to its owner's current authority), `approved_permissions`, `parent_user`, `authorized_by` and `expires_at` |
 | POST | `/api/logout` | Revoke current end-user session and associated grants; return optional `saml_logout_url` |
 | GET | `/api/sessions` | Current user's unrevoked sessions, each with `kind`: `browser` (no bearer token) or `terminal` |

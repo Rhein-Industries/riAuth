@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub use crate::identity::agent_credentials::{Agent, Permission};
+pub use crate::management::owner_agents::AgentProposalInput;
 
 /// Prefix of the management credential for a browser session: the SSO cookie value follows.
 /// `api::bearer` rejects whitespace, so an Authorization header can never carry one; only the

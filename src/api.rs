@@ -396,6 +396,17 @@ pub fn router(core: Core) -> Router {
         .route("/oauth/sources/{id}/callback", get(source_callback))
         .route("/api/logout", post(logout))
         .route("/api/me", get(me))
+        .route("/api/me/agents", get(my_agents).post(prepare_my_agent))
+        .route(
+            "/api/me/agents/proposals/{id}/approve",
+            post(approve_my_agent),
+        )
+        .route(
+            "/api/me/agents/{id}",
+            axum::routing::delete(revoke_my_agent),
+        )
+        .route("/api/me/agents/{id}/rotate", post(rotate_my_agent))
+        .route("/api/me/agents/{id}/activity", get(my_agent_activity))
         .route("/api/sessions", get(sessions))
         .route("/api/sessions/{id}", axum::routing::delete(revoke_session))
         .route("/api/users", get(users).post(create_user))
@@ -2105,6 +2116,75 @@ async fn users(
         } else {
             core.list_users(&token).map(Json)
         }
+    })
+    .await
+}
+async fn my_agents(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.my_agents(&token).map(Json)).await
+}
+async fn prepare_my_agent(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(input): Json<crate::management::AgentProposalInput>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.prepare_my_agent(&token, input).map(Json))
+        .await
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProposalApproval {
+    digest: String,
+}
+async fn approve_my_agent(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(approval): Json<ProposalApproval>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.approve_my_agent(&token, &id, &approval.digest)
+            .map(Json)
+    })
+    .await
+}
+async fn rotate_my_agent(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(rotation): Json<AgentRotation>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.rotate_my_agent(&token, &id, rotation.ttl).map(Json))
+        .await
+}
+async fn revoke_my_agent(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.revoke_my_agent(&token, &id).map(Json))
+        .await
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ActivityQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+async fn my_agent_activity(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<ActivityQuery>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.my_agent_activity(&token, &id, query.limit.unwrap_or(50))
+            .map(Json)
     })
     .await
 }

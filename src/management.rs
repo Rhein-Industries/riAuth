@@ -42,6 +42,7 @@ mod consents;
 mod devices;
 pub(crate) mod grants;
 mod memberships;
+pub(crate) mod owner_agents;
 #[cfg(feature = "platform")]
 mod pam;
 mod personal;
@@ -54,6 +55,7 @@ pub(crate) use consents::{
     ConsentApproval, ConsentWithdraw, remember_approved_consent, withdraw_consent,
 };
 pub(crate) use devices::{DeviceDecisionAuthority, decide_device, device_approval_policy};
+pub use owner_agents::AgentProposalInput;
 #[cfg(feature = "platform")]
 pub(crate) use pam::review_access;
 #[cfg(feature = "platform")]
