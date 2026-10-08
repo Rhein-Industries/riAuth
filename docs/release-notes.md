@@ -1,3 +1,69 @@
+# riAuth v0.1.5 release notes
+
+riAuth 0.1.5 lets people manage their own agents, approve the sensitive changes
+those agents prepare, and let an agent use an application on their behalf,
+with every approval bound to exact content and a fresh sign-in.
+
+## Your own agents
+
+- A signed-in person prepares an agent with exact permissions and an absolute
+  expiry, reviews what those permissions mean now, and approves that unchanged
+  proposal with a sign-in from the last five minutes (with MFA when enrolled).
+  The credential is shown once. Owners list, rotate, revoke and inspect the
+  recent activity of only their own agents; expired agents are not revived.
+  See [owner self-service](agent.md#owner-self-service).
+- The new **My agents** page (`/account/agents`) and `riauth me agents` cover
+  the same lifecycle. An agent uses the personal routes with
+  `riauth --agent-file FILE user profile|sessions|consents|agents USERNAME`.
+
+## Sensitive changes need their owner
+
+- An owned agent holding `changes.prepare` prepares one exact change: the
+  owner's recovery email or the removal of one of the owner's factors, or, for
+  an administrator owner who issued the agent, another account's administrator
+  role or delegated grant set. Nothing changes until the owner approves that
+  change by digest with a fresh sign-in; it then runs as the owner through the
+  existing writer. Reviewed grant roles are staged for the reviewed-grant
+  workflow, never applied. See [prepared sensitive changes](agent.md#prepared-sensitive-changes).
+- **My agents** lists them under **Pending approvals**; `riauth me changes`
+  and `riauth --agent-file FILE changes prepare|list` cover the terminal.
+
+## Application access for agents
+
+- A full human administrator opts an application in with the client setting
+  `agent_access`. An owner then approves an agent they issued themselves for
+  chosen scopes of that application. The agent obtains short-lived access
+  tokens as its owner by OAuth token exchange
+  (`subject_token_type=urn:riauth:params:oauth:token-type:agent`), with `act`
+  naming the agent and no refresh or ID token. See
+  [application access](agent.md#application-access) and the
+  [token-exchange profile](oidc-profiles.md#agent-application-access).
+- Every use is checked again. Revoking the approval or the agent, rotation,
+  expiry, disabling or promoting the owner, a password or factor reset,
+  signing out everywhere, withdrawing consent and opting the application out
+  each end outstanding tokens at once.
+- `riauth me agents available|allow|disallow|applications` and
+  `riauth --agent-file FILE agent-token CLIENT` cover the terminal; **My
+  agents** shows each agent's applications.
+
+## Audit
+
+Audit review and the audit CSV include `parent_user`, `authorized_by`,
+`target_parent_user` and `self_service`, and the events map and administrator
+view show an agent's owner, so a reviewer sees both the agent and the person
+behind it.
+
+## Upgrade
+
+No storage migration is needed. New records live in the `agent_proposals`,
+`prepared_changes` and `agent_application_grants` buckets; restoring a backup
+removes them, like other staged approvals. The provider settings schema gains
+the optional boolean `agent_access`. The audit CSV has four additional columns
+at the end; update consumers that read columns by position. Follow
+[upgrade and rollback](operations.md#upgrade-and-rollback).
+
+---
+
 # riAuth v0.1.4 release notes
 
 riAuth 0.1.4 limits every owned agent to its owner's current authority, adds

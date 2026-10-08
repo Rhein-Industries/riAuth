@@ -2,7 +2,7 @@
 name: riauth-docker
 services:
   riauth:
-    image: ${RIAUTH_IMAGE:-ghcr.io/rhein-industries/riauth-essentials:0.1.4}
+    image: ${RIAUTH_IMAGE:-ghcr.io/rhein-industries/riauth-essentials:0.1.5}
     user: "10001:10001"
     entrypoint: ["/usr/local/bin/riauth", "--config", "/config/riauth.toml"]
     command: ["serve"]
@@ -43,7 +43,7 @@ services:
   # Explicit tools only; no automatic initialization, password or secret in YAML.
   init:
     profiles: [tools]
-    image: ${RIAUTH_IMAGE:-ghcr.io/rhein-industries/riauth-essentials:0.1.4}
+    image: ${RIAUTH_IMAGE:-ghcr.io/rhein-industries/riauth-essentials:0.1.5}
     user: "10001:10001"
     network_mode: none
     entrypoint: ["/usr/local/bin/riauth", "--config", "/config/riauth.toml"]

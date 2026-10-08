@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Full reviewed source commit (40 lowercase hex characters), version 0.1.4
+        description: Full reviewed source commit (40 lowercase hex characters), version 0.1.5
         required: true
         type: string
       checked_ci_run_id:
@@ -17,7 +17,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: riauth-public-docker-0.1.4
+  group: riauth-public-docker-0.1.5
   cancel-in-progress: false
 
 env:
@@ -100,7 +100,7 @@ jobs:
           python3 - <<'PY'
           import hashlib, json, os, pathlib, subprocess, tomllib
           assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == os.environ['SOURCE_SHA']
-          version = '0.1.4'
+          version = '0.1.5'
           for path, name in [('Cargo.toml', 'riauth'), ('crates/riauthctl/Cargo.toml', 'riauthctl')]:
               package = tomllib.loads(pathlib.Path(path).read_text())['package']
               assert package['name'] == name and package['version'] == version
@@ -254,13 +254,13 @@ jobs:
                    '--driver-opt', 'env.RIAUTH_PUBLICATION_OWNER=' + owner], 60)
               run(['docker', 'buildx', 'inspect', builder, '--bootstrap'], 180)
               for edition in ('essentials', 'platform'):
-                  tag = 'riauth-publish-' + edition + ':0.1.4-' + owner
+                  tag = 'riauth-publish-' + edition + ':0.1.5-' + owner
                   run(['docker', 'buildx', 'build', '--builder', builder, '--platform', 'linux/' + arch,
                        '--load', '--progress', 'plain', '--file', str(product / 'Dockerfile'),
                        '--build-arg', 'RIAUTH_EDITION=' + edition, '--build-arg', 'RIAUTH_COMMIT=' + source,
                        '--build-arg', 'CARGO_BUILD_JOBS=1', '--build-arg', 'CARGO_INCREMENTAL=0',
                        '--build-arg', 'CARGO_PROFILE_RELEASE_DEBUG=0',
-                       '--label', 'org.opencontainers.image.version=0.1.4',
+                       '--label', 'org.opencontainers.image.version=0.1.5',
                        '--label', 'org.riauth.publish-run=' + owner, '--tag', tag, str(product)], 2700)
                   run(['python3', str(controller / 'scripts/check-container-runtime.py'), '--product', str(product),
                        '--output', str(root / 'dist'), '--image', tag, '--edition', edition, '--architecture', arch,
@@ -336,11 +336,11 @@ jobs:
           evidence.mkdir(mode=0o700)
           source, workflow, ci = (os.environ[k] for k in ('SOURCE_SHA', 'WORKFLOW_SHA', 'CI_RUN'))
           record = {'schema': 'riauth.ghcr-publication/v1', 'source_sha': source, 'workflow_sha': workflow,
-                    'checked_ci_run_id': ci, 'version': '0.1.4', 'ok': False, 'failure': None,
+                    'checked_ci_run_id': ci, 'version': '0.1.5', 'ok': False, 'failure': None,
                     'images': {}, 'attempted_registry_tags': [], 'anonymous_pull_verified': False,
                     'visibility': 'root_verification_pending'}
           gate = json.loads((root / 'gate/gate.json').read_bytes())
-          assert (gate['source_sha'], gate['workflow_sha'], gate['checked_ci_run_id'], gate['version']) == (source, workflow, ci, '0.1.4')
+          assert (gate['source_sha'], gate['workflow_sha'], gate['checked_ci_run_id'], gate['version']) == (source, workflow, ci, '0.1.5')
           deadline = time.monotonic() + 2400
           signal.signal(signal.SIGCHLD, signal.SIG_DFL)
           assert signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
@@ -428,12 +428,12 @@ jobs:
                       assert {p.name for p in directory.iterdir()} == {'build.json', 'SHA256SUMS-' + arch, *(e + '-' + arch + suffix for e in ('essentials', 'platform') for suffix in ('.json', '.docker.tar'))}
                       build = json.loads((directory / 'build.json').read_bytes())
                       assert build['ok'] is True and build['cleanup'] == [] and build['failure'] is None
-                      assert (build['source_sha'], build['workflow_sha'], build['checked_ci_run_id'], build['architecture'], build['version'], build['dockerfile_sha256']) == (source, workflow, ci, arch, '0.1.4', gate['dockerfile_sha256'])
+                      assert (build['source_sha'], build['workflow_sha'], build['checked_ci_run_id'], build['architecture'], build['version'], build['dockerfile_sha256']) == (source, workflow, ci, arch, '0.1.5', gate['dockerfile_sha256'])
                       for edition in ('essentials', 'platform'):
                           item = json.loads((directory / (edition + '-' + arch + '.json')).read_bytes())
                           assert item['ok'] is True and item['failure'] is None and item['cleanup'] == []
                           assert item['remaining_owned_containers'] == item['remaining_owned_volumes'] == 0
-                          assert (item['source_sha'], item['workflow_sha'], item['checked_ci_run_id'], item['version'], item['edition'], item['architecture']) == (source, workflow, ci, '0.1.4', edition, arch)
+                          assert (item['source_sha'], item['workflow_sha'], item['checked_ci_run_id'], item['version'], item['edition'], item['architecture']) == (source, workflow, ci, '0.1.5', edition, arch)
                           assert item['checks'] == ['native_host_image_binary', 'licenses', 'encrypted_initialization', 'readyz', 'readonly_theme', 'persistent_restart']
                           archive = directory / (edition + '-' + arch + '.docker.tar')
                           assert item['archive']['name'] == archive.name and 0 < archive.stat().st_size == item['archive']['bytes'] <= 2 * 1024**3
@@ -444,7 +444,7 @@ jobs:
                           labels = loaded['Config']['Labels']
                           assert loaded['Os'] == 'linux' and loaded['Architecture'] == arch and loaded['Config']['User'] == '10001:10001'
                           assert labels['org.riauth.edition'] == edition and labels['org.opencontainers.image.revision'] == source
-                          assert labels['org.opencontainers.image.source'] == 'https://github.com/Rhein-Industries/riAuth' and labels['org.opencontainers.image.version'] == '0.1.4'
+                          assert labels['org.opencontainers.image.source'] == 'https://github.com/Rhein-Industries/riAuth' and labels['org.opencontainers.image.version'] == '0.1.5'
                           records[(edition, arch)] = item
                       assert (directory / ('SHA256SUMS-' + arch)).read_text() == ''.join(
                           records[(e, arch)]['archive']['sha256'] + '  ' + records[(e, arch)]['archive']['name'] + '\n'
@@ -454,7 +454,7 @@ jobs:
                       name = 'rhein-industries/riauth-' + edition
                       data, _ = request('/token?service=ghcr.io&scope=repository:' + name + ':pull,push')
                       tokens[edition] = json.loads(data)['token']
-                      for tag in ('0.1.4', '0.1.4-amd64', '0.1.4-arm64'):
+                      for tag in ('0.1.5', '0.1.5-amd64', '0.1.5-arm64'):
                           data, _ = request('/v2/' + name + '/manifests/' + tag, tokens[edition], absent=True)
                           assert data is None, 'existing_version_tag_refused'
                   # No login/build-time token crossing. This job alone has packages:write.
@@ -464,15 +464,15 @@ jobs:
                       name = 'rhein-industries/riauth-' + edition
                       image = 'ghcr.io/' + name
                       entries = {}
-                      record['images'][edition] = {'name': image, 'version_tag': image + ':0.1.4',
+                      record['images'][edition] = {'name': image, 'version_tag': image + ':0.1.5',
                                                    'digest': None, 'architectures': entries}
                       for arch in ('amd64', 'arm64'):
                           item = records[(edition, arch)]
-                          tag = image + ':0.1.4-' + arch
+                          tag = image + ':0.1.5-' + arch
                           run(['docker', 'image', 'tag', item['image_id'], tag])
                           record['attempted_registry_tags'].append(tag)
                           run(['docker', 'image', 'push', tag], seconds=600)
-                          raw, headers = request('/v2/' + name + '/manifests/0.1.4-' + arch, tokens[edition])
+                          raw, headers = request('/v2/' + name + '/manifests/0.1.5-' + arch, tokens[edition])
                           manifest = json.loads(raw)
                           digest = 'sha256:' + hashlib.sha256(raw).hexdigest()
                           assert headers['Docker-Content-Digest'] == digest and manifest['config']['digest'] == item['image_id']
@@ -482,13 +482,13 @@ jobs:
                           # credential-bearing redirect to a blob CDN is needed.
                           labels = json.loads(run(['docker', 'image', 'inspect', item['image_id']]))[0]['Config']['Labels']
                           entries[arch] = {'digest': digest, 'config_digest': item['image_id'], 'archive_sha256': item['archive']['sha256'], 'tag': tag, 'labels': labels}
-                      tag = image + ':0.1.4'
+                      tag = image + ':0.1.5'
                       run(['docker', 'manifest', 'create', tag, *(image + '@' + entries[a]['digest'] for a in ('amd64', 'arm64'))])
                       for arch in ('amd64', 'arm64'):
                           run(['docker', 'manifest', 'annotate', '--os', 'linux', '--arch', arch, tag, image + '@' + entries[arch]['digest']])
                       record['attempted_registry_tags'].append(tag)
                       run(['docker', 'manifest', 'push', tag], seconds=120)
-                      raw, headers = request('/v2/' + name + '/manifests/0.1.4', tokens[edition])
+                      raw, headers = request('/v2/' + name + '/manifests/0.1.5', tokens[edition])
                       index = json.loads(raw)
                       assert index['schemaVersion'] == 2 and len(index['manifests']) == 2
                       assert {m['platform']['architecture']: m['digest'] for m in index['manifests']} == {a: entries[a]['digest'] for a in entries}
