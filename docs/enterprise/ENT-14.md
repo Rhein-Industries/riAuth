@@ -22,8 +22,9 @@ Only an explicit local `location` object is plotted:
 
 1. `details.location` on the audit event. If the key is present but the coordinates are missing or out of range, the event is unknown. The map does not fall back to the user.
 2. Otherwise, the actor's user attribute `location`, set through the existing user update or manifest `attributes`. Changing that attribute changes how older events without their own coordinates are grouped. Store `details.location` when a historical point must stay put. The current audit writer does not copy the attribute into new events.
+3. For an event an owned agent performed (actor `agent:{id}`), step 2 uses its owner's attribute instead, from the owner the audit writer stored in `details.parent_user` ([ENT-09](ENT-09.md#actor-attribution)). An unowned agent has no such user.
 
-Events without a usable coordinate, including actors that are not users, increment `unknown`. They are not omitted. IP addresses, forwarding headers and nested audit `changes` are ignored. riAuth does not ship or query a GeoIP database, and the page does not call the browser location API. This view does not add tracking: it only reads coordinates operators already stored, and the read itself is not an audit event.
+Events without a usable coordinate, including unowned agents and other actors that are not users, increment `unknown`. They are not omitted. IP addresses, forwarding headers and nested audit `changes` are ignored. riAuth does not ship or query a GeoIP database, and the page does not call the browser location API. This view does not add tracking: it only reads coordinates operators already stored, and the read itself is not an audit event.
 
 Do not put secrets, passwords or tokens in the location label or in other attribute fields you expect this view to ignore. The response is limited to rounded coordinates, an optional label and counts.
 

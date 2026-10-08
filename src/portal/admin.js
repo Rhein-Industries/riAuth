@@ -416,8 +416,12 @@
   const checked = (form, id) => form.querySelector(`#${id}`).checked;
   const userById = (id) => data.users.find((user) => user.id === id);
   const personName = (user) => user ? user.display_name || user.username : "Unknown person";
-  const actorName = (id) => {
-    if (id.startsWith("agent:")) return `Agent ${id.slice(6)}`;
+  // Audit events name an owned agent's owner in details.parent_user (a user id).
+  const actorName = (id, details) => {
+    if (id.startsWith("agent:")) {
+      const owner = typeof details?.parent_user === "string" ? details.parent_user : null;
+      return owner ? `Agent ${id.slice(6)} (owner ${userById(owner)?.username || owner})` : `Agent ${id.slice(6)}`;
+    }
     const user = userById(id); return user ? user.username : id;
   };
 
@@ -1931,16 +1935,13 @@
     const access = accessRoutes() ? accessSecurity() : null;
     const admins = data.users.filter((u) => u.admin && u.enabled);
     const unprotected = admins.filter((u) => !u.mfa_enabled);
-    const actor = (id) => {
-      if (id.startsWith("agent:")) return `Agent ${id.slice(6)}`;
-      const user = userById(id); return user ? user.username : id;
-    };
+    const actor = (e) => actorName(e.actor, e.details);
     const activity = table("Recent activity", [
       { label: "When", cell: (e) => when(e.at) },
-      { label: "Who", cell: (e) => actor(e.actor) },
+      { label: "Who", cell: (e) => actor(e) },
       { label: "Action", cell: (e) => h("code", {}, e.action) },
       { label: "Target", cell: (e) => { const user = userById(e.target); return user ? user.username : e.target; } },
-    ], data.audit, "No recorded activity.", (e) => `${actor(e.actor)} ${e.action} ${e.target}`);
+    ], data.audit, "No recorded activity.", (e) => `${actor(e)} ${e.action} ${e.target}`);
     const stat = (label, count, tone, target) => h("button", { class: `stat ${tone}`.trim(), type: "button", onclick: () => {
       const section = document.getElementById(target); section.scrollIntoView({ block: "start" }); section.querySelector("h2").focus();
     } }, h("strong", {}, String(count)), h("span", {}, label));

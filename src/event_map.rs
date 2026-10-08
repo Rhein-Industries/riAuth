@@ -1,8 +1,9 @@
 //! Read-only aggregate of coordinates operators already stored.
 //!
 //! A point comes from `details.location` on the audit event or, when that
-//! field is absent, from the actor's user attribute `location`. IP addresses
-//! are never consulted, and this view does not write audit records.
+//! field is absent, from the actor's user attribute `location`. An owned
+//! agent's events use its owner's attribute (`details.parent_user`). IP
+//! addresses are never consulted, and this view does not write audit records.
 
 use crate::{
     error::{Error, Result},
@@ -171,13 +172,23 @@ fn location_for(
     if let Some(value) = event.details.get("location") {
         return Ok(parse_location(value));
     }
-    if let Some(cached) = cache.get(&event.actor) {
+    // An agent has no user record. The audit writer names its owner, whose
+    // location stands in for it; an unowned agent stays unknown.
+    let person = if event.actor.starts_with("agent:") {
+        match event.details.get("parent_user").and_then(Value::as_str) {
+            Some(owner) => owner,
+            None => return Ok(None),
+        }
+    } else {
+        event.actor.as_str()
+    };
+    if let Some(cached) = cache.get(person) {
         return Ok(cached.clone());
     }
     let location = tx
-        .user(&event.actor)?
+        .user(person)?
         .and_then(|user| user.attributes.get("location").and_then(parse_location));
-    cache.insert(event.actor.clone(), location.clone());
+    cache.insert(person.to_owned(), location.clone());
     Ok(location)
 }
 

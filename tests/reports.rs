@@ -605,7 +605,11 @@ fn password_change_audit_has_no_hash_and_secrets_stay_out() {
             "action",
             "target",
             "run_id",
-            "request_id"
+            "request_id",
+            "parent_user",
+            "authorized_by",
+            "target_parent_user",
+            "self_service"
         ]
     );
     assert!(!csv.body.contains('\r'));
@@ -943,6 +947,97 @@ fn complete_pagination_returns_every_row() {
         .collect();
     assert_eq!(seen, expected);
     assert!(seen.len() > 3);
+}
+
+#[test]
+fn review_and_csv_name_the_owner_and_approver_of_agent_events() {
+    let f = Fixture::new();
+    let owner = f.user("owner");
+    let owner_id = text(&f.core.me(&owner).unwrap()["user"], "id");
+    let prepared = f
+        .core
+        .prepare_my_agent(
+            &owner,
+            riauth::agent::AgentProposalInput {
+                id: "helper".into(),
+                permissions: vec![Permission {
+                    action: "agents.revoke".into(),
+                    resource: "self".into(),
+                }],
+                ttl: 3600,
+            },
+        )
+        .unwrap();
+    let approved = f
+        .core
+        .approve_my_agent(
+            &owner,
+            &text(&prepared, "proposal_id"),
+            &text(&prepared, "digest"),
+        )
+        .unwrap();
+    let token = text(&approved["credential"], "token");
+    // The agent revokes itself: the agent acts, and its owner approved it.
+    f.core.revoke_agent(&token, "helper").unwrap();
+
+    let review = f
+        .core
+        .audit_review(
+            &f.admin,
+            AuditReviewQuery {
+                target: Some("helper".into()),
+                limit: Some(10),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let events = review["events"].as_array().unwrap();
+    let created = events
+        .iter()
+        .find(|event| event["action"] == "agent.create")
+        .unwrap();
+    assert_eq!(created["actor"], owner_id);
+    assert_eq!(created["parent_user"], owner_id);
+    assert_eq!(created["authorized_by"], owner_id);
+    assert_eq!(created["self_service"], true);
+    assert!(created["target_parent_user"].is_null());
+    assert!(created.get("details").is_none());
+    let revoked = events
+        .iter()
+        .find(|event| event["action"] == "agent.revoke")
+        .unwrap();
+    assert_eq!(revoked["actor"], "agent:helper");
+    assert_eq!(revoked["parent_user"], owner_id);
+    assert_eq!(revoked["authorized_by"], owner_id);
+    assert_eq!(revoked["self_service"], false);
+
+    let csv = f
+        .core
+        .audit_csv(
+            &f.admin,
+            AuditReviewQuery {
+                target: Some("helper".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let rows = parse_csv(&csv.body);
+    let column = |name: &str| rows[0].iter().position(|cell| cell == name).unwrap();
+    let row = rows
+        .iter()
+        .find(|row| row[column("action")] == "agent.revoke")
+        .unwrap();
+    assert_eq!(row[column("actor")], "agent:helper");
+    assert_eq!(row[column("parent_user")], owner_id);
+    assert_eq!(row[column("authorized_by")], owner_id);
+    assert_eq!(row[column("target_parent_user")], "");
+    assert_eq!(row[column("self_service")], "false");
+    let row = rows
+        .iter()
+        .find(|row| row[column("action")] == "agent.create")
+        .unwrap();
+    assert_eq!(row[column("self_service")], "true");
+    assert!(!csv.body.contains(&token));
 }
 
 #[test]

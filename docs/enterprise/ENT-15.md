@@ -33,9 +33,9 @@ User CSV, in order:
 
 Audit CSV, in order:
 
-`id, at, actor, action, target, run_id, request_id`
+`id, at, actor, action, target, run_id, request_id, parent_user, authorized_by, target_parent_user, self_service`
 
-There is no details or changes column. `run_id` and `request_id` are empty when absent. Secrets are not given a column.
+There is no details or changes column. `run_id` and `request_id` are empty when absent. `parent_user`, `authorized_by` and `target_parent_user` are the user ids that [ENT-09](ENT-09.md#actor-attribution) attributes to an agent event, and are empty otherwise. `self_service` is `true` or `false`. The four attribution columns follow the original seven, so a reader that takes columns by position keeps working. Secrets are not given a column.
 
 ## Encoding
 

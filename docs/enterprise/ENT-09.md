@@ -20,7 +20,7 @@ Rows written for `users`, `groups`, `clients`, `agents`, `sources`, and `windows
 | `limit` | Clamped to 1..=500. Default 100. |
 | `cursor` | Opaque, encrypted with the inventory cursor key and context `riauth.audit.page/v1`. Bound to the actor and the filter. Expires after one hour. Not bound to the configuration revision: new rows sort at the newest end of a reverse scan, so they fall outside a cursor that has already moved backward. |
 
-The response is `{events, next_cursor, limit, retention_seconds}`. Each event is `{id, at, actor, action, target, run_id, request_id, changes}`. The raw `details` object is not returned. One request examines at most 10,000 stored rows; if the page is not full it still returns `next_cursor` so the caller can continue. Order is reverse audit storage-key order, using timestamp-prefixed keys for application-written events. It is not a separate sort of arbitrary imported `at` values.
+The response is `{events, next_cursor, limit, retention_seconds}`. Each event is `{id, at, actor, action, target, run_id, request_id, parent_user, authorized_by, target_parent_user, self_service, changes}`. The raw `details` object is not returned. One request examines at most 10,000 stored rows; if the page is not full it still returns `next_cursor` so the caller can continue. Order is reverse audit storage-key order, using timestamp-prefixed keys for application-written events. It is not a separate sort of arbitrary imported `at` values.
 
 `GET /api/reports/audit.csv` uses this same page, permission, filter, and cursor. See [ENT-15.md](ENT-15.md).
 
@@ -28,13 +28,15 @@ The response is `{events, next_cursor, limit, retention_seconds}`. Each event is
 
 The actor is the principal id: the user id for an administrator, `agent:{id}` for an agent, or the explicit name used by bootstrap and recovery (`bootstrap`, `local-recovery`, `anonymous`, `upstream`). `run_id` comes from `X-riAuth-Run-ID` / `RIAUTH_RUN_ID`. `request_id` is the server-generated request id when the mutation runs under HTTP context.
 
+An event an agent performs, or an `agent.*` event about an agent, also names the people behind it. `parent_user` is the agent's owner and `authorized_by` the human who approved its permissions, both as user ids and `null` for an unowned agent. When an agent acts on another agent, `target_parent_user` is that other agent's owner. `self_service` is `true` when a person managed their own agent (create, rotate or revoke through `/api/me/agents` or the My agents page), and `false` otherwise. These come from the stored event, so they show who owned and approved the agent when the event was written. The administrator portal's recent activity labels an agent actor with its owner's username, and the event map places an owned agent's events at its owner's location ([ENT-14.md](ENT-14.md)).
+
 ## Redaction
 
 Before an audit row is stored, and again when review projects it, any JSON field whose name contains `secret`, `password`, `token`, `hash`, `totp`, `recovery`, `seed`, `private_key`, or `key_material` is replaced with `[redacted]`. The same applies to `authorization`, `proxy-authorization`, `cookie`, and header-like `authorization_header` / `auth_header` names. Markers `[redacted]` and `[changed]` are kept so a reviewer can see that a credential changed without the value.
 
 That rule is intentionally broad. Configuration names such as `token_endpoint` are redacted because they contain `token`. Public views already omit `password_hash`, `totp_secret`, `recovery_codes`, `secret_hash`, and `token_hash`. Those values are compared only in memory.
 
-The review response and the audit CSV do not include a details blob. CSV columns are listed in ENT-15.
+The review response and the audit CSV do not include a details blob; they project only the attribution fields above. CSV columns are listed in ENT-15.
 
 ## Retention
 

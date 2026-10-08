@@ -36,6 +36,10 @@ const AUDIT_HEADER: &[&str] = &[
     "target",
     "run_id",
     "request_id",
+    "parent_user",
+    "authorized_by",
+    "target_parent_user",
+    "self_service",
 ];
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -350,6 +354,10 @@ fn project_event(event: &Audit) -> Value {
         "target": event.target,
         "run_id": event.run_id,
         "request_id": event.details.get("request_id").cloned().filter(|value| !value.is_null()).unwrap_or(Value::Null),
+        "parent_user": detail(event, "parent_user"),
+        "authorized_by": detail(event, "authorized_by"),
+        "target_parent_user": detail(event, "target_parent_user"),
+        "self_service": self_service(event),
         "changes": changes,
     })
 }
@@ -361,6 +369,21 @@ fn request_id(event: &Audit) -> String {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_owned()
+}
+
+/// A user id the audit writer attributed to an agent event: the acting or
+/// subject agent's owner and approver, or a target agent's owner.
+fn detail(event: &Audit, key: &str) -> Option<String> {
+    event
+        .details
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+/// Whether a person managed their own agent (`details.self_service`).
+fn self_service(event: &Audit) -> bool {
+    event.details.get("self_service") == Some(&Value::Bool(true))
 }
 
 pub(crate) fn csv_cell(value: &str) -> String {
@@ -457,6 +480,10 @@ impl Core {
                     event.target.clone(),
                     event.run_id.clone().unwrap_or_default(),
                     request_id(event),
+                    detail(event, "parent_user").unwrap_or_default(),
+                    detail(event, "authorized_by").unwrap_or_default(),
+                    detail(event, "target_parent_user").unwrap_or_default(),
+                    self_service(event).to_string(),
                 ]
             })
             .collect::<Vec<_>>();

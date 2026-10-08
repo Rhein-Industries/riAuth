@@ -438,6 +438,85 @@ async fn user_attribute_is_used_only_when_the_event_has_no_location() {
 }
 
 #[tokio::test]
+async fn an_owned_agent_event_uses_its_owner_location() {
+    let fixture = Fixture::new();
+    let created = fixture
+        .core
+        .create_user(
+            &fixture.admin,
+            NewUser {
+                username: "ada".into(),
+                password: common::PASSWORD.into(),
+                email: None,
+                display_name: "Ada".into(),
+                admin: false,
+            },
+        )
+        .unwrap();
+    let owner_id = created["id"].as_str().unwrap().to_owned();
+    fixture
+        .core
+        .update_user(
+            &fixture.admin,
+            "ada",
+            UserPatch {
+                attributes: Some(BTreeMap::from([(
+                    "location".into(),
+                    json!({"latitude": 51.51, "longitude": -0.12, "label": "London"}),
+                )])),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let base = riauth::crypto::now() + 86_400;
+    insert(
+        &fixture.core,
+        &[
+            audit(
+                base,
+                "owned",
+                "agent:helper",
+                "map.agent",
+                json!({"parent_user": owner_id, "authorized_by": owner_id}),
+            ),
+            audit(base, "unowned", "agent:batch", "map.agent", json!({})),
+            // The agent id is not a user id, even if one matches it.
+            audit(
+                base,
+                "spoofed",
+                &format!("agent:{owner_id}"),
+                "map.agent",
+                json!({}),
+            ),
+            audit(
+                base,
+                "pinned",
+                "agent:helper",
+                "map.agent",
+                json!({"parent_user": owner_id, "location": {"latitude": 40.0, "longitude": 10.0}}),
+            ),
+        ],
+    );
+    let app = riauth::api::router(fixture.core);
+    let (status, _, body) = send(
+        &app,
+        &format!("/api/audit/map?since={base}&until={base}&action=map.agent"),
+        Some(&fixture.admin),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let parsed = json_body(&body);
+    assert_eq!(parsed["matched"].as_u64(), Some(4));
+    assert_eq!(parsed["unknown"].as_u64(), Some(2));
+    assert_eq!(find_point(&parsed, 515, -1)["count"].as_u64(), Some(1));
+    assert_eq!(find_point(&parsed, 400, 100)["count"].as_u64(), Some(1));
+    assert!(!body.contains(&owner_id));
+    assert!(!body.contains("helper"));
+}
+
+#[tokio::test]
 async fn time_range_is_inclusive_and_action_filter_is_a_prefix() {
     let fixture = Fixture::new();
     let base = riauth::crypto::now() + 86_400;
