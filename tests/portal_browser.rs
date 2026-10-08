@@ -136,7 +136,8 @@ async fn open_browser(browser: &str, profile: &std::path::Path) -> (Browser, Cdp
             .spawn()
             .unwrap(),
     );
-    let port = tokio::time::timeout(Duration::from_secs(20), async {
+    // Allow for a cold headless Chrome start on a busy CI runner.
+    let port = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             if let Ok(text) = std::fs::read_to_string(profile.join("DevToolsActivePort")) {
                 break text.lines().next().unwrap().parse::<u16>().unwrap();

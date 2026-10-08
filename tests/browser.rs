@@ -228,7 +228,9 @@ async fn browser_terminal_login_callback_and_signed_backchannel_logout() {
             .spawn()
             .unwrap(),
     );
-    let code = tokio::time::timeout(Duration::from_secs(20), async {
+    // A cold headless Chrome on a busy CI runner can take well over 20 s to
+    // load the relying party and reach authorization.
+    let code = tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             assert!(
                 chrome.0.try_wait().unwrap().is_none(),

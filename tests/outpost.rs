@@ -777,7 +777,8 @@ async fn exercise(nginx: Option<String>) {
                 .spawn()
                 .unwrap(),
         );
-        let code = tokio::time::timeout(Duration::from_secs(20), async {
+        // Allow for a cold headless Chrome start on a busy CI runner.
+        let code = tokio::time::timeout(Duration::from_secs(60), async {
             loop {
                 if let Some((_, p)) = core
                     .store
