@@ -12,7 +12,8 @@ const deferred = () => { let resolve; const promise = new Promise((done) => { re
 function helper(create) {
   const window = { addEventListener() {} };
   runInNewContext(source, { window, navigator: { credentials: { create } },
-    document: { querySelector: () => ({ content: '/' }), addEventListener() {} },
+    document: { querySelector: () => ({ content: '/' }), querySelectorAll: () => [], getElementById: () => null,
+      addEventListener() {} },
     AbortController, DOMException, Uint8Array, atob, btoa, performance,
     setTimeout: () => 0, clearTimeout() {}, isSecureContext: true });
   return window.RiAuth;
