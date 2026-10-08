@@ -384,7 +384,7 @@ fn authority(
         return Ok((user, request));
     }
     if request.invitation.is_some() {
-        let user = invitation::authority(tx, run, &request, at)?;
+        let user = invitation::authority(tx, &core.config, run, &request, at)?;
         return Ok((user, request));
     }
     let sid = run.session.as_deref().ok_or_else(Error::forbidden)?;

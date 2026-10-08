@@ -75,9 +75,10 @@ impl Dependents {
                     id: format!("child-{username}"),
                     parent: Some(username.into()),
                     ttl: 3600,
+                    // Within an ordinary owner's authority: their own profile.
                     permissions: vec![Permission {
-                        action: "user.read".into(),
-                        resource: "*".into(),
+                        action: "profile.read".into(),
+                        resource: "self".into(),
                     }],
                 },
             )

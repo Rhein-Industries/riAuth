@@ -25,7 +25,7 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PLATFORM_ONLY = frozenset({
     "access.temporary_entitlements", "agents.certificate_bindings",
-    "agents.parent_ownership", "audit.self_hosted_event_map",
+    "audit.self_hosted_event_map",
     "directory.entra_sync", "directory.ldap_provider",
     "directory.scim_inbound", "directory.workspace_sync",
     "identity.device_trust", "identity.https_client_certificates",
@@ -42,6 +42,7 @@ SHARED_SENTINELS = frozenset({
     "identity.passkeys", "identity.oidc_sources", "directory.ldap_sync",
     "directory.scim_outbound", "operations.postgresql", "oidc.code.pkce_s256",
     "operations.encrypted_backup_restore", "portal.user_applications",
+    "agents.parent_ownership",
 })
 PLATFORM_DIRECT_DEPS = frozenset({
     "flate2", "hmac", "hyper", "hyper-util", "ldap3_proto", "md-5", "psl",

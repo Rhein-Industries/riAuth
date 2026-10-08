@@ -143,6 +143,10 @@ pub enum LocalCommand {
         /// Explicitly adopt an initialized store whose agreement row is missing
         #[arg(long)]
         adopt_missing_agreement: bool,
+        /// Record this build's active capabilities in place of a different
+        /// recorded set, after an upgrade that changes them; other fields must match
+        #[arg(long)]
+        confirm_capabilities: bool,
     },
     /// Generate a private encryption key file
     Keygen(KeygenArgs),
@@ -357,6 +361,7 @@ pub(crate) async fn dispatch(options: LocalOptions<'_>, command: LocalCommand) -
             confirm_authentication_policy,
             confirm_rate_limits,
             adopt_missing_agreement,
+            confirm_capabilities,
         } => {
             if !confirm_authentication_policy || !confirm_rate_limits {
                 return Err(crate::error::Error::bad(
@@ -366,7 +371,11 @@ pub(crate) async fn dispatch(options: LocalOptions<'_>, command: LocalCommand) -
             }
             let config = Config::load(options.config)?;
             let result = tokio::task::spawn_blocking(move || {
-                crate::node_security::record_security_agreement(&config, adopt_missing_agreement)
+                crate::node_security::record_security_agreement(
+                    &config,
+                    adopt_missing_agreement,
+                    confirm_capabilities,
+                )
             })
             .await??;
             emit_local(&options, &result)?;

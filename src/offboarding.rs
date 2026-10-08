@@ -24,6 +24,7 @@
 pub use crate::offboarding_types::{ACTIONS, BUCKET, Job, MAX_ATTEMPTS, Status};
 use crate::{
     agent::{Agent, Principal},
+    config::Config,
     core::{Core, audit, ensure_remaining_admin, user_by_name, validate_name},
     crypto::{self, now},
     error::{Error, Result},
@@ -1337,7 +1338,7 @@ impl Core {
                     "Offboarding attempt failed before changes were committed",
                 ));
             }
-            match apply_local(tx, &job) {
+            match apply_local(tx, &self.config, &job) {
                 Ok(result) => {
                     job.status = Status::Done;
                     job.result = Some(result);
@@ -1430,26 +1431,19 @@ fn finalize_exhausted(tx: &Tx<'_>, job: &mut Job) -> Result<()> {
     audit(tx, &job.created_by, "offboard.execute", &audit_target(job))
 }
 
-fn authority_still_valid(tx: &Tx<'_>, job: &Job, user: &User) -> Result<()> {
+fn authority_still_valid(tx: &Tx<'_>, config: &Config, job: &Job, user: &User) -> Result<()> {
     if let Some(agent_id) = job.created_by.strip_prefix("agent:") {
         let agent = tx
             .get::<Agent>("agents", agent_id)?
             .ok_or_else(|| authority_inactive("Offboarding agent is no longer active"))?;
-        if !crate::agent::authority_active(tx, &agent)? {
+        let Some(actor) = crate::agent::live_principal(tx, config, &agent)? else {
             return Err(authority_inactive(
                 "Offboarding agent or its parent is no longer active",
             ));
-        }
+        };
         if user.admin {
             return Err(agents_cannot());
         }
-        let actor = Principal {
-            id: job.created_by.clone(),
-            agent: true,
-            delegated: false,
-            grants: vec![],
-            permissions: agent.permissions,
-        };
         actor.require("user.offboard", &format!("user/{}", user.username))?;
         return Ok(());
     }
@@ -1480,12 +1474,12 @@ fn revoke_temporary_access(tx: &Tx<'_>, user_id: &str, actor: &str, at: u64) -> 
     Ok(revoked)
 }
 
-fn apply_local(tx: &Tx<'_>, job: &Job) -> Result<Value> {
+fn apply_local(tx: &Tx<'_>, config: &Config, job: &Job) -> Result<Value> {
     let mut user = user_by_name(tx, &job.username)?;
     if user.id != job.user_id {
         return Err(Error::conflict("Offboarding user identity changed"));
     }
-    authority_still_valid(tx, job, &user)?;
+    authority_still_valid(tx, config, job, &user)?;
     would_remove_last_admin(tx, &user)?;
     // Same revocation as an administrative disable, in this transaction: the epoch
     // change ends sessions and OAuth grants, and the shared account transition

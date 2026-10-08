@@ -122,9 +122,22 @@ pub(crate) fn revoke_sessions(
         }
         RevokeIntent::BearerOne { token, target_id } => {
             if token.starts_with("ri_agent_") {
-                let actor =
-                    core.management(tx, token, "session.revoke", &format!("session/{target_id}"))?;
-                let target = session(tx, target_id)?;
+                // `session.revoke` names one session; `sessions.revoke` covers the
+                // sessions of the account it names.
+                let actor = core.principal(tx, token)?;
+                let by_id = actor.allows("session.revoke", &format!("session/{target_id}"));
+                let target = match tx.get::<Session>("sessions", target_id)? {
+                    Some(target) => target,
+                    None if by_id => return Err(Error::missing("Session not found")),
+                    None => return Err(Error::forbidden()),
+                };
+                if !by_id {
+                    let owner = tx
+                        .get::<crate::model::User>("users", &target.identity.user_id)?
+                        .ok_or_else(Error::forbidden)?;
+                    actor.require("sessions.revoke", &format!("user/{}", owner.username))?;
+                }
+                crate::reconciliation::validate_apply_lease(tx, &actor)?;
                 let receipt = SessionReceipt::current(
                     &actor.id,
                     json!({"authority":"agent","actor":actor.id,"permissions":actor.permissions}),

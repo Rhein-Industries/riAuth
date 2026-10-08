@@ -400,6 +400,14 @@ pub fn router(core: Core) -> Router {
         .route("/api/sessions/{id}", axum::routing::delete(revoke_session))
         .route("/api/users", get(users).post(create_user))
         .route("/api/users/{username}", axum::routing::patch(update_user))
+        .route("/api/users/{username}/profile", get(user_profile))
+        .route("/api/users/{username}/sessions", get(user_sessions))
+        .route("/api/users/{username}/consents", get(user_consents))
+        .route(
+            "/api/users/{username}/consents/{client_id}",
+            axum::routing::delete(revoke_user_consent),
+        )
+        .route("/api/users/{username}/agents", get(user_agents))
         .route(
             "/api/users/{username}/delegated-grants",
             get(human_grants).put(set_human_grants),
@@ -2099,6 +2107,54 @@ async fn users(
         }
     })
     .await
+}
+async fn user_profile(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.user_profile(&token, &username).map(Json))
+        .await
+}
+async fn user_sessions(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.user_sessions(&token, &username).map(Json))
+        .await
+}
+async fn user_consents(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.user_consents(&token, &username).map(Json))
+        .await
+}
+async fn revoke_user_consent(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((username, client_id)): Path<(String, String)>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| {
+        core.revoke_user_consent(&token, &username, &client_id)
+            .map(Json)
+    })
+    .await
+}
+async fn user_agents(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.user_agents(&token, &username).map(Json))
+        .await
 }
 async fn human_grants(
     State(app): State<App>,

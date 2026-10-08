@@ -993,6 +993,20 @@ async fn temporary_access_fences_parent_agent_and_help_desk_credentials_until_en
             }],
         )
         .unwrap();
+    // Credential writes are administrator authority, so the agent's owner is
+    // an administrator; the agent stays limited to its approved list.
+    f.core
+        .create_user(
+            &f.admin,
+            NewUser {
+                username: "agent-owner".into(),
+                password: PASSWORD.into(),
+                email: None,
+                display_name: "Agent owner".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
     let agent = f
         .core
         .create_agent(
@@ -1004,7 +1018,7 @@ async fn temporary_access_fences_parent_agent_and_help_desk_credentials_until_en
                     resource: "*".into(),
                 }],
                 ttl: 3600,
-                parent: Some("operator".into()),
+                parent: Some("agent-owner".into()),
             },
         )
         .unwrap();

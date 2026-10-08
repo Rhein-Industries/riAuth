@@ -345,9 +345,7 @@ impl Trail {
         details["request_id"] = json!(self.request_id);
         let target = format!("backup/{}", self.stream_id);
         let logged = self.core.store.write(|tx| {
-            if let Some(parent) = crate::agent::audit_parent(tx, &self.actor, action, &target)? {
-                details["parent_user"] = json!(parent);
-            }
+            crate::agent::audit_attribution(tx, &self.actor, action, &target, &mut details)?;
             crate::store::redact_audit_value(&mut details);
             let event = crate::model::Audit {
                 id: crate::crypto::id(),

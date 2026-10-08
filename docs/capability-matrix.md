@@ -3,7 +3,7 @@
 This page reads source revision `fdcbfee0950112986e5955f39bd28103d8b0319c`.
 It records compiled inclusion, runtime prerequisites, protocol profile and
 direction, peers named by tests, and known limits for Essentials, Platform,
-and `riauthctl`. The assembly counts below are 87 names: 60 shared and 27
+and `riauthctl`. The assembly counts below are 87 names: 61 shared and 26
 compiled only in Platform. `workflow.controlled_extensions` is the additional
 Platform-only name.
 
@@ -40,8 +40,8 @@ includes `essentials` ([`Cargo.toml`](../Cargo.toml)).
 
 | Piece | How it is selected | What that build contains |
 | --- | --- | --- |
-| Essentials `riauth` and `riauth-maintenance` | `--no-default-features --features essentials` | 60 capability names. Same identity, authorization, revocation, and credential code as Platform. |
-| Platform `riauth` and `riauth-maintenance` | default features, or `--features platform` | All 87 names: 60 shared and 27 Platform-only. Adds the listeners, routes, and agent actions below. |
+| Essentials `riauth` and `riauth-maintenance` | `--no-default-features --features essentials` | 61 capability names. Same identity, authorization, revocation, and credential code as Platform. |
+| Platform `riauth` and `riauth-maintenance` | default features, or `--features platform` | All 87 names: 61 shared and 26 Platform-only. Adds the listeners, routes, and agent actions below. |
 | `riauthctl` | separate crate, default features empty ([`crates/riauthctl`](../crates/riauthctl/Cargo.toml)) | Remote HTTP administration. No server crate, redb, or PostgreSQL dependency. |
 | `riauthctl` with `terminal-usb` | `--features terminal-usb` | Adds CTAP2 USB passkey login and enrollment. |
 
@@ -101,7 +101,7 @@ The registry is [`FEATURES`](../src/agent.rs) minus
 `operations.vault_transit_signing`, `identity.saml_sources`,
 `directory.scim_inbound`, `access.temporary_entitlements`,
 `identity.scheduled_offboarding`, `identity.windows_device_login`,
-`agents.parent_ownership`, `directory.workspace_sync`,
+`directory.workspace_sync`,
 `directory.entra_sync`, `identity.https_client_certificates`,
 `identity.device_trust`, `ssf.push`, `workflow.controlled_extensions`.
 
@@ -111,7 +111,7 @@ Essentials also omits agent actions `ldap.search`, `certificate.read`,
 `ssf.configure`, `workflow.read`, and `workflow.write`
 ([`PLATFORM_ACTIONS`](../src/edition.rs)). Directory wildcards and
 `workspace/…` or `entra/…` resources are rejected on Essentials. Parent-owned
-agents are rejected. The artifact schema list still includes `workflow`;
+agents and the [owner authority](agent.md#owner-authority) model are shared. The artifact schema list still includes `workflow`;
 `radius-certificate`, `windows-device`, `windows-login`,
 `client-certificate`, and `cloud-directory-plan` are omitted
 ([`src/schema.rs`](../src/schema.rs)).

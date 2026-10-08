@@ -56,7 +56,8 @@ change with authentication. Cross-build continuity is pending RI-DIST-001.
 ### RI-ACC-002: no implicit administrator authority or last-admin loss
 
 **Contract.** Ordinary authentication, parent ownership and agent permissions do
-not confer human administrator/delegation authority. Remote mutations must not
+not confer human administrator/delegation authority. An administrator-owned
+agent keeps its approved list as its ceiling and every agent restriction. Remote mutations must not
 create, edit or enroll credentials for an administrator through a scoped-agent
 path, or remove the last enabled administrator. Offline administrator recovery
 is a separate operator-controlled capability.
@@ -70,6 +71,8 @@ is a separate operator-controlled capability.
 **Existing regressions.** [Management](../../tests/identity/operations.rs)
 `agent_credentials_enforce_action_resource_and_identity_boundaries`;
 [parents](../../tests/agent_parent.rs) `parent_user_ownership_constrains_agents`;
+[owner authority](../../tests/agent_authority.rs)
+`administrator_ownership_keeps_the_approved_list_as_the_ceiling`;
 [devices](../../tests/windows_login.rs) `agent_cannot_enroll_an_administrator`;
 [offboarding](../../tests/offboarding.rs)
 `agent_without_permission_is_forbidden_and_last_admin_is_protected`.
@@ -375,12 +378,21 @@ revocation. Build-time omission must also reject (RI-DIST-002/003).
 ### RI-MGT-001: management permission is current, explicit and scoped
 
 **Contract.** Every management effect needs the current principal's exact
-action/resource permission; a user parent adds no authority. Agent rotation
-preserves scope/owner and invalidates the old credential. Disabled/expired agents
-or disabled/deleted parents cannot execute or delegate, including delayed work.
+action/resource permission; a user parent adds no authority. An owned agent
+acts with its approved permissions limited to the owner's current authority:
+the approved list for a full administrator, otherwise the owner's live
+delegated grants plus personal actions on their own account. Issuance refuses
+a permission outside that authority and, for a non-administrator owner, any
+wildcard; promotion revokes owned agents; every credential use and delayed job
+recomputes the limit. Agent rotation preserves scope/owner and invalidates the old
+credential. Disabled/expired agents or disabled/deleted parents cannot execute
+or delegate, including delayed work.
 
 **Observed enforcement.** [Agents](../../src/agent.rs) `Principal::require`,
-`principal`, `management`, `authority_active`, `rotate_agent`;
+`principal`, `live_principal`, `OwnerAuthority::limit`, `management`,
+`rotate_agent`; [management](../../src/management.rs) `create_agent`;
+[reconciliation](../../src/reconciliation.rs) `scoped_agent`;
+[registration](../../src/assembly/registration_runtime.rs) `check_creator`;
 [lifecycle](../../src/lifecycle.rs) `creator`;
 [provisioning](../../src/provisioning.rs) `actor`;
 [offboarding](../../src/offboarding.rs) `authority_still_valid`.
@@ -391,8 +403,13 @@ inferred from a successful core-only test (RI-MGT-003).
 `agent_credentials_enforce_action_resource_and_identity_boundaries`,
 `agent_credential_rotation_preserves_permissions_and_invalidates_the_old_token`;
 [parents](../../tests/agent_parent.rs) `parent_user_ownership_constrains_agents`;
+[owner authority](../../tests/agent_authority.rs)
+`delegated_owner_authority_limits_the_agent_on_every_request`,
+`existing_owned_agents_are_cut_over_to_the_owner_authority`,
+`personal_actions_manage_only_the_named_account`;
 [offboarding](../../tests/offboarding.rs)
-`execution_revalidates_agent_parent_even_for_a_legacy_enabled_agent`.
+`execution_revalidates_agent_parent_even_for_a_legacy_enabled_agent`,
+`execution_applies_the_owner_authority_held_at_execution`.
 
 **Missing coverage / later contract.** Q02-C04 builds the action/resource and
 admin-target matrix with no inferred wildcard or delegation. Q05-R03 changes

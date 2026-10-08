@@ -37,7 +37,7 @@ fn mail_proof(tx: &Tx<'_>, token: &str) -> Result<(String, Proof)> {
     }
 }
 
-fn owned(tx: &Tx<'_>, token: &str, ceremony: &str) -> Result<Pending> {
+fn owned(tx: &Tx<'_>, config: &Config, token: &str, ceremony: &str) -> Result<Pending> {
     let (hash, proof) = mail_proof(tx, token)?;
     let pending: Pending = tx.get(PENDING, &hash)?.ok_or_else(Error::forbidden)?;
     if pending.pin.hash != hash
@@ -50,7 +50,7 @@ fn owned(tx: &Tx<'_>, token: &str, ceremony: &str) -> Result<Pending> {
     {
         return Err(Error::forbidden());
     }
-    pending.pin.authority(tx, now())?;
+    pending.pin.authority(tx, config, now())?;
     Ok(pending)
 }
 
@@ -65,8 +65,8 @@ impl Core {
         }
         self.store.write(|tx| {
             let (hash, proof) = mail_proof(tx, &token)?;
-            let mut pin = Pin::new(tx, hash.clone(), proof)?;
-            let user = pin.authority(tx, now())?;
+            let mut pin = Pin::new(tx, &self.config, hash.clone(), proof)?;
+            let user = pin.authority(tx, &self.config, now())?;
             let (challenge, state) = webauthn_for_issuer(&self.config.issuer)?
                 .start_passkey_registration(handle(&user.id), &user.username, &user.display_name, None)
                 .map_err(|_| Error::bad("Cannot start invitation passkey enrollment"))?;
@@ -90,7 +90,7 @@ impl Core {
     ) -> Result<Value> {
         let token = Zeroizing::new(token);
         self.store.write(|tx| {
-            let pending = owned(tx, &token, ceremony)?;
+            let pending = owned(tx, &self.config, &token, ceremony)?;
             // Spend a correctly bound failed attempt, without spending its mail
             // proof. Another account/request cannot cancel this registration.
             let key = match webauthn_for_issuer(&self.config.issuer)?
@@ -137,7 +137,7 @@ impl Core {
     ) -> Result<Value> {
         let token = Zeroizing::new(token);
         self.store.write(|tx| {
-            let pending = owned(tx, &token, ceremony)?;
+            let pending = owned(tx, &self.config, &token, ceremony)?;
             tx.delete(PENDING, &pending.pin.hash)?;
             Ok(json!({"cancelled":true}))
         })

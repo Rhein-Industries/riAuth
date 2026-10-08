@@ -489,7 +489,12 @@ impl Core {
         self.store.read(|tx| {
             if token.starts_with("ri_agent_") {
                 let actor = self.principal(tx, token)?;
-                return Ok(json!({"agent_id": actor.id, "permissions": actor.permissions}));
+                let agent = tx
+                    .get::<crate::agent::Agent>("agents", actor.id.trim_start_matches("agent:"))?
+                    .ok_or_else(Error::unauthorized)?;
+                // `permissions` is what the agent holds now: the approved list
+                // limited to its owner's current authority.
+                return Ok(json!({"agent_id": actor.id, "permissions": actor.permissions, "approved_permissions": agent.permissions, "parent_user": agent.parent_user, "authorized_by": agent.authorized_by, "expires_at": agent.expires_at}));
             }
             let (user, session) = self.session(tx, token)?;
             Ok(json!({"user": UserView::from(&user), "groups": groups_for(tx, &user.id)?, "session_id": session.id, "expires_at": session.expires_at, "mfa": session.identity.mfa}))
@@ -508,12 +513,7 @@ impl Core {
     pub fn sessions(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             let (user, _) = self.session(tx, token)?;
-            let mut list = Vec::new();
-            for s in tx.list::<Session>("sessions")?.into_iter().map(|(_, v)| v).filter(|s| s.identity.user_id == user.id && !s.revoked) {
-                let kind = if crate::signin::bearer_backed(tx, &s)? { "terminal" } else { "browser" };
-                list.push(json!({"id": s.id, "auth_time": s.identity.auth_time, "expires_at": s.expires_at, "mfa": s.identity.mfa, "kind": kind}));
-            }
-            Ok(json!(list))
+            crate::management::session_list(tx, &user.id)
         })
     }
     pub fn revoke_session(&self, token: &str, sid: &str) -> Result<Value> {
@@ -1225,9 +1225,7 @@ pub(crate) fn audit_with_details(
         }
     }
     crate::store::redact_audit_value(&mut details);
-    if let Some(parent) = crate::agent::audit_parent(tx, actor, action, target)? {
-        details["parent_user"] = json!(parent);
-    }
+    crate::agent::audit_attribution(tx, actor, action, target, &mut details)?;
     let event = Audit {
         id: id(),
         at: now(),

@@ -103,6 +103,14 @@ impl Harness {
     }
 
     fn add_user(&self, username: &str) -> String {
+        self.add_account(username, false)
+    }
+
+    fn add_admin(&self, username: &str) -> String {
+        self.add_account(username, true)
+    }
+
+    fn add_account(&self, username: &str, admin: bool) -> String {
         self.first
             .create_user(
                 &self.admin,
@@ -111,7 +119,7 @@ impl Harness {
                     password: PASSWORD.into(),
                     email: None,
                     display_name: username.into(),
-                    admin: false,
+                    admin,
                 },
             )
             .unwrap();
@@ -934,7 +942,8 @@ fn management_retry_race(h: &Harness) {
 }
 
 fn interrupted_offboarding_authority(h: &Harness) {
-    h.add_user("q05-owner");
+    // Offboarding is administrator authority, so the owner is an administrator.
+    h.add_admin("q05-owner");
     h.add_user("q05-target");
     let token = h.agent(
         "q05-scheduler",

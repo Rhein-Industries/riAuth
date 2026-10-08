@@ -3720,7 +3720,20 @@ fn p08_security_persisted_evidence_limit_counts_surrounding_whitespace() {
 #[test]
 fn execution_revalidates_agent_parent_even_for_a_legacy_enabled_agent() {
     let f = Fixture::new();
-    f.user("owner");
+    // Offboarding is administrator authority: an ordinary owner cannot hold it.
+    f.core
+        .create_user(
+            &f.admin,
+            NewUser {
+                username: "owner".into(),
+                password: PASSWORD.into(),
+                email: None,
+                display_name: "Agent owner".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+
     f.user("target");
     let created = f
         .core
@@ -3767,6 +3780,62 @@ fn execution_revalidates_agent_parent_even_for_a_legacy_enabled_agent() {
         .unwrap();
     assert_eq!(result["status"], "failed");
     assert!(result["last_error"].as_str().unwrap().contains("parent"));
+    assert!(account(&f.core, "target").enabled);
+}
+
+#[test]
+fn execution_applies_the_owner_authority_held_at_execution() {
+    let f = Fixture::new();
+    f.core
+        .create_user(
+            &f.admin,
+            NewUser {
+                username: "lead".into(),
+                password: PASSWORD.into(),
+                email: None,
+                display_name: "Lead".into(),
+                admin: true,
+            },
+        )
+        .unwrap();
+    f.user("target");
+    let created = f
+        .core
+        .create_agent(
+            &f.admin,
+            NewAgent {
+                id: "lead-scheduler".into(),
+                ttl: 3600,
+                parent: Some("lead".into()),
+                permissions: vec![Permission {
+                    action: "user.offboard".into(),
+                    resource: "user/target".into(),
+                }],
+            },
+        )
+        .unwrap();
+    let token = created["credential"]["token"].as_str().unwrap();
+    let job = schedule(&f.core, token, "target", soon(60), "UTC");
+    let id = job_id(&job);
+    age(&f.core, &id);
+    f.core.offboard_claim("worker").unwrap().unwrap();
+    // The owner stays enabled but no longer holds offboarding authority, so
+    // the agent's approved permission no longer applies to the queued job.
+    f.core
+        .update_user(
+            &f.admin,
+            "lead",
+            riauth::model::UserPatch {
+                admin: Some(false),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let result = f
+        .core
+        .offboard_commit("worker", &id, BeforeCommit::Proceed)
+        .unwrap();
+    assert_eq!(result["status"], "failed");
     assert!(account(&f.core, "target").enabled);
 }
 

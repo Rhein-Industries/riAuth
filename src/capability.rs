@@ -1581,13 +1581,13 @@ mod tests {
         };
 
         assert_eq!(agent::FEATURES.len(), 87);
-        assert_eq!(agent::PLATFORM_FEATURES.len(), 27);
+        assert_eq!(agent::PLATFORM_FEATURES.len(), 26);
         assert_eq!(
             agent::FEATURES
                 .iter()
                 .filter(|name| !agent::PLATFORM_FEATURES.contains(name))
                 .count(),
-            60
+            61
         );
         assert!(
             agent::PLATFORM_FEATURES

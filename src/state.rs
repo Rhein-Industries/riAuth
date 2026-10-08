@@ -1911,9 +1911,7 @@ impl Core {
             let mut audited = result.clone();
             audited["changes"] = Value::Array(changes.iter().map(|change| if change.resource.starts_with("connector.") { crate::connector_definitions::audit_view(change) } else { json!(change) }).collect());
             let mut details = json!({"request_id": crate::context::current().map(|c| c.request_id), "result": audited});
-            if let Some(parent) = crate::agent::audit_parent(tx, &actor.id, "state.apply", &input.plan.plan_id)? {
-                details["parent_user"] = json!(parent);
-            }
+            crate::agent::audit_attribution(tx, &actor.id, "state.apply", &input.plan.plan_id, &mut details)?;
             let event = Audit { id: crypto::id(), at: now(), actor: actor.id, action: "state.apply".into(), target: input.plan.plan_id.clone(), run_id: input.run_id, details };
             tx.put("audit", &format!("{:020}-{}", event.at, event.id), &event)?;
             stored.result = Some(result.clone());

@@ -6,7 +6,6 @@ use riauth::{
     model::{NewUser, User, UserPatch},
 };
 
-#[cfg(feature = "platform")]
 async fn agent_request(
     app: &axum::Router,
     method: &str,
@@ -46,12 +45,20 @@ async fn agent_request(
     (status, serde_json::from_slice(&bytes).unwrap())
 }
 
+/// An owned agent acts with its approved permissions limited to the owner's
+/// current authority. An ordinary owner holds personal actions on their own
+/// account, so owned fixtures approve one of those.
 fn new_agent(id: &str, parent: Option<&str>) -> NewAgent {
+    let (action, resource) = if parent.is_some() {
+        ("profile.write", "self")
+    } else {
+        ("user.write", "*")
+    };
     NewAgent {
         id: id.into(),
         permissions: vec![Permission {
-            action: "user.write".into(),
-            resource: "*".into(),
+            action: action.into(),
+            resource: resource.into(),
         }],
         ttl: 3600,
         parent: parent.map(str::to_string),
@@ -74,7 +81,6 @@ fn legacy_agent_row_defaults_parent_to_none() {
     assert_eq!(agent.parent_user, None);
 }
 
-#[cfg(feature = "platform")]
 #[tokio::test]
 async fn agent_create_revoke_share_receipts_and_single_audits() {
     use axum::http::StatusCode;
@@ -157,6 +163,8 @@ async fn agent_create_revoke_share_receipts_and_single_audits() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(created["agent"]["parent_user"], owner_id);
     assert_eq!(created["agent"]["permissions"], input["permissions"]);
+    let admin_id = f.core.me(&f.admin).unwrap()["user"]["id"].clone();
+    assert_eq!(created["agent"]["authorized_by"], admin_id);
     let credential = text(&created["credential"], "token");
     assert_eq!(
         f.core
@@ -178,6 +186,7 @@ async fn agent_create_revoke_share_receipts_and_single_audits() {
     assert!(!receipts[0].1.to_string().contains(&credential));
 
     let current = revision();
+    // Revoking an owned agent as a scoped caller needs `agents.revoke` on its owner.
     let (status, _) = agent_request(
         &app,
         "DELETE",
@@ -188,7 +197,7 @@ async fn agent_create_revoke_share_receipts_and_single_audits() {
         None,
     )
     .await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(status, StatusCode::FORBIDDEN);
     assert_eq!(revision(), current);
 
     let revoke = || {
@@ -230,14 +239,14 @@ async fn agent_create_revoke_share_receipts_and_single_audits() {
                 .iter()
                 .filter(|event| event["action"] == action
                     && event["target"] == "owned-writer"
-                    && event["details"]["parent_user"] == owner_id)
+                    && event["details"]["parent_user"] == owner_id
+                    && event["details"]["authorized_by"] == admin_id)
                 .count(),
             1
         );
     }
 }
 
-#[cfg(feature = "platform")]
 #[tokio::test]
 async fn agent_rotation_issues_one_credential_and_revokes_the_old_one() {
     use axum::http::StatusCode;
@@ -456,15 +465,28 @@ fn parent_user_ownership_constrains_agents() {
     assert_eq!(created["agent"]["parent_user"], owner_id);
     assert_eq!(
         created["agent"]["permissions"],
-        plain["agent"]["permissions"]
+        serde_json::json!([{"action": "profile.write", "resource": "self"}])
     );
     let old_token = text(&created["credential"], "token");
     let stored: Agent = f.core.store.get("agents", "owned").unwrap().unwrap();
     assert_eq!(stored.parent_user.as_deref(), Some(owner_id.as_str()));
 
+    // An administrator may own an agent; ownership still adds no authority.
+    let admin_owned = f
+        .core
+        .create_agent(&f.admin, new_agent("admin-parent", Some("admin")))
+        .unwrap();
+    let admin_owned_token = text(&admin_owned["credential"], "token");
     assert_eq!(
         f.core
-            .create_agent(&f.admin, new_agent("admin-parent", Some("admin")))
+            .update_user(
+                &admin_owned_token,
+                "admin",
+                UserPatch {
+                    display_name: Some("Agent-chosen".into()),
+                    ..Default::default()
+                },
+            )
             .unwrap_err()
             .code,
         "access_denied"
@@ -673,7 +695,7 @@ fn parent_user_ownership_constrains_agents() {
     assert_eq!(parent_of(events, "agent.create", "plain"), None);
     let update = events
         .iter()
-        .find(|event| event["action"] == "user.update" && event["actor"] == "agent:owned")
+        .find(|event| event["action"] == "user.profile_update" && event["actor"] == "agent:owned")
         .unwrap();
     assert_eq!(update["details"]["parent_user"], owner_id);
 

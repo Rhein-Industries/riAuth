@@ -1,6 +1,7 @@
 //! Registration runtime assembled over the caller's concrete transaction.
 
 use crate::{
+    config::Config,
     core::Core,
     crypto::{digest, now},
     error::{Error, Result},
@@ -17,7 +18,7 @@ pub(crate) struct RegistrationAuthority {
 }
 
 impl RegistrationAuthority {
-    pub(crate) fn for_token(tx: &Tx<'_>, token: &str) -> Result<Self> {
+    pub(crate) fn for_token(tx: &Tx<'_>, config: &Config, token: &str) -> Result<Self> {
         let hash = digest(token);
         let id = tx
             .get::<String>("registration_tokens", &hash)?
@@ -28,7 +29,7 @@ impl RegistrationAuthority {
                 r.template.id == id && r.token_hash == hash && r.enabled && r.expires_at > now()
             })
             .ok_or_else(Error::unauthorized)?;
-        check_creator(tx, &record)?;
+        check_creator(tx, config, &record)?;
         Ok(Self { record })
     }
 
@@ -101,7 +102,7 @@ impl Core {
     }
 }
 
-fn check_creator(tx: &Tx<'_>, record: &InitialAccess) -> Result<()> {
+fn check_creator(tx: &Tx<'_>, config: &Config, record: &InitialAccess) -> Result<()> {
     if record.creator_agent {
         let agent = tx
             .get::<crate::agent::Agent>(
@@ -112,16 +113,8 @@ fn check_creator(tx: &Tx<'_>, record: &InitialAccess) -> Result<()> {
                     .unwrap_or(&record.created_by),
             )?
             .ok_or_else(Error::unauthorized)?;
-        if !crate::agent::authority_active(tx, &agent)? {
-            return Err(Error::unauthorized());
-        }
-        let actor = crate::agent::Principal {
-            id: record.created_by.clone(),
-            agent: true,
-            delegated: false,
-            grants: vec![],
-            permissions: agent.permissions,
-        };
+        let actor =
+            crate::agent::live_principal(tx, config, &agent)?.ok_or_else(Error::unauthorized)?;
         actor.require("client.write", "*")?;
         actor.require(
             "registration.write",

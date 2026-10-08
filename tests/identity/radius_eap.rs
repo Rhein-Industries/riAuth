@@ -1436,7 +1436,8 @@ fn agent_eap_bind_cannot_capture_temporary_access_and_replays_existing_binding()
                     }))
                     .collect(),
                 ttl: 3600,
-                parent: Some("parent".into()),
+                // Certificate binding is not an ordinary owner's authority.
+                parent: None,
             },
         )
         .unwrap();

@@ -761,7 +761,20 @@ async fn ldap_changed_content_authority_and_legacy_plans_cannot_reuse_review() {
     tokio::task::spawn_blocking(move || {
         let mut f = Fixture::new();
         configure(&mut f, url);
-        f.user("owner");
+        // An administrator owner leaves the approved list as the ceiling, so
+        // only the changed parent binding can invalidate the reviewed plan.
+        f.core
+            .create_user(
+                &f.admin,
+                riauth::model::NewUser {
+                    username: "owner".into(),
+                    password: common::PASSWORD.into(),
+                    email: None,
+                    display_name: "Owner".into(),
+                    admin: true,
+                },
+            )
+            .unwrap();
         let owner = f
             .core
             .store

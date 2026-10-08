@@ -27,8 +27,7 @@ use std::collections::{BTreeMap, BTreeSet};
 const KEY: &str = "node_security";
 const FORMAT: u32 = 3;
 
-pub(crate) const CAPABILITY_MISMATCH: &str =
-    "Configured active capabilities do not match the initialized instance";
+pub(crate) const CAPABILITY_MISMATCH: &str = "Configured active capabilities do not match the initialized instance; after aligning every node, stop every riAuth process, back up, and run riauth-maintenance security-agreement-record --confirm-authentication-policy --confirm-rate-limits --confirm-capabilities";
 pub(crate) const POLICY_MISMATCH: &str =
     "Configured token lifetimes or password policy do not match the initialized instance";
 pub(crate) const STORED_ISSUER_MISMATCH: &str =
@@ -227,7 +226,14 @@ fn compare_rates(wanted: &BTreeMap<String, u32>, stored: &BTreeMap<String, u32>)
 /// authentication policy and effective rates; missing rows need a separate
 /// adoption flag. Stop all processes and back up first. A format 3 disagreement
 /// cannot be overwritten here. Older binaries refuse the new strict schema.
-pub(crate) fn record_security_agreement(config: &Config, adopt_missing: bool) -> Result<Value> {
+/// `confirm_capabilities` records this build's active capability set in place
+/// of a different recorded one, as after an upgrade that changes an edition's
+/// capabilities. Every other recorded field must still match.
+pub(crate) fn record_security_agreement(
+    config: &Config,
+    adopt_missing: bool,
+    confirm_capabilities: bool,
+) -> Result<Value> {
     config.validate().map_err(Error::internal)?;
     let store = Store::from_config(config)?;
     if store.get::<String>("meta", "issuer")?.as_deref() != Some(config.issuer.as_str()) {
@@ -262,8 +268,18 @@ pub(crate) fn record_security_agreement(config: &Config, adopt_missing: bool) ->
                     (old.issuer, old.active_capabilities)
                 }
                 Some(3) => {
-                    decide(&wanted, value, issuer)?;
-                    return Ok(report(false, &wanted));
+                    let stored = parse(value.clone())?;
+                    if stored.active_capabilities == wanted.active_capabilities
+                        || !confirm_capabilities
+                    {
+                        decide(&wanted, value, issuer)?;
+                        return Ok(report(false, &wanted));
+                    }
+                    let mut unchanged = wanted.clone();
+                    unchanged.active_capabilities = stored.active_capabilities;
+                    decide(&unchanged, value, issuer)?;
+                    tx.put("meta", KEY, &wanted)?;
+                    return Ok(report(true, &wanted));
                 }
                 Some(_) => return Err(Error::bad(FORMAT_MISMATCH)),
                 None => return Err(Error::bad(MALFORMED)),
@@ -271,7 +287,7 @@ pub(crate) fn record_security_agreement(config: &Config, adopt_missing: bool) ->
             if stored_issuer != wanted.issuer {
                 return Err(Error::bad(STORED_ISSUER_MISMATCH));
             }
-            if stored_active != wanted.active_capabilities {
+            if stored_active != wanted.active_capabilities && !confirm_capabilities {
                 return Err(Error::bad(CAPABILITY_MISMATCH));
             }
         } else if !adopt_missing {
@@ -504,7 +520,7 @@ mod tests {
             AGREEMENT_ABSENT
         );
         expect_record(&config, AGREEMENT_ABSENT);
-        record_security_agreement(&config, true).unwrap();
+        record_security_agreement(&config, true, false).unwrap();
         let adopted = Core::open(config.clone()).unwrap();
         assert_eq!(
             adopted.store.get::<Value>("meta", KEY).unwrap().unwrap(),
@@ -685,7 +701,7 @@ mod tests {
 
         plant(&config, &legacy);
         assert_eq!(canon(&config), planted);
-        let recorded = record_security_agreement(&config, false).unwrap();
+        let recorded = record_security_agreement(&config, false, false).unwrap();
         assert_eq!(recorded["recorded"], true);
         assert_eq!(recorded["format"], 3);
         assert_eq!(recorded["issuer"], config.issuer);
@@ -705,7 +721,7 @@ mod tests {
         assert!(!stored_text.contains("data_dir"));
         assert!(!stored_text.contains(&dir.path().display().to_string()));
 
-        let again = record_security_agreement(&config, false).unwrap();
+        let again = record_security_agreement(&config, false, false).unwrap();
         assert_eq!(again["recorded"], false);
         assert_eq!(again["authentication"], recorded["authentication"]);
         assert_eq!(canon(&config), upgraded);
@@ -831,21 +847,21 @@ mod tests {
         changed.password_history += 1;
         expect_record(&changed, POLICY_MISMATCH);
         assert_snapshot(&config, &before);
-        let recorded = record_security_agreement(&config, false).unwrap();
+        let recorded = record_security_agreement(&config, false, false).unwrap();
         assert_eq!(recorded["recorded"], true);
         assert_eq!(recorded["format"], 3);
         assert_eq!(recorded["effective_rate_limits"]["login"], 7);
         assert_only_agreement_changed(&before, &snapshot(&config));
         let upgraded = snapshot(&config);
         assert_eq!(
-            record_security_agreement(&config, false).unwrap()["recorded"],
+            record_security_agreement(&config, false, false).unwrap()["recorded"],
             false
         );
         assert_snapshot(&config, &upgraded);
         changed = config.clone();
         changed.rate_limits.insert("login".into(), 8);
         assert!(
-            record_security_agreement(&changed, false)
+            record_security_agreement(&changed, false, false)
                 .unwrap_err()
                 .message
                 .contains("for login")
@@ -863,7 +879,7 @@ mod tests {
         expect_record(&config, AGREEMENT_ABSENT);
         assert_snapshot(&config, &missing);
         assert_eq!(
-            record_security_agreement(&config, true).unwrap()["recorded"],
+            record_security_agreement(&config, true, false).unwrap()["recorded"],
             true
         );
         assert_only_agreement_changed(&missing, &snapshot(&config));
@@ -907,6 +923,62 @@ mod tests {
         );
     }
 
+    #[test]
+    fn confirmed_capabilities_replace_only_the_recorded_capability_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = config(dir.path());
+        drop(Core::initialize(config.clone(), admin()).unwrap());
+        let stamped = Store::from_config(&config)
+            .unwrap()
+            .get::<Value>("meta", KEY)
+            .unwrap()
+            .unwrap();
+        // An agreement recorded by a release whose edition lacked a capability
+        // this build now compiles.
+        let mut earlier = stamped.clone();
+        earlier["active_capabilities"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|name| name != "agents.parent_ownership");
+        assert_ne!(earlier, stamped);
+        plant(&config, &earlier);
+        let before = snapshot(&config);
+        assert_eq!(
+            Core::open(config.clone()).err().unwrap().message,
+            CAPABILITY_MISMATCH
+        );
+        expect_record(&config, CAPABILITY_MISMATCH);
+        assert_snapshot(&config, &before);
+
+        // Confirmation never accepts a different authentication policy.
+        let mut changed = config.clone();
+        changed.password_history += 1;
+        assert_eq!(
+            record_security_agreement(&changed, false, true)
+                .unwrap_err()
+                .message,
+            POLICY_MISMATCH
+        );
+        assert_snapshot(&config, &before);
+
+        let recorded = record_security_agreement(&config, false, true).unwrap();
+        assert_eq!(recorded["recorded"], true);
+        assert_only_agreement_changed(&before, &snapshot(&config));
+        assert_eq!(
+            Store::from_config(&config)
+                .unwrap()
+                .get::<Value>("meta", KEY)
+                .unwrap()
+                .unwrap(),
+            stamped
+        );
+        assert_eq!(
+            record_security_agreement(&config, false, true).unwrap()["recorded"],
+            false
+        );
+        drop(Core::open(config).unwrap());
+    }
+
     fn snapshot(config: &Config) -> BTreeMap<String, Value> {
         Store::from_config(config)
             .unwrap()
@@ -947,7 +1019,7 @@ mod tests {
     }
 
     fn expect_record(config: &Config, message: &str) {
-        let error = match record_security_agreement(config, false) {
+        let error = match record_security_agreement(config, false, false) {
             Ok(value) => panic!("record wrote {value}"),
             Err(error) => error,
         };

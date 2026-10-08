@@ -2054,8 +2054,9 @@ pub fn legacy_agent_receipts_scrub_on_open(backend: Backend) {
     };
     let legacy_created = legacy_result(&created);
     let legacy_rotated = legacy_result(&rotated);
-    assert_eq!(legacy_created, created);
-    assert_eq!(legacy_rotated, rotated);
+    // The frozen shape predates the separately recorded authorizing user.
+    assert_eq!(legacy_created, without_authorizer(&created));
+    assert_eq!(legacy_rotated, without_authorizer(&rotated));
     let generic = |fingerprint: &str, result: Value| json!({"fingerprint": fingerprint, "permissions": [], "result": result, "expires_at": expiry});
     let dcr = generic(
         "legacy-dcr-fingerprint",
@@ -2197,7 +2198,13 @@ pub fn legacy_agent_receipts_scrub_on_open(backend: Backend) {
     let late_key = digest(&format!("{admin_id}\0late-legacy-key"));
     f.core
         .store
-        .write(|tx| tx.put("receipts", &late_key, &generic("late-fingerprint", rotated)))
+        .write(|tx| {
+            tx.put(
+                "receipts",
+                &late_key,
+                &generic("late-fingerprint", without_authorizer(&rotated)),
+            )
+        })
         .unwrap();
     // The durable maintenance cursor must reach the late row even when a
     // prior page is full of unrelated receipts.
@@ -2243,6 +2250,8 @@ pub fn legacy_agent_receipt_scrub_resumes_after_interruption(backend: Backend) {
     let rotate_audits = audit_count(&f, "agent.rotate");
     let create_key = digest(&format!("{admin_id}\0interrupted-create"));
     let rotate_key = digest(&format!("{admin_id}\0interrupted-rotate"));
+    // Receipts from the pre-redaction writer predate `authorized_by`.
+    let (created, rotated) = (without_authorizer(&created), without_authorizer(&rotated));
     let (low_key, low_result, low_token, high_key, high_result, high_token) =
         if create_key < rotate_key {
             (
@@ -2436,9 +2445,10 @@ pub fn agent_revoke_requires_retry_binding(backend: Backend) {
         call(&ordinary, Some(revision), Some("ordinary-denied"), "").0,
         StatusCode::FORBIDDEN
     );
+    // An agent is a principal here, but holds no `agents.revoke` on an owner.
     assert_eq!(
         call(&agent_token, Some(revision), Some("agent-denied"), "").0,
-        StatusCode::UNAUTHORIZED
+        StatusCode::FORBIDDEN
     );
     assert_eq!(
         call(&f.admin, Some(revision + 1), Some("stale"), "").0,
@@ -5602,6 +5612,16 @@ pub fn offboard_intent_durable_cancel(backend: Backend) {
     assert!(f.core.me(&bob).is_ok());
 }
 
+/// An agent issuance response in the frozen shape of the pre-redaction writer,
+/// which had no separately recorded authorizing user.
+fn without_authorizer(response: &Value) -> Value {
+    let mut response = response.clone();
+    if let Some(agent) = response["agent"].as_object_mut() {
+        agent.remove("authorized_by");
+    }
+    response
+}
+
 // RI-CON-004, RI-MGT-004, RI-STORE-001, Q02-C06/C08: a precommit fault is
 // retried without disabling the user; authority loss during the later lease
 // yields one terminal result and one matching audit, never a user mutation.
@@ -5610,7 +5630,20 @@ pub fn offboard_retry_rechecks_authority(backend: Backend) {
     let start = now();
     crypto::with_test_time(start, || {
         let f = backend.fixture();
-        f.user("owner");
+        // Offboarding is administrator authority, so the owner is an
+        // administrator; ownership still limits the agent to its approved list.
+        f.core
+            .create_user(
+                &f.admin,
+                NewUser {
+                    username: "owner".into(),
+                    password: PASSWORD.into(),
+                    email: None,
+                    display_name: "Owner".into(),
+                    admin: true,
+                },
+            )
+            .unwrap();
         let alice = f.user("alice");
         let bob = f.user("bob");
         let created = f

@@ -31,12 +31,13 @@ pub(super) fn definition() -> Result<Validated> {
 
 pub(super) fn authority(
     tx: &Tx<'_>,
+    config: &crate::config::Config,
     run: &StoredRun,
     request: &RequestAuthority,
     at: u64,
 ) -> Result<User> {
     let pin = request.invitation.as_ref().ok_or_else(Error::forbidden)?;
-    let user = pin.authority(tx, at)?;
+    let user = pin.authority(tx, config, at)?;
     if run.binding != pinned_definition(pin)?.binding()
         || run.account != user.id
         || run.account_epoch != user.epoch
@@ -166,7 +167,7 @@ impl Core {
     ) -> Result<Value> {
         let pin = verified.pin().clone();
         let at = pin.verified_at();
-        let user = pin.authority(tx, now())?;
+        let user = pin.authority(tx, &self.config, now())?;
         let checked = pinned_definition(&pin)?;
         let passkey = pin.is_passkey();
         let request_id = pin.request();

@@ -25,10 +25,14 @@ pub struct Agent {
     /// Owning user id. Absent on rows created before parent ownership.
     #[serde(default)]
     pub parent_user: Option<String>,
+    /// Human user id that approved `permissions`. Absent on rows issued before
+    /// the authorizing user was recorded; the owner is recorded separately.
+    #[serde(default)]
+    pub authorized_by: Option<String>,
 }
 impl Agent {
     pub fn view(&self) -> Value {
-        json!({"id": self.id, "parent_user": self.parent_user, "permissions": self.permissions, "expires_at": self.expires_at, "created_at": self.created_at, "enabled": self.enabled})
+        json!({"id": self.id, "parent_user": self.parent_user, "authorized_by": self.authorized_by, "permissions": self.permissions, "expires_at": self.expires_at, "created_at": self.created_at, "enabled": self.enabled})
     }
 }
 

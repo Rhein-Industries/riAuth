@@ -2,6 +2,7 @@
 //! Targets use either a static `token_file` or an OAuth `client_credentials` / `refresh_token` grant.
 use crate::{
     agent::{Agent, Principal},
+    config::Config,
     connector_guard::{
         ApplyGate, Pagination, ReconciliationDecision, ReconciliationMode, RemovalImpact,
         ReviewBinding, plan_content,
@@ -370,21 +371,12 @@ struct Item {
     kind: String,
     local_id: String,
 }
-fn actor(tx: &Tx<'_>, id: &str) -> Result<Principal> {
+fn actor(tx: &Tx<'_>, config: &Config, id: &str) -> Result<Principal> {
     if let Some(name) = id.strip_prefix("agent:") {
         let agent = tx
             .get::<Agent>("agents", name)?
             .ok_or_else(Error::forbidden)?;
-        if !crate::agent::authority_active(tx, &agent)? {
-            return Err(Error::forbidden());
-        }
-        Ok(Principal {
-            id: id.into(),
-            agent: true,
-            delegated: false,
-            grants: vec![],
-            permissions: agent.permissions,
-        })
+        crate::agent::live_principal(tx, config, &agent)?.ok_or_else(Error::forbidden)
     } else {
         tx.get::<User>("users", id)?
             .filter(|u| u.enabled && u.admin)
@@ -725,7 +717,7 @@ impl Core {
                     &serde_json::to_value(job).map_err(Error::internal)?,
                 )
                 .is_some();
-        let permitted = actor(tx, &job.plan.actor)
+        let permitted = actor(tx, &self.config, &job.plan.actor)
             .and_then(|actor| {
                 actor.require(
                     "provisioner.sync",
@@ -1867,7 +1859,7 @@ impl Core {
                 return Err(Error::conflict("SCIM delivery lease lost"));
             }
             if writing || current.dispatch_started != Some(true) {
-                let actor = actor(tx, &job.plan.actor)?;
+                let actor = actor(tx, &self.config, &job.plan.actor)?;
                 actor.require("provisioner.sync", &format!("provisioner/{}", job.plan.target))?;
                 job.plan.review.validate(tx, &actor, &plan_content(&job.plan)?)?;
                 if current.stale || current.completed || current.next_attempt <= now()
@@ -1949,7 +1941,7 @@ impl Core {
             // This item's remote state was verified; the next item starts clean.
             current.uncertain = false;
             current.item = None;
-            let authority_valid = actor(tx, &current.plan.actor)
+            let authority_valid = actor(tx, &self.config, &current.plan.actor)
                 .and_then(|actor| {
                     actor.require(
                         "provisioner.sync",

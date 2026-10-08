@@ -173,9 +173,10 @@ fn shared_identity_effects_on_postgres(first: &Core, second: &Core, admin: &str)
                 id: "effects-agent".into(),
                 parent: Some("effects-user".into()),
                 ttl: 3600,
+                // Within an ordinary owner's authority: their own profile.
                 permissions: vec![Permission {
-                    action: "user.read".into(),
-                    resource: "*".into(),
+                    action: "profile.read".into(),
+                    resource: "self".into(),
                 }],
             },
         )
@@ -465,9 +466,10 @@ fn shared_identity_effects_on_postgres(first: &Core, second: &Core, admin: &str)
                 id: "effects-agent-delete".into(),
                 parent: Some("effects-user".into()),
                 ttl: 3600,
+                // Within an ordinary owner's authority: their own profile.
                 permissions: vec![Permission {
-                    action: "user.read".into(),
-                    resource: "*".into(),
+                    action: "profile.read".into(),
+                    resource: "self".into(),
                 }],
             },
         )

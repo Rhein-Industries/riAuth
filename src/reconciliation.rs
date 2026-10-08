@@ -373,16 +373,7 @@ fn scoped_agent(tx: &Tx<'_>, config: &Config, scope: &str, agent_id: &str) -> Re
     let agent = tx
         .get::<Agent>("agents", agent_id)?
         .ok_or_else(Error::forbidden)?;
-    if !crate::agent::authority_active(tx, &agent)? {
-        return Err(Error::forbidden());
-    }
-    let actor = Principal {
-        id: format!("agent:{agent_id}"),
-        agent: true,
-        delegated: false,
-        grants: vec![],
-        permissions: agent.permissions,
-    };
+    let actor = crate::agent::live_principal(tx, config, &agent)?.ok_or_else(Error::forbidden)?;
     actor.require(action, &resource)?;
     Ok(actor)
 }

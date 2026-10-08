@@ -44,6 +44,7 @@ pub(crate) mod grants;
 mod memberships;
 #[cfg(feature = "platform")]
 mod pam;
+mod personal;
 mod portal_approvals;
 mod sessions;
 mod source_links;
@@ -59,6 +60,7 @@ pub(crate) use pam::review_access;
 pub(crate) use pam::{
     cleanup_access, decide_access, request_access, revoke_access, validate_access_request,
 };
+pub(crate) use personal::session_list;
 pub(crate) use portal_approvals::{
     PortalPollOutcome, cancel_portal_sign_in, decide_portal_sign_in, poll_portal_sign_in,
     start_portal_sign_in,
@@ -188,9 +190,6 @@ pub(crate) fn validate_new_agent(input: &NewAgent) -> Result<()> {
     validate_name(&input.id)?;
     if let Some(parent) = &input.parent {
         validate_name(parent)?;
-        if !cfg!(feature = "platform") {
-            return Err(Error::bad("Parent-owned agents require the Platform build"));
-        }
     }
     if !(60..=2_592_000).contains(&input.ttl)
         || input.permissions.is_empty()
@@ -206,7 +205,16 @@ pub(crate) fn validate_new_agent(input: &NewAgent) -> Result<()> {
             .filter(|(action, _)| crate::edition::action_available(action))
             .find(|(action, _)| *action == permission.action)
             .ok_or_else(|| Error::bad("Unknown agent permission"))?;
-        if permission.resource != "*" {
+        if permission.resource == crate::agent::SELF_RESOURCE {
+            if !crate::agent::PERSONAL_ACTIONS.contains(&permission.action.as_str()) {
+                return Err(Error::bad(
+                    "Only personal account actions accept the self resource",
+                ));
+            }
+            if input.parent.is_none() {
+                return Err(Error::bad("The self resource requires a parent user"));
+            }
+        } else if permission.resource != "*" {
             let (prefix, name) = permission
                 .resource
                 .split_once('/')
@@ -311,11 +319,21 @@ pub(crate) fn create_agent(
     }
     let parent_user = if let Some(username) = &input.parent {
         let parent = user_by_name(tx, username)?;
-        if parent.admin {
-            return Err(Error::forbidden());
-        }
         if !parent.enabled {
             return Err(Error::bad("Parent user is disabled"));
+        }
+        // Approve only what the owner holds now. Each request rechecks this,
+        // so a later loss of the owner's authority still takes effect at once.
+        let authority = crate::agent::OwnerAuthority::of(tx, &core.config, &parent)?;
+        if let Some(permission) = input
+            .permissions
+            .iter()
+            .find(|permission| !authority.approves(permission))
+        {
+            return Err(Error::bad(format!(
+                "Permission {}={} is not an exact resource within the parent user's current authority",
+                permission.action, permission.resource
+            )));
         }
         Some(parent.id)
     } else {
@@ -330,6 +348,7 @@ pub(crate) fn create_agent(
         enabled: true,
         token_hash: digest(&credential),
         parent_user,
+        authorized_by: Some(actor.id.clone()),
     };
     tx.put("agents", &agent.id, &agent)?;
     tx.put("agent_tokens", &agent.token_hash, &agent.id)?;
@@ -394,10 +413,25 @@ pub(crate) fn rotate_agent(
 
 /// Disable the row before dropping the credential index and recording one audit.
 pub(crate) fn revoke_agent(core: &Core, tx: &Tx<'_>, token: &str, id: &str) -> Result<Value> {
-    let actor = core.admin(tx, token)?;
-    let mut agent = tx
-        .get::<Agent>("agents", id)?
-        .ok_or_else(|| Error::missing("Agent not found"))?;
+    // A full administrator revokes any agent. `agents.revoke` on an account
+    // revokes only agents that account owns, including the calling agent.
+    let actor = core.principal(tx, token)?;
+    let scoped = actor.agent || actor.delegated;
+    let mut agent = match tx.get::<Agent>("agents", id)? {
+        Some(agent) => agent,
+        None if scoped => return Err(Error::forbidden()),
+        None => return Err(Error::missing("Agent not found")),
+    };
+    if scoped {
+        let owner = agent
+            .parent_user
+            .as_deref()
+            .map(|owner| tx.get::<User>("users", owner))
+            .transpose()?
+            .flatten()
+            .ok_or_else(Error::forbidden)?;
+        actor.require("agents.revoke", &format!("user/{}", owner.username))?;
+    }
     if !agent.enabled {
         return Err(Error::conflict("Agent already revoked"));
     }
@@ -1347,10 +1381,10 @@ fn write_user_record(
     if let Some(owner) = cloud_owner {
         actor.require("directory.sync", &cloud_resource(owner))?;
     }
-    let action = if actor.delegated && matches!(&record, UserRecord::Direct("user.update")) {
-        "user.support"
-    } else {
-        "user.write"
+    let action = match &record {
+        UserRecord::Direct("user.update") if actor.delegated => "user.support",
+        UserRecord::Direct(PROFILE_UPDATE) => "profile.write",
+        _ => "user.write",
     };
     if let Some(scope) = directory_scope {
         if let Some(previous) = existing {
@@ -1696,14 +1730,26 @@ pub(crate) fn update_user(
     username: &str,
     patch: UserPatch,
 ) -> Result<Value> {
-    actor.require(
-        if actor.delegated {
-            "user.support"
-        } else {
-            "user.write"
-        },
-        &format!("user/{username}"),
-    )?;
+    let resource = format!("user/{username}");
+    // A display-name-only change needs just `profile.write`; any other field
+    // keeps the broader `user.write` (or a delegated `user.support`) check.
+    let profile_only = !actor.delegated
+        && !actor.allows("user.write", &resource)
+        && actor.allows("profile.write", &resource)
+        && is_profile_only(&patch);
+    let record_action = if profile_only {
+        PROFILE_UPDATE
+    } else {
+        actor.require(
+            if actor.delegated {
+                "user.support"
+            } else {
+                "user.write"
+            },
+            &resource,
+        )?;
+        "user.update"
+    };
     let mut user = user_by_name(tx, username)?;
     let previous = user.clone();
     if actor.delegated
@@ -1824,10 +1870,28 @@ pub(crate) fn update_user(
         actor,
         Some(&previous),
         &user,
-        UserRecord::Direct("user.update"),
+        UserRecord::Direct(record_action),
         patch.revoke_sessions,
     )?;
     Ok(json!(UserView::from(&user)))
+}
+
+/// Audit action of a display-name-only change authorized by `profile.write`.
+const PROFILE_UPDATE: &str = "user.profile_update";
+
+/// Only the display name is a permitted profile field. Email is a recovery
+/// channel; attributes and subjects feed claims and federation.
+fn is_profile_only(patch: &UserPatch) -> bool {
+    patch.display_name.is_some()
+        && patch.enabled.is_none()
+        && patch.admin.is_none()
+        && patch.password.is_none()
+        && patch.email.is_none()
+        && !patch.reset_mfa
+        && !patch.revoke_sessions
+        && patch.attributes.is_none()
+        && patch.email_verified.is_none()
+        && patch.subjects.is_none()
 }
 
 #[cfg(feature = "platform")]
@@ -3208,7 +3272,7 @@ pub(crate) fn register_client(
     initial_token: &str,
     request: RegistrationRequest,
 ) -> Result<Value> {
-    let mut authority = RegistrationAuthority::for_token(tx, initial_token)?;
+    let mut authority = RegistrationAuthority::for_token(tx, config, initial_token)?;
     let context = crate::context::current();
     // Keep registration receipts separate from management principal receipts.
     // Revalidate the live token and creator before looking up a replay.

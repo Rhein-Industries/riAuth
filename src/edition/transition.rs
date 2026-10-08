@@ -510,21 +510,19 @@ pub(super) fn current_store_blockers(
     for (id, value) in tx.list::<Value>("agents")? {
         match serde_json::from_value::<crate::agent::Agent>(value) {
             Ok(agent) => {
-                if agent.parent_user.is_some()
-                    || agent.permissions.iter().any(|permission| {
-                        !crate::agent::ACTIONS
-                            .iter()
-                            .any(|(action, _)| *action == permission.action)
-                            || !agent_permission_available_for(
-                                target,
-                                &permission.action,
-                                &permission.resource,
-                            )
-                    })
-                {
+                if agent.permissions.iter().any(|permission| {
+                    !crate::agent::ACTIONS
+                        .iter()
+                        .any(|(action, _)| *action == permission.action)
+                        || !agent_permission_available_for(
+                            target,
+                            &permission.action,
+                            &permission.resource,
+                        )
+                }) {
                     issue!(
                         format!("agents/{id}"),
-                        "Stored agent ownership or permissions require the Platform build"
+                        "Stored agent permissions require the Platform build"
                     );
                 }
             }

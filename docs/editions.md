@@ -145,9 +145,12 @@ serving, even if its signer configuration has been removed. Its local JWT signin
 path keeps the same token semantics and rejects any remote key reference.
 
 Essentials agent issuance requires exact `directory/<id>` scopes for directory
-actions. Parent-owned agents, `workspace/<id>` and `entra/<id>` scopes, and a
-directory wildcard require Platform. Essentials also rejects stored agents with
-those scopes or ownership on downgrade, including disabled agents.
+actions. `workspace/<id>` and `entra/<id>` scopes and a directory wildcard
+require Platform. Essentials also rejects stored agents with those scopes on
+downgrade, including disabled agents. Parent-owned agents and their
+[owner authority](agent.md#owner-authority) are available in both editions.
+Platform evidence recorded by an earlier release for an owned agent is never
+deleted, so it still blocks an Essentials handoff of that store.
 Stored reconciliation schedules and jobs for Workspace or Entra also block an
 Essentials downgrade, even when the row is terminal. Shared LDAP and outbound
 SCIM controller rows are accepted after their stored shape is checked; their

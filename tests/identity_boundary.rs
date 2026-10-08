@@ -481,6 +481,7 @@ fn legacy_disabled_parent_repair_revokes_only_owned_agent_credentials() {
             enabled: true,
             token_hash: crypto::digest("ri_agent_legacy_owned"),
             parent_user: Some(alice.clone()),
+            authorized_by: None,
         };
         let other = Agent {
             id: "other-owned".into(),
@@ -627,8 +628,8 @@ fn management_receipt_replays_before_revision_checks_on_both_redb_formats() {
                     parent: Some("alice".into()),
                     ttl: 3600,
                     permissions: vec![Permission {
-                        action: "user.read".into(),
-                        resource: "*".into(),
+                        action: "profile.read".into(),
+                        resource: "self".into(),
                     }],
                 },
             )

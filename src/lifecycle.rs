@@ -568,7 +568,7 @@ pub(crate) fn rebase_invitation_reservation(
 }
 /// An invitation's creator as `actor` may see it. Administrators may list every person and
 /// agent, and an agent knows itself; otherwise a person needs `user.read` and another
-/// agent stays hidden, since agents cannot list agents.
+/// agent stays hidden.
 fn visible_inviter(tx: &Tx<'_>, actor: &Principal, id: &str) -> Result<Option<String>> {
     if (!actor.agent && !actor.delegated) || actor.id == id {
         return Ok(Some(id.into()));
@@ -585,11 +585,16 @@ fn visible_inviter(tx: &Tx<'_>, actor: &Principal, id: &str) -> Result<Option<St
 /// `creator` and `management::accept_invitation`, without writing. The creator must still
 /// be an enabled administrator or active agent with `user.write` on the invitee and
 /// `group.members` on every group, and each group must still exist.
-fn acceptance_authorized(tx: &Tx<'_>, user: &User, proof: &Proof) -> Result<bool> {
+fn acceptance_authorized(
+    tx: &Tx<'_>,
+    config: &crate::config::Config,
+    user: &User,
+    proof: &Proof,
+) -> Result<bool> {
     let Some(id) = proof.creator.as_deref() else {
         return Ok(false);
     };
-    let actor = match creator(tx, id) {
+    let actor = match creator(tx, config, id) {
         Ok(actor) => actor,
         Err(error) if error.status == StatusCode::FORBIDDEN => return Ok(false),
         Err(error) => return Err(error),
@@ -608,21 +613,12 @@ fn acceptance_authorized(tx: &Tx<'_>, user: &User, proof: &Proof) -> Result<bool
     }
     Ok(true)
 }
-fn creator(tx: &Tx<'_>, id: &str) -> Result<Principal> {
+fn creator(tx: &Tx<'_>, config: &crate::config::Config, id: &str) -> Result<Principal> {
     if let Some(name) = id.strip_prefix("agent:") {
         let agent = tx
             .get::<Agent>("agents", name)?
             .ok_or_else(Error::forbidden)?;
-        if !crate::agent::authority_active(tx, &agent)? {
-            return Err(Error::forbidden());
-        }
-        Ok(Principal {
-            id: id.into(),
-            agent: true,
-            delegated: false,
-            grants: vec![],
-            permissions: agent.permissions,
-        })
+        crate::agent::live_principal(tx, config, &agent)?.ok_or_else(Error::forbidden)
     } else {
         tx.get::<User>("users", id)?
             .filter(|u| u.enabled && u.admin)
@@ -767,7 +763,9 @@ impl Core {
                 // acceptance would be refused is blocked, without saying whose authority failed.
                 let status = match &current {
                     Some((_, proof)) if proof.expires_at <= now() => "expired",
-                    Some((_, proof)) if !acceptance_authorized(tx, &user, proof)? => "blocked",
+                    Some((_, proof)) if !acceptance_authorized(tx, &self.config, &user, proof)? => {
+                        "blocked"
+                    }
                     Some(_) => "pending",
                     None => "inactive",
                 };
@@ -942,6 +940,7 @@ impl Core {
                 {
                     let verified = invitation::Verified::new(
                         tx,
+                        &self.config,
                         hash,
                         proof,
                         password

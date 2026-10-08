@@ -804,7 +804,8 @@ fn agent_enrollment_fences_temporary_access_and_never_replays_device_secret() {
                     })
                     .collect(),
                 ttl: 3600,
-                parent: Some("parent".into()),
+                // Device enrollment is not an ordinary owner's authority.
+                parent: None,
             },
         )
         .unwrap();

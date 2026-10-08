@@ -1,4 +1,5 @@
 use crate::{
+    config::Config,
     core::Core,
     crypto::{self, digest, now},
     error::{Error, Result},
@@ -65,7 +66,176 @@ pub const ACTIONS: &[(&str, &str)] = &[
     ("operations.backup", "operations"),
     ("ssf.manage", "ssf"),
     ("ssf.configure", "ssf"),
+    ("profile.read", "user"),
+    ("profile.write", "user"),
+    ("sessions.read", "user"),
+    ("sessions.revoke", "user"),
+    ("consents.read", "user"),
+    ("consents.revoke", "user"),
+    ("agents.read", "user"),
+    ("agents.revoke", "user"),
 ];
+
+/// Narrow management of one person's own account. Each names `user/<username>`,
+/// `*`, or `self` for an owned agent, and none implies `user.read` or `user.write`.
+pub const PERSONAL_ACTIONS: &[&str] = &[
+    "profile.read",
+    "profile.write",
+    "sessions.read",
+    "sessions.revoke",
+    "consents.read",
+    "consents.revoke",
+    "agents.read",
+    "agents.revoke",
+];
+
+/// Permission resource naming the owner's own account. Valid only for personal
+/// actions of an owned agent, and resolved to `user/<username>` on every use.
+pub const SELF_RESOURCE: &str = "self";
+
+/// The authority an agent's owner holds now. An agent acts with its approved
+/// permissions limited to this authority, recomputed on every credential use and
+/// before every deferred job runs, so a lost grant takes effect at once.
+pub(crate) enum OwnerAuthority {
+    /// No owner: the approved permissions are the only ceiling.
+    Unowned,
+    /// A full administrator adds no authority: the approved permissions stay
+    /// the ceiling and every agent restriction still applies.
+    Administrator { username: String },
+    /// Anyone else holds their exact live delegated grants, plus personal
+    /// actions and the configuration revision for their own account.
+    Scoped {
+        username: String,
+        grants: Vec<crate::delegation::HumanGrant>,
+    },
+}
+
+impl OwnerAuthority {
+    pub(crate) fn of(tx: &Tx<'_>, config: &Config, owner: &User) -> Result<Self> {
+        Ok(if owner.admin {
+            Self::Administrator {
+                username: owner.username.clone(),
+            }
+        } else {
+            Self::Scoped {
+                username: owner.username.clone(),
+                grants: crate::delegation::active(tx, config, &owner.id)?,
+            }
+        })
+    }
+
+    fn own_account(&self) -> Option<String> {
+        match self {
+            Self::Unowned => None,
+            Self::Administrator { username } | Self::Scoped { username, .. } => {
+                Some(format!("user/{username}"))
+            }
+        }
+    }
+
+    fn allows(&self, action: &str, resource: &str) -> bool {
+        match self {
+            Self::Unowned | Self::Administrator { .. } => true,
+            Self::Scoped { username, grants } => {
+                action == "state.read" && resource == "state/revision"
+                    || PERSONAL_ACTIONS.contains(&action)
+                        && resource.strip_prefix("user/") == Some(username.as_str())
+                    || grants.iter().any(|grant| grant.allows(action, resource))
+            }
+        }
+    }
+
+    /// Every exact resource a scoped owner can hold, to narrow a wildcard.
+    fn resources(&self) -> Vec<String> {
+        let mut resources = vec!["state/revision".to_owned()];
+        resources.extend(self.own_account());
+        if let Self::Scoped { grants, .. } = self {
+            resources.extend(grants.iter().map(|grant| grant.scope.clone()));
+        }
+        resources
+    }
+
+    /// Whether issuance may approve this permission for this owner: within
+    /// the owner's authority now and, for anyone but an administrator, an
+    /// exact resource or `self`, so a later change of role cannot widen it.
+    pub(crate) fn approves(&self, permission: &Permission) -> bool {
+        let effective = self.limit(std::slice::from_ref(permission));
+        match self {
+            Self::Unowned | Self::Administrator { .. } => !effective.is_empty(),
+            Self::Scoped { .. } => permission.resource != "*" && effective.len() == 1,
+        }
+    }
+
+    /// The approved permissions limited to this authority, with `self` resolved.
+    /// A wildcard narrows to the owner's exact resources; nothing is widened.
+    pub(crate) fn limit(&self, approved: &[Permission]) -> Vec<Permission> {
+        let mut effective = Vec::new();
+        for permission in approved {
+            let resource = if permission.resource == SELF_RESOURCE {
+                match self.own_account() {
+                    Some(resource) => resource,
+                    None => continue,
+                }
+            } else {
+                permission.resource.clone()
+            };
+            let resources = match self {
+                Self::Unowned | Self::Administrator { .. } => vec![resource],
+                Self::Scoped { .. } if resource == "*" => self.resources(),
+                Self::Scoped { .. } => vec![resource],
+            };
+            for resource in resources {
+                let candidate = Permission {
+                    action: permission.action.clone(),
+                    resource,
+                };
+                if self.allows(&candidate.action, &candidate.resource)
+                    && !effective.contains(&candidate)
+                {
+                    effective.push(candidate);
+                }
+            }
+        }
+        effective
+    }
+}
+
+/// The stored view plus the permissions the agent holds now.
+pub(crate) fn effective_view(tx: &Tx<'_>, config: &Config, agent: &Agent) -> Result<Value> {
+    let mut view = agent.view();
+    view["effective_permissions"] = match live_principal(tx, config, agent)? {
+        Some(principal) => json!(principal.permissions),
+        None => json!([]),
+    };
+    Ok(view)
+}
+
+/// The management principal of a stored agent, or `None` once it is revoked or
+/// expired or its owner is missing or disabled. The credential path and every
+/// deferred job that acts for an agent build it here.
+pub(crate) fn live_principal(
+    tx: &Tx<'_>,
+    config: &Config,
+    agent: &Agent,
+) -> Result<Option<Principal>> {
+    if !agent.enabled || agent.expires_at <= now() {
+        return Ok(None);
+    }
+    let authority = match &agent.parent_user {
+        None => OwnerAuthority::Unowned,
+        Some(id) => match tx.get::<User>("users", id)?.filter(|owner| owner.enabled) {
+            Some(owner) => OwnerAuthority::of(tx, config, &owner)?,
+            None => return Ok(None),
+        },
+    };
+    Ok(Some(Principal {
+        id: format!("agent:{}", agent.id),
+        agent: true,
+        delegated: false,
+        grants: vec![],
+        permissions: authority.limit(&agent.permissions),
+    }))
+}
 
 #[derive(schemars::JsonSchema, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -73,7 +243,8 @@ pub struct NewAgent {
     pub id: String,
     pub permissions: Vec<Permission>,
     pub ttl: u64,
-    /// Existing enabled non-administrator username. Ownership grants no permissions.
+    /// Existing enabled username. Ownership grants no permissions: the agent acts
+    /// with these permissions limited to the owner's current authority.
     #[serde(default)]
     pub parent: Option<String>,
 }
@@ -160,16 +331,10 @@ impl Core {
                 .get::<Agent>("agents", &id)?
                 .ok_or_else(Error::unauthorized)?;
             // Checked on every credential use, not only when a disable path revokes the row.
-            if !crypto::constant_eq(&agent.token_hash, &hash) || !authority_active(tx, &agent)? {
+            if !crypto::constant_eq(&agent.token_hash, &hash) {
                 return Err(Error::unauthorized());
             }
-            Ok(Principal {
-                id: format!("agent:{}", agent.id),
-                agent: true,
-                delegated: false,
-                grants: vec![],
-                permissions: agent.permissions,
-            })
+            live_principal(tx, &self.config, &agent)?.ok_or_else(Error::unauthorized)
         } else {
             let user = match browser_cookie(token) {
                 Some(cookie) => self.browser_user(tx, cookie)?.0,
@@ -224,12 +389,11 @@ impl Core {
     pub fn list_agents(&self, token: &str) -> Result<Value> {
         self.store.read(|tx| {
             self.admin(tx, token)?;
-            Ok(json!(
-                tx.list::<Agent>("agents")?
-                    .into_iter()
-                    .map(|(_, a)| a.view())
-                    .collect::<Vec<_>>()
-            ))
+            let mut views = Vec::new();
+            for (_, agent) in tx.list::<Agent>("agents")? {
+                views.push(effective_view(tx, &self.config, &agent)?);
+            }
+            Ok(json!(views))
         })
     }
     pub fn revoke_agent(&self, token: &str, id: &str) -> Result<Value> {
@@ -248,11 +412,7 @@ impl Core {
     }
 }
 
-/// Enabled and unexpired, and the parent user — when set — still exists and is enabled.
-pub(crate) fn authority_active(tx: &Tx<'_>, agent: &Agent) -> Result<bool> {
-    Ok(agent.enabled && agent.expires_at > now() && parent_active(tx, agent)?)
-}
-
+/// The parent user — when set — still exists and is enabled.
 pub(crate) fn parent_active(tx: &Tx<'_>, agent: &Agent) -> Result<bool> {
     let Some(parent) = &agent.parent_user else {
         return Ok(true);
@@ -262,23 +422,42 @@ pub(crate) fn parent_active(tx: &Tx<'_>, agent: &Agent) -> Result<bool> {
         .is_some_and(|user| user.enabled))
 }
 
-/// Parent user id for an agent actor, or for agent create/rotate/revoke of that target.
-pub(crate) fn audit_parent(
+/// Record the owner (`parent_user`) and the approving human (`authorized_by`)
+/// of an agent actor, or of the agent an `agent.*` action targets.
+pub(crate) fn audit_attribution(
     tx: &Tx<'_>,
     actor: &str,
     action: &str,
     target: &str,
-) -> Result<Option<String>> {
-    let id = if let Some(id) = actor.strip_prefix("agent:") {
-        id
-    } else if action.starts_with("agent.") {
-        target
-    } else {
-        return Ok(None);
+    details: &mut Value,
+) -> Result<()> {
+    let acting = actor.strip_prefix("agent:");
+    let subject = action.starts_with("agent.").then_some(target);
+    // An acting agent is attributed first. When it acts on another agent,
+    // that agent's owner is recorded separately as `target_parent_user`.
+    let (attributed, other) = match (acting, subject) {
+        (Some(acting), Some(subject)) if subject != acting => (acting, Some(subject)),
+        (Some(acting), _) => (acting, None),
+        (None, Some(subject)) => (subject, None),
+        (None, None) => return Ok(()),
     };
-    Ok(tx
-        .get::<Agent>("agents", id)?
-        .and_then(|agent| agent.parent_user))
+    if let Some(agent) = tx.get::<Agent>("agents", attributed)? {
+        if let Some(parent) = agent.parent_user {
+            details["parent_user"] = json!(parent);
+        }
+        if let Some(authorizer) = agent.authorized_by {
+            details["authorized_by"] = json!(authorizer);
+        }
+    }
+    if let Some(parent) = other
+        .map(|id| tx.get::<Agent>("agents", id))
+        .transpose()?
+        .flatten()
+        .and_then(|agent| agent.parent_user)
+    {
+        details["target_parent_user"] = json!(parent);
+    }
+    Ok(())
 }
 
 pub const FEATURES: &[&str] = &[
@@ -392,7 +571,6 @@ pub const PLATFORM_FEATURES: &[&str] = &[
     "access.temporary_entitlements",
     "identity.scheduled_offboarding",
     "identity.windows_device_login",
-    "agents.parent_ownership",
     "directory.workspace_sync",
     "directory.entra_sync",
     "identity.https_client_certificates",

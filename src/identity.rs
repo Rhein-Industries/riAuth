@@ -117,6 +117,11 @@ fn user_security_transition(
     if disabled || promoted {
         tx.delete("human_grants", user_id)?;
     }
+    // Owned agents act within their owner's current authority, so promotion
+    // would widen them. Revoke them as the owner's delegated grants are.
+    if promoted {
+        agent_credentials::revoke_owned(tx, user_id)?;
+    }
     // Old snapshots may contain disabled parents whose children were never
     // revoked. Re-enabling must repair those credentials before enabling use.
     if disabled || before["enabled"] == false {

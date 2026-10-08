@@ -111,7 +111,6 @@ def post_agent(base, bearer, identifier, permission, parent=None):
 def check_agent_boundary(base):
     bearer = token(base)
     cases = (
-        ("parent", {"action": "user.read", "resource": "user/admin"}, "missing-parent"),
         ("workspace", {"action": "directory.read", "resource": "workspace/example"}, None),
         ("entra", {"action": "directory.sync", "resource": "entra/example"}, None),
         ("wildcard", {"action": "directory.read", "resource": "*"}, None),

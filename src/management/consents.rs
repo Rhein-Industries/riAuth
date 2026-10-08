@@ -168,7 +168,7 @@ pub(crate) fn withdraw_consent(
     {
         return Err(Error::missing("Remembered consent not found"));
     }
-    revoke_consent_for_user(tx, &user.id, client_id)?;
+    revoke_consent_for_user(tx, &user.id, &user.id, client_id)?;
     let result = if browser {
         json!({"withdrawn":true,"client_id":client_id})
     } else {
@@ -182,7 +182,13 @@ pub(crate) fn withdraw_consent(
 
 /// Remove approval and all dependent authorization in the same transaction,
 /// then record the one withdrawal audit before saving any replay receipt.
-fn revoke_consent_for_user(tx: &Tx<'_>, user_id: &str, cid: &str) -> Result<()> {
+/// `actor` is the account itself or a management principal acting for it.
+pub(super) fn revoke_consent_for_user(
+    tx: &Tx<'_>,
+    actor: &str,
+    user_id: &str,
+    cid: &str,
+) -> Result<()> {
     tx.delete("consents", &consent_key(user_id, cid))?;
     crate::saml::revoke_consent(tx, user_id, cid)?;
     crate::outpost::revoke_sessions(tx, user_id, cid)?;
@@ -216,5 +222,15 @@ fn revoke_consent_for_user(tx: &Tx<'_>, user_id: &str, cid: &str) -> Result<()> 
     }
     crate::logout::queue_user_client(tx, user_id, cid)?;
     crate::ssf::enqueue(tx, user_id, crate::ssf::SESSION_REVOKED, "")?;
-    audit(tx, user_id, "consent.revoke", cid)
+    if actor == user_id {
+        audit(tx, actor, "consent.revoke", cid)
+    } else {
+        crate::core::audit_with_details(
+            tx,
+            actor,
+            "consent.revoke",
+            cid,
+            json!({"user_id": user_id}),
+        )
+    }
 }

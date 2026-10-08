@@ -1,6 +1,7 @@
 //! Shared, sealed authority for an invitation's first credential.
 //! Possession of a stored workflow receipt cannot construct this capability.
 use super::*;
+use crate::config::Config;
 use zeroize::Zeroizing;
 
 mod passkey;
@@ -57,7 +58,7 @@ impl Pin {
         self.registration.is_some()
     }
 
-    fn new(tx: &Tx<'_>, hash: String, proof: Proof) -> Result<Self> {
+    fn new(tx: &Tx<'_>, config: &Config, hash: String, proof: Proof) -> Result<Self> {
         let user: User = tx
             .get("users", &proof.user_id)?
             .ok_or_else(Error::forbidden)?;
@@ -69,11 +70,11 @@ impl Pin {
             verified_at: now(),
             registration: None,
         };
-        pin.authority(tx, now())?;
+        pin.authority(tx, config, now())?;
         Ok(pin)
     }
 
-    pub(crate) fn authority(&self, tx: &Tx<'_>, at: u64) -> Result<User> {
+    pub(crate) fn authority(&self, tx: &Tx<'_>, config: &Config, at: u64) -> Result<User> {
         let user: User = tx
             .get("users", &self.proof.user_id)?
             .ok_or_else(Error::forbidden)?;
@@ -94,7 +95,7 @@ impl Pin {
             || crate::passkey::passkey_count(tx, &user.id)? != 0
             || user.totp_last_step.is_some()
             || exposure(tx, &user.id)? != self.exposure
-            || !acceptance_authorized(tx, &user, &self.proof)?
+            || !acceptance_authorized(tx, config, &user, &self.proof)?
         {
             return Err(Error::forbidden());
         }
@@ -131,13 +132,14 @@ impl Verified {
     /// Only lifecycle's secret/purpose verifier may create an enrollment ticket.
     pub(in crate::lifecycle) fn new(
         tx: &Tx<'_>,
+        config: &Config,
         hash: String,
         proof: Proof,
         plaintext: &str,
         password_hash: &str,
     ) -> Result<Self> {
         Ok(Self {
-            pin: Pin::new(tx, hash, proof)?,
+            pin: Pin::new(tx, config, hash, proof)?,
             credential: InitialCredential::Password {
                 plaintext: Zeroizing::new(plaintext.to_owned()),
                 hash: Zeroizing::new(password_hash.to_owned()),
@@ -159,7 +161,7 @@ impl Verified {
     }
 
     pub(crate) fn commit(self, core: &Core, tx: &Tx<'_>) -> Result<(String, u64, u64)> {
-        let mut user = self.pin.authority(tx, now())?;
+        let mut user = self.pin.authority(tx, &core.config, now())?;
         let from_epoch = user.epoch;
         let to_epoch = from_epoch.checked_add(1).ok_or_else(Error::forbidden)?;
         match &self.credential {
@@ -189,6 +191,7 @@ impl Verified {
         }
         let actor = creator(
             tx,
+            &core.config,
             self.pin
                 .proof
                 .creator
