@@ -396,8 +396,11 @@ fn revoke_matching(tx: &Tx<'_>, matches: impl Fn(&Approval) -> bool) -> Result<(
 }
 
 /// The usable approval of this agent for this application and resource.
+/// The owner's usable approval of this agent for this application, skipping
+/// any an account reset has ended since.
 pub(crate) fn find(
     tx: &Tx<'_>,
+    owner: &User,
     agent_id: &str,
     client_id: &str,
     resource: Option<&str>,
@@ -412,6 +415,7 @@ pub(crate) fn find(
                 && approval.client_id == client_id
                 && approval.resource.as_deref() == resource
                 && approval.active(at)
+                && approval.current_for(owner)
         }))
 }
 

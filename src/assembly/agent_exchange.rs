@@ -74,10 +74,15 @@ impl Core {
                 return Err(invalid());
             }
             let target = get_client(tx, audience).map_err(|_| crate::resource::invalid())?;
-            let approval =
-                agent_applications::find(tx, &agent.id, &target.id, request.resource.as_deref())?
-                    .filter(|approval| approval.owner_id == owner_id)
-                    .ok_or_else(invalid)?;
+            let owner = tx.get::<User>("users", &owner_id)?.ok_or_else(invalid)?;
+            let approval = agent_applications::find(
+                tx,
+                &owner,
+                &agent.id,
+                &target.id,
+                request.resource.as_deref(),
+            )?
+            .ok_or_else(invalid)?;
             let scopes = match request.scope.as_deref() {
                 Some(scope) => scope_request(scope, &target)?,
                 None => approval.scopes.clone(),
@@ -88,7 +93,6 @@ impl Core {
                     "Scope is outside the owner's approval or the application",
                 ));
             }
-            let owner = tx.get::<User>("users", &owner_id)?.ok_or_else(invalid)?;
             let identity = agent_applications::identity(&approval, &owner);
             // The owner must pass the application's policy now; this also
             // rechecks the approval, the agent and the application.
