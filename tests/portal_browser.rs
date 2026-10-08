@@ -434,8 +434,11 @@ async fn portal_terminal_sign_in_access_changes_and_responsive_interactions() {
     );
     cdp.eval("document.getElementById('category').value=''; document.getElementById('category').dispatchEvent(new Event('change')); document.getElementById('view-list').click()").await;
     cdp.screenshot("portal-list").await;
+    // Page.reload returns before the new document commits; mark the old one so
+    // the wait cannot match its cards.
+    cdp.eval("window.riauthBeforeReload = true").await;
     cdp.call("Page.reload", json!({})).await;
-    cdp.wait("document.querySelectorAll('.app-card').length === 9")
+    cdp.wait("!window.riauthBeforeReload && document.querySelectorAll('.app-card').length === 9")
         .await;
     assert_eq!(cdp.eval("document.getElementById('apps').classList.contains('list') && document.getElementById('favorite-count').textContent === '2'").await,true);
     cdp.eval("document.getElementById('view-grid').click()")
