@@ -211,6 +211,7 @@ For HTML requests, a 4xx from a resume path renders a short page ("This sign-in 
 
 | Method | Route | Contract |
 | --- | --- | --- |
+| GET, PUT | `/api/agent-self-service` | Full human administrator: read or set who may issue agents for themselves, `{"mode":"everyone"}` (default), `{"mode":"off"}` or `{"mode":"group","group":"<name>"}`; also `/api/admin/agent-self-service` for the signed-in administration portal ([owner self-service](agent.md#owner-self-service)) |
 | GET, POST | `/api/me/agents` | Signed-in person: list owned agents and open proposals / prepare a proposal with exact permissions and expiry ([owner self-service](agent.md#owner-self-service)) |
 | POST | `/api/me/agents/proposals/{id}/approve` | Issue exactly the prepared agent once; needs fresh sign-in (with MFA when enrolled) and the proposal `digest` |
 | POST | `/api/me/agents/{id}/rotate` | Rotate an enabled, unexpired owned agent; fresh sign-in |

@@ -8,7 +8,7 @@ use axum::{
 };
 use common::{Fixture, PASSWORD, text};
 use riauth::{
-    agent::{Agent, AgentProposalInput, Permission},
+    agent::{Agent, AgentProposalInput, AgentSelfService, Permission},
     crypto,
     model::UserPatch,
 };
@@ -352,6 +352,124 @@ fn owners_rotate_inspect_and_revoke_only_their_own_live_agents() {
             "conflict"
         );
     });
+}
+
+#[test]
+fn administrators_choose_who_may_issue_agents_for_themselves() {
+    let f = Fixture::new();
+    let owner = f.user("owner");
+    let member = f.user("member");
+    let (_, existing) = issue(&f, &owner, "existing", &[("profile.read", "self")]);
+    // Without a stored choice, everyone may.
+    assert_eq!(
+        f.core.agent_self_service(&f.admin).unwrap(),
+        json!({"mode": "everyone"})
+    );
+    assert_eq!(
+        f.core.my_agents(&owner).unwrap()["self_service"]["allowed"],
+        true
+    );
+    // Only a full human administrator reads or changes the setting.
+    for caller in [&owner, &existing] {
+        assert!(f.core.agent_self_service(caller).is_err());
+        assert!(
+            f.core
+                .set_agent_self_service(caller, AgentSelfService::Off)
+                .is_err()
+        );
+    }
+
+    // Off: issuing, approving and rotating refuse; the rest still works.
+    let prepared = f
+        .core
+        .prepare_my_agent(&owner, proposal("later", &[("profile.read", "self")], 3600))
+        .unwrap();
+    let revision = |f: &Fixture| f.core.store.get::<u64>("meta", "revision").unwrap();
+    let before = revision(&f);
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Off)
+        .unwrap();
+    assert!(revision(&f) > before);
+    for code in [
+        f.core
+            .prepare_my_agent(
+                &owner,
+                proposal("another", &[("profile.read", "self")], 3600),
+            )
+            .unwrap_err()
+            .code,
+        f.core
+            .approve_my_agent(
+                &owner,
+                &text(&prepared, "proposal_id"),
+                &text(&prepared, "digest"),
+            )
+            .unwrap_err()
+            .code,
+        f.core
+            .rotate_my_agent(&owner, "existing", 3600)
+            .unwrap_err()
+            .code,
+    ] {
+        assert_eq!(code, "self_service_disabled");
+    }
+    let listed = f.core.my_agents(&owner).unwrap();
+    assert_eq!(listed["self_service"]["allowed"], false);
+    assert_eq!(listed["agents"][0]["id"], "existing");
+    assert!(f.core.my_agent_activity(&owner, "existing", 10).is_ok());
+    // Existing agents keep working until revoked, and revocation always works.
+    assert!(f.core.me(&existing).is_ok());
+    f.core.revoke_my_agent(&owner, "existing").unwrap();
+    assert!(f.core.me(&existing).is_err());
+
+    // A group: only its members may.
+    assert_eq!(
+        f.core
+            .set_agent_self_service(
+                &f.admin,
+                AgentSelfService::Group {
+                    group: "missing".into()
+                }
+            )
+            .unwrap_err()
+            .code,
+        "not_found"
+    );
+    f.core.create_group(&f.admin, "agent-users").unwrap();
+    f.core
+        .group_member(&f.admin, "agent-users", "member", true)
+        .unwrap();
+    f.core
+        .set_agent_self_service(
+            &f.admin,
+            AgentSelfService::Group {
+                group: "agent-users".into(),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        f.core.agent_self_service(&f.admin).unwrap(),
+        json!({"mode": "group", "group": "agent-users"})
+    );
+    issue(&f, &member, "member-agent", &[("profile.read", "self")]);
+    assert_eq!(
+        f.core
+            .prepare_my_agent(
+                &owner,
+                proposal("outsider", &[("profile.read", "self")], 3600)
+            )
+            .unwrap_err()
+            .code,
+        "self_service_disabled"
+    );
+    let audit = f.core.audit_events(&f.admin, 200).unwrap();
+    let changes: Vec<_> = audit
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["action"] == "agent.self_service.configure")
+        .collect();
+    assert_eq!(changes.len(), 2);
 }
 
 #[tokio::test]

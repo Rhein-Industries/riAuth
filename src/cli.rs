@@ -581,7 +581,7 @@ pub enum AgentCommand {
         permissions: Vec<String>,
         #[arg(long, default_value_t = 86400)]
         ttl: u64,
-        /// Enabled non-administrator username that owns this agent
+        /// Enabled username that owns this agent; the agent acts within its current authority
         #[arg(long)]
         parent: Option<String>,
         /// Private credential destination (created exclusively)
@@ -599,6 +599,23 @@ pub enum AgentCommand {
     Revoke {
         id: String,
     },
+    /// Show or set who may issue agents for themselves: off, everyone or group:NAME
+    SelfService {
+        /// New setting; omit to show the current one
+        setting: Option<String>,
+    },
+}
+
+/// `off`, `everyone` or `group:NAME` as the server's setting object.
+fn self_service_setting(value: &str) -> Result<Value> {
+    Ok(match value {
+        "off" => json!({"mode": "off"}),
+        "everyone" => json!({"mode": "everyone"}),
+        _ => match value.strip_prefix("group:") {
+            Some(group) if !group.is_empty() => json!({"mode": "group", "group": group}),
+            _ => bail!("Setting must be off, everyone or group:NAME"),
+        },
+    })
 }
 
 #[derive(Subcommand)]
@@ -2005,6 +2022,10 @@ pub async fn run(cli: Cli) -> Result<()> {
                 json!({"agent": result["agent"], "credential_file":out})
             }
             AgentCommand::List => remote.call(Method::GET, "/api/agents", None, true).await?,
+            AgentCommand::SelfService { setting: None } => remote.call(Method::GET, "/api/agent-self-service", None, true).await?,
+            AgentCommand::SelfService { setting: Some(value) } => {
+                remote.call(Method::PUT, "/api/agent-self-service", Some(self_service_setting(&value)?), true).await?
+            }
             AgentCommand::Revoke { id } => {
                 if remote.idempotency_key.is_none() || remote.if_revision.is_none() {
                     bail!("Agent revocation requires --idempotency-key and --if-revision (from `riauth revision`)");
@@ -3290,4 +3311,25 @@ fn confirm(message: &str) -> Result<bool> {
         answer.trim().to_ascii_lowercase().as_str(),
         "y" | "yes"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn self_service_settings_parse_to_the_server_shape() {
+        assert_eq!(self_service_setting("off").unwrap(), json!({"mode": "off"}));
+        assert_eq!(
+            self_service_setting("everyone").unwrap(),
+            json!({"mode": "everyone"})
+        );
+        assert_eq!(
+            self_service_setting("group:agent-users").unwrap(),
+            json!({"mode": "group", "group": "agent-users"})
+        );
+        for value in ["group:", "all", ""] {
+            assert!(self_service_setting(value).is_err(), "{value}");
+        }
+    }
 }

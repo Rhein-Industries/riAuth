@@ -213,7 +213,11 @@ pub(crate) fn list(core: &Core, tx: &Tx<'_>, auth: OwnerSession<'_>) -> Result<V
             proposals.push(proposal_view(tx, core, &owner, &proposal)?);
         }
     }
-    Ok(json!({"agents": agents, "proposals": proposals}))
+    Ok(json!({
+        "agents": agents,
+        "proposals": proposals,
+        "self_service": {"allowed": super::agent_policy::allows(tx, &owner)?},
+    }))
 }
 
 /// Record the exact agent the owner may approve: id, permissions and expiry.
@@ -224,6 +228,7 @@ pub(crate) fn prepare(
     input: AgentProposalInput,
 ) -> Result<Value> {
     let (owner, _) = core.owner_session(tx, &auth, false)?;
+    super::agent_policy::require(tx, &owner)?;
     let candidate = crate::agent::NewAgent {
         id: input.id,
         permissions: input.permissions,
@@ -266,6 +271,7 @@ pub(crate) fn approve(
     digest: &str,
 ) -> Result<Value> {
     let (owner, _) = core.owner_session(tx, &auth, true)?;
+    super::agent_policy::require(tx, &owner)?;
     let mut proposal = tx
         .get::<Proposal>(PROPOSALS, proposal_id)?
         .filter(|proposal| proposal.owner_id == owner.id)
@@ -326,6 +332,7 @@ pub(crate) fn rotate(
 ) -> Result<Value> {
     crate::management::validate_agent_rotation_ttl(ttl)?;
     let (owner, _) = core.owner_session(tx, &auth, true)?;
+    super::agent_policy::require(tx, &owner)?;
     let receipt = crate::context::current().and_then(|context| {
         context.idempotency_key.map(|key| {
             (

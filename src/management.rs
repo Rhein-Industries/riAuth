@@ -35,6 +35,7 @@
 //! credentials only in the first committed response; their receipts keep a marker.
 
 pub(crate) mod agent_applications;
+pub(crate) mod agent_policy;
 mod client_creation;
 mod client_endpoint;
 mod client_policy;

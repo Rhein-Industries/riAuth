@@ -196,6 +196,7 @@ pub(crate) fn approve(
     input: ApplicationAccessInput,
 ) -> Result<Value> {
     let (owner, session) = core.owner_session(tx, &auth, true)?;
+    super::agent_policy::require(tx, &owner)?;
     let agent = owned(tx, &owner, agent_id)?;
     if live_principal(tx, &core.config, &agent)?.is_none() {
         return Err(Error::conflict(

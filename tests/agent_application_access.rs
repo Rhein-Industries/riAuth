@@ -10,7 +10,7 @@ use axum::{
 };
 use common::{Fixture, PASSWORD, strings, text};
 use riauth::{
-    agent::{AgentProposalInput, ApplicationAccessInput, NewAgent, Permission},
+    agent::{AgentProposalInput, AgentSelfService, ApplicationAccessInput, NewAgent, Permission},
     crypto,
     exchange::{ACCESS_TOKEN, AGENT_TOKEN, ExchangePolicy, TOKEN_EXCHANGE},
     model::{Client, ClientPatch, NewClient, ProviderSettings, UserPatch},
@@ -141,6 +141,34 @@ fn assert_live(f: &Fixture, secret: &str, token: &str) {
 fn assert_ended(f: &Fixture, secret: &str, token: &str) {
     assert_eq!(introspect(f, JMAP, secret, token)["active"], false);
     assert_eq!(f.core.userinfo(token).unwrap_err().code, "invalid_token");
+}
+
+#[test]
+fn turning_self_service_off_stops_new_application_approvals() {
+    let f = Fixture::new();
+    let owner = f.user("owner");
+    let secret = application(&f, JMAP, |_| {});
+    let credential = agent(&f, &owner, "mail-helper", 3600);
+    f.core
+        .approve_my_agent_application(&owner, "mail-helper", access(JMAP, &["mail"]))
+        .unwrap();
+    f.core
+        .set_agent_self_service(&f.admin, AgentSelfService::Off)
+        .unwrap();
+    application(&f, "calendar", |client| client.settings.resources.clear());
+    assert_eq!(
+        f.core
+            .approve_my_agent_application(&owner, "mail-helper", access("calendar", &["mail"]))
+            .unwrap_err()
+            .code,
+        "self_service_disabled"
+    );
+    // Approvals made before keep working until revoked.
+    let token = text(
+        &f.core.token(exchange(&credential, JMAP)).unwrap(),
+        "access_token",
+    );
+    assert_live(&f, &secret, &token);
 }
 
 #[test]

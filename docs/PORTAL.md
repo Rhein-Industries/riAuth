@@ -113,7 +113,7 @@ See [passkeys](passkeys.md) for how browser, USB and split ceremonies relate.
 
 ## My agents
 
-**My agents** (`<issuer>/account/agents`, linked from Settings, Sign-in and security, and Sessions and consent) lets a person give a tool or script its own credential without an administrator. An agent can do only what you approve, never more than your account can do now, and stops working when it expires or you revoke it.
+**My agents** (`<issuer>/account/agents`, linked from Settings, Sign-in and security, and Sessions and consent) lets a person give a tool or script its own credential without an administrator. An agent can do only what you approve, never more than your account can do now, and stops working when it expires or you revoke it. An administrator chooses on the administration **Security** page whether everyone, the members of one group or nobody may issue agents this way; when you are not included, the page hides issuing, replacing and allowing applications, and you can still review and revoke your agents.
 
 - **Your agents** lists each agent with its status (**Active**, **Expired** or **Revoked**), when it expires (date, time and time zone), the permissions you approved and what they allow now. **Show recent activity** loads the agent's recent audited actions.
 - **Prepare an agent** takes a name, a lifetime (1 hour, 1 day, 7 days or 30 days) and what the agent may do on your account: see your name and email, change your display name, see or sign out your sessions, see or withdraw application approvals, and see or revoke your agents. **Advanced: exact permissions** accepts one `action=resource` per line for anything else you can manage, for example `state.read=state/revision`.

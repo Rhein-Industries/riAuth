@@ -113,6 +113,8 @@
   }
   // ---- Page ---------------------------------------------------------------------------------
   let snapshot = null, generation = 0, pending = null, issued = null, verifying = false;
+  // Whether the administrator lets this person issue, rotate and allow agents.
+  let selfService = true;
   // Applications the person can allow agents to use, and the agents whose applications are open
   // (agent id -> { draft, allowed }). Both survive reloads, so a fresh sign-in keeps the form.
   let available = [], resumeAllow = null;
@@ -194,7 +196,7 @@
     toggle.setAttribute("aria-label", `Show recent activity of ${agent.id}`);
     toggle.addEventListener("click", () => activity(toggle, region, agent));
     details.append(toggle, region);
-    if (status === "active") details.append(...applicationsToggle(agent, index));
+    if (status === "active" && selfService) details.append(...applicationsToggle(agent, index));
     row.append(details);
     if (status !== "active") return row;
 
@@ -207,6 +209,7 @@
     const confirmButton = node("button", "button primary", "Replace and show credential"), cancel = node("button", "button secondary", "Cancel");
     confirmButton.type = cancel.type = "button"; form.hidden = true;
     form.append(field, confirmButton, cancel);
+    replace.hidden = !selfService;
     replace.setAttribute("aria-expanded", "false");
     replace.addEventListener("click", () => {
       form.hidden = false; replace.setAttribute("aria-expanded", "true"); RiAuth.arm(); select.focus();
@@ -413,6 +416,9 @@
   }
   function render(security, list, changes, applications) {
     snapshot = security;
+    selfService = list.self_service?.allowed !== false;
+    $("create-section").hidden = !selfService;
+    $("self-service-off").hidden = selfService;
     available = Array.isArray(applications) ? applications : [];
     $("agents-admin-link").hidden = security.user.admin !== true;
     $("agents-events-link").hidden = security.user.admin !== true || !RiAuthCapabilities.usable("audit.self_hosted_event_map");
@@ -440,7 +446,7 @@
     $("agents-empty").hidden = rows.length > 0;
     const open = openProposals(list.proposals, list.agents, at).map(proposalRow);
     $("proposal-list").replaceChildren(...open);
-    $("proposals").hidden = open.length === 0;
+    $("proposals").hidden = open.length === 0 || !selfService;
     const approvals = (changes?.changes || []).map(changeRow);
     $("approval-list").replaceChildren(...approvals);
     $("agent-approvals").hidden = approvals.length === 0;

@@ -229,7 +229,7 @@
         forget(); loaded = false; screen("loading");
       }
       const canReadAccess = me.user.admin && RiAuthCapabilities.compiled("access.temporary_entitlements");
-      const [clients, users, groups, requests, grants, audit, invites, directories, deliveries, workflows] = await Promise.all([
+      const [clients, users, groups, requests, grants, audit, invites, directories, deliveries, workflows, agentSelfService] = await Promise.all([
         api("GET", "admin/clients"), api("GET", "admin/users"), api("GET", "admin/groups"),
         canReadAccess ? api("GET", "admin/access/requests") : Promise.resolve([]),
         canReadAccess ? api("GET", "admin/access/grants") : Promise.resolve([]),
@@ -238,9 +238,11 @@
         cloudAvailable() ? api("GET", "admin/cloud-directories") : Promise.resolve([]),
         api("GET", "admin/provisioning/deactivations"),
         me.edition === "platform" ? api("GET", "admin/workflows") : Promise.resolve([]),
+        // Only a full administrator reads who may issue agents for themselves.
+        me.user.admin ? api("GET", "admin/agent-self-service").catch(() => null) : Promise.resolve(null),
       ]);
       if (run !== generation) return;
-      Object.assign(data, { me, revision: me.revision, clients, users, groups, workflows, directories, operations: {}, probes: {}, requests, grants, audit, deliveries, deliveryLoadedAt: Date.now() / 1000 });
+      Object.assign(data, { me, revision: me.revision, clients, users, groups, workflows, directories, operations: {}, probes: {}, requests, grants, audit, deliveries, deliveryLoadedAt: Date.now() / 1000, agentSelfService });
       Object.assign(data, { invitations: invites.invitations, mail: invites.delivery_configured, lifetime: invites.lifetime });
       loaded = true;
       account(); counts(); render(options); connection("Up to date", true);
@@ -1931,6 +1933,35 @@
     return { crumb: title, node };
   }
 
+  // Who may issue agents for themselves. Listing and revoking one's own agents
+  // always works, and administrator-issued agents are not affected.
+  function agentSelfServiceSection() {
+    const current = data.agentSelfService;
+    if (!current) return null;
+    const names = data.groups.map((g) => g.name).sort(byName);
+    const mode = h("select", { id: "agent-self-service-mode" },
+      h("option", { value: "everyone" }, "Everyone"),
+      h("option", { value: "group" }, "Members of one group"),
+      h("option", { value: "off" }, "Nobody"));
+    mode.value = current.mode;
+    const group = h("select", { id: "agent-self-service-group" }, names.map((name) => h("option", { value: name }, name)));
+    if (current.mode === "group") group.value = current.group;
+    const groupField = field("Group", group, "Its members, including temporary members, may issue agents for themselves.");
+    groupField.hidden = mode.value !== "group";
+    mode.addEventListener("change", () => { groupField.hidden = mode.value !== "group"; });
+    const form = h("form", { class: "admin-form", novalidate: true },
+      field("Who may issue agents for themselves", mode, "Covers issuing and rotating agents on My agents or with riauth me agents, and allowing them to use applications. People can always list and revoke their own agents, and agents an administrator issues are not affected."),
+      groupField,
+      h("div", { class: "form-actions" }, h("button", { class: "button primary", type: "submit" }, "Save")));
+    bindForm(form, async (key) => {
+      const body = mode.value === "group" ? { mode: "group", group: group.value } : { mode: mode.value };
+      if (body.mode === "group" && !body.group) throw invalid("Choose a group, or create one first.");
+      await api("PUT", "admin/agent-self-service", body, { revision: data.revision, key });
+      await saved("Saved who may issue agents for themselves.");
+    });
+    return h("section", { class: "admin-section", id: "agent-self-service", "aria-labelledby": "agent-self-service-title" },
+      h("h2", { id: "agent-self-service-title", tabindex: "-1" }, "Agents people issue themselves"), form);
+  }
   function security() {
     const access = accessRoutes() ? accessSecurity() : null;
     const admins = data.users.filter((u) => u.admin && u.enabled);
@@ -1958,6 +1989,7 @@
       h("section", { class: "admin-section", id: "admins", "aria-labelledby": "admins-title" }, h("h2", { id: "admins-title", tabindex: "-1" }, "Administrators"),
         unprotected.length ? h("p", { class: "notice warn-notice" }, `${unprotected.length} ${unprotected.length === 1 ? "administrator has" : "administrators have"} no passkey or authenticator app. Ask them to add one from Your applications.`) : null,
         h("ul", { class: "chip-list" }, admins.map((u) => h("li", { class: "chip" }, link(hash("people", u.username), personName(u)), u.mfa_enabled ? badge("MFA on", "ok") : badge("No MFA", "warn"))))),
+      agentSelfServiceSection(),
       h("section", { class: "admin-section", "aria-labelledby": "activity-title" }, h("div", { class: "section-heading" }, h("h2", { id: "activity-title" }, "Recent activity"),
         RiAuthCapabilities.usable("audit.self_hosted_event_map") ? h("a", { class: "text-button", href: `${base}events` }, "Open the event map") : null), activity.node));
     return { node };

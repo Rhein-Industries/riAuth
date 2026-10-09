@@ -88,6 +88,8 @@ A signed-in person can manage agents they own without an administrator. Every ro
 4. `POST /api/me/agents/{id}/rotate` with `{"ttl"}` replaces the credential of an enabled, unexpired agent and needs the same fresh sign-in. An expired agent is not revived; prepare a new one. An optional `Idempotency-Key` turns an exact retry into `credential_already_issued`.
 5. `DELETE /api/me/agents/{id}` revokes an agent at once, with no fresh sign-in.
 
+A full human administrator decides who may issue agents for themselves with `PUT /api/agent-self-service` and `{"mode": "everyone"}` (the default when nothing is stored), `{"mode": "off"}` or `{"mode": "group", "group": "<name>"}`; members include temporary members. `GET` on the same route reads it, `riauth agent self-service [off|everyone|group:NAME]` shows or sets it, and the administration portal's **Security** page has the same control. The setting is stored, so every node applies the same one, and each change is audited as `agent.self_service.configure`. It gates preparing, approving and rotating self-issued agents and approving them for applications, which then answer 403 `self_service_disabled`. Listing, activity and revocation of one's own agents, agents and application approvals that already exist, and administrator-issued agents do not depend on it.
+
 A person can hold at most 20 enabled agents and open proposals together. Another person's agent answers 404. The same operations are available to the signed-in browser under `/api/portal/agents`, bound to the page's account and session. Audit events for these operations have the person as actor and `details.self_service: true`.
 
 ### My agents page and CLI

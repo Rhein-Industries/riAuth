@@ -31,6 +31,10 @@ use webauthn_rs::prelude::RegisterPublicKeyCredential;
 pub fn routes() -> Router<App> {
     let routes = Router::new()
         .route("/api/admin/session", get(session))
+        .route(
+            "/api/admin/agent-self-service",
+            get(agent_self_service).put(set_agent_self_service),
+        )
         .route("/api/admin/users", get(users).post(create_user))
         .route("/api/admin/users/passkey/start", post(passkey_admin_start))
         .route("/api/admin/users/passkey/first", post(passkey_admin_first))
@@ -878,6 +882,22 @@ async fn passkey_admin_cancel(
     })
     .await
 }
+async fn agent_self_service(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    let token = reader(&app, &headers)?;
+    app.run(move |core| core.agent_self_service(&token).map(Json))
+        .await
+}
+
+async fn set_agent_self_service(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(setting): Json<crate::agent::AgentSelfService>,
+) -> Result<Json<Value>> {
+    let token = writer(&app, &headers)?;
+    app.run(move |core| core.set_agent_self_service(&token, setting).map(Json))
+        .await
+}
+
 async fn update_user(
     State(app): State<App>,
     headers: HeaderMap,

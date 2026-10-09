@@ -400,6 +400,10 @@ pub fn router(core: Core) -> Router {
         .route("/api/me", get(me))
         .route("/api/me/agents", get(my_agents).post(prepare_my_agent))
         .route(
+            "/api/agent-self-service",
+            get(agent_self_service).put(set_agent_self_service),
+        )
+        .route(
             "/api/me/agents/proposals/{id}/approve",
             post(approve_my_agent),
         )
@@ -2132,6 +2136,20 @@ async fn users(
         }
     })
     .await
+}
+async fn agent_self_service(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.agent_self_service(&token).map(Json))
+        .await
+}
+async fn set_agent_self_service(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Json(setting): Json<crate::agent::AgentSelfService>,
+) -> Result<Json<Value>> {
+    let token = bearer(&headers)?;
+    app.run(move |core| core.set_agent_self_service(&token, setting).map(Json))
+        .await
 }
 async fn my_agents(State(app): State<App>, headers: HeaderMap) -> Result<Json<Value>> {
     let token = bearer(&headers)?;
