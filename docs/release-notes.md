@@ -1,3 +1,33 @@
+# riAuth v0.1.6 release notes
+
+riAuth 0.1.6 lets administrators choose who may issue agents for themselves.
+
+## Agent self-service setting
+
+- A full human administrator sets agent self-service to **everyone** (the
+  default, unchanged from 0.1.5), **off**, or the **members of one group**:
+  on the administration **Security** page, with
+  `riauth agent self-service [off|everyone|group:NAME]`, or through
+  `PUT /api/agent-self-service`. The choice is stored, so every node applies
+  it, and each change is audited as `agent.self_service.configure`.
+- It gates preparing, approving and rotating self-issued agents and approving
+  them for applications, which answer 403 `self_service_disabled` for people
+  it excludes. Listing, activity and revocation of one's own agents, agents
+  and application approvals that already exist, and administrator-issued
+  agents do not depend on it. **My agents** hides issuing controls for people
+  it excludes. See [owner self-service](agent.md#owner-self-service).
+
+## Tests
+
+- Browser checks allow a minute for a cold headless Chrome to start.
+
+## Upgrade
+
+No storage migration is needed. Without a stored choice, everyone may issue
+agents for themselves, as in 0.1.5.
+
+---
+
 # riAuth v0.1.5 release notes
 
 riAuth 0.1.5 lets people manage their own agents, approve the sensitive changes

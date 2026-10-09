@@ -26,7 +26,7 @@ import uuid
 GIB = 1024**3
 OWNER = "org.riauth.publish-fixture"
 SOURCE_URL = "https://github.com/Rhein-Industries/riAuth"
-VERSION = "0.1.5"
+VERSION = "0.1.6"
 ARCHES = {"amd64": ("x86_64", "X64"), "arm64": ("aarch64", "ARM64")}
 
 
@@ -265,7 +265,7 @@ class Fixture:
                 caps["data"]["version"] == VERSION and
                 caps["data"]["target"] == {"os": "linux", "arch": ARCHES[a.architecture][0]},
                 "native_binary_identity")
-        require(self.tool(["/usr/local/bin/riauth", "--version"]).strip() == b"riauth 0.1.5", "binary_version")
+        require(self.tool(["/usr/local/bin/riauth", "--version"]).strip() == b"riauth 0.1.6", "binary_version")
         licenses = {}
         for name in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
             data = self.tool(["/bin/cat", "/usr/share/doc/riauth/" + name])
