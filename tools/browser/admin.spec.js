@@ -204,3 +204,20 @@ test('focus erases a one-time secret before the session check answers', async ({
   await page.unroute('**/api/admin/session');
   await secretErasedNow(page, secret);
 });
+
+test('the security page chooses who may issue agents for themselves', async ({ page }) => {
+  await portalSignIn(page, fixture.admin);
+  await page.goto('about:blank');
+  await page.goto(`${fixture.issuer}/admin#/security`);
+  const mode = page.getByLabel('Who may issue agents for themselves');
+  await expect(mode).toHaveValue('everyone');
+  await mode.selectOption('off');
+  await page.locator('#agent-self-service').getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved who may issue agents for themselves.')).toBeVisible();
+  const stored = await page.request.get(`${fixture.issuer}/api/agent-self-service`, { headers: bearer() });
+  expect(await stored.json()).toEqual({ mode: 'off' });
+  await expect(page.getByLabel('Who may issue agents for themselves')).toHaveValue('off');
+  await page.getByLabel('Who may issue agents for themselves').selectOption('everyone');
+  await page.locator('#agent-self-service').getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByLabel('Who may issue agents for themselves')).toHaveValue('everyone');
+});
